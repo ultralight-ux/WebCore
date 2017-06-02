@@ -1,6 +1,6 @@
-# WebKit Base for Awesomium Port
+# WebKit Base for Ultralight Port
 
-This is a handy WebKit base used by the Awesomium fork. It contains
+This is a handy WebKit base used by the Ultralight fork. It contains
 just the essentials for building WebCore and JavaScriptCore.
 
 To update this repo:
