@@ -1,0 +1,174 @@
+/*
+ * Copyright (C) 2008 Apple Inc. All Rights Reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ *
+ */
+
+#include "config.h"
+#include "NavigatorBase.h"
+
+#include "Language.h"
+#include "NetworkStateNotifier.h"
+#include <mutex>
+#include <wtf/NeverDestroyed.h>
+#include <wtf/NumberOfCores.h>
+#include <wtf/text/WTFString.h>
+
+#if OS(LINUX)
+#include "sys/utsname.h"
+#include <wtf/StdLibExtras.h>
+#endif
+
+#if PLATFORM(IOS)
+#include "Device.h"
+#endif
+
+#ifndef WEBCORE_NAVIGATOR_PLATFORM
+#if PLATFORM(IOS)
+#define WEBCORE_NAVIGATOR_PLATFORM deviceName()
+#elif OS(MAC_OS_X) && (CPU(PPC) || CPU(PPC64))
+#define WEBCORE_NAVIGATOR_PLATFORM ASCIILiteral("MacPPC")
+#elif OS(MAC_OS_X) && (CPU(X86) || CPU(X86_64))
+#define WEBCORE_NAVIGATOR_PLATFORM ASCIILiteral("MacIntel")
+#elif OS(WINDOWS)
+#define WEBCORE_NAVIGATOR_PLATFORM ASCIILiteral("Win32")
+#else
+#define WEBCORE_NAVIGATOR_PLATFORM emptyString()
+#endif
+#endif // ifndef WEBCORE_NAVIGATOR_PLATFORM
+
+#ifndef WEBCORE_NAVIGATOR_PRODUCT
+#define WEBCORE_NAVIGATOR_PRODUCT ASCIILiteral("Gecko")
+#endif // ifndef WEBCORE_NAVIGATOR_PRODUCT
+
+#ifndef WEBCORE_NAVIGATOR_PRODUCT_SUB
+#define WEBCORE_NAVIGATOR_PRODUCT_SUB ASCIILiteral("20030107")
+#endif // ifndef WEBCORE_NAVIGATOR_PRODUCT_SUB
+
+#ifndef WEBCORE_NAVIGATOR_VENDOR
+#define WEBCORE_NAVIGATOR_VENDOR ASCIILiteral("Apple Computer, Inc.")
+#endif // ifndef WEBCORE_NAVIGATOR_VENDOR
+
+#ifndef WEBCORE_NAVIGATOR_VENDOR_SUB
+#define WEBCORE_NAVIGATOR_VENDOR_SUB emptyString()
+#endif // ifndef WEBCORE_NAVIGATOR_VENDOR_SUB
+
+namespace WebCore {
+
+NavigatorBase::~NavigatorBase()
+{
+}
+
+String NavigatorBase::appName()
+{
+    return ASCIILiteral("Netscape");
+}
+
+String NavigatorBase::appVersion() const
+{
+    // Version is everything in the user agent string past the "Mozilla/" prefix.
+    const String& agent = userAgent();
+    return agent.substring(agent.find('/') + 1);
+}
+
+String NavigatorBase::platform()
+{
+#if OS(LINUX)
+    if (!String(WEBCORE_NAVIGATOR_PLATFORM).isEmpty())
+        return WEBCORE_NAVIGATOR_PLATFORM;
+    struct utsname osname;
+    static NeverDestroyed<String> platformName(uname(&osname) >= 0 ? String(osname.sysname) + String(" ") + String(osname.machine) : emptyString());
+    return platformName;
+#else
+    return WEBCORE_NAVIGATOR_PLATFORM;
+#endif
+}
+
+String NavigatorBase::appCodeName()
+{
+    return ASCIILiteral("Mozilla");
+}
+
+String NavigatorBase::product()
+{
+    return WEBCORE_NAVIGATOR_PRODUCT;
+}
+
+String NavigatorBase::productSub()
+{
+    return WEBCORE_NAVIGATOR_PRODUCT_SUB;
+}
+
+String NavigatorBase::vendor()
+{
+    return WEBCORE_NAVIGATOR_VENDOR;
+}
+
+String NavigatorBase::vendorSub()
+{
+    return WEBCORE_NAVIGATOR_VENDOR_SUB;
+}
+
+bool NavigatorBase::onLine()
+{
+    return networkStateNotifier().onLine();
+}
+
+String NavigatorBase::language()
+{
+    return defaultLanguage();
+}
+
+Vector<String> NavigatorBase::languages()
+{
+    // We intentionally expose only the primary language for privacy reasons.
+    return { defaultLanguage() };
+}
+
+#if ENABLE(NAVIGATOR_HWCONCURRENCY)
+
+int NavigatorBase::hardwareConcurrency()
+{
+    static int numberOfCores;
+
+    static std::once_flag once;
+    std::call_once(once, [] {
+        // Enforce a maximum for the number of cores reported to mitigate
+        // fingerprinting for the minority of machines with large numbers of cores.
+        // If machines with more than 8 cores become commonplace, we should bump this number.
+        // see https://bugs.webkit.org/show_bug.cgi?id=132588 for the
+        // rationale behind this decision.
+#if PLATFORM(IOS)
+        const int maxCoresToReport = 2;
+#else
+        const int maxCoresToReport = 8;
+#endif
+        numberOfCores = std::min(WTF::numberOfProcessorCores(), maxCoresToReport);
+    });
+
+    return numberOfCores;
+}
+
+#endif
+
+} // namespace WebCore

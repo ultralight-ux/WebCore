@@ -1,0 +1,71 @@
+#
+# Special GitIgnore script that aims to strip out everything
+# except the essentials for the Awesomium WebKit port.
+#
+
+
+# Start by ignoring everything by default
+/*
+
+# Keep the following files in root directory
+!.gitignore
+!README.md
+
+# Keep the Source directory but ignore everything in it
+# that we don't explicitly keep.
+!/Source
+/Source/*
+
+# Keep the following directories and their contents
+!/Source/bmalloc
+!/Source/bmalloc/*
+!/Source/cmake
+!/Source/cmake/*
+!/Source/JavaScriptCore
+!/Source/JavaScriptCore/*
+!/Source/WebCore
+!/Source/WebCore/*
+!/Source/WTF
+!/Source/WTF/*
+
+# Keep only WebKit's Scripts and version.xcconfig
+!/Source/WebKit
+/Source/WebKit/*
+!/Source/WebKit/scripts/
+!/Source/WebKit/scripts/*
+!/Source/WebKit/mac/
+/Source/WebKit/mac/*
+!/Source/WebKit/mac/Configurations/
+/Source/WebKit/mac/Configurations/*
+!/Source/WebKit/mac/Configurations/Version.xcconfig
+
+
+# Ignore platform-specific folders in WebCore
+/Source/WebCore/**/cocoa/
+/Source/WebCore/**/efl/
+/Source/WebCore/**/glib/
+/Source/WebCore/**/gtk/
+/Source/WebCore/**/ios/
+/Source/WebCore/**/linux/
+/Source/WebCore/**/mac/
+/Source/WebCore/**/posix/
+/Source/WebCore/**/spi/
+/Source/WebCore/**/win/
+/Source/WebCore/**/unix/
+
+# Ignore graphics platform-specific folders in WebCore
+/Source/WebCore/**/avfoundation/
+/Source/WebCore/**/ca/
+/Source/WebCore/**/cairo/
+/Source/WebCore/**/cg/
+/Source/WebCore/**/egl/
+/Source/WebCore/**/glx/
+/Source/WebCore/**/opengl/
+/Source/WebCore/**/wayland/
+/Source/WebCore/**/x11/
+
+# Ignore network platform-specific folders in WebCore
+/Source/WebCore/**/soup/
+
+# Ignore all Changelogs
+Changelog*

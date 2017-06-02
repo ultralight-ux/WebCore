@@ -1,0 +1,112 @@
+/*
+ * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
+ *           (C) 1999 Antti Koivisto (koivisto@kde.org)
+ *           (C) 2001 Dirk Mueller (mueller@kde.org)
+ * Copyright (C) 2003, 2010 Apple Inc. All rights reserved.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Library General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Library General Public License for more details.
+ *
+ * You should have received a copy of the GNU Library General Public License
+ * along with this library; see the file COPYING.LIB.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
+ */
+
+#include "config.h"
+#include "HTMLMetaElement.h"
+
+#include "Attribute.h"
+#include "Document.h"
+#include "HTMLHeadElement.h"
+#include "HTMLNames.h"
+
+namespace WebCore {
+
+using namespace HTMLNames;
+
+inline HTMLMetaElement::HTMLMetaElement(const QualifiedName& tagName, Document& document)
+    : HTMLElement(tagName, document)
+{
+    ASSERT(hasTagName(metaTag));
+}
+
+Ref<HTMLMetaElement> HTMLMetaElement::create(Document& document)
+{
+    return adoptRef(*new HTMLMetaElement(metaTag, document));
+}
+
+Ref<HTMLMetaElement> HTMLMetaElement::create(const QualifiedName& tagName, Document& document)
+{
+    return adoptRef(*new HTMLMetaElement(tagName, document));
+}
+
+void HTMLMetaElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+{
+    if (name == http_equivAttr)
+        process();
+    else if (name == contentAttr)
+        process();
+    else if (name == nameAttr) {
+        // Do nothing
+    } else
+        HTMLElement::parseAttribute(name, value);
+}
+
+Node::InsertionNotificationRequest HTMLMetaElement::insertedInto(ContainerNode& insertionPoint)
+{
+    HTMLElement::insertedInto(insertionPoint);
+    if (insertionPoint.isConnected())
+        process();
+    return InsertionDone;
+}
+
+void HTMLMetaElement::process()
+{
+    // Changing a meta tag while it's not in the tree shouldn't have any effect on the document.
+    if (!isConnected())
+        return;
+
+    const AtomicString& contentValue = attributeWithoutSynchronization(contentAttr);
+    if (contentValue.isNull())
+        return;
+
+    if (equalLettersIgnoringASCIICase(name(), "viewport"))
+        document().processViewport(contentValue, ViewportArguments::ViewportMeta);
+#if PLATFORM(IOS)
+    else if (equalLettersIgnoringASCIICase(name(), "format-detection"))
+        document().processFormatDetection(contentValue);
+    else if (equalLettersIgnoringASCIICase(name(), "apple-mobile-web-app-orientations"))
+        document().processWebAppOrientations();
+#endif
+    else if (equalLettersIgnoringASCIICase(name(), "referrer"))
+        document().processReferrerPolicy(contentValue);
+
+    const AtomicString& httpEquivValue = attributeWithoutSynchronization(http_equivAttr);
+    if (!httpEquivValue.isNull())
+        document().processHttpEquiv(httpEquivValue, contentValue, isDescendantOf(document().head()));
+}
+
+const AtomicString& HTMLMetaElement::content() const
+{
+    return attributeWithoutSynchronization(contentAttr);
+}
+
+const AtomicString& HTMLMetaElement::httpEquiv() const
+{
+    return attributeWithoutSynchronization(http_equivAttr);
+}
+
+const AtomicString& HTMLMetaElement::name() const
+{
+    return getNameAttribute();
+}
+
+}
