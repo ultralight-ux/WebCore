@@ -39,14 +39,14 @@ log = logging.getLogger('global')
 
 
 class CppBackendDispatcherHeaderGenerator(CppGenerator):
-    def __init__(self, *args, **kwargs):
-        CppGenerator.__init__(self, *args, **kwargs)
+    def __init__(self, model, input_filepath):
+        CppGenerator.__init__(self, model, input_filepath)
 
     def output_filename(self):
         return "%sBackendDispatchers.h" % self.protocol_name()
 
     def domains_to_generate(self):
-        return filter(lambda domain: len(self.commands_for_domain(domain)) > 0, Generator.domains_to_generate(self))
+        return filter(lambda domain: len(domain.commands) > 0, Generator.domains_to_generate(self))
 
     def generate_output(self):
         headers = [
@@ -95,7 +95,7 @@ class CppBackendDispatcherHeaderGenerator(CppGenerator):
         used_enum_names = set()
 
         command_declarations = []
-        for command in self.commands_for_domain(domain):
+        for command in domain.commands:
             command_declarations.append(self._generate_handler_declaration_for_command(command, used_enum_names))
 
         handler_args = {
@@ -192,10 +192,9 @@ class CppBackendDispatcherHeaderGenerator(CppGenerator):
             classComponents.append(exportMacro)
 
         declarations = []
-        commands = self.commands_for_domain(domain)
-        if len(commands) > 0:
+        if len(domain.commands) > 0:
             declarations.append('private:')
-        declarations.extend(map(self._generate_dispatcher_declaration_for_command, commands))
+        declarations.extend(map(self._generate_dispatcher_declaration_for_command, domain.commands))
 
         declaration_args = {
             'domainName': domain.domain_name,

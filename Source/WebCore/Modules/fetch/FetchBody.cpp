@@ -48,39 +48,38 @@ namespace WebCore {
 
 std::optional<FetchBody> FetchBody::extract(ScriptExecutionContext& context, JSC::ExecState& state, JSC::JSValue value, String& contentType)
 {
-    JSC::VM& vm = state.vm();
-    if (value.inherits(vm, JSBlob::info())) {
-        auto& blob = *JSBlob::toWrapped(vm, value);
+    if (value.inherits(JSBlob::info())) {
+        auto& blob = *JSBlob::toWrapped(value);
         contentType = blob.type();
         return FetchBody(blob);
     }
-    if (value.inherits(vm, JSDOMFormData::info())) {
+    if (value.inherits(JSDOMFormData::info())) {
         ASSERT(!context.isWorkerGlobalScope());
-        auto& domFormData = *JSDOMFormData::toWrapped(vm, value);
+        auto& domFormData = *JSDOMFormData::toWrapped(value);
         auto formData = FormData::createMultiPart(domFormData, domFormData.encoding(), &static_cast<Document&>(context));
-        contentType = makeString("multipart/form-data; boundary=", formData->boundary().data());
+        contentType = makeString("multipart/form-data;boundary=", formData->boundary().data());
         return FetchBody(WTFMove(formData));
     }
     if (value.isString()) {
         contentType = HTTPHeaderValues::textPlainContentType();
         return FetchBody(String { asString(value)->value(&state) });
     }
-    if (value.inherits(vm, JSURLSearchParams::info())) {
+    if (value.inherits(JSURLSearchParams::info())) {
         contentType = HTTPHeaderValues::formURLEncodedContentType();
-        return FetchBody(*JSURLSearchParams::toWrapped(vm, value));
+        return FetchBody(*JSURLSearchParams::toWrapped(value));
     }
-    if (value.inherits(vm, JSReadableStream::info())) {
+    if (value.inherits(JSReadableStream::info())) {
         FetchBody body;
         body.m_isReadableStream = true;
         return WTFMove(body);
     }
-    if (value.inherits(vm, JSC::JSArrayBuffer::info())) {
-        ArrayBuffer* data = toUnsharedArrayBuffer(vm, value);
+    if (value.inherits(JSC::JSArrayBuffer::info())) {
+        ArrayBuffer* data = toUnsharedArrayBuffer(value);
         ASSERT(data);
         return FetchBody(*data);
     }
-    if (value.inherits(vm, JSC::JSArrayBufferView::info()))
-        return FetchBody(toUnsharedArrayBufferView(vm, value).releaseConstNonNull());
+    if (value.inherits(JSC::JSArrayBufferView::info()))
+        return FetchBody(toUnsharedArrayBufferView(value).releaseConstNonNull());
 
     return std::nullopt;
 }
@@ -118,12 +117,10 @@ void FetchBody::text(FetchBodyOwner& owner, Ref<DeferredPromise>&& promise)
     consume(owner, WTFMove(promise));
 }
 
-void FetchBody::consumeOnceLoadingFinished(FetchBodyConsumer::Type type, Ref<DeferredPromise>&& promise, const String& contentType)
+void FetchBody::consumeOnceLoadingFinished(FetchBodyConsumer::Type type, Ref<DeferredPromise>&& promise)
 {
     m_consumer.setType(type);
     m_consumePromise = WTFMove(promise);
-    if (type == FetchBodyConsumer::Type::Blob)
-        m_consumer.setContentType(Blob::normalizedContentType(extractMIMETypeFromMediaType(contentType)));
 }
 
 void FetchBody::consume(FetchBodyOwner& owner, Ref<DeferredPromise>&& promise)

@@ -31,6 +31,7 @@
 #include "Animation.h"
 #include "CSSPropertyNames.h"
 #include "RenderStyleConstants.h"
+#include <wtf/RefCounted.h>
 #include <wtf/text/AtomicString.h>
 
 namespace WebCore {
@@ -121,7 +122,7 @@ public:
     bool fillingForwards() const { return m_animationState == AnimationState::FillingForwards; }
     bool active() const { return !postActive() && !preActive(); }
     bool running() const { return !isNew() && !postActive(); }
-    bool paused() const { return m_pauseTime || m_animationState == AnimationState::PausedNew; }
+    bool paused() const { return m_pauseTime >= 0 || m_animationState == AnimationState::PausedNew; }
     bool inPausedState() const { return m_animationState >= AnimationState::PausedNew && m_animationState <= AnimationState::PausedRun; }
     bool isNew() const { return m_animationState == AnimationState::New || m_animationState == AnimationState::PausedNew; }
     bool waitingForStartTime() const { return m_animationState == AnimationState::StartWaitResponse; }
@@ -129,7 +130,7 @@ public:
 
     bool isAccelerated() const { return m_isAccelerated; }
 
-    virtual std::optional<Seconds> timeToNextService();
+    virtual double timeToNextService();
 
     double progress(double scale = 1, double offset = 0, const TimingFunction* = nullptr) const;
 
@@ -232,7 +233,7 @@ protected:
 
     static void setNeedsStyleRecalc(Element*);
     
-    void getTimeToNextEvent(Seconds& time, bool& isLooping) const;
+    void getTimeToNextEvent(double& time, bool& isLooping) const;
 
     double fractionalTime(double scale, double elapsedTime, double offset) const;
 
@@ -244,11 +245,11 @@ protected:
     CompositeAnimation* m_compositeAnimation; // Ideally this would be a reference, but it has to be cleared if an animation is destroyed inside an event callback.
     Ref<Animation> m_animation;
 
-    std::optional<double> m_startTime;
-    std::optional<double> m_pauseTime;
+    double m_startTime { 0 };
+    double m_pauseTime { -1 };
     double m_requestedStartTime { 0 };
-    std::optional<double> m_totalDuration;
-    std::optional<double> m_nextIterationDuration;
+    double m_totalDuration { -1 };
+    double m_nextIterationDuration { -1 };
 
     AnimationState m_animationState { AnimationState::New };
     bool m_isAccelerated { false };

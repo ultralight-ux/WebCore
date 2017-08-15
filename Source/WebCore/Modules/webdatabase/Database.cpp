@@ -40,9 +40,9 @@
 #include "DatabaseThread.h"
 #include "DatabaseTracker.h"
 #include "Document.h"
-#include "ExceptionCode.h"
 #include "JSDOMWindow.h"
 #include "Logging.h"
+#include "Page.h"
 #include "SQLError.h"
 #include "SQLTransaction.h"
 #include "SQLTransactionCallback.h"
@@ -99,7 +99,8 @@ static const char* fullyQualifiedInfoTableName()
 
     static std::once_flag onceFlag;
     std::call_once(onceFlag, [] {
-        snprintf(qualifiedName, sizeof(qualifiedName), "%s%s", qualifier, unqualifiedInfoTableName);
+        strcpy(qualifiedName, qualifier);
+        strcpy(qualifiedName + sizeof(qualifier) - 1, unqualifiedInfoTableName);
     });
 
     return qualifiedName;
@@ -421,7 +422,7 @@ ExceptionOr<void> Database::performOpenAndVerify(bool shouldSetVersionInNewDatab
         return Exception { INVALID_STATE_ERR, "unable to open database, version mismatch, '" + m_expectedVersion + "' does not match the currentVersion of '" + currentVersion + "'" };
     }
 
-    m_sqliteDatabase.setAuthorizer(m_databaseAuthorizer.get());
+    m_sqliteDatabase.setAuthorizer(m_databaseAuthorizer.ptr());
 
     DatabaseTracker::singleton().addOpenDatabase(*this);
     m_opened = true;
@@ -769,7 +770,8 @@ SecurityOriginData Database::securityOrigin()
 {
     if (m_scriptExecutionContext->isContextThread())
         return SecurityOriginData::fromSecurityOrigin(m_contextThreadSecurityOrigin.get());
-    if (currentThread() == databaseThread().getThreadID())
+    auto& thread = databaseThread();
+    if (currentThread() == thread.getThreadID())
         return SecurityOriginData::fromSecurityOrigin(m_databaseThreadSecurityOrigin.get());
     RELEASE_ASSERT_NOT_REACHED();
 }

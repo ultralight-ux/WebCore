@@ -35,6 +35,7 @@ extern "C" {
 extern bool (*WebCoreWebThreadIsLockedOrDisabled)(void);
 extern bool (*WebCoreWebThreadIsEnabled)(void);
 extern void (*WebCoreWebThreadRun)(void (^block)());
+extern void (*WebCoreWebThreadRunSync)(void (^block)());
 
 #ifdef __cplusplus
 }

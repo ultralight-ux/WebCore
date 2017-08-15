@@ -33,7 +33,7 @@
 #include "Event.h"
 #include "EventNames.h"
 #include "JSOverconstrainedError.h"
-#include "MediaConstraints.h"
+#include "MediaConstraintsImpl.h"
 #include "MediaStream.h"
 #include "MediaStreamPrivate.h"
 #include "NotImplemented.h"
@@ -68,7 +68,7 @@ const AtomicString& MediaStreamTrack::kind() const
     static NeverDestroyed<AtomicString> audioKind("audio", AtomicString::ConstructFromLiteral);
     static NeverDestroyed<AtomicString> videoKind("video", AtomicString::ConstructFromLiteral);
 
-    if (m_private->type() == RealtimeMediaSource::Type::Audio)
+    if (m_private->type() == RealtimeMediaSource::Audio)
         return audioKind;
     return videoKind;
 }
@@ -98,6 +98,16 @@ bool MediaStreamTrack::muted() const
     return m_private->muted();
 }
 
+bool MediaStreamTrack::readonly() const
+{
+    return m_private->readonly();
+}
+
+bool MediaStreamTrack::remote() const
+{
+    return m_private->remote();
+}
+
 auto MediaStreamTrack::readyState() const -> State
 {
     return ended() ? State::Ended : State::Live;
@@ -113,21 +123,28 @@ Ref<MediaStreamTrack> MediaStreamTrack::clone()
     return MediaStreamTrack::create(*scriptExecutionContext(), m_private->clone());
 }
 
-void MediaStreamTrack::stopTrack(StopMode mode)
+void MediaStreamTrack::stopProducingData()
 {
-    // NOTE: this method is called when the "stop" method is called from JS, using the "ImplementedAs" IDL attribute.
-    // This is done because ActiveDOMObject requires a "stop" method.
+    // NOTE: this method is called when the "stop" method is called from JS, using
+    // the "ImplementedAs" IDL attribute. This is done because ActiveDOMObject requires
+    // a "stop" method.
 
-    if (ended())
+    // http://w3c.github.io/mediacapture-main/#widl-MediaStreamTrack-stop-void
+    // 4.3.3.2 Methods
+    // When a MediaStreamTrack object's stop() method is invoked, the User Agent must run following steps:
+    // 1. Let track be the current MediaStreamTrack object.
+    // 2. If track is sourced by a non-local source, then abort these steps.
+    if (remote() || ended())
         return;
 
-    // An 'ended' event is not posted if m_ended is true when trackEnded is called, so set it now if we are
-    // not supposed to post the event.
-    if (mode == StopMode::Silently)
-        m_ended = true;
+    // 3. Notify track's source that track is ended so that the source may be stopped, unless other
+    // MediaStreamTrack objects depend on it.
+    // 4. Set track's readyState attribute to ended.
+
+    // Set m_ended to true before telling the private to stop so we do not fire an 'ended' event.
+    m_ended = true;
 
     m_private->endTrack();
-    m_ended = true;
 }
 
 MediaStreamTrack::TrackSettings MediaStreamTrack::getSettings() const
@@ -221,42 +238,39 @@ MediaStreamTrack::TrackCapabilities MediaStreamTrack::getCapabilities() const
 {
     auto capabilities = m_private->capabilities();
     TrackCapabilities result;
-    if (capabilities.supportsWidth())
-        result.width = capabilityIntRange(capabilities.width());
-    if (capabilities.supportsHeight())
-        result.height = capabilityIntRange(capabilities.height());
-    if (capabilities.supportsAspectRatio())
-        result.aspectRatio = capabilityDoubleRange(capabilities.aspectRatio());
-    if (capabilities.supportsFrameRate())
-        result.frameRate = capabilityDoubleRange(capabilities.frameRate());
-    if (capabilities.supportsFacingMode())
-        result.facingMode = capabilityStringVector(capabilities.facingMode());
-    if (capabilities.supportsVolume())
-        result.volume = capabilityDoubleRange(capabilities.volume());
-    if (capabilities.supportsSampleRate())
-        result.sampleRate = capabilityIntRange(capabilities.sampleRate());
-    if (capabilities.supportsSampleSize())
-        result.sampleSize = capabilityIntRange(capabilities.sampleSize());
-    if (capabilities.supportsEchoCancellation())
-        result.echoCancellation = capabilityBooleanVector(capabilities.echoCancellation());
-    if (capabilities.supportsDeviceId())
-        result.deviceId = capabilities.deviceId();
-    if (capabilities.supportsGroupId())
-        result.groupId = capabilities.groupId();
+    if (capabilities->supportsWidth())
+        result.width = capabilityIntRange(capabilities->width());
+    if (capabilities->supportsHeight())
+        result.height = capabilityIntRange(capabilities->height());
+    if (capabilities->supportsAspectRatio())
+        result.aspectRatio = capabilityDoubleRange(capabilities->aspectRatio());
+    if (capabilities->supportsFrameRate())
+        result.frameRate = capabilityDoubleRange(capabilities->frameRate());
+    if (capabilities->supportsFacingMode())
+        result.facingMode = capabilityStringVector(capabilities->facingMode());
+    if (capabilities->supportsVolume())
+        result.volume = capabilityDoubleRange(capabilities->volume());
+    if (capabilities->supportsSampleRate())
+        result.sampleRate = capabilityIntRange(capabilities->sampleRate());
+    if (capabilities->supportsSampleSize())
+        result.sampleSize = capabilityIntRange(capabilities->sampleSize());
+    if (capabilities->supportsEchoCancellation())
+        result.echoCancellation = capabilityBooleanVector(capabilities->echoCancellation());
+    if (capabilities->supportsDeviceId())
+        result.deviceId = capabilities->deviceId();
+    if (capabilities->supportsGroupId())
+        result.groupId = capabilities->groupId();
     return result;
 }
 
-static MediaConstraints createMediaConstraints(const std::optional<MediaTrackConstraints>& constraints)
+static Ref<MediaConstraintsImpl> createMediaConstraintsImpl(const std::optional<MediaTrackConstraints>& constraints)
 {
-    if (!constraints) {
-        MediaConstraints validConstraints;
-        validConstraints.isValid = true;
-        return validConstraints;
-    }
-    return createMediaConstraints(constraints.value());
+    if (!constraints)
+        return MediaConstraintsImpl::create({ }, { }, true);
+    return createMediaConstraintsImpl(constraints.value());
 }
 
-void MediaStreamTrack::applyConstraints(const std::optional<MediaTrackConstraints>& constraints, DOMPromiseDeferred<void>&& promise)
+void MediaStreamTrack::applyConstraints(const std::optional<MediaTrackConstraints>& constraints, DOMPromise<void>&& promise)
 {
     m_promise = WTFMove(promise);
 
@@ -272,7 +286,7 @@ void MediaStreamTrack::applyConstraints(const std::optional<MediaTrackConstraint
         weakThis->m_promise->resolve();
         weakThis->m_constraints = constraints.value_or(MediaTrackConstraints { });
     };
-    m_private->applyConstraints(createMediaConstraints(constraints), WTFMove(successHandler), WTFMove(failureHandler));
+    m_private->applyConstraints(createMediaConstraintsImpl(constraints), successHandler, failureHandler);
 }
 
 void MediaStreamTrack::addObserver(Observer& observer)
@@ -311,7 +325,7 @@ void MediaStreamTrack::trackEnded(MediaStreamTrackPrivate&)
     
 void MediaStreamTrack::trackMutedChanged(MediaStreamTrackPrivate&)
 {
-    if (scriptExecutionContext()->activeDOMObjectsAreSuspended() || scriptExecutionContext()->activeDOMObjectsAreStopped() || m_ended)
+    if (scriptExecutionContext()->activeDOMObjectsAreSuspended() || scriptExecutionContext()->activeDOMObjectsAreStopped())
         return;
 
     AtomicString eventType = muted() ? eventNames().muteEvent : eventNames().unmuteEvent;
@@ -338,7 +352,7 @@ void MediaStreamTrack::configureTrackRendering()
 
 void MediaStreamTrack::stop()
 {
-    stopTrack();
+    stopProducingData();
 }
 
 const char* MediaStreamTrack::activeDOMObjectName() const

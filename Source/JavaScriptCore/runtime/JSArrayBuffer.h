@@ -30,18 +30,18 @@
 
 namespace JSC {
 
-class JSArrayBuffer final : public JSNonFinalObject {
+class JSArrayBuffer : public JSNonFinalObject {
 public:
-    using Base = JSNonFinalObject;
-    static const unsigned StructureFlags = Base::StructureFlags;
+    typedef JSNonFinalObject Base;
+    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetPropertyNames | OverridesGetOwnPropertySlot;
     
 protected:
-    JSArrayBuffer(VM&, Structure*, RefPtr<ArrayBuffer>&&);
+    JSArrayBuffer(VM&, Structure*, PassRefPtr<ArrayBuffer>);
     void finishCreation(VM&, JSGlobalObject*);
     
 public:
     // This function will register the new wrapper with the vm's TypedArrayController.
-    JS_EXPORT_PRIVATE static JSArrayBuffer* create(VM&, Structure*, RefPtr<ArrayBuffer>&&);
+    JS_EXPORT_PRIVATE static JSArrayBuffer* create(VM&, Structure*, PassRefPtr<ArrayBuffer>);
 
     ArrayBuffer* impl() const { return m_impl; }
     
@@ -53,34 +53,41 @@ public:
     DECLARE_EXPORT_INFO;
     
     // This is the default DOM unwrapping. It calls toUnsharedArrayBuffer().
-    static ArrayBuffer* toWrapped(VM&, JSValue);
+    static ArrayBuffer* toWrapped(JSValue);
     
 protected:
+
     static size_t estimatedSize(JSCell*);
+    static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
+    static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
+    static bool deleteProperty(JSCell*, ExecState*, PropertyName);
+    
+    static void getOwnNonIndexPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
 
 private:
     ArrayBuffer* m_impl;
 };
 
-inline ArrayBuffer* toPossiblySharedArrayBuffer(VM& vm, JSValue value)
+inline ArrayBuffer* toPossiblySharedArrayBuffer(JSValue value)
 {
-    JSArrayBuffer* wrapper = jsDynamicCast<JSArrayBuffer*>(vm, value);
+    JSArrayBuffer* wrapper = jsDynamicCast<JSArrayBuffer*>(value);
     if (!wrapper)
         return nullptr;
     return wrapper->impl();
 }
 
-inline ArrayBuffer* toUnsharedArrayBuffer(VM& vm, JSValue value)
+inline ArrayBuffer* toUnsharedArrayBuffer(JSValue value)
 {
-    ArrayBuffer* result = toPossiblySharedArrayBuffer(vm, value);
+    ArrayBuffer* result = toPossiblySharedArrayBuffer(value);
     if (!result || result->isShared())
         return nullptr;
     return result;
 }
 
-inline ArrayBuffer* JSArrayBuffer::toWrapped(VM& vm, JSValue value)
+inline ArrayBuffer* JSArrayBuffer::toWrapped(JSValue value)
 {
-    return toUnsharedArrayBuffer(vm, value);
+    return toUnsharedArrayBuffer(value);
 }
 
 } // namespace JSC

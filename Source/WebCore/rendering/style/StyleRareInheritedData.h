@@ -72,17 +72,17 @@ public:
     
     RefPtr<CursorList> cursorData;
     Length indent;
-    float effectiveZoom;
+    float m_effectiveZoom;
     
     Length wordSpacing;
 
-    DataRef<StyleCustomPropertyData> customProperties;
+    DataRef<StyleCustomPropertyData> m_customProperties;
 
     // Paged media properties.
     short widows;
     short orphans;
-    unsigned hasAutoWidows : 1;
-    unsigned hasAutoOrphans : 1;
+    unsigned m_hasAutoWidows : 1;
+    unsigned m_hasAutoOrphans : 1;
     
     unsigned textSecurity : 2; // ETextSecurity
     unsigned userModify : 2; // EUserModify (editing)
@@ -97,34 +97,34 @@ public:
     unsigned textEmphasisFill : 1; // TextEmphasisFill
     unsigned textEmphasisMark : 3; // TextEmphasisMark
     unsigned textEmphasisPosition : 4; // TextEmphasisPosition
-    unsigned textOrientation : 2; // TextOrientation
+    unsigned m_textOrientation : 2; // TextOrientation
 #if ENABLE(CSS3_TEXT)
-    unsigned textIndentLine : 1; // TextIndentLine
-    unsigned textIndentType : 1; // TextIndentType
+    unsigned m_textIndentLine : 1; // TextIndentLine
+    unsigned m_textIndentType : 1; // TextIndentType
 #endif
-    unsigned lineBoxContain: 7; // LineBoxContain
+    unsigned m_lineBoxContain: 7; // LineBoxContain
     // CSS Image Values Level 3
 #if ENABLE(CSS_IMAGE_ORIENTATION)
-    unsigned imageOrientation : 4; // ImageOrientationEnum
+    unsigned m_imageOrientation : 4; // ImageOrientationEnum
 #endif
-    unsigned imageRendering : 3; // EImageRendering
-    unsigned lineSnap : 2; // LineSnap
-    unsigned lineAlign : 1; // LineAlign
+    unsigned m_imageRendering : 3; // EImageRendering
+    unsigned m_lineSnap : 2; // LineSnap
+    unsigned m_lineAlign : 1; // LineAlign
 #if ENABLE(ACCELERATED_OVERFLOW_SCROLLING)
     unsigned useTouchOverflowScrolling: 1;
 #endif
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-    unsigned imageResolutionSource : 1; // ImageResolutionSource
-    unsigned imageResolutionSnap : 1; // ImageResolutionSnap
+    unsigned m_imageResolutionSource : 1; // ImageResolutionSource
+    unsigned m_imageResolutionSnap : 1; // ImageResolutionSnap
 #endif
 #if ENABLE(CSS3_TEXT)
-    unsigned textAlignLast : 3; // TextAlignLast
-    unsigned textJustify : 2; // TextJustify
-#endif
-    unsigned textDecorationSkip : 5; // TextDecorationSkip
-    unsigned textUnderlinePosition : 3; // TextUnderlinePosition
-    unsigned rubyPosition : 2; // RubyPosition
-    unsigned textZoom: 1; // TextZoom
+    unsigned m_textAlignLast : 3; // TextAlignLast
+    unsigned m_textJustify : 2; // TextJustify
+#endif // CSS3_TEXT
+    unsigned m_textDecorationSkip : 5; // TextDecorationSkip
+    unsigned m_textUnderlinePosition : 3; // TextUnderlinePosition
+    unsigned m_rubyPosition : 2; // RubyPosition
+    unsigned m_textZoom: 1; // TextZoom
 
 #if PLATFORM(IOS)
     unsigned touchCalloutEnabled : 1;
@@ -134,17 +134,7 @@ public:
     unsigned trailingWord : 1;
 #endif
 
-    unsigned hangingPunctuation : 4;
-
-    unsigned paintOrder : 3; // PaintOrder
-    unsigned capStyle : 2; // LineCap
-    unsigned joinStyle : 2; // LineJoin
-    unsigned hasSetStrokeWidth : 1;
-    unsigned hasSetStrokeColor : 1;
-    Length strokeWidth;
-    Color strokeColor;
-    Color visitedLinkStrokeColor;
-    float miterLimit;
+    unsigned m_hangingPunctuation : 4;
 
     AtomicString hyphenationString;
     short hyphenationLimitBefore;
@@ -154,15 +144,15 @@ public:
     AtomicString textEmphasisCustomMark;
     RefPtr<QuotesData> quotes;
 
-    AtomicString lineGrid;
-    unsigned tabSize;
+    AtomicString m_lineGrid;
+    unsigned m_tabSize;
 
 #if ENABLE(TEXT_AUTOSIZING)
     TextSizeAdjustment textSizeAdjust;
 #endif
 
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-    float imageResolution;
+    float m_imageResolution;
 #endif
 
 #if ENABLE(TOUCH_EVENTS)

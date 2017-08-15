@@ -35,27 +35,27 @@ namespace WebCore {
 
 struct JsonWebKey {
     String kty;
-    String use;
+    std::optional<String> use;
     // FIXME: Consider merging key_ops and usages.
     std::optional<Vector<CryptoKeyUsage>> key_ops;
     CryptoKeyUsageBitmap usages;
-    String alg;
+    std::optional<String> alg;
 
     std::optional<bool> ext;
 
-    String crv;
-    String x;
-    String y;
-    String d;
-    String n;
-    String e;
-    String p;
-    String q;
-    String dp;
-    String dq;
-    String qi;
+    std::optional<String> crv;
+    std::optional<String> x;
+    std::optional<String> y;
+    std::optional<String> d;
+    std::optional<String> n;
+    std::optional<String> e;
+    std::optional<String> p;
+    std::optional<String> q;
+    std::optional<String> dp;
+    std::optional<String> dq;
+    std::optional<String> qi;
     std::optional<Vector<RsaOtherPrimesInfo>> oth;
-    String k;
+    std::optional<String> k;
 };
 
 } // namespace WebCore

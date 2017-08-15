@@ -41,8 +41,7 @@ namespace JSC {
     class JSInterfaceJIT : public CCallHelpers, public GPRInfo, public FPRInfo {
     public:
         JSInterfaceJIT(VM* vm, CodeBlock* codeBlock = 0)
-            : CCallHelpers(codeBlock)
-            , m_vm(vm)
+            : CCallHelpers(vm, codeBlock)
         {
         }
 
@@ -78,10 +77,6 @@ namespace JSC {
         inline Address intPayloadFor(int index, RegisterID base = callFrameRegister);
         inline Address intTagFor(int index, RegisterID base = callFrameRegister);
         inline Address addressFor(int index, RegisterID base = callFrameRegister);
-
-        VM* vm() const { return m_vm; }
-
-        VM* m_vm;
     };
 
     struct ThunkHelpers {

@@ -10,9 +10,6 @@ endif ()
 if (NOT WEBCORE_DIR)
     set(WEBCORE_DIR "${CMAKE_SOURCE_DIR}/Source/WebCore")
 endif ()
-if (NOT PAL_DIR)
-    set(PAL_DIR "${CMAKE_SOURCE_DIR}/Source/WebCore/PAL")
-endif ()
 if (NOT WEBKIT_DIR)
     set(WEBKIT_DIR "${CMAKE_SOURCE_DIR}/Source/WebKit")
 endif ()
@@ -33,8 +30,6 @@ set(DERIVED_SOURCES_WEBKITLEGACY_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebKitL
 set(DERIVED_SOURCES_WEBKIT_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebKit")
 set(DERIVED_SOURCES_WEBKIT2_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebKit2")
 set(DERIVED_SOURCES_WEBINSPECTORUI_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebInspectorUI")
-
-set(FORWARDING_HEADERS_DIR ${DERIVED_SOURCES_DIR}/ForwardingHeaders)
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR})
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/Source/JavaScriptCore/runtime)

@@ -30,7 +30,7 @@
 
 #include "AudioSourceProvider.h"
 #include "NotImplemented.h"
-#include <wtf/UUID.h>
+#include "UUID.h"
 
 namespace WebCore {
 
@@ -40,16 +40,16 @@ Ref<MediaStreamAudioSource> MediaStreamAudioSource::create()
 }
 
 MediaStreamAudioSource::MediaStreamAudioSource()
-    : RealtimeMediaSource(ASCIILiteral("WebAudio-") + createCanonicalUUIDString(), RealtimeMediaSource::Type::Audio, "MediaStreamAudioDestinationNode")
+    : RealtimeMediaSource(ASCIILiteral("WebAudio-") + createCanonicalUUIDString(), RealtimeMediaSource::Audio, "MediaStreamAudioDestinationNode")
 {
 }
 
-const RealtimeMediaSourceCapabilities& MediaStreamAudioSource::capabilities() const
+RefPtr<RealtimeMediaSourceCapabilities> MediaStreamAudioSource::capabilities() const
 {
     // FIXME: implement this.
     // https://bugs.webkit.org/show_bug.cgi?id=122430
     notImplemented();
-    return RealtimeMediaSourceCapabilities::emptyCapabilities();
+    return nullptr;
 }
 
 const RealtimeMediaSourceSettings& MediaStreamAudioSource::settings() const

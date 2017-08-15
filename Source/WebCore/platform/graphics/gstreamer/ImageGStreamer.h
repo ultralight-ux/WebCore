@@ -29,7 +29,7 @@
 #include <gst/gst.h>
 #include <gst/video/video-frame.h>
 
-#include <wtf/Ref.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -38,13 +38,13 @@ class IntSize;
 
 class ImageGStreamer : public RefCounted<ImageGStreamer> {
     public:
-        static Ref<ImageGStreamer> createImage(GstSample* sample)
+        static PassRefPtr<ImageGStreamer> createImage(GstSample* sample)
         {
-            return adoptRef(*new ImageGStreamer(sample));
+            return adoptRef(new ImageGStreamer(sample));
         }
         ~ImageGStreamer();
 
-        BitmapImage* image()
+        PassRefPtr<BitmapImage> image()
         {
             ASSERT(m_image);
             return m_image.get();

@@ -56,6 +56,14 @@ void BMPImageDecoder::setData(SharedBuffer& data, bool allDataReceived)
         m_reader->setData(&data);
 }
 
+bool BMPImageDecoder::isSizeAvailable()
+{
+    if (!ImageDecoder::isSizeAvailable())
+        decode(true);
+
+    return ImageDecoder::isSizeAvailable();
+}
+
 ImageFrame* BMPImageDecoder::frameBufferAtIndex(size_t index)
 {
     if (index)
@@ -66,7 +74,7 @@ ImageFrame* BMPImageDecoder::frameBufferAtIndex(size_t index)
 
     ImageFrame* buffer = &m_frameBufferCache.first();
     if (!buffer->isComplete())
-        decode(false, isAllDataReceived());
+        decode(false);
     return buffer;
 }
 
@@ -76,14 +84,14 @@ bool BMPImageDecoder::setFailed()
     return ImageDecoder::setFailed();
 }
 
-void BMPImageDecoder::decode(bool onlySize, bool allDataReceived)
+void BMPImageDecoder::decode(bool onlySize)
 {
     if (failed())
         return;
 
     // If we couldn't decode the image but we've received all the data, decoding
     // has failed.
-    if (!decodeHelper(onlySize) && allDataReceived)
+    if (!decodeHelper(onlySize) && isAllDataReceived())
         setFailed();
     // If we're done decoding the image, we don't need the BMPImageReader
     // anymore.  (If we failed, |m_reader| has already been cleared.)

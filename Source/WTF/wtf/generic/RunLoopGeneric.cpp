@@ -32,9 +32,9 @@ namespace WTF {
 class RunLoop::TimerBase::ScheduledTask : public ThreadSafeRefCounted<ScheduledTask> {
 WTF_MAKE_NONCOPYABLE(ScheduledTask);
 public:
-    static Ref<ScheduledTask> create(Function<void()>&& function, Seconds interval, bool repeating)
+    static RefPtr<ScheduledTask> create(Function<void()>&& function, Seconds interval, bool repeating)
     {
-        return adoptRef(*new ScheduledTask(WTFMove(function), interval, repeating));
+        return adoptRef(new ScheduledTask(WTFMove(function), interval, repeating));
     }
 
     ScheduledTask(Function<void()>&& function, Seconds interval, bool repeating)
@@ -144,7 +144,7 @@ inline bool RunLoop::populateTasks(RunMode runMode, Status& statusOfThisLoop, De
             break;
         std::pop_heap(m_schedules.begin(), m_schedules.end(), TimerBase::ScheduledTask::EarliestSchedule());
         m_schedules.removeLast();
-        firedTimers.append(WTFMove(earliest));
+        firedTimers.append(earliest);
     }
 
     return true;
@@ -172,7 +172,7 @@ void RunLoop::runImpl(RunMode runMode)
                 // Reschedule because the timer requires repeating.
                 // Since we will query the timers' time points before sleeping,
                 // we do not call wakeUp() here.
-                schedule(*task);
+                schedule(WTFMove(task));
             }
         }
         performWork();
@@ -206,7 +206,7 @@ void RunLoop::stop()
     }
 }
 
-void RunLoop::wakeUp(const AbstractLocker&)
+void RunLoop::wakeUp(const LockHolder&)
 {
     m_pendingTasks = true;
     m_readyToRun.notifyOne();
@@ -218,34 +218,40 @@ void RunLoop::wakeUp()
     wakeUp(locker);
 }
 
-void RunLoop::schedule(const AbstractLocker&, Ref<TimerBase::ScheduledTask>&& task)
+void RunLoop::schedule(const LockHolder&, RefPtr<TimerBase::ScheduledTask>&& task)
 {
-    m_schedules.append(task.ptr());
+    m_schedules.append(WTFMove(task));
     std::push_heap(m_schedules.begin(), m_schedules.end(), TimerBase::ScheduledTask::EarliestSchedule());
 }
 
-void RunLoop::schedule(Ref<TimerBase::ScheduledTask>&& task)
+void RunLoop::schedule(RefPtr<TimerBase::ScheduledTask>&& task)
 {
     LockHolder locker(m_loopLock);
     schedule(locker, WTFMove(task));
 }
 
-void RunLoop::scheduleAndWakeUp(const AbstractLocker& locker, Ref<TimerBase::ScheduledTask>&& task)
+void RunLoop::scheduleAndWakeUp(RefPtr<TimerBase::ScheduledTask> task)
 {
+    LockHolder locker(m_loopLock);
     schedule(locker, WTFMove(task));
     wakeUp(locker);
 }
 
-void RunLoop::dispatchAfter(Seconds delay, Function<void()>&& function)
+void RunLoop::dispatchAfter(std::chrono::nanoseconds delay, Function<void ()>&& function)
 {
     LockHolder locker(m_loopLock);
     bool repeating = false;
-    schedule(locker, TimerBase::ScheduledTask::create(WTFMove(function), delay, repeating));
+    schedule(locker, TimerBase::ScheduledTask::create(WTFMove(function), Seconds(delay.count() / 1000.0 / 1000.0 / 1000.0), repeating));
     wakeUp(locker);
 }
 
 // Since RunLoop does not own the registered TimerBase,
 // TimerBase and its owner should manage these lifetime.
+//
+// And more importantly, TimerBase operations are not thread-safe.
+// So threads that do not belong to the ScheduledTask's RunLoop
+// should not operate the RunLoop::TimerBase.
+// This is the same to the RunLoopWin, which is RunLoop for Windows.
 RunLoop::TimerBase::TimerBase(RunLoop& runLoop)
     : m_runLoop(runLoop)
     , m_scheduledTask(nullptr)
@@ -254,21 +260,19 @@ RunLoop::TimerBase::TimerBase(RunLoop& runLoop)
 
 RunLoop::TimerBase::~TimerBase()
 {
-    LockHolder locker(m_runLoop->m_loopLock);
-    stop(locker);
+    stop();
 }
 
 void RunLoop::TimerBase::start(double interval, bool repeating)
 {
-    LockHolder locker(m_runLoop->m_loopLock);
-    stop(locker);
+    stop();
     m_scheduledTask = ScheduledTask::create([this] {
         fired();
     }, Seconds(interval), repeating);
-    m_runLoop->scheduleAndWakeUp(locker, *m_scheduledTask);
+    m_runLoop.scheduleAndWakeUp(m_scheduledTask);
 }
 
-void RunLoop::TimerBase::stop(const AbstractLocker&)
+void RunLoop::TimerBase::stop()
 {
     if (m_scheduledTask) {
         m_scheduledTask->deactivate();
@@ -276,29 +280,9 @@ void RunLoop::TimerBase::stop(const AbstractLocker&)
     }
 }
 
-void RunLoop::TimerBase::stop()
-{
-    LockHolder locker(m_runLoop->m_loopLock);
-    stop(locker);
-}
-
 bool RunLoop::TimerBase::isActive() const
 {
-    LockHolder locker(m_runLoop->m_loopLock);
-    return isActive(locker);
-}
-
-bool RunLoop::TimerBase::isActive(const AbstractLocker&) const
-{
     return m_scheduledTask;
-}
-
-Seconds RunLoop::TimerBase::secondsUntilFire() const
-{
-    LockHolder locker(m_runLoop->m_loopLock);
-    if (isActive(locker))
-        return std::max<Seconds>(m_scheduledTask->scheduledTimePoint() - MonotonicTime::now(), 0_s);
-    return 0_s;
 }
 
 } // namespace WTF

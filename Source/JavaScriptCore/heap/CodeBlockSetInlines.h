@@ -33,7 +33,7 @@
 
 namespace JSC {
 
-inline void CodeBlockSet::mark(const AbstractLocker& locker, void* candidateCodeBlock)
+inline void CodeBlockSet::mark(const LockHolder& locker, void* candidateCodeBlock)
 {
     ASSERT(m_lock.isLocked());
     // We have to check for 0 and -1 because those are used by the HashMap as markers.
@@ -52,7 +52,7 @@ inline void CodeBlockSet::mark(const AbstractLocker& locker, void* candidateCode
     mark(locker, codeBlock);
 }
 
-inline void CodeBlockSet::mark(const AbstractLocker&, CodeBlock* codeBlock)
+inline void CodeBlockSet::mark(const LockHolder&, CodeBlock* codeBlock)
 {
     if (!codeBlock)
         return;
@@ -63,13 +63,7 @@ inline void CodeBlockSet::mark(const AbstractLocker&, CodeBlock* codeBlock)
 template<typename Functor>
 void CodeBlockSet::iterate(const Functor& functor)
 {
-    auto locker = holdLock(m_lock);
-    iterate(locker, functor);
-}
-
-template<typename Functor>
-void CodeBlockSet::iterate(const AbstractLocker&, const Functor& functor)
-{
+    LockHolder locker(m_lock);
     for (auto& codeBlock : m_oldCodeBlocks) {
         bool done = functor(codeBlock);
         if (done)

@@ -29,14 +29,14 @@ namespace WebCore {
 
 TimingFunction* KeyframeValue::timingFunction(const AtomicString& name) const
 {
-    auto* keyframeStyle = style();
+    const RenderStyle* keyframeStyle = style();
     if (!keyframeStyle || !keyframeStyle->animations())
         return nullptr;
 
     for (size_t i = 0; i < keyframeStyle->animations()->size(); ++i) {
         const Animation& animation = keyframeStyle->animations()->animation(i);
         if (name == animation.name())
-            return animation.timingFunction();
+            return animation.timingFunction().get();
     }
 
     return nullptr;
@@ -44,6 +44,7 @@ TimingFunction* KeyframeValue::timingFunction(const AtomicString& name) const
 
 KeyframeList::~KeyframeList()
 {
+    clear();
 }
 
 void KeyframeList::clear()
@@ -57,12 +58,15 @@ bool KeyframeList::operator==(const KeyframeList& o) const
     if (m_keyframes.size() != o.m_keyframes.size())
         return false;
 
-    auto it2 = o.m_keyframes.begin();
-    for (auto it1 = m_keyframes.begin(); it1 != m_keyframes.end(); ++it1, ++it2) {
+    Vector<KeyframeValue>::const_iterator it2 = o.m_keyframes.begin();
+    for (Vector<KeyframeValue>::const_iterator it1 = m_keyframes.begin(); it1 != m_keyframes.end(); ++it1) {
         if (it1->key() != it2->key())
             return false;
-        if (*it1->style() != *it2->style())
+        const RenderStyle& style1 = *it1->style();
+        const RenderStyle& style2 = *it2->style();
+        if (style1 != style2)
             return false;
+        ++it2;
     }
 
     return true;

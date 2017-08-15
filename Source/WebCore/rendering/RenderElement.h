@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "CSSAnimationController.h"
+#include "AnimationController.h"
 #include "LengthFunctions.h"
 #include "RenderObject.h"
 #include "StyleInheritedData.h"
@@ -36,8 +36,7 @@ class RenderElement : public RenderObject {
 public:
     virtual ~RenderElement();
 
-    enum RendererCreationType { CreateAllRenderers, OnlyCreateBlockAndFlexboxRenderers };
-    static RenderPtr<RenderElement> createFor(Element&, RenderStyle&&, RendererCreationType = CreateAllRenderers);
+    static RenderPtr<RenderElement> createFor(Element&, RenderStyle&&);
 
     bool hasInitializedStyle() const { return m_hasInitializedStyle; }
 
@@ -141,11 +140,9 @@ public:
 
     bool borderImageIsLoadedAndCanBeRendered() const;
     bool mayCauseRepaintInsideViewport(const IntRect* visibleRect = nullptr) const;
-    bool isVisibleInDocumentRect(const IntRect& documentRect) const;
 
     // Returns true if this renderer requires a new stacking context.
-    static bool createsGroupForStyle(const RenderStyle&);
-    bool createsGroup() const { return createsGroupForStyle(style()); }
+    bool createsGroup() const { return isTransparent() || hasMask() || hasClipPath() || hasFilter() || hasBackdropFilter() || hasBlendMode(); }
 
     bool isTransparent() const { return style().opacity() < 1.0f; }
     float opacity() const { return style().opacity(); }
@@ -190,12 +187,9 @@ public:
 
     void registerForVisibleInViewportCallback();
     void unregisterForVisibleInViewportCallback();
+    void visibleInViewportStateChanged(VisibleInViewportState);
 
-    VisibleInViewportState visibleInViewportState() const { return static_cast<VisibleInViewportState>(m_visibleInViewportState); }
-    void setVisibleInViewportState(VisibleInViewportState);
-    virtual void visibleInViewportStateChanged();
-
-    bool repaintForPausedImageAnimationsIfNeeded(const IntRect& visibleRect, CachedImage&);
+    bool repaintForPausedImageAnimationsIfNeeded(const IntRect& visibleRect);
     bool hasPausedImageAnimations() const { return m_hasPausedImageAnimations; }
     void setHasPausedImageAnimations(bool b) { m_hasPausedImageAnimations = b; }
 
@@ -224,11 +218,6 @@ public:
     RespectImageOrientationEnum shouldRespectImageOrientation() const;
 
     void removeFromRenderFlowThread();
-    virtual void resetFlowThreadContainingBlockAndChildInfoIncludingDescendants(RenderFlowThread*);
-
-    // Called before anonymousChild.setStyle(). Override to set custom styles for
-    // the child.
-    virtual void updateAnonymousChildStyle(const RenderObject&, RenderStyle&) const { };
 
 protected:
     enum BaseTypeFlag {
@@ -310,7 +299,7 @@ private:
     bool shouldRepaintForStyleDifference(StyleDifference) const;
     bool hasImmediateNonWhitespaceTextChildOrBorderOrOutline() const;
 
-    void updateFillImages(const FillLayer*, const FillLayer&);
+    void updateFillImages(const FillLayer*, const FillLayer*);
     void updateImage(StyleImage*, StyleImage*);
     void updateShapeImage(const ShapeValue*, const ShapeValue*);
 
@@ -318,10 +307,7 @@ private:
     std::unique_ptr<RenderStyle> computeFirstLineStyle() const;
     void invalidateCachedFirstLineStyle();
 
-    bool isVisibleInViewport() const;
-    bool canDestroyDecodedData() final { return !isVisibleInViewport(); }
-    VisibleInViewportState imageFrameAvailable(CachedImage&, ImageAnimatingState, const IntRect* changeRect) final;
-    void didRemoveCachedImageClient(CachedImage&) final;
+    void newImageAnimationFrameAvailable(CachedImage&) final;
 
     bool getLeadingCorner(FloatPoint& output, bool& insideFixed) const;
     bool getTrailingCorner(FloatPoint& output, bool& insideFixed) const;
@@ -350,9 +336,6 @@ private:
     unsigned m_renderBlockFlowHasMarkupTruncation : 1;
     unsigned m_renderBlockFlowLineLayoutPath : 2;
 
-    unsigned m_isRegisteredForVisibleInViewportCallback : 1;
-    unsigned m_visibleInViewportState : 2;
-
     RenderObject* m_firstChild;
     RenderObject* m_lastChild;
 
@@ -362,11 +345,6 @@ private:
     // Store state between styleWillChange and styleDidChange
     static bool s_affectsParentBlock;
     static bool s_noLongerAffectsParentBlock;
-
-protected:
-#if !ASSERT_DISABLED
-    bool m_reparentingChild { false };
-#endif
 };
 
 inline void RenderElement::setAncestorLineBoxDirty(bool f)
@@ -447,11 +425,6 @@ inline bool RenderElement::canContainAbsolutelyPositionedObjects() const
         || (isRenderBlock() && hasTransformRelatedProperty())
         || isSVGForeignObject()
         || isRenderView();
-}
-
-inline bool RenderElement::createsGroupForStyle(const RenderStyle& style)
-{
-    return style.opacity() < 1.0f || style.hasMask() || style.clipPath() || style.hasFilter() || style.hasBackdropFilter() || style.hasBlendMode();
 }
 
 inline bool RenderObject::isRenderLayerModelObject() const

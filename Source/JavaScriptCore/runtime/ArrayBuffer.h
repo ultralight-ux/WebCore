@@ -34,7 +34,6 @@
 
 namespace JSC {
 
-class VM;
 class ArrayBuffer;
 class ArrayBufferView;
 class JSArrayBuffer;
@@ -110,7 +109,7 @@ public:
     JS_EXPORT_PRIVATE static RefPtr<ArrayBuffer> tryCreate(ArrayBuffer&);
     JS_EXPORT_PRIVATE static RefPtr<ArrayBuffer> tryCreate(const void* source, unsigned byteLength);
 
-    // Only for use by Uint8ClampedArray::createUninitialized and SharedBuffer::tryCreateArrayBuffer.
+    // Only for use by Uint8ClampedArray::createUninitialized and SharedBuffer::createArrayBuffer.
     JS_EXPORT_PRIVATE static Ref<ArrayBuffer> createUninitialized(unsigned numElements, unsigned elementByteSize);
     JS_EXPORT_PRIVATE static RefPtr<ArrayBuffer> tryCreateUninitialized(unsigned numElements, unsigned elementByteSize);
 
@@ -132,7 +131,7 @@ public:
     inline void unpin();
     inline void pinAndLock();
 
-    JS_EXPORT_PRIVATE bool transferTo(VM&, ArrayBufferContents&);
+    JS_EXPORT_PRIVATE bool transferTo(ArrayBufferContents&);
     JS_EXPORT_PRIVATE bool shareWith(ArrayBufferContents&);
     bool isNeutered() { return !m_contents.m_data; }
     

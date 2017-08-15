@@ -50,16 +50,16 @@ JSDynamicCastResult<JSEvent, From> jsEventCast(From* value);
 template<typename Select>
 struct JSDynamicCastTrait {
     template<typename To, typename From>
-    ALWAYS_INLINE static To cast(JSC::VM& vm, From* from)
+    ALWAYS_INLINE static To cast(From* from)
     {
-        return JSC::jsDynamicCast<To>(vm, from);
+        return JSC::jsDynamicCast<To>(from);
     }
 };
 
 template<>
 struct JSDynamicCastTrait<JSNode> {
     template<typename To, typename From>
-    ALWAYS_INLINE static To cast(JSC::VM&, From* from)
+    ALWAYS_INLINE static To cast(From* from)
     {
         return jsNodeCast(from);
     }
@@ -68,7 +68,7 @@ struct JSDynamicCastTrait<JSNode> {
 template<>
 struct JSDynamicCastTrait<JSElement> {
     template<typename To, typename From>
-    ALWAYS_INLINE static To cast(JSC::VM&, From* from)
+    ALWAYS_INLINE static To cast(From* from)
     {
         return jsElementCast(from);
     }
@@ -77,7 +77,7 @@ struct JSDynamicCastTrait<JSElement> {
 template<>
 struct JSDynamicCastTrait<JSDocument> {
     template<typename To, typename From>
-    ALWAYS_INLINE static To cast(JSC::VM&, From* from)
+    ALWAYS_INLINE static To cast(From* from)
     {
         return jsDocumentCast(from);
     }
@@ -86,25 +86,25 @@ struct JSDynamicCastTrait<JSDocument> {
 template<>
 struct JSDynamicCastTrait<JSEvent> {
     template<typename To, typename From>
-    ALWAYS_INLINE static To cast(JSC::VM&, From* from)
+    ALWAYS_INLINE static To cast(From* from)
     {
         return jsEventCast(from);
     }
 };
 
 template<typename To, typename From>
-ALWAYS_INLINE To jsDynamicDowncast(JSC::VM& vm, From* from)
+ALWAYS_INLINE To jsDynamicDowncast(From* from)
 {
     typedef JSDynamicCastTrait<typename std::remove_cv<typename std::remove_pointer<To>::type>::type> Dispatcher;
-    return Dispatcher::template cast<To>(vm, from);
+    return Dispatcher::template cast<To>(from);
 }
 
 template<typename To>
-ALWAYS_INLINE To jsDynamicDowncast(JSC::VM& vm, JSC::JSValue from)
+ALWAYS_INLINE To jsDynamicDowncast(JSC::JSValue from)
 {
     if (UNLIKELY(!from.isCell()))
         return nullptr;
-    return jsDynamicDowncast<To>(vm, from.asCell());
+    return jsDynamicDowncast<To>(from.asCell());
 }
 
 }

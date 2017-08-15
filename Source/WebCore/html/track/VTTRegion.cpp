@@ -34,7 +34,7 @@
 
 #if ENABLE(VIDEO_TRACK)
 
-#include "DOMRect.h"
+#include "ClientRect.h"
 #include "DOMTokenList.h"
 #include "ElementChildIterator.h"
 #include "ExceptionCode.h"
@@ -56,7 +56,7 @@ namespace WebCore {
 static const float lineHeight = 5.33;
 
 // Default scrolling animation time period (s).
-static const Seconds scrollTime { 433_ms };
+static const float scrollTime = 0.433;
 
 VTTRegion::VTTRegion(ScriptExecutionContext& context)
     : ContextDestructionObserver(&context)
@@ -311,7 +311,7 @@ void VTTRegion::displayLastTextTrackCueBox()
 
     // Find first cue that is not entirely displayed and scroll it upwards.
     for (auto& child : childrenOfType<Element>(*m_cueContainer)) {
-        auto rect = child.getBoundingClientRect();
+        Ref<ClientRect> rect = child.getBoundingClientRect();
         float childTop = rect->top();
         float childBottom = rect->bottom();
 
@@ -403,7 +403,7 @@ void VTTRegion::startTimer()
     if (m_scrollTimer.isActive())
         return;
 
-    Seconds duration = isScrollingRegion() ? scrollTime : 0_s;
+    double duration = isScrollingRegion() ? scrollTime : 0;
     m_scrollTimer.startOneShot(duration);
 }
 

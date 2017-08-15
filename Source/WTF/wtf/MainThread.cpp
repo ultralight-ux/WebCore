@@ -41,7 +41,7 @@
 namespace WTF {
 
 static bool callbacksPaused; // This global variable is only accessed from main thread.
-#if !PLATFORM(COCOA)
+#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
 static ThreadIdentifier mainThreadIdentifier;
 #endif
 
@@ -53,57 +53,63 @@ static Deque<Function<void ()>>& functionQueue()
     return functionQueue;
 }
 
-// Share this initializeKey with initializeMainThread and initializeMainThreadToProcessMainThread.
-static std::once_flag initializeKey;
+#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
+
 void initializeMainThread()
 {
-    std::call_once(initializeKey, [] {
-        initializeThreading();
-#if !PLATFORM(COCOA)
-        mainThreadIdentifier = currentThread();
-#endif
-        initializeMainThreadPlatform();
-        initializeGCThreads();
-    });
+    static bool initializedMainThread;
+    if (initializedMainThread)
+        return;
+    initializedMainThread = true;
+
+    mainThreadIdentifier = currentThread();
+
+    initializeMainThreadPlatform();
+    initializeGCThreads();
 }
 
-#if !PLATFORM(COCOA)
-bool isMainThread()
+#else
+
+static pthread_once_t initializeMainThreadKeyOnce = PTHREAD_ONCE_INIT;
+
+static void initializeMainThreadOnce()
 {
-    return currentThread() == mainThreadIdentifier;
+    initializeMainThreadPlatform();
 }
-#endif
 
-#if PLATFORM(COCOA)
+void initializeMainThread()
+{
+    pthread_once(&initializeMainThreadKeyOnce, initializeMainThreadOnce);
+}
+
 #if !USE(WEB_THREAD)
+static void initializeMainThreadToProcessMainThreadOnce()
+{
+    initializeMainThreadToProcessMainThreadPlatform();
+}
+
 void initializeMainThreadToProcessMainThread()
 {
-    std::call_once(initializeKey, [] {
-        initializeThreading();
-        initializeMainThreadToProcessMainThreadPlatform();
-        initializeGCThreads();
-    });
+    pthread_once(&initializeMainThreadKeyOnce, initializeMainThreadToProcessMainThreadOnce);
 }
 #else
+static pthread_once_t initializeWebThreadKeyOnce = PTHREAD_ONCE_INIT;
+
+static void initializeWebThreadOnce()
+{
+    initializeWebThreadPlatform();
+}
+
 void initializeWebThread()
 {
-    static std::once_flag initializeKey;
-    std::call_once(initializeKey, [] {
-        initializeWebThreadPlatform();
-    });
+    pthread_once(&initializeWebThreadKeyOnce, initializeWebThreadOnce);
 }
 #endif // !USE(WEB_THREAD)
-#endif // PLATFORM(COCOA)
 
-#if !USE(WEB_THREAD)
-bool canAccessThreadLocalDataForThread(ThreadIdentifier threadId)
-{
-    return threadId == currentThread();
-}
 #endif
 
 // 0.1 sec delays in UI is approximate threshold when they become noticeable. Have a limit that's half of that.
-static const auto maxRunLoopSuspensionTime = 50_ms;
+static const auto maxRunLoopSuspensionTime = std::chrono::milliseconds(50);
 
 void dispatchFunctionsFromMainThread()
 {
@@ -112,7 +118,7 @@ void dispatchFunctionsFromMainThread()
     if (callbacksPaused)
         return;
 
-    auto startTime = MonotonicTime::now();
+    auto startTime = std::chrono::steady_clock::now();
 
     Function<void ()> function;
 
@@ -134,7 +140,7 @@ void dispatchFunctionsFromMainThread()
         // yield so the user input can be processed. Otherwise user may not be able to even close the window.
         // This code has effect only in case the scheduleDispatchFunctionsOnMainThread() is implemented in a way that
         // allows input events to be processed before we are back here.
-        if (MonotonicTime::now() - startTime > maxRunLoopSuspensionTime) {
+        if (std::chrono::steady_clock::now() - startTime > maxRunLoopSuspensionTime) {
             scheduleDispatchFunctionsOnMainThread();
             break;
         }
@@ -169,6 +175,20 @@ void setMainThreadCallbacksPaused(bool paused)
     if (!callbacksPaused)
         scheduleDispatchFunctionsOnMainThread();
 }
+
+#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
+bool isMainThread()
+{
+    return currentThread() == mainThreadIdentifier;
+}
+#endif
+
+#if !USE(WEB_THREAD)
+bool canAccessThreadLocalDataForThread(ThreadIdentifier threadId)
+{
+    return threadId == currentThread();
+}
+#endif
 
 static ThreadSpecific<std::optional<GCThreadType>, CanBeGCThread::True>* isGCThread;
 

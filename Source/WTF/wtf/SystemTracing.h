@@ -43,52 +43,37 @@ enum TracePointCode {
     JavaScriptRange = 2500,
     VMEntryScopeStart,
     VMEntryScopeEnd,
-    WebAssemblyCompileStart,
-    WebAssemblyCompileEnd,
-    WebAssemblyExecuteStart,
-    WebAssemblyExecuteEnd,
 
     WebCoreRange = 5000,
-    MainResourceLoadDidStartProvisional,
-    MainResourceLoadDidEnd,
-    SubresourceLoadWillStart,
-    SubresourceLoadDidEnd,
-    FetchCookiesStart,
-    FetchCookiesEnd,
     StyleRecalcStart,
     StyleRecalcEnd,
-    RenderTreeBuildStart,
-    RenderTreeBuildEnd,
     LayoutStart,
     LayoutEnd,
+    PaintViewStart,
+    PaintViewEnd,
     PaintLayerStart,
     PaintLayerEnd,
-    AsyncImageDecodeStart,
-    AsyncImageDecodeEnd,
+    RAFDisplayLinkScheduled,
+    RAFDisplayLinkFired,
     RAFCallbackStart,
     RAFCallbackEnd,
-    MemoryPressureHandlerStart,
-    MemoryPressureHandlerEnd,
-    UpdateTouchRegionsStart,
-    UpdateTouchRegionsEnd,
 
     WebKitRange = 10000,
-    WebHTMLViewPaintStart,
-    WebHTMLViewPaintEnd,
-
     WebKit2Range = 12000,
-    BackingStoreFlushStart,
-    BackingStoreFlushEnd,
-    BuildTransactionStart,
-    BuildTransactionEnd,
-    SyncMessageStart,
-    SyncMessageEnd,
-    SyncTouchEventStart,
-    SyncTouchEventEnd,
+
+    RAFDidUpdateStart,
+    RAFDidUpdateEnd,
+    RAFBackingStoreFlushStart,
+    RAFBackingStoreFlushEnd,
+    RAFBuildTransactionStart,
+    RAFBuildTransactionEnd,
 
     UIProcessRange = 14000,
-    CommitLayerTreeStart,
-    CommitLayerTreeEnd,
+
+    RAFCommitLayerTreeStart,
+    RAFCommitLayerTreeEnd,
+    RAFDidRefreshDisplayStart,
+    RAFDidRefreshDisplayEnd,
 };
 
 #ifdef __cplusplus
@@ -111,10 +96,10 @@ inline void TracePoint(TracePointCode code, uint64_t data1 = 0, uint64_t data2 =
 class TraceScope {
 public:
 
-    TraceScope(TracePointCode entryCode, TracePointCode exitCode, uint64_t data1 = 0, uint64_t data2 = 0, uint64_t data3 = 0, uint64_t data4 = 0)
+    TraceScope(TracePointCode entryCode, TracePointCode exitCode)
         : m_exitCode(exitCode)
     {
-        TracePoint(entryCode, data1, data2, data3, data4);
+        TracePoint(entryCode);
     }
 
     ~TraceScope()

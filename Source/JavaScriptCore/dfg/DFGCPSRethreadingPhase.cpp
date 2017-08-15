@@ -291,7 +291,9 @@ private:
         // but not logicalRefCount == actualRefCount). Assumes that it can break ref
         // counts.
         
-        for (auto* node : *m_block) {
+        for (unsigned nodeIndex = 0; nodeIndex < m_block->size(); ++nodeIndex) {
+            Node* node = m_block->at(nodeIndex);
+            
             m_graph.performSubstitution(node);
             
             // The rules for threaded CPS form:

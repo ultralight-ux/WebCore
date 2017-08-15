@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc.  All rights reserved.
+ * Copyright (C) 2016 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -53,10 +53,7 @@ struct ResourceLoadStatistics {
 
     // User interaction
     bool hadUserInteraction { false };
-    // Timestamp. Default value is negative, 0 means it was reset.
-    double mostRecentUserInteraction { -1 };
-    bool grandfathered { false };
-
+    
     // Top frame stats
     unsigned topFrameHasBeenRedirectedTo { 0 };
     unsigned topFrameHasBeenRedirectedFrom { 0 };
@@ -87,9 +84,6 @@ struct ResourceLoadStatistics {
     HashCountedSet<String> redirectedToOtherPrevalentResourceOrigins;
     bool isPrevalentResource { false };
     unsigned dataRecordsRemoved { 0 };
-
-    // In-memory only
-    bool isMarkedForCookiePartitioning { false };
 };
 
 } // namespace WebCore

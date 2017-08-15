@@ -23,14 +23,12 @@ class LayoutNode
         this._width = 0;
         this._height = 0;
         this._visible = true;
-
+    
         this._needsLayout = false;
         this._dirtyProperties = new Set;
 
         this._pendingDOMManipulation = LayoutNode.DOMManipulation.None;
     }
-
-    // Public
 
     get x()
     {
@@ -72,7 +70,6 @@ class LayoutNode
 
         this._width = width;
         this.markDirtyProperty("width");
-        this.layout();
     }
 
     get height()
@@ -87,7 +84,6 @@ class LayoutNode
 
         this._height = height;
         this.markDirtyProperty("height");
-        this.layout();
     }
 
     get visible()
@@ -130,21 +126,9 @@ class LayoutNode
 
     set children(children)
     {
-        if (children.length === this._children.length) {
-            let arraysDiffer = false;
-            for (let i = children.length - 1; i >= 0; --i) {
-                if (children[i] !== this._children[i]) {
-                    arraysDiffer = true;
-                    break;
-                }
-            }
-            if (!arraysDiffer)
-                return;
-        }
-
         while (this._children.length)
             this.removeChild(this._children[0]);
-
+        
         for (let child of children)
             this.addChild(child);
     }
@@ -217,30 +201,6 @@ class LayoutNode
             this._updateDirtyState();
     }
 
-    // Protected
-
-    layout()
-    {
-        // Implemented by subclasses.
-    }
-
-    commit()
-    {
-        if (this._pendingDOMManipulation === LayoutNode.DOMManipulation.Removal) {
-            const parent = this.element.parentNode;
-            if (parent)
-                parent.removeChild(this.element);
-        }
-    
-        for (let propertyName of this._dirtyProperties)
-            this.commitProperty(propertyName);
-
-        this._dirtyProperties.clear();
-
-        if (this._pendingDOMManipulation === LayoutNode.DOMManipulation.Addition)
-            nodesRequiringChildrenUpdate.add(this.parent);
-    }
-
     commitProperty(propertyName)
     {
         const style = this.element.style;
@@ -262,6 +222,23 @@ class LayoutNode
             style.display = this._visible ? "inherit" : "none";
             break;
         }
+    }
+
+    layout()
+    {
+        if (this._pendingDOMManipulation === LayoutNode.DOMManipulation.Removal) {
+            const parent = this.element.parentNode;
+            if (parent)
+                parent.removeChild(this.element);
+        }
+    
+        for (let propertyName of this._dirtyProperties)
+            this.commitProperty(propertyName);
+
+        this._dirtyProperties.clear();
+
+        if (this._pendingDOMManipulation === LayoutNode.DOMManipulation.Addition)
+            nodesRequiringChildrenUpdate.add(this.parent);
     }
 
     // Private
@@ -291,7 +268,7 @@ class LayoutNode
         for (let i = this.children.length - 1; i >= 0; --i) {
             let child = this.children[i];
             let childElement = child.element;
-
+        
             if (child._pendingDOMManipulation === LayoutNode.DOMManipulation.Addition) {
                 element.insertBefore(childElement, nextChildElement);
                 child._pendingDOMManipulation = LayoutNode.DOMManipulation.None;
@@ -316,7 +293,6 @@ function performScheduledLayout()
     previousDirtyNodes.forEach(node => {
         node._needsLayout = false;
         node.layout();
-        node.commit();
     });
 
     nodesRequiringChildrenUpdate.forEach(node => node._updateChildren());

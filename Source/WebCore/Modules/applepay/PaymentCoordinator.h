@@ -40,10 +40,6 @@ class PaymentMerchantSession;
 class PaymentMethod;
 class URL;
 enum class PaymentAuthorizationStatus;
-struct PaymentAuthorizationResult;
-struct PaymentMethodUpdate;
-struct ShippingContactUpdate;
-struct ShippingMethodUpdate;
 
 class PaymentCoordinator {
 public:
@@ -59,19 +55,18 @@ public:
 
     bool beginPaymentSession(ApplePaySession&, const URL& originatingURL, const Vector<URL>& linkIconURLs, const PaymentRequest&);
     void completeMerchantValidation(const PaymentMerchantSession&);
-    void completeShippingMethodSelection(std::optional<ShippingMethodUpdate>&&);
-    void completeShippingContactSelection(std::optional<ShippingContactUpdate>&&);
-    void completePaymentMethodSelection(std::optional<PaymentMethodUpdate>&&);
-    void completePaymentSession(std::optional<PaymentAuthorizationResult>&&);
+    void completeShippingMethodSelection(PaymentAuthorizationStatus, std::optional<PaymentRequest::TotalAndLineItems> newItems);
+    void completeShippingContactSelection(PaymentAuthorizationStatus, const Vector<PaymentRequest::ShippingMethod>& newShippingMethods, std::optional<PaymentRequest::TotalAndLineItems> newItems);
+    void completePaymentMethodSelection(std::optional<PaymentRequest::TotalAndLineItems> newItems);
+    void completePaymentSession(PaymentAuthorizationStatus);
     void abortPaymentSession();
-    void cancelPaymentSession();
 
     WEBCORE_EXPORT void validateMerchant(const URL& validationURL);
     WEBCORE_EXPORT void didAuthorizePayment(const Payment&);
     WEBCORE_EXPORT void didSelectPaymentMethod(const PaymentMethod&);
     WEBCORE_EXPORT void didSelectShippingMethod(const PaymentRequest::ShippingMethod&);
     WEBCORE_EXPORT void didSelectShippingContact(const PaymentContact&);
-    WEBCORE_EXPORT void didCancelPaymentSession();
+    WEBCORE_EXPORT void didCancelPayment();
 
 private:
     PaymentCoordinatorClient& m_client;

@@ -35,10 +35,9 @@
 
 #include "RealtimeMediaSourceSupportedConstraints.h"
 #include <cstdlib>
-#include <wtf/Vector.h>
 
 namespace WebCore {
-    
+
 class MediaConstraint {
 public:
     enum class DataType { None, Integer, Double, Boolean, String };
@@ -714,53 +713,31 @@ public:
 private:
     class ConstraintHolder {
     public:
-        static ConstraintHolder create(const MediaConstraint& value) { return ConstraintHolder(value); }
+        static ConstraintHolder& create(const MediaConstraint& value) { return *new ConstraintHolder(value); }
 
         ~ConstraintHolder()
         {
-            if (m_value.asRaw) {
-                switch (dataType()) {
-                case MediaConstraint::DataType::Integer:
-                    delete m_value.asInteger;
-                    break;
-                case MediaConstraint::DataType::Double:
-                    delete m_value.asDouble;
-                    break;
-                case MediaConstraint::DataType::Boolean:
-                    delete m_value.asBoolean;
-                    break;
-                case MediaConstraint::DataType::String:
-                    delete m_value.asString;
-                    break;
-                case MediaConstraint::DataType::None:
-                    ASSERT_NOT_REACHED();
-                    break;
-                }
-            }
-#ifndef NDEBUG
-            m_value.asRaw = reinterpret_cast<MediaConstraint*>(0xbbadbeef);
-#endif
-        }
-
-        ConstraintHolder(ConstraintHolder&& other)
-        {
-            switch (other.dataType()) {
+            switch (dataType()) {
             case MediaConstraint::DataType::Integer:
-                m_value.asInteger = std::exchange(other.m_value.asInteger, nullptr);
+                delete m_value.asInteger;
                 break;
             case MediaConstraint::DataType::Double:
-                m_value.asDouble = std::exchange(other.m_value.asDouble, nullptr);
+                delete m_value.asDouble;
                 break;
             case MediaConstraint::DataType::Boolean:
-                m_value.asBoolean = std::exchange(other.m_value.asBoolean, nullptr);
+                delete m_value.asBoolean;
                 break;
             case MediaConstraint::DataType::String:
-                m_value.asString = std::exchange(other.m_value.asString, nullptr);
+                delete m_value.asString;
                 break;
             case MediaConstraint::DataType::None:
                 ASSERT_NOT_REACHED();
                 break;
             }
+
+#ifndef NDEBUG
+            m_value.asRaw = reinterpret_cast<MediaConstraint*>(0xbbadbeef);
+#endif
         }
 
         MediaConstraint& constraint() const { return *m_value.asRaw; }
@@ -804,16 +781,18 @@ private:
 #endif
 };
 
-struct MediaConstraints {
-    void setDefaultVideoConstraints();
-    bool isConstraintSet(std::function<bool(const MediaTrackConstraintSetMap&)>&&);
+class MediaConstraints : public RefCounted<MediaConstraints> {
+public:
+    virtual ~MediaConstraints() { }
 
-    MediaTrackConstraintSetMap mandatoryConstraints;
-    Vector<MediaTrackConstraintSetMap> advancedConstraints;
-    String deviceIDHashSalt;
-    bool isValid { false };
+    virtual const MediaTrackConstraintSetMap& mandatoryConstraints() const = 0;
+    virtual const Vector<MediaTrackConstraintSetMap>& advancedConstraints() const = 0;
+    virtual bool isValid() const = 0;
+
+protected:
+    MediaConstraints() { }
 };
-    
+
 } // namespace WebCore
 
 #define SPECIALIZE_TYPE_TRAITS_MEDIACONSTRAINT(ConstraintType, predicate) \

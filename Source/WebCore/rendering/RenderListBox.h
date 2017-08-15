@@ -67,8 +67,6 @@ public:
     bool scrolledToRight() const override;
 
 private:
-    void willBeDestroyed() override;
-
     void element() const = delete;
 
     const char* renderName() const override { return "RenderListBox"; }

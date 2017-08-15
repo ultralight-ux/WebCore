@@ -68,11 +68,12 @@ static const char* dfgOpNames[] = {
 #undef STRINGIZE_DFG_OP_ENUM
 };
 
-Graph::Graph(VM& vm, Plan& plan)
+Graph::Graph(VM& vm, Plan& plan, LongLivedState& longLivedState)
     : m_vm(vm)
     , m_plan(plan)
     , m_codeBlock(m_plan.codeBlock)
     , m_profiledBlock(m_codeBlock->alternative())
+    , m_allocator(longLivedState.m_allocator)
     , m_cfg(std::make_unique<CFG>(*this))
     , m_nextMachineLocal(0)
     , m_fixpointState(BeforeFixpoint)
@@ -95,6 +96,17 @@ Graph::Graph(VM& vm, Plan& plan)
 
 Graph::~Graph()
 {
+    for (BlockIndex blockIndex = numBlocks(); blockIndex--;) {
+        BasicBlock* block = this->block(blockIndex);
+        if (!block)
+            continue;
+
+        for (unsigned phiIndex = block->phis.size(); phiIndex--;)
+            m_allocator.free(block->phis[phiIndex]);
+        for (unsigned nodeIndex = block->size(); nodeIndex--;)
+            m_allocator.free(block->at(nodeIndex));
+    }
+    m_allocator.freeAll();
 }
 
 const char *Graph::opName(NodeType op)
@@ -220,8 +232,6 @@ void Graph::dump(PrintStream& out, const char* prefix, Node* node, DumpContext* 
         out.print(comma, SpeculationDump(node->prediction()));
     if (node->hasArrayMode())
         out.print(comma, node->arrayMode());
-    if (node->hasArithUnaryType())
-        out.print(comma, "Type:", node->arithUnaryType());
     if (node->hasArithMode())
         out.print(comma, node->arithMode());
     if (node->hasArithRoundingMode())
@@ -260,7 +270,7 @@ void Graph::dump(PrintStream& out, const char* prefix, Node* node, DumpContext* 
                 if (ExecutableBase* executable = variant.executable()) {
                     if (executable->isHostFunction())
                         out.print(comma, "<host function>");
-                    else if (FunctionExecutable* functionExecutable = jsDynamicCast<FunctionExecutable*>(m_vm, executable))
+                    else if (FunctionExecutable* functionExecutable = jsDynamicCast<FunctionExecutable*>(executable))
                         out.print(comma, FunctionExecutableDump(functionExecutable));
                     else
                         out.print(comma, "<non-function executable>");
@@ -587,6 +597,19 @@ void Graph::dump(PrintStream& out, DumpContext* context)
     }
 }
 
+void Graph::addNodeToMapByIndex(Node* node)
+{
+    if (m_nodeIndexFreeList.isEmpty()) {
+        node->m_index = m_nodesByIndex.size();
+        m_nodesByIndex.append(node);
+        return;
+    }
+    unsigned index = m_nodeIndexFreeList.takeLast();
+    node->m_index = index;
+    ASSERT(!m_nodesByIndex[index]);
+    m_nodesByIndex[index] = node;
+}
+
 void Graph::deleteNode(Node* node)
 {
     if (validationEnabled() && m_form == SSA) {
@@ -596,12 +619,48 @@ void Graph::deleteNode(Node* node)
         }
     }
 
-    m_nodes.remove(node);
+    RELEASE_ASSERT(m_nodesByIndex[node->m_index] == node);
+    unsigned nodeIndex = node->m_index;
+    m_nodesByIndex[nodeIndex] = nullptr;
+    m_nodeIndexFreeList.append(nodeIndex);
+
+    m_allocator.free(node);
 }
 
 void Graph::packNodeIndices()
 {
-    m_nodes.packIndices();
+    if (m_nodeIndexFreeList.isEmpty())
+        return;
+
+    unsigned holeIndex = 0;
+    unsigned endIndex = m_nodesByIndex.size();
+
+    while (true) {
+        while (holeIndex < endIndex && m_nodesByIndex[holeIndex])
+            ++holeIndex;
+
+        if (holeIndex == endIndex)
+            break;
+        ASSERT(holeIndex < m_nodesByIndex.size());
+        ASSERT(!m_nodesByIndex[holeIndex]);
+
+        do {
+            --endIndex;
+        } while (!m_nodesByIndex[endIndex] && endIndex > holeIndex);
+
+        if (holeIndex == endIndex)
+            break;
+        ASSERT(endIndex > holeIndex);
+        ASSERT(m_nodesByIndex[endIndex]);
+
+        auto& value = m_nodesByIndex[endIndex];
+        value->m_index = holeIndex;
+        m_nodesByIndex[holeIndex] = WTFMove(value);
+        ++holeIndex;
+    }
+
+    m_nodeIndexFreeList.resize(0);
+    m_nodesByIndex.resize(endIndex);
 }
 
 void Graph::dethread()
@@ -1259,7 +1318,7 @@ JSValue Graph::tryGetConstantClosureVar(JSValue base, ScopeOffset offset)
     if (!base)
         return JSValue();
     
-    JSLexicalEnvironment* activation = jsDynamicCast<JSLexicalEnvironment*>(m_vm, base);
+    JSLexicalEnvironment* activation = jsDynamicCast<JSLexicalEnvironment*>(base);
     if (!activation)
         return JSValue();
     
@@ -1307,7 +1366,7 @@ JSArrayBufferView* Graph::tryGetFoldableView(JSValue value)
 {
     if (!value)
         return nullptr;
-    JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(m_vm, value);
+    JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(value);
     if (!value)
         return nullptr;
     if (!view->length())
@@ -1368,7 +1427,7 @@ FrozenValue* Graph::freeze(JSValue value)
     // point to other CodeBlocks. We don't want to have them be
     // part of the weak pointer set. For example, an optimized CodeBlock
     // having a weak pointer to itself will cause it to get collected.
-    RELEASE_ASSERT(!jsDynamicCast<CodeBlock*>(m_vm, value));
+    RELEASE_ASSERT(!jsDynamicCast<CodeBlock*>(value));
     
     auto result = m_frozenValueMap.add(JSValue::encode(value), nullptr);
     if (LIKELY(!result.isNewEntry))
@@ -1580,9 +1639,9 @@ bool Graph::getRegExpPrototypeProperty(JSObject* regExpPrototype, Structure* reg
 
     // We only care about functions and getters at this point. If you want to access other properties
     // you'll have to add code for those types.
-    JSFunction* function = jsDynamicCast<JSFunction*>(m_vm, value);
+    JSFunction* function = jsDynamicCast<JSFunction*>(value);
     if (!function) {
-        GetterSetter* getterSetter = jsDynamicCast<GetterSetter*>(m_vm, value);
+        GetterSetter* getterSetter = jsDynamicCast<GetterSetter*>(value);
 
         if (!getterSetter)
             return false;
@@ -1604,7 +1663,7 @@ bool Graph::isStringPrototypeMethodSane(JSGlobalObject* globalObject, UniquedStr
 
     ObjectPropertyCondition equivalenceCondition = conditions.slotBaseCondition();
     RELEASE_ASSERT(equivalenceCondition.hasRequiredValue());
-    JSFunction* function = jsDynamicCast<JSFunction*>(m_vm, equivalenceCondition.condition().requiredValue());
+    JSFunction* function = jsDynamicCast<JSFunction*>(equivalenceCondition.condition().requiredValue());
     if (!function)
         return false;
 
@@ -1624,7 +1683,7 @@ bool Graph::canOptimizeStringObjectAccess(const CodeOrigin& codeOrigin)
     Structure* stringObjectStructure = globalObjectFor(codeOrigin)->stringObjectStructure();
     registerStructure(stringObjectStructure);
     ASSERT(stringObjectStructure->storedPrototype().isObject());
-    ASSERT(stringObjectStructure->storedPrototype().asCell()->classInfo(*stringObjectStructure->storedPrototype().asCell()->vm()) == StringPrototype::info());
+    ASSERT(stringObjectStructure->storedPrototype().asCell()->classInfo() == StringPrototype::info());
 
     if (!watchConditions(generateConditionsForPropertyMissConcurrently(m_vm, globalObject, stringObjectStructure, m_vm.propertyNames->toPrimitiveSymbol.impl())))
         return false;
@@ -1662,37 +1721,6 @@ bool Graph::willCatchExceptionInMachineFrame(CodeOrigin codeOrigin, CodeOrigin& 
     }
 
     RELEASE_ASSERT_NOT_REACHED();
-}
-
-bool Graph::canDoFastSpread(Node* node, const AbstractValue& value)
-{
-    // The parameter 'value' is the AbstractValue for child1 (the thing being spread).
-    ASSERT(node->op() == Spread);
-
-    if (node->child1().useKind() != ArrayUse) {
-        // Note: we only speculate on ArrayUse when we've set up the necessary watchpoints
-        // to prove that the iteration protocol is non-observable starting from ArrayPrototype.
-        return false;
-    }
-
-    // FIXME: We should add profiling of the incoming operand to Spread
-    // so we can speculate in such a way that we guarantee that this
-    // function would return true:
-    // https://bugs.webkit.org/show_bug.cgi?id=171198
-
-    if (!value.m_structure.isFinite())
-        return false;
-
-    ArrayPrototype* arrayPrototype = globalObjectFor(node->child1()->origin.semantic)->arrayPrototype();
-    bool allGood = true;
-    value.m_structure.forEach([&] (RegisteredStructure structure) {
-        allGood &= structure->storedPrototype() == arrayPrototype
-            && !structure->isDictionary()
-            && structure->getConcurrently(m_vm.propertyNames->iteratorSymbol.impl()) == invalidOffset
-            && !structure->mayInterceptIndexedAccesses();
-    });
-
-    return allGood;
 }
 
 } } // namespace JSC::DFG

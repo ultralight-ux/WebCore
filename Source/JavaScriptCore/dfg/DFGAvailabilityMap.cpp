@@ -40,11 +40,11 @@ void AvailabilityMap::pruneHeap()
     if (m_heap.isEmpty())
         return;
     
-    NodeSet possibleNodes;
+    HashSet<Node*> possibleNodes;
     
     for (unsigned i = m_locals.size(); i--;) {
         if (m_locals[i].hasNode())
-            possibleNodes.addVoid(m_locals[i].node());
+            possibleNodes.add(m_locals[i].node());
     }
 
     closeOverNodes(

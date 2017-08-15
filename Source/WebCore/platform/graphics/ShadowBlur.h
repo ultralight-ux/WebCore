@@ -83,13 +83,13 @@ private:
         InnerShadow
     };
     
-    IntSize calculateLayerBoundingRect(GraphicsContext&, const FloatRect& layerArea, const IntRect& clipRect);
+    IntRect calculateLayerBoundingRect(GraphicsContext&, const FloatRect& layerArea, const IntRect& clipRect);
     IntSize templateSize(const IntSize& blurredEdgeSize, const FloatRoundedRect::Radii&) const;
 
-    void drawRectShadowWithoutTiling(GraphicsContext&, const FloatRoundedRect&, const IntSize& layerSize);
+    void drawRectShadowWithoutTiling(GraphicsContext&, const FloatRoundedRect&, const IntRect& layerRect);
     void drawRectShadowWithTiling(GraphicsContext&, const FloatRoundedRect&, const IntSize& shadowTemplateSize, const IntSize& blurredEdgeSize);
 
-    void drawInsetShadowWithoutTiling(GraphicsContext&, const FloatRect&, const FloatRoundedRect& holeRect, const IntSize& layerSize);
+    void drawInsetShadowWithoutTiling(GraphicsContext&, const FloatRect&, const FloatRoundedRect& holeRect, const IntRect& layerRect);
     void drawInsetShadowWithTiling(GraphicsContext&, const FloatRect&, const FloatRoundedRect& holeRect, const IntSize& shadowTemplateSize, const IntSize& blurredEdgeSize);
     
     void drawLayerPieces(GraphicsContext&, const FloatRect& shadowBounds, const FloatRoundedRect::Radii&, const IntSize& roundedRadius, const IntSize& templateSize, ShadowDirection);

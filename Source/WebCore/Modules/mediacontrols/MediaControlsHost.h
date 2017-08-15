@@ -70,7 +70,6 @@ public:
     bool isVideoLayerInline() const;
     bool isInMediaDocument() const;
     bool userGestureRequired() const;
-    bool shouldForceControlsDisplay() const;
     void setPreparedToReturnVideoLayerToInline(bool);
 
     void updateCaptionDisplaySizes();
@@ -88,7 +87,7 @@ public:
     String generateUUID() const;
 
     String shadowRootCSSText() const;
-    String base64StringForIconNameAndType(const String& iconName, const String& iconType) const;
+    String base64StringForIconAndPlatform(const String& iconName, const String& platform) const;
 
 private:
     MediaControlsHost(HTMLMediaElement*);

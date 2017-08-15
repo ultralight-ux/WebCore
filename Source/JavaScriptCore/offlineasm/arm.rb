@@ -94,7 +94,6 @@ end
 ARM_EXTRA_GPRS = [SpecialRegister.new("r6"), SpecialRegister.new("r10"), SpecialRegister.new("r12")]
 ARM_EXTRA_FPRS = [SpecialRegister.new("d7")]
 ARM_SCRATCH_FPR = SpecialRegister.new("d6")
-OS_DARWIN = ((RUBY_PLATFORM =~ /darwin/i) != nil)
 
 def armMoveImmediate(value, register)
     # Currently we only handle the simple cases, and fall back to mov/movt for the complex ones.
@@ -569,11 +568,7 @@ class Instruction
             end
         when "call"
             if operands[0].label?
-                if OS_DARWIN
-                    $asm.puts "blx #{operands[0].asmLabel}"
-                else
-                    $asm.puts "bl #{operands[0].asmLabel}"
-                end
+                $asm.puts "blx #{operands[0].asmLabel}"
             else
                 $asm.puts "blx #{operands[0].armOperand}"
             end

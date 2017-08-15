@@ -25,7 +25,6 @@
 #include "JSTestCallbackFunction.h"
 
 #include "JSDOMConvert.h"
-#include "JSDOMExceptionHandling.h"
 #include "JSTestNode.h"
 #include "ScriptExecutionContext.h"
 #include "SerializedScriptValue.h"

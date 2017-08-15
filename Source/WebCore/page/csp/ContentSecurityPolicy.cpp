@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google, Inc. All rights reserved.
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,7 @@
 #include "ContentSecurityPolicyHash.h"
 #include "ContentSecurityPolicySource.h"
 #include "ContentSecurityPolicySourceList.h"
+#include "CryptoDigest.h"
 #include "DOMStringList.h"
 #include "Document.h"
 #include "DocumentLoader.h"
@@ -56,7 +57,6 @@
 #include <inspector/InspectorValues.h>
 #include <inspector/ScriptCallStack.h>
 #include <inspector/ScriptCallStackFactory.h>
-#include <pal/crypto/CryptoDigest.h>
 #include <wtf/SetForScope.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/TextPosition.h>
@@ -256,8 +256,8 @@ bool ContentSecurityPolicy::urlMatchesSelf(const URL& url) const
 
 bool ContentSecurityPolicy::allowContentSecurityPolicySourceStarToMatchAnyProtocol() const
 {
-    if (is<Document>(m_scriptExecutionContext))
-        return downcast<Document>(*m_scriptExecutionContext).settings().allowContentSecurityPolicySourceStarToMatchAnyProtocol();
+    if (Settings* settings = is<Document>(m_scriptExecutionContext) ? downcast<Document>(*m_scriptExecutionContext).settings() : nullptr)
+        return settings->allowContentSecurityPolicySourceStarToMatchAnyProtocol();
     return false;
 }
 
@@ -311,6 +311,20 @@ bool ContentSecurityPolicy::allPoliciesAllow(ViolatedDirectiveCallback&& callbac
     return isAllowed;
 }
 
+static CryptoDigest::Algorithm toCryptoDigestAlgorithm(ContentSecurityPolicyHashAlgorithm algorithm)
+{
+    switch (algorithm) {
+    case ContentSecurityPolicyHashAlgorithm::SHA_256:
+        return CryptoDigest::Algorithm::SHA_256;
+    case ContentSecurityPolicyHashAlgorithm::SHA_384:
+        return CryptoDigest::Algorithm::SHA_384;
+    case ContentSecurityPolicyHashAlgorithm::SHA_512:
+        return CryptoDigest::Algorithm::SHA_512;
+    }
+    ASSERT_NOT_REACHED();
+    return CryptoDigest::Algorithm::SHA_512;
+}
+
 template<typename Predicate>
 ContentSecurityPolicy::HashInEnforcedAndReportOnlyPoliciesPair ContentSecurityPolicy::findHashOfContentInPolicies(Predicate&& predicate, const String& content, OptionSet<ContentSecurityPolicyHashAlgorithm> algorithms) const
 {
@@ -329,7 +343,9 @@ ContentSecurityPolicy::HashInEnforcedAndReportOnlyPoliciesPair ContentSecurityPo
     bool foundHashInEnforcedPolicies = false;
     bool foundHashInReportOnlyPolicies = false;
     for (auto algorithm : algorithms) {
-        ContentSecurityPolicyHash hash = cryptographicDigestForBytes(algorithm, contentCString.data(), contentCString.length());
+        auto cryptoDigest = CryptoDigest::create(toCryptoDigestAlgorithm(algorithm));
+        cryptoDigest->addBytes(contentCString.data(), contentCString.length());
+        ContentSecurityPolicyHash hash = { algorithm, cryptoDigest->computeHash() };
         if (!foundHashInEnforcedPolicies && allPoliciesWithDispositionAllow(ContentSecurityPolicy::Disposition::Enforce, std::forward<Predicate>(predicate), hash))
             foundHashInEnforcedPolicies = true;
         if (!foundHashInReportOnlyPolicies && allPoliciesWithDispositionAllow(ContentSecurityPolicy::Disposition::ReportOnly, std::forward<Predicate>(predicate), hash))
@@ -586,7 +602,7 @@ static String stripURLForUseInReport(Document& document, const URL& url)
         return String();
     if (!url.isHierarchical() || url.protocolIs("file"))
         return url.protocol().toString();
-    return document.securityOrigin().canRequest(url) ? url.strippedForUseAsReferrer() : SecurityOrigin::create(url).get().toString();
+    return document.securityOrigin()->canRequest(url) ? url.strippedForUseAsReferrer() : SecurityOrigin::create(url).get().toString();
 }
 
 void ContentSecurityPolicy::reportViolation(const String& violatedDirective, const ContentSecurityPolicyDirective& effectiveViolatedDirective, const URL& blockedURL, const String& consoleMessage, JSC::ExecState* state) const
@@ -619,8 +635,8 @@ void ContentSecurityPolicy::reportViolation(const String& effectiveViolatedDirec
 
     ASSERT(!m_frame || effectiveViolatedDirective == ContentSecurityPolicyDirectiveNames::frameAncestors);
 
-    auto& document = is<Document>(m_scriptExecutionContext) ? downcast<Document>(*m_scriptExecutionContext) : *m_frame->document();
-    auto* frame = document.frame();
+    Document& document = is<Document>(m_scriptExecutionContext) ? downcast<Document>(*m_scriptExecutionContext) : *m_frame->document();
+    Frame* frame = document.frame();
     ASSERT(!m_frame || m_frame == frame);
     if (!frame)
         return;
@@ -640,14 +656,13 @@ void ContentSecurityPolicy::reportViolation(const String& effectiveViolatedDirec
     String originalPolicy = violatedDirectiveList.header();
     String referrer = document.referrer();
     ASSERT(document.loader());
-    // FIXME: Is it policy to not use the status code for HTTPS, or is that a bug?
     unsigned short statusCode = document.url().protocolIs("http") && document.loader() ? document.loader()->response().httpStatusCode() : 0;
 
     String sourceFile;
     int lineNumber = 0;
     int columnNumber = 0;
-    auto stack = createScriptCallStack(JSMainThreadExecState::currentState(), 2);
-    auto* callFrame = stack->firstNonNativeCallFrame();
+    RefPtr<ScriptCallStack> stack = createScriptCallStack(JSMainThreadExecState::currentState(), 2);
+    const ScriptCallFrame* callFrame = stack->firstNonNativeCallFrame();
     if (callFrame && callFrame->lineNumber()) {
         sourceFile = stripURLForUseInReport(document, URL(URL(), callFrame->sourceURL()));
         lineNumber = callFrame->lineNumber();
@@ -660,7 +675,7 @@ void ContentSecurityPolicy::reportViolation(const String& effectiveViolatedDirec
     document.enqueueDocumentEvent(SecurityPolicyViolationEvent::create(eventNames().securitypolicyviolationEvent, canBubble, cancelable, documentURI, referrer, blockedURI, violatedDirectiveText, effectiveViolatedDirective, originalPolicy, sourceFile, statusCode, lineNumber, columnNumber));
 
     // 2. Send violation report (if applicable).
-    auto& reportURIs = violatedDirectiveList.reportURIs();
+    const Vector<String>& reportURIs = violatedDirectiveList.reportURIs();
     if (reportURIs.isEmpty())
         return;
 
@@ -688,10 +703,10 @@ void ContentSecurityPolicy::reportViolation(const String& effectiveViolatedDirec
         cspReport->setInteger(ASCIILiteral("column-number"), columnNumber);
     }
 
-    auto reportObject = InspectorObject::create();
+    RefPtr<InspectorObject> reportObject = InspectorObject::create();
     reportObject->setObject(ASCIILiteral("csp-report"), WTFMove(cspReport));
 
-    auto report = FormData::create(reportObject->toJSONString().utf8());
+    RefPtr<FormData> report = FormData::create(reportObject->toJSONString().utf8());
     for (const auto& url : reportURIs)
         PingLoader::sendViolationReport(*frame, is<Document>(m_scriptExecutionContext) ? document.completeURL(url) : document.completeURL(url, blockedURL), report.copyRef(), ViolationReportType::ContentSecurityPolicy);
 }
@@ -795,6 +810,15 @@ void ContentSecurityPolicy::reportBlockedScriptExecutionToInspector(const String
 {
     if (m_scriptExecutionContext)
         InspectorInstrumentation::scriptExecutionBlockedByCSP(m_scriptExecutionContext, directiveText);
+}
+
+bool ContentSecurityPolicy::experimentalFeaturesEnabled() const
+{
+#if ENABLE(CSP_NEXT)
+    return RuntimeEnabledFeatures::sharedFeatures().experimentalContentSecurityPolicyFeaturesEnabled();
+#else
+    return false;
+#endif
 }
 
 void ContentSecurityPolicy::upgradeInsecureRequestIfNeeded(ResourceRequest& request, InsecureRequestType requestType) const

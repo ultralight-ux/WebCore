@@ -67,7 +67,7 @@ void ScrollingStateTree::setHasChangedProperties(bool changedProperties)
 #endif
 }
 
-Ref<ScrollingStateNode> ScrollingStateTree::createNode(ScrollingNodeType nodeType, ScrollingNodeID nodeID)
+PassRefPtr<ScrollingStateNode> ScrollingStateTree::createNode(ScrollingNodeType nodeType, ScrollingNodeID nodeID)
 {
     switch (nodeType) {
     case FixedNode:
@@ -80,7 +80,7 @@ Ref<ScrollingStateNode> ScrollingStateTree::createNode(ScrollingNodeType nodeTyp
         return ScrollingStateOverflowScrollingNode::create(*this, nodeID);
     }
     ASSERT_NOT_REACHED();
-    return ScrollingStateFixedNode::create(*this, nodeID);
+    return nullptr;
 }
 
 bool ScrollingStateTree::nodeTypeAndParentMatch(ScrollingStateNode& node, ScrollingNodeType nodeType, ScrollingNodeID parentID) const
@@ -129,13 +129,13 @@ ScrollingNodeID ScrollingStateTree::attachNode(ScrollingNodeType nodeType, Scrol
         if (nodeType == FrameScrollingNode && parentID) {
             if (auto orphanedNode = m_orphanedSubframeNodes.take(newNodeID)) {
                 newNode = orphanedNode.get();
-                parent->appendChild(orphanedNode.releaseNonNull());
+                parent->appendChild(WTFMove(orphanedNode));
             }
         }
 
         if (!newNode) {
             auto stateNode = createNode(nodeType, newNodeID);
-            newNode = stateNode.ptr();
+            newNode = stateNode.get();
             parent->appendChild(WTFMove(stateNode));
         }
     }
@@ -182,7 +182,7 @@ std::unique_ptr<ScrollingStateTree> ScrollingStateTree::commit(LayerRepresentati
     treeStateClone->setPreferredLayerRepresentation(preferredLayerRepresentation);
 
     if (m_rootStateNode)
-        treeStateClone->setRootStateNode(static_reference_cast<ScrollingStateFrameScrollingNode>(m_rootStateNode->cloneAndReset(*treeStateClone)));
+        treeStateClone->setRootStateNode(static_pointer_cast<ScrollingStateFrameScrollingNode>(m_rootStateNode->cloneAndReset(*treeStateClone)));
 
     // Copy the IDs of the nodes that have been removed since the last commit into the clone.
     treeStateClone->m_nodesRemovedSinceLastCommit.swap(m_nodesRemovedSinceLastCommit);
@@ -211,8 +211,7 @@ void ScrollingStateTree::removeNodeAndAllDescendants(ScrollingStateNode* node, S
     if (node == m_rootStateNode)
         m_rootStateNode = nullptr;
     else if (parent) {
-        ASSERT(parent->children());
-        ASSERT(parent->children()->find(node) != notFound);
+        ASSERT(parent->children() && parent->children()->find(node) != notFound);
         if (auto children = parent->children()) {
             size_t index = children->find(node);
             if (index != notFound)
@@ -276,7 +275,7 @@ void showScrollingStateTree(const WebCore::ScrollingStateTree* tree)
         return;
     }
 
-    String output = rootNode->scrollingStateTreeAsText(WebCore::ScrollingStateTreeAsTextBehaviorDebug);
+    String output = rootNode->scrollingStateTreeAsText();
     fprintf(stderr, "%s\n", output.utf8().data());
 }
 

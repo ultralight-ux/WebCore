@@ -60,7 +60,7 @@ InspectorInstrumentationObject::InspectorInstrumentationObject(VM& vm, Structure
 void InspectorInstrumentationObject::finishCreation(VM& vm, JSGlobalObject*)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     putDirectWithoutTransition(vm, vm.propertyNames->isEnabled, jsBoolean(false));
 }
 

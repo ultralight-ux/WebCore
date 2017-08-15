@@ -32,13 +32,14 @@
 
 namespace WebCore {
 
-MoveSelectionCommand::MoveSelectionCommand(Ref<DocumentFragment>&& fragment, const Position& position, bool smartInsert, bool smartDelete)
+MoveSelectionCommand::MoveSelectionCommand(PassRefPtr<DocumentFragment> fragment, const Position& position, bool smartInsert, bool smartDelete) 
     : CompositeEditCommand(position.anchorNode()->document())
-    , m_fragment(WTFMove(fragment))
+    , m_fragment(fragment)
     , m_position(position)
     , m_smartInsert(smartInsert)
     , m_smartDelete(smartDelete)
 {
+    ASSERT(m_fragment);
 }
 
 void MoveSelectionCommand::doApply()
@@ -71,14 +72,14 @@ void MoveSelectionCommand::doApply()
     // set the destination to the ending point after the deletion.
     // Fixes: <rdar://problem/3910425> REGRESSION (Mail): Crash in ReplaceSelectionCommand; 
     //        selection is empty, leading to null deref
-    if (!pos.anchorNode()->isConnected())
+    if (!pos.anchorNode()->inDocument())
         pos = endingSelection().start();
 
     cleanupAfterDeletion(pos);
 
     setEndingSelection(VisibleSelection(pos, endingSelection().affinity(), endingSelection().isDirectional()));
     setStartingSelection(endingSelection());
-    if (!pos.anchorNode()->isConnected()) {
+    if (!pos.anchorNode()->inDocument()) {
         // Document was modified out from under us.
         return;
     }

@@ -108,19 +108,19 @@ static bool isSanitizerEnabled()
 }
 
 Environment::Environment()
-    : m_isDebugHeapEnabled(computeIsDebugHeapEnabled())
+    : m_isBmallocEnabled(computeIsBmallocEnabled())
 {
 }
 
-bool Environment::computeIsDebugHeapEnabled()
+bool Environment::computeIsBmallocEnabled()
 {
     if (isMallocEnvironmentVariableSet())
-        return true;
+        return false;
     if (isLibgmallocEnabled())
-        return true;
+        return false;
     if (isSanitizerEnabled())
-        return true;
-    return false;
+        return false;
+    return true;
 }
 
 } // namespace bmalloc

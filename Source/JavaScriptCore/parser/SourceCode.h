@@ -41,27 +41,20 @@ namespace JSC {
         {
         }
 
-        SourceCode(Ref<SourceProvider>&& provider)
-            : UnlinkedSourceCode(WTFMove(provider))
+        SourceCode(PassRefPtr<SourceProvider> provider)
+            : UnlinkedSourceCode(provider)
         {
         }
 
-        SourceCode(Ref<SourceProvider>&& provider, int firstLine, int startColumn)
-            : UnlinkedSourceCode(WTFMove(provider))
+        SourceCode(PassRefPtr<SourceProvider> provider, int firstLine, int startColumn)
+            : UnlinkedSourceCode(provider)
             , m_firstLine(OrdinalNumber::fromOneBasedInt(std::max(firstLine, 1)))
             , m_startColumn(OrdinalNumber::fromOneBasedInt(std::max(startColumn, 1)))
         {
         }
 
-        SourceCode(Ref<SourceProvider>&& provider, int startOffset, int endOffset, int firstLine, int startColumn)
-            : UnlinkedSourceCode(WTFMove(provider), startOffset, endOffset)
-            , m_firstLine(OrdinalNumber::fromOneBasedInt(std::max(firstLine, 1)))
-            , m_startColumn(OrdinalNumber::fromOneBasedInt(std::max(startColumn, 1)))
-        {
-        }
-
-        SourceCode(RefPtr<SourceProvider>&& provider, int startOffset, int endOffset, int firstLine, int startColumn)
-            : UnlinkedSourceCode(WTFMove(provider), startOffset, endOffset)
+        SourceCode(PassRefPtr<SourceProvider> provider, int startOffset, int endOffset, int firstLine, int startColumn)
+            : UnlinkedSourceCode(provider, startOffset, endOffset)
             , m_firstLine(OrdinalNumber::fromOneBasedInt(std::max(firstLine, 1)))
             , m_startColumn(OrdinalNumber::fromOneBasedInt(std::max(startColumn, 1)))
         {
@@ -86,15 +79,15 @@ namespace JSC {
         OrdinalNumber m_startColumn;
     };
 
-    inline SourceCode makeSource(const String& source, const SourceOrigin& sourceOrigin, const String& url = String(), const TextPosition& startPosition = TextPosition(), SourceProviderSourceType sourceType = SourceProviderSourceType::Program)
+    inline SourceCode makeSource(const String& source, const String& url = String(), const TextPosition& startPosition = TextPosition(), SourceProviderSourceType sourceType = SourceProviderSourceType::Program)
     {
-        return SourceCode(StringSourceProvider::create(source, sourceOrigin, url, startPosition, sourceType), startPosition.m_line.oneBasedInt(), startPosition.m_column.oneBasedInt());
+        return SourceCode(StringSourceProvider::create(source, url, startPosition, sourceType), startPosition.m_line.oneBasedInt(), startPosition.m_column.oneBasedInt());
     }
     
     inline SourceCode SourceCode::subExpression(unsigned openBrace, unsigned closeBrace, int firstLine, int startColumn)
     {
         startColumn += 1; // Convert to base 1.
-        return SourceCode(RefPtr<SourceProvider> { provider() }, openBrace, closeBrace + 1, firstLine, startColumn);
+        return SourceCode(provider(), openBrace, closeBrace + 1, firstLine, startColumn);
     }
 
 } // namespace JSC

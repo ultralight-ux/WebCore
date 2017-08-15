@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -191,7 +191,10 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case ArithFloor:
     case ArithCeil:
     case ArithTrunc:
-    case ArithUnary:
+    case ArithSin:
+    case ArithCos:
+    case ArithTan:
+    case ArithLog:
     case ValueAdd:
     case TryGetById:
     case DeleteById:
@@ -266,7 +269,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case ProfileType:
     case ProfileControlFlow:
     case CheckTypeInfoFlags:
-    case ParseInt:
     case OverridesHasInstance:
     case InstanceOf:
     case InstanceOfCustom:
@@ -285,7 +287,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case ToPrimitive:
     case ToString:
     case ToNumber:
-    case NumberToStringWithRadix:
     case SetFunctionName:
     case StrCat:
     case CallStringConstructor:
@@ -315,7 +316,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case ThrowStaticError:
     case CountExecution:
     case ForceOSRExit:
-    case CheckTraps:
+    case CheckWatchdogTimer:
     case LogShadowChickenPrologue:
     case LogShadowChickenTail:
     case StringFromCharCode:
@@ -373,23 +374,12 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case RecordRegExpCachedResult:
     case GetDynamicVar:
     case PutDynamicVar:
-    case ResolveScopeForHoistingFuncDeclInEval:
     case ResolveScope:
     case MapHash:
     case ToLowerCase:
     case GetMapBucket:
     case LoadFromJSMapBucket:
     case IsNonEmptyMapBucket:
-    case AtomicsAdd:
-    case AtomicsAnd:
-    case AtomicsCompareExchange:
-    case AtomicsExchange:
-    case AtomicsLoad:
-    case AtomicsOr:
-    case AtomicsStore:
-    case AtomicsSub:
-    case AtomicsXor:
-    case AtomicsIsLockFree:
         return true;
 
     case ArraySlice: {
@@ -443,7 +433,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
         PropertyOffset offset = node->storageAccessData().offset;
 
         if (state.structureClobberState() == StructuresAreWatched) {
-            if (JSObject* knownBase = node->child1()->dynamicCastConstant<JSObject*>(graph.m_vm)) {
+            if (JSObject* knownBase = node->child1()->dynamicCastConstant<JSObject*>()) {
                 if (graph.isSafeToLoad(knownBase, offset))
                     return true;
             }

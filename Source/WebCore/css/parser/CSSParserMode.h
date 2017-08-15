@@ -96,7 +96,9 @@ public:
     String charset;
     CSSParserMode mode { HTMLStandardMode };
     bool isHTMLDocument { false };
+#if ENABLE(CSS_GRID_LAYOUT)
     bool cssGridLayoutEnabled { false };
+#endif
 #if ENABLE(TEXT_AUTOSIZING)
     bool textAutosizingEnabled { false };
 #endif
@@ -104,9 +106,8 @@ public:
     bool enforcesCSSMIMETypeInNoQuirksMode { true };
     bool useLegacyBackgroundSizeShorthandBehavior { false };
     bool springTimingFunctionEnabled { false };
-    bool constantPropertiesEnabled { false };
     
-    bool deferredCSSParserEnabled { false };
+    bool deferredCSSParserEnabled { true };
 
     URL completeURL(const String& url) const
     {
@@ -116,6 +117,10 @@ public:
             return URL(baseURL, url);
         return URL(baseURL, url, TextEncoding(charset));
     }
+
+#if ENABLE(VARIATION_FONTS)
+    bool variationFontsEnabled { false };
+#endif
 };
 
 bool operator==(const CSSParserContext&, const CSSParserContext&);
@@ -131,7 +136,9 @@ struct CSSParserContextHash {
             hash ^= StringHash::hash(key.charset);
         unsigned bits = key.isHTMLDocument                  << 0
             & key.isHTMLDocument                            << 1
+#if ENABLE(CSS_GRID_LAYOUT)
             & key.cssGridLayoutEnabled                      << 2
+#endif
 #if ENABLE(TEXT_AUTOSIZING)
             & key.textAutosizingEnabled                     << 3
 #endif
@@ -139,8 +146,11 @@ struct CSSParserContextHash {
             & key.enforcesCSSMIMETypeInNoQuirksMode         << 5
             & key.useLegacyBackgroundSizeShorthandBehavior  << 6
             & key.springTimingFunctionEnabled               << 7
-            & key.deferredCSSParserEnabled                  << 8
-            & key.mode                                      << 9;
+#if ENABLE(VARIATION_FONTS)
+            & key.variationFontsEnabled                     << 8
+#endif
+            & key.deferredCSSParserEnabled                  << 9
+            & key.mode                                      << 10;
         hash ^= WTF::intHash(bits);
         return hash;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,17 +37,17 @@ Archive::~Archive()
 
 void Archive::clearAllSubframeArchives()
 {
-    HashSet<Archive*> clearedArchives;
-    clearedArchives.add(this);
-    clearAllSubframeArchives(clearedArchives);
+    Vector<RefPtr<Archive>> clearedArchives;
+    clearAllSubframeArchivesImpl(&clearedArchives);
 }
 
-void Archive::clearAllSubframeArchives(HashSet<Archive*>& clearedArchives)
+void Archive::clearAllSubframeArchivesImpl(Vector<RefPtr<Archive>>* clearedArchives)
 {
-    ASSERT(clearedArchives.contains(this));
     for (auto& archive : m_subframeArchives) {
-        if (clearedArchives.add(archive.ptr()))
-            archive->clearAllSubframeArchives(clearedArchives);
+        if (!clearedArchives->contains(archive)) {
+            clearedArchives->append(archive);
+            archive->clearAllSubframeArchivesImpl(clearedArchives);
+        }
     }
     m_subframeArchives.clear();
 }

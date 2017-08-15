@@ -560,7 +560,9 @@ public:
         // Finally eliminate the sunken PutStacks by turning them into Checks. This keeps whatever
         // type check they were doing.
         for (BasicBlock* block : m_graph.blocksInNaturalOrder()) {
-            for (auto* node : *block) {
+            for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
+                Node* node = block->at(nodeIndex);
+                
                 if (!putStacksToSink.contains(node))
                     continue;
                 

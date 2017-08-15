@@ -49,9 +49,9 @@ const RGBA32 Color::transparent;
 static const RGBA32 lightenedBlack = 0xFF545454;
 static const RGBA32 darkenedWhite = 0xFFABABAB;
 
-static inline unsigned premultipliedChannel(unsigned c, unsigned a, bool ceiling = true)
+static inline unsigned premultipliedChannel(unsigned c, unsigned a)
 {
-    return fastDivideBy255(ceiling ? c * a + 254 : c * a);
+    return fastDivideBy255(c * a + 254);
 }
 
 static inline unsigned unpremultipliedChannel(unsigned c, unsigned a)
@@ -69,9 +69,9 @@ RGBA32 makeRGBA(int r, int g, int b, int a)
     return std::max(0, std::min(a, 255)) << 24 | std::max(0, std::min(r, 255)) << 16 | std::max(0, std::min(g, 255)) << 8 | std::max(0, std::min(b, 255));
 }
 
-RGBA32 makePremultipliedRGBA(int r, int g, int b, int a, bool ceiling)
+RGBA32 makePremultipliedRGBA(int r, int g, int b, int a)
 {
-    return makeRGBA(premultipliedChannel(r, a, ceiling), premultipliedChannel(g, a, ceiling), premultipliedChannel(b, a, ceiling), a);
+    return makeRGBA(premultipliedChannel(r, a), premultipliedChannel(g, a), premultipliedChannel(b, a), a);
 }
 
 RGBA32 makeUnPremultipliedRGBA(int r, int g, int b, int a)
@@ -332,9 +332,6 @@ Color& Color::operator=(Color&& other)
 {
     if (*this == other)
         return *this;
-
-    if (isExtended())
-        m_colorData.extendedColor->deref();
 
     m_colorData = other.m_colorData;
     other.m_colorData.rgbaAndFlags = invalidRGBAColor;
@@ -616,16 +613,15 @@ Color colorFromPremultipliedARGB(RGBA32 pixelColor)
 
 RGBA32 premultipliedARGBFromColor(const Color& color)
 {
-    if (color.isOpaque()) {
-        if (color.isExtended())
-            return makeRGB(color.asExtended().red() * 255, color.asExtended().green() * 255, color.asExtended().blue() * 255);
-        return color.rgb();
-    }
+    unsigned pixelColor;
 
-    if (color.isExtended())
-        return makePremultipliedRGBA(color.asExtended().red() * 255, color.asExtended().green() * 255, color.asExtended().blue() * 255, color.asExtended().alpha() * 255);
+    unsigned alpha = color.alpha();
+    if (alpha < 255)
+        pixelColor = makePremultipliedRGBA(color.red(), color.green(), color.blue(), alpha);
+    else
+        pixelColor = color.rgb();
 
-    return makePremultipliedRGBA(color.red(), color.green(), color.blue(), color.alpha());
+    return pixelColor;
 }
 
 Color blend(const Color& from, const Color& to, double progress, bool blendPremultiplied)

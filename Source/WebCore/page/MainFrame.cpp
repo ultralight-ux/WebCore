@@ -27,6 +27,7 @@
 #include "MainFrame.h"
 
 #include "Element.h"
+#include "EmptyClients.h"
 #include "PageConfiguration.h"
 #include "PageOverlayController.h"
 #include "PaymentCoordinator.h"
@@ -59,6 +60,7 @@ inline MainFrame::MainFrame(Page& page, PageConfiguration& configuration)
 MainFrame::~MainFrame()
 {
     m_recentWheelEventDeltaFilter = nullptr;
+    m_eventHandler = nullptr;
 
     setMainFrameWasDestroyed();
 }
@@ -91,11 +93,12 @@ void MainFrame::selfOnlyDeref()
 void MainFrame::dropChildren()
 {
     while (Frame* child = tree().firstChild())
-        tree().removeChild(*child);
+        tree().removeChild(child);
 }
 
 void MainFrame::didCompleteLoad()
 {
+    m_timeOfLastCompletedLoad = MonotonicTime::now();
     performanceLogging().didReachPointOfInterest(PerformanceLogging::MainFrameLoadCompleted);
 }
 

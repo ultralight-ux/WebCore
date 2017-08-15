@@ -43,7 +43,6 @@
 #include "SerializedScriptValue.h"
 #include "UniqueIDBDatabaseConnection.h"
 #include <heap/HeapInlines.h>
-#include <heap/StrongInlines.h>
 #include <runtime/AuxiliaryBarrierInlines.h>
 #include <runtime/StructureInlines.h>
 #include <wtf/MainThread.h>
@@ -1515,7 +1514,7 @@ void UniqueIDBDatabase::invokeOperationAndTransactionTimer()
     ASSERT(!m_hardClosedForUserDelete);
 
     if (!m_operationAndTransactionTimer.isActive())
-        m_operationAndTransactionTimer.startOneShot(0_s);
+        m_operationAndTransactionTimer.startOneShot(0);
 }
 
 void UniqueIDBDatabase::operationAndTransactionTimerFired()
@@ -1570,7 +1569,7 @@ void UniqueIDBDatabase::activateTransactionInBackingStore(UniqueIDBDatabaseTrans
     RefPtr<UniqueIDBDatabase> protectedThis(this);
     RefPtr<UniqueIDBDatabaseTransaction> refTransaction(&transaction);
 
-    auto callback = [protectedThis, refTransaction](const IDBError& error) {
+    auto callback = [this, protectedThis, refTransaction](const IDBError& error) {
         refTransaction->didActivateInBackingStore(error);
     };
 

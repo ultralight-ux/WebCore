@@ -1,7 +1,6 @@
 /*
  * Copyright (C) 2004, 2005 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005 Rob Buis <buis@kde.org>
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -131,27 +130,27 @@ const String& SVGTransformValue::transformTypePrefixForParsing(SVGTransformType 
     case SVG_TRANSFORM_UNKNOWN:
         return emptyString();
     case SVG_TRANSFORM_MATRIX: {
-        static NeverDestroyed<String> matrixString(MAKE_STATIC_STRING_IMPL("matrix("));
+        static NeverDestroyed<String> matrixString(ASCIILiteral("matrix("));
         return matrixString;
     }
     case SVG_TRANSFORM_TRANSLATE: {
-        static NeverDestroyed<String> translateString(MAKE_STATIC_STRING_IMPL("translate("));
+        static NeverDestroyed<String> translateString(ASCIILiteral("translate("));
         return translateString;
     }
     case SVG_TRANSFORM_SCALE: {
-        static NeverDestroyed<String> scaleString(MAKE_STATIC_STRING_IMPL("scale("));
+        static NeverDestroyed<String> scaleString(ASCIILiteral("scale("));
         return scaleString;
     }
     case SVG_TRANSFORM_ROTATE: {
-        static NeverDestroyed<String> rotateString(MAKE_STATIC_STRING_IMPL("rotate("));
+        static NeverDestroyed<String> rotateString(ASCIILiteral("rotate("));
         return rotateString;
     }    
     case SVG_TRANSFORM_SKEWX: {
-        static NeverDestroyed<String> skewXString(MAKE_STATIC_STRING_IMPL("skewX("));
+        static NeverDestroyed<String> skewXString(ASCIILiteral("skewX("));
         return skewXString;
     }
     case SVG_TRANSFORM_SKEWY: {
-        static NeverDestroyed<String> skewYString(MAKE_STATIC_STRING_IMPL("skewY("));
+        static NeverDestroyed<String> skewYString(ASCIILiteral("skewY("));
         return skewYString;
     }
     }

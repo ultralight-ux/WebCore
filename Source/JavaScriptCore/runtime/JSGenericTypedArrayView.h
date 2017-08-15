@@ -107,9 +107,9 @@ public:
     static JSGenericTypedArrayView* create(ExecState*, Structure*, unsigned length);
     static JSGenericTypedArrayView* createWithFastVector(ExecState*, Structure*, unsigned length, void* vector);
     static JSGenericTypedArrayView* createUninitialized(ExecState*, Structure*, unsigned length);
-    static JSGenericTypedArrayView* create(ExecState*, Structure*, RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned length);
-    static JSGenericTypedArrayView* create(VM&, Structure*, RefPtr<typename Adaptor::ViewType>&& impl);
-    static JSGenericTypedArrayView* create(Structure*, JSGlobalObject*, RefPtr<typename Adaptor::ViewType>&& impl);
+    static JSGenericTypedArrayView* create(ExecState*, Structure*, PassRefPtr<ArrayBuffer>, unsigned byteOffset, unsigned length);
+    static JSGenericTypedArrayView* create(VM&, Structure*, PassRefPtr<typename Adaptor::ViewType> impl);
+    static JSGenericTypedArrayView* create(Structure*, JSGlobalObject*, PassRefPtr<typename Adaptor::ViewType> impl);
     
     unsigned byteLength() const { return m_length * sizeof(typename Adaptor::Type); }
     size_t byteSize() const { return sizeOf(m_length, sizeof(typename Adaptor::Type)); }
@@ -225,8 +225,8 @@ public:
     // then it will have thrown an exception.
     bool set(ExecState*, unsigned offset, JSObject*, unsigned objectOffset, unsigned length, CopyType type = CopyType::Unobservable);
     
-    RefPtr<typename Adaptor::ViewType> possiblySharedTypedImpl();
-    RefPtr<typename Adaptor::ViewType> unsharedTypedImpl();
+    PassRefPtr<typename Adaptor::ViewType> possiblySharedTypedImpl();
+    PassRefPtr<typename Adaptor::ViewType> unsharedTypedImpl();
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
@@ -267,7 +267,7 @@ public:
     static const TypedArrayType TypedArrayStorageType = Adaptor::typeValue;
 
     // This is the default DOM unwrapping. It calls toUnsharedNativeTypedView().
-    static RefPtr<typename Adaptor::ViewType> toWrapped(VM&, JSValue);
+    static RefPtr<typename Adaptor::ViewType> toWrapped(JSValue);
     
 protected:
     friend struct TypedArrayClassInfos;
@@ -291,7 +291,7 @@ protected:
     // Allocates the full-on native buffer and moves data into the C heap if
     // necessary. Note that this never allocates in the GC heap.
     static ArrayBuffer* slowDownAndWasteMemory(JSArrayBufferView*);
-    static RefPtr<ArrayBufferView> getTypedArrayImpl(JSArrayBufferView*);
+    static PassRefPtr<ArrayBufferView> getTypedArrayImpl(JSArrayBufferView*);
 
 private:
     // Returns true if successful, and false on error; it will throw on error.
@@ -360,27 +360,27 @@ private:
 };
 
 template<typename Adaptor>
-inline RefPtr<typename Adaptor::ViewType> toPossiblySharedNativeTypedView(VM& vm, JSValue value)
+inline RefPtr<typename Adaptor::ViewType> toPossiblySharedNativeTypedView(JSValue value)
 {
-    typename Adaptor::JSViewType* wrapper = jsDynamicCast<typename Adaptor::JSViewType*>(vm, value);
+    typename Adaptor::JSViewType* wrapper = jsDynamicCast<typename Adaptor::JSViewType*>(value);
     if (!wrapper)
         return nullptr;
     return wrapper->possiblySharedTypedImpl();
 }
 
 template<typename Adaptor>
-inline RefPtr<typename Adaptor::ViewType> toUnsharedNativeTypedView(VM& vm, JSValue value)
+inline RefPtr<typename Adaptor::ViewType> toUnsharedNativeTypedView(JSValue value)
 {
-    RefPtr<typename Adaptor::ViewType> result = toPossiblySharedNativeTypedView<Adaptor>(vm, value);
+    RefPtr<typename Adaptor::ViewType> result = toPossiblySharedNativeTypedView<Adaptor>(value);
     if (!result || result->isShared())
         return nullptr;
     return result;
 }
 
 template<typename Adaptor>
-RefPtr<typename Adaptor::ViewType> JSGenericTypedArrayView<Adaptor>::toWrapped(VM& vm, JSValue value)
+RefPtr<typename Adaptor::ViewType> JSGenericTypedArrayView<Adaptor>::toWrapped(JSValue value)
 {
-    return JSC::toUnsharedNativeTypedView<Adaptor>(vm, value);
+    return JSC::toUnsharedNativeTypedView<Adaptor>(value);
 }
 
 } // namespace JSC

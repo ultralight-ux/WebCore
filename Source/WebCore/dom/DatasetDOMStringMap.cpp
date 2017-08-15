@@ -151,7 +151,7 @@ void DatasetDOMStringMap::deref()
     m_element.deref();
 }
 
-Vector<String> DatasetDOMStringMap::supportedPropertyNames() const
+Vector<String> DatasetDOMStringMap::names() const
 {
     Vector<String> names;
 
@@ -165,8 +165,9 @@ Vector<String> DatasetDOMStringMap::supportedPropertyNames() const
     return names;
 }
 
-std::optional<const AtomicString&> DatasetDOMStringMap::item(const String& propertyName) const
+const AtomicString& DatasetDOMStringMap::item(const String& propertyName, bool& isValid) const
 {
+    isValid = false;
     if (m_element.hasAttributes()) {
         AttributeIteratorAccessor attributeIteratorAccessor = m_element.attributesIterator();
 
@@ -174,23 +175,22 @@ std::optional<const AtomicString&> DatasetDOMStringMap::item(const String& prope
             // If the node has a single attribute, it is the dataset member accessed in most cases.
             // Building a new AtomicString in that case is overkill so we do a direct character comparison.
             const Attribute& attribute = *attributeIteratorAccessor.begin();
-            if (propertyNameMatchesAttributeName(propertyName, attribute.localName()))
+            if (propertyNameMatchesAttributeName(propertyName, attribute.localName())) {
+                isValid = true;
                 return attribute.value();
+            }
         } else {
             AtomicString attributeName = convertPropertyNameToAttributeName(propertyName);
             for (const Attribute& attribute : attributeIteratorAccessor) {
-                if (attribute.localName() == attributeName)
+                if (attribute.localName() == attributeName) {
+                    isValid = true;
                     return attribute.value();
+                }
             }
         }
     }
 
-    return std::nullopt;
-}
-
-String DatasetDOMStringMap::namedItem(const AtomicString& name) const
-{
-    return item(name).value_or(String { });
+    return nullAtom;
 }
 
 ExceptionOr<void> DatasetDOMStringMap::setItem(const String& name, const String& value)

@@ -29,7 +29,6 @@ namespace WebCore {
 class Document;
 class HTMLStyleElement;
 class StyleSheet;
-class CSSStyleSheet;
 
 class StyleSheetList final : public RefCounted<StyleSheetList> {
 public:
@@ -39,7 +38,7 @@ public:
     WEBCORE_EXPORT unsigned length() const;
     WEBCORE_EXPORT StyleSheet* item(unsigned index);
 
-    CSSStyleSheet* namedItem(const AtomicString&) const;
+    HTMLStyleElement* getNamedItem(const String&) const;
     Vector<AtomicString> supportedPropertyNames();
 
     Document* document() { return m_document; }

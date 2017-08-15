@@ -50,7 +50,7 @@ enum class CryptoAlgorithmIdentifier {
     SHA_384,
     SHA_512,
     CONCAT,
-    HKDF,
+    HKDF_CTR,
     PBKDF2
 };
 

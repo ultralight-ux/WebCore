@@ -40,7 +40,9 @@ void BooleanConstructor::finishCreation(VM& vm, BooleanPrototype* booleanPrototy
 {
     Base::finishCreation(vm, booleanPrototype->classInfo()->className);
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, booleanPrototype, DontEnum | DontDelete | ReadOnly);
-    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum);
+
+    // no. of arguments for constructor
+    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontDelete | DontEnum);
 }
 
 // ECMA 15.6.2

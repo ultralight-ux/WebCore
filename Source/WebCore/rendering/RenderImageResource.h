@@ -45,10 +45,11 @@ public:
 
     void setCachedImage(CachedImage*);
     CachedImage* cachedImage() const { return m_cachedImage.get(); }
+    virtual bool hasImage() const { return m_cachedImage; }
 
     void resetAnimation();
 
-    virtual RefPtr<Image> image(const IntSize& size = { }) const;
+    virtual RefPtr<Image> image(int width = 0, int height = 0) const;
     virtual bool errorOccurred() const;
 
     virtual void setContainerSizeForRenderer(const IntSize&);

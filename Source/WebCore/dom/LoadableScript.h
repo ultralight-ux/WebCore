@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "ScriptElementCachedScriptFetcher.h"
 #include <runtime/ConsoleTypes.h>
 #include <wtf/HashCountedSet.h>
 #include <wtf/RefCounted.h>
@@ -36,13 +35,12 @@ namespace WebCore {
 class LoadableScriptClient;
 class ScriptElement;
 
-class LoadableScript : public ScriptElementCachedScriptFetcher {
+class LoadableScript : public RefCounted<LoadableScript> {
 public:
     enum class ErrorType {
         CachedScript,
         CrossOriginLoad,
         Nosniff,
-        FailedIntegrityCheck,
     };
 
     struct ConsoleMessage {
@@ -67,12 +65,10 @@ public:
     void addClient(LoadableScriptClient&);
     void removeClient(LoadableScriptClient&);
 
-protected:
-    LoadableScript(const String& nonce, const String& crossOriginMode, const String& charset, const AtomicString& initiatorName, bool isInUserAgentShadowTree)
-        : ScriptElementCachedScriptFetcher(nonce, crossOriginMode, charset, initiatorName, isInUserAgentShadowTree)
-    {
-    }
+    virtual bool isClassicScript() const { return false; }
+    virtual bool isModuleScript() const { return false; }
 
+protected:
     void notifyClientFinished();
 
 private:

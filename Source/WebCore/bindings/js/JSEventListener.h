@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2003-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003, 2008, 2009 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -25,7 +25,6 @@
 #include <heap/Weak.h>
 #include <heap/WeakInlines.h>
 #include <wtf/Ref.h>
-#include <wtf/TypeCasts.h>
 #include <wtf/text/TextPosition.h>
 #include <wtf/text/WTFString.h>
 
@@ -55,7 +54,7 @@ public:
     {
         return listener->type() == JSEventListenerType
             ? static_cast<const JSEventListener*>(listener)
-            : nullptr;
+            : 0;
     }
 
     virtual ~JSEventListener();
@@ -66,7 +65,7 @@ public:
     bool isAttribute() const { return m_isAttribute; }
 
     JSC::JSObject* jsFunction(ScriptExecutionContext*) const;
-    DOMWrapperWorld& isolatedWorld() const { return m_isolatedWorld; }
+    DOMWrapperWorld& isolatedWorld() const { return *m_isolatedWorld; }
 
     JSC::JSObject* wrapper() const { return m_wrapper.get(); }
     void setWrapper(JSC::VM&, JSC::JSObject* wrapper) const { m_wrapper = JSC::Weak<JSC::JSObject>(wrapper); }
@@ -88,23 +87,23 @@ private:
     mutable JSC::Weak<JSC::JSObject> m_wrapper;
 
     bool m_isAttribute;
-    Ref<DOMWrapperWorld> m_isolatedWorld;
+    RefPtr<DOMWrapperWorld> m_isolatedWorld;
 };
 
 // For "onxxx" attributes that automatically set up JavaScript event listeners.
-JSC::JSValue eventHandlerAttribute(EventTarget&, const AtomicString& eventType, DOMWrapperWorld&);
+JSC::JSValue eventHandlerAttribute(EventTarget&, const AtomicString& eventType);
 void setEventHandlerAttribute(JSC::ExecState&, JSC::JSObject&, EventTarget&, const AtomicString& eventType, JSC::JSValue);
 
 // Like the functions above, but for attributes that forward event handlers to the window object rather than setting them on the target.
-JSC::JSValue windowEventHandlerAttribute(HTMLElement&, const AtomicString& eventType, DOMWrapperWorld&);
+JSC::JSValue windowEventHandlerAttribute(HTMLElement&, const AtomicString& eventType);
 void setWindowEventHandlerAttribute(JSC::ExecState&, JSC::JSObject&, HTMLElement&, const AtomicString& eventType, JSC::JSValue);
-JSC::JSValue windowEventHandlerAttribute(DOMWindow&, const AtomicString& eventType, DOMWrapperWorld&);
+JSC::JSValue windowEventHandlerAttribute(DOMWindow&, const AtomicString& eventType);
 void setWindowEventHandlerAttribute(JSC::ExecState&, JSC::JSObject&, DOMWindow&, const AtomicString& eventType, JSC::JSValue);
 
 // Like the functions above, but for attributes that forward event handlers to the document rather than setting them on the target.
-JSC::JSValue documentEventHandlerAttribute(HTMLElement&, const AtomicString& eventType, DOMWrapperWorld&);
+JSC::JSValue documentEventHandlerAttribute(HTMLElement&, const AtomicString& eventType);
 void setDocumentEventHandlerAttribute(JSC::ExecState&, JSC::JSObject&, HTMLElement&, const AtomicString& eventType, JSC::JSValue);
-JSC::JSValue documentEventHandlerAttribute(Document&, const AtomicString& eventType, DOMWrapperWorld&);
+JSC::JSValue documentEventHandlerAttribute(Document&, const AtomicString& eventType);
 void setDocumentEventHandlerAttribute(JSC::ExecState&, JSC::JSObject&, Document&, const AtomicString& eventType, JSC::JSValue);
 
 inline JSC::JSObject* JSEventListener::jsFunction(ScriptExecutionContext* scriptExecutionContext) const
@@ -129,7 +128,7 @@ inline JSC::JSObject* JSEventListener::jsFunction(ScriptExecutionContext* script
 
     // If m_wrapper is 0, then m_jsFunction is zombied, and should never be accessed.
     if (!m_wrapper)
-        return nullptr;
+        return 0;
 
     // Try to verify that m_jsFunction wasn't recycled. (Not exact, since an
     // event listener can be almost anything, but this makes test-writing easier).
@@ -139,7 +138,3 @@ inline JSC::JSObject* JSEventListener::jsFunction(ScriptExecutionContext* script
 }
 
 } // namespace WebCore
-
-SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::JSEventListener)
-static bool isType(const WebCore::EventListener& input) { return input.type() == WebCore::JSEventListener::JSEventListenerType; }
-SPECIALIZE_TYPE_TRAITS_END()

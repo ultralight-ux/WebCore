@@ -39,8 +39,8 @@
 #include "RenderTheme.h"
 #include "TextTrack.h"
 #include "TextTrackList.h"
+#include "UUID.h"
 #include <runtime/JSCJSValueInlines.h>
-#include <wtf/UUID.h>
 
 namespace WebCore {
 
@@ -215,11 +215,6 @@ bool MediaControlsHost::userGestureRequired() const
     return !m_mediaElement->mediaSession().playbackPermitted(*m_mediaElement);
 }
 
-bool MediaControlsHost::shouldForceControlsDisplay() const
-{
-    return m_mediaElement->shouldForceControlsDisplay();
-}
-
 String MediaControlsHost::externalDeviceDisplayName() const
 {
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
@@ -280,13 +275,18 @@ String MediaControlsHost::generateUUID() const
 
 String MediaControlsHost::shadowRootCSSText() const
 {
-    return RenderTheme::singleton().modernMediaControlsStyleSheet();
+    Page* page = m_mediaElement->document().page();
+    if (!page)
+        return emptyString();
+    return RenderTheme::themeForPage(page)->mediaControlsStyleSheet();
 }
 
-String MediaControlsHost::base64StringForIconNameAndType(const String& iconName, const String& iconType) const
+String MediaControlsHost::base64StringForIconAndPlatform(const String& iconName, const String& platform) const
 {
-
-    return RenderTheme::singleton().mediaControlsBase64StringForIconNameAndType(iconName, iconType);
+    Page* page = m_mediaElement->document().page();
+    if (!page)
+        return emptyString();
+    return RenderTheme::themeForPage(page)->mediaControlsBase64StringForIconAndPlatform(iconName, platform);
 }
 
 }

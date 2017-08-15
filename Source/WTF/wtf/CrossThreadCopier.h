@@ -33,6 +33,7 @@
 
 #include <wtf/Assertions.h>
 #include <wtf/Forward.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Threading.h>
 #include <wtf/text/WTFString.h>
@@ -48,6 +49,10 @@ struct CrossThreadCopierBaseHelper {
     };
 
     template<typename T> struct RemovePointer<RefPtr<T>> {
+        typedef T Type;
+    };
+
+    template<typename T> struct RemovePointer<PassRefPtr<T>> {
         typedef T Type;
     };
 
@@ -87,7 +92,7 @@ template<typename T> struct CrossThreadCopierBase<false, true, T> {
     typedef typename CrossThreadCopierBaseHelper::RemovePointer<T>::Type RefCountedType;
     static_assert(std::is_convertible<RefCountedType*, ThreadSafeRefCounted<RefCountedType>*>::value, "T is not convertible to ThreadSafeRefCounted!");
 
-    typedef RefPtr<RefCountedType> Type;
+    typedef PassRefPtr<RefCountedType> Type;
     static Type copy(const T& refPtr)
     {
         return refPtr;

@@ -128,16 +128,19 @@ static inline double solveStepsFunction(int numSteps, bool stepAtStart, double t
     return floor(numSteps * t) / numSteps;
 }
 
-static inline float applyTimingFunction(const TimingFunction& timingFunction, float progress, double duration)
+static inline float applyTimingFunction(const TimingFunction* timingFunction, float progress, double duration)
 {
-    if (timingFunction.isCubicBezierTimingFunction()) {
-        auto& ctf = static_cast<const CubicBezierTimingFunction&>(timingFunction);
-        return solveCubicBezierFunction(ctf.x1(), ctf.y1(), ctf.x2(), ctf.y2(), progress, duration);
+    if (!timingFunction)
+        return progress;
+
+    if (timingFunction->isCubicBezierTimingFunction()) {
+        const CubicBezierTimingFunction* ctf = static_cast<const CubicBezierTimingFunction*>(timingFunction);
+        return solveCubicBezierFunction(ctf->x1(), ctf->y1(), ctf->x2(), ctf->y2(), progress, duration);
     }
 
-    if (timingFunction.isStepsTimingFunction()) {
-        auto& stf = static_cast<const StepsTimingFunction&>(timingFunction);
-        return solveStepsFunction(stf.numberOfSteps(), stf.stepAtStart(), double(progress));
+    if (timingFunction->isStepsTimingFunction()) {
+        const StepsTimingFunction* stf = static_cast<const StepsTimingFunction*>(timingFunction);
+        return solveStepsFunction(stf->numberOfSteps(), stf->stepAtStart(), double(progress));
     }
 
     return progress;
@@ -191,12 +194,13 @@ static TransformationMatrix applyTransformAnimation(const TransformOperations& f
     return matrix;
 }
 
-static const TimingFunction& timingFunctionForAnimationValue(const AnimationValue& animationValue, const Animation& animation)
+static const TimingFunction* timingFunctionForAnimationValue(const AnimationValue& animValue, const Animation* anim)
 {
-    if (animationValue.timingFunction())
-        return *animationValue.timingFunction();
-    if (animation.timingFunction())
-        return *animation.timingFunction();
+    if (animValue.timingFunction())
+        return animValue.timingFunction();
+    if (anim->timingFunction())
+        return anim->timingFunction().get();
+
     return CubicBezierTimingFunction::defaultTimingFunction();
 }
 
@@ -253,7 +257,7 @@ void TextureMapperAnimation::apply(Client& client)
         return;
     }
     if (m_keyframes.size() == 2) {
-        auto& timingFunction = timingFunctionForAnimationValue(m_keyframes.at(0), *m_animation);
+        const TimingFunction* timingFunction = timingFunctionForAnimationValue(m_keyframes.at(0), m_animation.get());
         normalizedValue = applyTimingFunction(timingFunction, normalizedValue, m_animation->duration());
         applyInternal(client, m_keyframes.at(0), m_keyframes.at(1), normalizedValue);
         return;
@@ -266,7 +270,7 @@ void TextureMapperAnimation::apply(Client& client)
             continue;
 
         normalizedValue = (normalizedValue - from.keyTime()) / (to.keyTime() - from.keyTime());
-        auto& timingFunction = timingFunctionForAnimationValue(from, *m_animation);
+        const TimingFunction* timingFunction = timingFunctionForAnimationValue(from, m_animation.get());
         normalizedValue = applyTimingFunction(timingFunction, normalizedValue, m_animation->duration());
         applyInternal(client, from, to, normalizedValue);
         break;

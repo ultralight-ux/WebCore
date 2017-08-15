@@ -229,16 +229,17 @@ static void buildMediaEnginesVector()
         MediaPlayerPrivateQTKit::registerMediaEngine(addMediaEngine);
 #endif
 
+
+#if ENABLE(MEDIA_STREAM) && USE(GSTREAMER) && USE(OPENWEBRTC)
+    if (Settings::isGStreamerEnabled())
+        MediaPlayerPrivateGStreamerOwr::registerMediaEngine(addMediaEngine);
+#endif
+
 #if defined(PlatformMediaEngineClassName)
 #if USE(GSTREAMER)
     if (Settings::isGStreamerEnabled())
 #endif
         PlatformMediaEngineClassName::registerMediaEngine(addMediaEngine);
-#endif
-
-#if ENABLE(MEDIA_STREAM) && USE(GSTREAMER) && USE(OPENWEBRTC)
-    if (Settings::isGStreamerEnabled())
-        MediaPlayerPrivateGStreamerOwr::registerMediaEngine(addMediaEngine);
 #endif
 
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(MEDIA_SOURCE) && ENABLE(VIDEO_TRACK)
@@ -428,11 +429,12 @@ bool MediaPlayer::load(const URL& url, const ContentType& contentType, MediaSour
 #endif
 
 #if ENABLE(MEDIA_STREAM)
-bool MediaPlayer::load(MediaStreamPrivate& mediaStream)
+bool MediaPlayer::load(MediaStreamPrivate* mediaStream)
 {
     ASSERT(!m_reloadTimer.isActive());
+    ASSERT(mediaStream);
 
-    m_mediaStream = &mediaStream;
+    m_mediaStream = mediaStream;
     m_keySystem = emptyString();
     m_contentMIMEType = emptyString();
     m_contentMIMETypeWasInferredFromExtension = false;
@@ -1120,7 +1122,7 @@ void MediaPlayer::networkStateChanged()
     if (m_private->networkState() >= FormatError && m_private->readyState() < HaveMetadata) {
         client().mediaPlayerEngineFailedToLoad();
         if (installedMediaEngines().size() > 1 && (m_contentMIMEType.isEmpty() || nextBestMediaEngine(m_currentMediaEngine))) {
-            m_reloadTimer.startOneShot(0_s);
+            m_reloadTimer.startOneShot(0);
             return;
         }
     }
@@ -1251,7 +1253,7 @@ CachedResourceLoader* MediaPlayer::cachedResourceLoader()
     return client().mediaPlayerCachedResourceLoader();
 }
 
-RefPtr<PlatformMediaResourceLoader> MediaPlayer::createResourceLoader()
+PassRefPtr<PlatformMediaResourceLoader> MediaPlayer::createResourceLoader()
 {
     return client().mediaPlayerCreateResourceLoader();
 }

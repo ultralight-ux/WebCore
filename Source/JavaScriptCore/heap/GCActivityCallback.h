@@ -28,7 +28,7 @@
 
 #pragma once
 
-#include "JSRunLoopTimer.h"
+#include "HeapTimer.h"
 #include <wtf/RefPtr.h>
 
 #if USE(CF)
@@ -40,9 +40,8 @@ namespace JSC {
 class FullGCActivityCallback;
 class Heap;
 
-class JS_EXPORT_PRIVATE GCActivityCallback : public JSRunLoopTimer {
+class JS_EXPORT_PRIVATE GCActivityCallback : public HeapTimer {
 public:
-    using Base = JSRunLoopTimer;
     static RefPtr<FullGCActivityCallback> createFullTimer(Heap*);
     static RefPtr<GCActivityCallback> createEdenTimer(Heap*);
 
@@ -60,28 +59,56 @@ public:
 
     static bool s_shouldCreateGCTimer;
 
-    MonotonicTime nextFireTime();
+#if USE(CF) || PLATFORM(EFL)
+    double nextFireTime() const { return m_nextFireTime; }
+#endif
 
 protected:
-    virtual Seconds lastGCLength() = 0;
+    virtual double lastGCLength() = 0;
     virtual double gcTimeSlice(size_t bytes) = 0;
     virtual double deathRate() = 0;
 
+#if USE(CF)
     GCActivityCallback(VM* vm)
-        : Base(vm)
+        : HeapTimer(vm)
         , m_enabled(true)
         , m_delay(s_decade)
     {
     }
+#elif PLATFORM(EFL)
+    static constexpr double s_hour = 3600;
+    GCActivityCallback(VM* vm, bool flag)
+        : HeapTimer(vm)
+        , m_enabled(flag)
+        , m_delay(s_hour)
+    {
+    }
+#elif USE(GLIB)
+    GCActivityCallback(VM* vm)
+        : HeapTimer(vm)
+        , m_enabled(true)
+        , m_delay(-1)
+    {
+    }
+#else
+    GCActivityCallback(VM* vm)
+        : HeapTimer(vm)
+        , m_enabled(true)
+    {
+    }
+#endif
 
     bool m_enabled;
 
+#if USE(CF) || USE(GLIB)
 protected:
     void cancelTimer();
-    void scheduleTimer(Seconds);
+    void scheduleTimer(double);
 
 private:
-    Seconds m_delay;
+    double m_delay;
+    double m_nextFireTime { 0 };
+#endif
 };
 
 } // namespace JSC

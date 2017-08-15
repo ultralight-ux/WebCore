@@ -34,7 +34,6 @@
 #include "RenderElement.h"
 #include "RenderObject.h"
 #include "RenderView.h"
-#include "TextIndicator.h"
 
 namespace WebCore {
 
@@ -121,15 +120,11 @@ DragImageRef createDragImageForNode(Frame& frame, Node& node)
     return createDragImageFromSnapshot(snapshotNode(frame, node), &node);
 }
 
-#if !ENABLE(DATA_INTERACTION)
-
-DragImageRef createDragImageForSelection(Frame& frame, TextIndicatorData&, bool forceBlackText)
+DragImageRef createDragImageForSelection(Frame& frame, bool forceBlackText)
 {
     SnapshotOptions options = forceBlackText ? SnapshotOptionsForceBlackText : SnapshotOptionsNone;
     return createDragImageFromSnapshot(snapshotSelection(frame, options), nullptr);
 }
-
-#endif
 
 struct ScopedFrameSelectionState {
     ScopedFrameSelectionState(Frame& frame)
@@ -211,69 +206,12 @@ DragImageRef createDragImageForImage(Frame& frame, Node& node, IntRect& imageRec
     return createDragImageFromSnapshot(snapshotNode(frame, node), &node);
 }
 
-#if !ENABLE(DATA_INTERACTION)
-DragImageRef platformAdjustDragImageForDeviceScaleFactor(DragImageRef image, float deviceScaleFactor)
-{
-    // Later code expects the drag image to be scaled by device's scale factor.
-    return scaleDragImage(image, { deviceScaleFactor, deviceScaleFactor });
-}
-#endif
-
 #if !PLATFORM(COCOA) && !PLATFORM(WIN)
-DragImageRef createDragImageForLink(Element&, URL&, const String&, FontRenderingMode, float)
+DragImageRef createDragImageForLink(URL&, const String&, FontRenderingMode)
 {
     return nullptr;
 }
 #endif
-
-#if !PLATFORM(MAC)
-const int linkDragBorderInset = 2;
-
-IntPoint dragOffsetForLinkDragImage(DragImageRef dragImage)
-{
-    IntSize size = dragImageSize(dragImage);
-    return { -size.width() / 2, -linkDragBorderInset };
-}
-
-FloatPoint anchorPointForLinkDragImage(DragImageRef dragImage)
-{
-    IntSize size = dragImageSize(dragImage);
-    return { 0.5, static_cast<float>((size.height() - linkDragBorderInset) / size.height()) };
-}
-#endif
-
-DragImage::DragImage()
-    : m_dragImageRef { nullptr }
-{
-}
-
-DragImage::DragImage(DragImageRef dragImageRef)
-    : m_dragImageRef { dragImageRef }
-{
-}
-
-DragImage::DragImage(DragImage&& other)
-    : m_dragImageRef { std::exchange(other.m_dragImageRef, nullptr) }
-{
-    m_indicatorData = other.m_indicatorData;
-}
-
-DragImage& DragImage::operator=(DragImage&& other)
-{
-    if (m_dragImageRef)
-        deleteDragImage(m_dragImageRef);
-
-    m_dragImageRef = std::exchange(other.m_dragImageRef, nullptr);
-    m_indicatorData = other.m_indicatorData;
-
-    return *this;
-}
-
-DragImage::~DragImage()
-{
-    if (m_dragImageRef)
-        deleteDragImage(m_dragImageRef);
-}
 
 } // namespace WebCore
 

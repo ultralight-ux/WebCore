@@ -242,7 +242,7 @@ bool IDBKeyData::decode(KeyedDecoder& decoder, IDBKeyData& result)
         if (!decoder.decodeBytes("binary", bytes))
             return false;
 
-        result.m_value = ThreadSafeDataBuffer::create(WTFMove(bytes));
+        result.m_value = ThreadSafeDataBuffer::adoptVector(bytes);
         return true;
     }
 

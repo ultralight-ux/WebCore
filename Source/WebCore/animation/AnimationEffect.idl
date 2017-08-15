@@ -28,7 +28,6 @@
 
 [
     Conditional=WEB_ANIMATIONS,
-    EnabledAtRuntime=WebAnimations,
     InterfaceName=AnimationEffectReadOnly,
     SkipVTableValidation
 ] interface AnimationEffect {

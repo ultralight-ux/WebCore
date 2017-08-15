@@ -29,6 +29,6 @@
 
 namespace WebCore {
 
-using DOMStringMap = DatasetDOMStringMap;
+typedef DatasetDOMStringMap DOMStringMap;
 
 } // namespace WebCore

@@ -30,7 +30,7 @@
 
 #include "AffineTransform.h"
 
-#include <wtf/Ref.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -55,10 +55,10 @@ class Image;
 
 class Pattern final : public RefCounted<Pattern> {
 public:
-    static Ref<Pattern> create(Ref<Image>&& tileImage, bool repeatX, bool repeatY);
+    static Ref<Pattern> create(PassRefPtr<Image> tileImage, bool repeatX, bool repeatY);
     ~Pattern();
 
-    Image& tileImage() const { return m_tileImage.get(); }
+    Image* tileImage() const { return m_tileImage.get(); }
 
     void platformDestroy();
 
@@ -76,9 +76,9 @@ public:
     bool repeatY() const { return m_repeatY; }
 
 private:
-    Pattern(Ref<Image>&&, bool repeatX, bool repeatY);
+    Pattern(PassRefPtr<Image>, bool repeatX, bool repeatY);
 
-    Ref<Image> m_tileImage;
+    RefPtr<Image> m_tileImage;
     bool m_repeatX;
     bool m_repeatY;
     AffineTransform m_patternSpaceTransformation;

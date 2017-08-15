@@ -25,6 +25,11 @@
 #include "ImageBuffer.h"
 #include "TextureMapper.h"
 
+#if USE(GRAPHICS_SURFACE)
+#include "GraphicsSurface.h"
+#include "TextureMapperGL.h"
+#endif
+
 namespace WebCore {
 
 unsigned TextureMapperBackingStore::calculateExposedTileEdges(const FloatRect& totalRect, const FloatRect& tileRect)

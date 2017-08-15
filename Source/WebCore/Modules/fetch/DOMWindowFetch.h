@@ -30,7 +30,7 @@
 
 #if ENABLE(FETCH_API)
 
-#include "JSDOMPromiseDeferred.h"
+#include "JSDOMPromise.h"
 #include <wtf/Forward.h>
 
 namespace WebCore {

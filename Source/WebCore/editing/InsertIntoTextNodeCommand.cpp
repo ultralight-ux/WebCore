@@ -38,12 +38,13 @@
 
 namespace WebCore {
 
-InsertIntoTextNodeCommand::InsertIntoTextNodeCommand(Ref<Text>&& node, unsigned offset, const String& text, EditAction editingAction)
+InsertIntoTextNodeCommand::InsertIntoTextNodeCommand(RefPtr<Text>&& node, unsigned offset, const String& text, EditAction editingAction)
     : SimpleEditCommand(node->document(), editingAction)
     , m_node(WTFMove(node))
     , m_offset(offset)
     , m_text(text)
 {
+    ASSERT(m_node);
     ASSERT(m_offset <= m_node->length());
     ASSERT(!m_text.isEmpty());
 }
@@ -89,7 +90,7 @@ void InsertIntoTextNodeCommand::doUnapply()
 
 void InsertIntoTextNodeCommand::getNodesInCommand(HashSet<Node*>& nodes)
 {
-    addNodeAndDescendants(m_node.ptr(), nodes);
+    addNodeAndDescendants(m_node.get(), nodes);
 }
 
 #endif

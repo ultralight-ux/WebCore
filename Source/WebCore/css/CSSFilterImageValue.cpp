@@ -33,7 +33,6 @@
 #include "CachedSVGDocumentReference.h"
 #include "CrossfadeGeneratedImage.h"
 #include "FilterEffectRenderer.h"
-#include "GraphicsContext.h"
 #include "ImageBuffer.h"
 #include "RenderElement.h"
 #include "StyleCachedImage.h"
@@ -110,37 +109,39 @@ void CSSFilterImageValue::loadSubimages(CachedResourceLoader& cachedResourceLoad
 
 RefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSize& size)
 {
-    ASSERT(renderer);
-
     if (size.isEmpty())
         return nullptr;
 
     // FIXME: Skip Content Security Policy check when filter is applied to an element in a user agent shadow tree.
     // See <https://bugs.webkit.org/show_bug.cgi?id=146663>.
     ResourceLoaderOptions options = CachedResourceLoader::defaultCachedResourceOptions();
-    auto* cachedImage = cachedImageForCSSValue(m_imageValue, renderer->document().cachedResourceLoader(), options);
-    if (!cachedImage)
-        return &Image::nullImage();
 
-    auto* image = cachedImage->imageForRenderer(renderer);
+    CachedResourceLoader& cachedResourceLoader = renderer->document().cachedResourceLoader();
+    CachedImage* cachedImage = cachedImageForCSSValue(m_imageValue, cachedResourceLoader, options);
+
+    if (!cachedImage)
+        return Image::nullImage();
+
+    Image* image = cachedImage->imageForRenderer(renderer);
+
     if (!image)
-        return &Image::nullImage();
+        return Image::nullImage();
 
     // Transform Image into ImageBuffer.
     // FIXME (149424): This buffer should not be unconditionally unaccelerated.
-    auto texture = ImageBuffer::create(size, Unaccelerated);
+    std::unique_ptr<ImageBuffer> texture = ImageBuffer::create(size, Unaccelerated);
     if (!texture)
-        return &Image::nullImage();
+        return Image::nullImage();
 
-    auto imageRect = FloatRect { { }, size };
+    FloatRect imageRect = FloatRect(FloatPoint(), size);
     texture->context().drawImage(*image, imageRect);
 
-    auto filterRenderer = FilterEffectRenderer::create();
+    RefPtr<FilterEffectRenderer> filterRenderer = FilterEffectRenderer::create();
     filterRenderer->setSourceImage(WTFMove(texture));
     filterRenderer->setSourceImageRect(imageRect);
     filterRenderer->setFilterRegion(imageRect);
-    if (!filterRenderer->build(*renderer, m_filterOperations, FilterFunction))
-        return &Image::nullImage();
+    if (!filterRenderer->build(renderer, m_filterOperations, FilterFunction))
+        return Image::nullImage();
     filterRenderer->apply();
 
     return filterRenderer->output()->copyImage();
@@ -148,8 +149,8 @@ RefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSiz
 
 void CSSFilterImageValue::filterImageChanged(const IntRect&)
 {
-    for (auto& client : clients())
-        client.key->imageChanged(static_cast<WrappedImagePtr>(this));
+    for (auto it = clients().begin(), end = clients().end(); it != end; ++it)
+        it->key->imageChanged(static_cast<WrappedImagePtr>(this));
 }
 
 void CSSFilterImageValue::createFilterOperations(StyleResolver* resolver)

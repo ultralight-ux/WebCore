@@ -55,19 +55,14 @@ namespace WebCore {
 
 class ValidationBubble : public RefCounted<ValidationBubble> {
 public:
-    struct Settings {
-        double minimumFontSize { 0 };
-    };
-
-    static Ref<ValidationBubble> create(PlatformView* view, const String& message, const Settings& settings)
+    static Ref<ValidationBubble> create(PlatformView* view, const String& message)
     {
-        return adoptRef(*new ValidationBubble(view, message, settings));
+        return adoptRef(*new ValidationBubble(view, message));
     }
 
     WEBCORE_EXPORT ~ValidationBubble();
 
     const String& message() const { return m_message; }
-    double fontSize() const { return m_fontSize; }
 
 #if PLATFORM(IOS)
     WEBCORE_EXPORT void setAnchorRect(const IntRect& anchorRect, UIViewController* presentingViewController = nullptr);
@@ -77,11 +72,10 @@ public:
 #endif
 
 private:
-    WEBCORE_EXPORT ValidationBubble(PlatformView*, const String& message, const Settings&);
+    WEBCORE_EXPORT ValidationBubble(PlatformView*, const String& message);
 
     PlatformView* m_view;
     String m_message;
-    double m_fontSize { 0 };
 #if PLATFORM(MAC)
     RetainPtr<NSPopover> m_popover;
 #elif PLATFORM(IOS)

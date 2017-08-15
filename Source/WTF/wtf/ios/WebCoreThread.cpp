@@ -30,4 +30,5 @@
 WTF_EXPORT_PRIVATE bool (*WebCoreWebThreadIsLockedOrDisabled)(void);
 WTF_EXPORT_PRIVATE bool (*WebCoreWebThreadIsEnabled)(void);
 WTF_EXPORT_PRIVATE void (*WebCoreWebThreadRun)(void (^block)());
+WTF_EXPORT_PRIVATE void (*WebCoreWebThreadRunSync)(void (^block)());
 #endif

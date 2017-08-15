@@ -86,9 +86,8 @@ DirectArguments* DirectArguments::createByCopying(ExecState* exec)
 size_t DirectArguments::estimatedSize(JSCell* cell)
 {
     DirectArguments* thisObject = jsCast<DirectArguments*>(cell);
-    size_t mappedArgumentsSize = thisObject->m_mappedArguments ? thisObject->mappedArgumentsSize() * sizeof(bool) : 0;
-    size_t modifiedArgumentsSize = thisObject->m_modifiedArgumentsDescriptor ? thisObject->m_length * sizeof(bool) : 0;
-    return Base::estimatedSize(cell) + mappedArgumentsSize + modifiedArgumentsSize;
+    size_t overridesSize = thisObject->m_overrides ? thisObject->overridesSize() : 0;
+    return Base::estimatedSize(cell) + overridesSize;
 }
 
 void DirectArguments::visitChildren(JSCell* thisCell, SlotVisitor& visitor)
@@ -96,13 +95,12 @@ void DirectArguments::visitChildren(JSCell* thisCell, SlotVisitor& visitor)
     DirectArguments* thisObject = static_cast<DirectArguments*>(thisCell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
-
+    
     visitor.appendValues(thisObject->storage(), std::max(thisObject->m_length, thisObject->m_minCapacity));
     visitor.append(thisObject->m_callee);
 
-    if (thisObject->m_mappedArguments)
-        visitor.markAuxiliary(thisObject->m_mappedArguments.get());
-    GenericArguments<DirectArguments>::visitChildren(thisCell, visitor);
+    if (bool* override = thisObject->m_overrides.get())
+        visitor.markAuxiliary(override);
 }
 
 Structure* DirectArguments::createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
@@ -112,35 +110,35 @@ Structure* DirectArguments::createStructure(VM& vm, JSGlobalObject* globalObject
 
 void DirectArguments::overrideThings(VM& vm)
 {
-    RELEASE_ASSERT(!m_mappedArguments);
+    RELEASE_ASSERT(!m_overrides);
     
     putDirect(vm, vm.propertyNames->length, jsNumber(m_length), DontEnum);
     putDirect(vm, vm.propertyNames->callee, m_callee.get(), DontEnum);
     putDirect(vm, vm.propertyNames->iteratorSymbol, globalObject()->arrayProtoValuesFunction(), DontEnum);
     
-    void* backingStore = vm.auxiliarySpace.tryAllocate(mappedArgumentsSize());
+    void* backingStore = vm.auxiliarySpace.tryAllocate(overridesSize());
     RELEASE_ASSERT(backingStore);
     bool* overrides = static_cast<bool*>(backingStore);
-    m_mappedArguments.set(vm, this, overrides);
+    m_overrides.set(vm, this, overrides);
     for (unsigned i = m_length; i--;)
         overrides[i] = false;
 }
 
 void DirectArguments::overrideThingsIfNecessary(VM& vm)
 {
-    if (!m_mappedArguments)
+    if (!m_overrides)
         overrideThings(vm);
 }
 
-void DirectArguments::unmapArgument(VM& vm, unsigned index)
+void DirectArguments::overrideArgument(VM& vm, unsigned index)
 {
     overrideThingsIfNecessary(vm);
-    m_mappedArguments.get()[index] = true;
+    m_overrides.get()[index] = true;
 }
 
 void DirectArguments::copyToArguments(ExecState* exec, VirtualRegister firstElementDest, unsigned offset, unsigned length)
 {
-    if (!m_mappedArguments) {
+    if (!m_overrides) {
         unsigned limit = std::min(length + offset, m_length);
         unsigned i;
         VirtualRegister start = firstElementDest - offset;
@@ -154,10 +152,10 @@ void DirectArguments::copyToArguments(ExecState* exec, VirtualRegister firstElem
     GenericArguments::copyToArguments(exec, firstElementDest, offset, length);
 }
 
-unsigned DirectArguments::mappedArgumentsSize()
+unsigned DirectArguments::overridesSize()
 {
     // We always allocate something; in the relatively uncommon case of overriding an empty argument we
-    // still allocate so that m_mappedArguments is non-null. We use that to indicate that the other properties
+    // still allocate so that m_overrides is non-null. We use that to indicate that the other properties
     // (length, etc) are overridden.
     return WTF::roundUpToMultipleOf<8>(m_length ? m_length : 1);
 }

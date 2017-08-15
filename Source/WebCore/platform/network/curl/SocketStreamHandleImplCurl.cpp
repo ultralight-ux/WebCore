@@ -66,7 +66,7 @@ SocketStreamHandleImpl::~SocketStreamHandleImpl()
     ASSERT(!m_workerThread);
 }
 
-std::optional<size_t> SocketStreamHandleImpl::platformSendInternal(const char* data, size_t length)
+std::optional<size_t> SocketStreamHandleImpl::platformSend(const char* data, size_t length)
 {
     LOG(Network, "SocketStreamHandle %p platformSend", this);
 
@@ -199,7 +199,7 @@ void SocketStreamHandleImpl::startThread()
 
     ref(); // stopThread() will call deref().
 
-    m_workerThread = Thread::create("WebSocket thread", [this] {
+    m_workerThread = createThread("WebSocket thread", [this] {
 
         ASSERT(!isMainThread());
 
@@ -249,8 +249,8 @@ void SocketStreamHandleImpl::stopThread()
         return;
 
     m_stopThread = true;
-    m_workerThread->waitForCompletion();
-    m_workerThread = nullptr;
+    waitForThreadCompletion(m_workerThread);
+    m_workerThread = 0;
     deref();
 }
 

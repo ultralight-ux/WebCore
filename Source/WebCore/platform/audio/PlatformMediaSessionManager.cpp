@@ -26,9 +26,11 @@
 #include "config.h"
 #include "PlatformMediaSessionManager.h"
 
+
 #include "AudioSession.h"
 #include "Document.h"
 #include "Logging.h"
+#include "NotImplemented.h"
 #include "PlatformMediaSession.h"
 
 namespace WebCore {
@@ -69,12 +71,11 @@ void PlatformMediaSessionManager::resetRestrictions()
     m_restrictions[PlatformMediaSession::Audio] = NoRestrictions;
     m_restrictions[PlatformMediaSession::VideoAudio] = NoRestrictions;
     m_restrictions[PlatformMediaSession::WebAudio] = NoRestrictions;
-    m_restrictions[PlatformMediaSession::MediaStreamCapturingAudio] = NoRestrictions;
 }
 
 bool PlatformMediaSessionManager::has(PlatformMediaSession::MediaType type) const
 {
-    ASSERT(type >= PlatformMediaSession::None && type <= PlatformMediaSession::MediaStreamCapturingAudio);
+    ASSERT(type >= PlatformMediaSession::None && type <= PlatformMediaSession::WebAudio);
 
     return anyOfSessions([type] (PlatformMediaSession& session, size_t) {
         return session.mediaType() == type;
@@ -97,7 +98,7 @@ bool PlatformMediaSessionManager::canProduceAudio() const
 
 int PlatformMediaSessionManager::count(PlatformMediaSession::MediaType type) const
 {
-    ASSERT(type >= PlatformMediaSession::None && type <= PlatformMediaSession::MediaStreamCapturingAudio);
+    ASSERT(type >= PlatformMediaSession::None && type <= PlatformMediaSession::WebAudio);
 
     int count = 0;
     for (auto* session : m_sessions) {
@@ -169,19 +170,19 @@ void PlatformMediaSessionManager::removeSession(PlatformMediaSession& session)
 
 void PlatformMediaSessionManager::addRestriction(PlatformMediaSession::MediaType type, SessionRestrictions restriction)
 {
-    ASSERT(type > PlatformMediaSession::None && type <= PlatformMediaSession::MediaStreamCapturingAudio);
+    ASSERT(type > PlatformMediaSession::None && type <= PlatformMediaSession::WebAudio);
     m_restrictions[type] |= restriction;
 }
 
 void PlatformMediaSessionManager::removeRestriction(PlatformMediaSession::MediaType type, SessionRestrictions restriction)
 {
-    ASSERT(type > PlatformMediaSession::None && type <= PlatformMediaSession::MediaStreamCapturingAudio);
+    ASSERT(type > PlatformMediaSession::None && type <= PlatformMediaSession::WebAudio);
     m_restrictions[type] &= ~restriction;
 }
 
 PlatformMediaSessionManager::SessionRestrictions PlatformMediaSessionManager::restrictions(PlatformMediaSession::MediaType type)
 {
-    ASSERT(type > PlatformMediaSession::None && type <= PlatformMediaSession::MediaStreamCapturingAudio);
+    ASSERT(type > PlatformMediaSession::None && type <= PlatformMediaSession::WebAudio);
     return m_restrictions[type];
 }
 

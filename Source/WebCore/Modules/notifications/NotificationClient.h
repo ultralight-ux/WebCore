@@ -31,7 +31,6 @@
 
 #pragma once
 
-#include "NotificationPermission.h"
 #include <wtf/Forward.h>
 
 namespace WebCore {
@@ -40,10 +39,15 @@ class Notification;
 class NotificationPermissionCallback;
 class Page;
 class ScriptExecutionContext;
+class VoidCallback;
 
 class NotificationClient {
 public:
-    using Permission = NotificationPermission;
+    enum Permission {
+        PermissionAllowed, // User has allowed notifications
+        PermissionNotAllowed, // User has not yet allowed
+        PermissionDenied // User has explicitly denied permission
+    };
 
     // Requests that a notification be shown.
     virtual bool show(Notification*) = 0;
@@ -66,7 +70,12 @@ public:
     // Requests user permission to show desktop notifications from a particular
     // script context. The callback parameter should be run when the user has
     // made a decision.
+#if ENABLE(LEGACY_NOTIFICATIONS)
+    virtual void requestPermission(ScriptExecutionContext*, RefPtr<VoidCallback>&&) = 0;
+#endif
+#if ENABLE(NOTIFICATIONS)
     virtual void requestPermission(ScriptExecutionContext*, RefPtr<NotificationPermissionCallback>&&) = 0;
+#endif
 
     virtual bool hasPendingPermissionRequests(ScriptExecutionContext*) const = 0;
 

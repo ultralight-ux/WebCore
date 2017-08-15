@@ -85,10 +85,11 @@ void TextureMapperLayer::paint()
 
 static Color blendWithOpacity(const Color& color, float opacity)
 {
-    if (color.isOpaque() && opacity == 1.)
-        return color;
-
-    return color.colorWithAlphaMultipliedBy(opacity);
+    RGBA32 rgba = color.rgb();
+    // See Color::getRGBA() to know how to extract alpha from color.
+    float alpha = alphaChannel(rgba) / 255.;
+    float effectiveAlpha = alpha * opacity;
+    return Color(colorWithOverrideAlpha(rgba, effectiveAlpha));
 }
 
 void TextureMapperLayer::computePatternTransformIfNeeded()
@@ -113,7 +114,7 @@ void TextureMapperLayer::paintSelf(const TextureMapperPaintOptions& options)
     transform.multiply(options.transform);
     transform.multiply(m_currentTransform.combined());
 
-    if (m_state.solidColor.isValid() && !m_state.contentsRect.isEmpty() && m_state.solidColor.isVisible()) {
+    if (m_state.solidColor.isValid() && !m_state.contentsRect.isEmpty() && m_state.solidColor.alpha()) {
         options.textureMapper.drawSolidColor(m_state.contentsRect, transform, blendWithOpacity(m_state.solidColor, options.opacity));
         if (m_state.showDebugBorders)
             options.textureMapper.drawBorder(m_state.debugBorderColor, m_state.debugBorderWidth, layerRect(), transform);
@@ -255,7 +256,7 @@ void TextureMapperLayer::computeOverlapRegions(Region& overlapRegion, Region& no
     FloatRect boundingRect;
     if (m_backingStore || m_state.masksToBounds || m_state.maskLayer || hasFilters())
         boundingRect = layerRect();
-    else if (m_contentsLayer || m_state.solidColor.isVisible())
+    else if (m_contentsLayer || m_state.solidColor.alpha())
         boundingRect = m_state.contentsRect;
 
     if (m_currentFilters.hasOutsets()) {
@@ -365,7 +366,7 @@ void TextureMapperLayer::applyMask(const TextureMapperPaintOptions& options)
     options.textureMapper.setMaskMode(false);
 }
 
-RefPtr<BitmapTexture> TextureMapperLayer::paintIntoSurface(const TextureMapperPaintOptions& options, const IntSize& size)
+PassRefPtr<BitmapTexture> TextureMapperLayer::paintIntoSurface(const TextureMapperPaintOptions& options, const IntSize& size)
 {
     RefPtr<BitmapTexture> surface = options.textureMapper.acquireTextureFromPool(size, BitmapTexture::SupportsAlpha | BitmapTexture::FBOAttachment);
     TextureMapperPaintOptions paintOptions(options);
@@ -376,16 +377,16 @@ RefPtr<BitmapTexture> TextureMapperLayer::paintIntoSurface(const TextureMapperPa
         m_state.maskLayer->applyMask(options);
     surface = surface->applyFilters(options.textureMapper, m_currentFilters);
     options.textureMapper.bindSurface(surface.get());
-    return surface;
+    return surface.release();
 }
 
-static void commitSurface(const TextureMapperPaintOptions& options, BitmapTexture& surface, const IntRect& rect, float opacity)
+static void commitSurface(const TextureMapperPaintOptions& options, PassRefPtr<BitmapTexture> surface, const IntRect& rect, float opacity)
 {
     options.textureMapper.bindSurface(options.surface.get());
     TransformationMatrix targetTransform;
     targetTransform.translate(options.offset.width(), options.offset.height());
     targetTransform.multiply(options.transform);
-    options.textureMapper.drawTexture(surface, rect, targetTransform, opacity);
+    options.textureMapper.drawTexture(*surface.get(), rect, targetTransform, opacity);
 }
 
 void TextureMapperLayer::paintWithIntermediateSurface(const TextureMapperPaintOptions& options, const IntRect& rect)
@@ -405,7 +406,7 @@ void TextureMapperLayer::paintWithIntermediateSurface(const TextureMapperPaintOp
     }
 
     if (replicaSurface && options.opacity == 1) {
-        commitSurface(options, *replicaSurface, rect, 1);
+        commitSurface(options, replicaSurface, rect, 1);
         replicaSurface = nullptr;
     }
 
@@ -416,7 +417,7 @@ void TextureMapperLayer::paintWithIntermediateSurface(const TextureMapperPaintOp
         mainSurface = replicaSurface;
     }
 
-    commitSurface(options, *mainSurface, rect, options.opacity);
+    commitSurface(options, mainSurface, rect, options.opacity);
 }
 
 void TextureMapperLayer::paintRecursive(const TextureMapperPaintOptions& options)
@@ -637,9 +638,9 @@ void TextureMapperLayer::setFixedToViewport(bool fixedToViewport)
     m_fixedToViewport = fixedToViewport;
 }
 
-void TextureMapperLayer::setBackingStore(RefPtr<TextureMapperBackingStore>&& backingStore)
+void TextureMapperLayer::setBackingStore(PassRefPtr<TextureMapperBackingStore> backingStore)
 {
-    m_backingStore = WTFMove(backingStore);
+    m_backingStore = backingStore;
 }
 
 bool TextureMapperLayer::descendantsOrSelfHaveRunningAnimations() const

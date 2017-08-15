@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003, 2008, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -25,7 +25,7 @@
 #include "InlineCallFrame.h"
 #include "JSScope.h"
 #include "JSCInlines.h"
-#include "ParseInt.h"
+#include "JSGlobalObjectFunctions.h"
 #include <wtf/text/StringBuilder.h>
 
 namespace JSC {
@@ -147,7 +147,7 @@ private:
 void ErrorInstance::finishCreation(ExecState* exec, VM& vm, const String& message, bool useCurrentFrame)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     if (!message.isNull())
         putDirect(vm, vm.propertyNames->message, jsString(&vm, message), DontEnum);
 
@@ -156,10 +156,8 @@ void ErrorInstance::finishCreation(ExecState* exec, VM& vm, const String& messag
     bool hasTrace = addErrorInfoAndGetBytecodeOffset(exec, vm, this, useCurrentFrame, callFrame, hasSourceAppender() ? &bytecodeOffset : nullptr);
 
     if (hasTrace && callFrame && hasSourceAppender()) {
-        if (callFrame && callFrame->codeBlock()) {
-            ASSERT(!callFrame->callee().isWasm());
+        if (callFrame && callFrame->codeBlock()) 
             appendSourceToError(callFrame, this, bytecodeOffset);
-        }
     }
 }
 
@@ -189,7 +187,7 @@ String ErrorInstance::sanitizedToString(ExecState* exec)
         }
         currentObj = obj->getPrototypeDirect();
     }
-    scope.assertNoException();
+    ASSERT(!scope.exception());
 
     String nameString;
     if (!nameValue)
@@ -204,7 +202,7 @@ String ErrorInstance::sanitizedToString(ExecState* exec)
     PropertySlot messageSlot(this, PropertySlot::InternalMethodType::VMInquiry);
     if (JSObject::getOwnPropertySlot(this, exec, messagePropertName, messageSlot) && messageSlot.isValue())
         messageValue = messageSlot.getValue(exec, messagePropertName);
-    scope.assertNoException();
+    ASSERT(!scope.exception());
 
     String messageString;
     if (!messageValue)

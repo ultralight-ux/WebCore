@@ -95,11 +95,6 @@ bool GraphicsLayer::supportsBackgroundColorContent()
     return false;
 #endif
 }
-
-bool GraphicsLayer::supportsSubpixelAntialiasedLayerText()
-{
-    return false;
-}
 #endif
 
 #if !USE(COORDINATED_GRAPHICS)
@@ -120,7 +115,6 @@ GraphicsLayer::GraphicsLayer(Type type, GraphicsLayerClient& client)
 #endif
     , m_type(type)
     , m_contentsOpaque(false)
-    , m_supportsSubpixelAntialiasedText(false)
     , m_preserves3D(false)
     , m_backfaceVisibility(true)
     , m_masksToBounds(false)
@@ -766,11 +760,6 @@ void GraphicsLayer::dumpProperties(TextStream& ts, int indent, LayerTreeAsTextBe
     if (m_contentsOpaque || needsIOSDumpRenderTreeMainFrameRenderViewLayerIsAlwaysOpaqueHack) {
         writeIndent(ts, indent + 1);
         ts << "(contentsOpaque " << (m_contentsOpaque || needsIOSDumpRenderTreeMainFrameRenderViewLayerIsAlwaysOpaqueHack) << ")\n";
-    }
-
-    if (m_supportsSubpixelAntialiasedText) {
-        writeIndent(ts, indent + 1);
-        ts << "(supports subpixel antialiased text " << m_supportsSubpixelAntialiasedText << ")\n";
     }
 
     if (m_preserves3D) {

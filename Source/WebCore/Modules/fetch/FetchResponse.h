@@ -52,7 +52,7 @@ public:
     static Ref<FetchResponse> error(ScriptExecutionContext&);
     static ExceptionOr<Ref<FetchResponse>> redirect(ScriptExecutionContext&, const String& url, int status);
 
-    using FetchPromise = DOMPromiseDeferred<IDLInterface<FetchResponse>>;
+    using FetchPromise = DOMPromise<IDLInterface<FetchResponse>>;
     static void fetch(ScriptExecutionContext&, FetchRequest&, FetchPromise&&);
 
     void consume(unsigned, Ref<DeferredPromise>&&);
@@ -100,7 +100,6 @@ private:
     class BodyLoader final : public FetchLoaderClient {
     public:
         BodyLoader(FetchResponse&, FetchPromise&&);
-        ~BodyLoader();
 
         bool start(ScriptExecutionContext&, const FetchRequest&);
         void stop();

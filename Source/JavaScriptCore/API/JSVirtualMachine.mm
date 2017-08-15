@@ -226,6 +226,11 @@ static id getInternalObjcObject(id object)
     }
 }
 
+- (void)enableSigillCrashAnalyzer
+{
+    JSC::enableSigillCrashAnalyzer();
+}
+
 @end
 
 @implementation JSVirtualMachine(Internal)

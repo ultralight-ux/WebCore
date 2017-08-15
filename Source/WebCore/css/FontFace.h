@@ -27,14 +27,8 @@
 
 #include "CSSFontFace.h"
 #include "CSSPropertyNames.h"
-#include "JSDOMPromiseDeferred.h"
-#include <wtf/Variant.h>
+#include "JSDOMPromise.h"
 #include <wtf/WeakPtr.h>
-
-namespace JSC {
-class ArrayBuffer;
-class ArrayBufferView;
-}
 
 namespace WebCore {
 
@@ -48,9 +42,7 @@ public:
         String variant;
         String featureSettings;
     };
-    
-    using Source = Variant<String, RefPtr<JSC::ArrayBuffer>, RefPtr<JSC::ArrayBufferView>>;
-    static ExceptionOr<Ref<FontFace>> create(Document&, const String& family, Source&&, const Descriptors&);
+    static ExceptionOr<Ref<FontFace>> create(JSC::ExecState&, Document&, const String& family, JSC::JSValue source, const Descriptors&);
     static Ref<FontFace> create(CSSFontFace&);
     virtual ~FontFace();
 
@@ -73,7 +65,7 @@ public:
     enum class LoadStatus { Unloaded, Loading, Loaded, Error };
     LoadStatus status() const;
 
-    using Promise = DOMPromiseDeferred<IDLInterface<FontFace>>;
+    using Promise = DOMPromise<IDLInterface<FontFace>>;
     std::optional<Promise>& promise() { return m_promise; }
     void registerLoaded(Promise&&);
 

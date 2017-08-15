@@ -49,13 +49,13 @@ namespace Inspector {
 class JS_EXPORT_PRIVATE InjectedScriptManager {
     WTF_MAKE_NONCOPYABLE(InjectedScriptManager); WTF_MAKE_FAST_ALLOCATED;
 public:
-    InjectedScriptManager(InspectorEnvironment&, Ref<InjectedScriptHost>&&);
+    InjectedScriptManager(InspectorEnvironment&, PassRefPtr<InjectedScriptHost>);
     virtual ~InjectedScriptManager();
 
     virtual void disconnect();
     virtual void discardInjectedScripts();
 
-    InjectedScriptHost& injectedScriptHost();
+    InjectedScriptHost* injectedScriptHost();
     InspectorEnvironment& inspectorEnvironment() const { return m_environment; }
 
     InjectedScript injectedScriptFor(JSC::ExecState*);
@@ -76,7 +76,7 @@ private:
     JSC::JSObject* createInjectedScript(const String& source, JSC::ExecState*, int id);
 
     InspectorEnvironment& m_environment;
-    Ref<InjectedScriptHost> m_injectedScriptHost;
+    RefPtr<InjectedScriptHost> m_injectedScriptHost;
     int m_nextInjectedScriptId;
 };
 

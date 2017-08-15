@@ -31,6 +31,7 @@
 namespace WebCore {
 
 class Frame;
+class FrameView;
 class Page;
 class PageGroup;
 
@@ -55,7 +56,9 @@ private:
     void runEventLoopWhilePausedInternal();
 
     void setJavaScriptPaused(const PageGroup&, bool paused);
-    void setJavaScriptPaused(Frame&, bool paused);
+    void setJavaScriptPaused(Page*, bool paused);
+    void setJavaScriptPaused(Frame*, bool paused);
+    void setJavaScriptPaused(FrameView*, bool paused);
 
     Page& m_page;
 };

@@ -415,7 +415,8 @@ sub printConstructorInterior
     # instead of having all the support for this here in this script?
     if ($enabledTags{$tagName}{wrapperOnlyIfMediaIsAvailable}) {
         print F <<END
-    if (!MediaPlayer::isAvailable() || !document.settings().mediaEnabled())
+    Settings* settings = document.settings();
+    if (!MediaPlayer::isAvailable() || (settings && !settings->mediaEnabled()))
         return $parameters{fallbackInterfaceName}::create($constructorTagName, document);
     
 END
@@ -434,7 +435,8 @@ END
     my $settingsConditional = $enabledTags{$tagName}{settingsConditional};
     if ($settingsConditional) {
         print F <<END
-    if (!document.settings().${settingsConditional}())
+    Settings* settings = document.settings();
+    if (!settings || !settings->${settingsConditional}())
         return $parameters{fallbackInterfaceName}::create($constructorTagName, document);
 END
 ;

@@ -81,7 +81,7 @@ static void convertFormat(GraphicsContext3D* context, Texture::Format format, un
     }
 }
 
-RefPtr<Texture> Texture::create(GraphicsContext3D* context, Format format, int width, int height)
+PassRefPtr<Texture> Texture::create(GraphicsContext3D* context, Format format, int width, int height)
 {
     int maxTextureSize = 0;
     context->getIntegerv(GraphicsContext3D::MAX_TEXTURE_SIZE, &maxTextureSize);
@@ -102,7 +102,7 @@ RefPtr<Texture> Texture::create(GraphicsContext3D* context, Format format, int w
         if (!textureId) {
             for (int i = 0; i < numTiles; i++)
                 context->deleteTexture(textureIds->at(i));
-            return nullptr;
+            return 0;
         }
         textureIds->at(i) = textureId;
 

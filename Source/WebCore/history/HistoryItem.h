@@ -30,7 +30,6 @@
 #include "FrameLoaderTypes.h"
 #include "IntPoint.h"
 #include "IntRect.h"
-#include "LengthBox.h"
 #include "SerializedScriptValue.h"
 #include <memory>
 #include <wtf/RefCounted.h>
@@ -103,9 +102,6 @@ public:
     WEBCORE_EXPORT const IntPoint& scrollPosition() const;
     WEBCORE_EXPORT void setScrollPosition(const IntPoint&);
     void clearScrollPosition();
-
-    WEBCORE_EXPORT bool shouldRestoreScrollPosition() const;
-    WEBCORE_EXPORT void setShouldRestoreScrollPosition(bool);
     
     WEBCORE_EXPORT float pageScaleFactor() const;
     WEBCORE_EXPORT void setPageScaleFactor(float);
@@ -175,8 +171,8 @@ public:
     IntRect unobscuredContentRect() const { return m_unobscuredContentRect; }
     void setUnobscuredContentRect(IntRect unobscuredContentRect) { m_unobscuredContentRect = unobscuredContentRect; }
 
-    const FloatBoxExtent& obscuredInsets() const { return m_obscuredInsets; }
-    void setObscuredInsets(const FloatBoxExtent& insets) { m_obscuredInsets = insets; }
+    FloatSize obscuredInset() const { return m_obscuredInset; }
+    void setObscuredInset(const FloatSize& inset) { m_obscuredInset = inset; }
 
     FloatSize minimumLayoutSizeInScrollViewCoordinates() const { return m_minimumLayoutSizeInScrollViewCoordinates; }
     void setMinimumLayoutSizeInScrollViewCoordinates(FloatSize minimumLayoutSizeInScrollViewCoordinates) { m_minimumLayoutSizeInScrollViewCoordinates = minimumLayoutSizeInScrollViewCoordinates; }
@@ -219,17 +215,16 @@ private:
     String m_displayTitle;
     
     IntPoint m_scrollPosition;
-    float m_pageScaleFactor { 0 }; // 0 indicates "unset".
+    float m_pageScaleFactor;
     Vector<String> m_documentState;
 
     ShouldOpenExternalURLsPolicy m_shouldOpenExternalURLsPolicy { ShouldOpenExternalURLsPolicy::ShouldNotAllow };
     
     Vector<Ref<HistoryItem>> m_children;
     
-    bool m_lastVisitWasFailure { false };
-    bool m_isTargetItem { false };
+    bool m_lastVisitWasFailure;
+    bool m_isTargetItem;
     bool m_wasRestoredFromSession { false };
-    bool m_shouldRestoreScrollPosition { true };
 
     // If two HistoryItems have the same item sequence number, then they are
     // clones of one another.  Traversing history from one such HistoryItem to
@@ -258,7 +253,7 @@ private:
     IntRect m_unobscuredContentRect;
     FloatSize m_minimumLayoutSizeInScrollViewCoordinates;
     IntSize m_contentSize;
-    FloatBoxExtent m_obscuredInsets;
+    FloatSize m_obscuredInset;
     float m_scale { 0 }; // Note that UIWebView looks for a non-zero value, so this has to start as 0.
     bool m_scaleIsInitial { false };
     ViewportArguments m_viewportArguments;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -63,7 +63,7 @@ JSONObject::JSONObject(VM& vm, Structure* structure)
 void JSONObject::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
     putDirectWithoutTransition(vm, vm.propertyNames->toStringTagSymbol, jsString(&vm, "JSON"), DontEnum | ReadOnly);
 }
@@ -141,15 +141,14 @@ private:
 
 static inline JSValue unwrapBoxedPrimitive(ExecState* exec, JSValue value)
 {
-    VM& vm = exec->vm();
     if (!value.isObject())
         return value;
     JSObject* object = asObject(value);
-    if (object->inherits(vm, NumberObject::info()))
+    if (object->inherits(NumberObject::info()))
         return jsNumber(object->toNumber(exec));
-    if (object->inherits(vm, StringObject::info()))
+    if (object->inherits(StringObject::info()))
         return object->toString(exec);
-    if (object->inherits(vm, BooleanObject::info()))
+    if (object->inherits(BooleanObject::info()))
         return object->toPrimitive(exec);
 
     // Do not unwrap SymbolObject to Symbol. It is not performed in the spec.
@@ -237,7 +236,7 @@ Stringifier::Stringifier(ExecState* exec, const Local<Unknown>& replacer, const 
     if (!m_replacer.isObject())
         return;
 
-    if (m_replacer.asObject()->inherits(vm, JSArray::info())) {
+    if (m_replacer.asObject()->inherits(JSArray::info())) {
         m_usingArrayReplacer = true;
         Handle<JSObject> array = m_replacer.asObject();
         unsigned length = array->get(exec, vm.propertyNames->length).toUInt32(exec);
@@ -249,7 +248,7 @@ Stringifier::Stringifier(ExecState* exec, const Local<Unknown>& replacer, const 
                 break;
 
             if (name.isObject()) {
-                if (!asObject(name)->inherits(vm, NumberObject::info()) && !asObject(name)->inherits(vm, StringObject::info()))
+                if (!asObject(name)->inherits(NumberObject::info()) && !asObject(name)->inherits(StringObject::info()))
                     continue;
             } else if (!name.isNumber() && !name.isString())
                 continue;
@@ -287,7 +286,7 @@ ALWAYS_INLINE JSValue Stringifier::toJSON(JSValue value, const PropertyNameForFu
 {
     VM& vm = m_exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    scope.assertNoException();
+    ASSERT(!scope.exception());
     if (!value.isObject())
         return value;
     
@@ -643,7 +642,7 @@ NEVER_INLINE JSValue Walker::walk(JSValue unfiltered)
             arrayStartState:
             case ArrayStartState: {
                 ASSERT(inValue.isObject());
-                ASSERT(isJSArray(asObject(inValue)) || asObject(inValue)->inherits(vm, JSArray::info()));
+                ASSERT(isJSArray(asObject(inValue)) || asObject(inValue)->inherits(JSArray::info()));
                 if (objectStack.size() + arrayStack.size() > maximumFilterRecursion)
                     return throwStackOverflowError(m_exec, scope);
 
@@ -698,7 +697,7 @@ NEVER_INLINE JSValue Walker::walk(JSValue unfiltered)
             objectStartState:
             case ObjectStartState: {
                 ASSERT(inValue.isObject());
-                ASSERT(!isJSArray(asObject(inValue)) && !asObject(inValue)->inherits(vm, JSArray::info()));
+                ASSERT(!isJSArray(asObject(inValue)) && !asObject(inValue)->inherits(JSArray::info()));
                 if (objectStack.size() + arrayStack.size() > maximumFilterRecursion)
                     return throwStackOverflowError(m_exec, scope);
 
@@ -759,7 +758,7 @@ NEVER_INLINE JSValue Walker::walk(JSValue unfiltered)
                     break;
                 }
                 JSObject* object = asObject(inValue);
-                if (isJSArray(object) || object->inherits(vm, JSArray::info()))
+                if (isJSArray(object) || object->inherits(JSArray::info()))
                     goto arrayStartState;
                 goto objectStartState;
         }
@@ -785,7 +784,7 @@ EncodedJSValue JSC_HOST_CALL JSONProtoFuncParse(ExecState* exec)
 
     if (!exec->argumentCount())
         return throwVMError(exec, scope, createError(exec, ASCIILiteral("JSON.parse requires at least one parameter")));
-    auto viewWithString = exec->uncheckedArgument(0).toString(exec)->viewWithUnderlyingString(exec);
+    auto viewWithString = exec->uncheckedArgument(0).toString(exec)->viewWithUnderlyingString(*exec);
     RETURN_IF_EXCEPTION(scope, { });
     StringView view = viewWithString.view;
 

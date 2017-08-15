@@ -63,7 +63,7 @@ private:
     RefPtr<AudioBus> m_renderBus;
     
     // Rendering thread.
-    RefPtr<Thread> m_renderThread;
+    volatile ThreadIdentifier m_renderThread;
     bool m_startedRendering;
     static void offlineRenderEntry(void* threadData);
     void offlineRender();

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 Ericsson AB. All rights reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,8 +32,7 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "RTCIceGatheringState.h"
-#include "RTCIceTransportState.h"
+#include "PeerConnectionStates.h"
 #include "ScriptWrappable.h"
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
@@ -43,23 +41,27 @@ namespace WebCore {
 
 class RTCIceTransport : public RefCounted<RTCIceTransport>, public ScriptWrappable {
 public:
+
+    using TransportState = PeerConnectionStates::IceTransportState;
+    using GatheringState = PeerConnectionStates::IceGatheringState;
+
     static Ref<RTCIceTransport> create()
     {
         return adoptRef(*new RTCIceTransport());
     }
     virtual ~RTCIceTransport() { }
 
-    RTCIceTransportState state() const { return m_transportState; }
-    void setState(RTCIceTransportState state) { m_transportState = state; }
+    TransportState transportState() const { return m_transportState; }
+    void setTransportState(TransportState state) { m_transportState = state; }
 
-    RTCIceGatheringState gatheringState() const { return m_gatheringState; }
-    void setGatheringState(RTCIceGatheringState state) { m_gatheringState = state; }
+    GatheringState gatheringState() const { return m_gatheringState; }
+    void setGatheringState(GatheringState state) { m_gatheringState = state; }
 
 private:
     RTCIceTransport() { };
 
-    RTCIceTransportState m_transportState { RTCIceTransportState::New };
-    RTCIceGatheringState m_gatheringState { RTCIceGatheringState::New };
+    TransportState m_transportState { TransportState::New };
+    GatheringState m_gatheringState { GatheringState::New };
 };
 
 } // namespace WebCore

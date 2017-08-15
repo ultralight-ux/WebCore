@@ -35,6 +35,7 @@
 #include "FrameLoaderTypes.h"
 #include "FrameView.h"
 #include "MemoryCache.h"
+#include "Page.h"
 #include "RenderElement.h"
 #include "SVGImage.h"
 #include "SecurityOrigin.h"
@@ -51,7 +52,6 @@
 
 #if USE(CG)
 #include "PDFDocumentImage.h"
-#include "UTIRegistry.h"
 #endif
 
 namespace WebCore {
@@ -118,9 +118,6 @@ void CachedImage::didAddClient(CachedResourceClient& client)
     if (m_image && !m_image->isNull())
         static_cast<CachedImageClient&>(client).imageChanged(this);
 
-    if (m_image)
-        m_image->startAnimation();
-
     CachedResource::didAddClient(client);
 }
 
@@ -134,8 +131,6 @@ void CachedImage::didRemoveClient(CachedResourceClient& client)
         m_svgImageCache->removeClientFromCache(&static_cast<CachedImageClient&>(client));
 
     CachedResource::didRemoveClient(client);
-
-    static_cast<CachedImageClient&>(client).didRemoveCachedImageClient(*this);
 }
 
 void CachedImage::switchClientsToRevalidatedResource()
@@ -167,16 +162,16 @@ void CachedImage::allClientsRemoved()
 std::pair<Image*, float> CachedImage::brokenImage(float deviceScaleFactor) const
 {
     if (deviceScaleFactor >= 3) {
-        static NeverDestroyed<Image*> brokenImageVeryHiRes(&Image::loadPlatformResource("missingImage@3x").leakRef());
+        static NeverDestroyed<Image*> brokenImageVeryHiRes(Image::loadPlatformResource("missingImage@3x").leakRef());
         return std::make_pair(brokenImageVeryHiRes, 3);
     }
 
     if (deviceScaleFactor >= 2) {
-        static NeverDestroyed<Image*> brokenImageHiRes(&Image::loadPlatformResource("missingImage@2x").leakRef());
+        static NeverDestroyed<Image*> brokenImageHiRes(Image::loadPlatformResource("missingImage@2x").leakRef());
         return std::make_pair(brokenImageHiRes, 2);
     }
 
-    static NeverDestroyed<Image*> brokenImageLoRes(&Image::loadPlatformResource("missingImage").leakRef());
+    static NeverDestroyed<Image*> brokenImageLoRes(Image::loadPlatformResource("missingImage").leakRef());
     return std::make_pair(brokenImageLoRes, 1);
 }
 
@@ -197,7 +192,7 @@ Image* CachedImage::image()
     if (m_image)
         return m_image.get();
 
-    return &Image::nullImage();
+    return Image::nullImage();
 }
 
 Image* CachedImage::imageForRenderer(const RenderObject* renderer)
@@ -210,11 +205,11 @@ Image* CachedImage::imageForRenderer(const RenderObject* renderer)
     }
 
     if (!m_image)
-        return &Image::nullImage();
+        return Image::nullImage();
 
     if (m_image->isSVGImage()) {
         Image* image = m_svgImageCache->imageForRenderer(renderer);
-        if (image != &Image::nullImage())
+        if (image != Image::nullImage())
             return image;
     }
     return m_image.get();
@@ -237,6 +232,30 @@ void CachedImage::setContainerSizeForRenderer(const CachedImageClient* renderer,
     }
 
     m_svgImageCache->setContainerSizeForRenderer(renderer, containerSize, containerZoom);
+}
+
+bool CachedImage::usesImageContainerSize() const
+{
+    if (m_image)
+        return m_image->usesContainerSize();
+
+    return false;
+}
+
+bool CachedImage::imageHasRelativeWidth() const
+{
+    if (m_image)
+        return m_image->hasRelativeWidth();
+
+    return false;
+}
+
+bool CachedImage::imageHasRelativeHeight() const
+{
+    if (m_image)
+        return m_image->hasRelativeHeight();
+
+    return false;
 }
 
 LayoutSize CachedImage::imageSizeForRenderer(const RenderElement* renderer, float multiplier, SizeType sizeType)
@@ -328,38 +347,33 @@ CachedImage::CachedImageObserver::CachedImageObserver(CachedImage& image)
 {
     m_cachedImages.reserveInitialCapacity(1);
     m_cachedImages.append(&image);
+    if (auto* loader = image.loader()) {
+        m_allowSubsampling = loader->frameLoader()->frame().settings().imageSubsamplingEnabled();
+        m_allowLargeImageAsyncDecoding = loader->frameLoader()->frame().settings().largeImageAsyncDecodingEnabled();
+        m_allowAnimatedImageAsyncDecoding = loader->frameLoader()->frame().settings().animatedImageAsyncDecodingEnabled();
+        m_showDebugBackground = loader->frameLoader()->frame().settings().showDebugBorders();
+    }
 }
 
-void CachedImage::CachedImageObserver::decodedSizeChanged(const Image& image, long long delta)
+void CachedImage::CachedImageObserver::decodedSizeChanged(const Image* image, long long delta)
 {
     for (auto cachedImage : m_cachedImages)
         cachedImage->decodedSizeChanged(image, delta);
 }
 
-void CachedImage::CachedImageObserver::didDraw(const Image& image)
+void CachedImage::CachedImageObserver::didDraw(const Image* image)
 {
     for (auto cachedImage : m_cachedImages)
         cachedImage->didDraw(image);
 }
 
-bool CachedImage::CachedImageObserver::canDestroyDecodedData(const Image& image)
-{
-    for (auto cachedImage : m_cachedImages) {
-        if (&image != cachedImage->image())
-            continue;
-        if (!cachedImage->canDestroyDecodedData(image))
-            return false;
-    }
-    return true;
-}
-
-void CachedImage::CachedImageObserver::imageFrameAvailable(const Image& image, ImageAnimatingState animatingState, const IntRect* changeRect)
+void CachedImage::CachedImageObserver::animationAdvanced(const Image* image)
 {
     for (auto cachedImage : m_cachedImages)
-        cachedImage->imageFrameAvailable(image, animatingState, changeRect);
+        cachedImage->animationAdvanced(image);
 }
 
-void CachedImage::CachedImageObserver::changedInRect(const Image& image, const IntRect* rect)
+void CachedImage::CachedImageObserver::changedInRect(const Image* image, const IntRect* rect)
 {
     for (auto cachedImage : m_cachedImages)
         cachedImage->changedInRect(image, rect);
@@ -383,15 +397,13 @@ void CachedImage::addIncrementalDataBuffer(SharedBuffer& data)
     // Have the image update its data from its internal buffer.
     // It will not do anything now, but will delay decoding until
     // queried for info (like size or specific image frames).
-    EncodedDataStatus encodedDataStatus = setImageDataBuffer(&data, false);
-    if (encodedDataStatus > EncodedDataStatus::Error && encodedDataStatus < EncodedDataStatus::SizeAvailable)
+    bool sizeAvailable = m_image->setData(&data, false);
+    if (!sizeAvailable)
         return;
 
-    if (encodedDataStatus == EncodedDataStatus::Error || m_image->isNull()) {
+    if (m_image->isNull()) {
         // Image decoding failed. Either we need more image data or the image data is malformed.
         error(errorOccurred() ? status() : DecodeError);
-        if (m_loader && encodedDataStatus == EncodedDataStatus::Error)
-            m_loader->cancel();
         if (inCache())
             MemoryCache::singleton().remove(*this);
         return;
@@ -404,16 +416,6 @@ void CachedImage::addIncrementalDataBuffer(SharedBuffer& data)
     notifyObservers();
 
     setEncodedSize(m_image->data() ? m_image->data()->size() : 0);
-}
-
-EncodedDataStatus CachedImage::setImageDataBuffer(SharedBuffer* data, bool allDataReceived)
-{
-    EncodedDataStatus encodedDataStatus = m_image ? m_image->setData(data, allDataReceived) : EncodedDataStatus::Error;
-#if USE(CG)
-    if (encodedDataStatus >= EncodedDataStatus::TypeAvailable && m_image->isBitmapImage() && !isAllowedImageUTI(m_image->uti()))
-        return EncodedDataStatus::Error;
-#endif
-    return encodedDataStatus;
 }
 
 void CachedImage::addDataBuffer(SharedBuffer& data)
@@ -436,9 +438,10 @@ void CachedImage::finishLoading(SharedBuffer* data)
     if (!m_image && data)
         createImage();
 
-    EncodedDataStatus encodedDataStatus = setImageDataBuffer(data, true);
+    if (m_image)
+        m_image->setData(data, true);
 
-    if (encodedDataStatus == EncodedDataStatus::Error || m_image->isNull()) {
+    if (!m_image || m_image->isNull()) {
         // Image decoding failed; the image data is malformed.
         error(errorOccurred() ? status() : DecodeError);
         if (inCache())
@@ -487,18 +490,18 @@ void CachedImage::destroyDecodedData()
         m_image->destroyDecodedData();
 }
 
-void CachedImage::decodedSizeChanged(const Image& image, long long delta)
+void CachedImage::decodedSizeChanged(const Image* image, long long delta)
 {
-    if (&image != m_image)
+    if (!image || image != m_image)
         return;
 
     ASSERT(delta >= 0 || decodedSize() + delta >= 0);
     setDecodedSize(static_cast<unsigned>(decodedSize() + delta));
 }
 
-void CachedImage::didDraw(const Image& image)
+void CachedImage::didDraw(const Image* image)
 {
-    if (&image != m_image)
+    if (!image || image != m_image)
         return;
     
     double timeStamp = FrameView::currentPaintTimeStamp();
@@ -508,40 +511,18 @@ void CachedImage::didDraw(const Image& image)
     CachedResource::didAccessDecodedData(timeStamp);
 }
 
-bool CachedImage::canDestroyDecodedData(const Image& image)
+void CachedImage::animationAdvanced(const Image* image)
 {
-    if (&image != m_image)
-        return false;
-
-    CachedResourceClientWalker<CachedImageClient> clientWalker(m_clients);
-    while (CachedImageClient* client = clientWalker.next()) {
-        if (!client->canDestroyDecodedData())
-            return false;
-    }
-
-    return true;
-}
-
-void CachedImage::imageFrameAvailable(const Image& image, ImageAnimatingState animatingState, const IntRect* changeRect)
-{
-    if (&image != m_image)
+    if (!image || image != m_image)
         return;
-
     CachedResourceClientWalker<CachedImageClient> clientWalker(m_clients);
-    VisibleInViewportState visibleState = VisibleInViewportState::No;
-
-    while (CachedImageClient* client = clientWalker.next()) {
-        if (client->imageFrameAvailable(*this, animatingState, changeRect) == VisibleInViewportState::Yes)
-            visibleState = VisibleInViewportState::Yes;
-    }
-
-    if (visibleState == VisibleInViewportState::No && animatingState == ImageAnimatingState::Yes)
-        m_image->stopAnimation();
+    while (CachedImageClient* client = clientWalker.next())
+        client->newImageAnimationFrameAvailable(*this);
 }
 
-void CachedImage::changedInRect(const Image& image, const IntRect* rect)
+void CachedImage::changedInRect(const Image* image, const IntRect* rect)
 {
-    if (&image != m_image)
+    if (!image || image != m_image)
         return;
     notifyObservers(rect);
 }

@@ -131,15 +131,10 @@ const Vector<size_t>& sizeClasses()
                 add(betterSizeClass);
             }
 
-            // Manually inject size classes for objects we know will be allocated in high volume.
             add(sizeof(UnlinkedFunctionExecutable));
             add(sizeof(UnlinkedFunctionCodeBlock));
             add(sizeof(FunctionExecutable));
             add(sizeof(FunctionCodeBlock));
-            add(sizeof(JSString));
-            add(sizeof(JSFunction));
-            add(sizeof(PropertyTable));
-            add(sizeof(Structure));
 
             {
                 // Sort and deduplicate.
@@ -225,7 +220,7 @@ void MarkedSpace::lastChanceToFinalize()
 
 void MarkedSpace::sweep()
 {
-    m_heap->sweeper().stopSweeping();
+    m_heap->sweeper()->willFinishSweeping();
     forEachAllocator(
         [&] (MarkedAllocator& allocator) -> IterationStatus {
             allocator.sweep();

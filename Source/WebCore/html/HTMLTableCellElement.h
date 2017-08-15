@@ -34,12 +34,13 @@ public:
     static Ref<HTMLTableCellElement> create(const QualifiedName&, Document&);
 
     WEBCORE_EXPORT int cellIndex() const;
-    WEBCORE_EXPORT unsigned colSpan() const;
+    unsigned colSpan() const;
+    WEBCORE_EXPORT unsigned colSpanForBindings() const;
     unsigned rowSpan() const;
     WEBCORE_EXPORT unsigned rowSpanForBindings() const;
 
     void setCellIndex(int);
-    WEBCORE_EXPORT void setColSpan(unsigned);
+    WEBCORE_EXPORT void setColSpanForBindings(unsigned);
     WEBCORE_EXPORT void setRowSpanForBindings(unsigned);
 
     String abbr() const;

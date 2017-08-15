@@ -30,12 +30,12 @@
 #include "CharacterData.h"
 #include "DeleteSelectionCommand.h"
 #include "Document.h"
-#include "Editing.h"
 #include "Editor.h"
 #include "EditorClient.h"
 #include "Element.h"
 #include "ElementIterator.h"
 #include "Event.h"
+#include "EventHandler.h"
 #include "EventNames.h"
 #include "FloatQuad.h"
 #include "FocusController.h"
@@ -64,6 +64,7 @@
 #include "StyleProperties.h"
 #include "TypingCommand.h"
 #include "VisibleUnits.h"
+#include "htmlediting.h"
 #include <stdio.h>
 #include <wtf/text/CString.h>
 
@@ -332,6 +333,7 @@ bool FrameSelection::setSelectionWithoutUpdatingAppearance(const VisibleSelectio
 
 void FrameSelection::setSelection(const VisibleSelection& selection, SetSelectionOptions options, AXTextStateChangeIntent intent, CursorAlignOnScroll align, TextGranularity granularity)
 {
+    RefPtr<Frame> protectedFrame(m_frame);
     if (!setSelectionWithoutUpdatingAppearance(selection, options, align, granularity))
         return;
 
@@ -419,7 +421,7 @@ static bool removingNodeRemovesPosition(Node& node, const Position& position)
 
 void DragCaretController::nodeWillBeRemoved(Node& node)
 {
-    if (!hasCaret() || !node.isConnected())
+    if (!hasCaret() || !node.inDocument())
         return;
 
     if (!removingNodeRemovesPosition(node, m_position.deepEquivalent()))
@@ -435,7 +437,7 @@ void FrameSelection::nodeWillBeRemoved(Node& node)
 {
     // There can't be a selection inside a fragment, so if a fragment's node is being removed,
     // the selection in the document that created the fragment needs no adjustment.
-    if (isNone() || !node.isConnected())
+    if (isNone() || !node.inDocument())
         return;
 
     respondToNodeModification(node, removingNodeRemovesPosition(node, m_selection.base()), removingNodeRemovesPosition(node, m_selection.extent()),
@@ -524,7 +526,7 @@ static void updatePositionAfterAdoptingTextReplacement(Position& position, Chara
 void FrameSelection::textWasReplaced(CharacterData* node, unsigned offset, unsigned oldLength, unsigned newLength)
 {
     // The fragment check is a performance optimization. See http://trac.webkit.org/changeset/30062.
-    if (isNone() || !node || !node->isConnected())
+    if (isNone() || !node || !node->inDocument())
         return;
 
     Position base = m_selection.base();
@@ -1813,7 +1815,7 @@ void FrameSelection::debugRenderer(RenderObject* renderer, bool selected) const
     }
 }
 
-bool FrameSelection::contains(const LayoutPoint& point) const
+bool FrameSelection::contains(const LayoutPoint& point)
 {
     // Treat a collapsed selection like no selection.
     if (!isRange())
@@ -1943,7 +1945,7 @@ void FrameSelection::selectAll()
     }
 }
 
-bool FrameSelection::setSelectedRange(Range* range, EAffinity affinity, bool closeTyping, EUserTriggered userTriggered)
+bool FrameSelection::setSelectedRange(Range* range, EAffinity affinity, bool closeTyping)
 {
     if (!range)
         return false;
@@ -1956,14 +1958,6 @@ bool FrameSelection::setSelectedRange(Range* range, EAffinity affinity, bool clo
     if (newSelection.isNone())
         return false;
 #endif
-
-    if (userTriggered == UserTriggered) {
-        FrameSelection trialFrameSelection;
-        trialFrameSelection.setSelection(newSelection, ClearTypingStyle | (closeTyping ? CloseTyping : 0));
-
-        if (!shouldChangeSelection(trialFrameSelection.selection()))
-            return false;
-    }
 
     setSelection(newSelection, ClearTypingStyle | (closeTyping ? CloseTyping : 0));
     return true;
@@ -2057,7 +2051,7 @@ void FrameSelection::updateAppearance()
     // Start blinking with a black caret. Be sure not to restart if we're
     // already blinking in the right location.
     if (shouldBlink && !m_caretBlinkTimer.isActive()) {
-        if (Seconds blinkInterval = RenderTheme::singleton().caretBlinkInterval())
+        if (double blinkInterval = m_frame->page()->theme().caretBlinkInterval())
             m_caretBlinkTimer.startRepeating(blinkInterval);
 
         if (!m_caretPaint) {
@@ -2164,7 +2158,7 @@ void FrameSelection::setFocusedElementIfNeeded()
     bool caretBrowsing = m_frame->settings().caretBrowsingEnabled();
     if (caretBrowsing) {
         if (Element* anchor = enclosingAnchorElement(m_selection.base())) {
-            m_frame->page()->focusController().setFocusedElement(anchor, *m_frame);
+            m_frame->page()->focusController().setFocusedElement(anchor, m_frame);
             return;
         }
     }
@@ -2176,16 +2170,16 @@ void FrameSelection::setFocusedElementIfNeeded()
             // so add the !isFrameElement check here. There's probably a better way to make this
             // work in the long term, but this is the safest fix at this time.
             if (target->isMouseFocusable() && !isFrameElement(target)) {
-                m_frame->page()->focusController().setFocusedElement(target, *m_frame);
+                m_frame->page()->focusController().setFocusedElement(target, m_frame);
                 return;
             }
             target = target->parentOrShadowHostElement();
         }
-        m_frame->document()->setFocusedElement(nullptr);
+        m_frame->document()->setFocusedElement(0);
     }
 
     if (caretBrowsing)
-        m_frame->page()->focusController().setFocusedElement(nullptr, *m_frame);
+        m_frame->page()->focusController().setFocusedElement(0, m_frame);
 }
 
 void DragCaretController::paintDragCaret(Frame* frame, GraphicsContext& p, const LayoutPoint& paintOffset, const LayoutRect& clipRect) const
@@ -2201,10 +2195,10 @@ void DragCaretController::paintDragCaret(Frame* frame, GraphicsContext& p, const
 #endif
 }
 
-RefPtr<MutableStyleProperties> FrameSelection::copyTypingStyle() const
+PassRefPtr<MutableStyleProperties> FrameSelection::copyTypingStyle() const
 {
     if (!m_typingStyle || !m_typingStyle->style())
-        return nullptr;
+        return 0;
     return m_typingStyle->style()->mutableCopy();
 }
 
@@ -2335,7 +2329,7 @@ void FrameSelection::revealSelection(SelectionRevealMode revealMode, const Scrol
                 layer->setAdjustForIOSCaretWhenScrolling(false);
                 updateAppearance();
                 if (m_frame->page())
-                    m_frame->page()->chrome().client().notifyRevealedSelectionByScrollingFrame(*m_frame);
+                    m_frame->page()->chrome().client().notifyRevealedSelectionByScrollingFrame(m_frame);
             }
         }
 #else
@@ -2428,7 +2422,7 @@ void FrameSelection::expandSelectionToElementContainingCaretSelection()
     setSelection(selection);
 }
 
-RefPtr<Range> FrameSelection::elementRangeContainingCaretSelection() const
+PassRefPtr<Range> FrameSelection::elementRangeContainingCaretSelection() const
 {
     if (m_selection.isNone())
         return nullptr;
@@ -2467,7 +2461,7 @@ void FrameSelection::expandSelectionToWordContainingCaretSelection()
         setSelection(selection);
 }
 
-RefPtr<Range> FrameSelection::wordRangeContainingCaretSelection()
+PassRefPtr<Range> FrameSelection::wordRangeContainingCaretSelection()
 {
     return wordSelectionContainingCaretSelection(m_selection).toNormalizedRange();
 }
@@ -2619,12 +2613,12 @@ bool FrameSelection::selectionAtWordStart() const
     return result;
 }
 
-RefPtr<Range> FrameSelection::rangeByMovingCurrentSelection(int amount) const
+PassRefPtr<Range> FrameSelection::rangeByMovingCurrentSelection(int amount) const
 {
     return rangeByAlteringCurrentSelection(AlterationMove, amount);
 }
 
-RefPtr<Range> FrameSelection::rangeByExtendingCurrentSelection(int amount) const
+PassRefPtr<Range> FrameSelection::rangeByExtendingCurrentSelection(int amount) const
 {
     return rangeByAlteringCurrentSelection(AlterationExtend, amount);
 }
@@ -2785,7 +2779,7 @@ bool FrameSelection::actualSelectionAtSentenceStart(const VisibleSelection& sel)
     return result;
 }
 
-RefPtr<Range> FrameSelection::rangeByAlteringCurrentSelection(EAlteration alteration, int amount) const
+PassRefPtr<Range> FrameSelection::rangeByAlteringCurrentSelection(EAlteration alteration, int amount) const
 {
     if (m_selection.isNone())
         return nullptr;

@@ -73,12 +73,6 @@ String JSProxy::className(const JSObject* object)
     return thisObject->target()->methodTable()->className(thisObject->target());
 }
 
-String JSProxy::toStringName(const JSObject* object, ExecState* exec)
-{
-    const JSProxy* thisObject = jsCast<const JSProxy*>(object);
-    return thisObject->target()->methodTable(exec->vm())->toStringName(thisObject->target(), exec);
-}
-
 bool JSProxy::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot& slot)
 {
     JSProxy* thisObject = jsCast<JSProxy*>(object);
@@ -113,12 +107,6 @@ bool JSProxy::deleteProperty(JSCell* cell, ExecState* exec, PropertyName propert
 {
     JSProxy* thisObject = jsCast<JSProxy*>(cell);
     return thisObject->target()->methodTable(exec->vm())->deleteProperty(thisObject->target(), exec, propertyName);
-}
-
-bool JSProxy::isExtensible(JSObject* object, ExecState* exec)
-{
-    JSProxy* thisObject = jsCast<JSProxy*>(object);
-    return thisObject->target()->methodTable(exec->vm())->isExtensible(thisObject->target(), exec);
 }
 
 bool JSProxy::preventExtensions(JSObject* object, ExecState* exec)
@@ -164,10 +152,11 @@ void JSProxy::getOwnPropertyNames(JSObject* object, ExecState* exec, PropertyNam
     thisObject->target()->methodTable(exec->vm())->getOwnPropertyNames(thisObject->target(), exec, propertyNames, mode);
 }
 
-bool JSProxy::setPrototype(JSObject* object, ExecState* exec, JSValue prototype, bool shouldThrowIfCantSet)
+bool JSProxy::setPrototype(JSObject*, ExecState* exec, JSValue, bool shouldThrowIfCantSet)
 {
-    JSProxy* thisObject = jsCast<JSProxy*>(object);
-    return thisObject->target()->methodTable(exec->vm())->setPrototype(thisObject->target(), exec, prototype, shouldThrowIfCantSet);
+    auto scope = DECLARE_THROW_SCOPE(exec->vm());
+
+    return typeError(exec, scope, shouldThrowIfCantSet, ASCIILiteral("Cannot set prototype of this object"));
 }
 
 JSValue JSProxy::getPrototype(JSObject* object, ExecState* exec)

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011, 2013 Google Inc.  All rights reserved.
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -74,31 +74,31 @@ COMPILE_ASSERT(WTF_ARRAY_LENGTH(displayAlignmentMap) == VTTCue::NumberOfAlignmen
 
 static const String& startKeyword()
 {
-    static NeverDestroyed<const String> start(MAKE_STATIC_STRING_IMPL("start"));
+    static NeverDestroyed<const String> start(ASCIILiteral("start"));
     return start;
 }
 
 static const String& middleKeyword()
 {
-    static NeverDestroyed<const String> middle(MAKE_STATIC_STRING_IMPL("middle"));
+    static NeverDestroyed<const String> middle(ASCIILiteral("middle"));
     return middle;
 }
 
 static const String& endKeyword()
 {
-    static NeverDestroyed<const String> end(MAKE_STATIC_STRING_IMPL("end"));
+    static NeverDestroyed<const String> end(ASCIILiteral("end"));
     return end;
 }
 
 static const String& leftKeyword()
 {
-    static NeverDestroyed<const String> left(MAKE_STATIC_STRING_IMPL("left"));
+    static NeverDestroyed<const String> left("left");
     return left;
 }
 
 static const String& rightKeyword()
 {
-    static NeverDestroyed<const String> right(MAKE_STATIC_STRING_IMPL("right"));
+    static NeverDestroyed<const String> right("right");
     return right;
 }
 
@@ -109,13 +109,13 @@ static const String& horizontalKeyword()
 
 static const String& verticalGrowingLeftKeyword()
 {
-    static NeverDestroyed<const String> verticalrl(MAKE_STATIC_STRING_IMPL("rl"));
+    static NeverDestroyed<const String> verticalrl(ASCIILiteral("rl"));
     return verticalrl;
 }
 
 static const String& verticalGrowingRightKeyword()
 {
-    static NeverDestroyed<const String> verticallr(MAKE_STATIC_STRING_IMPL("lr"));
+    static NeverDestroyed<const String> verticallr(ASCIILiteral("lr"));
     return verticallr;
 }
 
@@ -154,7 +154,7 @@ void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
     setInlineStyleProperty(CSSPropertyPosition, CSSValueAbsolute);
 
     //  the 'unicode-bidi' property must be set to 'plaintext'
-    setInlineStyleProperty(CSSPropertyUnicodeBidi, CSSValuePlaintext);
+    setInlineStyleProperty(CSSPropertyUnicodeBidi, CSSValueWebkitPlaintext);
 
     // the 'direction' property must be set to direction
     setInlineStyleProperty(CSSPropertyDirection, m_cue.getCSSWritingDirection());
@@ -188,14 +188,14 @@ void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
     if (m_cue.vertical() == horizontalKeyword()) {
         setInlineStyleProperty(CSSPropertyWidth, newCueSize, CSSPrimitiveValue::CSS_PERCENTAGE);
         setInlineStyleProperty(CSSPropertyHeight, CSSValueAuto);
-        setInlineStyleProperty(CSSPropertyMinWidth, "min-content");
+        setInlineStyleProperty(CSSPropertyMinWidth, "-webkit-min-content");
         setInlineStyleProperty(CSSPropertyMaxWidth, maxSize, CSSPrimitiveValue::CSS_PERCENTAGE);
         if ((alignment == CSSValueMiddle || alignment == CSSValueCenter) && multiplier != 1.0)
             setInlineStyleProperty(CSSPropertyLeft, static_cast<double>(position.first - (newCueSize - m_cue.getCSSSize()) / 2), CSSPrimitiveValue::CSS_PERCENTAGE);
     } else {
         setInlineStyleProperty(CSSPropertyWidth, CSSValueAuto);
         setInlineStyleProperty(CSSPropertyHeight, newCueSize, CSSPrimitiveValue::CSS_PERCENTAGE);
-        setInlineStyleProperty(CSSPropertyMinHeight, "min-content");
+        setInlineStyleProperty(CSSPropertyMinHeight, "-webkit-min-content");
         setInlineStyleProperty(CSSPropertyMaxHeight, maxSize, CSSPrimitiveValue::CSS_PERCENTAGE);
         if ((alignment == CSSValueMiddle || alignment == CSSValueCenter) && multiplier != 1.0)
             setInlineStyleProperty(CSSPropertyTop, static_cast<double>(position.second - (newCueSize - m_cue.getCSSSize()) / 2), CSSPrimitiveValue::CSS_PERCENTAGE);
@@ -223,10 +223,6 @@ void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
 
         setInlineStyleProperty(CSSPropertyWhiteSpace, CSSValuePre);
     }
-
-    // Make sure shadow or stroke is not clipped.
-    setInlineStyleProperty(CSSPropertyOverflow, CSSValueVisible);
-    m_cue.element().setInlineStyleProperty(CSSPropertyOverflow, CSSValueVisible);
 }
 
 const AtomicString& VTTCueBox::vttCueBoxShadowPseudoId()
@@ -609,7 +605,7 @@ static bool isCueParagraphSeparator(UChar character)
 
 void VTTCue::determineTextDirection()
 {
-    static NeverDestroyed<const String> rtTag(MAKE_STATIC_STRING_IMPL("rt"));
+    static NeverDestroyed<const String> rtTag(ASCIILiteral("rt"));
     createWebVTTNodeTree();
     if (!m_webVTTNodeTree)
         return;
@@ -753,7 +749,7 @@ void VTTCue::calculateDisplayParameters()
     
 void VTTCue::markFutureAndPastNodes(ContainerNode* root, const MediaTime& previousTimestamp, const MediaTime& movieTime)
 {
-    static NeverDestroyed<const String> timestampTag(MAKE_STATIC_STRING_IMPL("timestamp"));
+    static NeverDestroyed<const String> timestampTag(ASCIILiteral("timestamp"));
     
     bool isPastNode = true;
     MediaTime currentTimestamp = previousTimestamp;
@@ -852,8 +848,7 @@ void VTTCue::removeDisplayTree()
     if (m_notifyRegion && track()) {
         if (VTTRegionList* regions = track()->regions()) {
             if (VTTRegion* region = regions->getRegionById(m_regionId))
-                if (hasDisplayTree())
-                    region->willRemoveTextTrackCueBox(m_displayTree.get());
+                region->willRemoveTextTrackCueBox(m_displayTree.get());
         }
     }
 

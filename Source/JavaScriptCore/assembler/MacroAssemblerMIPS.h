@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008, 2014 Apple Inc. All rights reserved.
  * Copyright (C) 2010 MIPS Technologies, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,16 +28,14 @@
 
 #if ENABLE(ASSEMBLER) && CPU(MIPS)
 
-#include "MIPSAssembler.h"
 #include "AbstractMacroAssembler.h"
+#include "MIPSAssembler.h"
 
 namespace JSC {
 
 class MacroAssemblerMIPS : public AbstractMacroAssembler<MIPSAssembler, MacroAssemblerMIPS> {
 public:
     typedef MIPSRegisters::FPRegisterID FPRegisterID;
-    static const unsigned numGPRs = 32;
-    static const unsigned numFPRs = 32;
 
     MacroAssemblerMIPS()
         : m_fixedWidth(false)
@@ -443,47 +441,6 @@ public:
         store32(dataTempRegister, dest.m_ptr);
     }
 
-    void or32(TrustedImm32 imm, Address address)
-    {
-        if (address.offset >= -32768 && address.offset <= 32767
-            && !m_fixedWidth) {
-            /*
-              lw        dataTemp, offset(base)
-              li        immTemp, imm
-              or        dataTemp, dataTemp, immTemp
-              sw        dataTemp, offset(base)
-            */
-            m_assembler.lw(dataTempRegister, address.base, address.offset);
-            if (imm.m_value >= 0 && imm.m_value <= 65535 && !m_fixedWidth)
-                m_assembler.ori(dataTempRegister, dataTempRegister, imm.m_value);
-            else {
-                move(imm, immTempRegister);
-                m_assembler.orInsn(dataTempRegister, dataTempRegister, immTempRegister);
-            }
-            m_assembler.sw(dataTempRegister, address.base, address.offset);
-        } else {
-            /*
-              lui       addrTemp, (offset + 0x8000) >> 16
-              addu      addrTemp, addrTemp, base
-              lw        dataTemp, (offset & 0xffff)(addrTemp)
-              li        immtemp, imm
-              or        dataTemp, dataTemp, immTemp
-              sw        dataTemp, (offset & 0xffff)(addrTemp)
-            */
-            m_assembler.lui(addrTempRegister, (address.offset + 0x8000) >> 16);
-            m_assembler.addu(addrTempRegister, addrTempRegister, address.base);
-            m_assembler.lw(dataTempRegister, addrTempRegister, address.offset);
-
-            if (imm.m_value >= 0 && imm.m_value <= 65535 && !m_fixedWidth)
-                m_assembler.ori(dataTempRegister, dataTempRegister, imm.m_value);
-            else {
-                move(imm, immTempRegister);
-                m_assembler.orInsn(dataTempRegister, dataTempRegister, immTempRegister);
-            }
-            m_assembler.sw(dataTempRegister, addrTempRegister, address.offset);
-        }
-    }
-
     void rshift32(RegisterID shiftAmount, RegisterID dest)
     {
         m_assembler.srav(dest, dest, shiftAmount);
@@ -789,23 +746,6 @@ public:
         m_assembler.lbu(dest, addrTempRegister, 0);
     }
 
-    void load8SignedExtendTo32(ImplicitAddress address, RegisterID dest)
-    {
-        if (address.offset >= -32768 && address.offset <= 32767
-            && !m_fixedWidth)
-            m_assembler.lb(dest, address.base, address.offset);
-        else {
-            /*
-                lui     addrTemp, (offset + 0x8000) >> 16
-                addu    addrTemp, addrTemp, base
-                lb      dest, (offset & 0xffff)(addrTemp)
-              */
-            m_assembler.lui(addrTempRegister, (address.offset + 0x8000) >> 16);
-            m_assembler.addu(addrTempRegister, addrTempRegister, address.base);
-            m_assembler.lb(dest, addrTempRegister, address.offset);
-        }
-    }
-
     void load8SignedExtendTo32(BaseIndex address, RegisterID dest)
     {
         if (address.offset >= -32768 && address.offset <= 32767
@@ -833,22 +773,6 @@ public:
             m_assembler.lb(dest, addrTempRegister, address.offset);
         }
     }
-
-    ALWAYS_INLINE void load8SignedExtendTo32(AbsoluteAddress address, RegisterID dest)
-    {
-        load8SignedExtendTo32(address.m_ptr, dest);
-    }
-
-    void load8SignedExtendTo32(const void* address, RegisterID dest)
-    {
-        /*
-            li  addrTemp, address
-            lb  dest, 0(addrTemp)
-        */
-        move(TrustedImmPtr(address), addrTempRegister);
-        m_assembler.lb(dest, addrTempRegister, 0);
-    }
-
 
     void load32(ImplicitAddress address, RegisterID dest)
     {
@@ -1553,12 +1477,6 @@ public:
         return branch32(cond, dataTempRegister, immTempRegister);
     }
 
-    Jump branchPtr(RelationalCondition cond, BaseIndex left, RegisterID right)
-    {
-        load32(left, dataTempRegister);
-        return branch32(cond, dataTempRegister, right);
-    }
-
     Jump branch32(RelationalCondition cond, RegisterID left, RegisterID right)
     {
         if (cond == Equal)
@@ -2207,8 +2125,6 @@ public:
         m_assembler.bkpt();
     }
 
-    static bool isBreakpoint(void* address) { return MIPSAssembler::isBkpt(address); }
-
     Call nearCall()
     {
         /* We need two words for relaxation. */
@@ -2444,23 +2360,6 @@ public:
         }
     }
 
-    void loadFloat(ImplicitAddress address, FPRegisterID dest)
-    {
-        if (address.offset >= -32768 && address.offset <= 32767
-            && !m_fixedWidth) {
-            m_assembler.lwc1(dest, address.base, address.offset);
-        } else {
-            /*
-               lui     addrTemp, (offset + 0x8000) >> 16
-               addu    addrTemp, addrTemp, base
-               lwc1    dest, (offset & 0xffff)(addrTemp)
-               */
-            m_assembler.lui(addrTempRegister, (address.offset + 0x8000) >> 16);
-            m_assembler.addu(addrTempRegister, addrTempRegister, address.base);
-            m_assembler.lwc1(dest, addrTempRegister, address.offset);
-        }
-    }
-
     void loadDouble(ImplicitAddress address, FPRegisterID dest)
     {
 #if WTF_MIPS_ISA(1)
@@ -2595,23 +2494,6 @@ public:
             m_assembler.addu(addrTempRegister, addrTempRegister, address.base);
             m_assembler.lui(immTempRegister, (address.offset + 0x8000) >> 16);
             m_assembler.addu(addrTempRegister, addrTempRegister, immTempRegister);
-            m_assembler.swc1(src, addrTempRegister, address.offset);
-        }
-    }
-
-    void storeFloat(FPRegisterID src, ImplicitAddress address)
-    {
-        if (address.offset >= -32768 && address.offset <= 32767
-            && !m_fixedWidth)
-            m_assembler.swc1(src, address.base, address.offset);
-        else {
-            /*
-                lui     addrTemp, (offset + 0x8000) >> 16
-                addu    addrTemp, addrTemp, base
-                swc1    src, (offset & 0xffff)(addrTemp)
-              */
-            m_assembler.lui(addrTempRegister, (address.offset + 0x8000) >> 16);
-            m_assembler.addu(addrTempRegister, addrTempRegister, address.base);
             m_assembler.swc1(src, addrTempRegister, address.offset);
         }
     }
@@ -3050,11 +2932,6 @@ public:
         breakpoint();
     }
 
-    void storeFence()
-    {
-        m_assembler.sync();
-    }
-
     void abortWithReason(AbortReason reason, intptr_t misc)
     {
         move(TrustedImm32(misc), immTempRegister);
@@ -3066,11 +2943,6 @@ public:
         return FunctionPtr(reinterpret_cast<void(*)()>(MIPSAssembler::readCallTarget(call.dataLocation())));
     }
 
-    static void replaceWithBreakpoint(CodeLocationLabel instructionStart)
-    {
-        MIPSAssembler::replaceWithBkpt(instructionStart.executableAddress());
-    }
-
     static void replaceWithJump(CodeLocationLabel instructionStart, CodeLocationLabel destination)
     {
         MIPSAssembler::replaceWithJump(instructionStart.dataLocation(), destination.dataLocation());
@@ -3080,11 +2952,6 @@ public:
     {
         MIPSAssembler::maxJumpReplacementSize();
         return 0;
-    }
-
-    static ptrdiff_t patchableJumpSize()
-    {
-        return MIPSAssembler::patchableJumpSize();
     }
 
     static bool canJumpReplacePatchableBranchPtrWithPatch() { return false; }

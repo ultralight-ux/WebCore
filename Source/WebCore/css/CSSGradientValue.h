@@ -27,13 +27,14 @@
 
 #include "CSSImageGeneratorValue.h"
 #include "CSSPrimitiveValue.h"
+#include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
 
 class FloatPoint;
 class Gradient;
-class StyleResolver;
+class RenderView;
 
 enum CSSGradientType {
     CSSDeprecatedLinearGradient,
@@ -60,7 +61,7 @@ struct CSSGradientColorStop {
 
 class CSSGradientValue : public CSSImageGeneratorValue {
 public:
-    RefPtr<Image> image(RenderElement&, const FloatSize&);
+    RefPtr<Image> image(RenderElement*, const FloatSize&);
 
     void setFirstX(RefPtr<CSSPrimitiveValue>&& val) { m_firstX = WTFMove(val); }
     void setFirstY(RefPtr<CSSPrimitiveValue>&& val) { m_firstY = WTFMove(val); }
@@ -78,13 +79,13 @@ public:
     CSSGradientType gradientType() const { return m_gradientType; }
 
     bool isFixedSize() const { return false; }
-    FloatSize fixedSize(const RenderElement&) const { return FloatSize(); }
+    FloatSize fixedSize(const RenderElement*) const { return FloatSize(); }
 
     bool isPending() const { return false; }
-    bool knownToBeOpaque() const;
+    bool knownToBeOpaque(const RenderElement*) const;
 
     void loadSubimages(CachedResourceLoader&, const ResourceLoaderOptions&) { }
-    Ref<CSSGradientValue> gradientWithStylesResolved(const StyleResolver&);
+    RefPtr<CSSGradientValue> gradientWithStylesResolved(const StyleResolver*);
 
 protected:
     CSSGradientValue(ClassType classType, CSSGradientRepeat repeat, CSSGradientType gradientType)
@@ -131,6 +132,7 @@ protected:
 
 class CSSLinearGradientValue final : public CSSGradientValue {
 public:
+
     static Ref<CSSLinearGradientValue> create(CSSGradientRepeat repeat, CSSGradientType gradientType = CSSLinearGradient)
     {
         return adoptRef(*new CSSLinearGradientValue(repeat, gradientType));
@@ -209,6 +211,7 @@ private:
         , m_endVerticalSize(other.m_endVerticalSize)
     {
     }
+
 
     // Resolve points/radii to front end values.
     float resolveRadius(CSSPrimitiveValue&, const CSSToLengthConversionData&, float* widthOrHeight = 0);

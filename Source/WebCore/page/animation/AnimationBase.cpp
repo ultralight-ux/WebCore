@@ -29,11 +29,12 @@
 #include "config.h"
 #include "AnimationBase.h"
 
-#include "CSSAnimationControllerPrivate.h"
+#include "AnimationControllerPrivate.h"
 #include "CSSPrimitiveValue.h"
 #include "CSSPropertyAnimation.h"
 #include "CompositeAnimation.h"
 #include "Document.h"
+#include "EventNames.h"
 #include "FloatConversion.h"
 #include "GeometryUtilities.h"
 #include "Logging.h"
@@ -88,11 +89,9 @@ AnimationBase::AnimationBase(const Animation& animation, RenderElement* renderer
 
 void AnimationBase::setNeedsStyleRecalc(Element* element)
 {
-    if (!element || element->document().renderTreeBeingDestroyed())
-        return;
-
-    ASSERT(element->document().pageCacheState() == Document::NotInPageCache);
-    element->invalidateStyleAndLayerComposition();
+    ASSERT(!element || element->document().pageCacheState() == Document::NotInPageCache);
+    if (element)
+        element->invalidateStyleAndLayerComposition();
 }
 
 double AnimationBase::duration() const
@@ -163,10 +162,10 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
             m_compositeAnimation->animationController().removeFromAnimationsWaitingForStyle(this);
         LOG(Animations, "%p AnimationState %s -> New", this, nameForState(m_animationState));
         m_animationState = AnimationState::New;
-        m_startTime = std::nullopt;
-        m_pauseTime = std::nullopt;
+        m_startTime = 0;
+        m_pauseTime = -1;
         m_requestedStartTime = 0;
-        m_nextIterationDuration = std::nullopt;
+        m_nextIterationDuration = -1;
         endAnimation();
         return;
     }
@@ -176,10 +175,10 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
             m_compositeAnimation->animationController().removeFromAnimationsWaitingForStyle(this);
         LOG(Animations, "%p AnimationState %s -> New", this, nameForState(m_animationState));
         m_animationState = AnimationState::New;
-        m_startTime = std::nullopt;
-        m_pauseTime = std::nullopt;
+        m_startTime = 0;
+        m_pauseTime = -1;
         m_requestedStartTime = 0;
-        m_nextIterationDuration = std::nullopt;
+        m_nextIterationDuration = -1;
         endAnimation();
 
         if (!paused())
@@ -209,7 +208,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
     if (input == AnimationStateInput::ResumeOverride) {
         if (m_animationState == AnimationState::Looping || m_animationState == AnimationState::Ending) {
             // Start the animation
-            startAnimation(beginAnimationUpdateTime() - m_startTime.value_or(0));
+            startAnimation(beginAnimationUpdateTime() - m_startTime);
         }
         return;
     }
@@ -227,7 +226,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 // We are pausing before we even started.
                 LOG(Animations, "%p AnimationState %s -> AnimationState::PausedNew", this, nameForState(m_animationState));
                 m_animationState = AnimationState::PausedNew;
-                m_pauseTime = std::nullopt;
+                m_pauseTime = 0;
             }
 
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
@@ -299,11 +298,11 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 LOG(Animations, "%p AnimationState %s -> StartTimeSet (time is %f)", this, nameForState(m_animationState), param);
 
                 // We have a start time, set it, unless the startTime is already set
-                if (!m_startTime) {
+                if (m_startTime <= 0) {
                     m_startTime = param;
                     // If the value for 'animation-delay' is negative then the animation appears to have started in the past.
                     if (m_animation->delay() < 0)
-                        m_startTime = m_startTime.value() + m_animation->delay();
+                        m_startTime += m_animation->delay();
                 }
 
                 // Now that we know the start time, fire the start event.
@@ -319,7 +318,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 // We are pausing while waiting for a start response. Cancel the animation and wait. When 
                 // we unpause, we will act as though the start timer just fired
                 m_pauseTime = beginAnimationUpdateTime();
-                pauseAnimation(beginAnimationUpdateTime() - m_startTime.value_or(0));
+                pauseAnimation(beginAnimationUpdateTime() - m_startTime);
                 LOG(Animations, "%p AnimationState %s -> PausedWaitResponse", this, nameForState(m_animationState));
                 m_animationState = AnimationState::PausedWaitResponse;
             }
@@ -339,7 +338,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
             } else {
                 // We are pausing while running. Cancel the animation and wait
                 m_pauseTime = beginAnimationUpdateTime();
-                pauseAnimation(beginAnimationUpdateTime() - m_startTime.value_or(0));
+                pauseAnimation(beginAnimationUpdateTime() - m_startTime);
                 LOG(Animations, "%p AnimationState %s -> PausedRun", this, nameForState(m_animationState));
                 m_animationState = AnimationState::PausedRun;
             }
@@ -371,7 +370,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
             } else {
                 // We are pausing while running. Cancel the animation and wait
                 m_pauseTime = beginAnimationUpdateTime();
-                pauseAnimation(beginAnimationUpdateTime() - m_startTime.value_or(0));
+                pauseAnimation(beginAnimationUpdateTime() - m_startTime);
                 LOG(Animations, "%p AnimationState %s -> PausedRun", this, nameForState(m_animationState));
                 m_animationState = AnimationState::PausedRun;
             }
@@ -381,8 +380,8 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
             ASSERT(input == AnimationStateInput::PlayStateRunning);
             ASSERT(paused());
             // Update the times
-            m_startTime = m_startTime.value() + beginAnimationUpdateTime() - m_pauseTime.value_or(0);
-            m_pauseTime = std::nullopt;
+            m_startTime += beginAnimationUpdateTime() - m_pauseTime;
+            m_pauseTime = -1;
 
             // we were waiting for the start timer to fire, go back and wait again
             LOG(Animations, "%p AnimationState %s -> New", this, nameForState(m_animationState));
@@ -406,18 +405,18 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                     // to start, so jump back to the New state and reset.
                     LOG(Animations, "%p AnimationState %s -> AnimationState::New", this, nameForState(m_animationState));
                     m_animationState = AnimationState::New;
-                    m_pauseTime = std::nullopt;
+                    m_pauseTime = -1;
                     updateStateMachine(input, param);
                     break;
                 }
 
                 // Update the times
                 if (m_animationState == AnimationState::PausedRun)
-                    m_startTime = m_startTime.value() + beginAnimationUpdateTime() - m_pauseTime.value_or(0);
+                    m_startTime += beginAnimationUpdateTime() - m_pauseTime;
                 else
                     m_startTime = 0;
 
-                m_pauseTime = std::nullopt;
+                m_pauseTime = -1;
 
                 if (m_animationState == AnimationState::PausedWaitStyleAvailable) {
                     LOG(Animations, "%p AnimationState %s -> StartWaitStyleAvailable", this, nameForState(m_animationState));
@@ -436,7 +435,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                         updateStateMachine(AnimationStateInput::StartTimeSet, beginAnimationUpdateTime());
                         m_isAccelerated = true;
                     } else {
-                        bool started = startAnimation(beginAnimationUpdateTime() - m_startTime.value_or(0));
+                        bool started = startAnimation(beginAnimationUpdateTime() - m_startTime);
                         m_compositeAnimation->animationController().addToAnimationsWaitingForStartTimeResponse(this, started);
                         m_isAccelerated = started;
                     }
@@ -451,9 +450,9 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 // We ignore the start time and just move into the paused-run state.
                 LOG(Animations, "%p AnimationState %s -> PausedRun (time is %f)", this, nameForState(m_animationState), param);
                 m_animationState = AnimationState::PausedRun;
-                ASSERT(!m_startTime);
+                ASSERT(m_startTime == 0);
                 m_startTime = param;
-                m_pauseTime = m_pauseTime.value_or(0) + param;
+                m_pauseTime += m_startTime;
                 break;
             }
 
@@ -493,7 +492,7 @@ void AnimationBase::fireAnimationEventsIfNeeded()
         if (m_animation->trigger() && m_animation->trigger()->isScrollAnimationTrigger()) {
             if (m_object) {
                 float offset = m_compositeAnimation->animationController().scrollPosition();
-                auto& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger());
+                ScrollAnimationTrigger& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger().get());
                 if (offset > scrollTrigger.startValue().value())
                     updateStateMachine(AnimationStateInput::StartTimerFired, 0);
             }
@@ -506,7 +505,7 @@ void AnimationBase::fireAnimationEventsIfNeeded()
         return;
     }
 
-    double elapsedDuration = beginAnimationUpdateTime() - m_startTime.value_or(0);
+    double elapsedDuration = beginAnimationUpdateTime() - m_startTime;
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
     // If we are a triggered animation that depends on scroll, our elapsed
     // time is determined by the scroll position.
@@ -520,17 +519,17 @@ void AnimationBase::fireAnimationEventsIfNeeded()
     elapsedDuration = std::max(elapsedDuration, 0.0);
     
     // Check for end timeout
-    if (m_totalDuration && elapsedDuration >= m_totalDuration.value()) {
+    if (m_totalDuration >= 0 && elapsedDuration >= m_totalDuration) {
         // We may still be in AnimationState::Looping if we've managed to skip a
         // whole iteration, in which case we should jump to the end state.
         LOG(Animations, "%p AnimationState %s -> Ending", this, nameForState(m_animationState));
         m_animationState = AnimationState::Ending;
 
         // Fire an end event
-        updateStateMachine(AnimationStateInput::EndTimerFired, m_totalDuration.value());
+        updateStateMachine(AnimationStateInput::EndTimerFired, m_totalDuration);
     } else {
         // Check for iteration timeout
-        if (!m_nextIterationDuration) {
+        if (m_nextIterationDuration < 0) {
             // Hasn't been set yet, set it
             double durationLeft = m_animation->duration() - fmod(elapsedDuration, m_animation->duration());
             m_nextIterationDuration = elapsedDuration + durationLeft;
@@ -538,7 +537,7 @@ void AnimationBase::fireAnimationEventsIfNeeded()
         
         if (elapsedDuration >= m_nextIterationDuration) {
             // Set to the next iteration
-            double previous = m_nextIterationDuration.value();
+            double previous = m_nextIterationDuration;
             double durationLeft = m_animation->duration() - fmod(elapsedDuration, m_animation->duration());
             m_nextIterationDuration = elapsedDuration + durationLeft;
             
@@ -564,33 +563,33 @@ void AnimationBase::updatePlayState(EAnimPlayState playState)
     updateStateMachine(pause ?  AnimationStateInput::PlayStatePaused : AnimationStateInput::PlayStateRunning, -1);
 }
 
-std::optional<Seconds> AnimationBase::timeToNextService()
+double AnimationBase::timeToNextService()
 {
-    // Returns the time at which next service is required. std::nullopt means no service is required. 0 means
+    // Returns the time at which next service is required. -1 means no service is required. 0 means 
     // service is required now, and > 0 means service is required that many seconds in the future.
     if (paused() || isNew() || postActive() || fillingForwards())
-        return std::nullopt;
+        return -1;
     
     if (m_animationState == AnimationState::StartWaitTimer) {
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
         if (m_animation->trigger()->isScrollAnimationTrigger()) {
             if (m_object) {
                 float currentScrollPosition = m_object->view().frameView().scrollPositionForFixedPosition().y().toFloat();
-                auto& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger());
+                ScrollAnimationTrigger& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger().get());
                 if (currentScrollPosition >= scrollTrigger.startValue().value() && (!scrollTrigger.hasEndValue() || currentScrollPosition <= scrollTrigger.endValue().value()))
-                    return 0_s;
+                    return 0;
             }
-            return std::nullopt;
+            return -1;
         }
 #endif
         double timeFromNow = m_animation->delay() - (beginAnimationUpdateTime() - m_requestedStartTime);
-        return std::max(Seconds { timeFromNow }, 0_s);
+        return std::max(timeFromNow, 0.0);
     }
     
     fireAnimationEventsIfNeeded();
         
     // In all other cases, we need service right away.
-    return 0_s;
+    return 0;
 }
 
 // Compute the fractional time, taking into account direction.
@@ -652,7 +651,7 @@ double AnimationBase::progress(double scale, double offset, const TimingFunction
     }
 
     if (!timingFunction)
-        timingFunction = m_animation->timingFunction();
+        timingFunction = m_animation->timingFunction().get();
 
     switch (timingFunction->type()) {
     case TimingFunction::CubicBezierFunction: {
@@ -675,19 +674,19 @@ double AnimationBase::progress(double scale, double offset, const TimingFunction
     return 0;
 }
 
-void AnimationBase::getTimeToNextEvent(Seconds& time, bool& isLooping) const
+void AnimationBase::getTimeToNextEvent(double& time, bool& isLooping) const
 {
     // Decide when the end or loop event needs to fire
-    const double elapsedDuration = std::max(beginAnimationUpdateTime() - m_startTime.value_or(0), 0.0);
+    const double elapsedDuration = std::max(beginAnimationUpdateTime() - m_startTime, 0.0);
     double durationLeft = 0;
-    double nextIterationTime = m_totalDuration.value_or(0);
+    double nextIterationTime = m_totalDuration;
 
-    if (!m_totalDuration || elapsedDuration < m_totalDuration.value()) {
+    if (m_totalDuration < 0 || elapsedDuration < m_totalDuration) {
         durationLeft = m_animation->duration() > 0 ? (m_animation->duration() - fmod(elapsedDuration, m_animation->duration())) : 0;
         nextIterationTime = elapsedDuration + durationLeft;
     }
     
-    if (!m_totalDuration || nextIterationTime < m_totalDuration.value()) {
+    if (m_totalDuration < 0 || nextIterationTime < m_totalDuration) {
         // We are not at the end yet
         ASSERT(nextIterationTime > 0);
         isLooping = true;
@@ -696,12 +695,12 @@ void AnimationBase::getTimeToNextEvent(Seconds& time, bool& isLooping) const
         isLooping = false;
     }
     
-    time = Seconds { durationLeft };
+    time = durationLeft;
 }
 
 void AnimationBase::goIntoEndingOrLoopingState()
 {
-    Seconds t;
+    double t;
     bool isLooping;
     getTimeToNextEvent(t, isLooping);
     LOG(Animations, "%p AnimationState %s -> %s", this, nameForState(m_animationState), isLooping ? "Looping" : "Ending");
@@ -722,12 +721,12 @@ void AnimationBase::freezeAtTime(double t)
 
     ASSERT(m_startTime); // If m_startTime is zero, we haven't started yet, so we'll get a bad pause time.
     if (t <= m_animation->delay())
-        m_pauseTime = m_startTime.value_or(0);
+        m_pauseTime = m_startTime;
     else
-        m_pauseTime = m_startTime.value_or(0) + t - m_animation->delay();
+        m_pauseTime = m_startTime + t - m_animation->delay();
 
     if (m_object && m_object->isComposited())
-        downcast<RenderBoxModelObject>(*m_object).suspendAnimations(m_pauseTime.value());
+        downcast<RenderBoxModelObject>(*m_object).suspendAnimations(m_pauseTime);
 }
 
 double AnimationBase::beginAnimationUpdateTime() const
@@ -742,7 +741,7 @@ double AnimationBase::getElapsedTime() const
 {
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
     if (m_animation->trigger() && m_animation->trigger()->isScrollAnimationTrigger()) {
-        auto& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger());
+        ScrollAnimationTrigger& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger().get());
         if (scrollTrigger.hasEndValue() && m_object) {
             float offset = m_compositeAnimation->animationController().scrollPosition();
             float startValue = scrollTrigger.startValue().value();
@@ -758,16 +757,16 @@ double AnimationBase::getElapsedTime() const
 
     if (paused()) {
         double delayOffset = (!m_startTime && m_animation->delay() < 0) ? m_animation->delay() : 0;
-        return m_pauseTime.value_or(0) - m_startTime.value_or(0) - delayOffset;
+        return m_pauseTime - m_startTime - delayOffset;
     }
 
-    if (!m_startTime)
+    if (m_startTime <= 0)
         return 0;
 
     if (postActive() || fillingForwards())
-        return m_totalDuration.value_or(0);
+        return m_totalDuration;
 
-    return beginAnimationUpdateTime() - m_startTime.value_or(0);
+    return beginAnimationUpdateTime() - m_startTime;
 }
 
 void AnimationBase::setElapsedTime(double time)

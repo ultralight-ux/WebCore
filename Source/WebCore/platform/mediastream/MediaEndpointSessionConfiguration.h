@@ -33,7 +33,6 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "PeerConnectionStates.h"
 #include "PeerMediaDescription.h"
 #include <wtf/CryptographicallyRandomNumber.h>
 
@@ -47,8 +46,8 @@ public:
     }
     virtual ~MediaEndpointSessionConfiguration() { }
 
-    int64_t sessionId() const { return m_sessionId; }
-    void setSessionId(int64_t sessionId) { m_sessionId = sessionId; }
+    uint64_t sessionId() const { return m_sessionId; }
+    void setSessionId(uint64_t sessionId) { m_sessionId = sessionId; }
 
     unsigned sessionVersion() const { return m_sessionVersion; }
     void setSessionVersion(unsigned sessionVersion) { m_sessionVersion = sessionVersion; }
@@ -57,16 +56,12 @@ public:
     const Vector<PeerMediaDescription>& mediaDescriptions() const { return m_mediaDescriptions; }
     void addMediaDescription(PeerMediaDescription&& description) { m_mediaDescriptions.append(WTFMove(description)); }
 
-    PeerConnectionStates::BundlePolicy bundlePolicy() const { return m_bundlePolicy; }
-    void setBundlePolicy(PeerConnectionStates::BundlePolicy bundlePolicy) { m_bundlePolicy = bundlePolicy; }
-
     RefPtr<MediaEndpointSessionConfiguration> clone() const
     {
         RefPtr<MediaEndpointSessionConfiguration> copy = create();
         copy->m_sessionId = m_sessionId;
         copy->m_sessionVersion = m_sessionVersion;
         copy->m_mediaDescriptions = m_mediaDescriptions;
-        copy->m_bundlePolicy = m_bundlePolicy;
 
         return copy;
     }
@@ -75,15 +70,13 @@ private:
     MediaEndpointSessionConfiguration()
     {
         m_sessionId = cryptographicallyRandomNumber();
-        m_sessionId = m_sessionId << 31 | cryptographicallyRandomNumber();
+        m_sessionId = m_sessionId << 32 | cryptographicallyRandomNumber();
     }
 
-    int64_t m_sessionId;
+    uint64_t m_sessionId;
     unsigned m_sessionVersion { 0 };
 
     Vector<PeerMediaDescription> m_mediaDescriptions;
-
-    PeerConnectionStates::BundlePolicy m_bundlePolicy { PeerConnectionStates::BundlePolicy::Balanced };
 };
 
 } // namespace WebCore

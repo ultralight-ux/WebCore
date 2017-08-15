@@ -23,11 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// https://w3c.github.io/user-timing/
-
 [
-    Conditional=WEB_TIMING,
-    EnabledAtRuntime=UserTiming,
-    Exposed=(Window,Worker),
+    Conditional=USER_TIMING,
 ] interface PerformanceMark : PerformanceEntry {
 };

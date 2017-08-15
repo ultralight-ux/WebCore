@@ -61,6 +61,9 @@ private:
     void contextDestroyed() final;
 
     CompletionHandler m_completionHandler;
+    Vector<CaptureDevice> m_deviceList;
+    String m_deviceIdentifierHashSalt;
+    bool m_originHasPersistentAccess { false };
 };
 
 } // namespace WebCore

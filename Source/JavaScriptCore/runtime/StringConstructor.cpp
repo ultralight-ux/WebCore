@@ -44,7 +44,7 @@ const ClassInfo StringConstructor::s_info = { "Function", &InternalFunction::s_i
 
 /* Source for StringConstructor.lut.h
 @begin stringConstructorTable
-  fromCharCode          stringFromCharCode         DontEnum|Function 1 FromCharCodeIntrinsic
+  fromCharCode          stringFromCharCode         DontEnum|Function 1
   fromCodePoint         stringFromCodePoint        DontEnum|Function 1
   raw                   JSBuiltin                  DontEnum|Function 1
 @end
@@ -61,7 +61,7 @@ void StringConstructor::finishCreation(VM& vm, StringPrototype* stringPrototype)
 {
     Base::finishCreation(vm, stringPrototype->classInfo()->className);
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, stringPrototype, ReadOnly | DontEnum | DontDelete);
-    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum);
+    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum | DontDelete);
 }
 
 // ------------------------------ Functions --------------------------------

@@ -85,14 +85,6 @@ function newPromiseCapability(constructor)
 }
 
 @globalPrivate
-function newHandledRejectedPromise(error)
-{
-    let promise = @Promise.@reject(error);
-    promise.@promiseIsHandled = true;
-    return promise;
-}
-
-@globalPrivate
 function triggerPromiseReactions(state, reactions, argument)
 {
     "use strict";
@@ -112,9 +104,6 @@ function rejectPromise(promise, reason)
     promise.@promiseState = @promiseStateRejected;
 
     @InspectorInstrumentation.promiseRejected(promise, reason, reactions);
-
-    if (!promise.@promiseIsHandled)
-        @hostPromiseRejectionTracker(promise, @promiseRejectionReject);
 
     @triggerPromiseReactions(@promiseStateRejected, reactions, reason);
 }
@@ -223,7 +212,6 @@ function initializePromise(executor)
 
     this.@promiseState = @promiseStatePending;
     this.@promiseReactions = [];
-    this.@promiseIsHandled = false;
 
     var resolvingFunctions = @createResolvingFunctions(this);
     try {

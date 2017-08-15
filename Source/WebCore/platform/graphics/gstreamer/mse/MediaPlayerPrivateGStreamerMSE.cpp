@@ -62,6 +62,9 @@ static const char* dumpReadyState(WebCore::MediaPlayer::ReadyState readyState)
     }
 }
 
+// Max interval in seconds to stay in the READY state on manual state change requests.
+static const unsigned gReadyStateTimerInterval = 60;
+
 GST_DEBUG_CATEGORY(webkit_mse_debug);
 #define GST_CAT_DEFAULT webkit_mse_debug
 
@@ -474,7 +477,7 @@ void MediaPlayerPrivateGStreamerMSE::setRate(float)
 
 std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateGStreamerMSE::buffered() const
 {
-    return m_mediaSource ? m_mediaSource->buffered() : std::make_unique<PlatformTimeRanges>();
+    return m_mediaSource->buffered();
 }
 
 void MediaPlayerPrivateGStreamerMSE::sourceChanged()
@@ -804,8 +807,15 @@ MediaPlayer::SupportsType MediaPlayerPrivateGStreamerMSE::supportsType(const Med
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
 void MediaPlayerPrivateGStreamerMSE::dispatchDecryptionKey(GstBuffer* buffer)
 {
-    for (auto it : m_appendPipelinesMap)
-        it.value->dispatchDecryptionKey(buffer);
+    for (auto iterator : m_appendPipelinesMap) {
+        if (iterator.value->appendState() == AppendPipeline::AppendState::KeyNegotiation) {
+            GST_TRACE("append pipeline %p in key negotiation, setting key", iterator.value.get());
+            gst_element_send_event(iterator.value->pipeline(), gst_event_new_custom(GST_EVENT_CUSTOM_DOWNSTREAM_OOB,
+                gst_structure_new("drm-cipher", "key", GST_TYPE_BUFFER, buffer, nullptr)));
+            iterator.value->setAppendState(AppendPipeline::AppendState::Ongoing);
+        } else
+            GST_TRACE("append pipeline %p not in key negotiation", iterator.value.get());
+    }
 }
 #endif
 

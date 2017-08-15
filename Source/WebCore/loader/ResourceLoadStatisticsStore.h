@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc.  All rights reserved.
+ * Copyright (C) 2016 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,8 +46,7 @@ public:
 
     bool isEmpty() const { return m_resourceStatisticsMap.isEmpty(); }
     size_t size() const { return m_resourceStatisticsMap.size(); }
-    WEBCORE_EXPORT void clearInMemory();
-    WEBCORE_EXPORT void clearInMemoryAndPersistent();
+    void clear() { m_resourceStatisticsMap.clear(); }
 
     ResourceLoadStatistics& ensureResourceStatisticsForPrimaryDomain(const String&);
     void setResourceStatisticsForPrimaryDomain(const String&, ResourceLoadStatistics&&);
@@ -57,19 +56,12 @@ public:
     WEBCORE_EXPORT void mergeStatistics(const Vector<ResourceLoadStatistics>&);
     WEBCORE_EXPORT Vector<ResourceLoadStatistics> takeStatistics();
 
-    WEBCORE_EXPORT void setNotificationCallback(std::function<void()>);
-    WEBCORE_EXPORT void setShouldPartitionCookiesCallback(std::function<void(const Vector<String>& domainsToRemove, const Vector<String>& domainsToAdd, bool clearFirst)>&&);
-    WEBCORE_EXPORT void setWritePersistentStoreCallback(std::function<void()>&&);
+    WEBCORE_EXPORT void setNotificationCallback(std::function<void()> handler);
 
     void fireDataModificationHandler();
-    void setTimeToLiveUserInteraction(double seconds);
-    void setTimeToLiveCookiePartitionFree(double seconds);
-    WEBCORE_EXPORT void fireShouldPartitionCookiesHandler();
-    void fireShouldPartitionCookiesHandler(const Vector<String>& domainsToRemove, const Vector<String>& domainsToAdd, bool clearFirst);
 
     WEBCORE_EXPORT void processStatistics(std::function<void(ResourceLoadStatistics&)>&&);
 
-    WEBCORE_EXPORT bool hasHadRecentUserInteraction(ResourceLoadStatistics&);
     WEBCORE_EXPORT Vector<String> prevalentResourceDomainsWithoutUserInteraction();
     WEBCORE_EXPORT void updateStatisticsForRemovedDataRecords(const Vector<String>& prevalentResourceDomains);
 private:
@@ -77,8 +69,6 @@ private:
 
     HashMap<String, ResourceLoadStatistics> m_resourceStatisticsMap;
     std::function<void()> m_dataAddedHandler;
-    std::function<void(const Vector<String>&, const Vector<String>&, bool clearFirst)> m_shouldPartitionCookiesForDomainsHandler;
-    std::function<void()> m_writePersistentStoreHandler;
 };
     
 } // namespace WebCore

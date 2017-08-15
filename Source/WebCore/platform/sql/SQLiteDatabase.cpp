@@ -454,7 +454,7 @@ int SQLiteDatabase::authorizerFunction(void* userData, int actionCode, const cha
     }
 }
 
-void SQLiteDatabase::setAuthorizer(DatabaseAuthorizer& authorizer)
+void SQLiteDatabase::setAuthorizer(PassRefPtr<DatabaseAuthorizer> auth)
 {
     if (!m_db) {
         LOG_ERROR("Attempt to set an authorizer on a non-open SQL database");
@@ -464,7 +464,7 @@ void SQLiteDatabase::setAuthorizer(DatabaseAuthorizer& authorizer)
 
     LockHolder locker(m_authorizerLock);
 
-    m_authorizer = &authorizer;
+    m_authorizer = auth;
     
     enableAuthorizer(true);
 }

@@ -32,7 +32,7 @@
 #include "config.h"
 #include "WorkerScriptDebugServer.h"
 
-#include "JSDOMExceptionHandling.h"
+#include "JSDOMBinding.h"
 #include "Timer.h"
 #include "WorkerGlobalScope.h"
 #include "WorkerRunLoop.h"

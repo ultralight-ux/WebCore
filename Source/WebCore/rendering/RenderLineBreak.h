@@ -54,7 +54,6 @@ public:
 #if PLATFORM(IOS)
 void collectSelectionRects(Vector<SelectionRect>&, unsigned startOffset = 0, unsigned endOffset = std::numeric_limits<unsigned>::max()) override;
 #endif
-    void ensureLineBoxes();
 
 private:
     void node() const = delete;

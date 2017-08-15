@@ -23,6 +23,8 @@
 
 #include "Document.h"
 #include "Event.h"
+#include "EventNames.h"
+#include "HTMLNames.h"
 #include "SVGAnimatedStaticPropertyTearOff.h"
 #include "XLinkNames.h"
 
@@ -74,7 +76,7 @@ void SVGScriptElement::svgAttributeChanged(const QualifiedName& attrName)
 Node::InsertionNotificationRequest SVGScriptElement::insertedInto(ContainerNode& rootParent)
 {
     SVGElement::insertedInto(rootParent);
-    if (rootParent.isConnected())
+    if (rootParent.inDocument())
         SVGExternalResourcesRequired::insertedIntoDocument(this);
     return shouldCallFinishedInsertingSubtree(rootParent) ? InsertionShouldCallFinishedInsertingSubtree : InsertionDone;
 }
@@ -138,17 +140,12 @@ String SVGScriptElement::eventAttributeValue() const
     return String();
 }
 
-bool SVGScriptElement::hasAsyncAttribute() const
+bool SVGScriptElement::asyncAttributeValue() const
 {
     return false;
 }
 
-bool SVGScriptElement::hasDeferAttribute() const
-{
-    return false;
-}
-
-bool SVGScriptElement::hasNoModuleAttribute() const
+bool SVGScriptElement::deferAttributeValue() const
 {
     return false;
 }

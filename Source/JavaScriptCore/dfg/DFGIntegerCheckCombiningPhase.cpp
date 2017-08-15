@@ -201,7 +201,8 @@ private:
         // First we collect Ranges. If operations within the range have enough redundancy,
         // we hoist. And then we remove additions and checks that fall within the max range.
         
-        for (auto* node : *block) {
+        for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
+            Node* node = block->at(nodeIndex);
             RangeKeyAndAddend data = rangeKeyAndAddend(node);
             if (verbose)
                 dataLog("For ", node, ": ", data, "\n");

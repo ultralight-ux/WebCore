@@ -24,10 +24,6 @@
 #include "AppendPipeline.h"
 #include "MediaPlayerPrivateGStreamerMSE.h"
 #include "WebKitMediaSourceGStreamer.h"
-#include <gst/gst.h>
-
-GST_DEBUG_CATEGORY_EXTERN(webkit_mse_debug);
-#define GST_CAT_DEFAULT webkit_mse_debug
 
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(MEDIA_SOURCE)
 
@@ -137,8 +133,7 @@ bool MediaSourceClientGStreamerMSE::append(RefPtr<SourceBufferPrivateGStreamer> 
 
     ASSERT(appendPipeline);
 
-    void* bufferData = fastMalloc(length);
-    GstBuffer* buffer = gst_buffer_new_wrapped_full(static_cast<GstMemoryFlags>(0), bufferData, length, 0, length, bufferData, fastFree);
+    GstBuffer* buffer = gst_buffer_new_and_alloc(length);
     gst_buffer_fill(buffer, 0, data, length);
 
     return appendPipeline->pushNewBuffer(buffer) == GST_FLOW_OK;
@@ -178,17 +173,16 @@ void MediaSourceClientGStreamerMSE::flush(AtomicString trackId)
 {
     ASSERT(WTF::isMainThread());
 
-    // This is only for on-the-fly reenqueues after appends. When seeking, the seek will do its own flush.
-    if (m_playerPrivate && !m_playerPrivate->m_seeking)
+    if (m_playerPrivate)
         m_playerPrivate->m_playbackPipeline->flush(trackId);
 }
 
-void MediaSourceClientGStreamerMSE::enqueueSample(Ref<MediaSample>&& sample)
+void MediaSourceClientGStreamerMSE::enqueueSample(PassRefPtr<MediaSample> prpSample)
 {
     ASSERT(WTF::isMainThread());
 
     if (m_playerPrivate)
-        m_playerPrivate->m_playbackPipeline->enqueueSample(WTFMove(sample));
+        m_playerPrivate->m_playbackPipeline->enqueueSample(prpSample);
 }
 
 GRefPtr<WebKitMediaSrc> MediaSourceClientGStreamerMSE::webKitMediaSrc()

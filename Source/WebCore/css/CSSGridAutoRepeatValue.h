@@ -30,6 +30,8 @@
 
 #pragma once
 
+#if ENABLE(CSS_GRID_LAYOUT)
+
 #include "CSSValueKeywords.h"
 #include "CSSValueList.h"
 
@@ -70,3 +72,5 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSGridAutoRepeatValue, isGridAutoRepeatValue());
+
+#endif // ENABLE(CSS_GRID_LAYOUT)

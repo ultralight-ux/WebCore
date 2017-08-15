@@ -28,21 +28,18 @@ class ControlsBar extends LayoutNode
 
     constructor(mediaControls)
     {
-        super(`<div class="controls-bar"></div>`);
+        super(`<div class="controls-bar">`);
 
         this._translation = new DOMPoint;
         this._mediaControls = mediaControls;
 
-        if (GestureRecognizer.SupportsTouches)
-            this._tapGestureRecognizer = new TapGestureRecognizer(this._mediaControls.element, this);
+        this.fadesWhileIdle = false;
+        this.userInteractionEnabled = true;
 
         this.autoHideDelay = ControlsBar.DefaultAutoHideDelay;
 
-        this.fadesWhileIdle = false;
-        this.userInteractionEnabled = true;
-        this.hasSecondaryUIAttached = false;
-
-        this.element.addEventListener("focusin", this);
+        if (GestureRecognizer.SupportsTouches)
+            this._tapGestureRecognizer = new TapGestureRecognizer(this._mediaControls.element, this);
     }
 
     // Public
@@ -55,7 +52,7 @@ class ControlsBar extends LayoutNode
     set translation(point)
     {
         if (this._translation.x === point.x && this._translation.y === point.y)
-            return;
+            return
 
         this._translation = new DOMPoint(point.x, point.y);
         this.markDirtyProperty("translation");
@@ -87,9 +84,7 @@ class ControlsBar extends LayoutNode
 
         this._fadesWhileIdle = flag;
 
-        if (GestureRecognizer.SupportsTouches)
-            this._tapGestureRecognizer.enabled = flag;
-        else {
+        if (!GestureRecognizer.SupportsTouches) {
             if (flag) {
                 this._mediaControls.element.addEventListener("mousemove", this);
                 this._mediaControls.element.addEventListener("mouseleave", this);
@@ -116,18 +111,13 @@ class ControlsBar extends LayoutNode
 
     set visible(flag)
     {
-        if (this.visible === flag)
-            return;
-
         // If we just got made visible again, let's fade the controls in.
         if (flag && !this.visible)
             this.faded = false;
         else if (!flag)
-            this._cancelNonEnforcedAutoHideTimer();
+            this._cancelAutoHideTimer();
 
         super.visible = flag;
-
-        this._mediaControls.controlsBarVisibilityDidChange(this);
     }
 
     get faded()
@@ -147,8 +137,6 @@ class ControlsBar extends LayoutNode
             delete this._enforceAutoHideTimer;
 
         this.markDirtyProperty("faded");
-
-        this._mediaControls.controlsBarFadedStateDidChange();
     }
 
     // Protected
@@ -159,16 +147,16 @@ class ControlsBar extends LayoutNode
             if (event.type === "mousemove") {
                 this.faded = false;
                 this._resetAutoHideTimer(true);
-            } else if (event.type === "mouseleave" && this._fadesWhileIdle && !this.hasSecondaryUIAttached && !this._enforceAutoHideTimer)
+            } else if (event.type === "mouseleave" && this._fadesWhileIdle && !this._enforceAutoHideTimer)
                 this.faded = true;
         } else if (event.currentTarget === this.element) {
             if (event.type === "mouseenter") {
                 this._disableAutoHiding = true;
-                this._cancelNonEnforcedAutoHideTimer();
+                this._cancelAutoHideTimer();
             } else if (event.type === "mouseleave") {
                 delete this._disableAutoHiding;
                 this._resetAutoHideTimer(true);
-            } else if (event.type === "focusin")
+            } else if (event.type === "focus")
                 this.faded = false;
         }
     }
@@ -181,16 +169,8 @@ class ControlsBar extends LayoutNode
         if (this.faded)
             this.faded = false;
         else {
-            let ancestor = this.element.parentNode;
-            while (ancestor && !(ancestor instanceof ShadowRoot))
-                ancestor = ancestor.parentNode;
-
-            const shadowRoot = ancestor;
-            if (!shadowRoot)
-                return;
-
             const tapLocation = recognizer.locationInClient();
-            const tappedElement = shadowRoot.elementFromPoint(tapLocation.x, tapLocation.y);
+            const tappedElement = document.elementFromPoint(tapLocation.x, tapLocation.y);
             if (!this.element.contains(tappedElement))
                 this.faded = true;
         }
@@ -210,15 +190,11 @@ class ControlsBar extends LayoutNode
 
     // Private
 
-    _cancelNonEnforcedAutoHideTimer()
-    {
-        if (!this._enforceAutoHideTimer)
-            this._cancelAutoHideTimer();
-
-    }
-
     _cancelAutoHideTimer()
     {
+        if (this._enforceAutoHideTimer)
+            return;
+
         window.clearTimeout(this._autoHideTimer);
         delete this._autoHideTimer;
     }
@@ -245,7 +221,7 @@ class ControlsBar extends LayoutNode
             return;
 
         this._cancelAutoHideTimer();
-        this.faded = this._fadesWhileIdle && !this.hasSecondaryUIAttached;
+        this.faded = this._fadesWhileIdle;
     }
 
 }

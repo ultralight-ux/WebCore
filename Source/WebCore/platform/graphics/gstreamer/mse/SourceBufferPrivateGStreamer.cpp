@@ -76,7 +76,7 @@ void SourceBufferPrivateGStreamer::append(const unsigned char* data, unsigned le
     if (m_client->append(this, data, length))
         return;
 
-    m_sourceBufferPrivateClient->sourceBufferPrivateAppendComplete(SourceBufferPrivateClient::ReadStreamFailed);
+    m_sourceBufferPrivateClient->sourceBufferPrivateAppendComplete(this, SourceBufferPrivateClient::ReadStreamFailed);
 }
 
 void SourceBufferPrivateGStreamer::abort()
@@ -106,19 +106,20 @@ void SourceBufferPrivateGStreamer::setReadyState(MediaPlayer::ReadyState state)
     m_mediaSource->setReadyState(state);
 }
 
-void SourceBufferPrivateGStreamer::flush(const AtomicString& trackId)
+void SourceBufferPrivateGStreamer::flush(AtomicString trackId)
 {
     m_client->flush(trackId);
 }
 
-void SourceBufferPrivateGStreamer::enqueueSample(Ref<MediaSample>&& sample, const AtomicString&)
+void SourceBufferPrivateGStreamer::enqueueSample(PassRefPtr<MediaSample> prpSample, AtomicString)
 {
     m_notifyWhenReadyForMoreSamples = false;
 
-    m_client->enqueueSample(WTFMove(sample));
+    RefPtr<MediaSample> protectedPrpSample = prpSample;
+    m_client->enqueueSample(protectedPrpSample);
 }
 
-bool SourceBufferPrivateGStreamer::isReadyForMoreSamples(const AtomicString&)
+bool SourceBufferPrivateGStreamer::isReadyForMoreSamples(AtomicString)
 {
     return m_isReadyForMoreSamples;
 }
@@ -134,7 +135,7 @@ void SourceBufferPrivateGStreamer::notifyReadyForMoreSamples()
     ASSERT(WTF::isMainThread());
     setReadyForMoreSamples(true);
     if (m_notifyWhenReadyForMoreSamples)
-        m_sourceBufferPrivateClient->sourceBufferPrivateDidBecomeReadyForMoreSamples(m_trackId);
+        m_sourceBufferPrivateClient->sourceBufferPrivateDidBecomeReadyForMoreSamples(this, m_trackId);
 }
 
 void SourceBufferPrivateGStreamer::setActive(bool isActive)
@@ -143,12 +144,12 @@ void SourceBufferPrivateGStreamer::setActive(bool isActive)
         m_mediaSource->sourceBufferPrivateDidChangeActiveState(this, isActive);
 }
 
-void SourceBufferPrivateGStreamer::stopAskingForMoreSamples(const AtomicString&)
+void SourceBufferPrivateGStreamer::stopAskingForMoreSamples(AtomicString)
 {
     notImplemented();
 }
 
-void SourceBufferPrivateGStreamer::notifyClientWhenReadyForMoreSamples(const AtomicString& trackId)
+void SourceBufferPrivateGStreamer::notifyClientWhenReadyForMoreSamples(AtomicString trackId)
 {
     ASSERT(WTF::isMainThread());
     m_notifyWhenReadyForMoreSamples = true;
@@ -158,19 +159,20 @@ void SourceBufferPrivateGStreamer::notifyClientWhenReadyForMoreSamples(const Ato
 void SourceBufferPrivateGStreamer::didReceiveInitializationSegment(const SourceBufferPrivateClient::InitializationSegment& initializationSegment)
 {
     if (m_sourceBufferPrivateClient)
-        m_sourceBufferPrivateClient->sourceBufferPrivateDidReceiveInitializationSegment(initializationSegment);
+        m_sourceBufferPrivateClient->sourceBufferPrivateDidReceiveInitializationSegment(this, initializationSegment);
 }
 
-void SourceBufferPrivateGStreamer::didReceiveSample(MediaSample& sample)
+void SourceBufferPrivateGStreamer::didReceiveSample(PassRefPtr<MediaSample> prpSample)
 {
+    RefPtr<MediaSample> protectedPrpSample = prpSample;
     if (m_sourceBufferPrivateClient)
-        m_sourceBufferPrivateClient->sourceBufferPrivateDidReceiveSample(sample);
+        m_sourceBufferPrivateClient->sourceBufferPrivateDidReceiveSample(this, *protectedPrpSample);
 }
 
 void SourceBufferPrivateGStreamer::didReceiveAllPendingSamples()
 {
     if (m_sourceBufferPrivateClient)
-        m_sourceBufferPrivateClient->sourceBufferPrivateAppendComplete(SourceBufferPrivateClient::AppendSucceeded);
+        m_sourceBufferPrivateClient->sourceBufferPrivateAppendComplete(this, SourceBufferPrivateClient::AppendSucceeded);
 }
 
 }

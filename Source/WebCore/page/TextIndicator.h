@@ -37,7 +37,7 @@ class GraphicsContext;
 class Range;
 
 // FIXME: Move PresentationTransition to TextIndicatorWindow, because it's about presentation.
-enum class TextIndicatorPresentationTransition : uint8_t {
+enum class TextIndicatorPresentationTransition {
     None,
 
     // These animations drive themselves.
@@ -49,7 +49,7 @@ enum class TextIndicatorPresentationTransition : uint8_t {
 };
 
 // Make sure to keep these in sync with the ones in Internals.idl.
-enum TextIndicatorOption : uint16_t {
+enum TextIndicatorOption : uint8_t {
     TextIndicatorOptionDefault = 0,
 
     // Use the styled text color instead of forcing black text (the default)
@@ -80,31 +80,16 @@ enum TextIndicatorOption : uint16_t {
     // By default, TextIndicator clips the indicated rects to the visible content rect.
     // If this option is set, do not clip the indicated rects.
     TextIndicatorOptionDoNotClipToVisibleRect = 1 << 7,
-
-    // Include an additional snapshot of everything in view, with the exception of nodes within the currently selected range.
-    TextIndicatorOptionIncludeSnapshotOfAllVisibleContentWithoutSelection = 1 << 8,
-
-    // By default, TextIndicator uses text rects to size the snapshot. Enabling this flag causes it to use the bounds of the
-    // selection rects that would enclose the given Range instead.
-    // Currently, this is only supported on iOS.
-    TextIndicatorOptionUseSelectionRectForSizing = 1 << 9,
-
-    // Compute a background color to use when rendering a platter around the content image, falling back to a default if the
-    // content's background is too complex to be captured by a single color.
-    TextIndicatorOptionComputeEstimatedBackgroundColor = 1 << 10,
 };
-typedef uint16_t TextIndicatorOptions;
+typedef uint8_t TextIndicatorOptions;
 
 struct TextIndicatorData {
     FloatRect selectionRectInRootViewCoordinates;
     FloatRect textBoundingRectInRootViewCoordinates;
-    FloatRect contentImageWithoutSelectionRectInRootViewCoordinates;
     Vector<FloatRect> textRectsInBoundingRectCoordinates;
     float contentImageScaleFactor;
     RefPtr<Image> contentImageWithHighlight;
-    RefPtr<Image> contentImageWithoutSelection;
     RefPtr<Image> contentImage;
-    Color estimatedBackgroundColor;
     TextIndicatorPresentationTransition presentationTransition;
     TextIndicatorOptions options;
 };

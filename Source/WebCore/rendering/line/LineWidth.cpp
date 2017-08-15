@@ -122,10 +122,6 @@ void LineWidth::commit()
 {
     m_committedWidth += m_uncommittedWidth;
     m_uncommittedWidth = 0;
-    if (m_hasUncommittedReplaced) {
-        m_hasCommittedReplaced = true;
-        m_hasUncommittedReplaced = false;
-    }
     m_hasCommitted = true;
 }
 

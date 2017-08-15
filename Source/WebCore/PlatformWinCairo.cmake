@@ -3,7 +3,7 @@ include(platform/TextureMapper.cmake)
 
 list(APPEND WebCore_INCLUDE_DIRECTORIES
     ${CAIRO_INCLUDE_DIRS}
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore"
+    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore"
     "${DirectX_INCLUDE_DIRS}"
     "${WEBKIT_LIBRARIES_DIR}/include"
     "${WEBKIT_LIBRARIES_DIR}/include/SQLite"
@@ -36,8 +36,6 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cairo/PlatformPathCairo.cpp
     platform/graphics/cairo/RefPtrCairo.cpp
     platform/graphics/cairo/TransformationMatrixCairo.cpp
-
-    platform/graphics/texmap/TextureMapperTiledBackingStore.cpp
 
     platform/graphics/win/FontCustomPlatformDataCairo.cpp
     platform/graphics/win/FontPlatformDataCairoWin.cpp

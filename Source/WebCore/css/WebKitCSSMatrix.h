@@ -31,7 +31,6 @@
 
 namespace WebCore {
 
-// FIXME: Remove this class once WebKitCSSMatrix becomes an alias to DOMMatrix.
 class WebKitCSSMatrix final : public ScriptWrappable, public RefCounted<WebKitCSSMatrix> {
 public:
     static Ref<WebKitCSSMatrix> create(const TransformationMatrix&);
@@ -138,7 +137,7 @@ public:
 
     const TransformationMatrix& transform() const { return m_matrix; }
 
-    ExceptionOr<String> toString() const;
+    String toString() const;
 
 private:
     WebKitCSSMatrix() = default;

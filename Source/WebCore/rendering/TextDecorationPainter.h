@@ -29,7 +29,6 @@
 namespace WebCore {
 
 class FontCascade;
-class FloatRect;
 class GraphicsContext;
 class InlineTextBox;
 class RenderObject;

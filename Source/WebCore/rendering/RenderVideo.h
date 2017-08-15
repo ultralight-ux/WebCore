@@ -53,7 +53,6 @@ public:
     void updateFromElement() final;
 
 private:
-    void willBeDestroyed() override;
     void mediaElement() const = delete;
 
     void intrinsicSizeChanged() final;
@@ -71,9 +70,8 @@ private:
 
     void layout() final;
 
-    void visibleInViewportStateChanged() final;
-
     LayoutUnit computeReplacedLogicalWidth(ShouldComputePreferred  = ComputeActual) const final;
+    LayoutUnit computeReplacedLogicalHeight() const final;
     LayoutUnit minimumReplacedHeight() const final;
 
 #if ENABLE(FULLSCREEN_API)

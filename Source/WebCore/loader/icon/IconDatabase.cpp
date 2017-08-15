@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006, 2007, 2008, 2009, 2011 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Justin Haygood (jhaygood@reaktix.com)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,7 +47,7 @@
 #define ASSERT_NOT_SYNC_THREAD() ASSERT(!m_syncThreadRunning || !IS_ICON_SYNC_THREAD())
 
 // For methods that are meant to support the sync thread ONLY
-#define IS_ICON_SYNC_THREAD() (m_syncThread->id() == currentThread())
+#define IS_ICON_SYNC_THREAD() (m_syncThread == currentThread())
 #define ASSERT_ICON_SYNC_THREAD() ASSERT(IS_ICON_SYNC_THREAD())
 
 #if PLATFORM(GTK)
@@ -67,11 +67,11 @@ static const int currentDatabaseVersion = 6;
 // Icons expire once every 4 days
 static const int iconExpirationTime = 60*60*24*4; 
 
-static const Seconds updateTimerDelay { 5_s };
+static const int updateTimerDelay = 5; 
 
 static bool checkIntegrityOnOpen = false;
 
-#if PLATFORM(GTK)
+#if PLATFORM(GTK) || PLATFORM(EFL)
 // We are not interested in icons that have been unused for more than
 // 30 days, delete them even if they have not been explicitly released.
 static const int notUsedIconExpirationTime = 60*60*24*30;
@@ -141,7 +141,7 @@ bool IconDatabase::open(const String& directory, const String& filename)
     // Lock here as well as first thing in the thread so the thread doesn't actually commence until the createThread() call 
     // completes and m_syncThreadRunning is properly set
     m_syncLock.lock();
-    m_syncThread = Thread::create(IconDatabase::iconDatabaseSyncThreadStart, this, "WebCore: IconDatabase");
+    m_syncThread = createThread(IconDatabase::iconDatabaseSyncThreadStart, this, "WebCore: IconDatabase");
     m_syncThreadRunning = m_syncThread;
     m_syncLock.unlock();
     if (!m_syncThread)
@@ -161,7 +161,7 @@ void IconDatabase::close()
         wakeSyncThread();
         
         // Wait for the sync thread to terminate
-        m_syncThread->waitForCompletion();
+        waitForThreadCompletion(m_syncThread);
     }
 
     m_syncThreadRunning = false;    
@@ -533,7 +533,7 @@ void IconDatabase::performReleaseIconForPageURL(const String& pageURLOriginal, i
     delete pageRecord;
 }
 
-void IconDatabase::setIconDataForIconURL(SharedBuffer* dataOriginal, const String& iconURLOriginal)
+void IconDatabase::setIconDataForIconURL(PassRefPtr<SharedBuffer> dataOriginal, const String& iconURLOriginal)
 {    
     ASSERT_NOT_SYNC_THREAD();
     
@@ -542,7 +542,7 @@ void IconDatabase::setIconDataForIconURL(SharedBuffer* dataOriginal, const Strin
     if (!isOpen() || iconURLOriginal.isEmpty())
         return;
     
-    auto data = dataOriginal ? RefPtr<SharedBuffer> { dataOriginal->copy() } : nullptr;
+    RefPtr<SharedBuffer> data = dataOriginal ? dataOriginal->copy() : PassRefPtr<SharedBuffer>(nullptr);
     String iconURL = iconURLOriginal.isolatedCopy();
     
     Vector<String> pageURLs;
@@ -880,22 +880,23 @@ String IconDatabase::databasePath() const
 
 String IconDatabase::defaultDatabaseFilename()
 {
-    static NeverDestroyed<String> defaultDatabaseFilename(MAKE_STATIC_STRING_IMPL("WebpageIcons.db"));
+    static NeverDestroyed<String> defaultDatabaseFilename(ASCIILiteral("WebpageIcons.db"));
     return defaultDatabaseFilename.get().isolatedCopy();
 }
 
 // Unlike getOrCreatePageURLRecord(), getOrCreateIconRecord() does not mark the icon as "interested in import"
-Ref<IconRecord> IconDatabase::getOrCreateIconRecord(const String& iconURL)
+PassRefPtr<IconRecord> IconDatabase::getOrCreateIconRecord(const String& iconURL)
 {
     // Clients of getOrCreateIconRecord() are required to acquire the m_urlAndIconLock before calling this method
     ASSERT(!m_urlAndIconLock.tryLock());
 
-    if (auto* icon = m_iconURLToRecordMap.get(iconURL))
-        return *icon;
+    if (IconRecord* icon = m_iconURLToRecordMap.get(iconURL))
+        return icon;
 
     auto newIcon = IconRecord::create(iconURL);
     m_iconURLToRecordMap.set(iconURL, newIcon.ptr());
-    return newIcon;
+
+    return WTFMove(newIcon);
 }
 
 // This method retrieves the existing PageURLRecord, or creates a new one and marks it as "interested in the import" for later notification
@@ -1184,7 +1185,7 @@ void IconDatabase::performURLImport()
 {
     ASSERT_ICON_SYNC_THREAD();
 
-# if PLATFORM(GTK)
+# if PLATFORM(GTK) || PLATFORM(EFL)
     // Do not import icons not used in the last 30 days. They will be automatically pruned later if nobody retains them.
     // Note that IconInfo.stamp is only set when the icon data is retrieved from the server (and thus is not updated whether
     // we use it or not). This code works anyway because the IconDatabase downloads icons again if they are older than 4 days,
@@ -1916,7 +1917,7 @@ int64_t IconDatabase::addIconURLToSQLDatabase(const String& iconURL)
     return iconID;
 }
 
-RefPtr<SharedBuffer> IconDatabase::getImageDataForIconURLFromSQLDatabase(const String& iconURL)
+PassRefPtr<SharedBuffer> IconDatabase::getImageDataForIconURLFromSQLDatabase(const String& iconURL)
 {
     ASSERT_ICON_SYNC_THREAD();
     
@@ -1935,7 +1936,7 @@ RefPtr<SharedBuffer> IconDatabase::getImageDataForIconURLFromSQLDatabase(const S
 
     m_getImageDataForIconURLStatement->reset();
     
-    return imageData;
+    return WTFMove(imageData);
 }
 
 void IconDatabase::removeIconFromSQLDatabase(const String& iconURL)

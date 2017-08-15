@@ -65,17 +65,16 @@ public:
         return WTF::roundUpToMultipleOf<sizeof(WriteBarrier<Unknown>)>(sizeof(JSEnvironmentRecord));
     }
     
-    static size_t offsetOfVariable(ScopeOffset offset)
+    static ptrdiff_t offsetOfVariable(ScopeOffset offset)
     {
-        Checked<size_t> scopeOffset = offset.offset();
-        return (offsetOfVariables() + scopeOffset * sizeof(WriteBarrier<Unknown>)).unsafeGet();
+        return offsetOfVariables() + offset.offset() * sizeof(WriteBarrier<Unknown>);
     }
 
     DECLARE_INFO;
 
-    static size_t allocationSizeForScopeSize(Checked<size_t> scopeSize)
+    static size_t allocationSizeForScopeSize(unsigned scopeSize)
     {
-        return (offsetOfVariables() + scopeSize * sizeof(WriteBarrier<Unknown>)).unsafeGet();
+        return offsetOfVariables() + scopeSize * sizeof(WriteBarrier<Unknown>);
     }
     
     static size_t allocationSize(SymbolTable* symbolTable)

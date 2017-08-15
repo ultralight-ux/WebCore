@@ -20,7 +20,7 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
 #pragma once
@@ -35,14 +35,12 @@ class AlternativeTextClient;
 class ApplicationCacheStorage;
 class BackForwardClient;
 class ChromeClient;
-class ContextMenuClient;
 class DatabaseProvider;
 class DiagnosticLoggingClient;
 class DragClient;
 class EditorClient;
 class FrameLoaderClient;
 class InspectorClient;
-class LibWebRTCProvider;
 class PaymentCoordinatorClient;
 class PlugInClient;
 class PluginInfoProvider;
@@ -54,10 +52,14 @@ class ValidationMessageClient;
 class VisitedLinkStore;
 class WebGLStateTracker;
 
+#if ENABLE(CONTEXT_MENUS)
+class ContextMenuClient;
+#endif
+
 class PageConfiguration {
     WTF_MAKE_NONCOPYABLE(PageConfiguration); WTF_MAKE_FAST_ALLOCATED;
 public:
-    WEBCORE_EXPORT PageConfiguration(UniqueRef<EditorClient>&&, Ref<SocketProvider>&&, UniqueRef<LibWebRTCProvider>&&);
+    WEBCORE_EXPORT PageConfiguration(UniqueRef<EditorClient>&&, Ref<SocketProvider>&&);
     WEBCORE_EXPORT ~PageConfiguration();
 
     AlternativeTextClient* alternativeTextClient { nullptr };
@@ -72,8 +74,6 @@ public:
 #if ENABLE(APPLE_PAY)
     PaymentCoordinatorClient* paymentCoordinatorClient { nullptr };
 #endif
-
-    UniqueRef<LibWebRTCProvider> libWebRTCProvider;
 
     PlugInClient* plugInClient { nullptr };
     ProgressTrackerClient* progressTrackerClient { nullptr };

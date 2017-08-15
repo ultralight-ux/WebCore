@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2005, 2006, 2007, 2008, 2009, 2010, 2013 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -18,7 +18,7 @@
  *
  */
 
-// RefPtr is documented at http://webkit.org/coding/RefPtr.html
+// RefPtr and PassRefPtr are documented at http://webkit.org/coding/RefPtr.html
 
 #ifndef WTF_RefPtr_h
 #define WTF_RefPtr_h
@@ -27,24 +27,12 @@
 #include <utility>
 #include <wtf/FastMalloc.h>
 #include <wtf/GetPtr.h>
-#include <wtf/Ref.h>
+#include <wtf/PassRefPtr.h>
 
 namespace WTF {
 
 template<typename T> class RefPtr;
 template<typename T> RefPtr<T> adoptRef(T*);
-
-template<typename T> ALWAYS_INLINE void refIfNotNull(T* ptr)
-{
-    if (LIKELY(ptr != nullptr))
-        ptr->ref();
-}
-
-template<typename T> ALWAYS_INLINE void derefIfNotNull(T* ptr)
-{
-    if (LIKELY(ptr != nullptr))
-        ptr->deref();
-}
 
 template<typename T> class RefPtr {
     WTF_MAKE_FAST_ALLOCATED;
@@ -54,13 +42,17 @@ public:
 
     static constexpr bool isRefPtr = true;
 
-    ALWAYS_INLINE constexpr RefPtr() : m_ptr(nullptr) { }
+    ALWAYS_INLINE RefPtr() : m_ptr(nullptr) { }
     ALWAYS_INLINE RefPtr(T* ptr) : m_ptr(ptr) { refIfNotNull(ptr); }
     ALWAYS_INLINE RefPtr(const RefPtr& o) : m_ptr(o.m_ptr) { refIfNotNull(m_ptr); }
     template<typename U> RefPtr(const RefPtr<U>& o) : m_ptr(o.get()) { refIfNotNull(m_ptr); }
 
     ALWAYS_INLINE RefPtr(RefPtr&& o) : m_ptr(o.leakRef()) { }
     template<typename U> RefPtr(RefPtr<U>&& o) : m_ptr(o.leakRef()) { }
+
+    // See comments in PassRefPtr.h for an explanation of why this takes a const reference.
+    template<typename U> RefPtr(const PassRefPtr<U>&);
+
     template<typename U> RefPtr(Ref<U>&&);
 
     // Hash table deleted values, which are only constructed and never copied or destroyed.
@@ -71,6 +63,8 @@ public:
 
     T* get() const { return m_ptr; }
 
+    // FIXME: Remove release() and change all call sites to call WTFMove().
+    RefPtr<T> release() { RefPtr<T> tmp = adoptRef(m_ptr); m_ptr = nullptr; return tmp; }
     Ref<T> releaseNonNull() { ASSERT(m_ptr); Ref<T> tmp(adoptRef(*m_ptr)); m_ptr = nullptr; return tmp; }
     Ref<const T> releaseConstNonNull() { ASSERT(m_ptr); Ref<const T> tmp(adoptRef(*m_ptr)); m_ptr = nullptr; return tmp; }
 
@@ -88,7 +82,9 @@ public:
     RefPtr& operator=(const RefPtr&);
     RefPtr& operator=(T*);
     RefPtr& operator=(std::nullptr_t);
+    RefPtr& operator=(const PassRefPtr<T>&);
     template<typename U> RefPtr& operator=(const RefPtr<U>&);
+    template<typename U> RefPtr& operator=(const PassRefPtr<U>&);
     RefPtr& operator=(RefPtr&&);
     template<typename U> RefPtr& operator=(RefPtr<U>&&);
     template<typename U> RefPtr& operator=(Ref<U>&&);
@@ -112,6 +108,11 @@ private:
 
     T* m_ptr;
 };
+
+template<typename T> template<typename U> inline RefPtr<T>::RefPtr(const PassRefPtr<U>& o)
+    : m_ptr(o.leakRef())
+{
+}
 
 template<typename T> template<typename U> inline RefPtr<T>::RefPtr(Ref<U>&& reference)
     : m_ptr(&reference.leakRef())
@@ -148,6 +149,20 @@ template<typename T> inline RefPtr<T>& RefPtr<T>::operator=(T* optr)
 template<typename T> inline RefPtr<T>& RefPtr<T>::operator=(std::nullptr_t)
 {
     derefIfNotNull(std::exchange(m_ptr, nullptr));
+    return *this;
+}
+
+template<typename T> inline RefPtr<T>& RefPtr<T>::operator=(const PassRefPtr<T>& o)
+{
+    RefPtr ptr = o;
+    swap(ptr);
+    return *this;
+}
+
+template<typename T> template<typename U> inline RefPtr<T>& RefPtr<T>::operator=(const PassRefPtr<U>& o)
+{
+    RefPtr ptr = o;
+    swap(ptr);
     return *this;
 }
 
@@ -227,21 +242,10 @@ template<typename T> inline RefPtr<T> adoptRef(T* p)
     return RefPtr<T>(p, RefPtr<T>::Adopt);
 }
 
-template<typename T> inline RefPtr<T> makeRefPtr(T* pointer)
-{
-    return pointer;
-}
-
-template<typename T> inline RefPtr<T> makeRefPtr(T& reference)
-{
-    return &reference;
-}
-
 } // namespace WTF
 
 using WTF::RefPtr;
 using WTF::adoptRef;
-using WTF::makeRefPtr;
 using WTF::static_pointer_cast;
 
 #endif // WTF_RefPtr_h

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,7 +23,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef AudioTrackPrivateMediaStream_h
+#define AudioTrackPrivateMediaStream_h
 
 #if ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
 
@@ -32,13 +33,16 @@
 
 namespace WebCore {
 
-class AudioTrackPrivateMediaStream : public AudioTrackPrivate {
+class AudioTrackPrivateMediaStream final : public AudioTrackPrivate {
     WTF_MAKE_NONCOPYABLE(AudioTrackPrivateMediaStream)
 public:
+
     static RefPtr<AudioTrackPrivateMediaStream> create(MediaStreamTrackPrivate& streamTrack)
     {
         return adoptRef(*new AudioTrackPrivateMediaStream(streamTrack));
     }
+
+    virtual ~AudioTrackPrivateMediaStream() { }
 
     Kind kind() const override { return Kind::Main; }
     AtomicString id() const override { return m_id; }
@@ -48,27 +52,24 @@ public:
 
     void setTrackIndex(int index) { m_index = index; }
 
-    MediaStreamTrackPrivate& streamTrack() { return m_streamTrack.get(); }
+    MediaStreamTrackPrivate* streamTrack() const { return m_streamTrack.get(); }
 
-    MediaTime timelineOffset() const { return m_timelineOffset; }
-    void setTimelineOffset(const MediaTime& offset) { m_timelineOffset = offset; }
-
-protected:
+private:
     AudioTrackPrivateMediaStream(MediaStreamTrackPrivate& track)
-        : m_streamTrack(track)
+        : m_streamTrack(&track)
         , m_id(track.id())
         , m_label(track.label())
-        , m_timelineOffset(MediaTime::invalidTime())
     {
     }
 
-    Ref<MediaStreamTrackPrivate> m_streamTrack;
+    RefPtr<MediaStreamTrackPrivate> m_streamTrack;
     AtomicString m_id;
     AtomicString m_label;
     int m_index { 0 };
-    MediaTime m_timelineOffset;
 };
 
 }
 
 #endif // ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+
+#endif // AudioTrackPrivateMediaStream_h

@@ -27,7 +27,6 @@
 
 #if ENABLE(DFG_JIT)
 
-#include "DFGArithMode.h"
 #include "JITOperations.h"
 #include "PutKind.h"
 
@@ -55,14 +54,12 @@ EncodedJSValue JIT_OPERATION operationValueAddNotNumber(ExecState*, EncodedJSVal
 EncodedJSValue JIT_OPERATION operationValueDiv(ExecState*, EncodedJSValue encodedOp1, EncodedJSValue encodedOp2) WTF_INTERNAL;
 double JIT_OPERATION operationArithAbs(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
 int32_t JIT_OPERATION operationArithClz32(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
+double JIT_OPERATION operationArithCos(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
+double JIT_OPERATION operationArithTan(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
 double JIT_OPERATION operationArithFRound(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
+double JIT_OPERATION operationArithLog(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
+double JIT_OPERATION operationArithSin(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
 double JIT_OPERATION operationArithSqrt(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
-
-#define DFG_ARITH_UNARY(capitalizedName, lowerName) \
-double JIT_OPERATION operationArith##capitalizedName(ExecState*, EncodedJSValue encodedOp1) WTF_INTERNAL;
-    FOR_EACH_DFG_ARITH_UNARY_OP(DFG_ARITH_UNARY)
-#undef DFG_ARITH_UNARY
-
 EncodedJSValue JIT_OPERATION operationArithRound(ExecState*, EncodedJSValue) WTF_INTERNAL;
 EncodedJSValue JIT_OPERATION operationArithFloor(ExecState*, EncodedJSValue) WTF_INTERNAL;
 EncodedJSValue JIT_OPERATION operationArithCeil(ExecState*, EncodedJSValue) WTF_INTERNAL;
@@ -162,21 +159,9 @@ JSString* JIT_OPERATION operationSingleCharacterString(ExecState*, int32_t);
 
 JSString* JIT_OPERATION operationToLowerCase(ExecState*, JSString*, uint32_t);
 
-char* JIT_OPERATION operationInt32ToString(ExecState*, int32_t, int32_t);
-char* JIT_OPERATION operationInt52ToString(ExecState*, int64_t, int32_t);
-char* JIT_OPERATION operationDoubleToString(ExecState*, double, int32_t);
-char* JIT_OPERATION operationInt32ToStringWithValidRadix(ExecState*, int32_t, int32_t);
-char* JIT_OPERATION operationInt52ToStringWithValidRadix(ExecState*, int64_t, int32_t);
-char* JIT_OPERATION operationDoubleToStringWithValidRadix(ExecState*, double, int32_t);
-
 int32_t JIT_OPERATION operationMapHash(ExecState*, EncodedJSValue input);
 JSCell* JIT_OPERATION operationJSMapFindBucket(ExecState*, JSCell*, EncodedJSValue, int32_t);
 JSCell* JIT_OPERATION operationJSSetFindBucket(ExecState*, JSCell*, EncodedJSValue, int32_t);
-
-EncodedJSValue JIT_OPERATION operationParseIntNoRadixGeneric(ExecState*, EncodedJSValue);
-EncodedJSValue JIT_OPERATION operationParseIntStringNoRadix(ExecState*, JSString*);
-EncodedJSValue JIT_OPERATION operationParseIntString(ExecState*, JSString*, int32_t);
-EncodedJSValue JIT_OPERATION operationParseIntGeneric(ExecState*, EncodedJSValue, int32_t);
 
 JSCell* JIT_OPERATION operationNewStringObject(ExecState*, JSString*, Structure*);
 JSCell* JIT_OPERATION operationToStringOnCell(ExecState*, JSCell*);
@@ -210,7 +195,6 @@ JSCell* JIT_OPERATION operationSpreadGeneric(ExecState*, JSCell*);
 JSCell* JIT_OPERATION operationNewArrayWithSpreadSlow(ExecState*, void*, uint32_t);
 
 JSCell* JIT_OPERATION operationResolveScope(ExecState*, JSScope*, UniquedStringImpl*);
-EncodedJSValue JIT_OPERATION operationResolveScopeForHoistingFuncDeclInEval(ExecState*, JSScope*, UniquedStringImpl*);
 EncodedJSValue JIT_OPERATION operationGetDynamicVar(ExecState*, JSObject* scope, UniquedStringImpl*, unsigned);
 void JIT_OPERATION operationPutDynamicVar(ExecState*, JSObject* scope, EncodedJSValue, UniquedStringImpl*, unsigned);
 

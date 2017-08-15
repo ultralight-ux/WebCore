@@ -30,7 +30,7 @@
 
 #if ENABLE(ENCRYPTED_MEDIA)
 
-#include "JSDOMPromiseDeferred.h"
+#include "JSDOMPromise.h"
 #include "MediaKeySystemConfiguration.h"
 #include "Supplementable.h"
 

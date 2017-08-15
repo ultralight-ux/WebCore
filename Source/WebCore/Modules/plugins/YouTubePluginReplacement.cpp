@@ -30,6 +30,7 @@
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
 #include "HTMLPlugInElement.h"
+#include "Page.h"
 #include "RenderElement.h"
 #include "Settings.h"
 #include "ShadowRoot.h"
@@ -346,9 +347,9 @@ bool YouTubePluginReplacement::supportsURL(const URL& url)
     return isYouTubeURL(url);
 }
 
-bool YouTubePluginReplacement::isEnabledBySettings(const Settings& settings)
+bool YouTubePluginReplacement::isEnabledBySettings(const Settings* settings)
 {
-    return settings.youTubeFlashPluginReplacementEnabled();
+    return settings->youTubeFlashPluginReplacementEnabled();
 }
     
 }

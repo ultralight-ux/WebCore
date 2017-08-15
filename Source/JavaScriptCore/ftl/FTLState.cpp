@@ -67,7 +67,7 @@ State::State(Graph& graph)
     proc = std::make_unique<Procedure>();
 
     proc->setOriginPrinter(
-        [] (PrintStream& out, B3::Origin origin) {
+        [this] (PrintStream& out, B3::Origin origin) {
             out.print("DFG:", bitwise_cast<Node*>(origin.data()));
         });
 

@@ -29,20 +29,18 @@
 #include "config.h"
 #include "ImageSource.h"
 
-#include "GraphicsContext.h"
-
 #if USE(CG)
 #include "ImageDecoderCG.h"
-#if PLATFORM(WIN)
-#include <WebKitSystemInterface/WebKitSystemInterface.h>
-#endif
 #elif USE(DIRECT2D)
+#include "GraphicsContext.h"
 #include "ImageDecoderDirect2D.h"
+#include <WinCodec.h>
 #else
 #include "ImageDecoder.h"
 #endif
 
 #include "ImageOrientation.h"
+
 #include <wtf/CurrentTime.h>
 
 namespace WebCore {
@@ -82,7 +80,7 @@ bool ImageSource::ensureDecoderAvailable(SharedBuffer* data)
     if (!data || isDecoderAvailable())
         return true;
 
-    m_decoder = ImageDecoder::create(*data, m_frameCache->sourceURL(), m_alphaOption, m_gammaAndColorProfileOption);
+    m_decoder = ImageDecoder::create(*data, m_alphaOption, m_gammaAndColorProfileOption);
     if (!isDecoderAvailable())
         return false;
 
@@ -111,8 +109,10 @@ void ImageSource::setData(SharedBuffer* data, bool allDataReceived)
     m_decoder->setData(*data, allDataReceived);
 }
 
-EncodedDataStatus ImageSource::dataChanged(SharedBuffer* data, bool allDataReceived)
+bool ImageSource::dataChanged(SharedBuffer* data, bool allDataReceived)
 {
+    m_frameCache->destroyIncompleteDecodedData();
+
 #if PLATFORM(IOS)
     // FIXME: We should expose a setting to enable/disable progressive loading and make this
     // code conditional on it. Then we can remove the PLATFORM(IOS)-guard.
@@ -136,12 +136,11 @@ EncodedDataStatus ImageSource::dataChanged(SharedBuffer* data, bool allDataRecei
 #endif
 
     m_frameCache->clearMetadata();
-    EncodedDataStatus status = encodedDataStatus();
-    if (status < EncodedDataStatus::SizeAvailable)
-        return status;
+    if (!isSizeAvailable())
+        return false;
 
     m_frameCache->growFrames();
-    return status;
+    return true;
 }
 
 bool ImageSource::isAllDataReceived()
@@ -149,10 +148,10 @@ bool ImageSource::isAllDataReceived()
     return isDecoderAvailable() ? m_decoder->isAllDataReceived() : m_frameCache->frameCount();
 }
 
-bool ImageSource::shouldUseAsyncDecoding()
+bool ImageSource::isAsyncDecodingRequired()
 {
     // FIXME: figure out the best heuristic for enabling async image decoding.
-    return size().area() * sizeof(RGBA32) >= (frameCount() > 1 ? 100 * KB : 500 * KB);
+    return size().area() * sizeof(RGBA32) >= 100 * KB;
 }
 
 SubsamplingLevel ImageSource::maximumSubsamplingLevel()
@@ -178,24 +177,13 @@ SubsamplingLevel ImageSource::maximumSubsamplingLevel()
     return m_maximumSubsamplingLevel.value();
 }
 
-SubsamplingLevel ImageSource::subsamplingLevelForScaleFactor(GraphicsContext& context, const FloatSize& scaleFactor)
+SubsamplingLevel ImageSource::subsamplingLevelForScale(float scale)
 {
-#if USE(CG)
-    // Never use subsampled images for drawing into PDF contexts.
-    if (wkCGContextIsPDFContext(context.platformContext()))
-        return SubsamplingLevel::Default;
-
-    float scale = std::min(float(1), std::max(scaleFactor.width(), scaleFactor.height()));
     if (!(scale > 0 && scale <= 1))
         return SubsamplingLevel::Default;
 
     int result = std::ceil(std::log2(1 / scale));
     return static_cast<SubsamplingLevel>(std::min(result, static_cast<int>(maximumSubsamplingLevel())));
-#else
-    UNUSED_PARAM(context);
-    UNUSED_PARAM(scaleFactor);
-    return SubsamplingLevel::Default;
-#endif
 }
 
 NativeImagePtr ImageSource::createFrameImageAtIndex(size_t index, SubsamplingLevel subsamplingLevel)
@@ -203,10 +191,11 @@ NativeImagePtr ImageSource::createFrameImageAtIndex(size_t index, SubsamplingLev
     return isDecoderAvailable() ? m_decoder->createFrameImageAtIndex(index, subsamplingLevel) : nullptr;
 }
 
-NativeImagePtr ImageSource::frameImageAtIndexCacheIfNeeded(size_t index, SubsamplingLevel subsamplingLevel, const GraphicsContext* targetContext)
+NativeImagePtr ImageSource::frameImageAtIndex(size_t index, SubsamplingLevel subsamplingLevel, const GraphicsContext* targetContext)
 {
     setDecoderTargetContext(targetContext);
-    return m_frameCache->frameImageAtIndexCacheIfNeeded(index, subsamplingLevel);
+
+    return m_frameCache->frameImageAtIndex(index, subsamplingLevel);
 }
 
 void ImageSource::dump(TextStream& ts)

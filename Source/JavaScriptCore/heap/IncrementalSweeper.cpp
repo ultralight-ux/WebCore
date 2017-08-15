@@ -35,30 +35,30 @@
 
 namespace JSC {
 
-static const Seconds sweepTimeSlice = 10_ms; // seconds
+static const double sweepTimeSlice = .01; // seconds
 static const double sweepTimeTotal = .10;
 static const double sweepTimeMultiplier = 1.0 / sweepTimeTotal;
 
 void IncrementalSweeper::scheduleTimer()
 {
-    Base::scheduleTimer(sweepTimeSlice * sweepTimeMultiplier);
+    HeapTimer::scheduleTimer(sweepTimeSlice * sweepTimeMultiplier);
 }
 
 IncrementalSweeper::IncrementalSweeper(Heap* heap)
-    : Base(heap->vm())
+    : HeapTimer(heap->vm())
     , m_currentAllocator(nullptr)
 {
 }
 
 void IncrementalSweeper::doWork()
 {
-    doSweep(MonotonicTime::now());
+    doSweep(WTF::monotonicallyIncreasingTime());
 }
 
-void IncrementalSweeper::doSweep(MonotonicTime sweepBeginTime)
+void IncrementalSweeper::doSweep(double sweepBeginTime)
 {
     while (sweepNextBlock()) {
-        Seconds elapsedTime = MonotonicTime::now() - sweepBeginTime;
+        double elapsedTime = WTF::monotonicallyIncreasingTime() - sweepBeginTime;
         if (elapsedTime < sweepTimeSlice)
             continue;
 
@@ -66,10 +66,6 @@ void IncrementalSweeper::doSweep(MonotonicTime sweepBeginTime)
         return;
     }
 
-    if (m_shouldFreeFastMallocMemoryAfterSweeping) {
-        WTF::releaseFastMallocFreeMemory();
-        m_shouldFreeFastMallocMemoryAfterSweeping = false;
-    }
     cancelTimer();
 }
 
@@ -101,7 +97,7 @@ void IncrementalSweeper::startSweeping()
     m_currentAllocator = m_vm->heap.objectSpace().firstAllocator();
 }
 
-void IncrementalSweeper::stopSweeping()
+void IncrementalSweeper::willFinishSweeping()
 {
     m_currentAllocator = nullptr;
     if (m_vm)

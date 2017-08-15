@@ -263,7 +263,7 @@ void RenderSVGShape::strokeShape(const RenderStyle& style, GraphicsContext& orig
 
 void RenderSVGShape::strokeShape(GraphicsContext& context)
 {
-    if (!style().hasVisibleStroke())
+    if (!style().svgStyle().hasVisibleStroke())
         return;
 
     GraphicsContextStateSaver stateSaver(context, false);
@@ -277,16 +277,16 @@ void RenderSVGShape::strokeShape(GraphicsContext& context)
 
 void RenderSVGShape::fillStrokeMarkers(PaintInfo& childPaintInfo)
 {
-    auto paintOrder = RenderStyle::paintTypesForPaintOrder(style().paintOrder());
+    auto paintOrder = style().svgStyle().paintTypesForPaintOrder();
     for (unsigned i = 0; i < paintOrder.size(); ++i) {
         switch (paintOrder.at(i)) {
-        case PaintType::Fill:
+        case PaintTypeFill:
             fillShape(style(), childPaintInfo.context());
             break;
-        case PaintType::Stroke:
+        case PaintTypeStroke:
             strokeShape(childPaintInfo.context());
             break;
-        case PaintType::Markers:
+        case PaintTypeMarkers:
             if (!m_markerPositions.isEmpty())
                 drawMarkers(childPaintInfo);
             break;
@@ -438,16 +438,16 @@ void RenderSVGShape::updateRepaintBoundingBox()
 float RenderSVGShape::strokeWidth() const
 {
     SVGLengthContext lengthContext(&graphicsElement());
-    return lengthContext.valueForLength(style().strokeWidth());
+    return lengthContext.valueForLength(style().svgStyle().strokeWidth());
 }
 
 bool RenderSVGShape::hasSmoothStroke() const
 {
     const SVGRenderStyle& svgStyle = style().svgStyle();
     return svgStyle.strokeDashArray().isEmpty()
-        && style().strokeMiterLimit() == style().initialStrokeMiterLimit()
-        && style().joinStyle() == style().initialJoinStyle()
-        && style().capStyle() == style().initialCapStyle();
+        && svgStyle.strokeMiterLimit() == svgStyle.initialStrokeMiterLimit()
+        && svgStyle.joinStyle() == svgStyle.initialJoinStyle()
+        && svgStyle.capStyle() == svgStyle.initialCapStyle();
 }
 
 void RenderSVGShape::drawMarkers(PaintInfo& paintInfo)

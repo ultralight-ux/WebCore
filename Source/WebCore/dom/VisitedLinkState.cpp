@@ -33,6 +33,7 @@
 #include "Frame.h"
 #include "HTMLAnchorElement.h"
 #include "Page.h"
+#include "PageGroup.h"
 #include "VisitedLinkStore.h"
 #include "XLinkNames.h"
 

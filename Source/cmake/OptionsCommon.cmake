@@ -9,7 +9,7 @@ if (MSVC)
     # FIXME: Some codegenerators don't support paths with spaces. So use the executable name only.
     get_filename_component(CODE_GENERATOR_PREPROCESSOR_EXECUTABLE ${CMAKE_CXX_COMPILER} ABSOLUTE)
 
-    set(CODE_GENERATOR_PREPROCESSOR_ARGUMENTS "/nologo /EP /TP")
+    set(CODE_GENERATOR_PREPROCESSOR_ARGUMENTS "/nologo /EP")
     set(CODE_GENERATOR_PREPROCESSOR "\"${CODE_GENERATOR_PREPROCESSOR_EXECUTABLE}\" ${CODE_GENERATOR_PREPROCESSOR_ARGUMENTS}")
 
     set(CODE_GENERATOR_PREPROCESSOR_WITH_LINEMARKERS ${CODE_GENERATOR_PREPROCESSOR})
@@ -38,8 +38,8 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 define_property(TARGET PROPERTY FOLDER INHERITED BRIEF_DOCS "folder" FULL_DOCS "IDE folder name")
 
 if (COMPILER_IS_GCC_OR_CLANG)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-exceptions -fno-strict-aliasing")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-strict-aliasing -fno-rtti")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -fno-exceptions -fno-strict-aliasing")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-exceptions -fno-strict-aliasing -fno-rtti")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1y")
 endif ()
 
@@ -213,14 +213,7 @@ endif ()
 # See https://bugs.webkit.org/show_bug.cgi?id=129771
 # The Apple Toolchain doesn't support response files.
 if (NOT APPLE)
-   # If using Ninja with cmake >= 3.6.0 and icecream, then the build is broken
-   # if enable the response files. See https://bugs.webkit.org/show_bug.cgi?id=168770
-   if (NOT ((((${CMAKE_CXX_COMPILER} MATCHES ".*ccache.*") AND ($ENV{CCACHE_PREFIX} MATCHES ".*icecc.*"))
-        OR (${CMAKE_CXX_COMPILER} MATCHES ".*icecc.*")
-        OR (${AR_VERSION} MATCHES "^BSD ar [^ ]* - libarchive"))
-       AND (CMAKE_GENERATOR STREQUAL "Ninja") AND (${CMAKE_VERSION} VERSION_GREATER 3.5)))
-      set(CMAKE_NINJA_FORCE_RESPONSE_FILE 1)
-   endif ()
+    set(CMAKE_NINJA_FORCE_RESPONSE_FILE 1)
 endif ()
 
 # Macros for determining HAVE values.
@@ -272,7 +265,6 @@ _HAVE_CHECK_FUNCTION(HAVE_TIMEGM timegm)
 _HAVE_CHECK_FUNCTION(HAVE_VASPRINTF vasprintf)
 
 # Check for symbols
-_HAVE_CHECK_SYMBOL(HAVE_REGEX_H regexec regex.h)
 # Windows has signal.h but is missing symbols that are used in calls to signal.
 _HAVE_CHECK_SYMBOL(HAVE_SIGNAL_H SIGTRAP signal.h)
 

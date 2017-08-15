@@ -30,6 +30,8 @@
 
 #pragma once
 
+#if ENABLE(CSS_GRID_LAYOUT)
+
 #include "GridPosition.h"
 
 namespace WebCore {
@@ -77,3 +79,5 @@ public:
 };
 
 } // namespace WebCore
+
+#endif // ENABLE(CSS_GRID_LAYOUT)

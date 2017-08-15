@@ -34,7 +34,6 @@
 #include "MarkedSpaceInlines.h"
 #include "Parser.h"
 #include "Protect.h"
-#include "VMEntryScope.h"
 
 namespace {
 
@@ -56,7 +55,7 @@ struct GatherSourceProviders : public MarkedBlock::VoidFunctor {
         
         JSCell* cell = static_cast<JSCell*>(heapCell);
         
-        JSFunction* function = jsDynamicCast<JSFunction*>(*cell->vm(), cell);
+        JSFunction* function = jsDynamicCast<JSFunction*>(cell);
         if (!function)
             return IterationStatus::Continue;
 
@@ -119,11 +118,6 @@ private:
     Debugger& m_debugger;
 };
 
-
-Debugger::ProfilingClient::~ProfilingClient()
-{
-}
-
 Debugger::Debugger(VM& vm)
     : m_vm(vm)
     , m_pauseOnExceptionsState(DontPauseOnExceptions)
@@ -172,8 +166,7 @@ void Debugger::detach(JSGlobalObject* globalObject, ReasonForDetach reason)
     // If we're detaching from the currently executing global object, manually tear down our
     // stack, since we won't get further debugger callbacks to do so. Also, resume execution,
     // since there's no point in staying paused once a window closes.
-    // We know there is an entry scope, otherwise, m_currentCallFrame would be null.
-    if (m_isPaused && m_currentCallFrame && globalObject->vm().entryScope->globalObject() == globalObject) {
+    if (m_isPaused && m_currentCallFrame && m_currentCallFrame->vmEntryGlobalObject() == globalObject) {
         m_currentCallFrame = nullptr;
         m_pauseOnCallFrame = nullptr;
         continueProgram();
@@ -302,8 +295,10 @@ void Debugger::toggleBreakpoint(CodeBlock* codeBlock, Breakpoint& breakpoint, Br
 void Debugger::applyBreakpoints(CodeBlock* codeBlock)
 {
     BreakpointIDToBreakpointMap& breakpoints = m_breakpointIDToBreakpoint;
-    for (auto* breakpoint : breakpoints.values())
-        toggleBreakpoint(codeBlock, *breakpoint, BreakpointEnabled);
+    for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
+        Breakpoint& breakpoint = *it->value;
+        toggleBreakpoint(codeBlock, breakpoint, BreakpointEnabled);
+    }
 }
 
 class Debugger::ToggleBreakpointFunctor {
@@ -504,9 +499,9 @@ bool Debugger::hasBreakpoint(SourceID sourceID, const TextPosition& position, Br
     TemporaryPausedState pausedState(*this);
 
     NakedPtr<Exception> exception;
-    DebuggerCallFrame& debuggerCallFrame = currentDebuggerCallFrame();
+    DebuggerCallFrame* debuggerCallFrame = currentDebuggerCallFrame();
     JSObject* scopeExtensionObject = nullptr;
-    JSValue result = debuggerCallFrame.evaluateWithScopeExtension(breakpoint->condition, scopeExtensionObject, exception);
+    JSValue result = debuggerCallFrame->evaluateWithScopeExtension(breakpoint->condition, scopeExtensionObject, exception);
 
     // We can lose the debugger while executing JavaScript.
     if (!m_currentCallFrame)
@@ -619,11 +614,10 @@ void Debugger::breakProgram()
 
 void Debugger::continueProgram()
 {
-    clearNextPauseState();
-
     if (!m_isPaused)
         return;
 
+    m_pauseAtNextOpportunity = false;
     notifyDoneProcessingDebuggerEvents();
 }
 
@@ -687,7 +681,7 @@ void Debugger::updateCallFrameInternal(CallFrame* callFrame)
 
 void Debugger::pauseIfNeeded(CallFrame* callFrame)
 {
-    VM& vm = m_vm;
+    VM& vm = callFrame->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     if (m_isPaused)
@@ -706,11 +700,11 @@ void Debugger::pauseIfNeeded(CallFrame* callFrame)
     pauseNow |= (m_pauseOnCallFrame == m_currentCallFrame);
 
     bool didPauseForStep = pauseNow;
+    bool didHitBreakpoint = false;
 
     Breakpoint breakpoint;
-    TextPosition position = DebuggerCallFrame::positionForCallFrame(vm, m_currentCallFrame);
-    bool didHitBreakpoint = hasBreakpoint(sourceID, position, &breakpoint);
-    pauseNow |= didHitBreakpoint;
+    TextPosition position = DebuggerCallFrame::positionForCallFrame(m_currentCallFrame);
+    pauseNow |= didHitBreakpoint = hasBreakpoint(sourceID, position, &breakpoint);
     m_lastExecutedLine = position.m_line.zeroBasedInt();
     if (!pauseNow)
         return;
@@ -721,7 +715,7 @@ void Debugger::pauseIfNeeded(CallFrame* callFrame)
     // reseting the pause state before executing any breakpoint actions.
     TemporaryPausedState pausedState(*this);
 
-    JSGlobalObject* vmEntryGlobalObject = callFrame->vmEntryGlobalObject(vm);
+    JSGlobalObject* vmEntryGlobalObject = callFrame->vmEntryGlobalObject();
 
     if (didHitBreakpoint) {
         handleBreakpointHit(vmEntryGlobalObject, breakpoint);
@@ -741,7 +735,7 @@ void Debugger::pauseIfNeeded(CallFrame* callFrame)
     {
         PauseReasonDeclaration reason(*this, didHitBreakpoint ? PausedForBreakpoint : m_reasonForPause);
         handlePause(vmEntryGlobalObject, m_reasonForPause);
-        scope.releaseAssertNoException();
+        RELEASE_ASSERT(!scope.exception());
     }
 
     m_pausingBreakpointID = noBreakpointID;
@@ -913,11 +907,11 @@ void Debugger::didReachBreakpoint(CallFrame* callFrame)
     updateCallFrame(callFrame, AttemptPause);
 }
 
-DebuggerCallFrame& Debugger::currentDebuggerCallFrame()
+DebuggerCallFrame* Debugger::currentDebuggerCallFrame()
 {
     if (!m_currentDebuggerCallFrame)
-        m_currentDebuggerCallFrame = DebuggerCallFrame::create(m_vm, m_currentCallFrame);
-    return *m_currentDebuggerCallFrame;
+        m_currentDebuggerCallFrame = DebuggerCallFrame::create(m_currentCallFrame);
+    return m_currentDebuggerCallFrame.get();
 }
 
 bool Debugger::isBlacklisted(SourceID sourceID) const

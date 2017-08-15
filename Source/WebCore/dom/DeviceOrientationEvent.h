@@ -33,6 +33,7 @@ class DeviceOrientationData;
 
 class DeviceOrientationEvent final : public Event {
 public:
+    virtual ~DeviceOrientationEvent();
     static Ref<DeviceOrientationEvent> create(const AtomicString& eventType, DeviceOrientationData* orientation)
     {
         return adoptRef(*new DeviceOrientationEvent(eventType, orientation));
@@ -43,28 +44,15 @@ public:
         return adoptRef(*new DeviceOrientationEvent);
     }
 
-    virtual ~DeviceOrientationEvent();
+    void initDeviceOrientationEvent(const AtomicString& type, bool bubbles, bool cancelable, DeviceOrientationData*);
 
-    std::optional<double> alpha() const;
-    std::optional<double> beta() const;
-    std::optional<double> gamma() const;
+    DeviceOrientationData* orientation() const { return m_orientation.get(); }
 
-#if PLATFORM(IOS)
-    std::optional<double> compassHeading() const;
-    std::optional<double> compassAccuracy() const;
-
-    void initDeviceOrientationEvent(const AtomicString& type, bool bubbles, bool cancelable, std::optional<double> alpha, std::optional<double> beta, std::optional<double> gamma, std::optional<double> compassHeading, std::optional<double> compassAccuracy);
-#else
-    std::optional<bool> absolute() const;
-
-    void initDeviceOrientationEvent(const AtomicString& type, bool bubbles, bool cancelable, std::optional<double> alpha, std::optional<double> beta, std::optional<double> gamma, std::optional<bool> absolute);
-#endif
+    EventInterface eventInterface() const override;
 
 private:
     DeviceOrientationEvent();
     DeviceOrientationEvent(const AtomicString& eventType, DeviceOrientationData*);
-
-    EventInterface eventInterface() const override;
 
     RefPtr<DeviceOrientationData> m_orientation;
 };

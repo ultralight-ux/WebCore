@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2016, 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2016 Apple Inc. All rights reserved.
  * Copyright (C) 2010 Torch Mobile (Beijing) Co. Ltd. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,14 +34,7 @@
 
 #if ENABLE(WEBGL)
 #include "JSWebGLContextAttributes.h"
-#include "JSWebGLRenderingContext.h"
-#if ENABLE(WEBGL2)
-#include "JSWebGL2RenderingContext.h"
-#endif
-#endif
-
-#if ENABLE(WEBGPU)
-#include "JSWebGPURenderingContext.h"
+#include "JSWebGLRenderingContextBase.h"
 #endif
 
 using namespace JSC;
@@ -56,7 +49,7 @@ JSValue JSHTMLCanvasElement::getContext(ExecState& state)
     if (UNLIKELY(state.argumentCount() < 1))
         return throwException(&state, scope, createNotEnoughArgumentsError(&state));
 
-    auto contextId = convert<IDLDOMString>(state, state.uncheckedArgument(0));
+    auto contextId = convert<IDLDOMString>(state, state.uncheckedArgument(0), StringConversionConfiguration::Normal);
     RETURN_IF_EXCEPTION(scope, JSValue());
 
     if (HTMLCanvasElement::is2dType(contextId))
@@ -67,20 +60,8 @@ JSValue JSHTMLCanvasElement::getContext(ExecState& state)
         auto attributes = convert<IDLDictionary<WebGLContextAttributes>>(state, state.argument(1));
         RETURN_IF_EXCEPTION(scope, JSValue());
 
-        if (auto context = wrapped().getContextWebGL(contextId, WTFMove(attributes))) {
-            if (is<WebGLRenderingContext>(*context))
-                return toJS<IDLNullable<IDLInterface<WebGLRenderingContext>>>(state, *globalObject(), static_cast<WebGLRenderingContext*>(context));
-#if ENABLE(WEBGL2)
-            if (is<WebGL2RenderingContext>(*context))
-                return toJS<IDLNullable<IDLInterface<WebGL2RenderingContext>>>(state, *globalObject(), static_cast<WebGL2RenderingContext*>(context));
-#endif
-        }
+        return toJS<IDLNullable<IDLInterface<WebGLRenderingContextBase>>>(state, *globalObject(), static_cast<WebGLRenderingContextBase*>(wrapped().getContextWebGL(contextId, WTFMove(attributes))));
     }
-#endif
-
-#if ENABLE(WEBGPU)
-    if (HTMLCanvasElement::isWebGPUType(contextId))
-        return toJS<IDLNullable<IDLInterface<WebGPURenderingContext>>>(state, *globalObject(), static_cast<WebGPURenderingContext*>(wrapped().getContextWebGPU(contextId)));
 #endif
 
     return jsNull();

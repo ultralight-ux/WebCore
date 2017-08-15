@@ -52,10 +52,6 @@ public:
     }
     ~CSSFontFaceSet();
 
-    static FontSelectionValue convertFontWeightFromValue(const CSSValue&);
-    static FontSelectionValue convertFontStretchFromValue(const CSSValue&);
-    static FontSelectionValue convertFontStyleFromValue(const CSSValue&);
-
     void addClient(CSSFontFaceSetClient&);
     void removeClient(CSSFontFaceSetClient&);
 
@@ -71,7 +67,7 @@ public:
 
     ExceptionOr<bool> check(const String& font, const String& text);
 
-    CSSSegmentedFontFace* fontFace(FontSelectionRequest, const AtomicString& family);
+    CSSSegmentedFontFace* fontFace(FontTraitsMask, const AtomicString& family);
 
     enum class Status { Loading, Loaded };
     Status status() const { return m_status; }
@@ -102,8 +98,7 @@ private:
     Vector<Ref<CSSFontFace>> m_faces; // We should investigate moving m_faces to FontFaceSet and making it reference FontFaces. This may clean up the font loading design.
     HashMap<String, Vector<Ref<CSSFontFace>>, ASCIICaseInsensitiveHash> m_facesLookupTable;
     HashMap<String, Vector<Ref<CSSFontFace>>, ASCIICaseInsensitiveHash> m_locallyInstalledFacesLookupTable;
-    typedef HashMap<FontSelectionRequestKey, RefPtr<CSSSegmentedFontFace>, FontSelectionRequestKeyHash, WTF::SimpleClassHashTraits<FontSelectionRequestKey>> FontSelectionHashMap;
-    HashMap<String, FontSelectionHashMap, ASCIICaseInsensitiveHash> m_cache;
+    HashMap<String, HashMap<unsigned, RefPtr<CSSSegmentedFontFace>>, ASCIICaseInsensitiveHash> m_cache;
     HashMap<StyleRuleFontFace*, CSSFontFace*> m_constituentCSSConnections;
     size_t m_facesPartitionIndex { 0 }; // All entries in m_faces before this index are CSS-connected.
     Status m_status { Status::Loaded };

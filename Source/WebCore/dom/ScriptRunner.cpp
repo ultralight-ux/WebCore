@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2010 Google, Inc. All Rights Reserved.
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,27 +51,31 @@ ScriptRunner::~ScriptRunner()
     }
     for (auto& pendingScript : m_pendingAsyncScripts) {
         if (pendingScript->watchingForLoad())
-            pendingScript->clearClient();
+            const_cast<PendingScript&>(pendingScript.get()).clearClient();
         m_document.decrementLoadEventDelayCount();
     }
 }
 
-void ScriptRunner::queueScriptForExecution(ScriptElement& scriptElement, LoadableScript& loadableScript, ExecutionType executionType)
+void ScriptRunner::queueScriptForExecution(ScriptElement* scriptElement, LoadableScript& loadableScript, ExecutionType executionType)
 {
-    ASSERT(scriptElement.element().isConnected());
+    ASSERT(scriptElement);
+
+    Element& element = scriptElement->element();
+    ASSERT(element.inDocument());
 
     m_document.incrementLoadEventDelayCount();
 
-    auto pendingScript = PendingScript::create(scriptElement, loadableScript);
+    Ref<PendingScript> pendingScript = PendingScript::create(element, loadableScript);
     switch (executionType) {
     case ASYNC_EXECUTION:
         m_pendingAsyncScripts.add(pendingScript.copyRef());
         break;
+
     case IN_ORDER_EXECUTION:
         m_scriptsToExecuteInOrder.append(pendingScript.copyRef());
         break;
     }
-    pendingScript->setClient(*this);
+    pendingScript->setClient(this);
 }
 
 void ScriptRunner::suspend()
@@ -83,19 +86,21 @@ void ScriptRunner::suspend()
 void ScriptRunner::resume()
 {
     if (hasPendingScripts())
-        m_timer.startOneShot(0_s);
+        m_timer.startOneShot(0);
 }
 
 void ScriptRunner::notifyFinished(PendingScript& pendingScript)
 {
-    if (pendingScript.element().willExecuteInOrder())
+    auto* scriptElement = toScriptElementIfPossible(&pendingScript.element());
+    ASSERT(scriptElement);
+    if (scriptElement->willExecuteInOrder())
         ASSERT(!m_scriptsToExecuteInOrder.isEmpty());
     else {
         ASSERT(m_pendingAsyncScripts.contains(pendingScript));
         m_scriptsToExecuteSoon.append(m_pendingAsyncScripts.take(pendingScript)->ptr());
     }
     pendingScript.clearClient();
-    m_timer.startOneShot(0_s);
+    m_timer.startOneShot(0);
 }
 
 void ScriptRunner::timerFired()
@@ -117,8 +122,10 @@ void ScriptRunner::timerFired()
         // Paper over https://bugs.webkit.org/show_bug.cgi?id=144050
         if (!script)
             continue;
+        auto* scriptElement = toScriptElementIfPossible(&script->element());
+        ASSERT(scriptElement);
         ASSERT(script->needsLoading());
-        script->element().executePendingScript(*script);
+        scriptElement->executePendingScript(*script);
         m_document.decrementLoadEventDelayCount();
     }
 }

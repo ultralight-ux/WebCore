@@ -35,7 +35,7 @@ class DOMWindow;
 
 class WebInjectedScriptManager final : public Inspector::InjectedScriptManager {
 public:
-    WebInjectedScriptManager(Inspector::InspectorEnvironment&, Ref<Inspector::InjectedScriptHost>&&);
+    WebInjectedScriptManager(Inspector::InspectorEnvironment&, RefPtr<Inspector::InjectedScriptHost>&&);
     virtual ~WebInjectedScriptManager() { }
 
     CommandLineAPIHost* commandLineAPIHost() const { return m_commandLineAPIHost.get(); }

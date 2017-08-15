@@ -37,7 +37,6 @@
 #include "CryptoKeyPair.h"
 #include "CryptoKeyRSA.h"
 #include "ExceptionCode.h"
-#include <wtf/Variant.h>
 
 namespace WebCore {
 
@@ -69,7 +68,7 @@ bool CryptoAlgorithmRSASSA_PKCS1_v1_5::keyAlgorithmMatches(const CryptoAlgorithm
     return true;
 }
 
-void CryptoAlgorithmRSASSA_PKCS1_v1_5::sign(std::unique_ptr<CryptoAlgorithmParameters>&&, Ref<CryptoKey>&& key, Vector<uint8_t>&& data, VectorCallback&& callback, ExceptionCallback&& exceptionCallback, ScriptExecutionContext& context, WorkQueue& workQueue)
+void CryptoAlgorithmRSASSA_PKCS1_v1_5::sign(Ref<CryptoKey>&& key, Vector<uint8_t>&& data, VectorCallback&& callback, ExceptionCallback&& exceptionCallback, ScriptExecutionContext& context, WorkQueue& workQueue)
 {
     if (key->type() != CryptoKeyType::Private) {
         exceptionCallback(INVALID_ACCESS_ERR);
@@ -78,7 +77,7 @@ void CryptoAlgorithmRSASSA_PKCS1_v1_5::sign(std::unique_ptr<CryptoAlgorithmParam
     platformSign(WTFMove(key), WTFMove(data), WTFMove(callback), WTFMove(exceptionCallback), context, workQueue);
 }
 
-void CryptoAlgorithmRSASSA_PKCS1_v1_5::verify(std::unique_ptr<CryptoAlgorithmParameters>&&, Ref<CryptoKey>&& key, Vector<uint8_t>&& signature, Vector<uint8_t>&& data, BoolCallback&& callback, ExceptionCallback&& exceptionCallback, ScriptExecutionContext& context, WorkQueue& workQueue)
+void CryptoAlgorithmRSASSA_PKCS1_v1_5::verify(Ref<CryptoKey>&& key, Vector<uint8_t>&& signature, Vector<uint8_t>&& data, BoolCallback&& callback, ExceptionCallback&& exceptionCallback, ScriptExecutionContext& context, WorkQueue& workQueue)
 {
     if (key->type() != CryptoKeyType::Public) {
         exceptionCallback(INVALID_ACCESS_ERR);
@@ -117,11 +116,11 @@ void CryptoAlgorithmRSASSA_PKCS1_v1_5::importKey(SubtleCrypto::KeyFormat format,
     case SubtleCrypto::KeyFormat::Jwk: {
         JsonWebKey key = WTFMove(WTF::get<JsonWebKey>(data));
 
-        if (usages && ((!key.d.isNull() && (usages ^ CryptoKeyUsageSign)) || (key.d.isNull() && (usages ^ CryptoKeyUsageVerify)))) {
+        if (usages && ((key.d && (usages ^ CryptoKeyUsageSign)) || (!key.d && (usages ^ CryptoKeyUsageVerify)))) {
             exceptionCallback(SYNTAX_ERR);
             return;
         }
-        if (usages && !key.use.isNull() && key.use != "sig") {
+        if (usages && key.use && key.use.value() != "sig") {
             exceptionCallback(DataError);
             return;
         }
@@ -129,19 +128,19 @@ void CryptoAlgorithmRSASSA_PKCS1_v1_5::importKey(SubtleCrypto::KeyFormat format,
         bool isMatched = false;
         switch (rsaParameters.hashIdentifier) {
         case CryptoAlgorithmIdentifier::SHA_1:
-            isMatched = key.alg.isNull() || key.alg == ALG1;
+            isMatched = !key.alg || key.alg.value() == ALG1;
             break;
         case CryptoAlgorithmIdentifier::SHA_224:
-            isMatched = key.alg.isNull() || key.alg == ALG224;
+            isMatched = !key.alg || key.alg.value() == ALG224;
             break;
         case CryptoAlgorithmIdentifier::SHA_256:
-            isMatched = key.alg.isNull() || key.alg == ALG256;
+            isMatched = !key.alg || key.alg.value() == ALG256;
             break;
         case CryptoAlgorithmIdentifier::SHA_384:
-            isMatched = key.alg.isNull() || key.alg == ALG384;
+            isMatched = !key.alg || key.alg.value() == ALG384;
             break;
         case CryptoAlgorithmIdentifier::SHA_512:
-            isMatched = key.alg.isNull() || key.alg == ALG512;
+            isMatched = !key.alg || key.alg.value() == ALG512;
             break;
         default:
             break;

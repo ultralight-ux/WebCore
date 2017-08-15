@@ -43,12 +43,7 @@ RefPtr<AudioBuffer> AudioBuffer::create(unsigned numberOfChannels, size_t number
 {
     if (sampleRate < 22050 || sampleRate > 96000 || numberOfChannels > AudioContext::maxNumberOfChannels() || !numberOfFrames)
         return nullptr;
-
-    auto buffer = adoptRef(*new AudioBuffer(numberOfChannels, numberOfFrames, sampleRate));
-    if (!buffer->m_length)
-        return nullptr;
-
-    return WTFMove(buffer);
+    return adoptRef(*new AudioBuffer(numberOfChannels, numberOfFrames, sampleRate));
 }
 
 RefPtr<AudioBuffer> AudioBuffer::createFromAudioFileData(const void* data, size_t dataSize, bool mixToMono, float sampleRate)
@@ -66,14 +61,9 @@ AudioBuffer::AudioBuffer(unsigned numberOfChannels, size_t numberOfFrames, float
     m_channels.reserveCapacity(numberOfChannels);
 
     for (unsigned i = 0; i < numberOfChannels; ++i) {
-        auto channelDataArray = Float32Array::create(m_length);
-        if (!channelDataArray) {
-            invalidate();
-            break;
-        }
-
+        RefPtr<Float32Array> channelDataArray = Float32Array::create(m_length);
         channelDataArray->setNeuterable(false);
-        m_channels.append(WTFMove(channelDataArray));
+        m_channels.append(channelDataArray);
     }
 }
 
@@ -86,21 +76,10 @@ AudioBuffer::AudioBuffer(AudioBus& bus)
     m_channels.reserveCapacity(numberOfChannels);
     for (unsigned i = 0; i < numberOfChannels; ++i) {
         auto channelDataArray = Float32Array::create(m_length);
-        if (!channelDataArray) {
-            invalidate();
-            break;
-        }
-
         channelDataArray->setNeuterable(false);
         channelDataArray->setRange(bus.channel(i)->data(), m_length, 0);
         m_channels.append(WTFMove(channelDataArray));
     }
-}
-
-void AudioBuffer::invalidate()
-{
-    releaseMemory();
-    m_length = 0;
 }
 
 void AudioBuffer::releaseMemory()

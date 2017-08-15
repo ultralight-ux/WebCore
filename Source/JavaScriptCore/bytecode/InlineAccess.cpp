@@ -35,10 +35,11 @@
 #include "ScratchRegisterAllocator.h"
 #include "Structure.h"
 #include "StructureStubInfo.h"
+#include "VM.h"
 
 namespace JSC {
 
-void InlineAccess::dumpCacheSizesAndCrash()
+void InlineAccess::dumpCacheSizesAndCrash(VM& vm)
 {
     GPRReg base = GPRInfo::regT0;
     GPRReg value = GPRInfo::regT1;
@@ -49,7 +50,7 @@ void InlineAccess::dumpCacheSizesAndCrash()
 #endif
 
     {
-        CCallHelpers jit;
+        CCallHelpers jit(&vm);
 
         GPRReg scratchGPR = value;
         jit.load8(CCallHelpers::Address(base, JSCell::indexingTypeAndMiscOffset()), value);
@@ -64,7 +65,7 @@ void InlineAccess::dumpCacheSizesAndCrash()
     }
 
     {
-        CCallHelpers jit;
+        CCallHelpers jit(&vm);
 
         jit.patchableBranch32(
             MacroAssembler::NotEqual,
@@ -81,7 +82,7 @@ void InlineAccess::dumpCacheSizesAndCrash()
     }
 
     {
-        CCallHelpers jit;
+        CCallHelpers jit(&vm);
 
         jit.patchableBranch32(
             MacroAssembler::NotEqual,
@@ -94,7 +95,7 @@ void InlineAccess::dumpCacheSizesAndCrash()
     }
 
     {
-        CCallHelpers jit;
+        CCallHelpers jit(&vm);
 
         jit.patchableBranch32(
             MacroAssembler::NotEqual,
@@ -108,7 +109,7 @@ void InlineAccess::dumpCacheSizesAndCrash()
     }
 
     {
-        CCallHelpers jit;
+        CCallHelpers jit(&vm);
 
         jit.patchableBranch32(
             MacroAssembler::NotEqual,
@@ -154,9 +155,9 @@ ALWAYS_INLINE static bool linkCodeInline(const char* name, CCallHelpers& jit, St
     return false;
 }
 
-bool InlineAccess::generateSelfPropertyAccess(StructureStubInfo& stubInfo, Structure* structure, PropertyOffset offset)
+bool InlineAccess::generateSelfPropertyAccess(VM& vm, StructureStubInfo& stubInfo, Structure* structure, PropertyOffset offset)
 {
-    CCallHelpers jit;
+    CCallHelpers jit(&vm);
     
     GPRReg base = static_cast<GPRReg>(stubInfo.patch.baseGPR);
     JSValueRegs value = stubInfo.valueRegs();
@@ -210,11 +211,11 @@ bool InlineAccess::canGenerateSelfPropertyReplace(StructureStubInfo& stubInfo, P
     return hasFreeRegister(stubInfo);
 }
 
-bool InlineAccess::generateSelfPropertyReplace(StructureStubInfo& stubInfo, Structure* structure, PropertyOffset offset)
+bool InlineAccess::generateSelfPropertyReplace(VM& vm, StructureStubInfo& stubInfo, Structure* structure, PropertyOffset offset)
 {
     ASSERT(canGenerateSelfPropertyReplace(stubInfo, offset));
 
-    CCallHelpers jit;
+    CCallHelpers jit(&vm);
 
     GPRReg base = static_cast<GPRReg>(stubInfo.patch.baseGPR);
     JSValueRegs value = stubInfo.valueRegs();
@@ -254,11 +255,11 @@ bool InlineAccess::isCacheableArrayLength(StructureStubInfo& stubInfo, JSArray* 
         || array->indexingType() == ArrayWithContiguous;
 }
 
-bool InlineAccess::generateArrayLength(StructureStubInfo& stubInfo, JSArray* array)
+bool InlineAccess::generateArrayLength(VM& vm, StructureStubInfo& stubInfo, JSArray* array)
 {
     ASSERT(isCacheableArrayLength(stubInfo, array));
 
-    CCallHelpers jit;
+    CCallHelpers jit(&vm);
 
     GPRReg base = static_cast<GPRReg>(stubInfo.patch.baseGPR);
     JSValueRegs value = stubInfo.valueRegs();
@@ -278,9 +279,9 @@ bool InlineAccess::generateArrayLength(StructureStubInfo& stubInfo, JSArray* arr
     return linkedCodeInline;
 }
 
-void InlineAccess::rewireStubAsJump(StructureStubInfo& stubInfo, CodeLocationLabel target)
+void InlineAccess::rewireStubAsJump(VM& vm, StructureStubInfo& stubInfo, CodeLocationLabel target)
 {
-    CCallHelpers jit;
+    CCallHelpers jit(&vm);
 
     auto jump = jit.jump();
 

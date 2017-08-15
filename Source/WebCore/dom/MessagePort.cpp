@@ -31,6 +31,7 @@
 #include "EventNames.h"
 #include "ExceptionCode.h"
 #include "MessageEvent.h"
+#include "SecurityOrigin.h"
 #include "WorkerGlobalScope.h"
 
 namespace WebCore {
@@ -146,19 +147,16 @@ void MessagePort::dispatchMessages()
     // The HTML5 spec specifies that any messages sent to a document that is not fully active should be dropped, so this behavior is OK.
     ASSERT(started());
 
-    if (!m_entangledChannel)
-        return;
+    RefPtr<SerializedScriptValue> message;
+    std::unique_ptr<MessagePortChannelArray> channels;
+    while (m_entangledChannel && m_entangledChannel->tryGetMessageFromRemote(message, channels)) {
 
-    bool contextIsWorker = is<WorkerGlobalScope>(*m_scriptExecutionContext);
-
-    auto pendingMessages = m_entangledChannel->takeAllMessagesFromRemote();
-    for (auto& message : pendingMessages) {
         // close() in Worker onmessage handler should prevent next message from dispatching.
-        if (contextIsWorker && downcast<WorkerGlobalScope>(*m_scriptExecutionContext).isClosing())
+        if (is<WorkerGlobalScope>(*m_scriptExecutionContext) && downcast<WorkerGlobalScope>(*m_scriptExecutionContext).isClosing())
             return;
 
-        auto ports = MessagePort::entanglePorts(*m_scriptExecutionContext, WTFMove(message->channels));
-        dispatchEvent(MessageEvent::create(WTFMove(ports), WTFMove(message->message)));
+        auto ports = MessagePort::entanglePorts(*m_scriptExecutionContext, WTFMove(channels));
+        dispatchEvent(MessageEvent::create(WTFMove(ports), WTFMove(message)));
     }
 }
 

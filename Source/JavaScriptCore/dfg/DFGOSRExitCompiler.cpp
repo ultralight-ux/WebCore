@@ -146,13 +146,13 @@ void compileOSRExit(ExecState* exec)
         recovery = &codeBlock->jitCode()->dfg()->speculationRecovery[exit.m_recoveryIndex];
 
     {
-        CCallHelpers jit(codeBlock);
+        CCallHelpers jit(vm, codeBlock);
         OSRExitCompiler exitCompiler(jit);
 
         if (exit.m_kind == GenericUnwind) {
             // We are acting as a defacto op_catch because we arrive here from genericUnwind().
             // So, we must restore our call frame and stack pointer.
-            jit.restoreCalleeSavesFromVMEntryFrameCalleeSavesBuffer(*vm);
+            jit.restoreCalleeSavesFromVMEntryFrameCalleeSavesBuffer();
             jit.loadPtr(vm->addressOfCallFrameForCatch(), GPRInfo::callFrameRegister);
         }
         jit.addPtr(
@@ -171,9 +171,9 @@ void compileOSRExit(ExecState* exec)
             jit.add64(CCallHelpers::TrustedImm32(1), CCallHelpers::AbsoluteAddress(profilerExit->counterAddress()));
         }
 
-        exitCompiler.compileExit(*vm, exit, operands, recovery);
+        exitCompiler.compileExit(exit, operands, recovery);
         
-        LinkBuffer patchBuffer(jit, codeBlock);
+        LinkBuffer patchBuffer(*vm, jit, codeBlock);
         exit.m_code = FINALIZE_CODE_IF(
             shouldDumpDisassembly() || Options::verboseOSR(),
             patchBuffer,

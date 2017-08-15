@@ -28,8 +28,8 @@
 #include "RenderObject.h"
 
 #include "AXObjectCache.h"
-#include "CSSAnimationController.h"
-#include "Editing.h"
+#include "AnimationController.h"
+#include "EventHandler.h"
 #include "FloatQuad.h"
 #include "FlowThreadController.h"
 #include "FrameSelection.h"
@@ -70,6 +70,7 @@
 #include "SVGRenderSupport.h"
 #include "StyleResolver.h"
 #include "TransformState.h"
+#include "htmlediting.h"
 #include <algorithm>
 #include <stdio.h>
 #include <wtf/RefCountedLeakCounter.h>
@@ -141,7 +142,8 @@ RenderObject::~RenderObject()
 
 RenderTheme& RenderObject::theme() const
 {
-    return RenderTheme::singleton();
+    ASSERT(document().page());
+    return document().page()->theme();
 }
 
 bool RenderObject::isDescendantOf(const RenderObject* ancestor) const
@@ -156,12 +158,6 @@ bool RenderObject::isDescendantOf(const RenderObject* ancestor) const
 bool RenderObject::isLegend() const
 {
     return node() && node()->hasTagName(legendTag);
-}
-
-    
-bool RenderObject::isFieldset() const
-{
-    return node() && node()->hasTagName(fieldsetTag);
 }
 
 bool RenderObject::isHTMLMarquee() const
@@ -197,8 +193,8 @@ RenderObject::FlowThreadState RenderObject::computedFlowThreadState(const Render
         // containingBlock() skips svg boundary (SVG root is a RenderReplaced).
         if (auto* svgRoot = SVGRenderSupport::findTreeRootObject(downcast<RenderElement>(renderer)))
             inheritedFlowState = svgRoot->flowThreadState();
-    } else if (auto* container = renderer.container())
-        inheritedFlowState = container->flowThreadState();
+    } else if (auto* containingBlock = renderer.containingBlock())
+        inheritedFlowState = containingBlock->flowThreadState();
     else {
         // Splitting lines or doing continuation, so just keep the current state.
         inheritedFlowState = renderer.flowThreadState();
@@ -226,7 +222,7 @@ void RenderObject::resetFlowThreadStateOnRemoval()
     if (flowThreadState() == NotInsideFlowThread)
         return;
 
-    if (!renderTreeBeingDestroyed() && is<RenderElement>(*this)) {
+    if (!documentBeingDestroyed() && is<RenderElement>(*this)) {
         downcast<RenderElement>(*this).removeFromRenderFlowThread();
         return;
     }
@@ -1473,7 +1469,7 @@ void RenderObject::willBeDestroyed()
 
     removeFromParent();
 
-    ASSERT(renderTreeBeingDestroyed() || !is<RenderElement>(*this) || !view().frameView().hasSlowRepaintObject(downcast<RenderElement>(*this)));
+    ASSERT(documentBeingDestroyed() || !is<RenderElement>(*this) || !view().frameView().hasSlowRepaintObject(downcast<RenderElement>(*this)));
 
     // The remove() call above may invoke axObjectCache()->childrenChanged() on the parent, which may require the AX render
     // object for this renderer. So we remove the AX render object now, after the renderer is removed.
@@ -1481,8 +1477,7 @@ void RenderObject::willBeDestroyed()
         cache->remove(this);
 
     // FIXME: Would like to do this in RenderBoxModelObject, but the timing is so complicated that this can't easily
-    // be moved into RenderLayerModelObject::willBeDestroyed().
-    // FIXME: Is this still true?
+    // be moved into RenderBoxModelObject::destroy.
     if (hasLayer()) {
         setHasLayer(false);
         downcast<RenderLayerModelObject>(*this).destroyLayer();
@@ -1512,7 +1507,7 @@ void RenderObject::willBeRemovedFromTree()
 void RenderObject::destroyAndCleanupAnonymousWrappers()
 {
     // If the tree is destroyed, there is no need for a clean-up phase.
-    if (renderTreeBeingDestroyed()) {
+    if (documentBeingDestroyed()) {
         destroy();
         return;
     }
@@ -1554,12 +1549,6 @@ void RenderObject::destroy()
         return;
     }
     delete this;
-}
-
-Position RenderObject::positionForPoint(const LayoutPoint& point)
-{
-    // FIXME: This should just create a Position object instead (webkit.org/b/168566). 
-    return positionForPoint(point, nullptr).deepEquivalent();
 }
 
 VisiblePosition RenderObject::positionForPoint(const LayoutPoint&, const RenderRegion*)
@@ -1985,6 +1974,18 @@ void RenderObject::setHasOutlineAutoAncestor(bool hasOutlineAutoAncestor)
         ensureRareData().setHasOutlineAutoAncestor(hasOutlineAutoAncestor);
 }
 
+void RenderObject::setIsRegisteredForVisibleInViewportCallback(bool registered)
+{
+    if (registered || hasRareData())
+        ensureRareData().setIsRegisteredForVisibleInViewportCallback(registered);
+}
+
+void RenderObject::setVisibleInViewportState(VisibleInViewportState visible)
+{
+    if (visible != VisibilityUnknown || hasRareData())
+        ensureRareData().setVisibleInViewportState(visible);
+}
+
 RenderObject::RareDataMap& RenderObject::rareDataMap()
 {
     static NeverDestroyed<RareDataMap> map;
@@ -2014,7 +2015,7 @@ void RenderObject::removeRareData()
 void printRenderTreeForLiveDocuments()
 {
     for (const auto* document : Document::allDocuments()) {
-        if (!document->renderView())
+        if (!document->renderView() || document->pageCacheState() != Document::NotInPageCache)
             continue;
         if (document->frame() && document->frame()->isMainFrame())
             fprintf(stderr, "----------------------main frame--------------------------\n");
@@ -2026,7 +2027,7 @@ void printRenderTreeForLiveDocuments()
 void printLayerTreeForLiveDocuments()
 {
     for (const auto* document : Document::allDocuments()) {
-        if (!document->renderView())
+        if (!document->renderView() || document->pageCacheState() != Document::NotInPageCache)
             continue;
         if (document->frame() && document->frame()->isMainFrame())
             fprintf(stderr, "----------------------main frame--------------------------\n");

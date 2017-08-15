@@ -27,7 +27,6 @@
 #include "VisibleUnits.h"
 
 #include "Document.h"
-#include "Editing.h"
 #include "HTMLBRElement.h"
 #include "HTMLElement.h"
 #include "HTMLNames.h"
@@ -42,6 +41,7 @@
 #include "VisibleSelection.h"
 #include <unicode/ubrk.h>
 #include <wtf/text/TextBreakIterator.h>
+#include "htmlediting.h"
 
 namespace WebCore {
 

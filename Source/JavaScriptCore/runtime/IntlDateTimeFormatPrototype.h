@@ -32,9 +32,9 @@
 
 namespace JSC {
 
-class IntlDateTimeFormatPrototype : public JSNonFinalObject {
+class IntlDateTimeFormatPrototype : public IntlDateTimeFormat {
 public:
-    typedef JSNonFinalObject Base;
+    typedef IntlDateTimeFormat Base;
     static const unsigned StructureFlags = Base::StructureFlags | HasStaticPropertyTable;
 
     static IntlDateTimeFormatPrototype* create(VM&, JSGlobalObject*, Structure*);
@@ -43,7 +43,7 @@ public:
     DECLARE_INFO;
 
 protected:
-    void finishCreation(VM&, JSGlobalObject*, Structure*);
+    void finishCreation(VM&, Structure*);
 
 private:
     IntlDateTimeFormatPrototype(VM&, Structure*);

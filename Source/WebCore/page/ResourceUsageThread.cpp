@@ -96,11 +96,11 @@ void ResourceUsageThread::notifyObservers(ResourceUsageData&& data)
 
 void ResourceUsageThread::createThreadIfNeeded()
 {
-    if (m_thread)
+    if (m_threadIdentifier)
         return;
 
     m_vm = &commonVM();
-    m_thread = Thread::create(threadCallback, this, "WebCore: ResourceUsage");
+    m_threadIdentifier = createThread(threadCallback, this, "WebCore: ResourceUsage");
 }
 
 void ResourceUsageThread::threadCallback(void* resourceUsageThread)

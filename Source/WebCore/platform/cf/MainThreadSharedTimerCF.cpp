@@ -31,7 +31,7 @@
 #if PLATFORM(MAC)
 #import "PowerObserverMac.h"
 #elif PLATFORM(IOS)
-#import "WebCoreThreadInternal.h"
+#import "WebCoreThread.h"
 #import "WebCoreThreadRun.h"
 #endif
 

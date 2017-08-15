@@ -35,13 +35,12 @@
 #include "XSLTProcessor.h"
 #include <libxml/uri.h>
 #include <libxslt/xsltutils.h>
-#include <wtf/CheckedArithmetic.h>
 
-#if OS(DARWIN) && !PLATFORM(GTK)
+#if OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK)
 #include "SoftLinking.h"
 #endif
 
-#if OS(DARWIN) && !PLATFORM(GTK)
+#if OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK)
 SOFT_LINK_LIBRARY(libxslt)
 SOFT_LINK(libxslt, xsltIsBlank, int, (xmlChar *str), (str))
 SOFT_LINK(libxslt, xsltGetNsProp, xmlChar *, (xmlNodePtr node, const xmlChar *name, const xmlChar *nameSpace), (node, name, nameSpace))
@@ -55,36 +54,43 @@ XSLStyleSheet::XSLStyleSheet(XSLImportRule* parentRule, const String& originalUR
     : m_ownerNode(nullptr)
     , m_originalURL(originalURL)
     , m_finalURL(finalURL)
+    , m_isDisabled(false)
     , m_embedded(false)
     , m_processed(false) // Child sheets get marked as processed when the libxslt engine has finally seen them.
+    , m_stylesheetDoc(nullptr)
+    , m_stylesheetDocTaken(false)
+    , m_parentStyleSheet(parentRule ? parentRule->parentStyleSheet() : nullptr)
 {
-    if (parentRule)
-        m_parentStyleSheet = parentRule->parentStyleSheet();
 }
 
 XSLStyleSheet::XSLStyleSheet(Node* parentNode, const String& originalURL, const URL& finalURL,  bool embedded)
     : m_ownerNode(parentNode)
     , m_originalURL(originalURL)
     , m_finalURL(finalURL)
+    , m_isDisabled(false)
     , m_embedded(embedded)
     , m_processed(true) // The root sheet starts off processed.
+    , m_stylesheetDoc(nullptr)
+    , m_stylesheetDocTaken(false)
+    , m_parentStyleSheet(nullptr)
 {
 }
 
 XSLStyleSheet::~XSLStyleSheet()
 {
-    clearXSLStylesheetDocument();
+    if (!m_stylesheetDocTaken)
+        xmlFreeDoc(m_stylesheetDoc);
 
-    for (auto& import : m_children) {
-        ASSERT(import->parentStyleSheet() == this);
-        import->setParentStyleSheet(nullptr);
+    for (auto& child : m_children) {
+        ASSERT(child->parentStyleSheet() == this);
+        child->setParentStyleSheet(nullptr);
     }
 }
 
 bool XSLStyleSheet::isLoading() const
 {
-    for (auto& import : m_children) {
-        if (import->isLoading())
+    for (auto& child : m_children) {
+        if (child->isLoading())
             return true;
     }
     return false;
@@ -103,28 +109,17 @@ void XSLStyleSheet::checkLoaded()
 xmlDocPtr XSLStyleSheet::document()
 {
     if (m_embedded && ownerDocument() && ownerDocument()->transformSource())
-        return ownerDocument()->transformSource()->platformSource();
+        return (xmlDocPtr)ownerDocument()->transformSource()->platformSource();
     return m_stylesheetDoc;
 }
 
 void XSLStyleSheet::clearDocuments()
 {
-    clearXSLStylesheetDocument();
-
+    m_stylesheetDoc = nullptr;
     for (auto& import : m_children) {
         if (import->styleSheet())
             import->styleSheet()->clearDocuments();
     }
-}
-
-void XSLStyleSheet::clearXSLStylesheetDocument()
-{
-    if (!m_stylesheetDocTaken) {
-        if (m_stylesheetDoc)
-            xmlFreeDoc(m_stylesheetDoc);
-    } else
-        m_stylesheetDocTaken = false;
-    m_stylesheetDoc = nullptr;
 }
 
 CachedResourceLoader* XSLStyleSheet::cachedResourceLoader()
@@ -140,7 +135,9 @@ bool XSLStyleSheet::parseString(const String& string)
     // Parse in a single chunk into an xmlDocPtr
     const UChar BOM = 0xFEFF;
     const unsigned char BOMHighByte = *reinterpret_cast<const unsigned char*>(&BOM);
-    clearXSLStylesheetDocument();
+    if (!m_stylesheetDocTaken)
+        xmlFreeDoc(m_stylesheetDoc);
+    m_stylesheetDocTaken = false;
 
     PageConsoleClient* console = nullptr;
     Frame* frame = ownerDocument()->frame();
@@ -151,17 +148,13 @@ bool XSLStyleSheet::parseString(const String& string)
 
     auto upconvertedCharacters = StringView(string).upconvertedCharacters();
     const char* buffer = reinterpret_cast<const char*>(upconvertedCharacters.get());
-    Checked<unsigned, RecordOverflow> unsignedSize = string.length();
-    unsignedSize *= sizeof(UChar);
-    if (unsignedSize.hasOverflowed() || unsignedSize.unsafeGet() > std::numeric_limits<int>::max())
-        return false;
+    int size = string.length() * sizeof(UChar);
 
-    int size = static_cast<int>(unsignedSize.unsafeGet());
     xmlParserCtxtPtr ctxt = xmlCreateMemoryParserCtxt(buffer, size);
     if (!ctxt)
-        return false;
+        return 0;
 
-    if (m_parentStyleSheet && m_parentStyleSheet->m_stylesheetDoc) {
+    if (m_parentStyleSheet) {
         // The XSL transform may leave the newly-transformed document
         // with references to the symbol dictionaries of the style sheet
         // and any of its children. XML document disposal can corrupt memory
@@ -181,7 +174,7 @@ bool XSLStyleSheet::parseString(const String& string)
 
     loadChildSheets();
 
-    return !!m_stylesheetDoc;
+    return m_stylesheetDoc;
 }
 
 void XSLStyleSheet::loadChildSheets()
@@ -240,8 +233,9 @@ void XSLStyleSheet::loadChildSheets()
 void XSLStyleSheet::loadChildSheet(const String& href)
 {
     auto childRule = std::make_unique<XSLImportRule>(this, href);
+    XSLImportRule* c = childRule.get();
     m_children.append(childRule.release());
-    m_children.last()->loadSheet();
+    c->loadSheet();
 }
 
 xsltStylesheetPtr XSLStyleSheet::compileStyleSheet()
@@ -257,7 +251,6 @@ xsltStylesheetPtr XSLStyleSheet::compileStyleSheet()
 
     // xsltParseStylesheetDoc makes the document part of the stylesheet
     // so we have to release our pointer to it.
-    ASSERT(m_stylesheetDoc);
     ASSERT(!m_stylesheetDocTaken);
     xsltStylesheetPtr result = xsltParseStylesheetDoc(m_stylesheetDoc);
     if (result)

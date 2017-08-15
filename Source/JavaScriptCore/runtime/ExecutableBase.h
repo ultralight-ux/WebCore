@@ -125,19 +125,19 @@ protected:
     int m_numParametersForConstruct;
 
 public:
-    Ref<JITCode> generatedJITCodeForCall()
+    PassRefPtr<JITCode> generatedJITCodeForCall()
     {
         ASSERT(m_jitCodeForCall);
-        return *m_jitCodeForCall;
+        return m_jitCodeForCall;
     }
 
-    Ref<JITCode> generatedJITCodeForConstruct()
+    PassRefPtr<JITCode> generatedJITCodeForConstruct()
     {
         ASSERT(m_jitCodeForConstruct);
-        return *m_jitCodeForConstruct;
+        return m_jitCodeForConstruct;
     }
         
-    Ref<JITCode> generatedJITCodeFor(CodeSpecializationKind kind)
+    PassRefPtr<JITCode> generatedJITCodeFor(CodeSpecializationKind kind)
     {
         if (kind == CodeForCall)
             return generatedJITCodeForCall();

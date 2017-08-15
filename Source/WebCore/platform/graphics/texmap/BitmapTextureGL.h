@@ -38,11 +38,7 @@ class FilterOperation;
 
 class BitmapTextureGL : public BitmapTexture {
 public:
-    static Ref<BitmapTexture> create(Ref<GraphicsContext3D>&& context3D, const Flags flags = NoFlag)
-    {
-        return adoptRef(*new BitmapTextureGL(WTFMove(context3D), flags));
-    }
-
+    BitmapTextureGL(PassRefPtr<GraphicsContext3D>, const Flags = NoFlag);
     virtual ~BitmapTextureGL();
 
     IntSize size() const override;
@@ -59,16 +55,16 @@ public:
     void updateContentsNoSwizzle(const void*, const IntRect& target, const IntPoint& sourceOffset, int bytesPerLine, unsigned bytesPerPixel = 4, Platform3DObject glFormat = GraphicsContext3D::RGBA);
     bool isBackedByOpenGL() const override { return true; }
 
-    RefPtr<BitmapTexture> applyFilters(TextureMapper&, const FilterOperations&) override;
+    PassRefPtr<BitmapTexture> applyFilters(TextureMapper&, const FilterOperations&) override;
     struct FilterInfo {
         RefPtr<FilterOperation> filter;
         unsigned pass;
         RefPtr<BitmapTexture> contentTexture;
 
-        FilterInfo(RefPtr<FilterOperation>&& f = nullptr, unsigned p = 0, RefPtr<BitmapTexture>&& t = nullptr)
-            : filter(WTFMove(f))
+        FilterInfo(PassRefPtr<FilterOperation> f = 0, unsigned p = 0, PassRefPtr<BitmapTexture> t = 0)
+            : filter(f)
             , pass(p)
-            , contentTexture(WTFMove(t))
+            , contentTexture(t)
             { }
     };
     const FilterInfo* filterInfo() const { return &m_filterInfo; }
@@ -77,17 +73,18 @@ public:
     GC3Dint internalFormat() const { return m_internalFormat; }
 
 private:
-    BitmapTextureGL(RefPtr<GraphicsContext3D>&&, const Flags);
 
-    Platform3DObject m_id { 0 };
+    Platform3DObject m_id;
     IntSize m_textureSize;
     IntRect m_dirtyRect;
-    Platform3DObject m_fbo { 0 };
-    Platform3DObject m_rbo { 0 };
-    Platform3DObject m_depthBufferObject { 0 };
-    bool m_shouldClear { true };
+    Platform3DObject m_fbo;
+    Platform3DObject m_rbo;
+    Platform3DObject m_depthBufferObject;
+    bool m_shouldClear;
     ClipStack m_clipStack;
     RefPtr<GraphicsContext3D> m_context3D;
+
+    BitmapTextureGL();
 
     void clearIfNeeded();
     void createFboIfNeeded();
@@ -96,13 +93,7 @@ private:
 
     GC3Dint m_internalFormat;
     GC3Denum m_format;
-    GC3Denum m_type {
-#if OS(DARWIN)
-        GL_UNSIGNED_INT_8_8_8_8_REV
-#else
-        GraphicsContext3D::UNSIGNED_BYTE
-#endif
-    };
+    GC3Denum m_type;
 };
 
 BitmapTextureGL* toBitmapTextureGL(BitmapTexture*);

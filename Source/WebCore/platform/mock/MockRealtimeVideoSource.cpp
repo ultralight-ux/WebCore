@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,7 +32,6 @@
 #include "MockRealtimeVideoSource.h"
 
 #if ENABLE(MEDIA_STREAM)
-#include "CaptureDevice.h"
 #include "GraphicsContext.h"
 #include "ImageBuffer.h"
 #include "IntRect.h"
@@ -41,92 +40,56 @@
 #include "NotImplemented.h"
 #include "PlatformLayer.h"
 #include "RealtimeMediaSourceSettings.h"
+#include "UUID.h"
 #include <math.h>
 #include <wtf/CurrentTime.h>
-#include <wtf/UUID.h>
 #include <wtf/text/StringView.h>
 
 namespace WebCore {
 
-class MockRealtimeVideoSourceFactory : public RealtimeMediaSource::VideoCaptureFactory
-#if PLATFORM(IOS)
-    , public RealtimeMediaSource::SingleSourceFactory<MockRealtimeVideoSource>
-#endif
-{
-public:
-    CaptureSourceOrError createVideoCaptureSource(const String& deviceID, const MediaConstraints* constraints) final {
-        for (auto& device : MockRealtimeMediaSource::videoDevices()) {
-            if (device.persistentId() == deviceID)
-                return MockRealtimeVideoSource::create(device.label(), constraints);
-        }
-        return { };
-    }
-};
-
 #if !PLATFORM(MAC) && !PLATFORM(IOS)
-CaptureSourceOrError MockRealtimeVideoSource::create(const String& name, const MediaConstraints* constraints)
+RefPtr<MockRealtimeVideoSource> MockRealtimeVideoSource::create(const String& name, const MediaConstraints* constraints)
 {
-    auto source = adoptRef(*new MockRealtimeVideoSource(name));
+    auto source = adoptRef(new MockRealtimeVideoSource(name));
     if (constraints && source->applyConstraints(*constraints))
-        return { };
+        source = nullptr;
 
-    return CaptureSourceOrError(WTFMove(source));
-}
-#endif
-
-Ref<MockRealtimeVideoSource> MockRealtimeVideoSource::createMuted(const String& name)
-{
-    auto source = adoptRef(*new MockRealtimeVideoSource(name));
-    source->notifyMutedChange(true);
     return source;
 }
 
-static MockRealtimeVideoSourceFactory& mockVideoCaptureSourceFactory()
+RefPtr<MockRealtimeVideoSource> MockRealtimeVideoSource::createMuted(const String& name)
 {
-    static NeverDestroyed<MockRealtimeVideoSourceFactory> factory;
-    return factory.get();
+    auto source = adoptRef(new MockRealtimeVideoSource(name));
+    source->m_muted = true;
+    return source;
 }
-
-RealtimeMediaSource::VideoCaptureFactory& MockRealtimeVideoSource::factory()
-{
-    return mockVideoCaptureSourceFactory();
-}
+#endif
 
 MockRealtimeVideoSource::MockRealtimeVideoSource(const String& name)
-    : MockRealtimeMediaSource(createCanonicalUUIDString(), RealtimeMediaSource::Type::Video, name)
+    : MockRealtimeMediaSource(createCanonicalUUIDString(), RealtimeMediaSource::Video, name)
     , m_timer(RunLoop::current(), this, &MockRealtimeVideoSource::generateFrame)
 {
-    setFrameRate(!deviceIndex() ? 30 : 15);
-    setFacingMode(!deviceIndex() ? RealtimeMediaSourceSettings::User : RealtimeMediaSourceSettings::Environment);
+    setFrameRate(30);
     m_dashWidths.reserveInitialCapacity(2);
     m_dashWidths.uncheckedAppend(6);
     m_dashWidths.uncheckedAppend(6);
 }
 
-MockRealtimeVideoSource::~MockRealtimeVideoSource()
-{
-#if PLATFORM(IOS)
-    mockVideoCaptureSourceFactory().unsetActiveSource(*this);
-#endif
-}
-
 void MockRealtimeVideoSource::startProducingData()
 {
-#if PLATFORM(IOS)
-    mockVideoCaptureSourceFactory().setActiveSource(*this);
-#endif
-
+    MockRealtimeMediaSource::startProducingData();
     if (size().isEmpty()) {
         setWidth(640);
         setHeight(480);
     }
 
     m_startTime = monotonicallyIncreasingTime();
-    m_timer.startRepeating(1_ms * lround(1000 / frameRate()));
+    m_timer.startRepeating(std::chrono::milliseconds(lround(1000 / frameRate())));
 }
 
 void MockRealtimeVideoSource::stopProducingData()
 {
+    MockRealtimeMediaSource::stopProducingData();
     m_timer.stop();
     m_elapsedTime += monotonicallyIncreasingTime() - m_startTime;
     m_startTime = NAN;
@@ -153,10 +116,8 @@ void MockRealtimeVideoSource::updateSettings(RealtimeMediaSourceSettings& settin
 
 void MockRealtimeVideoSource::initializeCapabilities(RealtimeMediaSourceCapabilities& capabilities)
 {
-    if (!deviceIndex())
-        capabilities.addFacingMode(RealtimeMediaSourceSettings::User);
-    else
-        capabilities.addFacingMode(RealtimeMediaSourceSettings::Environment);
+    capabilities.addFacingMode(RealtimeMediaSourceSettings::User);
+    capabilities.addFacingMode(RealtimeMediaSourceSettings::Environment);
     capabilities.setWidth(CapabilityValueOrRange(320, 1920));
     capabilities.setHeight(CapabilityValueOrRange(240, 1080));
     capabilities.setFrameRate(CapabilityValueOrRange(15.0, 60.0));
@@ -175,7 +136,7 @@ void MockRealtimeVideoSource::initializeSupportedConstraints(RealtimeMediaSource
 bool MockRealtimeVideoSource::applyFrameRate(double rate)
 {
     if (m_timer.isActive())
-        m_timer.startRepeating(1_ms * lround(1000 / rate));
+        m_timer.startRepeating(std::chrono::milliseconds(lround(1000 / rate)));
 
     updateSampleBuffer();
     return true;
@@ -188,7 +149,7 @@ bool MockRealtimeVideoSource::applySize(const IntSize& size)
     fontDescription.setOneFamily("Courier");
     fontDescription.setSpecifiedSize(m_baseFontSize);
     fontDescription.setComputedSize(m_baseFontSize);
-    fontDescription.setWeight(FontSelectionValue(500));
+    fontDescription.setWeight(FontWeight500);
 
     m_timeFont = FontCascade(fontDescription, 0, 0);
     m_timeFont.update(nullptr);
@@ -349,11 +310,11 @@ void MockRealtimeVideoSource::drawText(GraphicsContext& context)
     FloatPoint bipBopLocation(size.width() * .6, size.height() * .6);
     unsigned frameMod = m_frameNumber % 60;
     if (frameMod <= 15) {
-        context.setFillColor(Color::cyan);
+        context.setFillColor(Color::gray);
         String bip(ASCIILiteral("Bip"));
         context.drawText(m_bipBopFont, TextRun(StringView(bip)), bipBopLocation);
     } else if (frameMod > 30 && frameMod <= 45) {
-        context.setFillColor(Color::yellow);
+        context.setFillColor(Color::white);
         String bop(ASCIILiteral("Bop"));
         context.drawText(m_bipBopFont, TextRun(StringView(bop)), bipBopLocation);
     }
@@ -370,13 +331,11 @@ void MockRealtimeVideoSource::generateFrame()
 
     IntSize size = this->size();
     FloatRect frameRect(FloatPoint(), size);
-    context.fillRect(FloatRect(FloatPoint(), size), !deviceIndex() ? Color::black : Color::darkGray);
+    context.fillRect(FloatRect(FloatPoint(), size), Color::black);
 
-    if (!muted() && enabled()) {
-        drawText(context);
-        drawAnimation(context);
-        drawBoxes(context);
-    }
+    drawText(context);
+    drawAnimation(context);
+    drawBoxes(context);
 
     updateSampleBuffer();
 }
@@ -394,6 +353,26 @@ ImageBuffer* MockRealtimeVideoSource::imageBuffer() const
     m_imageBuffer->context().setStrokeThickness(1);
 
     return m_imageBuffer.get();
+}
+
+void MockRealtimeVideoSource::paintCurrentFrameInContext(GraphicsContext& context, const FloatRect& rect)
+{
+    if (context.paintingDisabled() || !imageBuffer())
+        return;
+
+    GraphicsContextStateSaver stateSaver(context);
+    context.setImageInterpolationQuality(InterpolationLow);
+    IntRect paintRect(IntPoint(0, 0), IntSize(rect.width(), rect.height()));
+
+    context.drawImage(*m_imageBuffer->copyImage(DontCopyBackingStore), rect);
+}
+
+RefPtr<Image> MockRealtimeVideoSource::currentFrameImage()
+{
+    if (!imageBuffer())
+        return nullptr;
+
+    return m_imageBuffer->copyImage(DontCopyBackingStore);
 }
 
 } // namespace WebCore

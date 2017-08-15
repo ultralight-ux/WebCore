@@ -32,16 +32,14 @@
 
 #include "JSMediaKeySession.h"
 
+#include "NotImplemented.h"
+
 namespace WebCore {
 
-JSC::JSValue JSMediaKeySession::closed(JSC::ExecState& state) const
+JSC::JSValue JSMediaKeySession::closed(JSC::ExecState&) const
 {
-    if (!m_closed) {
-        auto promise = createDeferredPromise(state, domWindow());
-        m_closed.set(state.vm(), this, promise->promise());
-        wrapped().registerClosedPromise(WTFMove(promise));
-    }
-    return m_closed.get();
+    notImplemented();
+    return JSC::jsUndefined();
 }
 
 } // namespace WebCore

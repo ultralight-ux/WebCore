@@ -56,6 +56,7 @@ public:
     WEBCORE_EXPORT ExceptionOr<void> add(const OptionOrOptGroupElement&, const std::optional<HTMLElementOrInt>& before);
 
     using Node::remove;
+    ExceptionOr<void> remove(HTMLOptionElement&);
     WEBCORE_EXPORT void remove(int);
 
     WEBCORE_EXPORT String value() const;
@@ -79,8 +80,7 @@ public:
 
     WEBCORE_EXPORT void setSize(unsigned);
 
-    // Called by the bindings for the unnamed index-setter.
-    ExceptionOr<void> setItem(unsigned index, HTMLOptionElement*);
+    ExceptionOr<void> setOption(unsigned index, HTMLOptionElement&);
     ExceptionOr<void> setLength(unsigned);
 
     WEBCORE_EXPORT HTMLOptionElement* namedItem(const AtomicString& name);

@@ -25,7 +25,6 @@
 #include "LengthFunctions.h"
 
 #include "FloatSize.h"
-#include "LayoutSize.h"
 #include "LengthSize.h"
 
 namespace WebCore {
@@ -57,11 +56,6 @@ LayoutUnit valueForLength(const Length& length, LayoutUnit maximumValue)
     }
     ASSERT_NOT_REACHED();
     return 0;
-}
-
-LayoutSize sizeForLengthSize(const LengthSize& length, const LayoutSize& maximumValue)
-{
-    return { valueForLength(length.width, maximumValue.width()), valueForLength(length.height, maximumValue.height()) };
 }
 
 // FIXME: when subpixel layout is supported this copy of floatValueForLength() can be removed. See bug 71143.
@@ -119,7 +113,7 @@ float floatValueForLength(const Length& length, float maximumValue)
 
 FloatSize floatSizeForLengthSize(const LengthSize& lengthSize, const FloatSize& boxSize)
 {
-    return { floatValueForLength(lengthSize.width, boxSize.width()), floatValueForLength(lengthSize.height, boxSize.height()) };
+    return FloatSize(floatValueForLength(lengthSize.width(), boxSize.width()), floatValueForLength(lengthSize.height(), boxSize.height()));
 }
 
 } // namespace WebCore

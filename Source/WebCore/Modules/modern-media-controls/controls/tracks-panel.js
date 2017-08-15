@@ -4,31 +4,24 @@ class TracksPanel extends LayoutNode
 
     constructor()
     {
-        super(`<div class="tracks-panel"></div>`);
-        this._backgroundTint = new BackgroundTint;
-        this._scrollableContainer = new LayoutNode(`<div class="scrollable-container"></div>`);
+        super(`<div class="tracks-panel">`);
         this._rightX = 0;
         this._bottomY = 0;
-        this._presented = false;
-        
-        this.children = [this._backgroundTint, this._scrollableContainer];
     }
 
     // Public
 
     get presented()
     {
-        return this._presented;
+        return !!this.parent;
     }
 
     presentInParent(node)
     {
-        if (this._presented && this.parent === node)
+        if (this.parent === node)
             return;
 
-        this._presented = true;
-
-        this._scrollableContainer.children = this._childrenFromDataSource();
+        this.children = this._childrenFromDataSource();
 
         node.addChild(this);
 
@@ -43,32 +36,14 @@ class TracksPanel extends LayoutNode
 
     hide()
     {
-        if (!this._presented)
+        if (!this.presented)
             return;
-
-        this._presented = false;
 
         this._mousedownTarget().removeEventListener("mousedown", this, true);
         window.removeEventListener("keydown", this, true);
 
         this.element.addEventListener("transitionend", this);
-
-        // Ensure a transition will indeed happen by starting it only on the next frame.
-        window.requestAnimationFrame(() => { this.element.classList.add("fade-out"); });
-    }
-
-    get maxHeight()
-    {
-        return this._maxHeight;
-    }
-
-    set maxHeight(height)
-    {
-        if (this._maxHeight === height)
-            return;
-
-        this._maxHeight = height;
-        this.markDirtyProperty("maxHeight")
+        this.element.classList.add("fade-out");
     }
 
     get bottomY()
@@ -124,10 +99,7 @@ class TracksPanel extends LayoutNode
             this.element.style.right = `${this._rightX}px`;
         else if (propertyName === "bottomY")
             this.element.style.bottom = `${this._bottomY}px`;
-        else if (propertyName === "maxHeight") {
-            this.element.style.maxHeight = `${this._maxHeight}px`;
-            this._scrollableContainer.element.style.maxHeight = `${this._maxHeight}px`;
-        } else
+        else
             super.commitProperty(propertyName);
     }
 
@@ -161,30 +133,30 @@ class TracksPanel extends LayoutNode
         const children = [];
 
         this._trackNodes = [];
-
+        
         const dataSource = this.dataSource;
         if (!dataSource)
             return children;
-
+        
         const numberOfSections = dataSource.tracksPanelNumberOfSections();
-        if (numberOfSections === 0)
+        if (numberOfSections == 0)
             return children;
 
         for (let sectionIndex = 0; sectionIndex < numberOfSections; ++sectionIndex) {
-            let sectionNode = new LayoutNode(`<section></section>`);
+            let sectionNode = new LayoutNode(`<div class="tracks-panel-section"></div>`);
             sectionNode.addChild(new LayoutNode(`<h3>${dataSource.tracksPanelTitleForSection(sectionIndex)}</h3>`));
 
             let tracksListNode = sectionNode.addChild(new LayoutNode(`<ul></ul>`));
             let numberOfTracks = dataSource.tracksPanelNumberOfTracksInSection(sectionIndex);
             for (let trackIndex = 0; trackIndex < numberOfTracks; ++trackIndex) {
                 let trackTitle = dataSource.tracksPanelTitleForTrackInSection(trackIndex, sectionIndex);
-                let trackSelected = dataSource.tracksPanelIsTrackInSectionSelected(trackIndex, sectionIndex);
+                let trackSelected = dataSource.tracksPanelIsTrackInSectionSelected(trackIndex, sectionIndex)
                 let trackNode = tracksListNode.addChild(new TrackNode(trackIndex, sectionIndex, trackTitle, trackSelected, this));
                 this._trackNodes.push(trackNode);
             }
             children.push(sectionNode);
         }
-
+        
         return children;
     }
 
@@ -230,13 +202,7 @@ class TracksPanel extends LayoutNode
         case "Escape":
             this._dismiss();
             break;
-        default:
-            return;
         }
-
-        // Ensure that we don't let the browser react to a key code we handled,
-        // for instance scrolling the page if we handled an arrow key.
-        event.preventDefault();
     }
 
     _dismiss()

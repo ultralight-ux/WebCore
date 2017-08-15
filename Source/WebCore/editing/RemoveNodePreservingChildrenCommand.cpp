@@ -31,18 +31,19 @@
 
 namespace WebCore {
 
-RemoveNodePreservingChildrenCommand::RemoveNodePreservingChildrenCommand(Ref<Node>&& node, ShouldAssumeContentIsAlwaysEditable shouldAssumeContentIsAlwaysEditable, EditAction editingAction)
+RemoveNodePreservingChildrenCommand::RemoveNodePreservingChildrenCommand(PassRefPtr<Node> node, ShouldAssumeContentIsAlwaysEditable shouldAssumeContentIsAlwaysEditable, EditAction editingAction)
     : CompositeEditCommand(node->document(), editingAction)
-    , m_node(WTFMove(node))
+    , m_node(node)
     , m_shouldAssumeContentIsAlwaysEditable(shouldAssumeContentIsAlwaysEditable)
 {
+    ASSERT(m_node);
 }
 
 void RemoveNodePreservingChildrenCommand::doApply()
 {
-    Vector<Ref<Node>> children;
+    Vector<RefPtr<Node>> children;
     for (Node* child = m_node->firstChild(); child; child = child->nextSibling())
-        children.append(*child);
+        children.append(child);
 
     size_t size = children.size();
     for (size_t i = 0; i < size; ++i) {

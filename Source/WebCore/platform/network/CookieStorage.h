@@ -23,16 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
-
-#include <functional>
+#ifndef CookieStorage_h
+#define CookieStorage_h
 
 namespace WebCore {
 
-class NetworkStorageSession;
+// These are always observing the shared cookie storage, even when in private browsing mode.
 
-WEBCORE_EXPORT void startObservingCookieChanges(const NetworkStorageSession&, std::function<void ()>&&);
-WEBCORE_EXPORT void stopObservingCookieChanges(const NetworkStorageSession&);
+typedef void(*CookieChangeCallbackPtr)();
+WEBCORE_EXPORT void startObservingCookieChanges(CookieChangeCallbackPtr);
+WEBCORE_EXPORT void stopObservingCookieChanges();
 
 }
 
+#endif

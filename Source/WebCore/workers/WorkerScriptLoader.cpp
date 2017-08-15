@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2009 Apple Inc. All Rights Reserved.
  * Copyright (C) 2009, 2011 Google Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -66,6 +66,7 @@ void WorkerScriptLoader::loadSynchronously(ScriptExecutionContext* scriptExecuti
     options.mode = mode;
     options.sendLoadCallbacks = SendCallbacks;
     options.contentSecurityPolicyEnforcement = contentSecurityPolicyEnforcement;
+    options.filteringPolicy = ResponseFilteringPolicy::Disable;
 
     WorkerThreadableLoader::loadResourceSynchronously(downcast<WorkerGlobalScope>(*scriptExecutionContext), WTFMove(*request), *this, options);
 }
@@ -91,6 +92,7 @@ void WorkerScriptLoader::loadAsynchronously(ScriptExecutionContext* scriptExecut
     options.mode = mode;
     options.sendLoadCallbacks = SendCallbacks;
     options.contentSecurityPolicyEnforcement = contentSecurityPolicyEnforcement;
+    options.filteringPolicy = ResponseFilteringPolicy::Disable;
 
     // During create, callbacks may happen which remove the last reference to this object.
     Ref<WorkerScriptLoader> protectedThis(*this);
@@ -110,21 +112,13 @@ std::unique_ptr<ResourceRequest> WorkerScriptLoader::createResourceRequest(const
     request->setInitiatorIdentifier(initiatorIdentifier);
     return request;
 }
-
+    
 void WorkerScriptLoader::didReceiveResponse(unsigned long identifier, const ResourceResponse& response)
 {
     if (response.httpStatusCode() / 100 != 2 && response.httpStatusCode()) {
         m_failed = true;
         return;
     }
-
-#if ENABLE(NOSNIFF)
-    if (!isScriptAllowedByNosniff(response)) {
-        m_failed = true;
-        return;
-    }
-#endif
-
     m_responseURL = response.url();
     m_responseEncoding = response.textEncodingName();
     if (m_client)
@@ -152,7 +146,7 @@ void WorkerScriptLoader::didReceiveData(const char* data, int len)
     m_script.append(m_decoder->decode(data, len));
 }
 
-void WorkerScriptLoader::didFinishLoading(unsigned long identifier)
+void WorkerScriptLoader::didFinishLoading(unsigned long identifier, double)
 {
     if (m_failed) {
         notifyError();

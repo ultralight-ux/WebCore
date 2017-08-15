@@ -20,7 +20,6 @@
 #include "config.h"
 #include "CSSFontValue.h"
 
-#include "CSSFontStyleValue.h"
 #include "CSSPrimitiveValue.h"
 #include "CSSValueList.h"
 #include <wtf/text/StringBuilder.h>
@@ -44,11 +43,6 @@ String CSSFontValue::customCSSText() const
         if (!result.isEmpty())
             result.append(' ');
         result.append(weight->cssText());
-    }
-    if (stretch) {
-        if (!result.isEmpty())
-            result.append(' ');
-        result.append(stretch->cssText());
     }
     if (size) {
         if (!result.isEmpty())
@@ -75,7 +69,6 @@ bool CSSFontValue::equals(const CSSFontValue& other) const
     return compareCSSValuePtr(style, other.style)
         && compareCSSValuePtr(variant, other.variant)
         && compareCSSValuePtr(weight, other.weight)
-        && compareCSSValuePtr(stretch, other.stretch)
         && compareCSSValuePtr(size, other.size)
         && compareCSSValuePtr(lineHeight, other.lineHeight)
         && compareCSSValuePtr(family, other.family);

@@ -43,7 +43,7 @@ enum ContextMenuAction {
     ContextMenuItemTagOpenImageInNewWindow,
     ContextMenuItemTagDownloadImageToDisk,
     ContextMenuItemTagCopyImageToClipboard,
-#if PLATFORM(GTK)
+#if PLATFORM(GTK) || PLATFORM(EFL)
     ContextMenuItemTagCopyImageUrlToClipboard,
 #endif
     ContextMenuItemTagOpenFrameInNewWindow,
@@ -56,7 +56,11 @@ enum ContextMenuAction {
     ContextMenuItemTagPaste,
 #if PLATFORM(GTK)
     ContextMenuItemTagDelete,
+#endif
+#if PLATFORM(GTK) || PLATFORM (EFL)
     ContextMenuItemTagSelectAll,
+#endif
+#if PLATFORM(GTK)
     ContextMenuItemTagInputMethods,
     ContextMenuItemTagUnicode,
     ContextMenuItemTagUnicodeInsertLRMMark,

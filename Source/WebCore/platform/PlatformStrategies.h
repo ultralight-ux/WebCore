@@ -23,7 +23,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef PlatformStrategies_h
+#define PlatformStrategies_h
 
 namespace WebCore {
 
@@ -87,3 +88,5 @@ WEBCORE_EXPORT PlatformStrategies* platformStrategies();
 WEBCORE_EXPORT void setPlatformStrategies(PlatformStrategies*);
     
 } // namespace WebCore
+
+#endif // PlatformStrategies_h

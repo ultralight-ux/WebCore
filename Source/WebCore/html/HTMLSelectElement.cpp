@@ -29,6 +29,8 @@
 #include "HTMLSelectElement.h"
 
 #include "AXObjectCache.h"
+#include "Chrome.h"
+#include "ChromeClient.h"
 #include "ElementTraversal.h"
 #include "EventHandler.h"
 #include "EventNames.h"
@@ -193,7 +195,7 @@ void HTMLSelectElement::listBoxSelectItem(int listIndex, bool allowMultiplySelec
 bool HTMLSelectElement::usesMenuList() const
 {
 #if !PLATFORM(IOS)
-    if (RenderTheme::singleton().delegatesMenuListRendering())
+    if (RenderTheme::themeForPage(document().page())->delegatesMenuListRendering())
         return true;
 
     return !m_multiple && m_size <= 1;
@@ -240,6 +242,14 @@ void HTMLSelectElement::remove(int optionIndex)
         return;
 
     listItems()[listIndex]->remove();
+}
+
+ExceptionOr<void> HTMLSelectElement::remove(HTMLOptionElement& option)
+{
+    if (option.ownerSelectElement() != this)
+        return { };
+
+    return option.remove();
 }
 
 String HTMLSelectElement::value() const
@@ -415,18 +425,11 @@ HTMLOptionElement* HTMLSelectElement::item(unsigned index)
     return options()->item(index);
 }
 
-ExceptionOr<void> HTMLSelectElement::setItem(unsigned index, HTMLOptionElement* option)
+ExceptionOr<void> HTMLSelectElement::setOption(unsigned index, HTMLOptionElement& option)
 {
-    if (!option) {
-        remove(index);
-        return { };
-    }
-
     if (index > maxSelectItems - 1)
         index = maxSelectItems - 1;
-
     int diff = index - length();
-    
     RefPtr<HTMLOptionElement> before;
     // Out of array bounds? First insert empty dummies.
     if (diff > 0) {
@@ -438,25 +441,19 @@ ExceptionOr<void> HTMLSelectElement::setItem(unsigned index, HTMLOptionElement* 
         before = item(index + 1);
         remove(index);
     }
-
     // Finally add the new element.
-    auto result = add(option, HTMLElementOrInt { before.get() });
+    auto result = add(&option, HTMLElementOrInt { before.get() });
     if (result.hasException())
         return result;
-
-    if (diff >= 0 && option->selected())
-        optionSelectionStateChanged(*option, true);
-
+    if (diff >= 0 && option.selected())
+        optionSelectionStateChanged(option, true);
     return { };
 }
 
 ExceptionOr<void> HTMLSelectElement::setLength(unsigned newLength)
 {
-    if (newLength > length() && newLength > maxSelectItems) {
-        document().addConsoleMessage(MessageSource::Other, MessageLevel::Warning, String::format("Blocked attempt to expand the option list to %u items. The maximum number of items allowed is %u.", newLength, maxSelectItems));
-        return { };
-    }
-
+    if (newLength > maxSelectItems)
+        newLength = maxSelectItems;
     int diff = length() - newLength;
 
     if (diff < 0) { // Add dummy elements.
@@ -741,7 +738,7 @@ const Vector<HTMLElement*>& HTMLSelectElement::listItems() const
 void HTMLSelectElement::invalidateSelectedItems()
 {
     if (HTMLCollection* collection = cachedHTMLCollection(SelectedOptions))
-        collection->invalidateCache();
+        collection->invalidateCache(document());
 }
 
 void HTMLSelectElement::setRecalcListItems()
@@ -751,11 +748,11 @@ void HTMLSelectElement::setRecalcListItems()
     m_activeSelectionAnchorIndex = -1;
     setOptionsChangedOnRenderer();
     invalidateStyleForSubtree();
-    if (!isConnected()) {
+    if (!inDocument()) {
         if (HTMLCollection* collection = cachedHTMLCollection(SelectOptions))
-            collection->invalidateCache();
+            collection->invalidateCache(document());
     }
-    if (!isConnected())
+    if (!inDocument())
         invalidateSelectedItems();
     if (auto* cache = document().existingAXObjectCache())
         cache->childrenChanged(this);
@@ -1085,7 +1082,7 @@ void HTMLSelectElement::reset()
 
 bool HTMLSelectElement::platformHandleKeydownEvent(KeyboardEvent* event)
 {
-    if (!RenderTheme::singleton().popsMenuByArrowKeys())
+    if (!RenderTheme::themeForPage(document().page())->popsMenuByArrowKeys())
         return false;
 
     if (!isSpatialNavigationEnabled(document().frame())) {
@@ -1119,6 +1116,8 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event& event)
     ASSERT(renderer());
     ASSERT(renderer()->isMenuList());
 
+    RefPtr<RenderTheme> renderTheme = RenderTheme::themeForPage(document().page());
+
     if (event.type() == eventNames().keydownEvent) {
         if (!is<KeyboardEvent>(event))
             return;
@@ -1142,7 +1141,8 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event& event)
 
         // When using caret browsing, we want to be able to move the focus
         // out of the select element when user hits a left or right arrow key.
-        if (document().settings().caretBrowsingEnabled()) {
+        const Frame* frame = document().frame();
+        if (frame && frame->settings().caretBrowsingEnabled()) {
             if (keyIdentifier == "Left" || keyIdentifier == "Right")
                 return;
         }
@@ -1186,7 +1186,7 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event& event)
             return;
         }
 
-        if (RenderTheme::singleton().popsMenuBySpaceOrReturn()) {
+        if (renderTheme->popsMenuBySpaceOrReturn()) {
             if (keyCode == ' ' || keyCode == '\r') {
                 focus();
 
@@ -1203,7 +1203,7 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event& event)
                 downcast<RenderMenuList>(*renderer).showPopup();
                 handled = true;
             }
-        } else if (RenderTheme::singleton().popsMenuByArrowKeys()) {
+        } else if (renderTheme->popsMenuByArrowKeys()) {
             if (keyCode == ' ') {
                 focus();
 

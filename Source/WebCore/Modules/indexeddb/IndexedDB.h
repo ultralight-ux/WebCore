@@ -40,10 +40,10 @@ enum class TransactionState {
 };
 
 enum class CursorDirection {
-    Next,
-    Nextunique,
-    Prev,
-    Prevunique,
+    Next = 0,
+    NextNoDuplicate = 1,
+    Prev = 2,
+    PrevNoDuplicate = 3,
 };
 const unsigned CursorDirectionMaximum = 3;
 

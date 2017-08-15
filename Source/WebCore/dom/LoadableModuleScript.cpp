@@ -26,78 +26,50 @@
 #include "config.h"
 #include "LoadableModuleScript.h"
 
-#include "Document.h"
-#include "Frame.h"
-#include "ScriptController.h"
 #include "ScriptElement.h"
 
 namespace WebCore {
 
-Ref<LoadableModuleScript> LoadableModuleScript::create(const String& nonce, const String& crossOriginMode, const String& charset, const AtomicString& initiatorName, bool isInUserAgentShadowTree)
+Ref<LoadableModuleScript> LoadableModuleScript::create(CachedModuleScript& moduleScript)
 {
-    return adoptRef(*new LoadableModuleScript(nonce, crossOriginMode, charset, initiatorName, isInUserAgentShadowTree));
+    auto script = adoptRef(*new LoadableModuleScript(moduleScript));
+    moduleScript.addClient(script.get());
+    return script;
 }
 
-LoadableModuleScript::LoadableModuleScript(const String& nonce, const String& crossOriginMode, const String& charset, const AtomicString& initiatorName, bool isInUserAgentShadowTree)
-    : LoadableScript(nonce, crossOriginMode, charset, initiatorName, isInUserAgentShadowTree)
+LoadableModuleScript::LoadableModuleScript(CachedModuleScript& moduleScript)
+    : m_moduleScript(moduleScript)
 {
 }
 
 LoadableModuleScript::~LoadableModuleScript()
 {
+    m_moduleScript->removeClient(*this);
 }
 
 bool LoadableModuleScript::isLoaded() const
 {
-    return m_isLoaded;
+    return m_moduleScript->isLoaded();
 }
 
 std::optional<LoadableScript::Error> LoadableModuleScript::error() const
 {
-    return m_error;
+    return m_moduleScript->error();
 }
 
 bool LoadableModuleScript::wasCanceled() const
 {
-    return m_wasCanceled;
+    return m_moduleScript->wasCanceled();
 }
 
-void LoadableModuleScript::notifyLoadCompleted(UniquedStringImpl& moduleKey)
+void LoadableModuleScript::notifyFinished(CachedModuleScript&)
 {
-    m_moduleKey = &moduleKey;
-    m_isLoaded = true;
-    notifyClientFinished();
-}
-
-void LoadableModuleScript::notifyLoadFailed(LoadableScript::Error&& error)
-{
-    m_error = WTFMove(error);
-    m_isLoaded = true;
-    notifyClientFinished();
-}
-
-void LoadableModuleScript::notifyLoadWasCanceled()
-{
-    m_wasCanceled = true;
-    m_isLoaded = true;
     notifyClientFinished();
 }
 
 void LoadableModuleScript::execute(ScriptElement& scriptElement)
 {
-    scriptElement.executeModuleScript(*this);
-}
-
-void LoadableModuleScript::load(Document& document, const URL& rootURL)
-{
-    if (auto* frame = document.frame())
-        frame->script().loadModuleScript(*this, rootURL.string());
-}
-
-void LoadableModuleScript::load(Document& document, const ScriptSourceCode& sourceCode)
-{
-    if (auto* frame = document.frame())
-        frame->script().loadModuleScript(*this, sourceCode);
+    scriptElement.executeModuleScript(m_moduleScript.get());
 }
 
 }

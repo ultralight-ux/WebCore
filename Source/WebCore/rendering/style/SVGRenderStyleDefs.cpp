@@ -76,6 +76,8 @@ bool StyleFillData::operator==(const StyleFillData& other) const
 
 StyleStrokeData::StyleStrokeData()
     : opacity(SVGRenderStyle::initialStrokeOpacity())
+    , miterLimit(SVGRenderStyle::initialStrokeMiterLimit())
+    , width(RenderStyle::initialOneLength())
     , dashOffset(RenderStyle::initialZeroLength())
     , dashArray(SVGRenderStyle::initialStrokeDashArray())
     , paintType(SVGRenderStyle::initialStrokePaintType())
@@ -90,6 +92,8 @@ StyleStrokeData::StyleStrokeData()
 inline StyleStrokeData::StyleStrokeData(const StyleStrokeData& other)
     : RefCounted<StyleStrokeData>()
     , opacity(other.opacity)
+    , miterLimit(other.miterLimit)
+    , width(other.width)
     , dashOffset(other.dashOffset)
     , dashArray(other.dashArray)
     , paintType(other.paintType)
@@ -108,7 +112,9 @@ Ref<StyleStrokeData> StyleStrokeData::copy() const
 
 bool StyleStrokeData::operator==(const StyleStrokeData& other) const
 {
-    return opacity == other.opacity
+    return width == other.width
+        && opacity == other.opacity
+        && miterLimit == other.miterLimit
         && dashOffset == other.dashOffset
         && dashArray == other.dashArray
         && paintType == other.paintType

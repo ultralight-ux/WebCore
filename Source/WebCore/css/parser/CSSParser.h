@@ -78,7 +78,7 @@ public:
     RefPtr<CSSValue> parseValueWithVariableReferences(CSSPropertyID, const CSSValue&, const CustomPropertyValueMap& customProperties, TextDirection, WritingMode);
 
     static Color parseColor(const String&, bool strict = false);
-    static Color parseSystemColor(const String&);
+    static Color parseSystemColor(const String&, Document*);
 
 private:
     ParseResult parseValue(MutableStyleProperties&, CSSPropertyID, const String&, bool important);

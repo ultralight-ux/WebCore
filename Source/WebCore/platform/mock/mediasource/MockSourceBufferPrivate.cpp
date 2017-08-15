@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,6 +38,7 @@
 #include "SourceBufferPrivateClient.h"
 #include <map>
 #include <runtime/ArrayBuffer.h>
+#include <wtf/PrintStream.h>
 #include <wtf/StringPrintStream.h>
 
 namespace WebCore {
@@ -164,7 +165,7 @@ void MockSourceBufferPrivate::append(const unsigned char* data, unsigned length)
     }
 
     if (m_client)
-        m_client->sourceBufferPrivateAppendComplete(result);
+        m_client->sourceBufferPrivateAppendComplete(this, result);
 }
 
 void MockSourceBufferPrivate::didReceiveInitializationSegment(const MockInitializationBox& initBox)
@@ -195,7 +196,7 @@ void MockSourceBufferPrivate::didReceiveInitializationSegment(const MockInitiali
         }
     }
 
-    m_client->sourceBufferPrivateDidReceiveInitializationSegment(segment);
+    m_client->sourceBufferPrivateDidReceiveInitializationSegment(this, segment);
 }
 
 
@@ -204,7 +205,7 @@ void MockSourceBufferPrivate::didReceiveSample(const MockSampleBox& sampleBox)
     if (!m_client)
         return;
 
-    m_client->sourceBufferPrivateDidReceiveSample(MockMediaSample::create(sampleBox));
+    m_client->sourceBufferPrivateDidReceiveSample(this, MockMediaSample::create(sampleBox));
 }
 
 void MockSourceBufferPrivate::abort()
@@ -238,21 +239,22 @@ void MockSourceBufferPrivate::setActive(bool isActive)
         m_mediaSource->sourceBufferPrivateDidChangeActiveState(this, isActive);
 }
 
-Vector<String> MockSourceBufferPrivate::enqueuedSamplesForTrackID(const AtomicString&)
+Vector<String> MockSourceBufferPrivate::enqueuedSamplesForTrackID(AtomicString)
 {
     return m_enqueuedSamples;
 }
 
-void MockSourceBufferPrivate::enqueueSample(Ref<MediaSample>&& sample, const AtomicString&)
+void MockSourceBufferPrivate::enqueueSample(PassRefPtr<MediaSample> prpSample, AtomicString)
 {
-    if (!m_mediaSource)
+    RefPtr<MediaSample> sample = prpSample;
+    if (!m_mediaSource || !sample)
         return;
 
     PlatformSample platformSample = sample->platformSample();
     if (platformSample.type != PlatformSample::MockSampleBoxType)
         return;
 
-    auto* box = platformSample.sample.mockSampleBox;
+    MockSampleBox* box = platformSample.sample.mockSampleBox;
     if (!box)
         return;
 
@@ -264,30 +266,37 @@ void MockSourceBufferPrivate::enqueueSample(Ref<MediaSample>&& sample, const Ato
     if (box->isDelayed())
         m_mediaSource->incrementTotalFrameDelayBy(MediaTime(1, 1));
 
-    m_enqueuedSamples.append(toString(sample.get()));
+    m_enqueuedSamples.append(toString(sample));
 }
 
 bool MockSourceBufferPrivate::hasVideo() const
 {
-    return m_client && m_client->sourceBufferPrivateHasVideo();
+    if (!m_client)
+        return false;
+
+    return m_client->sourceBufferPrivateHasVideo(this);
 }
 
 bool MockSourceBufferPrivate::hasAudio() const
 {
-    return m_client && m_client->sourceBufferPrivateHasAudio();
+    if (!m_client)
+        return false;
+
+    return m_client->sourceBufferPrivateHasAudio(this);
 }
+
 
 MediaTime MockSourceBufferPrivate::fastSeekTimeForMediaTime(const MediaTime& time, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold)
 {
     if (m_client)
-        return m_client->sourceBufferPrivateFastSeekTimeForMediaTime(time, negativeThreshold, positiveThreshold);
+        return m_client->sourceBufferPrivateFastSeekTimeForMediaTime(this, time, negativeThreshold, positiveThreshold);
     return time;
 }
 
 void MockSourceBufferPrivate::seekToTime(const MediaTime& time)
 {
     if (m_client)
-        m_client->sourceBufferPrivateSeekToTime(time);
+        m_client->sourceBufferPrivateSeekToTime(this, time);
 }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2011 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,16 +23,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef RuntimeApplicationChecks_h
+#define RuntimeApplicationChecks_h
 
+#if PLATFORM(COCOA)
 #include <wtf/Forward.h>
 
 namespace WebCore {
-
-WEBCORE_EXPORT void setPresentingApplicationPID(int);
-WEBCORE_EXPORT int presentingApplicationPID();
-
-#if PLATFORM(COCOA)
 
 WEBCORE_EXPORT void setApplicationBundleIdentifier(const String&);
 String applicationBundleIdentifier();
@@ -55,6 +52,7 @@ WEBCORE_EXPORT bool isSafari();
 bool isSolidStateNetworksDownloader();
 WEBCORE_EXPORT bool isVersions();
 WEBCORE_EXPORT bool isHRBlock();
+WEBCORE_EXPORT bool isAppStore();
 WEBCORE_EXPORT bool isIAdProducer();
 
 } // MacApplication
@@ -84,6 +82,8 @@ WEBCORE_EXPORT bool isTheSecretSocietyHiddenMystery();
 
 #endif // PLATFORM(IOS)
 
+} // namespace WebCore
+
 #endif // PLATFORM(COCOA)
 
-} // namespace WebCore
+#endif // RuntimeApplicationChecks_h

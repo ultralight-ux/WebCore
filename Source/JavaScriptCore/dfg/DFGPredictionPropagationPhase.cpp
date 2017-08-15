@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -191,7 +191,7 @@ private:
                         changed |= mergePrediction(SpecInt52Only);
                     else
                         changed |= mergePrediction(speculatedDoubleTypeForPredictions(left, right));
-                } else if (isStringOrStringObjectSpeculation(left) || isStringOrStringObjectSpeculation(right)) {
+                } else if (isStringOrStringObjectSpeculation(left) && isStringOrStringObjectSpeculation(right)) {
                     // left or right is definitely something other than a number.
                     changed |= mergePrediction(SpecString);
                 } else {
@@ -334,25 +334,14 @@ private:
             break;
         }
 
-        case GetByVal:
-        case AtomicsAdd:
-        case AtomicsAnd:
-        case AtomicsCompareExchange:
-        case AtomicsExchange:
-        case AtomicsLoad:
-        case AtomicsOr:
-        case AtomicsStore:
-        case AtomicsSub:
-        case AtomicsXor: {
-            Edge child1 = m_graph.child(node, 0);
-            if (!child1->prediction())
+        case GetByVal: {
+            if (!node->child1()->prediction())
                 break;
             
-            Edge child2 = m_graph.child(node, 1);
             ArrayMode arrayMode = node->arrayMode().refine(
                 m_graph, node,
-                child1->prediction(),
-                child2->prediction(),
+                node->child1()->prediction(),
+                node->child2()->prediction(),
                 SpecNone);
             
             switch (arrayMode.type()) {
@@ -365,17 +354,15 @@ private:
             case Array::Double:
                 if (arrayMode.isOutOfBounds())
                     changed |= mergePrediction(node->getHeapPrediction() | SpecDoubleReal);
-                else if (node->getHeapPrediction() & SpecNonIntAsDouble)
-                    changed |= mergePrediction(SpecDoubleReal);
                 else
-                    changed |= mergePrediction(SpecAnyIntAsDouble);
+                    changed |= mergePrediction(SpecDoubleReal);
                 break;
             case Array::Float32Array:
             case Array::Float64Array:
                 changed |= mergePrediction(SpecFullDouble);
                 break;
             case Array::Uint32Array:
-                if (isInt32SpeculationForArithmetic(node->getHeapPrediction()) && node->op() == GetByVal)
+                if (isInt32SpeculationForArithmetic(node->getHeapPrediction()))
                     changed |= mergePrediction(SpecInt32Only);
                 else if (enableInt52())
                     changed |= mergePrediction(SpecAnyInt);
@@ -395,7 +382,7 @@ private:
             }
             break;
         }
-            
+
         case ToThis: {
             // ToThis in methods for primitive types should speculate primitive types in strict mode.
             ECMAMode ecmaMode = m_graph.executableFor(node->origin.semantic)->isStrictMode() ? StrictMode : NotStrictMode;
@@ -416,7 +403,7 @@ private:
                 }
 
                 if (node->child1()->shouldSpeculateNumber()) {
-                    changed |= mergePrediction(SpecBytecodeNumber);
+                    changed |= mergePrediction(SpecAnyInt);
                     break;
                 }
 
@@ -567,7 +554,10 @@ private:
             break;
                 
         case ArithSqrt:
-        case ArithUnary:
+        case ArithCos:
+        case ArithSin:
+        case ArithTan:
+        case ArithLog:
             if (node->child1()->shouldSpeculateNumber())
                 m_graph.voteNode(node->child1(), VoteDouble, weight);
             else
@@ -725,7 +715,6 @@ private:
             break;
         }
 
-        case ResolveScopeForHoistingFuncDeclInEval:
         case GetDynamicVar: {
             setPrediction(SpecBytecodeTop);
             break;
@@ -785,7 +774,10 @@ private:
         case ArithPow:
         case ArithSqrt:
         case ArithFRound:
-        case ArithUnary: {
+        case ArithSin:
+        case ArithCos:
+        case ArithTan:
+        case ArithLog: {
             setPrediction(SpecBytecodeDouble);
             break;
         }
@@ -905,7 +897,6 @@ private:
         case StringCharAt:
         case CallStringConstructor:
         case ToString:
-        case NumberToStringWithRadix:
         case MakeRope:
         case StrCat: {
             setPrediction(SpecString);
@@ -975,14 +966,6 @@ private:
             setPrediction(SpecString);
             break;
         }
-        case ParseInt: {
-            // We expect this node to almost always produce an int32. However,
-            // it's possible it produces NaN or integers out of int32 range. We
-            // rely on the heap prediction since the parseInt() call profiled
-            // its result.
-            setPrediction(m_currentNode->getHeapPrediction());
-            break;
-        }
 
         case GetLocal:
         case SetLocal:
@@ -999,22 +982,8 @@ private:
         case ArithAbs:
         case GetByVal:
         case ToThis:
-        case ToPrimitive: 
-        case AtomicsAdd:
-        case AtomicsAnd:
-        case AtomicsCompareExchange:
-        case AtomicsExchange:
-        case AtomicsLoad:
-        case AtomicsOr:
-        case AtomicsStore:
-        case AtomicsSub:
-        case AtomicsXor: {
+        case ToPrimitive: {
             m_dependentNodes.append(m_currentNode);
-            break;
-        }
-            
-        case AtomicsIsLockFree: {
-            setPrediction(SpecBoolean);
             break;
         }
 
@@ -1124,7 +1093,7 @@ private:
         case Phantom:
         case Check:
         case PutGlobalVariable:
-        case CheckTraps:
+        case CheckWatchdogTimer:
         case LogShadowChickenPrologue:
         case LogShadowChickenTail:
         case Unreachable:

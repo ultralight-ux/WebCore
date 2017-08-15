@@ -69,8 +69,6 @@ private:
     AudioBuffer(unsigned numberOfChannels, size_t numberOfFrames, float sampleRate);
     explicit AudioBuffer(AudioBus&);
 
-    void invalidate();
-
     double m_gain { 1.0 }; // scalar gain
     float m_sampleRate;
     size_t m_length;

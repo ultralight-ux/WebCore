@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2009 Google Inc. All rights reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -31,29 +30,35 @@
 
 #pragma once
 
-#include "MessagePortChannel.h"
-#include <runtime/RuntimeFlags.h>
+#include "MessagePort.h"
+#include "WorkerThread.h"
+#include <memory>
+#include <wtf/Forward.h>
 
 namespace WebCore {
 
-class ContentSecurityPolicyResponseHeaders;
-class URL;
-class Worker;
+    class ContentSecurityPolicyResponseHeaders;
+    class URL;
+    class Worker;
 
-// A proxy to talk to the worker context.
-class WorkerGlobalScopeProxy {
-public:
-    static WorkerGlobalScopeProxy& create(Worker&);
+    // A proxy to talk to the worker context.
+    class WorkerGlobalScopeProxy {
+    public:
+        static WorkerGlobalScopeProxy* create(Worker*);
 
-    virtual void startWorkerGlobalScope(const URL& scriptURL, const String& userAgent, const String& sourceCode, const ContentSecurityPolicyResponseHeaders&, bool shouldBypassMainWorldContentSecurityPolicy, MonotonicTime timeOrigin, JSC::RuntimeFlags) = 0;
-    virtual void terminateWorkerGlobalScope() = 0;
-    virtual void postMessageToWorkerGlobalScope(RefPtr<SerializedScriptValue>&&, std::unique_ptr<MessagePortChannelArray>) = 0;
-    virtual bool hasPendingActivity() const = 0;
-    virtual void workerObjectDestroyed() = 0;
-    virtual void notifyNetworkStateChange(bool isOnline) = 0;
+        virtual ~WorkerGlobalScopeProxy() { }
 
-protected:
-    virtual ~WorkerGlobalScopeProxy() { }
-};
+        virtual void startWorkerGlobalScope(const URL& scriptURL, const String& userAgent, const String& sourceCode, const ContentSecurityPolicyResponseHeaders&, bool shouldBypassMainWorldContentSecurityPolicy, JSC::RuntimeFlags) = 0;
+
+        virtual void terminateWorkerGlobalScope() = 0;
+
+        virtual void postMessageToWorkerGlobalScope(RefPtr<SerializedScriptValue>&&, std::unique_ptr<MessagePortChannelArray>) = 0;
+
+        virtual bool hasPendingActivity() const = 0;
+
+        virtual void workerObjectDestroyed() = 0;
+
+        virtual void notifyNetworkStateChange(bool isOnline) = 0;
+    };
 
 } // namespace WebCore

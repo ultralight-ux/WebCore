@@ -63,9 +63,9 @@ struct RegExpKey {
     {
     }
 
-    RegExpKey(RegExpFlags flags, RefPtr<StringImpl>&& pattern)
+    RegExpKey(RegExpFlags flags, const PassRefPtr<StringImpl> pattern)
         : flagsValue(flags)
-        , pattern(WTFMove(pattern))
+        , pattern(pattern)
     {
     }
 

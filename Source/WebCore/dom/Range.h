@@ -34,7 +34,8 @@
 
 namespace WebCore {
 
-class DOMRect;
+class ClientRect;
+class ClientRectList;
 class ContainerNode;
 class Document;
 class DocumentFragment;
@@ -48,12 +49,12 @@ class VisiblePosition;
 class Range : public RefCounted<Range> {
 public:
     WEBCORE_EXPORT static Ref<Range> create(Document&);
-    WEBCORE_EXPORT static Ref<Range> create(Document&, RefPtr<Node>&& startContainer, int startOffset, RefPtr<Node>&& endContainer, int endOffset);
+    WEBCORE_EXPORT static Ref<Range> create(Document&, PassRefPtr<Node> startContainer, int startOffset, PassRefPtr<Node> endContainer, int endOffset);
     WEBCORE_EXPORT static Ref<Range> create(Document&, const Position&, const Position&);
     WEBCORE_EXPORT static Ref<Range> create(Document&, const VisiblePosition&, const VisiblePosition&);
     WEBCORE_EXPORT ~Range();
 
-    Document& ownerDocument() const { return m_ownerDocument; }
+    Document& ownerDocument() const { return const_cast<Document&>(m_ownerDocument.get()); }
 
     Node& startContainer() const { ASSERT(m_start.container()); return *m_start.container(); }
     unsigned startOffset() const { return m_start.offset(); }
@@ -123,8 +124,7 @@ public:
     WEBCORE_EXPORT void absoluteTextQuads(Vector<FloatQuad>&, bool useSelectionHeight = false, RangeInFixedPosition* = nullptr) const;
     WEBCORE_EXPORT FloatRect absoluteBoundingRect() const;
 #if PLATFORM(IOS)
-    WEBCORE_EXPORT void collectSelectionRects(Vector<SelectionRect>&) const;
-    WEBCORE_EXPORT int collectSelectionRectsWithoutUnionInteriorLines(Vector<SelectionRect>&) const;
+    WEBCORE_EXPORT void collectSelectionRects(Vector<SelectionRect>&);
 #endif
 
     void nodeChildrenChanged(ContainerNode&);
@@ -141,8 +141,8 @@ public:
     // for details.
     WEBCORE_EXPORT ExceptionOr<void> expand(const String&);
 
-    Vector<Ref<DOMRect>> getClientRects() const;
-    Ref<DOMRect> getBoundingClientRect() const;
+    Ref<ClientRectList> getClientRects() const;
+    Ref<ClientRect> getBoundingClientRect() const;
 
 #if ENABLE(TREE_DEBUGGING)
     void formatForDebugger(char* buffer, unsigned length) const;
@@ -155,7 +155,7 @@ public:
 
 private:
     explicit Range(Document&);
-    Range(Document&, Node* startContainer, int startOffset, Node* endContainer, int endOffset);
+    Range(Document&, PassRefPtr<Node> startContainer, int startOffset, PassRefPtr<Node> endContainer, int endOffset);
 
     void setDocument(Document&);
     ExceptionOr<Node*> checkNodeWOffset(Node&, unsigned offset) const;

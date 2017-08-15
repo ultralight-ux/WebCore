@@ -135,12 +135,17 @@ Vector<Gradient::ColorStop> SVGGradientElement::buildStops()
     for (auto& stop : childrenOfType<SVGStopElement>(*this)) {
         const Color& color = stop.stopColorIncludingOpacity();
 
-        // Figure out right monotonic offset.
+        // Figure out right monotonic offset
         float offset = stop.offset();
         offset = std::min(std::max(previousOffset, offset), 1.0f);
         previousOffset = offset;
 
-        stops.append(Gradient::ColorStop(offset, color));
+        // Extract individual channel values
+        // FIXME: Why doesn't ColorStop take a Color and an offset??
+        float r, g, b, a;
+        color.getRGBA(r, g, b, a);
+
+        stops.append(Gradient::ColorStop(offset, r, g, b, a));
     }
 
     return stops;

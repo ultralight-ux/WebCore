@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "JSDOMPromiseDeferred.h"
+#include "JSDOMPromise.h"
 
 namespace WebCore {
 

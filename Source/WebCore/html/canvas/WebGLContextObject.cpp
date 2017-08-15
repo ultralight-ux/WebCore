@@ -24,23 +24,25 @@
  */
 
 #include "config.h"
-#include "WebGLContextObject.h"
 
 #if ENABLE(WEBGL)
+
+#include "WebGLContextObject.h"
 
 #include "WebGLRenderingContextBase.h"
 
 namespace WebCore {
 
 WebGLContextObject::WebGLContextObject(WebGLRenderingContextBase& context)
-    : m_context(&context)
+    : WebGLObject(context)
+    , m_context(&context)
 {
 }
 
 WebGLContextObject::~WebGLContextObject()
 {
     if (m_context)
-        m_context->removeContextObject(*this);
+        m_context->removeContextObject(this);
 }
 
 void WebGLContextObject::detachContext()
@@ -48,14 +50,14 @@ void WebGLContextObject::detachContext()
     detach();
     if (m_context) {
         deleteObject(m_context->graphicsContext3D());
-        m_context->removeContextObject(*this);
-        m_context = nullptr;
+        m_context->removeContextObject(this);
+        m_context = 0;
     }
 }
 
 GraphicsContext3D* WebGLContextObject::getAGraphicsContext3D() const
 {
-    return m_context ? m_context->graphicsContext3D() : nullptr;
+    return m_context ? m_context->graphicsContext3D() : 0;
 }
 
 }

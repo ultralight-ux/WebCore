@@ -37,8 +37,8 @@ log = logging.getLogger('global')
 
 
 class CppAlternateBackendDispatcherHeaderGenerator(CppGenerator):
-    def __init__(self, *args, **kwargs):
-        CppGenerator.__init__(self, *args, **kwargs)
+    def __init__(self, model, input_filepath):
+        CppGenerator.__init__(self, model, input_filepath)
 
     def output_filename(self):
         return '%sAlternateBackendDispatchers.h' % self.protocol_name()
@@ -63,13 +63,11 @@ class CppAlternateBackendDispatcherHeaderGenerator(CppGenerator):
         return '\n\n'.join(sections)
 
     def _generate_handler_declarations_for_domain(self, domain):
-        commands = self.commands_for_domain(domain)
-
-        if not len(commands):
+        if not domain.commands:
             return ''
 
         command_declarations = []
-        for command in commands:
+        for command in domain.commands:
             command_declarations.append(self._generate_handler_declaration_for_command(command))
 
         handler_args = {

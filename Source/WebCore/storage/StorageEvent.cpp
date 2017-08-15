@@ -26,6 +26,7 @@
 #include "config.h"
 #include "StorageEvent.h"
 
+#include "EventNames.h"
 #include "Storage.h"
 
 namespace WebCore {

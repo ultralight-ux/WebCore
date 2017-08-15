@@ -79,9 +79,8 @@ public:
     CollectionType type() const;
     ContainerNode& ownerNode() const;
     ContainerNode& rootNode() const;
-    void invalidateCacheForAttribute(const QualifiedName& attributeName);
-    virtual void invalidateCacheForDocument(Document&);
-    void invalidateCache() { invalidateCacheForDocument(document()); }
+    void invalidateCacheForAttribute(const QualifiedName* attributeName);
+    virtual void invalidateCache(Document&);
 
     bool hasNamedElementCache() const;
 
@@ -112,7 +111,7 @@ protected:
 
 inline ContainerNode& HTMLCollection::rootNode() const
 {
-    if (isRootedAtDocument() && ownerNode().isConnected())
+    if (isRootedAtDocument() && ownerNode().inDocument())
         return ownerNode().document();
 
     return ownerNode();
@@ -188,7 +187,7 @@ inline CollectionType HTMLCollection::type() const
 
 inline ContainerNode& HTMLCollection::ownerNode() const
 {
-    return m_ownerNode;
+    return const_cast<ContainerNode&>(m_ownerNode.get());
 }
 
 inline Document& HTMLCollection::document() const
@@ -196,11 +195,11 @@ inline Document& HTMLCollection::document() const
     return m_ownerNode->document();
 }
 
-inline void HTMLCollection::invalidateCacheForAttribute(const QualifiedName& attributeName)
+inline void HTMLCollection::invalidateCacheForAttribute(const QualifiedName* attributeName)
 {
-    if (shouldInvalidateTypeOnAttributeChange(invalidationType(), attributeName))
-        invalidateCache();
-    else if (hasNamedElementCache() && (attributeName == HTMLNames::idAttr || attributeName == HTMLNames::nameAttr))
+    if (!attributeName || shouldInvalidateTypeOnAttributeChange(invalidationType(), *attributeName))
+        invalidateCache(document());
+    else if (hasNamedElementCache() && (*attributeName == HTMLNames::idAttr || *attributeName == HTMLNames::nameAttr))
         invalidateNamedElementCache(document());
 }
 

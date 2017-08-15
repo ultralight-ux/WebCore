@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,6 @@
 #if ENABLE(FTL_JIT)
 
 #include "B3ArgumentRegValue.h"
-#include "B3AtomicValue.h"
 #include "B3BasicBlockInlines.h"
 #include "B3CCallValue.h"
 #include "B3Const32Value.h"
@@ -289,10 +288,22 @@ LValue Output::doubleTrunc(LValue value)
     return callWithoutSideEffects(Double, truncDouble, value);
 }
 
-LValue Output::doubleUnary(DFG::Arith::UnaryType type, LValue value)
+LValue Output::doubleSin(LValue value)
 {
-    double (*unaryFunction)(double) = DFG::arithUnaryFunction(type);
-    return callWithoutSideEffects(B3::Double, unaryFunction, value);
+    double (*sinDouble)(double) = sin;
+    return callWithoutSideEffects(B3::Double, sinDouble, value);
+}
+
+LValue Output::doubleCos(LValue value)
+{
+    double (*cosDouble)(double) = cos;
+    return callWithoutSideEffects(B3::Double, cosDouble, value);
+}
+
+LValue Output::doubleTan(LValue value)
+{
+    double (*tanDouble)(double) = tan;
+    return callWithoutSideEffects(B3::Double, tanDouble, value);
 }
 
 LValue Output::doublePow(LValue xOperand, LValue yOperand)
@@ -314,6 +325,17 @@ LValue Output::doublePowi(LValue x, LValue y)
 LValue Output::doubleSqrt(LValue value)
 {
     return m_block->appendNew<B3::Value>(m_proc, B3::Sqrt, origin(), value);
+}
+
+LValue Output::doubleLog(LValue value)
+{
+    double (*logDouble)(double) = log;
+    return callWithoutSideEffects(B3::Double, logDouble, value);
+}
+
+bool Output::hasSensibleDoubleToInt()
+{
+    return optimizeForX86();
 }
 
 LValue Output::doubleToInt(LValue value)
@@ -423,11 +445,10 @@ LValue Output::load16ZeroExt32(TypedPointer pointer)
     return load;
 }
 
-LValue Output::store(LValue value, TypedPointer pointer)
+void Output::store(LValue value, TypedPointer pointer)
 {
     LValue store = m_block->appendNew<MemoryValue>(m_proc, Store, origin(), value, pointer.value());
     m_heaps->decorateMemory(pointer.heap(), store);
-    return store;
 }
 
 FenceValue* Output::fence(const AbstractHeap* read, const AbstractHeap* write)
@@ -438,18 +459,16 @@ FenceValue* Output::fence(const AbstractHeap* read, const AbstractHeap* write)
     return result;
 }
 
-LValue Output::store32As8(LValue value, TypedPointer pointer)
+void Output::store32As8(LValue value, TypedPointer pointer)
 {
     LValue store = m_block->appendNew<MemoryValue>(m_proc, Store8, origin(), value, pointer.value());
     m_heaps->decorateMemory(pointer.heap(), store);
-    return store;
 }
 
-LValue Output::store32As16(LValue value, TypedPointer pointer)
+void Output::store32As16(LValue value, TypedPointer pointer)
 {
     LValue store = m_block->appendNew<MemoryValue>(m_proc, Store16, origin(), value, pointer.value());
     m_heaps->decorateMemory(pointer.heap(), store);
-    return store;
 }
 
 LValue Output::baseIndex(LValue base, LValue index, Scale scale, ptrdiff_t offset)
@@ -649,55 +668,6 @@ LValue Output::select(LValue value, LValue taken, LValue notTaken)
     return m_block->appendNew<B3::Value>(m_proc, B3::Select, origin(), value, taken, notTaken);
 }
 
-LValue Output::atomicXchgAdd(LValue operand, TypedPointer pointer, Width width)
-{
-    LValue result = m_block->appendNew<AtomicValue>(m_proc, AtomicXchgAdd, origin(), width, operand, pointer.value(), 0, HeapRange(), HeapRange());
-    m_heaps->decorateMemory(pointer.heap(), result);
-    return result;
-}
-
-LValue Output::atomicXchgAnd(LValue operand, TypedPointer pointer, Width width)
-{
-    LValue result = m_block->appendNew<AtomicValue>(m_proc, AtomicXchgAnd, origin(), width, operand, pointer.value(), 0, HeapRange(), HeapRange());
-    m_heaps->decorateMemory(pointer.heap(), result);
-    return result;
-}
-
-LValue Output::atomicXchgOr(LValue operand, TypedPointer pointer, Width width)
-{
-    LValue result = m_block->appendNew<AtomicValue>(m_proc, AtomicXchgOr, origin(), width, operand, pointer.value(), 0, HeapRange(), HeapRange());
-    m_heaps->decorateMemory(pointer.heap(), result);
-    return result;
-}
-
-LValue Output::atomicXchgSub(LValue operand, TypedPointer pointer, Width width)
-{
-    LValue result = m_block->appendNew<AtomicValue>(m_proc, AtomicXchgSub, origin(), width, operand, pointer.value(), 0, HeapRange(), HeapRange());
-    m_heaps->decorateMemory(pointer.heap(), result);
-    return result;
-}
-
-LValue Output::atomicXchgXor(LValue operand, TypedPointer pointer, Width width)
-{
-    LValue result = m_block->appendNew<AtomicValue>(m_proc, AtomicXchgXor, origin(), width, operand, pointer.value(), 0, HeapRange(), HeapRange());
-    m_heaps->decorateMemory(pointer.heap(), result);
-    return result;
-}
-
-LValue Output::atomicXchg(LValue operand, TypedPointer pointer, Width width)
-{
-    LValue result = m_block->appendNew<AtomicValue>(m_proc, AtomicXchg, origin(), width, operand, pointer.value(), 0, HeapRange(), HeapRange());
-    m_heaps->decorateMemory(pointer.heap(), result);
-    return result;
-}
-
-LValue Output::atomicStrongCAS(LValue expected, LValue newValue, TypedPointer pointer, Width width)
-{
-    LValue result = m_block->appendNew<AtomicValue>(m_proc, AtomicStrongCAS, origin(), width, expected, newValue, pointer.value(), 0, HeapRange(), HeapRange());
-    m_heaps->decorateMemory(pointer.heap(), result);
-    return result;
-}
-
 void Output::jump(LBasicBlock destination)
 {
     m_block->appendNewControlValue(m_proc, B3::Jump, origin(), B3::FrequentedBlock(destination));
@@ -811,26 +781,32 @@ LValue Output::load(TypedPointer pointer, LoadType type)
     return nullptr;
 }
 
-LValue Output::store(LValue value, TypedPointer pointer, StoreType type)
+void Output::store(LValue value, TypedPointer pointer, StoreType type)
 {
     switch (type) {
     case Store32As8:
-        return store32As8(value, pointer);
+        store32As8(value, pointer);
+        return;
     case Store32As16:
-        return store32As16(value, pointer);
+        store32As16(value, pointer);
+        return;
     case Store32:
-        return store32(value, pointer);
+        store32(value, pointer);
+        return;
     case Store64:
-        return store64(value, pointer);
+        store64(value, pointer);
+        return;
     case StorePtr:
-        return storePtr(value, pointer);
+        storePtr(value, pointer);
+        return;
     case StoreFloat:
-        return storeFloat(value, pointer);
+        storeFloat(value, pointer);
+        return;
     case StoreDouble:
-        return storeDouble(value, pointer);
+        storeDouble(value, pointer);
+        return;
     }
     RELEASE_ASSERT_NOT_REACHED();
-    return nullptr;
 }
 
 TypedPointer Output::absolute(const void* address)

@@ -23,7 +23,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef InbandMetadataTextTrackPrivateGStreamer_h
+#define InbandMetadataTextTrackPrivateGStreamer_h
 
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(VIDEO_TRACK)
 
@@ -34,9 +35,9 @@ namespace WebCore {
 
 class InbandMetadataTextTrackPrivateGStreamer : public InbandTextTrackPrivate {
 public:
-    static Ref<InbandMetadataTextTrackPrivateGStreamer> create(Kind kind, CueFormat cueFormat, const AtomicString& id = emptyAtom)
+    static PassRefPtr<InbandMetadataTextTrackPrivateGStreamer> create(Kind kind, CueFormat cueFormat, const AtomicString& id = emptyAtom)
     {
-        return adoptRef(*new InbandMetadataTextTrackPrivateGStreamer(kind, cueFormat, id));
+        return adoptRef(new InbandMetadataTextTrackPrivateGStreamer(kind, cueFormat, id));
     }
 
     ~InbandMetadataTextTrackPrivateGStreamer() { }
@@ -49,13 +50,13 @@ public:
     void addDataCue(const MediaTime& start, const MediaTime& end, const void* data, unsigned length)
     {
         ASSERT(cueFormat() == Data);
-        client()->addDataCue(start, end, data, length);
+        client()->addDataCue(this, start, end, data, length);
     }
 
-    void addGenericCue(GenericCueData& data)
+    void addGenericCue(PassRefPtr<GenericCueData> data)
     {
         ASSERT(cueFormat() == Generic);
-        client()->addGenericCue(data);
+        client()->addGenericCue(this, data);
     }
 
 private:
@@ -75,3 +76,5 @@ private:
 } // namespace WebCore
 
 #endif // ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(VIDEO_TRACK)
+
+#endif // InbandMetadataTextTrackPrivateGStreamer_h

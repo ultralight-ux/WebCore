@@ -27,9 +27,7 @@
 #include "CookieStorage.h"
 
 #include "NetworkStorageSession.h"
-#include <wtf/HashMap.h>
 #include <wtf/MainThread.h>
-#include <wtf/NeverDestroyed.h>
 
 #if PLATFORM(COCOA)
 #include "WebCoreSystemInterface.h"
@@ -43,17 +41,12 @@ namespace WebCore {
 
 #if PLATFORM(WIN)
 
-static HashMap<CFHTTPCookieStorageRef, std::function<void ()>>& cookieChangeCallbackMap()
-{
-    static NeverDestroyed<HashMap<CFHTTPCookieStorageRef, std::function<void ()>>> map;
-    return map;
-}
+static CookieChangeCallbackPtr cookieChangeCallback;
 
-static void notifyCookiesChanged(CFHTTPCookieStorageRef cookieStorage, void *)
+static void notifyCookiesChanged(CFHTTPCookieStorageRef, void *)
 {
-    callOnMainThread([cookieStorage] {
-        if (auto callback = cookieChangeCallbackMap().get(cookieStorage))
-            callback();
+    callOnMainThread([] {
+        cookieChangeCallback();
     });
 }
 
@@ -68,34 +61,34 @@ static inline CFRunLoopRef cookieStorageObserverRunLoop()
     return loaderRunLoop();
 }
 
-void startObservingCookieChanges(const NetworkStorageSession& storageSession, std::function<void ()>&& callback)
+void startObservingCookieChanges(CookieChangeCallbackPtr callback)
 {
     ASSERT(isMainThread());
+
+    ASSERT(!cookieChangeCallback);
+    cookieChangeCallback = callback;
 
     CFRunLoopRef runLoop = cookieStorageObserverRunLoop();
     ASSERT(runLoop);
 
-    RetainPtr<CFHTTPCookieStorageRef> cookieStorage = storageSession.cookieStorage();
+    RetainPtr<CFHTTPCookieStorageRef> cookieStorage = NetworkStorageSession::defaultStorageSession().cookieStorage();
     ASSERT(cookieStorage);
-
-    ASSERT(cookieChangeCallbackMap().contains(cookieStorage.get()));
-    cookieChangeCallbackMap().add(cookieStorage.get(), WTFMove(callback));
 
     CFHTTPCookieStorageScheduleWithRunLoop(cookieStorage.get(), runLoop, kCFRunLoopCommonModes);
     CFHTTPCookieStorageAddObserver(cookieStorage.get(), runLoop, kCFRunLoopDefaultMode, notifyCookiesChanged, 0);
 }
 
-void stopObservingCookieChanges(const NetworkStorageSession& storageSession)
+void stopObservingCookieChanges()
 {
     ASSERT(isMainThread());
+
+    cookieChangeCallback = 0;
 
     CFRunLoopRef runLoop = cookieStorageObserverRunLoop();
     ASSERT(runLoop);
 
-    RetainPtr<CFHTTPCookieStorageRef> cookieStorage = storageSession.cookieStorage();
+    RetainPtr<CFHTTPCookieStorageRef> cookieStorage = NetworkStorageSession::defaultStorageSession().cookieStorage();
     ASSERT(cookieStorage);
-
-    cookieChangeCallbackMap().remove(cookieStorage.get());
 
     CFHTTPCookieStorageRemoveObserver(cookieStorage.get(), runLoop, kCFRunLoopDefaultMode, notifyCookiesChanged, 0);
     CFHTTPCookieStorageUnscheduleFromRunLoop(cookieStorage.get(), runLoop, kCFRunLoopCommonModes);

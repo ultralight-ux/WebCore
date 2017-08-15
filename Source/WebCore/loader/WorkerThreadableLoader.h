@@ -41,7 +41,6 @@ namespace WebCore {
     class ContentSecurityPolicy;
     class ResourceError;
     class ResourceRequest;
-    class SecurityOrigin;
     class WorkerGlobalScope;
     class WorkerLoaderProxy;
 
@@ -101,12 +100,8 @@ namespace WebCore {
             void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent) override;
             void didReceiveResponse(unsigned long identifier, const ResourceResponse&) override;
             void didReceiveData(const char*, int dataLength) override;
-            void didFinishLoading(unsigned long identifier) override;
+            void didFinishLoading(unsigned long identifier, double finishTime) override;
             void didFail(const ResourceError&) override;
-
-#if ENABLE(WEB_TIMING)
-            void didFinishTiming(const ResourceTiming&) override;
-#endif
 
             // Only to be used on the main thread.
             RefPtr<ThreadableLoader> m_mainThreadLoader;

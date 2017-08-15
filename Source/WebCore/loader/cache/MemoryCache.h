@@ -104,7 +104,7 @@ public:
 
     void forEachResource(const std::function<void(CachedResource&)>&);
     void forEachSessionResource(SessionID, const std::function<void(CachedResource&)>&);
-    WEBCORE_EXPORT void destroyDecodedDataForAllImages();
+    void destroyDecodedDataForAllImages();
 
     // Sets the cache's memory capacities, in bytes. These will hold only approximately,
     // since the decoded cost of resources like scripts and stylesheets is not known.
@@ -125,8 +125,8 @@ public:
     void pruneSoon();
     unsigned size() const { return m_liveSize + m_deadSize; }
 
-    void setDeadDecodedDataDeletionInterval(Seconds interval) { m_deadDecodedDataDeletionInterval = interval; }
-    Seconds deadDecodedDataDeletionInterval() const { return m_deadDecodedDataDeletionInterval; }
+    void setDeadDecodedDataDeletionInterval(std::chrono::milliseconds interval) { m_deadDecodedDataDeletionInterval = interval; }
+    std::chrono::milliseconds deadDecodedDataDeletionInterval() const { return m_deadDecodedDataDeletionInterval; }
 
     // Calls to put the cached resource into and out of LRU lists.
     void insertInLRUList(CachedResource&);
@@ -168,7 +168,11 @@ public:
     WEBCORE_EXPORT void pruneLiveResourcesToSize(unsigned targetSize, bool shouldDestroyDecodedDataForAllLiveResources = false);
 
 private:
+#if ENABLE(CACHE_PARTITIONING)
     typedef HashMap<std::pair<URL, String /* partitionName */>, CachedResource*> CachedResourceMap;
+#else
+    typedef HashMap<URL, CachedResource*> CachedResourceMap;
+#endif
     typedef ListHashSet<CachedResource*> LRUList;
 
     MemoryCache();
@@ -195,7 +199,7 @@ private:
     unsigned m_capacity;
     unsigned m_minDeadCapacity;
     unsigned m_maxDeadCapacity;
-    Seconds m_deadDecodedDataDeletionInterval;
+    std::chrono::milliseconds m_deadDecodedDataDeletionInterval;
 
     unsigned m_liveSize; // The number of bytes currently consumed by "live" resources in the cache.
     unsigned m_deadSize; // The number of bytes currently consumed by "dead" resources in the cache.

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,10 @@
 #include <runtime/Completion.h>
 #include <runtime/Microtask.h>
 #include <wtf/MainThread.h>
+
+#if PLATFORM(IOS)
+#include "WebCoreThread.h"
+#endif
 
 namespace WebCore {
 
@@ -89,25 +93,25 @@ public:
         task.run(exec);
     }
 
-    static JSC::JSInternalPromise& loadModule(JSC::ExecState& state, const String& moduleName, JSC::JSValue scriptFetcher)
+    static JSC::JSInternalPromise& loadModule(JSC::ExecState& state, const String& moduleName, JSC::JSValue initiator)
     {
         JSMainThreadExecState currentState(&state);
-        return *JSC::loadModule(&state, moduleName, scriptFetcher);
+        return *JSC::loadModule(&state, moduleName, initiator);
     }
 
-    static JSC::JSInternalPromise& loadModule(JSC::ExecState& state, const JSC::SourceCode& sourceCode, JSC::JSValue scriptFetcher)
+    static JSC::JSInternalPromise& loadModule(JSC::ExecState& state, const JSC::SourceCode& sourceCode, JSC::JSValue initiator)
     {
         JSMainThreadExecState currentState(&state);
-        return *JSC::loadModule(&state, sourceCode, scriptFetcher);
+        return *JSC::loadModule(&state, sourceCode, initiator);
     }
 
-    static JSC::JSValue linkAndEvaluateModule(JSC::ExecState& state, const JSC::Identifier& moduleKey, JSC::JSValue scriptFetcher, NakedPtr<JSC::Exception>& returnedException)
+    static JSC::JSValue linkAndEvaluateModule(JSC::ExecState& state, const JSC::Identifier& moduleKey, JSC::JSValue initiator, NakedPtr<JSC::Exception>& returnedException)
     {
         JSC::VM& vm = state.vm();
         auto scope = DECLARE_CATCH_SCOPE(vm);
     
         JSMainThreadExecState currentState(&state);
-        auto returnValue = JSC::linkAndEvaluateModule(&state, moduleKey, scriptFetcher);
+        auto returnValue = JSC::linkAndEvaluateModule(&state, moduleKey, initiator);
         if (UNLIKELY(scope.exception())) {
             returnedException = scope.exception();
             scope.clearException();
@@ -133,15 +137,14 @@ private:
         JSC::VM& vm = s_mainThreadState->vm();
         auto scope = DECLARE_CATCH_SCOPE(vm);
         ASSERT(isMainThread());
-        scope.assertNoException();
+        ASSERT_UNUSED(scope, !scope.exception());
 
-        JSC::ExecState* state = s_mainThreadState;
         bool didExitJavaScript = s_mainThreadState && !m_previousState;
 
         s_mainThreadState = m_previousState;
 
         if (didExitJavaScript)
-            didLeaveScriptContext(state);
+            didLeaveScriptContext();
     }
 
     template<typename Type, Type jsType, typename DataType> static InspectorInstrumentationCookie instrumentFunctionInternal(ScriptExecutionContext*, Type, const DataType&);
@@ -150,7 +153,7 @@ private:
     JSC::ExecState* m_previousState;
     JSC::JSLockHolder m_lock;
 
-    static void didLeaveScriptContext(JSC::ExecState*);
+    static void didLeaveScriptContext();
 };
 
 // Null state prevents origin security checks.

@@ -37,6 +37,10 @@ OBJC_CLASS WebScriptObject;
 
 struct NPObject;
 
+namespace Deprecated {
+class ScriptValue;
+}
+
 namespace JSC {
 class ExecState;
 class JSGlobalObject;
@@ -51,18 +55,15 @@ class RootObject;
 
 namespace WebCore {
 
-class CachedScriptFetcher;
+class CachedModuleScript;
 class Frame;
 class HTMLDocument;
 class HTMLPlugInElement;
-class LoadableModuleScript;
-class ScriptSourceCode;
 class SecurityOrigin;
-class URL;
+class ScriptSourceCode;
 class Widget;
-struct ExceptionDetails;
 
-using RootObjectMap = HashMap<void*, Ref<JSC::Bindings::RootObject>>;
+typedef HashMap<void*, RefPtr<JSC::Bindings::RootObject>> RootObjectMap;
 
 enum ReasonForCallingCanExecuteScripts {
     AboutToExecuteScript,
@@ -116,13 +117,13 @@ public:
     JSC::JSValue evaluate(const ScriptSourceCode&, ExceptionDetails* = nullptr);
     JSC::JSValue evaluateInWorld(const ScriptSourceCode&, DOMWrapperWorld&, ExceptionDetails* = nullptr);
 
-    void loadModuleScriptInWorld(LoadableModuleScript&, const String& moduleName, DOMWrapperWorld&);
-    void loadModuleScript(LoadableModuleScript&, const String& moduleName);
-    void loadModuleScriptInWorld(LoadableModuleScript&, const ScriptSourceCode&, DOMWrapperWorld&);
-    void loadModuleScript(LoadableModuleScript&, const ScriptSourceCode&);
+    void loadModuleScriptInWorld(CachedModuleScript&, const String& moduleName, DOMWrapperWorld&, Element&);
+    void loadModuleScript(CachedModuleScript&, const String& moduleName, Element&);
+    void loadModuleScriptInWorld(CachedModuleScript&, const ScriptSourceCode&, DOMWrapperWorld&, Element&);
+    void loadModuleScript(CachedModuleScript&, const ScriptSourceCode&, Element&);
 
-    JSC::JSValue linkAndEvaluateModuleScriptInWorld(LoadableModuleScript& , DOMWrapperWorld&);
-    JSC::JSValue linkAndEvaluateModuleScript(LoadableModuleScript&);
+    JSC::JSValue linkAndEvaluateModuleScriptInWorld(CachedModuleScript& , DOMWrapperWorld&, Element&);
+    JSC::JSValue linkAndEvaluateModuleScript(CachedModuleScript&, Element&);
 
     JSC::JSValue evaluateModule(const URL&, JSC::JSModuleRecord&, DOMWrapperWorld&);
     JSC::JSValue evaluateModule(const URL&, JSC::JSModuleRecord&);
@@ -147,6 +148,9 @@ public:
 
     const String* sourceURL() const { return m_sourceURL; } // 0 if we are not evaluating any script
 
+    const JSC::PrivateName& moduleLoaderAlreadyReportedErrorSymbol() const { return m_moduleLoaderAlreadyReportedErrorSymbol; }
+    const JSC::PrivateName& moduleLoaderFetchingIsCanceledSymbol() const { return m_moduleLoaderFetchingIsCanceledSymbol; }
+
     void clearWindowShellsNotMatchingDOMWindow(DOMWindow*, bool goingIntoPageCache);
     void setDOMWindowForWindowShell(DOMWindow*);
     void updateDocument();
@@ -163,7 +167,7 @@ public:
     WEBCORE_EXPORT JSC::Bindings::RootObject* bindingRootObject();
     JSC::Bindings::RootObject* cacheableBindingRootObject();
 
-    WEBCORE_EXPORT Ref<JSC::Bindings::RootObject> createRootObject(void* nativeHandle);
+    WEBCORE_EXPORT RefPtr<JSC::Bindings::RootObject> createRootObject(void* nativeHandle);
 
     void collectIsolatedContexts(Vector<std::pair<JSC::ExecState*, SecurityOrigin*>>&);
 
@@ -180,7 +184,7 @@ public:
 
 private:
     WEBCORE_EXPORT JSDOMWindowShell* initScript(DOMWrapperWorld&);
-    void setupModuleScriptHandlers(LoadableModuleScript&, JSC::JSInternalPromise&, DOMWrapperWorld&);
+    void setupModuleScriptHandlers(CachedModuleScript&, JSC::JSInternalPromise&, DOMWrapperWorld&);
 
     void disconnectPlatformScriptObjects();
 
@@ -189,6 +193,8 @@ private:
     const String* m_sourceURL;
 
     bool m_paused;
+    JSC::PrivateName m_moduleLoaderAlreadyReportedErrorSymbol;
+    JSC::PrivateName m_moduleLoaderFetchingIsCanceledSymbol;
 
     // The root object used for objects bound outside the context of a plugin, such
     // as NPAPI plugins. The plugins using these objects prevent a page from being cached so they

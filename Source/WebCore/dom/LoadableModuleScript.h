@@ -25,46 +25,36 @@
 
 #pragma once
 
+#include "CachedModuleScript.h"
+#include "CachedModuleScriptClient.h"
 #include "LoadableScript.h"
 #include <wtf/TypeCasts.h>
 
 namespace WebCore {
 
-class ScriptSourceCode;
-
-class LoadableModuleScript final : public LoadableScript {
+class LoadableModuleScript final : public LoadableScript, private CachedModuleScriptClient {
 public:
     virtual ~LoadableModuleScript();
 
-    static Ref<LoadableModuleScript> create(const String& nonce, const String& crossOriginMode, const String& charset, const AtomicString& initiatorName, bool isInUserAgentShadowTree);
+    static Ref<LoadableModuleScript> create(CachedModuleScript&);
 
     bool isLoaded() const final;
     std::optional<Error> error() const final;
     bool wasCanceled() const final;
 
-    bool isClassicScript() const final { return false; }
+    CachedModuleScript& moduleScript() { return m_moduleScript.get(); }
     bool isModuleScript() const final { return true; }
 
     void execute(ScriptElement&) final;
 
     void setError(Error&&);
 
-    void load(Document&, const URL& rootURL);
-    void load(Document&, const ScriptSourceCode&);
-
-    void notifyLoadCompleted(UniquedStringImpl&);
-    void notifyLoadFailed(LoadableScript::Error&&);
-    void notifyLoadWasCanceled();
-
-    UniquedStringImpl* moduleKey() const { return m_moduleKey.get(); }
-
 private:
-    LoadableModuleScript(const String& nonce, const String& crossOriginMode, const String& charset, const AtomicString& initiatorName, bool isInUserAgentShadowTree);
+    LoadableModuleScript(CachedModuleScript&);
 
-    RefPtr<UniquedStringImpl> m_moduleKey;
-    std::optional<LoadableScript::Error> m_error;
-    bool m_wasCanceled { false };
-    bool m_isLoaded { false };
+    void notifyFinished(CachedModuleScript&) final;
+
+    Ref<CachedModuleScript> m_moduleScript;
 };
 
 }

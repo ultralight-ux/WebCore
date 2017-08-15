@@ -26,14 +26,13 @@
 class ButtonsContainer extends LayoutNode
 {
 
-    constructor({ buttons = [], leftMargin = 24, rightMargin = 24, buttonMargin = 24, cssClassName = "" } = {})
+    constructor({ buttons = [], padding = 0, margin = 0, cssClassName = "" } = {})
     {
-        super(`<div class="buttons-container ${cssClassName}"></div>`);
+        super(`<div class="buttons-container ${cssClassName}">`);
 
+        this.margin = margin;
+        this.padding = padding;
         this.buttons = buttons;
-        this.leftMargin = leftMargin;
-        this.rightMargin = rightMargin;
-        this.buttonMargin = buttonMargin;
     }
 
     // Public
@@ -57,20 +56,20 @@ class ButtonsContainer extends LayoutNode
         super.layout();
 
         const children = [];
-        let x = this.leftMargin;
+        let x = this.padding;
 
         this._buttons.forEach(button => {
             if (!button.enabled || button.dropped)
                 return;
             button.x = x;
-            x += button.width + this.buttonMargin;
+            x += button.width + this.margin;
             children.push(button);
         });
 
         if (children.length)
-            this.width = x - this.buttonMargin + this.rightMargin;
+            this.width = x - this.margin + this.padding;
         else
-            this.width = this.buttonMargin + this.rightMargin;
+            this.width = this.padding * 2;
 
         this.children = children;
     }

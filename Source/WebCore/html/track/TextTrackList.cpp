@@ -29,6 +29,7 @@
 
 #include "TextTrackList.h"
 
+#include "EventNames.h"
 #include "HTMLMediaElement.h"
 #include "InbandTextTrack.h"
 #include "InbandTextTrackPrivate.h"

@@ -34,7 +34,6 @@
 #include "SessionID.h"
 #include "SocketStreamHandle.h"
 #include <wtf/RetainPtr.h>
-#include <wtf/StreamBuffer.h>
 
 typedef struct __CFHTTPMessage* CFHTTPMessageRef;
 
@@ -46,18 +45,15 @@ class SocketStreamHandleClient;
 
 class SocketStreamHandleImpl : public SocketStreamHandle {
 public:
-    static Ref<SocketStreamHandleImpl> create(const URL& url, SocketStreamHandleClient& client, SessionID sessionID, const String& credentialPartition, SourceApplicationAuditToken&& auditData) { return adoptRef(*new SocketStreamHandleImpl(url, client, sessionID, credentialPartition, WTFMove(auditData))); }
+    static Ref<SocketStreamHandleImpl> create(const URL& url, SocketStreamHandleClient& client, SessionID sessionID) { return adoptRef(*new SocketStreamHandleImpl(url, client, sessionID)); }
 
     virtual ~SocketStreamHandleImpl();
 
-    WEBCORE_EXPORT void platformSend(const char* data, size_t length, Function<void(bool)>&&) final;
-    WEBCORE_EXPORT void platformClose() final;
 private:
-    size_t bufferedAmount() final;
-    std::optional<size_t> platformSendInternal(const char*, size_t);
-    bool sendPendingData();
+    virtual std::optional<size_t> platformSend(const char* data, size_t length);
+    virtual void platformClose();
 
-    WEBCORE_EXPORT SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&, SessionID, const String& credentialPartition, SourceApplicationAuditToken&&);
+    WEBCORE_EXPORT SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&, SessionID);
     void createStreams();
     void scheduleStreams();
     void chooseProxy();
@@ -100,11 +96,6 @@ private:
 
     RetainPtr<CFURLRef> m_httpsURL; // ws(s): replaced with https:
     SessionID m_sessionID;
-    String m_credentialPartition;
-    SourceApplicationAuditToken m_auditData;
-
-    StreamBuffer<char, 1024 * 1024> m_buffer;
-    static const unsigned maxBufferSize = 100 * 1024 * 1024;
 };
 
 } // namespace WebCore

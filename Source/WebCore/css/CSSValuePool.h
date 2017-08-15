@@ -51,7 +51,7 @@ class CSSValuePool {
 public:
     static CSSValuePool& singleton();
 
-    RefPtr<CSSValueList> createFontFaceValue(const AtomicString&);
+    PassRefPtr<CSSValueList> createFontFaceValue(const AtomicString&);
     Ref<CSSPrimitiveValue> createFontFamilyValue(const String&, FromSystemFontID = FromSystemFontID::No);
     Ref<CSSInheritedValue> createInheritedValue() { return m_inheritedValue.get(); }
     Ref<CSSInitialValue> createImplicitInitialValue() { return m_implicitInitialValue.get(); }

@@ -1,7 +1,6 @@
 /*
  * Copyright (C) 2011 Adam Barth. All Rights Reserved.
  * Copyright (C) 2011 Daniel Bates (dbates@intudata.com).
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,7 +43,6 @@
 #include <wtf/ASCIICType.h>
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/text/StringView.h>
 
 namespace WebCore {
 
@@ -240,9 +238,11 @@ static bool isSemicolonSeparatedAttribute(const HTMLToken::Attribute& attribute)
     return threadSafeMatch(attribute.name, SVGNames::valuesAttr);
 }
 
-static bool semicolonSeparatedValueContainsJavaScriptURL(StringView semicolonSeparatedValue)
+static bool semicolonSeparatedValueContainsJavaScriptURL(const String& value)
 {
-    for (auto value : semicolonSeparatedValue.split(';')) {
+    Vector<String> valueList;
+    value.split(';', valueList);
+    for (auto& value : valueList) {
         if (protocolIsJavaScript(value))
             return true;
     }
@@ -317,7 +317,7 @@ void XSSAuditor::init(Document* document, XSSAuditorDelegate* auditorDelegate)
 
     String httpBodyAsString;
     if (DocumentLoader* documentLoader = document->frame()->loader().documentLoader()) {
-        static NeverDestroyed<String> XSSProtectionHeader(MAKE_STATIC_STRING_IMPL("X-XSS-Protection"));
+        static NeverDestroyed<String> XSSProtectionHeader(ASCIILiteral("X-XSS-Protection"));
         String headerValue = documentLoader->response().httpHeaderField(XSSProtectionHeader);
         String errorDetails;
         unsigned errorPosition = 0;
@@ -564,7 +564,7 @@ bool XSSAuditor::filterButtonToken(const FilterTokenRequest& request)
 
 bool XSSAuditor::eraseDangerousAttributesIfInjected(const FilterTokenRequest& request)
 {
-    static NeverDestroyed<String> safeJavaScriptURL(MAKE_STATIC_STRING_IMPL("javascript:void(0)"));
+    static NeverDestroyed<String> safeJavaScriptURL(ASCIILiteral("javascript:void(0)"));
 
     bool didBlockScript = false;
     for (size_t i = 0; i < request.token.attributes().size(); ++i) {

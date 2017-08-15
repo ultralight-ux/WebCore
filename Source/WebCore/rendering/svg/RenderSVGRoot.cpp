@@ -24,6 +24,8 @@
 #include "config.h"
 #include "RenderSVGRoot.h"
 
+#include "Chrome.h"
+#include "ChromeClient.h"
 #include "Frame.h"
 #include "GraphicsContext.h"
 #include "HitTestResult.h"
@@ -125,11 +127,17 @@ LayoutUnit RenderSVGRoot::computeReplacedLogicalWidth(ShouldComputePreferred sho
     if (isEmbeddedThroughFrameContainingSVGDocument())
         return containingBlock()->availableLogicalWidth();
 
+    if (style().logicalWidth().isSpecified() || style().logicalMaxWidth().isSpecified())
+        return RenderReplaced::computeReplacedLogicalWidth(shouldComputePreferred);
+
+    if (svgSVGElement().hasIntrinsicWidth())
+        return resolveLengthAttributeForSVG(svgSVGElement().intrinsicWidth(), style().effectiveZoom(), containingBlock()->availableLogicalWidth());
+
     // SVG embedded via SVGImage (background-image/border-image/etc) / Inline SVG.
     return RenderReplaced::computeReplacedLogicalWidth(shouldComputePreferred);
 }
 
-LayoutUnit RenderSVGRoot::computeReplacedLogicalHeight(std::optional<LayoutUnit> estimatedUsedWidth) const
+LayoutUnit RenderSVGRoot::computeReplacedLogicalHeight() const
 {
     // When we're embedded through SVGImage (border-image/background-image/<html:img>/...) we're forced to resize to a specific size.
     if (!m_containerSize.isEmpty())
@@ -138,8 +146,14 @@ LayoutUnit RenderSVGRoot::computeReplacedLogicalHeight(std::optional<LayoutUnit>
     if (isEmbeddedThroughFrameContainingSVGDocument())
         return containingBlock()->availableLogicalHeight(IncludeMarginBorderPadding);
 
+    if (style().logicalHeight().isSpecified() || style().logicalMaxHeight().isSpecified())
+        return RenderReplaced::computeReplacedLogicalHeight();
+
+    if (svgSVGElement().hasIntrinsicHeight())
+        return resolveLengthAttributeForSVG(svgSVGElement().intrinsicHeight(), style().effectiveZoom(), containingBlock()->availableLogicalHeight(IncludeMarginBorderPadding).toFloat());
+
     // SVG embedded via SVGImage (background-image/border-image/etc) / Inline SVG.
-    return RenderReplaced::computeReplacedLogicalHeight(estimatedUsedWidth);
+    return RenderReplaced::computeReplacedLogicalHeight();
 }
 
 void RenderSVGRoot::layout()
@@ -227,18 +241,20 @@ void RenderSVGRoot::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paint
     if (svgSVGElement().hasEmptyViewBox())
         return;
 
+    Page* page = frame().page();
+
     // Don't paint if we don't have kids, except if we have filters we should paint those.
     if (!firstChild()) {
         auto* resources = SVGResourcesCache::cachedResourcesForRenderer(*this);
         if (!resources || !resources->filter()) {
-            if (paintInfo.phase == PaintPhaseForeground)
-                page().addRelevantUnpaintedObject(this, visualOverflowRect());
+            if (page && paintInfo.phase == PaintPhaseForeground)
+                page->addRelevantUnpaintedObject(this, visualOverflowRect());
             return;
         }
     }
 
-    if (paintInfo.phase == PaintPhaseForeground)
-        page().addRelevantRepaintedObject(this, visualOverflowRect());
+    if (page && paintInfo.phase == PaintPhaseForeground)
+        page->addRelevantRepaintedObject(this, visualOverflowRect());
 
     // Make a copy of the PaintInfo because applyTransform will modify the damage rect.
     PaintInfo childPaintInfo(paintInfo);

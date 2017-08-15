@@ -32,9 +32,11 @@
 #include "ExceptionCode.h"
 #include "ExtensionStyleSheets.h"
 #include "HTMLLinkElement.h"
+#include "HTMLNames.h"
 #include "HTMLStyleElement.h"
 #include "MediaList.h"
 #include "Node.h"
+#include "SVGNames.h"
 #include "SVGStyleElement.h"
 #include "SecurityOrigin.h"
 #include "ShadowRoot.h"
@@ -42,6 +44,7 @@
 #include "StyleRule.h"
 #include "StyleScope.h"
 #include "StyleSheetContents.h"
+
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
@@ -257,7 +260,7 @@ bool CSSStyleSheet::canAccessRules() const
     Document* document = ownerDocument();
     if (!document)
         return true;
-    return document->securityOrigin().canRequest(baseURL);
+    return document->securityOrigin()->canRequest(baseURL);
 }
 
 RefPtr<CSSRuleList> CSSStyleSheet::rules()

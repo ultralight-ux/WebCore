@@ -33,11 +33,11 @@ namespace WebCore {
 
 class CaptureDevice {
 public:
-    enum class DeviceType { Unknown, Audio, Video };
+    enum class SourceKind { Unknown, Audio, Video };
 
-    CaptureDevice(const String& persistentId, DeviceType type, const String& label, const String& groupId = emptyString())
+    CaptureDevice(const String& persistentId, SourceKind kind, const String& label, const String& groupId)
         : m_persistentId(persistentId)
-        , m_type(type)
+        , m_kind(kind)
         , m_label(label)
         , m_groupId(groupId)
     {
@@ -54,18 +54,14 @@ public:
     const String& groupId() const { return m_groupId; }
     void setGroupId(const String& id) { m_groupId = id; }
 
-    DeviceType type() const { return m_type; }
-    void setType(DeviceType type) { m_type = type; }
-
-    bool enabled() const { return m_enabled; }
-    void setEnabled(bool enabled) { m_enabled = enabled; }
+    SourceKind kind() const { return m_kind; }
+    void setKind(SourceKind kind) { m_kind = kind; }
 
 private:
     String m_persistentId;
-    DeviceType m_type { DeviceType::Unknown };
+    SourceKind m_kind { SourceKind::Unknown };
     String m_label;
     String m_groupId;
-    bool m_enabled { false };
 };
 
 } // namespace WebCore

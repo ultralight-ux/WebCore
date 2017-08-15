@@ -33,19 +33,19 @@ class DocumentFragment;
 
 class MoveSelectionCommand : public CompositeEditCommand {
 public:
-    static Ref<MoveSelectionCommand> create(Ref<DocumentFragment>&& fragment, const Position& position, bool smartInsert = false, bool smartDelete = false)
+    static Ref<MoveSelectionCommand> create(PassRefPtr<DocumentFragment> fragment, const Position& position, bool smartInsert = false, bool smartDelete = false)
     {
-        return adoptRef(*new MoveSelectionCommand(WTFMove(fragment), position, smartInsert, smartDelete));
+        return adoptRef(*new MoveSelectionCommand(fragment, position, smartInsert, smartDelete));
     }
 
 private:
-    MoveSelectionCommand(Ref<DocumentFragment>&&, const Position&, bool smartInsert, bool smartDelete);
+    MoveSelectionCommand(PassRefPtr<DocumentFragment>, const Position&, bool smartInsert, bool smartDelete);
 
     void doApply() override;
     EditAction editingAction() const override;
     bool shouldDispatchInputEvents() const final { return false; }
     
-    Ref<DocumentFragment> m_fragment;
+    RefPtr<DocumentFragment> m_fragment;
     Position m_position;
     bool m_smartInsert;
     bool m_smartDelete;

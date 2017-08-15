@@ -23,7 +23,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef GeometryUtilities_h
+#define GeometryUtilities_h
 
 #include "FloatRect.h"
 #include "IntRect.h"
@@ -50,5 +51,6 @@ WEBCORE_EXPORT FloatRect smallestRectWithAspectRatioAroundRect(float aspectRatio
 // Compute a rect that encloses all points covered by the given rect if it were rotated a full turn around (0,0).
 FloatRect boundsOfRotatingRect(const FloatRect&);
 
-bool ellipseContainsPoint(const FloatPoint& center, const FloatSize& radii, const FloatPoint&);
 }
+
+#endif // GeometryUtilities_h

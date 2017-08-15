@@ -67,13 +67,8 @@ TextPaintStyle computeTextPaintStyle(const Frame& frame, const RenderStyle& line
 #if ENABLE(LETTERPRESS)
     paintStyle.useLetterpressEffect = lineStyle.textDecorationsInEffect() & TextDecorationLetterpress;
 #endif
-    auto viewportSize = frame.view() ? frame.view()->size() : IntSize();
-    paintStyle.strokeWidth = lineStyle.computedStrokeWidth(viewportSize);
-    paintStyle.paintOrder = lineStyle.paintOrder();
-    paintStyle.lineJoin = lineStyle.joinStyle();
-    paintStyle.lineCap = lineStyle.capStyle();
-    paintStyle.miterLimit = lineStyle.strokeMiterLimit();
-    
+    paintStyle.strokeWidth = lineStyle.textStrokeWidth();
+
     if (paintInfo.forceTextColor()) {
         paintStyle.fillColor = paintInfo.forcedTextColor();
         paintStyle.strokeColor = paintInfo.forcedTextColor();
@@ -84,7 +79,7 @@ TextPaintStyle computeTextPaintStyle(const Frame& frame, const RenderStyle& line
     if (lineStyle.insideDefaultButton()) {
         Page* page = frame.page();
         if (page && page->focusController().isActive()) {
-            paintStyle.fillColor = RenderTheme::singleton().systemColor(CSSValueActivebuttontext);
+            paintStyle.fillColor = page->theme().systemColor(CSSValueActivebuttontext);
             return paintStyle;
         }
     }
@@ -103,7 +98,7 @@ TextPaintStyle computeTextPaintStyle(const Frame& frame, const RenderStyle& line
     if (forceBackgroundToWhite)
         paintStyle.fillColor = adjustColorForVisibilityOnBackground(paintStyle.fillColor, Color::white);
 
-    paintStyle.strokeColor = lineStyle.visitedDependentColor(lineStyle.hasExplicitlySetStrokeColor() ? CSSPropertyStrokeColor : CSSPropertyWebkitTextStrokeColor);
+    paintStyle.strokeColor = lineStyle.visitedDependentColor(CSSPropertyWebkitTextStrokeColor);
 
     // Make the text stroke color legible against a white background
     if (forceBackgroundToWhite)
@@ -118,11 +113,10 @@ TextPaintStyle computeTextPaintStyle(const Frame& frame, const RenderStyle& line
     return paintStyle;
 }
 
-TextPaintStyle computeTextSelectionPaintStyle(const TextPaintStyle& textPaintStyle, const RenderText& renderer, const RenderStyle& lineStyle, const PaintInfo& paintInfo, bool& paintSelectedTextOnly, bool& paintSelectedTextSeparately, bool& paintNonSelectedTextOnly, const ShadowData*& selectionShadow)
+TextPaintStyle computeTextSelectionPaintStyle(const TextPaintStyle& textPaintStyle, const RenderText& renderer, const RenderStyle& lineStyle, const PaintInfo& paintInfo, bool& paintSelectedTextOnly, bool& paintSelectedTextSeparately, const ShadowData*& selectionShadow)
 {
     paintSelectedTextOnly = (paintInfo.phase == PaintPhaseSelection);
-    paintSelectedTextSeparately = paintInfo.paintBehavior & PaintBehaviorExcludeSelection;
-    paintNonSelectedTextOnly = paintInfo.paintBehavior & PaintBehaviorExcludeSelection;
+    paintSelectedTextSeparately = false;
     selectionShadow = (paintInfo.forceTextColor()) ? nullptr : lineStyle.textShadow();
 
     TextPaintStyle selectionPaintStyle = textPaintStyle;
@@ -150,15 +144,14 @@ TextPaintStyle computeTextSelectionPaintStyle(const TextPaintStyle& textPaintSty
             selectionShadow = shadow;
         }
 
-        auto viewportSize = renderer.frame().view() ? renderer.frame().view()->size() : IntSize();
-        float strokeWidth = pseudoStyle->computedStrokeWidth(viewportSize);
+        float strokeWidth = pseudoStyle->textStrokeWidth();
         if (strokeWidth != selectionPaintStyle.strokeWidth) {
             if (!paintSelectedTextOnly)
                 paintSelectedTextSeparately = true;
             selectionPaintStyle.strokeWidth = strokeWidth;
         }
 
-        Color stroke = paintInfo.forceTextColor() ? paintInfo.forcedTextColor() : pseudoStyle->visitedDependentColor(pseudoStyle->hasExplicitlySetStrokeColor() ? CSSPropertyStrokeColor : CSSPropertyWebkitTextStrokeColor);
+        Color stroke = paintInfo.forceTextColor() ? paintInfo.forcedTextColor() : pseudoStyle->visitedDependentColor(CSSPropertyWebkitTextStrokeColor);
         if (stroke != selectionPaintStyle.strokeColor) {
             if (!paintSelectedTextOnly)
                 paintSelectedTextSeparately = true;
@@ -199,10 +192,6 @@ void updateGraphicsContext(GraphicsContext& context, const TextPaintStyle& paint
             context.setStrokeColor(paintStyle.strokeColor);
         if (paintStyle.strokeWidth != context.strokeThickness())
             context.setStrokeThickness(paintStyle.strokeWidth);
-        context.setLineJoin(paintStyle.lineJoin);
-        context.setLineCap(paintStyle.lineCap);
-        if (paintStyle.lineJoin == MiterJoin)
-            context.setMiterLimit(paintStyle.miterLimit);
     }
 }
 

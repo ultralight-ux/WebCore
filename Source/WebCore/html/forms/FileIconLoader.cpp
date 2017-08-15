@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2008 Apple Inc. All rights reserved.
  * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,13 +37,13 @@ namespace WebCore {
 void FileIconLoader::invalidate()
 {
     ASSERT(m_client);
-    m_client = nullptr;
+    m_client = 0;
 }
 
-void FileIconLoader::iconLoaded(RefPtr<Icon>&& icon)
+void FileIconLoader::notifyFinished(PassRefPtr<Icon> icon)
 {
     if (m_client)
-        m_client->iconLoaded(WTFMove(icon));
+        m_client->updateRendering(icon);
 }
 
 FileIconLoader::FileIconLoader(FileIconLoaderClient& client)

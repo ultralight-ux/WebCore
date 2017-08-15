@@ -34,7 +34,6 @@
 
 #include "LinkIconType.h"
 #include "RuntimeEnabledFeatures.h"
-#include <wtf/text/StringView.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -65,7 +64,9 @@ LinkRelAttribute::LinkRelAttribute(const String& rel)
         // Tokenize the rel attribute and set bits based on specific keywords that we find.
         String relCopy = rel;
         relCopy.replace('\n', ' ');
-        for (auto word : StringView(relCopy).split(' ')) {
+        Vector<String> list;
+        relCopy.split(' ', list);
+        for (auto& word : list) {
             if (equalLettersIgnoringASCIICase(word, "stylesheet"))
                 isStyleSheet = true;
             else if (equalLettersIgnoringASCIICase(word, "alternate"))

@@ -19,7 +19,8 @@
     Boston, MA 02110-1301, USA.
 */
 
-#pragma once
+#ifndef LengthBox_h
+#define LengthBox_h
 
 #include "Length.h"
 #include "WritingMode.h"
@@ -30,17 +31,12 @@ namespace WebCore {
 template<typename T> class BoxExtent {
 public:
     BoxExtent()
-        : m_sides({ { 0, 0, 0, 0 } })
+        : m_sides({{ T(0), T(0), T(0), T(0) }})
     {
     }
 
     BoxExtent(const T& top, const T& right, const T& bottom, const T& left)
-        : m_sides({ { top, right, bottom, left } })
-    {
-    }
-
-    BoxExtent(T&& top, T&& right, T&& bottom, T&& left)
-        : m_sides({ { std::forward<T>(top), std::forward<T>(right), std::forward<T>(bottom), std::forward<T>(left) } })
+        : m_sides({{ top, right, bottom, left }})
     {
     }
 
@@ -143,8 +139,8 @@ public:
     {
     }
 
-    LengthBox(Length&& top, Length&& right, Length&& bottom, Length&& left)
-        : BoxExtent { WTFMove(top), WTFMove(right), WTFMove(bottom), WTFMove(left) }
+    LengthBox(const Length& top, const Length& right, const Length& bottom, const Length& left)
+        : BoxExtent(top, right, bottom, left)
     {
     }
 
@@ -154,10 +150,11 @@ public:
     }
 };
 
-using LayoutBoxExtent = BoxExtent<LayoutUnit>;
-using FloatBoxExtent = BoxExtent<float>;
+typedef BoxExtent<LayoutUnit> LayoutBoxExtent;
+typedef BoxExtent<float> FloatBoxExtent;
 
 TextStream& operator<<(TextStream&, const LengthBox&);
-WEBCORE_EXPORT TextStream& operator<<(TextStream&, const FloatBoxExtent&);
 
 } // namespace WebCore
+
+#endif // LengthBox_h

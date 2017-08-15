@@ -40,10 +40,10 @@ public:
 
     static std::unique_ptr<FloatingObject> create(RenderBox&);
     std::unique_ptr<FloatingObject> copyToNewContainer(LayoutSize, bool shouldPaint = false, bool isDescendant = false) const;
-    std::unique_ptr<FloatingObject> cloneForNewParent() const;
+    std::unique_ptr<FloatingObject> unsafeClone() const;
 
     explicit FloatingObject(RenderBox&);
-    FloatingObject(RenderBox&, Type, const LayoutRect&, const LayoutSize&, bool shouldPaint, bool isDescendant);
+    FloatingObject(RenderBox&, Type, const LayoutRect&, bool shouldPaint, bool isDescendant);
 
     Type type() const { return static_cast<Type>(m_type); }
     RenderBox& renderer() const { return m_renderer; }
@@ -62,8 +62,6 @@ public:
     void setY(LayoutUnit y) { ASSERT(!isInPlacedTree()); m_frameRect.setY(y); }
     void setWidth(LayoutUnit width) { ASSERT(!isInPlacedTree()); m_frameRect.setWidth(width); }
     void setHeight(LayoutUnit height) { ASSERT(!isInPlacedTree()); m_frameRect.setHeight(height); }
-
-    void setMarginOffset(LayoutSize offset) { ASSERT(!isInPlacedTree()); m_marginOffset = offset; }
 
     const LayoutRect& frameRect() const { ASSERT(isPlaced()); return m_frameRect; }
     void setFrameRect(const LayoutRect& frameRect) { ASSERT(!isInPlacedTree()); m_frameRect = frameRect; }
@@ -85,20 +83,11 @@ public:
     RootInlineBox* originatingLine() const { return m_originatingLine; }
     void setOriginatingLine(RootInlineBox* line) { m_originatingLine = line; }
 
-    LayoutSize locationOffsetOfBorderBox() const
-    {
-        ASSERT(isPlaced());
-        return LayoutSize(m_frameRect.location().x() + m_marginOffset.width(), m_frameRect.location().y() + m_marginOffset.height());
-    }
-    LayoutSize marginOffset() const { ASSERT(isPlaced()); return m_marginOffset; }
-    LayoutSize translationOffsetToAncestor() const;
-
 private:
     RenderBox& m_renderer;
-    RootInlineBox* m_originatingLine { nullptr };
+    RootInlineBox* m_originatingLine;
     LayoutRect m_frameRect;
     LayoutUnit m_paginationStrut;
-    LayoutSize m_marginOffset;
 
     unsigned m_type : 2; // Type (left or right aligned)
     unsigned m_shouldPaint : 1;

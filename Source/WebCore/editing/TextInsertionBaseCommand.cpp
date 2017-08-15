@@ -47,7 +47,7 @@ void TextInsertionBaseCommand::applyTextInsertionCommand(Frame* frame, TextInser
         command.setStartingSelection(selectionForInsertion);
         command.setEndingSelection(selectionForInsertion);
     }
-    command.apply();
+    applyCommand(&command);
     if (changeSelection) {
         command.setEndingSelection(endingSelection);
         frame->selection().setSelection(endingSelection);

@@ -38,21 +38,15 @@ namespace WebCore {
 
 class WEBPImageDecoder final : public ImageDecoder {
 public:
-    static Ref<ImageDecoder> create(AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
-    {
-        return adoptRef(*new WEBPImageDecoder(alphaOption, gammaAndColorProfileOption));
-    }
-
+    WEBPImageDecoder(AlphaOption, GammaAndColorProfileOption);
     virtual ~WEBPImageDecoder();
 
-    String filenameExtension() const override { return ASCIILiteral("webp"); }
+    String filenameExtension() const override { return "webp"; }
+    bool isSizeAvailable() override;
     ImageFrame* frameBufferAtIndex(size_t index) override;
 
 private:
-    WEBPImageDecoder(AlphaOption, GammaAndColorProfileOption);
-    void tryDecodeSize(bool allDataReceived) override { decode(true, allDataReceived); }
-
-    bool decode(bool onlySize, bool allDataReceived);
+    bool decode(bool onlySize);
 
     WebPIDecoder* m_decoder;
     bool m_hasAlpha;

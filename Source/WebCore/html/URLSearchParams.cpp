@@ -26,7 +26,6 @@
 #include "URLSearchParams.h"
 
 #include "DOMURL.h"
-#include "ExceptionCode.h"
 #include "URLParser.h"
 
 namespace WebCore {
@@ -37,34 +36,16 @@ URLSearchParams::URLSearchParams(const String& init, DOMURL* associatedURL)
 {
 }
 
-URLSearchParams::URLSearchParams(const Vector<WTF::KeyValuePair<String, String>>& pairs)
+URLSearchParams::URLSearchParams(const Vector<std::pair<String, String>>& pairs)
     : m_pairs(pairs)
 {
-}
-
-ExceptionOr<Ref<URLSearchParams>> URLSearchParams::create(Variant<Vector<Vector<String>>, Vector<WTF::KeyValuePair<String, String>>, String>&& variant)
-{
-    auto visitor = WTF::makeVisitor([&](const Vector<Vector<String>>& vector) -> ExceptionOr<Ref<URLSearchParams>> {
-        Vector<WTF::KeyValuePair<String, String>> pairs;
-        for (const auto& pair : vector) {
-            if (pair.size() != 2)
-                return Exception { TypeError };
-            pairs.append({pair[0], pair[1]});
-        }
-        return adoptRef(*new URLSearchParams(WTFMove(pairs)));
-    }, [&](const Vector<WTF::KeyValuePair<String, String>>& pairs) {
-        return adoptRef(*new URLSearchParams(pairs));
-    }, [&](const String& string) {
-        return adoptRef(*new URLSearchParams(string, nullptr));
-    });
-    return WTF::visit(visitor, variant);
 }
 
 String URLSearchParams::get(const String& name) const
 {
     for (const auto& pair : m_pairs) {
-        if (pair.key == name)
-            return pair.value;
+        if (pair.first == name)
+            return pair.second;
     }
     return String();
 }
@@ -72,30 +53,23 @@ String URLSearchParams::get(const String& name) const
 bool URLSearchParams::has(const String& name) const
 {
     for (const auto& pair : m_pairs) {
-        if (pair.key == name)
+        if (pair.first == name)
             return true;
     }
     return false;
 }
 
-void URLSearchParams::sort()
-{
-    std::stable_sort(m_pairs.begin(), m_pairs.end(), [] (const auto& a, const auto& b) {
-        return WTF::codePointCompareLessThan(a.key, b.key);
-    });
-    updateURL();
-}
-
 void URLSearchParams::set(const String& name, const String& value)
 {
     for (auto& pair : m_pairs) {
-        if (pair.key != name)
+        if (pair.first != name)
             continue;
-        if (pair.value != value)
-            pair.value = value;
+        if (pair.second != value)
+            pair.second = value;
         bool skippedFirstMatch = false;
         m_pairs.removeAllMatching([&] (const auto& pair) {
-            if (pair.key == name) {
+            bool nameMatches = pair.first == name;
+            if (nameMatches) {
                 if (skippedFirstMatch)
                     return true;
                 skippedFirstMatch = true;
@@ -120,15 +94,15 @@ Vector<String> URLSearchParams::getAll(const String& name) const
     Vector<String> values;
     values.reserveInitialCapacity(m_pairs.size());
     for (const auto& pair : m_pairs) {
-        if (pair.key == name)
-            values.uncheckedAppend(pair.value);
+        if (pair.first == name)
+            values.uncheckedAppend(pair.second);
     }
     return values;
 }
 
 void URLSearchParams::remove(const String& name)
 {
-    if (m_pairs.removeAllMatching([&] (const auto& pair) { return pair.key == name; }))
+    if (m_pairs.removeAllMatching([&] (const auto& pair) { return pair.first == name; }))
         updateURL();
 }
 
@@ -157,7 +131,7 @@ std::optional<WTF::KeyValuePair<String, String>> URLSearchParams::Iterator::next
         return std::nullopt;
 
     auto& pair = pairs[m_index++];
-    return WTF::KeyValuePair<String, String> { pair.key, pair.value };
+    return WTF::KeyValuePair<String, String> { pair.first, pair.second };
 }
 
 URLSearchParams::Iterator::Iterator(URLSearchParams& params)

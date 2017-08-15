@@ -28,10 +28,9 @@ class MediaControls extends LayoutNode
 
     constructor({ width = 300, height = 150, layoutTraits = LayoutTraits.Unknown } = {})
     {
-        super(`<div class="media-controls"></div>`);
+        super(`<div class="media-controls">`);
 
         this._scaleFactor = 1;
-        this._shouldCenterControlsVertically = false;
 
         this.width = width;
         this.height = height;
@@ -45,7 +44,7 @@ class MediaControls extends LayoutNode
         this.pipButton = new PiPButton(this);
         this.fullscreenButton = new FullscreenButton(this);
 
-        this.statusLabel = new StatusLabel(this);
+        this.statusLabel = new StatusLabel(this)
         this.timeControl = new TimeControl(this);
 
         this.controlsBar = new ControlsBar(this);
@@ -59,20 +58,6 @@ class MediaControls extends LayoutNode
 
     // Public
 
-    get layoutTraits()
-    {
-        return this._layoutTraits;
-    }
-
-    set layoutTraits(layoutTraits)
-    {
-        if (this._layoutTraits === layoutTraits)
-            return;
-
-        this._layoutTraits = layoutTraits;
-        this.layoutTraitsDidChange();
-    }
-
     get showsStartButton()
     {
         return !!this._showsStartButton;
@@ -82,7 +67,7 @@ class MediaControls extends LayoutNode
     {
         if (this._showsStartButton === flag)
             return;
-
+       
         this._showsStartButton = flag;
         this._invalidateChildren();
     }
@@ -101,38 +86,19 @@ class MediaControls extends LayoutNode
     {
         return this._scaleFactor;
     }
-
+    
     set scaleFactor(scaleFactor)
     {
         if (this._scaleFactor === scaleFactor)
             return;
-
+    
         this._scaleFactor = scaleFactor;
         this.markDirtyProperty("scaleFactor");
     }
 
-    get shouldCenterControlsVertically()
-    {
-        return this._shouldCenterControlsVertically;
-    }
-
-    set shouldCenterControlsVertically(flag)
-    {
-        if (this._shouldCenterControlsVertically === flag)
-            return;
-
-        this._shouldCenterControlsVertically = flag;
-        this.markDirtyProperty("scaleFactor");
-    }
-
-    get placard()
-    {
-        return this.children[0] instanceof Placard ? this.children[0] : null;
-    }
-
     get showsPlacard()
     {
-        return !!this.placard;
+        return this.children[0] instanceof Placard;
     }
 
     showPlacard(placard)
@@ -142,13 +108,12 @@ class MediaControls extends LayoutNode
             children.push(this.controlsBar);
 
         this.children = children;
-        this.layout();
     }
 
     hidePlacard()
     {
         if (this.showsPlacard)
-            this.placard.remove();
+            this.children[0].remove();
         this._invalidateChildren();
     }
 
@@ -161,41 +126,10 @@ class MediaControls extends LayoutNode
 
     commitProperty(propertyName)
     {
-        if (propertyName === "scaleFactor") {
-            const zoom = 1 / this._scaleFactor;
-            // We want to maintain the controls at a constant device height.
-            this.element.style.zoom = zoom;
-            // We also want to optionally center them vertically compared to their container.
-            this.element.style.top = this._shouldCenterControlsVertically ? `${(this.height / 2) * (zoom - 1)}px` : "auto"; 
-        } else
+        if (propertyName === "scaleFactor")
+            this.element.style.zoom = 1 / this._scaleFactor;
+        else
             super.commitProperty(propertyName);
-    }
-
-    controlsBarVisibilityDidChange(controlsBar)
-    {
-        if (controlsBar.visible)
-            this.layout();
-    }
-
-    controlsBarFadedStateDidChange()
-    {
-        if (this.delegate && typeof this.delegate.controlsBarFadedStateDidChange === "function")
-            this.delegate.controlsBarFadedStateDidChange();
-    }
-
-    layoutTraitsDidChange()
-    {
-        // Implemented by subclasses as needed.
-    }
-
-    layout()
-    {
-        super.layout();
-
-        if (this.showsPlacard) {
-            this.placard.width = this.width;
-            this.placard.height = this.height;
-        }
     }
 
     // Private

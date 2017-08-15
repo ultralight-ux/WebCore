@@ -37,16 +37,9 @@ class CryptoAlgorithmParameters {
 public:
     enum class Class {
         None,
-        AesCbcCfbParams,
-        AesCtrParams,
-        AesGcmParams,
-        AesKeyParams,
-        EcKeyParams,
-        EcdhKeyDeriveParams,
-        EcdsaParams,
-        HkdfParams,
+        AesCbcParams,
+        AesKeyGenParams,
         HmacKeyParams,
-        Pbkdf2Params,
         RsaHashedKeyGenParams,
         RsaHashedImportParams,
         RsaKeyGenParams,

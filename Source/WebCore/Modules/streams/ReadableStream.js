@@ -52,14 +52,7 @@ function initializeReadableStream(underlyingSource, strategy)
     const typeString = @String(type);
 
     if (typeString === "bytes") {
-        if (!@readableByteStreamAPIEnabled())
-            @throwTypeError("ReadableByteStreamController is not implemented");
-
-        if (strategy.highWaterMark === @undefined)
-            strategy.highWaterMark = 0;
-
-        let readableByteStreamControllerConstructor = @ReadableByteStreamController;
-        this.@readableStreamController = new @ReadableByteStreamController(this, underlyingSource, strategy.highWaterMark);
+        @throwTypeError("ReadableByteStreamController is not implemented");
     } else if (type === @undefined) {
         if (strategy.highWaterMark === @undefined)
             strategy.highWaterMark = 1;
@@ -93,12 +86,13 @@ function getReader(options)
     if (options === @undefined)
          options = { };
 
+    if (options.mode === 'byob') {
+        // FIXME: Update once ReadableByteStreamContoller and ReadableStreamBYOBReader are implemented.
+        @throwTypeError("ReadableStreamBYOBReader is not implemented");
+    }
+
     if (options.mode === @undefined)
         return new @ReadableStreamDefaultReader(this);
-
-    // String conversion is required by spec, hence double equals.
-    if (options.mode == 'byob')
-        return new @ReadableStreamBYOBReader(this);
 
     @throwRangeError("Invalid mode is specified");
 }
@@ -109,9 +103,7 @@ function pipeThrough(streams, options)
 
     const writable = streams.writable;
     const readable = streams.readable;
-    const promise = this.pipeTo(writable, options);
-    if (@isPromise(promise))
-        promise.@promiseIsHandled = true;
+    this.pipeTo(writable, options);
     return readable;
 }
 

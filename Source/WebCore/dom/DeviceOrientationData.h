@@ -26,7 +26,6 @@
 #pragma once
 
 #include "PlatformExportMacros.h"
-#include <wtf/Optional.h>
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
 
@@ -34,43 +33,54 @@ namespace WebCore {
 
 class DeviceOrientationData : public RefCounted<DeviceOrientationData> {
 public:
-    static Ref<DeviceOrientationData> create()
-    {
-        return adoptRef(*new DeviceOrientationData);
-    }
-
+    static Ref<DeviceOrientationData> create();
 #if PLATFORM(IOS)
-    WEBCORE_EXPORT static Ref<DeviceOrientationData> create(std::optional<double> alpha, std::optional<double> beta, std::optional<double> gamma, std::optional<double> compassHeading, std::optional<double> compassAccuracy);
+    WEBCORE_EXPORT static Ref<DeviceOrientationData> create(bool canProvideAlpha, double alpha, bool canProvideBeta, double beta, bool canProvideGamma, double gamma, bool canProvideCompassHeading, double compassHeading, bool canProvideCompassAccuracy, double compassAccuracy);
 #else
-    WEBCORE_EXPORT static Ref<DeviceOrientationData> create(std::optional<double> alpha, std::optional<double> beta, std::optional<double> gamma, std::optional<bool> absolute);
+    WEBCORE_EXPORT static Ref<DeviceOrientationData> create(bool canProvideAlpha, double alpha, bool canProvideBeta, double beta, bool canProvideGamma, double gamma, bool canProvideAbsolute = false, bool absolute = false);
 #endif
 
-    std::optional<double> alpha() const { return m_alpha; }
-    std::optional<double> beta() const { return m_beta; }
-    std::optional<double> gamma() const { return m_gamma; }
+    double alpha() const;
+    double beta() const;
+    double gamma() const;
+    bool absolute() const;
+    bool canProvideAlpha() const;
+    bool canProvideBeta() const;
+    bool canProvideGamma() const;
+    bool canProvideAbsolute() const;
+
 #if PLATFORM(IOS)
-    std::optional<double> compassHeading() const { return m_compassHeading; }
-    std::optional<double> compassAccuracy() const { return m_compassAccuracy; }
-#else
-    std::optional<bool> absolute() const { return m_absolute; }
+    double compassHeading() const;
+    double compassAccuracy() const;
+    bool canProvideCompassHeading() const;
+    bool canProvideCompassAccuracy() const;
 #endif
 
 private:
-    DeviceOrientationData() = default;
+    DeviceOrientationData();
 #if PLATFORM(IOS)
-    DeviceOrientationData(std::optional<double> alpha, std::optional<double> beta, std::optional<double> gamma, std::optional<double> compassHeading, std::optional<double> compassAccuracy);
+    DeviceOrientationData(bool canProvideAlpha, double alpha, bool canProvideBeta, double beta, bool canProvideGamma, double gamma, bool canProvideCompassHeading, double compassHeading, bool canProvideCompassAccuracy, double compassAccuracy);
 #else
-    DeviceOrientationData(std::optional<double> alpha, std::optional<double> beta, std::optional<double> gamma, std::optional<bool> absolute);
+    DeviceOrientationData(bool canProvideAlpha, double alpha, bool canProvideBeta, double beta, bool canProvideGamma, double gamma, bool canProvideAbsolute, bool absolute);
 #endif
 
-    std::optional<double> m_alpha;
-    std::optional<double> m_beta;
-    std::optional<double> m_gamma;
+    bool m_canProvideAlpha;
+    bool m_canProvideBeta;
+    bool m_canProvideGamma;
+#if !PLATFORM(IOS)
+    bool m_canProvideAbsolute;
+#endif
+    double m_alpha;
+    double m_beta;
+    double m_gamma;
+
 #if PLATFORM(IOS)
-    std::optional<double> m_compassHeading;
-    std::optional<double> m_compassAccuracy;
+    bool m_canProvideCompassHeading;
+    bool m_canProvideCompassAccuracy;
+    double m_compassHeading;
+    double m_compassAccuracy;
 #else
-    std::optional<bool> m_absolute;
+    bool m_absolute;
 #endif
 };
 

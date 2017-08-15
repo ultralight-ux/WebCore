@@ -46,7 +46,7 @@
 
 #else // !USE(EXPORT_MACROS)
 
-#if USE(DECLSPEC_ATTRIBUTE)
+#if OS(WINDOWS) && !COMPILER(GCC_OR_CLANG)
 
 #if defined(BUILDING_JavaScriptCore) || defined(STATICALLY_LINKED_WITH_JavaScriptCore)
 #define JS_EXPORTDATA __declspec(dllexport)

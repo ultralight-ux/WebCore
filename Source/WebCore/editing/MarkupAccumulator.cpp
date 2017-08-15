@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2012 Apple Inc. All rights reserved.
  * Copyright (C) 2009, 2010 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -214,10 +214,10 @@ void MarkupAccumulator::concatenateMarkup(StringBuilder& result)
     result.append(m_markup);
 }
 
-void MarkupAccumulator::appendAttributeValue(StringBuilder& result, const String& attribute, bool isSerializingHTML)
+void MarkupAccumulator::appendAttributeValue(StringBuilder& result, const String& attribute, bool documentIsHTML)
 {
     appendCharactersReplacingEntities(result, attribute, 0, attribute.length(),
-        isSerializingHTML ? EntityMaskInHTMLAttributeValue : EntityMaskInAttributeValue);
+        documentIsHTML ? EntityMaskInHTMLAttributeValue : EntityMaskInAttributeValue);
 }
 
 void MarkupAccumulator::appendCustomAttributes(StringBuilder&, const Element&, Namespaces*)
@@ -257,7 +257,7 @@ bool MarkupAccumulator::shouldAddNamespaceElement(const Element& element)
     if (prefix.isEmpty())
         return !element.hasAttribute(xmlnsAtom);
 
-    static NeverDestroyed<String> xmlnsWithColon(MAKE_STATIC_STRING_IMPL("xmlns:"));
+    static NeverDestroyed<String> xmlnsWithColon(ASCIILiteral("xmlns:"));
     return !element.hasAttribute(xmlnsWithColon.get() + prefix);
 }
 
@@ -489,12 +489,12 @@ void MarkupAccumulator::generateUniquePrefix(QualifiedName& prefixedName, const 
 
 void MarkupAccumulator::appendAttribute(StringBuilder& result, const Element& element, const Attribute& attribute, Namespaces* namespaces)
 {
-    bool isSerializingHTML = element.document().isHTMLDocument() && !inXMLFragmentSerialization();
+    bool documentIsHTML = element.document().isHTMLDocument();
 
     result.append(' ');
 
     QualifiedName prefixedName = attribute.name();
-    if (isSerializingHTML && !attributeIsInSerializedNamespace(attribute))
+    if (documentIsHTML && !attributeIsInSerializedNamespace(attribute))
         result.append(attribute.name().localName());
     else {
         if (!attribute.namespaceURI().isEmpty()) {
@@ -524,11 +524,11 @@ void MarkupAccumulator::appendAttribute(StringBuilder& result, const Element& el
         appendQuotedURLAttributeValue(result, element, attribute);
     else {
         result.append('"');
-        appendAttributeValue(result, attribute.value(), isSerializingHTML);
+        appendAttributeValue(result, attribute.value(), documentIsHTML);
         result.append('"');
     }
 
-    if (!isSerializingHTML && namespaces && shouldAddNamespaceAttribute(attribute, *namespaces))
+    if ((inXMLFragmentSerialization() || !documentIsHTML) && namespaces && shouldAddNamespaceAttribute(attribute, *namespaces))
         appendNamespace(result, prefixedName.prefix(), prefixedName.namespaceURI(), *namespaces);
 }
 

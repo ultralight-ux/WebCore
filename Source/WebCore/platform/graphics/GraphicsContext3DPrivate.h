@@ -24,11 +24,20 @@
 #include "GraphicsContext3D.h"
 #include "PlatformLayer.h"
 
+#if USE(TEXTURE_MAPPER)
+#include "TextureMapperPlatformLayer.h"
+#include "TextureMapperPlatformLayerProxy.h"
+#endif
+
 namespace WebCore {
 
 class BitmapTextureGL;
 
-class GraphicsContext3DPrivate {
+class GraphicsContext3DPrivate
+#if USE(TEXTURE_MAPPER)
+    : public PlatformLayer
+#endif
+{
 public:
     GraphicsContext3DPrivate(GraphicsContext3D*, GraphicsContext3D::RenderStyle);
     ~GraphicsContext3DPrivate();
@@ -37,9 +46,22 @@ public:
 
     GraphicsContext3D::RenderStyle renderStyle() { return m_renderStyle; }
 
+#if USE(COORDINATED_GRAPHICS_THREADED)
+    RefPtr<TextureMapperPlatformLayerProxy> proxy() const override;
+    void swapBuffersIfNeeded() override;
+#elif USE(TEXTURE_MAPPER)
+    virtual void paintToTextureMapper(TextureMapper&, const FloatRect& target, const TransformationMatrix&, float opacity);
+#endif
+
 private:
+    GraphicsContext3D* m_context;
     std::unique_ptr<GLContext> m_glContext;
     GraphicsContext3D::RenderStyle m_renderStyle;
+
+#if USE(COORDINATED_GRAPHICS_THREADED)
+    RefPtr<TextureMapperPlatformLayerProxy> m_platformLayerProxy;
+    RefPtr<BitmapTextureGL> m_compositorTexture;
+#endif
 };
 
 }

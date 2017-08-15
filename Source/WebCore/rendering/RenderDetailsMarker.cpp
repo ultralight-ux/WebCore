@@ -19,6 +19,7 @@
  */
 
 #include "config.h"
+#if ENABLE(DETAILS_ELEMENT)
 #include "RenderDetailsMarker.h"
 
 #include "Element.h"
@@ -152,3 +153,5 @@ bool RenderDetailsMarker::isOpen() const
 }
 
 }
+
+#endif

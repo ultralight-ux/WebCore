@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc.  All rights reserved.
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,6 +36,7 @@
 #include "CrossOriginAccessControl.h"
 #include "Document.h"
 #include "Logging.h"
+#include "SecurityOrigin.h"
 #include "SharedBuffer.h"
 #include "VTTCue.h"
 #include "WebVTTParser.h"
@@ -91,16 +92,12 @@ void TextTrackLoader::processNewCueData(CachedResource& resource)
     if (!m_cueParser)
         m_cueParser = std::make_unique<WebVTTParser>(static_cast<WebVTTParserClient*>(this), m_scriptExecutionContext);
 
-    auto bytesToSkip = m_parseOffset;
-    for (const auto& segment : *buffer) {
-        if (bytesToSkip > segment->size()) {
-            bytesToSkip -= segment->size();
-            continue;
-        }
-        auto bytesToUse = segment->size() - bytesToSkip;
-        m_cueParser->parseBytes(segment->data() + bytesToSkip, bytesToUse);
-        bytesToSkip = 0;
-        m_parseOffset += bytesToUse;
+    const char* data;
+    unsigned length;
+
+    while ((length = buffer->getSomeData(data, m_parseOffset))) {
+        m_cueParser->parseBytes(data, length);
+        m_parseOffset += length;
     }
 }
 
@@ -117,7 +114,7 @@ void TextTrackLoader::deprecatedDidReceiveCachedResource(CachedResource& resourc
 
 void TextTrackLoader::corsPolicyPreventedLoad()
 {
-    static NeverDestroyed<String> consoleMessage(MAKE_STATIC_STRING_IMPL("Cross-origin text track load denied by Cross-Origin Resource Sharing policy."));
+    static NeverDestroyed<String> consoleMessage(ASCIILiteral("Cross-origin text track load denied by Cross-Origin Resource Sharing policy."));
     Document* document = downcast<Document>(m_scriptExecutionContext);
     document->addConsoleMessage(MessageSource::Security, MessageLevel::Error, consoleMessage);
     m_state = Failed;
@@ -142,7 +139,7 @@ void TextTrackLoader::notifyFinished(CachedResource& resource)
         m_cueParser->flush();
 
     if (!m_cueLoadTimer.isActive())
-        m_cueLoadTimer.startOneShot(0_s);
+        m_cueLoadTimer.startOneShot(0);
 
     cancelLoad();
 }
@@ -175,7 +172,7 @@ void TextTrackLoader::newCuesParsed()
         return;
 
     m_newCuesAvailable = true;
-    m_cueLoadTimer.startOneShot(0_s);
+    m_cueLoadTimer.startOneShot(0);
 }
 
 void TextTrackLoader::newRegionsParsed()
@@ -190,7 +187,7 @@ void TextTrackLoader::fileFailedToParse()
     m_state = Failed;
 
     if (!m_cueLoadTimer.isActive())
-        m_cueLoadTimer.startOneShot(0_s);
+        m_cueLoadTimer.startOneShot(0);
 
     cancelLoad();
 }

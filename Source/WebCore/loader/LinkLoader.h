@@ -53,15 +53,13 @@ public:
 
     bool loadLink(const LinkRelAttribute&, const URL&, const String& as, const String& crossOrigin, Document&);
     static std::optional<CachedResource::Type> resourceTypeFromAsAttribute(const String& as);
-    static void loadLinksFromHeader(const String& headerValue, const URL& baseURL, Document&);
 
     WeakPtr<LinkLoader> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
     void triggerEvents(const CachedResource&);
-    void cancelLoad();
 
 private:
     void notifyFinished(CachedResource&) override;
-    static std::unique_ptr<LinkPreloadResourceClient> preloadIfNeeded(const LinkRelAttribute&, const URL& href, Document&, const String& as, const String& crossOriginMode, LinkLoader*, LinkLoaderClient*);
+    void preloadIfNeeded(const LinkRelAttribute&, const URL& href, Document&, const String& as, const String& crossOriginMode);
 
     LinkLoaderClient& m_client;
     CachedResourceHandle<CachedResource> m_cachedLinkResource;

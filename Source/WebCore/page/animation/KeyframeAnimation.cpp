@@ -29,7 +29,7 @@
 #include "config.h"
 #include "KeyframeAnimation.h"
 
-#include "CSSAnimationControllerPrivate.h"
+#include "AnimationControllerPrivate.h"
 #include "CSSPropertyAnimation.h"
 #include "CSSPropertyNames.h"
 #include "CompositeAnimation.h"
@@ -327,7 +327,7 @@ bool KeyframeAnimation::sendAnimationEvent(const AtomicString& eventType, double
             return false;
 
         // Schedule event handling
-        m_compositeAnimation->animationController().addEventToDispatch(*element, eventType, m_keyframes.animationName(), elapsedTime);
+        m_compositeAnimation->animationController().addEventToDispatch(element, eventType, m_keyframes.animationName(), elapsedTime);
 
         // Restore the original (unanimated) style
         if ((eventType == eventNames().webkitAnimationEndEvent || eventType == eventNames().animationendEvent) && element->renderer())
@@ -490,14 +490,14 @@ void KeyframeAnimation::checkForMatchingBackdropFilterFunctionLists()
 }
 #endif
 
-std::optional<Seconds> KeyframeAnimation::timeToNextService()
+double KeyframeAnimation::timeToNextService()
 {
-    std::optional<Seconds> t = AnimationBase::timeToNextService();
-    if (!t || t.value() != 0_s || preActive())
+    double t = AnimationBase::timeToNextService();
+    if (t != 0 || preActive())
         return t;
-
+        
     // A return value of 0 means we need service. But if we only have accelerated animations we 
-    // only need service at the end of the transition.
+    // only need service at the end of the transition
     bool acceleratedPropertiesOnly = true;
     
     for (auto propertyID : m_keyframes.properties()) {
@@ -509,7 +509,7 @@ std::optional<Seconds> KeyframeAnimation::timeToNextService()
 
     if (acceleratedPropertiesOnly) {
         bool isLooping;
-        getTimeToNextEvent(t.value(), isLooping);
+        getTimeToNextEvent(t, isLooping);
     }
 
     return t;

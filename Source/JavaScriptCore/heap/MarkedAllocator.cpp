@@ -52,7 +52,8 @@ MarkedAllocator::MarkedAllocator(Heap* heap, Subspace* subspace, size_t cellSize
 bool MarkedAllocator::isPagedOut(double deadline)
 {
     unsigned itersSinceLastTimeCheck = 0;
-    for (auto* block : m_blocks) {
+    for (size_t index = 0; index < m_blocks.size(); ++index) {
+        MarkedBlock::Handle* block = m_blocks[index];
         if (block)
             block->block().updateNeedsDestruction();
         ++itersSinceLastTimeCheck;
@@ -182,7 +183,7 @@ ALWAYS_INLINE void MarkedAllocator::doTestCollectionsIfNeeded(GCDeferralContext*
             if (deferralContext)
                 deferralContext->m_shouldGC = true;
             else
-                m_heap->collectNow(Sync, CollectionScope::Full);
+                m_heap->collectAllGarbage();
         }
     }
     if (++allocationCount >= Options::slowPathAllocsBetweenGCs())
@@ -215,14 +216,6 @@ void* MarkedAllocator::allocateSlowCaseImpl(GCDeferralContext* deferralContext, 
     AllocatingScope helpingHeap(*m_heap);
 
     m_heap->collectIfNecessaryOrDefer(deferralContext);
-    
-    // Goofy corner case: the GC called a callback and now this allocator has a currentBlock. This only
-    // happens when running WebKit tests, which inject a callback into the GC's finalization.
-    if (UNLIKELY(m_currentBlock)) {
-        if (crashOnFailure)
-            return allocate(deferralContext);
-        return tryAllocate(deferralContext);
-    }
     
     void* result = tryAllocateWithoutCollecting();
     

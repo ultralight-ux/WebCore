@@ -191,7 +191,7 @@ void RenderSVGResource::markForLayoutAndParentResourceInvalidation(RenderObject&
 {
     ASSERT(object.node());
 
-    if (needsLayout && !object.renderTreeBeingDestroyed())
+    if (needsLayout && !object.documentBeingDestroyed())
         object.setNeedsLayout();
 
     if (is<RenderElement>(object))

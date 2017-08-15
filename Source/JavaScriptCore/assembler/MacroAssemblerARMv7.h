@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2010, 2014-2016 Apple Inc. All rights reserved.
  * Copyright (C) 2010 University of Szeged
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1349,11 +1349,6 @@ public:
         m_assembler.dmbISHST();
     }
     
-    static void replaceWithBreakpoint(CodeLocationLabel instructionStart)
-    {
-        ARMv7Assembler::replaceWithBkpt(instructionStart.dataLocation());
-    }
-
     static void replaceWithJump(CodeLocationLabel instructionStart, CodeLocationLabel destination)
     {
         ARMv7Assembler::replaceWithJump(instructionStart.dataLocation(), destination.dataLocation());
@@ -1757,8 +1752,6 @@ public:
         m_assembler.bkpt(imm);
     }
 
-    static bool isBreakpoint(void* address) { return ARMv7Assembler::isBkpt(address); }
-
     ALWAYS_INLINE Call nearCall()
     {
         moveFixedWidthEncoding(TrustedImm32(0), dataTempRegister);
@@ -2016,7 +2009,7 @@ public:
     }
 
 #if ENABLE(MASM_PROBE)
-    void probe(ProbeFunction, void* arg);
+    void probe(ProbeFunction, void* arg1, void* arg2);
 #endif // ENABLE(MASM_PROBE)
 
 protected:

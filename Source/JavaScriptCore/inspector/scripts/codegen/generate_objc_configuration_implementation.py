@@ -36,9 +36,9 @@ from objc_generator_templates import ObjCGeneratorTemplates as ObjCTemplates
 log = logging.getLogger('global')
 
 
-class ObjCConfigurationImplementationGenerator(ObjCGenerator):
-    def __init__(self, *args, **kwargs):
-        ObjCGenerator.__init__(self, *args, **kwargs)
+class ObjCBackendDispatcherImplementationGenerator(ObjCGenerator):
+    def __init__(self, model, input_filepath):
+        ObjCGenerator.__init__(self, model, input_filepath)
 
     def output_filename(self):
         return '%sConfiguration.mm' % self.protocol_name()
@@ -57,6 +57,9 @@ class ObjCConfigurationImplementationGenerator(ObjCGenerator):
             'primaryInclude': '"%sConfiguration.h"' % self.protocol_name(),
             'secondaryIncludes': '\n'.join(['#import %s' % header for header in secondary_headers]),
         }
+
+        self._command_filter = ObjCGenerator.should_generate_domain_command_handler_filter(self.model())
+        self._event_filter = ObjCGenerator.should_generate_domain_event_dispatcher_filter(self.model())
 
         domains = self.domains_to_generate()
         sections = []
@@ -87,10 +90,10 @@ class ObjCConfigurationImplementationGenerator(ObjCGenerator):
         lines.extend(self._generate_dealloc(domains))
         lines.append('')
         for domain in domains:
-            if self.should_generate_commands_for_domain(domain):
+            if domain.commands and self._command_filter(domain):
                 lines.append(self._generate_handler_setter_for_domain(domain))
                 lines.append('')
-            if self.should_generate_events_for_domain(domain):
+            if domain.events and self._event_filter(domain):
                 lines.append(self._generate_event_dispatcher_getter_for_domain(domain))
                 lines.append('')
         lines.append('@end')
@@ -99,11 +102,11 @@ class ObjCConfigurationImplementationGenerator(ObjCGenerator):
     def _generate_ivars(self, domains):
         lines = []
         for domain in domains:
-            if self.should_generate_commands_for_domain(domain):
+            if domain.commands and self._command_filter(domain):
                 objc_class_name = '%s%sDomainHandler' % (self.objc_prefix(), domain.domain_name)
                 ivar_name = '_%sHandler' % ObjCGenerator.variable_name_prefix_for_domain(domain)
                 lines.append('    id<%s> %s;' % (objc_class_name, ivar_name))
-            if self.should_generate_events_for_domain(domain):
+            if domain.events and self._event_filter(domain):
                 objc_class_name = '%s%sDomainEventDispatcher' % (self.objc_prefix(), domain.domain_name)
                 ivar_name = '_%sEventDispatcher' % ObjCGenerator.variable_name_prefix_for_domain(domain)
                 lines.append('    %s *%s;' % (objc_class_name, ivar_name))
@@ -114,9 +117,9 @@ class ObjCConfigurationImplementationGenerator(ObjCGenerator):
         lines.append('- (void)dealloc')
         lines.append('{')
         for domain in domains:
-            if self.should_generate_commands_for_domain(domain):
+            if domain.commands and self._command_filter(domain):
                 lines.append('    [_%sHandler release];' % ObjCGenerator.variable_name_prefix_for_domain(domain))
-            if self.should_generate_events_for_domain(domain):
+            if domain.events and self._event_filter(domain):
                 lines.append('    [_%sEventDispatcher release];' % ObjCGenerator.variable_name_prefix_for_domain(domain))
         lines.append('    [super dealloc];')
         lines.append('}')

@@ -23,7 +23,6 @@
 #pragma once
 
 #include "AbstractPC.h"
-#include "CalleeBits.h"
 #include "MacroAssemblerCodeRef.h"
 #include "Register.h"
 #include "StackVisitor.h"
@@ -87,25 +86,10 @@ namespace JSC  {
     public:
         static const int headerSizeInRegisters = CallFrameSlot::argumentCount + 1;
 
-        // This function should only be called in very specific circumstances
-        // when you've guaranteed the callee can't be a Wasm callee, and can
-        // be an arbitrary JSValue. This function should basically never be used.
-        // Its only use right now is when we are making a call, and we're not
-        // yet sure if the callee is a cell. In general, a JS callee is guaranteed
-        // to be a cell, however, there is a brief window where we need to check
-        // to see if it's a cell, and if it's not, we throw an exception.
-        JSValue guaranteedJSValueCallee() const
-        {
-            ASSERT(!callee().isWasm());
-            return this[CallFrameSlot::callee].jsValue();
-        }
-        JSObject* jsCallee() const
-        {
-            ASSERT(!callee().isWasm());
-            return this[CallFrameSlot::callee].object();
-        }
-        CalleeBits callee() const { return CalleeBits(this[CallFrameSlot::callee].pointer()); }
-        SUPPRESS_ASAN CalleeBits unsafeCallee() const { return CalleeBits(this[CallFrameSlot::callee].pointer()); }
+        JSValue calleeAsValue() const { return this[CallFrameSlot::callee].jsValue(); }
+        JSObject* jsCallee() const { return this[CallFrameSlot::callee].object(); }
+        JSCell* callee() const { return this[CallFrameSlot::callee].unboxedCell(); }
+        SUPPRESS_ASAN JSValue unsafeCallee() const { return this[CallFrameSlot::callee].asanUnsafeJSValue(); }
         CodeBlock* codeBlock() const { return this[CallFrameSlot::codeBlock].Register::codeBlock(); }
         CodeBlock** addressOfCodeBlock() const { return bitwise_cast<CodeBlock**>(this + CallFrameSlot::codeBlock); }
         SUPPRESS_ASAN CodeBlock* unsafeCodeBlock() const { return this[CallFrameSlot::codeBlock].Register::asanUnsafeCodeBlock(); }
@@ -114,15 +98,9 @@ namespace JSC  {
             ASSERT(this[scopeRegisterOffset].Register::scope());
             return this[scopeRegisterOffset].Register::scope();
         }
+
         // Global object in which execution began.
-        // This variant is not safe to call from a Wasm frame.
         JS_EXPORT_PRIVATE JSGlobalObject* vmEntryGlobalObject();
-        // This variant is safe to call from a Wasm frame.
-        JSGlobalObject* vmEntryGlobalObject(VM&);
-
-        JSGlobalObject* wasmAwareLexicalGlobalObject(VM&);
-
-        bool isAnyWasmCallee();
 
         // Global object in which the currently executing code was defined.
         // Differs from vmEntryGlobalObject() during function calls across web browser frames.
@@ -158,8 +136,6 @@ namespace JSC  {
 
         CallFrame* unsafeCallerFrame(VMEntryFrame*&);
         JS_EXPORT_PRIVATE CallFrame* callerFrame(VMEntryFrame*&);
-
-        JS_EXPORT_PRIVATE SourceOrigin callerSourceOrigin();
 
         static ptrdiff_t callerFrameOffset() { return OBJECT_OFFSETOF(CallerFrameAndPC, callerFrame); }
 
@@ -279,17 +255,9 @@ namespace JSC  {
         //     StackVisitor::Status operator()(StackVisitor&) const;
         // FIXME: This method is improper. We rely on the fact that we can call it with a null
         // receiver. We should always be using StackVisitor directly.
-        // It's only valid to call this from a non-wasm top frame.
         template <typename Functor> void iterate(const Functor& functor)
         {
-            VM* vm;
-            void* rawThis = this;
-            if (!!rawThis) {
-                RELEASE_ASSERT(callee().isCell());
-                vm = &this->vm();
-            } else
-                vm = nullptr;
-            StackVisitor::visit<Functor>(this, vm, functor);
+            StackVisitor::visit<Functor>(this, functor);
         }
 
         void dump(PrintStream&);

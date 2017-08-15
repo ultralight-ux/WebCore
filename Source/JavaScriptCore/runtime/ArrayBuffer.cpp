@@ -284,18 +284,7 @@ void ArrayBuffer::setSharingMode(ArrayBufferSharingMode newSharingMode)
     makeShared();
 }
 
-bool ArrayBuffer::shareWith(ArrayBufferContents& result)
-{
-    if (!m_contents.m_data || !isShared()) {
-        result.m_data = nullptr;
-        return false;
-    }
-    
-    m_contents.shareWith(result);
-    return true;
-}
-
-bool ArrayBuffer::transferTo(VM& vm, ArrayBufferContents& result)
+bool ArrayBuffer::transferTo(ArrayBufferContents& result)
 {
     Ref<ArrayBuffer> protect(*this);
 
@@ -321,11 +310,22 @@ bool ArrayBuffer::transferTo(VM& vm, ArrayBufferContents& result)
     m_contents.transferTo(result);
     for (size_t i = numberOfIncomingReferences(); i--;) {
         JSCell* cell = incomingReferenceAt(i);
-        if (JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(vm, cell))
+        if (JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(cell))
             view->neuter();
-        else if (ArrayBufferNeuteringWatchpoint* watchpoint = jsDynamicCast<ArrayBufferNeuteringWatchpoint*>(vm, cell))
+        else if (ArrayBufferNeuteringWatchpoint* watchpoint = jsDynamicCast<ArrayBufferNeuteringWatchpoint*>(cell))
             watchpoint->fireAll();
     }
+    return true;
+}
+
+bool ArrayBuffer::shareWith(ArrayBufferContents& result)
+{
+    if (!m_contents.m_data || !isShared()) {
+        result.m_data = nullptr;
+        return false;
+    }
+    
+    m_contents.shareWith(result);
     return true;
 }
 

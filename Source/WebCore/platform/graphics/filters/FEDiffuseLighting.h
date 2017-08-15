@@ -30,7 +30,8 @@ class LightSource;
 
 class FEDiffuseLighting : public FELighting {
 public:
-    static Ref<FEDiffuseLighting> create(Filter&, const Color&, float, float, float, float, Ref<LightSource>&&);
+    static Ref<FEDiffuseLighting> create(Filter&, const Color&, float, float,
+        float, float, PassRefPtr<LightSource>);
     virtual ~FEDiffuseLighting();
 
     const Color& lightingColor() const;
@@ -48,14 +49,15 @@ public:
     float kernelUnitLengthY() const;
     bool setKernelUnitLengthY(float);
 
-    const LightSource& lightSource() const;
+    const LightSource* lightSource() const;
+    void setLightSource(PassRefPtr<LightSource>);
 
     void dump() override;
 
     TextStream& externalRepresentation(TextStream&, int indention) const override;
 
 private:
-    FEDiffuseLighting(Filter&, const Color&, float, float, float, float, Ref<LightSource>&&);
+    FEDiffuseLighting(Filter&, const Color&, float, float, float, float, PassRefPtr<LightSource>);
 };
 
 } // namespace WebCore

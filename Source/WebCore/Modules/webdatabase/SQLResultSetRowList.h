@@ -28,9 +28,8 @@
 
 #pragma once
 
-#include "ExceptionOr.h"
+#include <wtf/RefCounted.h>
 #include "SQLValue.h"
-#include <wtf/HashTraits.h>
 
 namespace WebCore {
 
@@ -45,7 +44,6 @@ public:
     void addResult(const SQLValue& result) { m_result.append(result); }
 
     unsigned length() const;
-    ExceptionOr<Vector<WTF::KeyValuePair<String, SQLValue>>> item(unsigned index) const;
 
 private:
     SQLResultSetRowList() { }

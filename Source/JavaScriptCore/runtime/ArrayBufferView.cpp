@@ -29,11 +29,11 @@
 namespace JSC {
 
 ArrayBufferView::ArrayBufferView(
-    RefPtr<ArrayBuffer>&& buffer,
+    PassRefPtr<ArrayBuffer> buffer,
     unsigned byteOffset)
         : m_byteOffset(byteOffset)
         , m_isNeuterable(true)
-        , m_buffer(WTFMove(buffer))
+        , m_buffer(buffer)
 {
     m_baseAddress = m_buffer ? (static_cast<char*>(m_buffer->data()) + m_byteOffset) : 0;
 }

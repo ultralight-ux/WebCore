@@ -24,9 +24,10 @@
  */
 
 #include "config.h"
-#include "OESVertexArrayObject.h"
 
 #if ENABLE(WEBGL)
+
+#include "OESVertexArrayObject.h"
 
 #include "Extensions3D.h"
 #include "WebGLRenderingContext.h"
@@ -48,8 +49,8 @@ RefPtr<WebGLVertexArrayObjectOES> OESVertexArrayObject::createVertexArrayOES()
     if (m_context.isContextLost())
         return nullptr;
 
-    auto object = WebGLVertexArrayObjectOES::create(m_context, WebGLVertexArrayObjectOES::Type::User);
-    m_context.addContextObject(object.get());
+    auto object = WebGLVertexArrayObjectOES::create(m_context, WebGLVertexArrayObjectOES::VAOTypeUser);
+    m_context.addContextObject(object.ptr());
     return WTFMove(object);
 }
 
@@ -57,9 +58,9 @@ void OESVertexArrayObject::deleteVertexArrayOES(WebGLVertexArrayObjectOES* array
 {
     if (!arrayObject || m_context.isContextLost())
         return;
-
-    if (!arrayObject->isDefaultObject() && arrayObject == static_cast<WebGLRenderingContext&>(m_context).m_boundVertexArrayObject)
-        static_cast<WebGLRenderingContext&>(m_context).setBoundVertexArrayObject(nullptr);
+    
+    if (!arrayObject->isDefaultObject() && arrayObject == static_cast<WebGLRenderingContext*>(&m_context)->m_boundVertexArrayObject)
+        static_cast<WebGLRenderingContext*>(&m_context)->setBoundVertexArrayObject(0);
 
     arrayObject->deleteObject(m_context.graphicsContext3D());
 }
@@ -88,7 +89,7 @@ void OESVertexArrayObject::bindVertexArrayOES(WebGLVertexArrayObjectOES* arrayOb
         context.setBoundVertexArrayObject(arrayObject);
     } else {
         extensions.bindVertexArrayOES(0);
-        context.setBoundVertexArrayObject(nullptr);
+        context.setBoundVertexArrayObject(0);
     }
 }
 

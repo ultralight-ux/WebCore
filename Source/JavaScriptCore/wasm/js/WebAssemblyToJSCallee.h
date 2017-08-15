@@ -31,27 +31,21 @@
 
 namespace JSC {
 
-class JSWebAssemblyModule;
-
-class WebAssemblyToJSCallee final : public JSCell {
+class WebAssemblyToJSCallee : public JSCell {
 public:
     typedef JSCell Base;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
 
-    static WebAssemblyToJSCallee* create(VM&, Structure*, JSWebAssemblyModule*);
+    static WebAssemblyToJSCallee* create(VM&, Structure*);
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
     DECLARE_EXPORT_INFO;
-
-    static void visitChildren(JSCell*, SlotVisitor&);
-
-    JSWebAssemblyModule* module() { return m_module.get(); }
+    static const bool needsDestruction = true;
+    static void destroy(JSCell*);
 
 private:
-    void finishCreation(VM&, JSWebAssemblyModule*);
+    void finishCreation(VM&);
     WebAssemblyToJSCallee(VM&, Structure*);
-
-    WriteBarrier<JSWebAssemblyModule> m_module;
 };
 
 } // namespace JSC

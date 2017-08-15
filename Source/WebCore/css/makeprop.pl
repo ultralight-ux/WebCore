@@ -32,8 +32,7 @@ use Getopt::Long;
 use JSON::PP;
 
 sub addProperty($$);
-sub isPropertyEnabled($$);
-sub removeInactiveCodegenProperties($$);
+sub isPropertyEnabled($);
 
 my $inputFile = "CSSProperties.json";
 
@@ -59,7 +58,6 @@ die "We've reached more than 1024 CSS properties, please make sure to update CSS
 my %defines = map { $_ => 1 } split(/ /, $defines);
 
 my @names;
-my @internalProprerties;
 my $numPredefinedProperties = 2;
 my %nameIsInherited;
 my %nameIsHighPriority;
@@ -88,86 +86,35 @@ my %nameToAliases;
 for my $name (@allNames) {
     my $value = $propertiesHashRef->{$name};
     my $valueType = ref($value);
-    
     if ($valueType eq "HASH") {
-        removeInactiveCodegenProperties($name, \%$value);
-        if (isPropertyEnabled($name, $value)) {
+        if (isPropertyEnabled($value)) {
             addProperty($name, $value);
         }
+    } elsif ($valueType eq "ARRAY") {
+        for my $v (@$value) {
+            if (isPropertyEnabled($v)) {
+                addProperty($name, $v);
+                last;
+            }
+        }
     } else {
-        die "$name does not have a supported value type. Only dictionary types are supported.";
+        die "$name does not have a supported value type. Only dictionary and array types are supported.";
     }
 }
 
-sub matchEnableFlags($)
+sub isPropertyEnabled($)
 {
-    my ($enable_flag) = @_;
-    
-    if (exists($defines{$enable_flag})) {
+    my ($optionsHashRef) = @_;
+    if (!$optionsHashRef->{"codegen-properties"} || !$optionsHashRef->{"codegen-properties"}{"enable-if"}) {
         return 1;
     }
-
-    if (substr($enable_flag, 0, 1) eq "!" && !exists($defines{substr($enable_flag, 1)})) {
+    if (exists($defines{$optionsHashRef->{"codegen-properties"}{"enable-if"}})) {
         return 1;
     }
-    
+    if (substr($optionsHashRef->{"codegen-properties"}{"enable-if"}, 0, 1) eq "!" && !exists($defines{substr($optionsHashRef->{"codegen-properties"}{"enable-if"}, 1)})) {
+        return 1;
+    }
     return 0;
-}
-
-sub removeInactiveCodegenProperties($$)
-{
-    my ($name, $propertyValue) = @_;
-
-    if (!exists($propertyValue->{"codegen-properties"})) {
-        return;
-    }
-    
-    my $codegen_properties = $propertyValue->{"codegen-properties"};
-    my $valueType = ref($codegen_properties);
-
-    if ($valueType ne "ARRAY") {
-        return;
-    }
-
-    # Pick one based on "enable-if"
-    my $matching_codegen_options;
-    foreach my $entry (@{$codegen_properties}) {
-        if (!exists($entry->{"enable-if"})) {
-            print "Found 'codegen-properties' array with an unconditional entry under '$name'. This is probably unintentional.\n";
-            $matching_codegen_options = $entry;
-            last;
-        }
-
-        my $enable_flags = $entry->{"enable-if"};
-        if (matchEnableFlags($enable_flags)) {
-            $matching_codegen_options = $entry;
-            last;
-        }
-
-        $matching_codegen_options = $entry;
-    }
-    
-    $propertyValue->{"codegen-properties"} = $matching_codegen_options;
-}
-
-sub isPropertyEnabled($$)
-{
-    my ($name, $propertyValue) = @_;
-
-    if (!exists($propertyValue->{"codegen-properties"})) {
-        return 1;
-    }
-    
-    my $codegen_properties = $propertyValue->{"codegen-properties"};
-    if ($codegen_properties->{"skip-codegen"}) {
-        return 0;
-    }
-
-    if (!exists($codegen_properties->{"enable-if"})) {
-        return 1;
-    }
-
-    return matchEnableFlags($codegen_properties->{"enable-if"});
 }
 
 sub addProperty($$)
@@ -186,21 +133,14 @@ sub addProperty($$)
             for my $codegenOptionName (keys %$codegenProperties) {
                 if ($codegenOptionName eq "enable-if") {
                     next;
-                } elsif ($codegenOptionName eq "skip-codegen") {
-                    next;
-                } elsif ($codegenOptionName eq "comment") {
-                    next;
                 } elsif ($codegenOptionName eq "high-priority") {
                     $nameIsHighPriority{$name} = 1;
                 } elsif ($codegenOptionName eq "aliases") {
                     $nameToAliases{$name} = $codegenProperties->{"aliases"};
                 } elsif ($styleBuilderOptions{$codegenOptionName}) {
                     $propertiesWithStyleBuilderOptions{$name}{$codegenOptionName} = $codegenProperties->{$codegenOptionName};
-                } elsif ($codegenOptionName eq "internal-only") {
-                    # internal-only properties exist to make it easier to parse compound properties (e.g. background-repeat) as if they were shorthands.
-                    push @internalProprerties, $name
                 } else {
-                    die "Unrecognized codegen property \"$codegenOptionName\" for $name property.";
+                    die "Unrecognized codegen property \"$optionName\" for $name property.";
                 }
             }
         } elsif ($optionName eq "animatable") {
@@ -300,27 +240,11 @@ for my $name (@names) {
     }
 }
 
-print GPERF << "EOF";
+print GPERF<< "EOF";
 %%
 const Property* findProperty(const char* str, unsigned int len)
 {
     return CSSPropertyNamesHash::findPropertyImpl(str, len);
-}
-
-bool isInternalCSSProperty(const CSSPropertyID id)
-{
-    switch (id) {
-EOF
-
-foreach my $name (sort @internalProprerties) {
-  print GPERF "    case CSSPropertyID::CSSProperty" . $nameToId{$name} . ":\n";
-}
-
-print GPERF << "EOF";
-        return true;
-    default:
-        return false;
-    }
 }
 
 const char* getPropertyName(CSSPropertyID id)
@@ -454,7 +378,6 @@ print HEADER "const CSSPropertyID lastHighPriorityProperty = CSSProperty" . $nam
 
 print HEADER << "EOF";
 
-bool isInternalCSSProperty(const CSSPropertyID);
 const char* getPropertyName(CSSPropertyID);
 const WTF::AtomicString& getPropertyNameAtomicString(CSSPropertyID id);
 WTF::String getPropertyNameString(CSSPropertyID id);
@@ -691,8 +614,8 @@ sub generateAnimationPropertyInheritValueSetter {
   my $indent = shift;
 
   my $setterContent = "";
-  $setterContent .= $indent . "auto& list = styleResolver.style()->" . getEnsureAnimationsOrTransitionsMethod($name) . "();\n";
-  $setterContent .= $indent . "auto* parentList = styleResolver.parentStyle()->" . getAnimationsOrTransitionsMethod($name) . "();\n";
+  $setterContent .= $indent . "AnimationList& list = styleResolver.style()->" . getEnsureAnimationsOrTransitionsMethod($name) . "();\n";
+  $setterContent .= $indent . "const AnimationList* parentList = styleResolver.parentStyle()->" . getAnimationsOrTransitionsMethod($name) . "();\n";
   $setterContent .= $indent . "size_t i = 0, parentSize = parentList ? parentList->size() : 0;\n";
   $setterContent .= $indent . "for ( ; i < parentSize && parentList->animation(i)." . getTestFunction($name) . "(); ++i) {\n";
   $setterContent .= $indent . "    if (list.size() <= i)\n";
@@ -703,7 +626,7 @@ sub generateAnimationPropertyInheritValueSetter {
   $setterContent .= $indent . "    list.animation(i).setAnimationMode(parentList->animation(i).animationMode());\n";
   $setterContent .= $indent . "}\n";
   $setterContent .= "\n";
-  $setterContent .= $indent . "// Reset any remaining animations to not have the property set.\n";
+  $setterContent .= $indent . "/* Reset any remaining animations to not have the property set. */\n";
   $setterContent .= $indent . "for ( ; i < list.size(); ++i)\n";
   $setterContent .= $indent . "    list.animation(i)." . getClearFunction($name) . "();\n";
 
@@ -751,11 +674,11 @@ sub generateFillLayerPropertyInitialValueSetter {
 
   my $setterContent = "";
   $setterContent .= $indent . "// Check for (single-layer) no-op before clearing anything.\n";
-  $setterContent .= $indent . "auto& layers = styleResolver.style()->" . getLayersFunction($name) . "();\n";
+  $setterContent .= $indent . "const FillLayer& layers = *styleResolver.style()->" . getLayersFunction($name) . "();\n";
   $setterContent .= $indent . "if (!layers.next() && (!layers." . $testFunction . "() || layers." . $getter . "() == $initial))\n";
   $setterContent .= $indent . "    return;\n";
   $setterContent .= "\n";
-  $setterContent .= $indent . "auto* child = &styleResolver.style()->" . getLayersAccessorFunction($name) . "();\n";
+  $setterContent .= $indent . "FillLayer* child = &styleResolver.style()->" . getLayersAccessorFunction($name) . "();\n";
   $setterContent .= $indent . "child->" . $setter . "(" . $initial . ");\n";
   $setterContent .= $indent . "for (child = child->next(); child; child = child->next())\n";
   $setterContent .= $indent . "    child->" . $clearFunction . "();\n";
@@ -774,12 +697,12 @@ sub generateFillLayerPropertyInheritValueSetter {
 
   my $setterContent = "";
   $setterContent .= $indent . "// Check for no-op before copying anything.\n";
-  $setterContent .= $indent . "if (styleResolver.parentStyle()->" . getLayersFunction($name) ."() == styleResolver.style()->" . getLayersFunction($name) . "())\n";
+  $setterContent .= $indent . "if (*styleResolver.parentStyle()->" . getLayersFunction($name) ."() == *styleResolver.style()->" . getLayersFunction($name) . "())\n";
   $setterContent .= $indent . "    return;\n";
   $setterContent .= "\n";
   $setterContent .= $indent . "auto* child = &styleResolver.style()->" . getLayersAccessorFunction($name) . "();\n";
   $setterContent .= $indent . "FillLayer* previousChild = nullptr;\n";
-  $setterContent .= $indent . "for (auto* parent = &styleResolver.parentStyle()->" . getLayersFunction($name) . "(); parent && parent->" . $testFunction . "(); parent = parent->next()) {\n";
+  $setterContent .= $indent . "for (auto* parent = styleResolver.parentStyle()->" . getLayersFunction($name) . "(); parent && parent->" . $testFunction . "(); parent = parent->next()) {\n";
   $setterContent .= $indent . "    if (!child) {\n";
   $setterContent .= $indent . "        previousChild->setNext(std::make_unique<FillLayer>(" . getFillLayerType($name) . "));\n";
   $setterContent .= $indent . "        child = previousChild->next();\n";
@@ -801,7 +724,7 @@ sub generateFillLayerPropertyValueSetter {
   my $CSSPropertyId = "CSSProperty" . $nameToId{$name};
 
   my $setterContent = "";
-  $setterContent .= $indent . "auto* child = &styleResolver.style()->" . getLayersAccessorFunction($name) . "();\n";
+  $setterContent .= $indent . "FillLayer* child = &styleResolver.style()->" . getLayersAccessorFunction($name) . "();\n";
   $setterContent .= $indent . "FillLayer* previousChild = nullptr;\n";
   $setterContent .= $indent . "if (is<CSSValueList>(value) && !is<CSSImageSetValue>(value)) {\n";
   $setterContent .= $indent . "    // Walk each value and put it into a layer, creating new layers as needed.\n";
@@ -907,7 +830,7 @@ sub generateInheritValueSetter {
   }
   if (!$didCallSetValue) {
     my $inheritedValue = $parentStyle . "->" . ($isSVG ? "svgStyle()." : "") .  $getter . "()";
-    $setterContent .= $indent . "    " . generateSetValueStatement($name, "forwardInheritedValue(" . $inheritedValue . ")") . ";\n";
+    $setterContent .= $indent . "    " . generateSetValueStatement($name, $inheritedValue) . ";\n";
   }
   $setterContent .= $indent . "}\n";
 
@@ -926,7 +849,7 @@ sub generateValueSetter {
     $convertedValue = "StyleBuilderConverter::convert" . $propertiesWithStyleBuilderOptions{$name}{"converter"} . "(styleResolver, value)";
   } elsif (exists($propertiesWithStyleBuilderOptions{$name}{"conditional-converter"})) {
     $setterContent .= $indent . "    auto convertedValue = StyleBuilderConverter::convert" . $propertiesWithStyleBuilderOptions{$name}{"conditional-converter"} . "(styleResolver, value);\n";
-    $convertedValue = "WTFMove(convertedValue.value())";
+    $convertedValue = "convertedValue.value()";
   } else {
     $convertedValue = "downcast<CSSPrimitiveValue>(value)";
   }

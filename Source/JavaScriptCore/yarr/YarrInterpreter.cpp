@@ -1957,7 +1957,9 @@ public:
                 currentCountAlreadyChecked += countToCheck;
             }
 
-            for (auto& term : alternative->m_terms) {
+            for (unsigned i = 0; i < alternative->m_terms.size(); ++i) {
+                PatternTerm& term = alternative->m_terms[i];
+
                 switch (term.type) {
                 case PatternTerm::TypeAssertionBOL:
                     assertionBOL(currentCountAlreadyChecked - term.inputPosition);

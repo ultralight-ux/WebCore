@@ -2,7 +2,7 @@
  * Copyright (C) 2000 Lars Knoll (knoll@kde.org)
  *           (C) 2000 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2003, 2005, 2006, 2007, 2008, 2010 Apple Inc. All rights reserved.
  * Copyright (C) 2006 Graham Dennis (graham.dennis@gmail.com)
  *
  * This library is free software; you can redistribute it and/or
@@ -79,33 +79,37 @@ private:
 
 class ImageContentData final : public ContentData {
 public:
-    explicit ImageContentData(Ref<StyleImage>&& image)
+    explicit ImageContentData(PassRefPtr<StyleImage> image)
         : ContentData(ImageDataType)
-        , m_image(WTFMove(image))
+        , m_image(image)
     {
+        ASSERT(m_image);
     }
 
-    const StyleImage& image() const { return m_image.get(); }
-    void setImage(Ref<StyleImage>&& image)
+    const StyleImage& image() const { return *m_image; }
+    void setImage(PassRefPtr<StyleImage> image)
     {
-        m_image = WTFMove(image);
+        ASSERT(image);
+        m_image = image;
     }
+
+    RenderPtr<RenderObject> createContentRenderer(Document&, const RenderStyle&) const override;
 
 private:
-    RenderPtr<RenderObject> createContentRenderer(Document&, const RenderStyle&) const final;
-    std::unique_ptr<ContentData> cloneInternal() const final
+    std::unique_ptr<ContentData> cloneInternal() const override
     {
-        auto image = std::make_unique<ImageContentData>(m_image.copyRef());
+        std::unique_ptr<ContentData> image = std::make_unique<ImageContentData>(m_image.get());
         image->setAltText(altText());
-        return WTFMove(image);
+
+        return image;
     }
 
-    Ref<StyleImage> m_image;
+    RefPtr<StyleImage> m_image;
 };
 
 inline bool operator==(const ImageContentData& a, const ImageContentData& b)
 {
-    return &a.image() == &b.image();
+    return a.image() == b.image();
 }
 
 inline bool operator!=(const ImageContentData& a, const ImageContentData& b)
@@ -124,9 +128,10 @@ public:
     const String& text() const { return m_text; }
     void setText(const String& text) { m_text = text; }
 
+    RenderPtr<RenderObject> createContentRenderer(Document&, const RenderStyle&) const override;
+
 private:
-    RenderPtr<RenderObject> createContentRenderer(Document&, const RenderStyle&) const final;
-    std::unique_ptr<ContentData> cloneInternal() const final { return std::make_unique<TextContentData>(m_text); }
+    std::unique_ptr<ContentData> cloneInternal() const override { return std::make_unique<TextContentData>(text()); }
 
     String m_text;
 };
@@ -157,11 +162,13 @@ public:
         m_counter = WTFMove(counter);
     }
 
+    RenderPtr<RenderObject> createContentRenderer(Document&, const RenderStyle&) const override;
+
 private:
-    RenderPtr<RenderObject> createContentRenderer(Document&, const RenderStyle&) const final;
-    std::unique_ptr<ContentData> cloneInternal() const final
+    std::unique_ptr<ContentData> cloneInternal() const override
     {
-        return std::make_unique<CounterContentData>(std::make_unique<CounterContent>(counter()));
+        auto counterData = std::make_unique<CounterContent>(counter());
+        return std::make_unique<CounterContentData>(WTFMove(counterData));
     }
 
     std::unique_ptr<CounterContent> m_counter;
@@ -188,9 +195,10 @@ public:
     QuoteType quote() const { return m_quote; }
     void setQuote(QuoteType quote) { m_quote = quote; }
 
+    RenderPtr<RenderObject> createContentRenderer(Document&, const RenderStyle&) const override;
+
 private:
-    RenderPtr<RenderObject> createContentRenderer(Document&, const RenderStyle&) const final;
-    std::unique_ptr<ContentData> cloneInternal() const final { return std::make_unique<QuoteContentData>(quote()); }
+    std::unique_ptr<ContentData> cloneInternal() const override { return std::make_unique<QuoteContentData>(quote()); }
 
     QuoteType m_quote;
 };

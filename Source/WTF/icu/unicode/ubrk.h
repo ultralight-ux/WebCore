@@ -1,6 +1,6 @@
 /*
 ******************************************************************************
-* Copyright (C) 1996-2014, International Business Machines Corporation and others.
+* Copyright (C) 1996-2013, International Business Machines Corporation and others.
 * All Rights Reserved.
 ******************************************************************************
 */
@@ -378,9 +378,10 @@ U_STABLE int32_t U_EXPORT2
 ubrk_previous(UBreakIterator *bi);
 
 /**
- * Set the iterator position to zero, the start of the text being scanned.
+ * Set the iterator position to the index of the first character in the text being scanned.
+ * This is not always the same as index 0 of the text.
  * @param bi The break iterator to use.
- * @return The new iterator position (zero).
+ * @return The character index of the first character in the text being scanned.
  * @see ubrk_last
  * @stable ICU 2.0
  */

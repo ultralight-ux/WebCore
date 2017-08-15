@@ -78,7 +78,7 @@ struct SecurityOriginData {
     }
     
 #if !LOG_DISABLED
-    WEBCORE_EXPORT String debugString() const;
+    String debugString() const;
 #endif
 };
 

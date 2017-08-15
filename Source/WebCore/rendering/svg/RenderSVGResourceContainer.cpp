@@ -44,6 +44,8 @@ RenderSVGResourceContainer::RenderSVGResourceContainer(SVGElement& element, Rend
 
 RenderSVGResourceContainer::~RenderSVGResourceContainer()
 {
+    if (m_registered)
+        svgExtensionsFromElement(element()).removeResource(m_id);
 }
 
 void RenderSVGResourceContainer::layout()
@@ -59,12 +61,6 @@ void RenderSVGResourceContainer::layout()
 void RenderSVGResourceContainer::willBeDestroyed()
 {
     SVGResourcesCache::resourceDestroyed(*this);
-
-    if (m_registered) {
-        svgExtensionsFromElement(element()).removeResource(m_id);
-        m_registered = false;
-    }
-
     RenderSVGHiddenContainer::willBeDestroyed();
 }
 
@@ -137,7 +133,7 @@ void RenderSVGResourceContainer::markClientForInvalidation(RenderObject& client,
         client.setNeedsBoundariesUpdate();
         break;
     case RepaintInvalidation:
-        if (!client.renderTreeBeingDestroyed())
+        if (!client.documentBeingDestroyed())
             client.repaint();
         break;
     case ParentOnlyInvalidation:

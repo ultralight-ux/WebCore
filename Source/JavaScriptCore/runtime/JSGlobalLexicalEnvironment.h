@@ -42,6 +42,7 @@ public:
             new (NotNull, allocateCell<JSGlobalLexicalEnvironment>(vm.heap)) JSGlobalLexicalEnvironment(vm, structure, parentScope);
         result->finishCreation(vm);
         result->symbolTable()->setScopeType(SymbolTable::ScopeType::GlobalLexicalScope);
+        vm.heap.addFinalizer(result, destroy);
         return result;
     }
 

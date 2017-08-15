@@ -55,7 +55,7 @@ void AudioTrackPrivateGStreamer::setEnabled(bool enabled)
     AudioTrackPrivate::setEnabled(enabled);
 
     if (enabled && m_playbin)
-        g_object_set(m_playbin.get(), "current-audio", m_index, nullptr);
+        g_object_set(m_playbin.get(), "current-audio", m_index, NULL);
 }
 
 } // namespace WebCore

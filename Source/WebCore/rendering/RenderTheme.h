@@ -62,10 +62,15 @@ public:
     virtual ~RenderTheme() { }
 
     // This function is to be implemented in your platform-specific theme implementation to hand back the
-    // appropriate platform theme.
-    static RenderTheme& singleton();
+    // appropriate platform theme. When the theme is needed in non-page dependent code, a default theme is
+    // used as fallback, which is returned for a nulled page, so the platform code needs to account for this.
+    static Ref<RenderTheme> themeForPage(Page*);
 
-    virtual void purgeCaches() { }
+    // When the theme is needed in non-page dependent code, the defaultTheme() is used as fallback.
+    static inline Ref<RenderTheme> defaultTheme()
+    {
+        return themeForPage(nullptr);
+    };
 
     // This method is called whenever style has been computed for an element and the appearance
     // property has been set to a value other than "none".  The theme should map in all of the appropriate
@@ -91,10 +96,9 @@ public:
     virtual String extraPlugInsStyleSheet() { return String(); }
 #if ENABLE(VIDEO)
     virtual String mediaControlsStyleSheet() { return String(); }
-    virtual String modernMediaControlsStyleSheet() { return String(); }
     virtual String extraMediaControlsStyleSheet() { return String(); }
     virtual String mediaControlsScript() { return String(); }
-    virtual String mediaControlsBase64StringForIconNameAndType(const String&, const String&) { return String(); }
+    virtual String mediaControlsBase64StringForIconAndPlatform(const String&, const String&) { return String(); }
 #endif
 #if ENABLE(FULLSCREEN_API)
     virtual String extraFullScreenStyleSheet() { return String(); }
@@ -171,7 +175,7 @@ public:
 #endif
     virtual void platformColorsDidChange();
 
-    virtual Seconds caretBlinkInterval() const { return 500_ms; }
+    virtual double caretBlinkInterval() const { return 0.5; }
 
     // System fonts and colors for CSS.
     void systemFont(CSSValueID, FontCascadeDescription&) const;
@@ -188,7 +192,7 @@ public:
     virtual ScrollbarControlSize scrollbarControlSizeForPart(ControlPart) { return RegularScrollbar; }
 
     // Returns the repeat interval of the animation for the progress bar.
-    virtual Seconds animationRepeatIntervalForProgressBar(RenderProgress&) const;
+    virtual double animationRepeatIntervalForProgressBar(RenderProgress&) const;
     // Returns the duration of the animation for the progress bar.
     virtual double animationDurationForProgressBar(RenderProgress&) const;
     virtual IntRect progressBarRectForBounds(const RenderObject&, const IntRect&) const;
@@ -201,7 +205,7 @@ public:
     virtual bool usesMediaControlVolumeSlider() const { return true; }
     virtual bool usesVerticalVolumeSlider() const { return true; }
     virtual double mediaControlsFadeInDuration() { return 0.1; }
-    virtual Seconds mediaControlsFadeOutDuration() { return 300_ms; }
+    virtual double mediaControlsFadeOutDuration() { return 0.3; }
     virtual String formatMediaControlsTime(float time) const;
     virtual String formatMediaControlsCurrentTime(float currentTime, float duration) const;
     virtual String formatMediaControlsRemainingTime(float currentTime, float duration) const;

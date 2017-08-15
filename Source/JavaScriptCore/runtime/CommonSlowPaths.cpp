@@ -40,7 +40,6 @@
 #include "ExceptionFuzz.h"
 #include "GetterSetter.h"
 #include "HostCallReturnValue.h"
-#include "ICStats.h"
 #include "Interpreter.h"
 #include "IteratorOperations.h"
 #include "JIT.h"
@@ -621,7 +620,7 @@ SLOW_PATH_DECL(slow_path_is_function)
 SLOW_PATH_DECL(slow_path_in)
 {
     BEGIN();
-    RETURN(jsBoolean(CommonSlowPaths::opIn(exec, OP_C(2).jsValue(), OP_C(3).jsValue(), pc[4].u.arrayProfile)));
+    RETURN(jsBoolean(CommonSlowPaths::opIn(exec, OP_C(2).jsValue(), OP_C(3).jsValue())));
 }
 
 SLOW_PATH_DECL(slow_path_del_by_val)
@@ -810,18 +809,6 @@ SLOW_PATH_DECL(slow_path_push_with_scope)
     int scopeReg = pc[3].u.operand;
     JSScope* currentScope = exec->uncheckedR(scopeReg).Register::scope();
     RETURN(JSWithScope::create(vm, exec->lexicalGlobalObject(), newScope, currentScope));
-}
-
-SLOW_PATH_DECL(slow_path_resolve_scope_for_hoisting_func_decl_in_eval)
-{
-    BEGIN();
-    const Identifier& ident = exec->codeBlock()->identifier(pc[3].u.operand);
-    JSScope* scope = exec->uncheckedR(pc[2].u.operand).Register::scope();
-    JSValue resolvedScope = JSScope::resolveScopeForHoistingFuncDeclInEval(exec, scope, ident);
-
-    CHECK_EXCEPTION();
-
-    RETURN(resolvedScope);
 }
 
 SLOW_PATH_DECL(slow_path_resolve_scope)
@@ -1021,7 +1008,7 @@ SLOW_PATH_DECL(slow_path_new_array_with_spread)
     JSGlobalObject* globalObject = exec->lexicalGlobalObject();
     Structure* structure = globalObject->arrayStructureForIndexingTypeDuringAllocation(ArrayWithContiguous);
 
-    JSArray* result = JSArray::tryCreate(vm, structure, arraySize);
+    JSArray* result = JSArray::tryCreateUninitialized(vm, structure, arraySize);
     if (UNLIKELY(!result))
         THROW(createOutOfMemoryError(exec));
     CHECK_EXCEPTION();
@@ -1034,12 +1021,12 @@ SLOW_PATH_DECL(slow_path_new_array_with_spread)
             JSFixedArray* array = jsCast<JSFixedArray*>(value);
             for (unsigned i = 0; i < array->size(); i++) {
                 RELEASE_ASSERT(array->get(i));
-                result->putDirectIndex(exec, index, array->get(i));
+                result->initializeIndex(vm, index, array->get(i));
                 ++index;
             }
         } else {
             // We are not spreading.
-            result->putDirectIndex(exec, index, value);
+            result->initializeIndex(vm, index, value);
             ++index;
         }
     }

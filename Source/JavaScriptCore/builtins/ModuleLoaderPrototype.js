@@ -92,14 +92,14 @@ function newRegistryEntry(key)
     return {
         key: key,
         state: @ModuleFetch,
+        metadata: @undefined,
         fetch: @undefined,
         instantiate: @undefined,
         satisfy: @undefined,
         dependencies: [], // To keep the module order, we store the module keys in the array.
         dependenciesMap: @undefined,
         module: @undefined, // JSModuleRecord
-        linkError: @undefined,
-        linkSucceeded: true,
+        error: @undefined,
     };
 }
 
@@ -127,7 +127,7 @@ function forceFulfillPromise(promise, value)
         @fulfillPromise(promise, value);
 }
 
-function fulfillFetch(entry, source)
+function fulfillFetch(entry, payload)
 {
     // https://whatwg.github.io/loader/#fulfill-fetch
 
@@ -135,7 +135,7 @@ function fulfillFetch(entry, source)
 
     if (!entry.fetch)
         entry.fetch = @newPromiseCapability(@InternalPromise).@promise;
-    this.forceFulfillPromise(entry.fetch, source);
+    this.forceFulfillPromise(entry.fetch, payload);
     @setStateToMax(entry, @ModuleInstantiate);
 }
 
@@ -204,7 +204,7 @@ function instantiation(result, source, entry)
 
 // Loader.
 
-function requestFetch(key, fetcher)
+function requestFetch(key, initiator)
 {
     // https://whatwg.github.io/loader/#request-fetch
 
@@ -220,15 +220,15 @@ function requestFetch(key, fetcher)
     //     Take the key and fetch the resource actually.
     //     For example, JavaScriptCore shell can provide the hook fetching the resource
     //     from the local file system.
-    var fetchPromise = this.fetch(key, fetcher).then((source) => {
+    var fetchPromise = this.fetch(key, initiator).then((payload) => {
         @setStateToMax(entry, @ModuleInstantiate);
-        return source;
+        return payload;
     });
     entry.fetch = fetchPromise;
     return fetchPromise;
 }
 
-function requestInstantiate(key, fetcher)
+function requestInstantiate(key, initiator)
 {
     // https://whatwg.github.io/loader/#request-instantiate
 
@@ -238,7 +238,7 @@ function requestInstantiate(key, fetcher)
     if (entry.instantiate)
         return entry.instantiate;
 
-    var instantiatePromise = this.requestFetch(key, fetcher).then((source) => {
+    var instantiatePromise = this.requestFetch(key, initiator).then((source) => {
         // Hook point.
         // 3. Loader.instantiate
         //     https://whatwg.github.io/loader/#browser-instantiate
@@ -246,7 +246,7 @@ function requestInstantiate(key, fetcher)
         //     by parsing the module source code.
         //     It has the chance to provide the optional module instance that is different from
         //     the ordinary one.
-        return this.instantiate(key, source, fetcher).then((optionalInstance) => {
+        return this.instantiate(key, source, initiator).then((optionalInstance) => {
             this.commitInstantiated(entry, optionalInstance, source);
             return entry;
         });
@@ -255,7 +255,7 @@ function requestInstantiate(key, fetcher)
     return instantiatePromise;
 }
 
-function requestSatisfy(key, fetcher)
+function requestSatisfy(key, initiator)
 {
     // https://whatwg.github.io/loader/#satisfy-instance
 
@@ -265,7 +265,7 @@ function requestSatisfy(key, fetcher)
     if (entry.satisfy)
         return entry.satisfy;
 
-    var satisfyPromise = this.requestInstantiate(key, fetcher).then((entry) => {
+    var satisfyPromise = this.requestInstantiate(key, initiator).then((entry) => {
         var depLoads = [];
         for (var i = 0, length = entry.dependencies.length; i < length; ++i) {
             let pair = entry.dependencies[i];
@@ -275,7 +275,7 @@ function requestSatisfy(key, fetcher)
             //     https://whatwg.github.io/loader/#browser-resolve
             //     Take the name and resolve it to the unique identifier for the resource location.
             //     For example, take the "jquery" and return the URL for the resource.
-            var promise = this.resolve(pair.key, key, fetcher).then((depKey) => {
+            var promise = this.resolve(pair.key, key, initiator).then((depKey) => {
                 var depEntry = this.ensureRegistered(depKey);
 
                 // Recursive resolving. The dependencies of this entry is being resolved or already resolved.
@@ -294,7 +294,7 @@ function requestSatisfy(key, fetcher)
                     });
                 }
 
-                return this.requestSatisfy(depKey, fetcher).then((entry) => {
+                return this.requestSatisfy(depKey, initiator).then((entry) => {
                     pair.value = entry.module;
                     return entry;
                 });
@@ -312,7 +312,16 @@ function requestSatisfy(key, fetcher)
     return satisfyPromise;
 }
 
-function requestLink(key, fetcher)
+function requestInstantiateAll(key, initiator)
+{
+    // https://whatwg.github.io/loader/#request-instantiate-all
+
+    "use strict";
+
+    return this.requestSatisfy(key, initiator);
+}
+
+function requestLink(key, initiator)
 {
     // https://whatwg.github.io/loader/#request-link
 
@@ -325,58 +334,54 @@ function requestLink(key, fetcher)
         return deferred.@promise;
     }
 
-    return this.requestSatisfy(key, fetcher).then((entry) => {
-        this.link(entry, fetcher);
+    return this.requestInstantiateAll(key, initiator).then((entry) => {
+        this.link(entry, initiator);
         return entry;
     });
 }
 
-function requestReady(key, fetcher)
+function requestReady(key, initiator)
 {
     // https://whatwg.github.io/loader/#request-ready
 
     "use strict";
 
-    return this.requestLink(key, fetcher).then((entry) => {
-        this.moduleEvaluation(entry.module, fetcher);
+    return this.requestLink(key, initiator).then((entry) => {
+        this.moduleEvaluation(entry.module, initiator);
     });
 }
 
 // Linking semantics.
 
-function link(entry, fetcher)
+function link(entry, initiator)
 {
     // https://whatwg.github.io/loader/#link
 
     "use strict";
 
-    if (!entry.linkSucceeded)
-        throw entry.linkError;
+    // FIXME: Current implementation does not support optionalInstance.
+    // So Link's step 3 is skipped.
+    // https://bugs.webkit.org/show_bug.cgi?id=148171
+
     if (entry.state === @ModuleReady)
         return;
     @setStateToMax(entry, @ModuleReady);
 
-    try {
-        // Since we already have the "dependencies" field,
-        // we can call moduleDeclarationInstantiation with the correct order
-        // without constructing the dependency graph by calling dependencyGraph.
-        var dependencies = entry.dependencies;
-        for (var i = 0, length = dependencies.length; i < length; ++i) {
-            var pair = dependencies[i];
-            this.link(pair.value.registryEntry, fetcher);
-        }
-
-        this.moduleDeclarationInstantiation(entry.module, fetcher);
-    } catch (error) {
-        entry.linkSucceeded = false;
-        entry.linkError = error;
-        throw error;
+    // Since we already have the "dependencies" field,
+    // we can call moduleDeclarationInstantiation with the correct order
+    // without constructing the dependency graph by calling dependencyGraph.
+    var dependencies = entry.dependencies;
+    for (var i = 0, length = dependencies.length; i < length; ++i) {
+        var pair = dependencies[i];
+        this.link(pair.value.registryEntry, initiator);
     }
+
+    this.moduleDeclarationInstantiation(entry.module, initiator);
 }
 
 // Module semantics.
 
-function moduleEvaluation(moduleRecord, fetcher)
+function moduleEvaluation(moduleRecord, initiator)
 {
     // http://www.ecma-international.org/ecma-262/6.0/#sec-moduleevaluation
 
@@ -393,9 +398,9 @@ function moduleEvaluation(moduleRecord, fetcher)
     for (var i = 0, length = dependencies.length; i < length; ++i) {
         var pair = dependencies[i];
         var requiredModuleRecord = pair.value;
-        this.moduleEvaluation(requiredModuleRecord, fetcher);
+        this.moduleEvaluation(requiredModuleRecord, initiator);
     }
-    this.evaluate(entry.key, moduleRecord, fetcher);
+    this.evaluate(entry.key, moduleRecord, initiator);
 }
 
 // APIs to control the module loader.
@@ -426,7 +431,7 @@ function provide(key, stage, value)
     @throwTypeError("Requested module is already ready to be executed.");
 }
 
-function loadAndEvaluateModule(moduleName, referrer, fetcher)
+function loadAndEvaluateModule(moduleName, referrer, initiator)
 {
     "use strict";
 
@@ -434,12 +439,12 @@ function loadAndEvaluateModule(moduleName, referrer, fetcher)
     // resolve: moduleName => Promise(moduleKey)
     // Take the name and resolve it to the unique identifier for the resource location.
     // For example, take the "jquery" and return the URL for the resource.
-    return this.resolve(moduleName, referrer, fetcher).then((key) => {
-        return this.requestReady(key, fetcher);
+    return this.resolve(moduleName, referrer, initiator).then((key) => {
+        return this.requestReady(key, initiator);
     });
 }
 
-function loadModule(moduleName, referrer, fetcher)
+function loadModule(moduleName, referrer, initiator)
 {
     "use strict";
 
@@ -447,14 +452,14 @@ function loadModule(moduleName, referrer, fetcher)
     // resolve: moduleName => Promise(moduleKey)
     // Take the name and resolve it to the unique identifier for the resource location.
     // For example, take the "jquery" and return the URL for the resource.
-    return this.resolve(moduleName, referrer, fetcher).then((key) => {
-        return this.requestSatisfy(key, fetcher);
+    return this.resolve(moduleName, referrer, initiator).then((key) => {
+        return this.requestInstantiateAll(key, initiator);
     }).then((entry) => {
         return entry.key;
     });
 }
 
-function linkAndEvaluateModule(key, fetcher)
+function linkAndEvaluateModule(key, initiator)
 {
     "use strict";
 
@@ -462,16 +467,6 @@ function linkAndEvaluateModule(key, fetcher)
     if (entry.state < @ModuleLink)
         @throwTypeError("Requested module is not instantiated yet.");
 
-    this.link(entry, fetcher);
-    return this.moduleEvaluation(entry.module, fetcher);
-}
-
-function requestImportModule(key, fetcher)
-{
-    "use strict";
-
-    return this.requestSatisfy(key, fetcher).then((entry) => {
-        this.linkAndEvaluateModule(entry.key, fetcher);
-        return this.getModuleNamespaceObject(entry.module);
-    });
+    this.link(entry, initiator);
+    return this.moduleEvaluation(entry.module, initiator);
 }

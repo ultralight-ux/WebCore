@@ -43,23 +43,17 @@ namespace ContentExtensions {
 struct Trigger {
     String urlFilter;
     bool urlFilterIsCaseSensitive { false };
-    bool topURLConditionIsCaseSensitive { false };
     ResourceFlags flags { 0 };
-    Vector<String> conditions;
-    enum class ConditionType {
+    Vector<String> domains;
+    enum class DomainCondition {
         None,
         IfDomain,
         UnlessDomain,
-        IfTopURL,
-        UnlessTopURL,
-    };
-    ConditionType conditionType { ConditionType::None };
+    } domainCondition { DomainCondition::None };
 
     ~Trigger()
     {
-        ASSERT(conditions.isEmpty() == (conditionType == ConditionType::None));
-        if (topURLConditionIsCaseSensitive)
-            ASSERT(conditionType == ConditionType::IfTopURL || conditionType == ConditionType::UnlessTopURL);
+        ASSERT(domains.isEmpty() == (domainCondition == DomainCondition::None));
     }
 
     bool isEmpty() const
@@ -67,8 +61,8 @@ struct Trigger {
         return urlFilter.isEmpty()
             && !urlFilterIsCaseSensitive
             && !flags
-            && conditions.isEmpty()
-            && conditionType == ConditionType::None;
+            && domains.isEmpty()
+            && domainCondition == DomainCondition::None;
     }
 
     bool operator==(const Trigger& other) const
@@ -76,8 +70,8 @@ struct Trigger {
         return urlFilter == other.urlFilter
             && urlFilterIsCaseSensitive == other.urlFilterIsCaseSensitive
             && flags == other.flags
-            && conditions == other.conditions
-            && conditionType == other.conditionType;
+            && domains == other.domains
+            && domainCondition == other.domainCondition;
     }
 };
 
@@ -89,10 +83,13 @@ struct TriggerHash {
             hash ^= StringHash::hash(trigger.urlFilter);
         hash = WTF::pairIntHash(hash, DefaultHash<ResourceFlags>::Hash::hash(trigger.flags));
 
-        for (const String& condition : trigger.conditions)
-            hash ^= StringHash::hash(condition);
+        for (const String& domain : trigger.domains)
+            hash ^= StringHash::hash(domain);
 
-        hash ^= 1 << static_cast<unsigned>(trigger.conditionType);
+        if (trigger.domainCondition == Trigger::DomainCondition::IfDomain)
+            hash |= 1 << 16;
+        else if (trigger.domainCondition == Trigger::DomainCondition::IfDomain)
+            hash |= 1 << 31;
         return hash;
     }
 
@@ -178,7 +175,7 @@ private:
     
 class ContentExtensionRule {
 public:
-    ContentExtensionRule(Trigger&&, Action&&);
+    ContentExtensionRule(const Trigger&, const Action&);
 
     const Trigger& trigger() const { return m_trigger; }
     const Action& action() const { return m_action; }

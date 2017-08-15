@@ -38,6 +38,8 @@ public:
     explicit ScrollingCoordinatorCoordinatedGraphics(Page*);
     virtual ~ScrollingCoordinatorCoordinatedGraphics();
 
+    bool supportsFixedPositionLayers() const override { return true; }
+
     ScrollingNodeID attachToStateTree(ScrollingNodeType, ScrollingNodeID newNodeID, ScrollingNodeID parentID) override;
     void detachFromStateTree(ScrollingNodeID) override;
     void clearStateTree() override;

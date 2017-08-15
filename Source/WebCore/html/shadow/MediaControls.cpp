@@ -87,17 +87,21 @@ void MediaControls::setMediaController(MediaControllerInterface* controller)
 
 void MediaControls::reset()
 {
+    Page* page = document().page();
+    if (!page)
+        return;
+
     m_playButton->updateDisplayType();
 
     updateCurrentTimeDisplay();
 
     double duration = m_mediaController->duration();
-    if (std::isfinite(duration) || RenderTheme::singleton().hasOwnDisabledStateHandlingFor(MediaSliderPart)) {
+    if (std::isfinite(duration) || page->theme().hasOwnDisabledStateHandlingFor(MediaSliderPart)) {
         m_timeline->setDuration(duration);
         m_timeline->setPosition(m_mediaController->currentTime());
     }
 
-    if (m_mediaController->hasAudio() || RenderTheme::singleton().hasOwnDisabledStateHandlingFor(MediaMuteButtonPart))
+    if (m_mediaController->hasAudio() || page->theme().hasOwnDisabledStateHandlingFor(MediaMuteButtonPart))
         m_panelMuteButton->show();
     else
         m_panelMuteButton->hide();
@@ -125,16 +129,19 @@ void MediaControls::reset()
 
 void MediaControls::reportedError()
 {
-    auto& theme = RenderTheme::singleton();
-    if (!theme.hasOwnDisabledStateHandlingFor(MediaMuteButtonPart)) {
+    Page* page = document().page();
+    if (!page)
+        return;
+
+    if (!page->theme().hasOwnDisabledStateHandlingFor(MediaMuteButtonPart)) {
         m_panelMuteButton->hide();
         m_volumeSlider->hide();
     }
 
-    if (m_toggleClosedCaptionsButton && !theme.hasOwnDisabledStateHandlingFor(MediaToggleClosedCaptionsButtonPart))
+    if (m_toggleClosedCaptionsButton && !page->theme().hasOwnDisabledStateHandlingFor(MediaToggleClosedCaptionsButtonPart))
         m_toggleClosedCaptionsButton->hide();
 
-    if (m_fullScreenButton && !theme.hasOwnDisabledStateHandlingFor(MediaEnterFullscreenButtonPart))
+    if (m_fullScreenButton && !page->theme().hasOwnDisabledStateHandlingFor(MediaEnterFullscreenButtonPart))
         m_fullScreenButton->hide();
 }
 
@@ -211,7 +218,12 @@ void MediaControls::playbackStopped()
 void MediaControls::updateCurrentTimeDisplay()
 {
     double now = m_mediaController->currentTime();
-    m_currentTimeDisplay->setInnerText(RenderTheme::singleton().formatMediaControlsTime(now));
+
+    Page* page = document().page();
+    if (!page)
+        return;
+
+    m_currentTimeDisplay->setInnerText(page->theme().formatMediaControlsTime(now));
     m_currentTimeDisplay->setCurrentValue(now);
 }
 

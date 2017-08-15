@@ -54,7 +54,7 @@ JSDOMWindowShell::JSDOMWindowShell(VM& vm, Structure* structure, DOMWrapperWorld
 void JSDOMWindowShell::finishCreation(VM& vm, RefPtr<DOMWindow>&& window)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     setWindow(WTFMove(window));
 }
 
@@ -81,14 +81,14 @@ void JSDOMWindowShell::setWindow(RefPtr<DOMWindow>&& domWindow)
     // constructed, it can mark its own prototype.)
     
     VM& vm = commonVM();
-    Structure* prototypeStructure = JSDOMWindowPrototype::createStructure(vm, nullptr, jsNull());
-    Strong<JSDOMWindowPrototype> prototype(vm, JSDOMWindowPrototype::create(vm, nullptr, prototypeStructure));
+    Structure* prototypeStructure = JSDOMWindowPrototype::createStructure(vm, 0, jsNull());
+    Strong<JSDOMWindowPrototype> prototype(vm, JSDOMWindowPrototype::create(vm, 0, prototypeStructure));
 
-    Structure* structure = JSDOMWindow::createStructure(vm, nullptr, prototype.get());
+    Structure* structure = JSDOMWindow::createStructure(vm, 0, prototype.get());
     JSDOMWindow* jsDOMWindow = JSDOMWindow::create(vm, structure, *domWindow, this);
     prototype->structure()->setGlobalObject(vm, jsDOMWindow);
 
-    Structure* windowPropertiesStructure = JSDOMWindowProperties::createStructure(vm, jsDOMWindow, JSEventTarget::prototype(vm, *jsDOMWindow));
+    Structure* windowPropertiesStructure = JSDOMWindowProperties::createStructure(vm, jsDOMWindow, JSEventTarget::prototype(vm, jsDOMWindow));
     JSDOMWindowProperties* windowProperties = JSDOMWindowProperties::create(windowPropertiesStructure, *jsDOMWindow);
 
     prototype->structure()->setPrototypeWithoutTransition(vm, windowProperties);
@@ -106,9 +106,9 @@ DOMWindow& JSDOMWindowShell::wrapped() const
     return window()->wrapped();
 }
 
-DOMWindow* JSDOMWindowShell::toWrapped(VM& vm, JSObject* value)
+DOMWindow* JSDOMWindowShell::toWrapped(JSObject* value)
 {
-    auto* wrapper = jsDynamicDowncast<JSDOMWindowShell*>(vm, value);
+    auto* wrapper = jsDynamicDowncast<JSDOMWindowShell*>(value);
     if (!wrapper)
         return nullptr;
     return &wrapper->window()->wrapped();

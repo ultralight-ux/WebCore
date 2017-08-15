@@ -39,8 +39,7 @@ namespace WebCore {
 class Frame;
 class HistoryItem;
 class SerializedScriptValue;
-
-struct StringWithDirection;
+class StringWithDirection;
 
 class HistoryController {
     WTF_MAKE_NONCOPYABLE(HistoryController);
@@ -84,8 +83,8 @@ public:
     HistoryItem* provisionalItem() const { return m_provisionalItem.get(); }
     void setProvisionalItem(HistoryItem*);
 
-    void pushState(RefPtr<SerializedScriptValue>&&, const String& title, const String& url);
-    void replaceState(RefPtr<SerializedScriptValue>&&, const String& title, const String& url);
+    void pushState(PassRefPtr<SerializedScriptValue>, const String& title, const String& url);
+    void replaceState(PassRefPtr<SerializedScriptValue>, const String& title, const String& url);
 
     void setDefersLoading(bool);
 

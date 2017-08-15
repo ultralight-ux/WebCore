@@ -363,7 +363,7 @@ void SVGElement::reportAttributeParsingError(SVGParsingError error, const Qualif
 
 void SVGElement::removedFrom(ContainerNode& rootParent)
 {
-    bool wasInDocument = rootParent.isConnected();
+    bool wasInDocument = rootParent.inDocument();
     if (wasInDocument)
         updateRelativeLengthsInformation(false, this);
 
@@ -462,8 +462,8 @@ void SVGElement::parseAttribute(const QualifiedName& name, const AtomicString& v
     if (name == HTMLNames::tabindexAttr) {
         if (value.isEmpty())
             clearTabIndexExplicitlyIfNeeded();
-        else if (auto optionalTabIndex = parseHTMLInteger(value))
-            setTabIndexExplicitly(optionalTabIndex.value());
+        else if (std::optional<int> tabIndex = parseHTMLInteger(value))
+            setTabIndexExplicitly(tabIndex.value());
         return;
     }
 
@@ -537,7 +537,7 @@ bool SVGElement::removeEventListener(const AtomicString& eventType, EventListene
     if (containingShadowRoot())
         return Node::removeEventListener(eventType, listener, options);
 
-    // EventTarget::removeEventListener creates a Ref around the given EventListener
+    // EventTarget::removeEventListener creates a PassRefPtr around the given EventListener
     // object when creating a temporary RegisteredEventListener object used to look up the
     // event listener in a cache. If we want to be able to call removeEventListener() multiple
     // times on different nodes, we have to delay its immediate destruction, which would happen
@@ -595,6 +595,9 @@ bool SVGElement::shouldMoveToFlowThread(const RenderStyle& styleToUse) const
 
 void SVGElement::sendSVGLoadEventIfPossible(bool sendParentLoadEvents)
 {
+    if (!inDocument() || !document().frame())
+        return;
+
     RefPtr<SVGElement> currentTarget = this;
     while (currentTarget && currentTarget->haveLoadedRequiredResources()) {
         RefPtr<Element> parent;
@@ -622,7 +625,7 @@ void SVGElement::sendSVGLoadEventIfPossible(bool sendParentLoadEvents)
 
 void SVGElement::sendSVGLoadEventIfPossibleAsynchronously()
 {
-    svgLoadEventTimer()->startOneShot(0_s);
+    svgLoadEventTimer()->startOneShot(0);
 }
 
 void SVGElement::svgLoadEventTimerFired()
@@ -977,7 +980,7 @@ void SVGElement::svgAttributeChanged(const QualifiedName& attrName)
         // Notify resources about id changes, this is important as we cache resources by id in SVGDocumentExtensions
         if (is<RenderSVGResourceContainer>(renderer))
             downcast<RenderSVGResourceContainer>(*renderer).idChanged();
-        if (isConnected())
+        if (inDocument())
             buildPendingResourcesIfNeeded();
         invalidateInstances();
         return;
@@ -994,7 +997,7 @@ Node::InsertionNotificationRequest SVGElement::insertedInto(ContainerNode& rootP
 
 void SVGElement::buildPendingResourcesIfNeeded()
 {
-    if (!needsPendingResourceHandling() || !isConnected() || isInShadowTree())
+    if (!needsPendingResourceHandling() || !inDocument() || isInShadowTree())
         return;
 
     SVGDocumentExtensions& extensions = document().accessSVGExtensions();
@@ -1067,7 +1070,7 @@ AffineTransform SVGElement::localCoordinateSpaceTransform(SVGLocatable::CTMScope
 void SVGElement::updateRelativeLengthsInformation(bool hasRelativeLengths, SVGElement* element)
 {
     // If we're not yet in a document, this function will be called again from insertedInto(). Do nothing now.
-    if (!isConnected())
+    if (!inDocument())
         return;
 
     // An element wants to notify us that its own relative lengths state changed.

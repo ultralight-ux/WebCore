@@ -26,9 +26,7 @@
 
 [
     ActiveDOMObject,
-    Constructor(USVString scriptUrl),
-    ConstructorCallWith=ScriptExecutionContext&RuntimeFlags,
-    ConstructorMayThrowException
+    CustomConstructor(USVString scriptUrl),
 ] interface Worker : EventTarget {
     void terminate();
 

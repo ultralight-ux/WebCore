@@ -35,22 +35,15 @@
 namespace WebCore {
 namespace Style {
 
-static bool mayBeAffectedByHostRules(const Element& element, const AtomicString& changedId, bool& mayAffectShadowTree)
+static bool mayBeAffectedByHostRules(const Element& element, const AtomicString& changedId)
 {
     auto* shadowRoot = element.shadowRoot();
     if (!shadowRoot)
         return false;
     auto& shadowRuleSets = shadowRoot->styleScope().resolver().ruleSets();
-    auto& authorStyle = shadowRuleSets.authorStyle();
-    if (authorStyle.hostPseudoClassRules().isEmpty() && !authorStyle.hasHostPseudoClassRulesMatchingInShadowTree())
+    if (shadowRuleSets.authorStyle().hostPseudoClassRules().isEmpty())
         return false;
-
-    if (!shadowRuleSets.features().idsInRules.contains(changedId))
-        return false;
-
-    if (authorStyle.hasHostPseudoClassRulesMatchingInShadowTree())
-        mayAffectShadowTree = true;
-    return true;
+    return shadowRuleSets.features().idsInRules.contains(changedId.impl());
 }
 
 static bool mayBeAffectedBySlottedRules(const Element& element, const AtomicString& changedId)
@@ -59,7 +52,7 @@ static bool mayBeAffectedBySlottedRules(const Element& element, const AtomicStri
         auto& ruleSets = shadowRoot->styleScope().resolver().ruleSets();
         if (ruleSets.authorStyle().slottedPseudoElementRules().isEmpty())
             continue;
-        if (ruleSets.features().idsInRules.contains(changedId))
+        if (ruleSets.features().idsInRules.contains(changedId.impl()))
             return true;
     }
     return false;
@@ -71,19 +64,15 @@ void IdChangeInvalidation::invalidateStyle(const AtomicString& changedId)
         return;
 
     auto& ruleSets = m_element.styleResolver().ruleSets();
-    bool mayAffectShadowTree = false;
 
-    bool mayAffectStyle = ruleSets.features().idsInRules.contains(changedId)
-        || mayBeAffectedByHostRules(m_element, changedId, mayAffectShadowTree)
+    bool mayAffectStyle = ruleSets.features().idsInRules.contains(changedId.impl())
+        || mayBeAffectedByHostRules(m_element, changedId)
         || mayBeAffectedBySlottedRules(m_element, changedId);
 
     if (!mayAffectStyle)
         return;
 
-    if (m_element.shadowRoot() && ruleSets.authorStyle().hasShadowPseudoElementRules())
-        mayAffectShadowTree = true;
-
-    if (mayAffectShadowTree) {
+    if (m_element.shadowRoot() && ruleSets.authorStyle().hasShadowPseudoElementRules()) {
         m_element.invalidateStyleForSubtree();
         return;
     }
@@ -92,7 +81,7 @@ void IdChangeInvalidation::invalidateStyle(const AtomicString& changedId)
 
     // This could be easily optimized for fine-grained descendant invalidation similar to ClassChangeInvalidation.
     // However using ids for dynamic styling is rare and this is probably not worth the memory cost of the required data structures.
-    bool mayAffectDescendantStyle = ruleSets.features().idsMatchingAncestorsInRules.contains(changedId);
+    bool mayAffectDescendantStyle = ruleSets.features().idsMatchingAncestorsInRules.contains(changedId.impl());
     if (mayAffectDescendantStyle)
         m_element.invalidateStyleForSubtree();
     else

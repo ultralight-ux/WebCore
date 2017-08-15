@@ -28,7 +28,6 @@
 #if ENABLE(ASYNC_SCROLLING)
 
 #include "IntRect.h"
-#include "ScrollSnapOffsetsInfo.h"
 #include "ScrollTypes.h"
 #include "ScrollingCoordinator.h"
 #include "ScrollingTreeNode.h"
@@ -57,10 +56,8 @@ public:
     virtual FloatPoint scrollPosition() const = 0;
 
 #if ENABLE(CSS_SCROLL_SNAP)
-    const Vector<float>& horizontalSnapOffsets() const { return m_snapOffsetsInfo.horizontalSnapOffsets; }
-    const Vector<float>& verticalSnapOffsets() const { return m_snapOffsetsInfo.verticalSnapOffsets; }
-    const Vector<ScrollOffsetRange<float>>& horizontalSnapOffsetRanges() const { return m_snapOffsetsInfo.horizontalSnapOffsetRanges; }
-    const Vector<ScrollOffsetRange<float>>& verticalSnapOffsetRanges() const { return m_snapOffsetsInfo.verticalSnapOffsetRanges; }
+    const Vector<float>& horizontalSnapOffsets() const { return m_horizontalSnapOffsets; }
+    const Vector<float>& verticalSnapOffsets() const { return m_verticalSnapOffsets; }
     unsigned currentHorizontalSnapPointIndex() const { return m_currentHorizontalSnapPointIndex; }
     unsigned currentVerticalSnapPointIndex() const { return m_currentVerticalSnapPointIndex; }
     void setCurrentHorizontalSnapPointIndex(unsigned index) { m_currentHorizontalSnapPointIndex = index; }
@@ -105,7 +102,8 @@ private:
     FloatPoint m_lastCommittedScrollPosition;
     IntPoint m_scrollOrigin;
 #if ENABLE(CSS_SCROLL_SNAP)
-    ScrollSnapOffsetsInfo<float> m_snapOffsetsInfo;
+    Vector<float> m_horizontalSnapOffsets;
+    Vector<float> m_verticalSnapOffsets;
     unsigned m_currentHorizontalSnapPointIndex { 0 };
     unsigned m_currentVerticalSnapPointIndex { 0 };
 #endif

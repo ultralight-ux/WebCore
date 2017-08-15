@@ -33,10 +33,6 @@
 #include "LLIntCommon.h"
 #include "JSCInlines.h"
 
-#if LLINT_SLOW_PATH_TRACING
-#include "Exception.h"
-#endif
-
 namespace JSC { namespace CommonSlowPaths {
 
 void interpreterThrowInCaller(ExecState* exec, JSObject* error)
@@ -47,7 +43,7 @@ void interpreterThrowInCaller(ExecState* exec, JSObject* error)
 
     throwException(exec, scope, error);
 #if LLINT_SLOW_PATH_TRACING
-    dataLog("Throwing exception ", JSValue(scope.exception()), ".\n");
+    dataLog("Throwing exception ", scope.exception(), ".\n");
 #endif
 }
 

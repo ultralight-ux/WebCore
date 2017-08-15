@@ -27,19 +27,19 @@
 namespace WebCore {
 
 StyleTransformData::StyleTransformData()
-    : operations(RenderStyle::initialTransform())
-    , x(RenderStyle::initialTransformOriginX())
-    , y(RenderStyle::initialTransformOriginY())
-    , z(RenderStyle::initialTransformOriginZ())
+    : m_operations(RenderStyle::initialTransform())
+    , m_x(RenderStyle::initialTransformOriginX())
+    , m_y(RenderStyle::initialTransformOriginY())
+    , m_z(RenderStyle::initialTransformOriginZ())
 {
 }
 
-inline StyleTransformData::StyleTransformData(const StyleTransformData& other)
+inline StyleTransformData::StyleTransformData(const StyleTransformData& o)
     : RefCounted<StyleTransformData>()
-    , operations(other.operations)
-    , x(other.x)
-    , y(other.y)
-    , z(other.z)
+    , m_operations(o.m_operations)
+    , m_x(o.m_x)
+    , m_y(o.m_y)
+    , m_z(o.m_z)
 {
 }
 
@@ -48,9 +48,9 @@ Ref<StyleTransformData> StyleTransformData::copy() const
     return adoptRef(*new StyleTransformData(*this));
 }
 
-bool StyleTransformData::operator==(const StyleTransformData& other) const
+bool StyleTransformData::operator==(const StyleTransformData& o) const
 {
-    return x == other.x && y == other.y && z == other.z && operations == other.operations;
+    return m_x == o.m_x && m_y == o.m_y && m_z == o.m_z && m_operations == o.m_operations;
 }
 
 } // namespace WebCore

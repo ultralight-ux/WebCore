@@ -158,7 +158,7 @@ void RenderRubyRun::removeChild(RenderObject& child)
 {
     // If the child is a ruby text, then merge the ruby base with the base of
     // the right sibling run, if possible.
-    if (!beingDestroyed() && !renderTreeBeingDestroyed() && child.isRubyText()) {
+    if (!beingDestroyed() && !documentBeingDestroyed() && child.isRubyText()) {
         RenderRubyBase* base = rubyBase();
         RenderObject* rightNeighbour = nextSibling();
         if (base && is<RenderRubyRun>(rightNeighbour)) {
@@ -167,7 +167,7 @@ void RenderRubyRun::removeChild(RenderObject& child)
             if (rightRun.hasRubyBase()) {
                 RenderRubyBase* rightBase = rightRun.rubyBaseSafe();
                 // Collect all children in a single base, then swap the bases.
-                rightBase->mergeChildrenWithBase(*base);
+                rightBase->mergeChildrenWithBase(base);
                 moveChildTo(&rightRun, base);
                 rightRun.moveChildTo(this, rightBase);
                 // The now empty ruby base will be removed below.
@@ -178,7 +178,7 @@ void RenderRubyRun::removeChild(RenderObject& child)
 
     RenderBlockFlow::removeChild(child);
 
-    if (!beingDestroyed() && !renderTreeBeingDestroyed()) {
+    if (!beingDestroyed() && !documentBeingDestroyed()) {
         // Check if our base (if any) is now empty. If so, destroy it.
         RenderBlock* base = rubyBase();
         if (base && !base->firstChild()) {
@@ -213,19 +213,17 @@ RenderRubyRun* RenderRubyRun::staticCreateRubyRun(const RenderObject* parentRuby
     return renderer;
 }
 
-void RenderRubyRun::layoutExcludedChildren(bool relayoutChildren)
+RenderObject* RenderRubyRun::layoutSpecialExcludedChild(bool relayoutChildren)
 {
-    RenderBlockFlow::layoutExcludedChildren(relayoutChildren);
-
     StackStats::LayoutCheckPoint layoutCheckPoint;
     // Don't bother positioning the RenderRubyRun yet.
     RenderRubyText* rt = rubyText();
     if (!rt)
-        return;
-    rt->setIsExcludedFromNormalLayout(true);
+        return 0;
     if (relayoutChildren)
         rt->setChildNeedsLayout(MarkOnlyThis);
     rt->layoutIfNeeded();
+    return rt;
 }
 
 void RenderRubyRun::layout()

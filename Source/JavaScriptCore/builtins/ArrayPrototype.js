@@ -39,7 +39,7 @@ function values()
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.values requires that |this| not be null or undefined");
 
     return new @createArrayIterator(@Object(this), "value", @arrayIteratorValueNext);
@@ -49,7 +49,7 @@ function keys()
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.keys requires that |this| not be null or undefined");
 
     return new @createArrayIterator(@Object(this), "key", @arrayIteratorKeyNext);
@@ -59,7 +59,7 @@ function entries()
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.entries requires that |this| not be null or undefined");
 
     return new @createArrayIterator(@Object(this), "key+value", @arrayIteratorKeyValueNext);
@@ -69,7 +69,7 @@ function reduce(callback /*, initialValue */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.reduce requires that |this| not be null or undefined");
 
     var array = @Object(this);
@@ -105,7 +105,7 @@ function reduceRight(callback /*, initialValue */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.reduceRight requires that |this| not be null or undefined");
 
     var array = @Object(this);
@@ -141,7 +141,7 @@ function every(callback /*, thisArg */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.every requires that |this| not be null or undefined");
     
     var array = @Object(this);
@@ -166,7 +166,7 @@ function forEach(callback /*, thisArg */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.forEach requires that |this| not be null or undefined");
     
     var array = @Object(this);
@@ -187,7 +187,7 @@ function filter(callback /*, thisArg */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.filter requires that |this| not be null or undefined");
     
     var array = @Object(this);
@@ -236,7 +236,7 @@ function map(callback /*, thisArg */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.map requires that |this| not be null or undefined");
     
     var array = @Object(this);
@@ -282,7 +282,7 @@ function some(callback /*, thisArg */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.some requires that |this| not be null or undefined");
     
     var array = @Object(this);
@@ -305,7 +305,7 @@ function fill(value /* [, start [, end]] */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.fill requires that |this| not be null or undefined");
 
     var array = @Object(this);
@@ -345,7 +345,7 @@ function find(callback /*, thisArg */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.find requires that |this| not be null or undefined");
     
     var array = @Object(this);
@@ -367,7 +367,7 @@ function findIndex(callback /*, thisArg */)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.findIndex requires that |this| not be null or undefined");
     
     var array = @Object(this);
@@ -388,7 +388,7 @@ function includes(searchElement /*, fromIndex*/)
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.includes requires that |this| not be null or undefined");
 
     var array = @Object(this);
@@ -543,17 +543,10 @@ function sort(comparator)
 
         for (var dstIndex = left; dstIndex < rightEnd; ++dstIndex) {
             if (right < rightEnd) {
-                if (left >= leftEnd) {
+                if (left >= leftEnd || comparator(src[right], src[left]) < 0) {
                     dst[dstIndex] = src[right++];
                     continue;
                 }
-
-                let comparisonResult = comparator(src[right], src[left]);
-                if ((typeof comparisonResult === "boolean" && !comparisonResult) || comparisonResult < 0) {
-                    dst[dstIndex] = src[right++];
-                    continue;
-                }
-
             }
 
             dst[dstIndex] = src[left++];
@@ -632,7 +625,7 @@ function sort(comparator)
         bucketSort(array, 0, strings, 0);
     }
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.sort requires that |this| not be null or undefined");
 
     var array = @Object(this);
@@ -646,7 +639,7 @@ function sort(comparator)
 
     if (typeof comparator == "function")
         comparatorSort(array, length, comparator);
-    else if (comparator === null || comparator === @undefined)
+    else if (comparator === @undefined)
         stringSort(array, length);
     else
         @throwTypeError("Array.prototype.sort requires the comparsion function be a function or undefined");
@@ -658,7 +651,7 @@ function concatSlowPath()
 {
     "use strict";
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.prototype.concat requires that |this| not be null or undefined");
 
     var currentElement = @Object(this);
@@ -748,7 +741,7 @@ function copyWithin(target, start /*, end */)
         return (maybeNegativeZero < positive) ? maybeNegativeZero : positive;
     }
 
-    if (this === null || this === @undefined)
+    if (this == null)
         @throwTypeError("Array.copyWithin requires that |this| not be null or undefined");
 
     var array = @Object(this);

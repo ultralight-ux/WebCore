@@ -25,4 +25,5 @@
 
 [
     Conditional=NOTIFICATIONS,
-] callback NotificationPermissionCallback = void (NotificationPermission permission);
+] callback NotificationPermissionCallback = void (DOMString permission);
+

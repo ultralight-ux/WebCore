@@ -30,7 +30,6 @@
 #include "JSDOMWindowCustom.h"
 #include "JSHTMLCollection.h"
 #include "SegmentedString.h"
-#include <runtime/Lookup.h>
 
 using namespace JSC;
 

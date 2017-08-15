@@ -34,7 +34,7 @@
 #include "MediaList.h"
 #include "MediaQuery.h"
 #include "MediaQueryBlockWatcher.h"
-#include "MediaQueryExpression.h"
+#include "MediaQueryExp.h"
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {

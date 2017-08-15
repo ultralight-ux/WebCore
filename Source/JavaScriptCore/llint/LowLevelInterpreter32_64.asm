@@ -1,4 +1,4 @@
-# Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+# Copyright (C) 2011-2016 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -49,7 +49,7 @@ macro dispatchAfterCall()
 end
 
 macro cCall2(function)
-    if ARM or ARMv7 or ARMv7_TRADITIONAL or MIPS
+    if ARM or ARMv7 or ARMv7_TRADITIONAL or MIPS or SH4
         call function
     elsif X86 or X86_WIN
         subp 8, sp
@@ -73,7 +73,7 @@ macro cCall2Void(function)
 end
 
 macro cCall4(function)
-    if ARM or ARMv7 or ARMv7_TRADITIONAL or MIPS
+    if ARM or ARMv7 or ARMv7_TRADITIONAL or MIPS or SH4
         call function
     elsif X86 or X86_WIN
         push a3
@@ -377,11 +377,11 @@ macro callCallSlowPath(slowPath, action)
     action(r0, r1)
 end
 
-macro callTrapHandler(throwHandler)
+macro callWatchdogTimerHandler(throwHandler)
     storei PC, ArgumentCount + TagOffset[cfr]
     move cfr, a0
     move PC, a1
-    cCall2(_llint_slow_path_handle_traps)
+    cCall2(_llint_slow_path_handle_watchdog_timer)
     btpnz r0, throwHandler
     loadi ArgumentCount + TagOffset[cfr], PC
 end
@@ -613,10 +613,6 @@ macro functionArityCheck(doneLabel, slowPath)
     // Move frame up t1 slots
     negi t1
     move cfr, t3
-    move t1, t0
-    lshiftp 3, t0
-    addp t0, cfr
-    addp t0, sp
 .copyLoop:
     loadi PayloadOffset[t3], t0
     storei t0, PayloadOffset[t3, t1, 8]
@@ -635,6 +631,9 @@ macro functionArityCheck(doneLabel, slowPath)
     addp 8, t3
     baddinz 1, t2, .fillLoop
 
+    lshiftp 3, t1
+    addp t1, cfr
+    addp t1, sp
 .continue:
     # Reload CodeBlock and PC, since the slow_path clobbered it.
     loadp CodeBlock[cfr], t1
@@ -2046,7 +2045,7 @@ macro nativeCallTrampoline(executableOffsetToFunction)
         andp MarkedBlockMask, t3
         loadp MarkedBlock::m_vm[t3], t3
         addp 8, sp
-    elsif ARM or ARMv7 or ARMv7_TRADITIONAL or C_LOOP or MIPS
+    elsif ARM or ARMv7 or ARMv7_TRADITIONAL or C_LOOP or MIPS or SH4
         subp 8, sp # align stack pointer
         # t1 already contains the Callee.
         andp MarkedBlockMask, t1

@@ -30,9 +30,6 @@ function fillFetchHeaders(headers, headersInit)
 {
     "use strict";
 
-    if (headersInit === @undefined)
-        return;
-
     if (headersInit instanceof @Headers) {
         @Headers.prototype.@fillFromJS.@call(headers, headersInit);
         return;

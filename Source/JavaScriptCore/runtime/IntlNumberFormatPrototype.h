@@ -32,9 +32,9 @@
 
 namespace JSC {
 
-class IntlNumberFormatPrototype : public JSNonFinalObject {
+class IntlNumberFormatPrototype : public IntlNumberFormat {
 public:
-    typedef JSNonFinalObject Base;
+    typedef IntlNumberFormat Base;
     static const unsigned StructureFlags = Base::StructureFlags | HasStaticPropertyTable;
 
     static IntlNumberFormatPrototype* create(VM&, JSGlobalObject*, Structure*);

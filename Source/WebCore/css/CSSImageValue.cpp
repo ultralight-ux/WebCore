@@ -33,6 +33,7 @@
 #include "DeprecatedCSSOMPrimitiveValue.h"
 #include "Document.h"
 #include "Element.h"
+#include "MemoryCache.h"
 
 namespace WebCore {
 
@@ -66,7 +67,7 @@ CachedImage* CSSImageValue::loadImage(CachedResourceLoader& loader, const Resour
     if (!m_accessedImage) {
         m_accessedImage = true;
 
-        CachedResourceRequest request(ResourceRequest(loader.document()->completeURL(m_url.string())), options);
+        CachedResourceRequest request(ResourceRequest(m_url), options);
         if (m_initiatorName.isEmpty())
             request.setInitiator(cachedResourceRequestInitiators().css);
         else

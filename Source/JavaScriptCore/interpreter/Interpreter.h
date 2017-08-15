@@ -138,7 +138,7 @@ namespace JSC {
         void getArgumentsData(CallFrame*, JSFunction*&, ptrdiff_t& firstParameterIndex, Register*& argv, int& argc);
         
         NEVER_INLINE HandlerInfo* unwind(VM&, CallFrame*&, Exception*, UnwindStart);
-        void notifyDebuggerOfExceptionToBeThrown(VM&, CallFrame*, Exception*);
+        void notifyDebuggerOfExceptionToBeThrown(CallFrame*, Exception*);
         NEVER_INLINE void debug(CallFrame*, DebugHookType);
         static JSString* stackTraceAsString(VM&, const Vector<StackFrame>&);
 
@@ -168,6 +168,7 @@ namespace JSC {
 #if !ENABLE(JIT)
         CLoopStack m_cloopStack;
 #endif
+        int m_errorHandlingModeReentry;
         
 #if ENABLE(COMPUTED_GOTO_OPCODES)
         Opcode* m_opcodeTable; // Maps OpcodeID => Opcode for compiling

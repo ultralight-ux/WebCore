@@ -56,19 +56,12 @@ RenderNamedFlowThread::RenderNamedFlowThread(Document& document, RenderStyle&& s
 
 RenderNamedFlowThread::~RenderNamedFlowThread()
 {
-    // Do not add any code here. Add it to willBeDestroyed() instead.
-}
-
-void RenderNamedFlowThread::willBeDestroyed()
-{
     // The flow thread can be destroyed without unregistering the content nodes if the document is destroyed.
     // This can lead to problems because the nodes are still marked as belonging to a flow thread.
     clearContentElements();
 
     // Also leave the NamedFlow object in a consistent state by calling mark for destruction.
     setMarkForDestruction();
-
-    RenderFlowThread::willBeDestroyed();
 }
 
 const char* RenderNamedFlowThread::renderName() const
@@ -537,7 +530,7 @@ void RenderNamedFlowThread::dispatchRegionOversetChangeEventIfNeeded()
     InspectorInstrumentation::didChangeRegionOverset(document(), namedFlow());
     
     if (!m_regionOversetChangeEventTimer.isActive() && namedFlow().hasEventListeners())
-        m_regionOversetChangeEventTimer.startOneShot(0_s);
+        m_regionOversetChangeEventTimer.startOneShot(0);
 }
 
 void RenderNamedFlowThread::regionOversetChangeEventTimerFired()

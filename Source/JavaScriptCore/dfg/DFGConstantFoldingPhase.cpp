@@ -162,7 +162,7 @@ private:
             case CheckDOM: {
                 JSValue constant = m_state.forNode(node->child1()).value();
                 if (constant) {
-                    if (constant.isCell() && constant.asCell()->inherits(m_graph.m_vm, node->classInfo())) {
+                    if (constant.isCell() && constant.asCell()->inherits(node->classInfo())) {
                         m_interpreter.execute(indexInBlock);
                         node->remove();
                         eliminated = true;
@@ -209,7 +209,7 @@ private:
                 const RegisteredStructureSet& set = node->structureSet();
                 
                 if (value.value()) {
-                    if (Structure* structure = jsDynamicCast<Structure*>(m_graph.m_vm, value.value())) {
+                    if (Structure* structure = jsDynamicCast<Structure*>(value.value())) {
                         if (set.contains(m_graph.registerStructure(structure))) {
                             m_interpreter.execute(indexInBlock);
                             node->remove();
@@ -224,7 +224,7 @@ private:
                     phiChildren->forAllTransitiveIncomingValues(
                         node,
                         [&] (Node* incoming) {
-                            if (Structure* structure = incoming->dynamicCastConstant<Structure*>(m_graph.m_vm)) {
+                            if (Structure* structure = incoming->dynamicCastConstant<Structure*>()) {
                                 if (set.contains(m_graph.registerStructure(structure)))
                                     return;
                             }
@@ -602,29 +602,6 @@ private:
                 break;
             }
 
-            case ParseInt: {
-                AbstractValue& value = m_state.forNode(node->child1());
-                if (!value.m_type || (value.m_type & ~SpecInt32Only))
-                    break;
-
-                JSValue radix;
-                if (!node->child2())
-                    radix = jsNumber(0);
-                else
-                    radix = m_state.forNode(node->child2()).m_value;
-
-                if (!radix.isNumber())
-                    break;
-
-                if (radix.asNumber() == 0 || radix.asNumber() == 10) {
-                    node->child2() = Edge();
-                    node->convertToIdentity();
-                    changed = true;
-                }
-
-                break;
-            }
-
             case Check: {
                 alreadyHandled = true;
                 m_interpreter.execute(indexInBlock);
@@ -636,35 +613,6 @@ private:
                         node->children.removeEdge(i--);
                         changed = true;
                     }
-                }
-                break;
-            }
-
-            case MakeRope: {
-                for (unsigned i = 0; i < AdjacencyList::Size; ++i) {
-                    Edge& edge = node->children.child(i);
-                    if (!edge)
-                        break;
-                    JSValue childConstant = m_state.forNode(edge).value();
-                    if (!childConstant)
-                        continue;
-                    if (!childConstant.isString())
-                        continue;
-                    if (asString(childConstant)->length())
-                        continue;
-
-                    // Don't allow the MakeRope to have zero children.
-                    if (!i && !node->child2())
-                        break;
-
-                    node->children.removeEdge(i--);
-                    changed = true;
-                }
-
-                if (!node->child2()) {
-                    ASSERT(!node->child3());
-                    node->convertToIdentity();
-                    changed = true;
                 }
                 break;
             }

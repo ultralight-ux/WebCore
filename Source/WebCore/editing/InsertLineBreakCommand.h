@@ -43,6 +43,8 @@ private:
 
     bool preservesTypingStyle() const override;
 
+    void insertNodeAfterPosition(Node*, const Position&);
+    void insertNodeBeforePosition(Node*, const Position&);
     bool shouldUseBreakElement(const Position&);
 };
 

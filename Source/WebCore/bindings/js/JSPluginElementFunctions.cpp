@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2004-2008, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -40,7 +40,7 @@ Instance* pluginInstance(HTMLElement& element)
     // The plugin element holds an owning reference, so we don't have to.
     if (!is<HTMLPlugInElement>(element))
         return nullptr;
-    auto* instance = downcast<HTMLPlugInElement>(element).bindingsInstance();
+    Instance* instance = downcast<HTMLPlugInElement>(element).getInstance().get();
     if (!instance || !instance->rootObject())
         return nullptr;
     return instance;
@@ -71,23 +71,23 @@ JSObject* pluginScriptObject(ExecState* exec, JSHTMLElement* jsHTMLElement)
     if (!is<HTMLPlugInElement>(element))
         return nullptr;
 
-    auto& pluginElement = downcast<HTMLPlugInElement>(element);
+    HTMLPlugInElement& pluginElement = downcast<HTMLPlugInElement>(element);
 
     // Choke point for script/plugin interaction; notify DOMTimer of the event.
     DOMTimer::scriptDidInteractWithPlugin(pluginElement);
 
     // First, see if the element has a plug-in replacement with a script.
-    if (auto* scriptObject = pluginElement.scriptObjectForPluginReplacement())
+    if (JSObject* scriptObject = pluginElement.scriptObjectForPluginReplacement())
         return scriptObject;
     
     // Next, see if we can ask the plug-in view for its script object.
-    if (auto* scriptObject = pluginScriptObjectFromPluginViewBase(pluginElement, jsHTMLElement->globalObject()))
+    if (JSObject* scriptObject = pluginScriptObjectFromPluginViewBase(pluginElement, jsHTMLElement->globalObject()))
         return scriptObject;
 
     // Otherwise, fall back to getting the object from the instance.
 
     // The plugin element holds an owning reference, so we don't have to.
-    auto* instance = pluginElement.bindingsInstance();
+    Instance* instance = pluginElement.getInstance().get();
     if (!instance || !instance->rootObject())
         return nullptr;
 
@@ -99,7 +99,7 @@ EncodedJSValue pluginElementPropertyGetter(ExecState* exec, EncodedJSValue thisV
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSHTMLElement* thisObject = jsDynamicDowncast<JSHTMLElement*>(vm, JSValue::decode(thisValue));
+    JSHTMLElement* thisObject = jsDynamicDowncast<JSHTMLElement*>(JSValue::decode(thisValue));
     if (!thisObject)
         return throwVMTypeError(exec, scope);
     JSObject* scriptObject = pluginScriptObject(exec, thisObject);

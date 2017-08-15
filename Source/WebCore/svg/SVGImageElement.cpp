@@ -72,7 +72,7 @@ Ref<SVGImageElement> SVGImageElement::create(const QualifiedName& tagName, Docum
 bool SVGImageElement::hasSingleSecurityOrigin() const
 {
     auto* renderer = downcast<RenderSVGImage>(this->renderer());
-    if (!renderer || !renderer->imageResource().cachedImage())
+    if (!renderer || !renderer->imageResource().hasImage())
         return true;
     auto* image = renderer->imageResource().cachedImage()->image();
     return !image || image->hasSingleSecurityOrigin();
@@ -182,7 +182,7 @@ bool SVGImageElement::haveLoadedRequiredResources()
 void SVGImageElement::didAttachRenderers()
 {
     if (auto* imageObj = downcast<RenderSVGImage>(renderer())) {
-        if (imageObj->imageResource().cachedImage())
+        if (imageObj->imageResource().hasImage())
             return;
 
         imageObj->imageResource().setCachedImage(m_imageLoader.image());
@@ -192,7 +192,7 @@ void SVGImageElement::didAttachRenderers()
 Node::InsertionNotificationRequest SVGImageElement::insertedInto(ContainerNode& rootParent)
 {
     SVGGraphicsElement::insertedInto(rootParent);
-    if (!rootParent.isConnected())
+    if (!rootParent.inDocument())
         return InsertionDone;
     // Update image loader, as soon as we're living in the tree.
     // We can only resolve base URIs properly, after that!

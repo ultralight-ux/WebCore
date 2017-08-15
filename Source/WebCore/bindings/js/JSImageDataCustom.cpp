@@ -26,10 +26,8 @@
 #include "config.h"
 #include "JSImageData.h"
 
-#include "JSDOMConvertBufferSource.h"
-#include "JSDOMWrapperCache.h"
-#include <heap/HeapInlines.h>
-#include <runtime/IdentifierInlines.h>
+#include "ImageData.h"
+#include "JSDOMBinding.h"
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/WTFString.h>
 

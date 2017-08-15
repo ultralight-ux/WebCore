@@ -35,7 +35,7 @@
 namespace WebCore {
 
 static const double cInterpolationCutoff = 800. * 800.;
-static const Seconds lowQualityTimeThreshold { 500_ms };
+static const double cLowQualityTimeThreshold = 0.500; // 500 ms
 
 ImageQualityController::ImageQualityController(const RenderView& renderView)
     : m_renderView(renderView)
@@ -74,7 +74,7 @@ void ImageQualityController::removeObject(RenderBoxModelObject* object)
 
 void ImageQualityController::highQualityRepaintTimerFired()
 {
-    if (m_renderView.renderTreeBeingDestroyed())
+    if (m_renderView.documentBeingDestroyed())
         return;
     if (!m_animatedResizeIsActive && !m_liveResizeOptimizationIsActive)
         return;
@@ -94,7 +94,7 @@ void ImageQualityController::highQualityRepaintTimerFired()
 
 void ImageQualityController::restartTimer()
 {
-    m_timer.startOneShot(lowQualityTimeThreshold);
+    m_timer.startOneShot(cLowQualityTimeThreshold);
 }
 
 std::optional<InterpolationQuality> ImageQualityController::interpolationQualityFromStyle(const RenderStyle& style)
@@ -113,7 +113,7 @@ std::optional<InterpolationQuality> ImageQualityController::interpolationQuality
     return std::nullopt;
 }
 
-InterpolationQuality ImageQualityController::chooseInterpolationQuality(GraphicsContext& context, RenderBoxModelObject* object, Image& image, const void* layer, const LayoutSize& size)
+InterpolationQuality ImageQualityController::chooseInterpolationQuality(GraphicsContext& context, RenderBoxModelObject* object, Image& image, const void *layer, const LayoutSize& size)
 {
     // If the image is not a bitmap image, then none of this is relevant and we just paint at high quality.
     if (!(image.isBitmapImage() || image.isPDFDocumentImage()) || context.paintingDisabled())
@@ -161,7 +161,7 @@ InterpolationQuality ImageQualityController::chooseInterpolationQuality(Graphics
     }
 
     // There is no need to hash scaled images that always use low quality mode when the page demands it. This is the iChat case.
-    if (m_renderView.page().inLowQualityImageInterpolationMode()) {
+    if (m_renderView.frame().page()->inLowQualityImageInterpolationMode()) {
         double totalPixels = static_cast<double>(image.width()) * static_cast<double>(image.height());
         if (totalPixels > cInterpolationCutoff)
             return InterpolationLow;

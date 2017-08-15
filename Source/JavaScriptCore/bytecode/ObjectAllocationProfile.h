@@ -139,7 +139,7 @@ private:
             JSValue value = prototype->getDirect(vm, propertyNameVector[i]);
 
             // Functions are common, and are usually class-level objects that are not overridden.
-            if (jsDynamicCast<JSFunction*>(vm, value))
+            if (jsDynamicCast<JSFunction*>(value))
                 continue;
 
             ++count;

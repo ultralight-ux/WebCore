@@ -45,7 +45,7 @@ struct EnumValueChecker<T, EnumValues<E, e, es...>> {
 
 template<typename T, typename E>
 struct EnumValueChecker<T, EnumValues<E>> {
-    static constexpr bool isValidEnum(T)
+    static constexpr bool isValidEnum(T t)
     {
         return false;
     }

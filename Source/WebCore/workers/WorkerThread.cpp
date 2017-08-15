@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,7 +47,7 @@
 #include "WebCoreThread.h"
 #endif
 
-#if USE(GLIB)
+#if PLATFORM(GTK)
 #include <wtf/glib/GRefPtr.h>
 #endif
 
@@ -72,7 +72,7 @@ unsigned WorkerThread::workerThreadCount()
 struct WorkerThreadStartupData {
     WTF_MAKE_NONCOPYABLE(WorkerThreadStartupData); WTF_MAKE_FAST_ALLOCATED;
 public:
-    WorkerThreadStartupData(const URL& scriptURL, const String& identifier, const String& userAgent, const String& sourceCode, WorkerThreadStartMode, const ContentSecurityPolicyResponseHeaders&, bool shouldBypassMainWorldContentSecurityPolicy, const SecurityOrigin& topOrigin, MonotonicTime timeOrigin);
+    WorkerThreadStartupData(const URL& scriptURL, const String& identifier, const String& userAgent, const String& sourceCode, WorkerThreadStartMode, const ContentSecurityPolicyResponseHeaders&, bool shouldBypassMainWorldContentSecurityPolicy, const SecurityOrigin* topOrigin);
 
     URL m_scriptURL;
     String m_identifier;
@@ -81,11 +81,10 @@ public:
     WorkerThreadStartMode m_startMode;
     ContentSecurityPolicyResponseHeaders m_contentSecurityPolicyResponseHeaders;
     bool m_shouldBypassMainWorldContentSecurityPolicy;
-    Ref<SecurityOrigin> m_topOrigin;
-    MonotonicTime m_timeOrigin;
+    RefPtr<SecurityOrigin> m_topOrigin;
 };
 
-WorkerThreadStartupData::WorkerThreadStartupData(const URL& scriptURL, const String& identifier, const String& userAgent, const String& sourceCode, WorkerThreadStartMode startMode, const ContentSecurityPolicyResponseHeaders& contentSecurityPolicyResponseHeaders, bool shouldBypassMainWorldContentSecurityPolicy, const SecurityOrigin& topOrigin, MonotonicTime timeOrigin)
+WorkerThreadStartupData::WorkerThreadStartupData(const URL& scriptURL, const String& identifier, const String& userAgent, const String& sourceCode, WorkerThreadStartMode startMode, const ContentSecurityPolicyResponseHeaders& contentSecurityPolicyResponseHeaders, bool shouldBypassMainWorldContentSecurityPolicy, const SecurityOrigin* topOrigin)
     : m_scriptURL(scriptURL.isolatedCopy())
     , m_identifier(identifier.isolatedCopy())
     , m_userAgent(userAgent.isolatedCopy())
@@ -93,16 +92,16 @@ WorkerThreadStartupData::WorkerThreadStartupData(const URL& scriptURL, const Str
     , m_startMode(startMode)
     , m_contentSecurityPolicyResponseHeaders(contentSecurityPolicyResponseHeaders.isolatedCopy())
     , m_shouldBypassMainWorldContentSecurityPolicy(shouldBypassMainWorldContentSecurityPolicy)
-    , m_topOrigin(topOrigin.isolatedCopy())
-    , m_timeOrigin(timeOrigin)
+    , m_topOrigin(topOrigin ? &topOrigin->isolatedCopy().get() : nullptr)
 {
 }
 
-WorkerThread::WorkerThread(const URL& scriptURL, const String& identifier, const String& userAgent, const String& sourceCode, WorkerLoaderProxy& workerLoaderProxy, WorkerReportingProxy& workerReportingProxy, WorkerThreadStartMode startMode, const ContentSecurityPolicyResponseHeaders& contentSecurityPolicyResponseHeaders, bool shouldBypassMainWorldContentSecurityPolicy, const SecurityOrigin& topOrigin, MonotonicTime timeOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider, JSC::RuntimeFlags runtimeFlags)
-    : m_workerLoaderProxy(workerLoaderProxy)
+WorkerThread::WorkerThread(const URL& scriptURL, const String& identifier, const String& userAgent, const String& sourceCode, WorkerLoaderProxy& workerLoaderProxy, WorkerReportingProxy& workerReportingProxy, WorkerThreadStartMode startMode, const ContentSecurityPolicyResponseHeaders& contentSecurityPolicyResponseHeaders, bool shouldBypassMainWorldContentSecurityPolicy, const SecurityOrigin* topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider, JSC::RuntimeFlags runtimeFlags)
+    : m_threadID(0)
+    , m_workerLoaderProxy(workerLoaderProxy)
     , m_workerReportingProxy(workerReportingProxy)
     , m_runtimeFlags(runtimeFlags)
-    , m_startupData(std::make_unique<WorkerThreadStartupData>(scriptURL, identifier, userAgent, sourceCode, startMode, contentSecurityPolicyResponseHeaders, shouldBypassMainWorldContentSecurityPolicy, topOrigin, timeOrigin))
+    , m_startupData(std::make_unique<WorkerThreadStartupData>(scriptURL, identifier, userAgent, sourceCode, startMode, contentSecurityPolicyResponseHeaders, shouldBypassMainWorldContentSecurityPolicy, topOrigin))
 #if ENABLE(INDEXED_DATABASE)
     , m_idbConnectionProxy(connectionProxy)
 #endif
@@ -132,15 +131,15 @@ WorkerThread::~WorkerThread()
 
 bool WorkerThread::start()
 {
-    // Mutex protection is necessary to ensure that m_thread is initialized when the thread starts.
-    LockHolder lock(m_threadCreationAndWorkerGlobalScopeMutex);
+    // Mutex protection is necessary to ensure that m_threadID is initialized when the thread starts.
+    LockHolder lock(m_threadCreationMutex);
 
-    if (m_thread)
+    if (m_threadID)
         return true;
 
-    m_thread = Thread::create(WorkerThread::workerThreadStart, this, "WebCore: Worker");
+    m_threadID = createThread(WorkerThread::workerThreadStart, this, "WebCore: Worker");
 
-    return m_thread;
+    return m_threadID;
 }
 
 void WorkerThread::workerThreadStart(void* thread)
@@ -155,26 +154,19 @@ void WorkerThread::workerThread()
     FloatingPointEnvironment::singleton().propagateMainThreadEnvironment();
 #endif
 
-#if USE(GLIB)
+#if PLATFORM(GTK)
     GRefPtr<GMainContext> mainContext = adoptGRef(g_main_context_new());
     g_main_context_push_thread_default(mainContext.get());
 #endif
 
-    WorkerScriptController* scriptController;
     {
-        // Mutex protection is necessary to ensure that we don't change m_workerGlobalScope
-        // while WorkerThread::stop() is accessing it. Note that WorkerThread::stop() can
-        // be called before we've finished creating the WorkerGlobalScope.
-        LockHolder lock(m_threadCreationAndWorkerGlobalScopeMutex);
-        m_workerGlobalScope = createWorkerGlobalScope(m_startupData->m_scriptURL, m_startupData->m_identifier, m_startupData->m_userAgent, m_startupData->m_contentSecurityPolicyResponseHeaders, m_startupData->m_shouldBypassMainWorldContentSecurityPolicy, WTFMove(m_startupData->m_topOrigin), m_startupData->m_timeOrigin);
-
-        scriptController = m_workerGlobalScope->script();
+        LockHolder lock(m_threadCreationMutex);
+        m_workerGlobalScope = createWorkerGlobalScope(m_startupData->m_scriptURL, m_startupData->m_identifier, m_startupData->m_userAgent, m_startupData->m_contentSecurityPolicyResponseHeaders, m_startupData->m_shouldBypassMainWorldContentSecurityPolicy, WTFMove(m_startupData->m_topOrigin));
 
         if (m_runLoop.terminated()) {
             // The worker was terminated before the thread had a chance to run. Since the context didn't exist yet,
             // forbidExecution() couldn't be called from stop().
-            scriptController->scheduleExecutionTermination();
-            scriptController->forbidExecution();
+            m_workerGlobalScope->script()->forbidExecution();
         }
     }
 
@@ -183,10 +175,11 @@ void WorkerThread::workerThread()
 
         // If the worker was somehow terminated while processing debugger commands.
         if (m_runLoop.terminated())
-            scriptController->forbidExecution();
+            m_workerGlobalScope->script()->forbidExecution();
     }
 
-    scriptController->evaluate(ScriptSourceCode(m_startupData->m_sourceCode, m_startupData->m_scriptURL));
+    WorkerScriptController* script = m_workerGlobalScope->script();
+    script->evaluate(ScriptSourceCode(m_startupData->m_sourceCode, m_startupData->m_scriptURL));
     // Free the startup data to cause its member variable deref's happen on the worker's thread (since
     // all ref/derefs of these objects are happening on the thread at this point). Note that
     // WorkerThread::~WorkerThread happens on a different thread where it was created.
@@ -194,36 +187,23 @@ void WorkerThread::workerThread()
 
     runEventLoop();
 
-#if USE(GLIB)
+#if PLATFORM(GTK)
     g_main_context_pop_thread_default(mainContext.get());
 #endif
 
-    RefPtr<Thread> protector = m_thread;
+    ThreadIdentifier threadID = m_threadID;
 
     ASSERT(m_workerGlobalScope->hasOneRef());
 
-    RefPtr<WorkerGlobalScope> workerGlobalScopeToDelete;
-    {
-        // Mutex protection is necessary to ensure that we don't change m_workerGlobalScope
-        // while WorkerThread::stop is accessing it.
-        LockHolder lock(m_threadCreationAndWorkerGlobalScopeMutex);
-
-        // Delay the destruction of the WorkerGlobalScope context until after we've unlocked the
-        // m_threadCreationAndWorkerGlobalScopeMutex. This is needed because destructing the
-        // context will trigger the main thread to race against us to delete the WorkerThread
-        // object, and the WorkerThread object owns the mutex we need to unlock after this.
-        workerGlobalScopeToDelete = WTFMove(m_workerGlobalScope);
-    }
-
     // The below assignment will destroy the context, which will in turn notify messaging proxy.
     // We cannot let any objects survive past thread exit, because no other thread will run GC or otherwise destroy them.
-    workerGlobalScopeToDelete = nullptr;
+    m_workerGlobalScope = nullptr;
 
     // Clean up WebCore::ThreadGlobalData before WTF::WTFThreadData goes away!
     threadGlobalData().destroy();
 
     // The thread object may be already destroyed from notification now, don't try to access "this".
-    protector->detach();
+    detachThread(threadID);
 }
 
 void WorkerThread::startRunningDebuggerTasks()
@@ -250,10 +230,8 @@ void WorkerThread::runEventLoop()
 
 void WorkerThread::stop()
 {
-    // Mutex protection is necessary to ensure that m_workerGlobalScope isn't changed by
-    // WorkerThread::workerThread() while we're accessing it. Note also that stop() can
-    // be called before m_workerGlobalScope is fully created.
-    LockHolder lock(m_threadCreationAndWorkerGlobalScopeMutex);
+    // Mutex protection is necessary because stop() can be called before the context is fully created.
+    LockHolder lock(m_threadCreationMutex);
 
     // Ensure that tasks are being handled by thread event loop. If script execution weren't forbidden, a while(1) loop in JS could keep the thread alive forever.
     if (m_workerGlobalScope) {

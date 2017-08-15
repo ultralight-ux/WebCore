@@ -28,6 +28,7 @@
 
 #include "ElementChildIterator.h"
 #include "HTMLImageElement.h"
+#include "HTMLNames.h"
 
 namespace WebCore {
 

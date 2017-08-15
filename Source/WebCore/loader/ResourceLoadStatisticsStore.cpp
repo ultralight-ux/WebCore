@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,18 +31,14 @@
 #include "NetworkStorageSession.h"
 #include "PlatformStrategies.h"
 #include "ResourceLoadStatistics.h"
+#include "SecurityOrigin.h"
 #include "SharedBuffer.h"
 #include "URL.h"
-#include <wtf/CurrentTime.h>
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-static const auto statisticsModelVersion = 3;
-// 30 days in seconds
-static auto timeToLiveUserInteraction = 2592000;
-// 1 day in seconds
-static auto timeToLiveCookiePartitionFree = 86400;
+static const auto statisticsModelVersion = 2;
 
 Ref<ResourceLoadStatisticsStore> ResourceLoadStatisticsStore::create()
 {
@@ -79,7 +75,7 @@ std::unique_ptr<KeyedEncoder> ResourceLoadStatisticsStore::createEncoderFromData
     auto encoder = KeyedEncoder::encoder();
 
     encoder->encodeUInt32("version", statisticsModelVersion);
-    encoder->encodeObjects("browsingStatistics", m_resourceStatisticsMap.begin(), m_resourceStatisticsMap.end(), [](KeyedEncoder& encoderInner, const StatisticsValue& origin) {
+    encoder->encodeObjects("browsingStatistics", m_resourceStatisticsMap.begin(), m_resourceStatisticsMap.end(), [this](KeyedEncoder& encoderInner, const StatisticsValue& origin) {
         origin.value.encode(encoderInner);
     });
 
@@ -95,37 +91,15 @@ void ResourceLoadStatisticsStore::readDataFromDecoder(KeyedDecoder& decoder)
     if (!decoder.decodeUInt32("version", version))
         version = 1;
     Vector<ResourceLoadStatistics> loadedStatistics;
-    bool succeeded = decoder.decodeObjects("browsingStatistics", loadedStatistics, [version](KeyedDecoder& decoderInner, ResourceLoadStatistics& statistics) {
+    bool succeeded = decoder.decodeObjects("browsingStatistics", loadedStatistics, [this, version](KeyedDecoder& decoderInner, ResourceLoadStatistics& statistics) {
         return statistics.decode(decoderInner, version);
     });
 
     if (!succeeded)
         return;
 
-    Vector<String> prevalentResourceDomainsWithoutUserInteraction;
-    prevalentResourceDomainsWithoutUserInteraction.reserveInitialCapacity(loadedStatistics.size());
-    for (auto& statistics : loadedStatistics) {
-        if (statistics.isPrevalentResource && !statistics.hadUserInteraction) {
-            prevalentResourceDomainsWithoutUserInteraction.uncheckedAppend(statistics.highLevelDomain);
-            statistics.isMarkedForCookiePartitioning = true;
-        }
+    for (auto& statistics : loadedStatistics)
         m_resourceStatisticsMap.set(statistics.highLevelDomain, statistics);
-    }
-
-    fireShouldPartitionCookiesHandler({ }, prevalentResourceDomainsWithoutUserInteraction, true);
-}
-
-void ResourceLoadStatisticsStore::clearInMemory()
-{
-    m_resourceStatisticsMap.clear();
-    fireShouldPartitionCookiesHandler({ }, { }, true);
-}
-
-void ResourceLoadStatisticsStore::clearInMemoryAndPersistent()
-{
-    clearInMemory();
-    if (m_writePersistentStoreHandler)
-        m_writePersistentStoreHandler();
 }
 
 String ResourceLoadStatisticsStore::statisticsForOrigin(const String& origin)
@@ -165,81 +139,10 @@ void ResourceLoadStatisticsStore::setNotificationCallback(std::function<void()> 
     m_dataAddedHandler = WTFMove(handler);
 }
 
-void ResourceLoadStatisticsStore::setShouldPartitionCookiesCallback(std::function<void(const Vector<String>& domainsToRemove, const Vector<String>& domainsToAdd, bool clearFirst)>&& handler)
-{
-    m_shouldPartitionCookiesForDomainsHandler = WTFMove(handler);
-}
-    
-void ResourceLoadStatisticsStore::setWritePersistentStoreCallback(std::function<void()>&& handler)
-{
-    m_writePersistentStoreHandler = WTFMove(handler);
-}
-
 void ResourceLoadStatisticsStore::fireDataModificationHandler()
 {
     if (m_dataAddedHandler)
         m_dataAddedHandler();
-}
-
-static inline bool shouldPartitionCookies(const ResourceLoadStatistics& statistic)
-{
-    return statistic.isPrevalentResource
-        && (!statistic.hadUserInteraction || currentTime() > statistic.mostRecentUserInteraction + timeToLiveCookiePartitionFree);
-}
-
-void ResourceLoadStatisticsStore::fireShouldPartitionCookiesHandler()
-{
-    Vector<String> domainsToRemove;
-    Vector<String> domainsToAdd;
-    
-    for (auto& resourceStatistic : m_resourceStatisticsMap.values()) {
-        bool shouldPartition = shouldPartitionCookies(resourceStatistic);
-        if (resourceStatistic.isMarkedForCookiePartitioning && !shouldPartition) {
-            resourceStatistic.isMarkedForCookiePartitioning = false;
-            domainsToRemove.append(resourceStatistic.highLevelDomain);
-        } else if (!resourceStatistic.isMarkedForCookiePartitioning && shouldPartition) {
-            resourceStatistic.isMarkedForCookiePartitioning = true;
-            domainsToAdd.append(resourceStatistic.highLevelDomain);
-        }
-    }
-    
-    if (domainsToRemove.isEmpty() && domainsToAdd.isEmpty())
-        return;
-    
-    if (m_shouldPartitionCookiesForDomainsHandler)
-        m_shouldPartitionCookiesForDomainsHandler(domainsToRemove, domainsToAdd, false);
-}
-
-void ResourceLoadStatisticsStore::fireShouldPartitionCookiesHandler(const Vector<String>& domainsToRemove, const Vector<String>& domainsToAdd, bool clearFirst)
-{
-    if (domainsToRemove.isEmpty() && domainsToAdd.isEmpty())
-        return;
-
-    if (m_shouldPartitionCookiesForDomainsHandler)
-        m_shouldPartitionCookiesForDomainsHandler(domainsToRemove, domainsToAdd, clearFirst);
-
-    if (clearFirst) {
-        for (auto& resourceStatistic : m_resourceStatisticsMap.values())
-            resourceStatistic.isMarkedForCookiePartitioning = false;
-    } else {
-        for (auto& domain : domainsToRemove)
-            ensureResourceStatisticsForPrimaryDomain(domain).isMarkedForCookiePartitioning = false;
-    }
-
-    for (auto& domain : domainsToAdd)
-        ensureResourceStatisticsForPrimaryDomain(domain).isMarkedForCookiePartitioning = true;
-}
-
-void ResourceLoadStatisticsStore::setTimeToLiveUserInteraction(double seconds)
-{
-    if (seconds >= 0)
-        timeToLiveUserInteraction = seconds;
-}
-
-void ResourceLoadStatisticsStore::setTimeToLiveCookiePartitionFree(double seconds)
-{
-    if (seconds >= 0)
-        timeToLiveCookiePartitionFree = seconds;
 }
 
 void ResourceLoadStatisticsStore::processStatistics(std::function<void(ResourceLoadStatistics&)>&& processFunction)
@@ -248,29 +151,11 @@ void ResourceLoadStatisticsStore::processStatistics(std::function<void(ResourceL
         processFunction(resourceStatistic);
 }
 
-bool ResourceLoadStatisticsStore::hasHadRecentUserInteraction(ResourceLoadStatistics& resourceStatistic)
-{
-    if (!resourceStatistic.hadUserInteraction)
-        return false;
-
-    if (currentTime() > resourceStatistic.mostRecentUserInteraction + timeToLiveUserInteraction) {
-        // Drop privacy sensitive data because we no longer need it.
-        // Set timestamp to 0.0 so that statistics merge will know
-        // it has been reset as opposed to its default -1.
-        resourceStatistic.mostRecentUserInteraction = 0;
-        resourceStatistic.hadUserInteraction = false;
-
-        return false;
-    }
-
-    return true;
-}
-
 Vector<String> ResourceLoadStatisticsStore::prevalentResourceDomainsWithoutUserInteraction()
 {
     Vector<String> prevalentResources;
     for (auto& resourceStatistic : m_resourceStatisticsMap.values()) {
-        if (resourceStatistic.isPrevalentResource && !hasHadRecentUserInteraction(resourceStatistic))
+        if (resourceStatistic.isPrevalentResource && !resourceStatistic.hadUserInteraction)
             prevalentResources.append(resourceStatistic.highLevelDomain);
     }
     return prevalentResources;

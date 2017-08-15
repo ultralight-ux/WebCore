@@ -26,6 +26,8 @@
 #include "config.h"
 #include "WebKitAnimationEvent.h"
 
+#include "EventNames.h"
+
 namespace WebCore {
 
 WebKitAnimationEvent::WebKitAnimationEvent(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)

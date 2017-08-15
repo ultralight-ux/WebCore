@@ -67,7 +67,6 @@ namespace WebCore {
     macro(blocked) \
     macro(blur) \
     macro(boundary) \
-    macro(bufferedamountlow) \
     macro(cached) \
     macro(cancel) \
     macro(canplay) \
@@ -83,7 +82,6 @@ namespace WebCore {
     macro(compositionstart) \
     macro(compositionupdate) \
     macro(connect) \
-    macro(connectionstatechange) \
     macro(connecting) \
     macro(contextmenu) \
     macro(copy) \
@@ -91,7 +89,6 @@ namespace WebCore {
     macro(cut) \
     macro(datachannel) \
     macro(dblclick) \
-    macro(devicechange) \
     macro(devicemotion) \
     macro(deviceorientation) \
     macro(dischargingtimechange) \
@@ -183,7 +180,6 @@ namespace WebCore {
     macro(progress) \
     macro(ratechange) \
     macro(readystatechange) \
-    macro(rejectionhandled) \
     macro(removesourcebuffer) \
     macro(removestream) \
     macro(removetrack) \
@@ -232,7 +228,6 @@ namespace WebCore {
     macro(touchstart) \
     macro(track) \
     macro(transitionend) \
-    macro(unhandledrejection) \
     macro(unload) \
     macro(unmute) \
     macro(update) \

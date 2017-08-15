@@ -51,12 +51,11 @@ public:
 
     unsigned quota() const { return m_quotaSize; }
 
-    WEBCORE_EXPORT Ref<StorageMap> copy();
-
     static const constexpr unsigned noQuota = UINT_MAX;
 
 private:
     explicit StorageMap(unsigned quota);
+    Ref<StorageMap> copy();
     void invalidateIterator();
     void setIteratorToIndex(unsigned);
 

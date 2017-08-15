@@ -96,7 +96,7 @@ void testCompareAndSwap()
 {
     Bitmap bitmap;
     const int numThreads = 5;
-    RefPtr<Thread> threads[numThreads];
+    ThreadIdentifier threadIDs[numThreads];
     Data data[numThreads];
 
     WTF::initializeThreading();
@@ -107,12 +107,12 @@ void testCompareAndSwap()
         data[i].id = i;
         data[i].numThreads = numThreads;
         std::function<void()> threadFunc = std::bind(setBitThreadFunc, &data[i]);
-        threads[i] = Thread::create("setBitThreadFunc", threadFunc);
+        threadIDs[i] = createThread("setBitThreadFunc", threadFunc);
     }
 
     printf("Waiting for %d threads to join\n", numThreads);
     for (int i = 0; i < numThreads; i++)
-        threads[i]->waitForCompletion();
+        waitForThreadCompletion(threadIDs[i]);
 
     printf("PASS: CompareAndSwap test completed without a hang\n");
 }

@@ -98,13 +98,7 @@ void AccessibilityARIAGridCell::rowIndexRange(std::pair<unsigned, unsigned>& row
 
 unsigned AccessibilityARIAGridCell::ariaRowSpanWithRowIndex(unsigned rowIndex) const
 {
-    int rowSpan = AccessibilityTableCell::ariaRowSpan();
-    if (rowSpan == -1) {
-        std::pair<unsigned, unsigned> range;
-        AccessibilityTableCell::rowIndexRange(range);
-        return std::max(static_cast<int>(range.second), 1);
-    }
-
+    unsigned rowSpan = AccessibilityTableCell::ariaRowSpan();
     AccessibilityObject* parent = parentObjectUnignored();
     if (!parent)
         return 1;
@@ -146,26 +140,16 @@ void AccessibilityARIAGridCell::columnIndexRange(std::pair<unsigned, unsigned>& 
 
     const AccessibilityChildrenVector& siblings = parent->children();
     unsigned childrenSize = siblings.size();
-    unsigned indexWithSpan = 0;
     for (unsigned k = 0; k < childrenSize; ++k) {
-        auto child = siblings[k].get();
-        if (child == this) {
-            columnRange.first = indexWithSpan;
+        if (siblings[k].get() == this) {
+            columnRange.first = k;
             break;
         }
-        indexWithSpan += is<AccessibilityTableCell>(*child) ? std::max(downcast<AccessibilityTableCell>(*child).ariaColumnSpan(), 1) : 1;
     }
     
     // ARIA 1.1, aria-colspan attribute is intended for cells and gridcells which are not contained in a native table.
     // So we should check for that attribute here.
-    int columnSpan = AccessibilityTableCell::ariaColumnSpan();
-    if (columnSpan == -1) {
-        std::pair<unsigned, unsigned> range;
-        AccessibilityTableCell::columnIndexRange(range);
-        columnSpan = range.second;
-    }
-
-    columnRange.second = std::max(columnSpan, 1);
+    columnRange.second = ariaColumnSpan();
 }
 
 AccessibilityObject* AccessibilityARIAGridCell::parentRowGroup() const
@@ -177,19 +161,6 @@ AccessibilityObject* AccessibilityARIAGridCell::parentRowGroup() const
     
     // If there's no row group found, we use the parent table as the row group.
     return parentTable();
-}
-
-String AccessibilityARIAGridCell::ariaReadOnlyValue() const
-{
-    if (hasAttribute(aria_readonlyAttr))
-        return getAttribute(aria_readonlyAttr).string().convertToASCIILowercase();
-
-    // ARIA 1.1 requires user agents to propagate the grid's aria-readonly value to all
-    // gridcell elements if the property is not present on the gridcell element itelf.
-    if (AccessibilityObject* parent = parentTable())
-        return parent->ariaReadOnlyValue();
-
-    return String();
 }
   
 } // namespace WebCore

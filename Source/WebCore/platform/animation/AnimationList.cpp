@@ -26,16 +26,15 @@ namespace WebCore {
 
 #define FILL_UNSET_PROPERTY(test, propGet, propSet) \
 for (i = 0; i < size() && animation(i).test(); ++i) { } \
-if (i) { \
+if (i < size() && i != 0) { \
     for (size_t j = 0; i < size(); ++i, ++j) \
         animation(i).propSet(animation(j).propGet()); \
 }
 
 AnimationList::AnimationList(const AnimationList& other)
 {
-    m_animations.reserveInitialCapacity(other.size());
-    for (auto& animation : other.m_animations)
-        m_animations.uncheckedAppend(Animation::create(animation.get()));
+    for (size_t i = 0; i < other.size(); ++i)
+        m_animations.append(Animation::create(other.animation(i)));
 }
 
 void AnimationList::fillUnsetProperties()
@@ -56,10 +55,9 @@ bool AnimationList::operator==(const AnimationList& other) const
 {
     if (size() != other.size())
         return false;
-    for (size_t i = 0; i < size(); ++i) {
+    for (size_t i = 0; i < size(); ++i)
         if (animation(i) != other.animation(i))
             return false;
-    }
     return true;
 }
 

@@ -28,7 +28,7 @@
 #include "ActiveDOMObject.h"
 #include "CSSFontFaceSet.h"
 #include "EventTarget.h"
-#include "JSDOMPromiseDeferred.h"
+#include "JSDOMPromise.h"
 
 namespace WebCore {
 
@@ -46,14 +46,14 @@ public:
     bool remove(FontFace&);
     void clear();
 
-    using LoadPromise = DOMPromiseDeferred<IDLSequence<IDLInterface<FontFace>>>;
+    using LoadPromise = DOMPromise<IDLSequence<IDLInterface<FontFace>>>;
     void load(const String& font, const String& text, LoadPromise&&);
     ExceptionOr<bool> check(const String& font, const String& text);
 
     enum class LoadStatus { Loading, Loaded };
     LoadStatus status() const;
 
-    using ReadyPromise = DOMPromiseDeferred<IDLInterface<FontFaceSet>>;
+    using ReadyPromise = DOMPromise<IDLInterface<FontFaceSet>>;
     void registerReady(ReadyPromise&&);
 
     CSSFontFaceSet& backing() { return m_backing; }

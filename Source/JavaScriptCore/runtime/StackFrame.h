@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,6 @@
 #pragma once
 
 #include "Strong.h"
-#include "WasmIndexOrName.h"
 #include <limits.h>
 
 namespace JSC {
@@ -36,13 +35,8 @@ class JSObject;
 
 class StackFrame {
 public:
-    StackFrame()
-        : m_bytecodeOffset(UINT_MAX)
-    { }
-
     StackFrame(VM& vm, JSCell* callee)
         : m_callee(vm, callee)
-        , m_bytecodeOffset(UINT_MAX)
     { }
 
     StackFrame(VM& vm, JSCell* callee, CodeBlock* codeBlock, unsigned bytecodeOffset)
@@ -50,14 +44,6 @@ public:
         , m_codeBlock(vm, codeBlock)
         , m_bytecodeOffset(bytecodeOffset)
     { }
-
-    static StackFrame wasm(Wasm::IndexOrName indexOrName)
-    {
-        StackFrame result;
-        result.m_isWasmFrame = true;
-        result.m_wasmFunctionIndexOrName = indexOrName;
-        return result;
-    }
 
     bool hasLineAndColumnInfo() const { return !!m_codeBlock; }
     
@@ -67,10 +53,10 @@ public:
     String sourceURL() const;
     String toString(VM&) const;
 
-    bool hasBytecodeOffset() const { return m_bytecodeOffset != UINT_MAX && !m_isWasmFrame; }
+    bool hasBytecodeOffset() const { return m_bytecodeOffset != UINT_MAX; }
     unsigned bytecodeOffset()
     {
-        ASSERT(hasBytecodeOffset());
+        ASSERT(m_bytecodeOffset != UINT_MAX);
         return m_bytecodeOffset;
     }
 
@@ -78,11 +64,8 @@ public:
 private:
     Strong<JSCell> m_callee { };
     Strong<CodeBlock> m_codeBlock { };
-    union {
-        unsigned m_bytecodeOffset;
-        Wasm::IndexOrName m_wasmFunctionIndexOrName;
-    };
-    bool m_isWasmFrame { false };
+    unsigned m_bytecodeOffset { UINT_MAX };
+    
 };
 
 } // namespace JSC

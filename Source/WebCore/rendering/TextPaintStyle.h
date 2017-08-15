@@ -26,8 +26,6 @@
 #pragma once
 
 #include "Color.h"
-#include "GraphicsTypes.h"
-#include "RenderStyleConstants.h"
 
 namespace WebCore {
 
@@ -49,14 +47,10 @@ struct TextPaintStyle {
 #if ENABLE(LETTERPRESS)
     bool useLetterpressEffect { false };
 #endif
-    PaintOrder paintOrder { PaintOrder::Normal };
-    LineJoin lineJoin { MiterJoin };
-    LineCap lineCap { ButtCap };
-    float miterLimit { defaultMiterLimit };
 };
 
 TextPaintStyle computeTextPaintStyle(const Frame&, const RenderStyle&, const PaintInfo&);
-TextPaintStyle computeTextSelectionPaintStyle(const TextPaintStyle&, const RenderText&, const RenderStyle&, const PaintInfo&, bool& paintSelectedTextOnly, bool& paintSelectedTextSeparately, bool& paintNonSelectedTextOnly, const ShadowData*& selectionShadow);
+TextPaintStyle computeTextSelectionPaintStyle(const TextPaintStyle&, const RenderText&, const RenderStyle&, const PaintInfo&, bool& paintSelectedTextOnly, bool& paintSelectedTextSeparately, const ShadowData*& selectionShadow);
 
 enum FillColorType { UseNormalFillColor, UseEmphasisMarkColor };
 void updateGraphicsContext(GraphicsContext&, const TextPaintStyle&, FillColorType = UseNormalFillColor);

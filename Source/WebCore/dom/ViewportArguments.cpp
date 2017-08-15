@@ -31,8 +31,8 @@
 #include "Document.h"
 #include "Frame.h"
 #include "IntSize.h"
+#include "Page.h"
 #include "ScriptableDocumentParser.h"
-#include "Settings.h"
 #include "TextStream.h"
 
 namespace WebCore {
@@ -247,7 +247,6 @@ ViewportAttributes ViewportArguments::resolve(const FloatSize& initialViewportSi
     result.userScalable = userZoom;
     result.orientation = orientation;
     result.shrinkToFit = shrinkToFit;
-    result.viewportFit = viewportFit;
 
     return result;
 }
@@ -365,35 +364,22 @@ static float findScaleValue(Document& document, StringView key, StringView value
     return numericValue;
 }
 
-static bool findBooleanValue(Document& document, StringView key, StringView value)
+// FIXME: It's kind of bizarre to use floating point values of 1 and 0 to represent true and false.
+static float findBooleanValue(Document& document, StringView key, StringView value)
 {
     // yes and no are used as keywords.
     // Numbers >= 1, numbers <= -1, device-width and device-height are mapped to yes.
     // Numbers in the range <-1, 1>, and unknown values, are mapped to no.
 
     if (equalLettersIgnoringASCIICase(value, "yes"))
-        return true;
+        return 1;
     if (equalLettersIgnoringASCIICase(value, "no"))
-        return false;
+        return 0;
     if (equalLettersIgnoringASCIICase(value, "device-width"))
-        return true;
+        return 1;
     if (equalLettersIgnoringASCIICase(value, "device-height"))
-        return true;
-    return std::abs(numericPrefix(document, key, value)) >= 1;
-}
-
-static ViewportFit parseViewportFitValue(Document& document, StringView key, StringView value)
-{
-    if (equalLettersIgnoringASCIICase(value, "auto"))
-        return ViewportFit::Auto;
-    if (equalLettersIgnoringASCIICase(value, "contain"))
-        return ViewportFit::Contain;
-    if (equalLettersIgnoringASCIICase(value, "cover"))
-        return ViewportFit::Cover;
-
-    reportViewportWarning(document, UnrecognizedViewportArgumentValueError, value, key);
-
-    return ViewportFit::Auto;
+        return 1;
+    return std::abs(numericPrefix(document, key, value)) >= 1 ? 1 : 0;
 }
 
 void setViewportFeature(ViewportArguments& arguments, Document& document, StringView key, StringView value)
@@ -418,8 +404,6 @@ void setViewportFeature(ViewportArguments& arguments, Document& document, String
 #endif
     else if (equalLettersIgnoringASCIICase(key, "shrink-to-fit"))
         arguments.shrinkToFit = findBooleanValue(document, key, value);
-    else if (equalLettersIgnoringASCIICase(key, "viewport-fit") && document.settings().viewportFitEnabled())
-        arguments.viewportFit = parseViewportFitValue(document, key, value);
     else
         reportViewportWarning(document, UnrecognizedViewportArgumentKeyError, key);
 }

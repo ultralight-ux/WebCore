@@ -44,7 +44,7 @@ const ClassInfo JSDollarVMPrototype::s_info = { "DollarVMPrototype", &Base::s_in
     
 bool JSDollarVMPrototype::currentThreadOwnsJSLock(ExecState* exec)
 {
-    return exec->vm().currentThreadIsHoldingAPILock();
+    return exec->vm().apiLock().currentThreadIsHoldingLock();
 }
 
 static bool ensureCurrentThreadOwnsJSLock(ExecState* exec)
@@ -118,7 +118,7 @@ void JSDollarVMPrototype::gc(ExecState* exec)
 {
     if (!ensureCurrentThreadOwnsJSLock(exec))
         return;
-    exec->heap()->collectNow(Sync, CollectionScope::Full);
+    exec->heap()->collectAllGarbage();
 }
     
 static EncodedJSValue JSC_HOST_CALL functionGC(ExecState* exec)
@@ -276,14 +276,13 @@ static EncodedJSValue JSC_HOST_CALL functionCodeBlockForFrame(ExecState* exec)
 
 static CodeBlock* codeBlockFromArg(ExecState* exec)
 {
-    VM& vm = exec->vm();
     if (exec->argumentCount() < 1)
         return nullptr;
 
     JSValue value = exec->uncheckedArgument(0);
     CodeBlock* candidateCodeBlock = nullptr;
     if (value.isCell()) {
-        JSFunction* func = jsDynamicCast<JSFunction*>(vm, value.asCell());
+        JSFunction* func = jsDynamicCast<JSFunction*>(value.asCell());
         if (func) {
             if (func->isHostFunction())
                 candidateCodeBlock = nullptr;

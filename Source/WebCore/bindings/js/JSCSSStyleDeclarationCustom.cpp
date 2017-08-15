@@ -327,7 +327,7 @@ bool JSCSSStyleDeclaration::putDelegate(ExecState* state, PropertyName propertyN
     if (!propertyInfo.propertyID)
         return false;
 
-    auto propertyValue = convert<IDLTreatNullAsEmptyAdaptor<IDLDOMString>>(*state, value);
+    auto propertyValue = convert<IDLDOMString>(*state, value, StringConversionConfiguration::TreatNullAsEmptyString);
     if (propertyInfo.hadPixelOrPosPrefix)
         propertyValue.append("px");
 
@@ -342,9 +342,7 @@ bool JSCSSStyleDeclaration::putDelegate(ExecState* state, PropertyName propertyN
 
     auto setPropertyInternalResult = wrapped().setPropertyInternal(propertyInfo.propertyID, propertyValue, important);
     if (setPropertyInternalResult.hasException()) {
-        auto& vm = state->vm();
-        auto scope = DECLARE_THROW_SCOPE(vm);
-        propagateException(*state, scope, setPropertyInternalResult.releaseException());
+        propagateException(*state, setPropertyInternalResult.releaseException());
         return true;
     }
     putResult = setPropertyInternalResult.releaseReturnValue();

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,11 +28,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef RTCSessionDescriptionDescriptor_h
+#define RTCSessionDescriptionDescriptor_h
 
 #if ENABLE(WEB_RTC)
 
-#include <wtf/Ref.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -41,7 +41,7 @@ namespace WebCore {
 
 class RTCSessionDescriptionDescriptor : public RefCounted<RTCSessionDescriptionDescriptor> {
 public:
-    static Ref<RTCSessionDescriptionDescriptor> create(const String& type, const String& sdp);
+    static PassRefPtr<RTCSessionDescriptionDescriptor> create(const String& type, const String& sdp);
     virtual ~RTCSessionDescriptionDescriptor();
 
     const String& type() const { return m_type; }
@@ -60,3 +60,5 @@ private:
 } // namespace WebCore
 
 #endif // ENABLE(WEB_RTC)
+
+#endif // RTCSessionDescriptionDescriptor_h

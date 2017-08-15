@@ -86,7 +86,7 @@ private:
 
     // Background thread and synchronization
     bool m_useBackgroundThreads;
-    RefPtr<Thread> m_backgroundThread;
+    ThreadIdentifier m_backgroundThread;
     bool m_wantsToExit;
     bool m_moreInputBuffered;
     mutable Lock m_backgroundThreadMutex;

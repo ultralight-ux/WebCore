@@ -31,7 +31,6 @@
 
 #include "AXObjectCache.h"
 #include "AccessibilityTableCell.h"
-#include "HTMLCollection.h"
 #include "HTMLElement.h"
 #include "HTMLNames.h"
 #include "RenderTable.h"
@@ -143,21 +142,12 @@ AccessibilityObject* AccessibilityTableColumn::headerObjectForSection(RenderTabl
             if ((testCell->col() + (testCell->colSpan()-1)) < m_columnIndex)
                 break;
             
-            Node* testCellNode = testCell->element();
-            // If the RenderTableCell doesn't have an element because its anonymous,
-            // try to see if we can find the original cell element to check if it has a <th> tag.
-            if (!testCellNode && testCell->isAnonymous()) {
-                if (Element* parentElement = testCell->parent() ? testCell->parent()->element() : nullptr) {
-                    if (parentElement->hasTagName(trTag) && testCol < static_cast<int>(parentElement->countChildNodes()))
-                        testCellNode = parentElement->traverseToChildAt(testCol);
-                }
-            }
-
-            if (!testCellNode)
+            // If this does not have an element (like a <caption>) then check the next row
+            if (!testCell->element())
                 continue;
             
             // If th is required, but we found an element that doesn't have a th tag, we can stop looking.
-            if (thTagRequired && !testCellNode->hasTagName(thTag))
+            if (thTagRequired && !testCell->element()->hasTagName(thTag))
                 break;
             
             cell = testCell;
@@ -168,11 +158,7 @@ AccessibilityObject* AccessibilityTableColumn::headerObjectForSection(RenderTabl
     if (!cell)
         return nullptr;
 
-    auto* cellObject = axObjectCache()->getOrCreate(cell);
-    if (!cellObject || cellObject->accessibilityIsIgnored())
-        return nullptr;
-        
-    return cellObject;
+    return axObjectCache()->getOrCreate(cell);
 }
     
 bool AccessibilityTableColumn::computeAccessibilityIsIgnored() const
@@ -180,7 +166,7 @@ bool AccessibilityTableColumn::computeAccessibilityIsIgnored() const
     if (!m_parent)
         return true;
     
-#if PLATFORM(IOS) || PLATFORM(GTK)
+#if PLATFORM(IOS) || PLATFORM(GTK) || PLATFORM(EFL)
     return true;
 #endif
     

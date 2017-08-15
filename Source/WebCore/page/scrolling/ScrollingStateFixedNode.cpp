@@ -93,14 +93,13 @@ void ScrollingStateFixedNode::reconcileLayerPositionForViewportRect(const Layout
     }
 }
 
-void ScrollingStateFixedNode::dumpProperties(TextStream& ts, ScrollingStateTreeAsTextBehavior behavior) const
+void ScrollingStateFixedNode::dumpProperties(TextStream& ts, int indent, ScrollingStateTreeAsTextBehavior) const
 {
-    ts << "Fixed node";
-    ScrollingStateNode::dumpProperties(ts, behavior);
+    ts << "(" << "Fixed node" << "\n";
 
     if (m_constraints.anchorEdges()) {
-        TextStream::GroupScope scope(ts);
-        ts << "anchor edges: ";
+        writeIndent(ts, indent + 1);
+        ts << "(anchor edges: ";
         if (m_constraints.hasAnchorEdge(ViewportConstraints::AnchorEdgeLeft))
             ts << "AnchorEdgeLeft ";
         if (m_constraints.hasAnchorEdge(ViewportConstraints::AnchorEdgeRight))
@@ -109,16 +108,24 @@ void ScrollingStateFixedNode::dumpProperties(TextStream& ts, ScrollingStateTreeA
             ts << "AnchorEdgeTop";
         if (m_constraints.hasAnchorEdge(ViewportConstraints::AnchorEdgeBottom))
             ts << "AnchorEdgeBottom";
+        ts << ")\n";
     }
 
-    if (!m_constraints.alignmentOffset().isEmpty())
-        ts.dumpProperty("alignment offset", m_constraints.alignmentOffset());
+    if (!m_constraints.alignmentOffset().isEmpty()) {
+        writeIndent(ts, indent + 1);
+        ts << "(alignment offset " << m_constraints.alignmentOffset().width() << " " << m_constraints.alignmentOffset().height() << ")\n";
+    }
 
-    if (!m_constraints.viewportRectAtLastLayout().isEmpty())
-        ts.dumpProperty("viewport rect at last layout", m_constraints.viewportRectAtLastLayout());
+    if (!m_constraints.viewportRectAtLastLayout().isEmpty()) {
+        writeIndent(ts, indent + 1);
+        FloatRect viewportRect = m_constraints.viewportRectAtLastLayout();
+        ts << "(viewport rect at last layout: " << viewportRect.x() << " " << viewportRect.y() << " " << viewportRect.width() << " " << viewportRect.height() << ")\n";
+    }
 
-    if (m_constraints.layerPositionAtLastLayout() != FloatPoint())
-        ts.dumpProperty("layer position at last layout", m_constraints.layerPositionAtLastLayout());
+    if (m_constraints.layerPositionAtLastLayout() != FloatPoint()) {
+        writeIndent(ts, indent + 1);
+        ts << "(layer position at last layout " << m_constraints.layerPositionAtLastLayout().x() << " " << m_constraints.layerPositionAtLastLayout().y() << ")\n";
+    }
 }
 
 } // namespace WebCore

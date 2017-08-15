@@ -186,11 +186,10 @@ namespace JSC {
         virtual bool isBoolean() const { return false; }
         virtual bool isSpreadExpression() const { return false; }
         virtual bool isSuperNode() const { return false; }
-        virtual bool isImportNode() const { return false; }
         virtual bool isNewTarget() const { return false; }
         virtual bool isBytecodeIntrinsicNode() const { return false; }
 
-        virtual void emitBytecodeInConditionContext(BytecodeGenerator&, Label&, Label&, FallThroughMode);
+        virtual void emitBytecodeInConditionContext(BytecodeGenerator&, Label*, Label*, FallThroughMode);
 
         virtual ExpressionNode* stripUnaryPlus() { return this; }
 
@@ -258,7 +257,7 @@ namespace JSC {
         virtual JSValue jsValue(BytecodeGenerator&) const = 0;
     private:
         RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
-        void emitBytecodeInConditionContext(BytecodeGenerator&, Label& trueTarget, Label& falseTarget, FallThroughMode) override;
+        void emitBytecodeInConditionContext(BytecodeGenerator&, Label* trueTarget, Label* falseTarget, FallThroughMode) override;
     };
 
     class NullNode : public ConstantNode {
@@ -490,16 +489,16 @@ namespace JSC {
 
     class TemplateStringNode : public ExpressionNode {
     public:
-        TemplateStringNode(const JSTokenLocation&, const Identifier* cooked, const Identifier* raw);
+        TemplateStringNode(const JSTokenLocation&, const Identifier& cooked, const Identifier& raw);
 
-        const Identifier* cooked() { return m_cooked; }
-        const Identifier* raw() { return m_raw; }
+        const Identifier& cooked() { return m_cooked; }
+        const Identifier& raw() { return m_raw; }
 
     private:
         RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
 
-        const Identifier* m_cooked;
-        const Identifier* m_raw;
+        const Identifier& m_cooked;
+        const Identifier& m_raw;
     };
 
     class TemplateStringListNode : public ParserArenaFreeable {
@@ -571,17 +570,6 @@ namespace JSC {
         RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
     };
 
-    class ImportNode : public ExpressionNode, public ThrowableExpressionData {
-    public:
-        ImportNode(const JSTokenLocation&, ExpressionNode*);
-
-    private:
-        bool isImportNode() const override { return true; }
-        RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
-
-        ExpressionNode* m_expr;
-    };
-
     class NewTargetNode final : public ExpressionNode {
     public:
         NewTargetNode(const JSTokenLocation&);
@@ -633,7 +621,7 @@ namespace JSC {
 
         ArgumentListNode* toArgumentList(ParserArena&, int, int) const;
 
-        ElementNode* elements() const { return m_element; }
+        ElementNode* elements() const { ASSERT(isSimpleArray()); return m_element; }
     private:
         RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
 
@@ -871,20 +859,18 @@ namespace JSC {
 
     class CallFunctionCallDotNode : public FunctionCallDotNode {
     public:
-        CallFunctionCallDotNode(const JSTokenLocation&, ExpressionNode* base, const Identifier&, ArgumentsNode*, const JSTextPosition& divot, const JSTextPosition& divotStart, const JSTextPosition& divotEnd, size_t distanceToInnermostCallOrApply);
+        CallFunctionCallDotNode(const JSTokenLocation&, ExpressionNode* base, const Identifier&, ArgumentsNode*, const JSTextPosition& divot, const JSTextPosition& divotStart, const JSTextPosition& divotEnd);
 
     private:
         RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
-        size_t m_distanceToInnermostCallOrApply;
     };
     
     class ApplyFunctionCallDotNode : public FunctionCallDotNode {
     public:
-        ApplyFunctionCallDotNode(const JSTokenLocation&, ExpressionNode* base, const Identifier&, ArgumentsNode*, const JSTextPosition& divot, const JSTextPosition& divotStart, const JSTextPosition& divotEnd, size_t distanceToInnermostCallOrApply);
+        ApplyFunctionCallDotNode(const JSTokenLocation&, ExpressionNode* base, const Identifier&, ArgumentsNode*, const JSTextPosition& divot, const JSTextPosition& divotStart, const JSTextPosition& divotEnd);
 
     private:
         RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
-        size_t m_distanceToInnermostCallOrApply;
     };
 
     class DeleteResolveNode : public ExpressionNode, public ThrowableExpressionData {
@@ -1035,7 +1021,7 @@ namespace JSC {
     public:
         LogicalNotNode(const JSTokenLocation&, ExpressionNode*);
     private:
-        void emitBytecodeInConditionContext(BytecodeGenerator&, Label& trueTarget, Label& falseTarget, FallThroughMode) override;
+        void emitBytecodeInConditionContext(BytecodeGenerator&, Label* trueTarget, Label* falseTarget, FallThroughMode) override;
     };
 
     class BinaryOpNode : public ExpressionNode {
@@ -1044,7 +1030,7 @@ namespace JSC {
         BinaryOpNode(const JSTokenLocation&, ResultType, ExpressionNode* expr1, ExpressionNode* expr2, OpcodeID, bool rightHasAssignments);
 
         RegisterID* emitStrcat(BytecodeGenerator& generator, RegisterID* destination, RegisterID* lhs = 0, ReadModifyResolveNode* emitExpressionInfoForMe = 0);
-        void emitBytecodeInConditionContext(BytecodeGenerator&, Label& trueTarget, Label& falseTarget, FallThroughMode) override;
+        void emitBytecodeInConditionContext(BytecodeGenerator&, Label* trueTarget, Label* falseTarget, FallThroughMode) override;
 
         ExpressionNode* lhs() { return m_expr1; };
         ExpressionNode* rhs() { return m_expr2; };
@@ -1154,9 +1140,6 @@ namespace JSC {
     class InNode : public ThrowableBinaryOpNode {
     public:
         InNode(const JSTokenLocation&, ExpressionNode* expr1, ExpressionNode* expr2, bool rightHasAssignments);
-
-    private:
-        RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
     };
 
     class EqualNode : public BinaryOpNode {
@@ -1207,7 +1190,7 @@ namespace JSC {
 
     private:
         RegisterID* emitBytecode(BytecodeGenerator&, RegisterID* = 0) override;
-        void emitBytecodeInConditionContext(BytecodeGenerator&, Label& trueTarget, Label& falseTarget, FallThroughMode) override;
+        void emitBytecodeInConditionContext(BytecodeGenerator&, Label* trueTarget, Label* falseTarget, FallThroughMode) override;
 
         ExpressionNode* m_expr1;
         ExpressionNode* m_expr2;
@@ -1869,6 +1852,22 @@ namespace JSC {
         ModuleNameNode* m_moduleName { nullptr };
     };
 
+    class FunctionParameters : public ParserArenaDeletable {
+    public:
+        FunctionParameters();
+        ALWAYS_INLINE unsigned size() const { return m_patterns.size(); }
+        ALWAYS_INLINE std::pair<DestructuringPatternNode*, ExpressionNode*> at(unsigned index) { return m_patterns[index]; }
+        ALWAYS_INLINE void append(DestructuringPatternNode* pattern, ExpressionNode* defaultValue) 
+        { 
+            ASSERT(pattern); 
+            m_patterns.append(std::make_pair(pattern, defaultValue));
+        }
+
+    private:
+
+        Vector<std::pair<DestructuringPatternNode*, ExpressionNode*>, 3> m_patterns;
+    };
+
     class FunctionMetadataNode final : public Node, public ParserArenaDeletable {
     public:
         using ParserArenaDeletable::operator new;
@@ -1877,7 +1876,7 @@ namespace JSC {
             ParserArena&, const JSTokenLocation& start, const JSTokenLocation& end, 
             unsigned startColumn, unsigned endColumn, int functionKeywordStart, 
             int functionNameStart, int parametersStart, bool isInStrictContext, 
-            ConstructorKind, SuperBinding, unsigned parameterCount,
+            ConstructorKind, SuperBinding, unsigned parameterCount, unsigned functionLength,
             SourceParseMode, bool isArrowFunctionBodyExpression);
 
         void finishParsing(const SourceCode&, const Identifier&, FunctionMode);
@@ -1897,6 +1896,7 @@ namespace JSC {
         unsigned startColumn() const { return m_startColumn; }
         unsigned endColumn() const { return m_endColumn; }
         unsigned parameterCount() const { return m_parameterCount; }
+        unsigned functionLength() const { return m_functionLength; }
         SourceParseMode parseMode() const { return m_parseMode; }
 
         void setEndPosition(JSTextPosition);
@@ -1933,6 +1933,7 @@ namespace JSC {
         SourceCode m_classSource;
         int m_startStartOffset;
         unsigned m_parameterCount;
+        unsigned m_functionLength;
         int m_lastLine;
         SourceParseMode m_parseMode;
         unsigned m_isInStrictContext : 1;
@@ -2076,7 +2077,6 @@ namespace JSC {
         virtual void toString(StringBuilder&) const = 0;
 
         virtual bool isBindingNode() const { return false; }
-        virtual bool isAssignmentElementNode() const { return false; }
         virtual bool isRestParameter() const { return false; }
         virtual RegisterID* emitDirectBinding(BytecodeGenerator&, RegisterID*, ExpressionNode*) { return 0; }
         
@@ -2121,12 +2121,12 @@ namespace JSC {
         ObjectPatternNode();
         void appendEntry(const JSTokenLocation&, const Identifier& identifier, bool wasString, DestructuringPatternNode* pattern, ExpressionNode* defaultValue)
         {
-            m_targetPatterns.append(Entry { identifier, nullptr, wasString, pattern, defaultValue });
+            m_targetPatterns.append(Entry{ identifier, nullptr, wasString, pattern, defaultValue });
         }
 
         void appendEntry(const JSTokenLocation&, ExpressionNode* propertyExpression, DestructuringPatternNode* pattern, ExpressionNode* defaultValue)
         {
-            m_targetPatterns.append(Entry { Identifier(), propertyExpression, false, pattern, defaultValue });
+            m_targetPatterns.append(Entry{ Identifier(), propertyExpression, false, pattern, defaultValue });
         }
 
     private:
@@ -2143,7 +2143,7 @@ namespace JSC {
         Vector<Entry> m_targetPatterns;
     };
 
-    class BindingNode final: public DestructuringPatternNode {
+    class BindingNode : public DestructuringPatternNode {
     public:
         BindingNode(const Identifier& boundProperty, const JSTextPosition& start, const JSTextPosition& end, AssignmentContext);
         const Identifier& boundProperty() const { return m_boundProperty; }
@@ -2164,7 +2164,7 @@ namespace JSC {
         AssignmentContext m_bindingContext;
     };
 
-    class RestParameterNode final : public DestructuringPatternNode {
+    class RestParameterNode : public DestructuringPatternNode {
     public:
         RestParameterNode(DestructuringPatternNode*, unsigned numParametersToSkip);
 
@@ -2181,7 +2181,7 @@ namespace JSC {
         unsigned m_numParametersToSkip;
     };
 
-    class AssignmentElementNode final : public DestructuringPatternNode {
+    class AssignmentElementNode : public DestructuringPatternNode {
     public:
         AssignmentElementNode(ExpressionNode* assignmentTarget, const JSTextPosition& start, const JSTextPosition& end);
         const ExpressionNode* assignmentTarget() { return m_assignmentTarget; }
@@ -2193,8 +2193,6 @@ namespace JSC {
         void collectBoundIdentifiers(Vector<Identifier>&) const override;
         void bindValue(BytecodeGenerator&, RegisterID*) const override;
         void toString(StringBuilder&) const override;
-
-        bool isAssignmentElementNode() const override { return true; }
 
         JSTextPosition m_divotStart;
         JSTextPosition m_divotEnd;
@@ -2213,36 +2211,6 @@ namespace JSC {
 
         DestructuringPatternNode* m_bindings;
         ExpressionNode* m_initializer;
-    };
-
-    class FunctionParameters : public ParserArenaDeletable {
-    public:
-        FunctionParameters();
-        ALWAYS_INLINE unsigned size() const { return m_patterns.size(); }
-        ALWAYS_INLINE std::pair<DestructuringPatternNode*, ExpressionNode*> at(unsigned index) { return m_patterns[index]; }
-        ALWAYS_INLINE void append(DestructuringPatternNode* pattern, ExpressionNode* defaultValue)
-        {
-            ASSERT(pattern);
-
-            // http://www.ecma-international.org/ecma-262/6.0/index.html#sec-functiondeclarationinstantiation
-            // This implements IsSimpleParameterList in the Ecma 2015 spec.
-            // If IsSimpleParameterList is false, we will create a strict-mode like arguments object.
-            // IsSimpleParameterList is false if the argument list contains any default parameter values,
-            // a rest parameter, or any destructuring patterns.
-            // If we do have default parameters, destructuring parameters, or a rest parameter, our parameters will be allocated in a different scope.
-
-            bool hasDefaultParameterValue = defaultValue;
-            bool isSimpleParameter = !hasDefaultParameterValue && pattern->isBindingNode();
-            m_isSimpleParameterList &= isSimpleParameter;
-
-            m_patterns.append(std::make_pair(pattern, defaultValue));
-        }
-        ALWAYS_INLINE bool isSimpleParameterList() const { return m_isSimpleParameterList; }
-
-    private:
-
-        Vector<std::pair<DestructuringPatternNode*, ExpressionNode*>, 3> m_patterns;
-        bool m_isSimpleParameterList { true };
     };
 
     class FuncDeclNode : public StatementNode {

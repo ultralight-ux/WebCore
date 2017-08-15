@@ -46,7 +46,6 @@ public:
     static JSObject* objectAtScope(JSScope*);
 
     static JSObject* resolve(ExecState*, JSScope*, const Identifier&);
-    static JSValue resolveScopeForHoistingFuncDeclInEval(ExecState*, JSScope*, const Identifier&);
     static ResolveOp abstractResolve(ExecState*, size_t depthOffset, JSScope*, const Identifier&, GetOrPut, ResolveType, InitializationMode);
 
     static bool hasConstantScope(ResolveType);
@@ -72,13 +71,10 @@ public:
     JSGlobalObject* globalObject(VM&);
     JSObject* globalThis();
 
-    SymbolTable* symbolTable(VM&);
+    SymbolTable* symbolTable();
 
 protected:
     JSScope(VM&, Structure*, JSScope* next);
-
-    template<typename ReturnPredicateFunctor, typename SkipPredicateFunctor>
-    static JSObject* resolve(ExecState*, JSScope*, const Identifier&, ReturnPredicateFunctor, SkipPredicateFunctor);
 
 private:
     WriteBarrier<JSScope> m_next;

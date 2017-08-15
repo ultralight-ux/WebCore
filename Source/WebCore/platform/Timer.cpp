@@ -172,8 +172,8 @@ inline bool TimerHeapLessThanFunction::operator()(const TimerBase* a, const Time
 {
     // The comparisons below are "backwards" because the heap puts the largest 
     // element first and we want the lowest time to be the first one in the heap.
-    MonotonicTime aFireTime = a->m_nextFireTime;
-    MonotonicTime bFireTime = b->m_nextFireTime;
+    double aFireTime = a->m_nextFireTime;
+    double bFireTime = b->m_nextFireTime;
     if (bFireTime != aFireTime)
         return bFireTime < aFireTime;
     
@@ -186,8 +186,14 @@ inline bool TimerHeapLessThanFunction::operator()(const TimerBase* a, const Time
 // ----------------
 
 TimerBase::TimerBase()
+    : m_nextFireTime(0)
+    , m_unalignedNextFireTime(0)
+    , m_repeatInterval(0)
+    , m_heapIndex(-1)
+    , m_cachedThreadGlobalTimerHeap(0)
 #ifndef NDEBUG
-    : m_thread(currentThread())
+    , m_thread(currentThread())
+    , m_wasDeleted(false)
 #endif
 {
 }
@@ -201,32 +207,32 @@ TimerBase::~TimerBase()
 #endif
 }
 
-void TimerBase::start(Seconds nextFireInterval, Seconds repeatInterval)
+void TimerBase::start(double nextFireInterval, double repeatInterval)
 {
     ASSERT(canAccessThreadLocalDataForThread(m_thread));
 
     m_repeatInterval = repeatInterval;
-    setNextFireTime(MonotonicTime::now() + nextFireInterval);
+    setNextFireTime(monotonicallyIncreasingTime() + nextFireInterval);
 }
 
 void TimerBase::stop()
 {
     ASSERT(canAccessThreadLocalDataForThread(m_thread));
 
-    m_repeatInterval = 0_s;
-    setNextFireTime(MonotonicTime { });
+    m_repeatInterval = 0;
+    setNextFireTime(0);
 
-    ASSERT(!static_cast<bool>(m_nextFireTime));
-    ASSERT(m_repeatInterval == 0_s);
+    ASSERT(m_nextFireTime == 0);
+    ASSERT(m_repeatInterval == 0);
     ASSERT(!inHeap());
 }
 
-Seconds TimerBase::nextFireInterval() const
+double TimerBase::nextFireInterval() const
 {
     ASSERT(isActive());
-    MonotonicTime current = MonotonicTime::now();
+    double current = monotonicallyIncreasingTime();
     if (m_nextFireTime < current)
-        return 0_s;
+        return 0;
     return m_nextFireTime - current;
 }
 
@@ -242,14 +248,14 @@ inline void TimerBase::checkHeapIndex() const
 inline void TimerBase::checkConsistency() const
 {
     // Timers should be in the heap if and only if they have a non-zero next fire time.
-    ASSERT(inHeap() == static_cast<bool>(m_nextFireTime));
+    ASSERT(inHeap() == (m_nextFireTime != 0));
     if (inHeap())
         checkHeapIndex();
 }
 
 void TimerBase::heapDecreaseKey()
 {
-    ASSERT(static_cast<bool>(m_nextFireTime));
+    ASSERT(m_nextFireTime != 0);
     checkHeapIndex();
     TimerBase** heapData = timerHeap().data();
     push_heap(TimerHeapIterator(heapData), TimerHeapIterator(heapData + m_heapIndex + 1), TimerHeapLessThanFunction());
@@ -258,7 +264,7 @@ void TimerBase::heapDecreaseKey()
 
 inline void TimerBase::heapDelete()
 {
-    ASSERT(!static_cast<bool>(m_nextFireTime));
+    ASSERT(m_nextFireTime == 0);
     heapPop();
     timerHeap().removeLast();
     m_heapIndex = -1;
@@ -266,7 +272,7 @@ inline void TimerBase::heapDelete()
 
 void TimerBase::heapDeleteMin()
 {
-    ASSERT(!static_cast<bool>(m_nextFireTime));
+    ASSERT(m_nextFireTime == 0);
     heapPopMin();
     timerHeap().removeLast();
     m_heapIndex = -1;
@@ -274,7 +280,7 @@ void TimerBase::heapDeleteMin()
 
 inline void TimerBase::heapIncreaseKey()
 {
-    ASSERT(static_cast<bool>(m_nextFireTime));
+    ASSERT(m_nextFireTime != 0);
     heapPop();
     heapDecreaseKey();
 }
@@ -290,8 +296,8 @@ inline void TimerBase::heapInsert()
 inline void TimerBase::heapPop()
 {
     // Temporarily force this timer to have the minimum key so we can pop it.
-    MonotonicTime fireTime = m_nextFireTime;
-    m_nextFireTime = -MonotonicTime::infinity();
+    double fireTime = m_nextFireTime;
+    m_nextFireTime = -std::numeric_limits<double>::infinity();
     heapDecreaseKey();
     heapPopMin();
     m_nextFireTime = fireTime;
@@ -341,7 +347,7 @@ bool TimerBase::hasValidHeapPosition() const
     return childHeapPropertyHolds(this, heap, childIndex1) && childHeapPropertyHolds(this, heap, childIndex2);
 }
 
-void TimerBase::updateHeapIfNeeded(MonotonicTime oldTime)
+void TimerBase::updateHeapIfNeeded(double oldTime)
 {
     if (m_nextFireTime && hasValidHeapPosition())
         return;
@@ -360,7 +366,7 @@ void TimerBase::updateHeapIfNeeded(MonotonicTime oldTime)
     ASSERT(!inHeap() || hasValidHeapPosition());
 }
 
-void TimerBase::setNextFireTime(MonotonicTime newTime)
+void TimerBase::setNextFireTime(double newTime)
 {
     ASSERT(canAccessThreadLocalDataForThread(m_thread));
     ASSERT(!m_wasDeleted);
@@ -373,11 +379,11 @@ void TimerBase::setNextFireTime(MonotonicTime newTime)
         m_cachedThreadGlobalTimerHeap = &threadGlobalTimerHeap();
 
     // Keep heap valid while changing the next-fire time.
-    MonotonicTime oldTime = m_nextFireTime;
+    double oldTime = m_nextFireTime;
     // Don't realign zero-delay timers.
     if (newTime) {
-        if (auto newAlignedTime = alignedFireTime(newTime))
-            newTime = newAlignedTime.value();
+        if (auto newAlignedTime = alignedFireTime(secondsToMS(newTime)))
+            newTime = msToSeconds(newAlignedTime.value());
     }
 
     if (oldTime != newTime) {
@@ -410,10 +416,10 @@ void TimerBase::didChangeAlignmentInterval()
     setNextFireTime(m_unalignedNextFireTime);
 }
 
-Seconds TimerBase::nextUnalignedFireInterval() const
+double TimerBase::nextUnalignedFireInterval() const
 {
     ASSERT(isActive());
-    return std::max(m_unalignedNextFireTime - MonotonicTime::now(), 0_s);
+    return std::max(m_unalignedNextFireTime - monotonicallyIncreasingTime(), 0.0);
 }
 
 } // namespace WebCore

@@ -65,6 +65,7 @@ enum ForcedAccessibilityValue { "system", "on", "off" };
     // Editing, forms
     [MayThrowException] void setEditingBehavior(DOMString behavior);
     [MayThrowException] void setShouldConvertPositionStyleOnCopy(boolean convertPosition);
+    void setLangAttributeAwareFormControlUIEnabled(boolean enabled);
     [MayThrowException] void setPreferMIMETypeForImages(boolean preferMimeTypeForImage);
 
     // Other switches
@@ -82,25 +83,23 @@ enum ForcedAccessibilityValue { "system", "on", "off" };
     [MayThrowException] void setAllowsInlineMediaPlaybackAfterFullscreen(boolean allows);
     [MayThrowException] void setInlineMediaPlaybackRequiresPlaysInlineAttribute(boolean requires);
 
-    // RuntimeEnabledFeatures.
-    void setIndexedDBWorkersEnabled(boolean enabled);
-    void setCSSGridLayoutEnabled(boolean enabled);
-    void setWebGL2Enabled(boolean enabled);
-    void setWebGPUEnabled(boolean enabled);
+    void setIndexedDBWorkersEnabled(boolean requires);
 
     [MayThrowException] DOMString userInterfaceDirectionPolicy();
     [MayThrowException] void setUserInterfaceDirectionPolicy(DOMString policy);
     [MayThrowException] DOMString systemLayoutDirection();
     [MayThrowException] void setSystemLayoutDirection(DOMString direction);
 
+    [MayThrowException] boolean variationFontsEnabled();
+    [MayThrowException] void setVariationFontsEnabled(boolean enabled);
+
     [MayThrowException] boolean deferredCSSParserEnabled();
     [MayThrowException] void setDeferredCSSParserEnabled(boolean enabled);
-
-    boolean shouldDispatchRequestAnimationFrameEvents();
-    void setShouldDispatchRequestAnimationFrameEvents(boolean shouldDispatchRequestAnimationFrameEvents);
 
     attribute ForcedAccessibilityValue forcedColorsAreInvertedAccessibilityValue;
     attribute ForcedAccessibilityValue forcedDisplayIsMonochromeAccessibilityValue;
     attribute ForcedAccessibilityValue forcedPrefersReducedMotionAccessibilityValue;
+
+    void setInputEventsEnabled(boolean enabled);
 };
 

@@ -54,7 +54,6 @@ public:
     HTMLSelectElement* ownerSelectElement() const;
 
     WEBCORE_EXPORT String label() const;
-    String displayLabel() const;
     WEBCORE_EXPORT void setLabel(const String&);
 
     bool ownElementDisabled() const { return m_disabled; }

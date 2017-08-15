@@ -40,7 +40,7 @@ namespace FTL {
 
 MacroAssemblerCodeRef osrExitGenerationThunkGenerator(VM*);
 MacroAssemblerCodeRef lazySlowPathGenerationThunkGenerator(VM*);
-MacroAssemblerCodeRef slowPathCallThunkGenerator(const SlowPathCallKey&);
+MacroAssemblerCodeRef slowPathCallThunkGenerator(VM&, const SlowPathCallKey&);
 
 template<typename KeyTypeArgument>
 struct ThunkMap {
@@ -54,13 +54,13 @@ struct ThunkMap {
 
 template<typename MapType, typename GeneratorType>
 MacroAssemblerCodeRef generateIfNecessary(
-    MapType& map, const typename MapType::KeyType& key, GeneratorType generator)
+    VM& vm, MapType& map, const typename MapType::KeyType& key, GeneratorType generator)
 {
     typename MapType::ToThunkMap::iterator iter = map.m_toThunk.find(key);
     if (iter != map.m_toThunk.end())
         return iter->value;
     
-    MacroAssemblerCodeRef result = generator(key);
+    MacroAssemblerCodeRef result = generator(vm, key);
     map.m_toThunk.add(key, result);
     map.m_fromThunk.add(result.code(), key);
     return result;
@@ -76,10 +76,10 @@ typename MapType::KeyType keyForThunk(MapType& map, MacroAssemblerCodePtr ptr)
 
 class Thunks {
 public:
-    MacroAssemblerCodeRef getSlowPathCallThunk(const SlowPathCallKey& key)
+    MacroAssemblerCodeRef getSlowPathCallThunk(VM& vm, const SlowPathCallKey& key)
     {
         return generateIfNecessary(
-            m_slowPathCallThunks, key, slowPathCallThunkGenerator);
+            vm, m_slowPathCallThunks, key, slowPathCallThunkGenerator);
     }
     
     SlowPathCallKey keyForSlowPathCallThunk(MacroAssemblerCodePtr ptr)

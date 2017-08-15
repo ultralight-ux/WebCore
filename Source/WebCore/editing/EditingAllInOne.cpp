@@ -37,7 +37,6 @@
 #include <DictationAlternative.cpp>
 #include <DictationCommand.cpp>
 #include <EditCommand.cpp>
-#include <Editing.cpp>
 #include <EditingStyle.cpp>
 #include <Editor.cpp>
 #include <EditorCommand.cpp>
@@ -55,6 +54,7 @@
 #include <MergeIdenticalElementsCommand.cpp>
 #include <ModifySelectionListLevel.cpp>
 #include <MoveSelectionCommand.cpp>
+#include <RemoveCSSPropertyCommand.cpp>
 #include <RemoveFormatCommand.cpp>
 #include <RemoveNodeCommand.cpp>
 #include <RemoveNodePreservingChildrenCommand.cpp>
@@ -83,4 +83,5 @@
 #include <VisibleSelection.cpp>
 #include <VisibleUnits.cpp>
 #include <WrapContentsInDummySpanCommand.cpp>
+#include <htmlediting.cpp>
 #include <markup.cpp>

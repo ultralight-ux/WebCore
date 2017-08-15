@@ -50,10 +50,6 @@ enum JSType : uint8_t {
     UnlinkedFunctionCodeBlockType,
 
     JSFixedArrayType,
-    JSSourceCodeType,
-    JSScriptFetcherType,
-
-    WebAssemblyToJSCalleeType,
 
     // The ObjectType value must come before any JSType that is a subclass of JSObject.
     ObjectType,
@@ -96,8 +92,6 @@ enum JSType : uint8_t {
     ProxyObjectType,
     JSMapType,
     JSSetType,
-
-    WebAssemblyFunctionType,
 
     ClonedArgumentsType,
 

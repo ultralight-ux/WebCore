@@ -43,12 +43,15 @@ namespace WebCore {
 // Fire timers for this length of time, and then quit to let the run loop process user input events.
 // 100ms is about a perceptable delay in UI, so use a half of that as a threshold.
 // This is to prevent UI freeze when there are too many timers or machine performance is low.
-static const Seconds maxDurationOfFiringTimers { 50_ms };
+static const double maxDurationOfFiringTimers = 0.050;
 
 // Timers are created, started and fired on the same thread, and each thread has its own ThreadTimers
 // copy to keep the heap and a set of currently firing timers.
 
 ThreadTimers::ThreadTimers()
+    : m_sharedTimer(0)
+    , m_firingTimers(false)
+    , m_pendingSharedTimerFireTime(0)
 {
     if (isUIThread())
         setSharedTimer(&MainThreadSharedTimer::singleton());
@@ -61,7 +64,7 @@ void ThreadTimers::setSharedTimer(SharedTimer* sharedTimer)
     if (m_sharedTimer) {
         m_sharedTimer->setFiredFunction(nullptr);
         m_sharedTimer->stop();
-        m_pendingSharedTimerFireTime = MonotonicTime { };
+        m_pendingSharedTimerFireTime = 0;
     }
     
     m_sharedTimer = sharedTimer;
@@ -78,18 +81,18 @@ void ThreadTimers::updateSharedTimer()
         return;
         
     if (m_firingTimers || m_timerHeap.isEmpty()) {
-        m_pendingSharedTimerFireTime = MonotonicTime { };
+        m_pendingSharedTimerFireTime = 0;
         m_sharedTimer->stop();
     } else {
-        MonotonicTime nextFireTime = m_timerHeap.first()->m_nextFireTime;
-        MonotonicTime currentMonotonicTime = MonotonicTime::now();
+        double nextFireTime = m_timerHeap.first()->m_nextFireTime;
+        double currentMonotonicTime = monotonicallyIncreasingTime();
         if (m_pendingSharedTimerFireTime) {
             // No need to restart the timer if both the pending fire time and the new fire time are in the past.
             if (m_pendingSharedTimerFireTime <= currentMonotonicTime && nextFireTime <= currentMonotonicTime)
                 return;
         } 
         m_pendingSharedTimerFireTime = nextFireTime;
-        m_sharedTimer->setFireInterval(std::max(nextFireTime - currentMonotonicTime, 0_s));
+        m_sharedTimer->setFireInterval(Seconds(std::max(nextFireTime - currentMonotonicTime, 0.0)));
     }
 }
 
@@ -100,25 +103,25 @@ void ThreadTimers::sharedTimerFiredInternal()
     if (m_firingTimers)
         return;
     m_firingTimers = true;
-    m_pendingSharedTimerFireTime = MonotonicTime { };
+    m_pendingSharedTimerFireTime = 0;
 
-    MonotonicTime fireTime = MonotonicTime::now();
-    MonotonicTime timeToQuit = fireTime + maxDurationOfFiringTimers;
+    double fireTime = monotonicallyIncreasingTime();
+    double timeToQuit = fireTime + maxDurationOfFiringTimers;
 
     while (!m_timerHeap.isEmpty() && m_timerHeap.first()->m_nextFireTime <= fireTime) {
         TimerBase* timer = m_timerHeap.first();
-        timer->m_nextFireTime = MonotonicTime { };
-        timer->m_unalignedNextFireTime = MonotonicTime { };
+        timer->m_nextFireTime = 0;
+        timer->m_unalignedNextFireTime = 0;
         timer->heapDeleteMin();
 
-        Seconds interval = timer->repeatInterval();
-        timer->setNextFireTime(interval ? fireTime + interval : MonotonicTime { });
+        double interval = timer->repeatInterval();
+        timer->setNextFireTime(interval ? fireTime + interval : 0);
 
         // Once the timer has been fired, it may be deleted, so do nothing else with it after this point.
         timer->fired();
 
         // Catch the case where the timer asked timers to fire in a nested event loop, or we are over time limit.
-        if (!m_firingTimers || timeToQuit < MonotonicTime::now())
+        if (!m_firingTimers || timeToQuit < monotonicallyIncreasingTime())
             break;
     }
 
@@ -134,7 +137,7 @@ void ThreadTimers::fireTimersInNestedEventLoop()
 
     if (m_sharedTimer) {
         m_sharedTimer->invalidate();
-        m_pendingSharedTimerFireTime = MonotonicTime { };
+        m_pendingSharedTimerFireTime = 0;
     }
 
     updateSharedTimer();

@@ -27,7 +27,6 @@
 #endif
 
 #if USE(OPENGL_ES_2)
-#define GL_GLEXT_PROTOTYPES 1
 #include <GLES2/gl2.h>
 #include <GLES3/gl3.h>
 #endif
@@ -120,7 +119,7 @@ std::unique_ptr<GLContext> GLContext::createSharingContext(PlatformDisplay& disp
     }
 #endif
 
-#if USE(EGL) || PLATFORM(WAYLAND) || PLATFORM(WPE)
+#if USE(EGL) || PLATFORM(WAYLAND)
     if (auto eglContext = GLContextEGL::createSharingContext(display))
         return WTFMove(eglContext);
 #endif

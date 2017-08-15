@@ -44,7 +44,6 @@
 #include <wtf/MediaTime.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
-#include <wtf/UUID.h>
 #include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
 
@@ -56,7 +55,6 @@
 namespace WebCore {
 
 class MediaStream;
-class OrientationNotifier;
 
 class MediaStreamPrivate : public MediaStreamTrackPrivate::Observer, public RefCounted<MediaStreamPrivate> {
 public:
@@ -71,7 +69,7 @@ public:
     };
 
     static Ref<MediaStreamPrivate> create(const Vector<Ref<RealtimeMediaSource>>& audioSources, const Vector<Ref<RealtimeMediaSource>>& videoSources);
-    static Ref<MediaStreamPrivate> create(const MediaStreamTrackPrivateVector& tracks, String&& id = createCanonicalUUIDString()) { return adoptRef(*new MediaStreamPrivate(tracks, WTFMove(id))); }
+    static Ref<MediaStreamPrivate> create(const MediaStreamTrackPrivateVector&);
 
     virtual ~MediaStreamPrivate();
 
@@ -95,21 +93,19 @@ public:
     void stopProducingData();
     bool isProducingData() const;
 
-    void endStream();
+    RefPtr<Image> currentFrameImage();
+    void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&);
 
     bool hasVideo() const;
     bool hasAudio() const;
     bool muted() const;
 
-    bool hasCaptureVideoSource() const;
-    bool hasCaptureAudioSource() const;
-    void setCaptureTracksMuted(bool);
+    bool hasLocalVideoSource() const;
+    bool hasLocalAudioSource() const;
 
     FloatSize intrinsicSize() const;
 
     WeakPtr<MediaStreamPrivate> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
-
-    void monitorOrientation(OrientationNotifier&);
 
 #if USE(GSTREAMER)
     void setVideoRenderer(OwrGstVideoRenderer* renderer, GstElement* sink) { m_gstVideoRenderer = renderer; m_gstVideoSinkElement = sink; }
@@ -122,7 +118,7 @@ private:
 #endif
 
 private:
-    MediaStreamPrivate(const MediaStreamTrackPrivateVector&, String&&);
+    MediaStreamPrivate(const String&, const MediaStreamTrackPrivateVector&);
 
     // MediaStreamTrackPrivate::Observer
     void trackEnded(MediaStreamTrackPrivate&) override;

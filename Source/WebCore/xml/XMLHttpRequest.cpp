@@ -54,7 +54,6 @@
 #include "XMLHttpRequestProgressEvent.h"
 #include "XMLHttpRequestUpload.h"
 #include "markup.h"
-#include <interpreter/StackVisitor.h>
 #include <mutex>
 #include <runtime/ArrayBuffer.h>
 #include <runtime/ArrayBufferView.h>
@@ -146,7 +145,8 @@ bool XMLHttpRequest::usesDashboardBackwardCompatibilityMode() const
 {
     if (scriptExecutionContext()->isWorkerGlobalScope())
         return false;
-    return document()->settings().usesDashboardBackwardCompatibilityMode();
+    Settings* settings = document()->settings();
+    return settings && settings->usesDashboardBackwardCompatibilityMode();
 }
 
 #endif
@@ -229,7 +229,7 @@ RefPtr<ArrayBuffer> XMLHttpRequest::createResponseArrayBuffer()
     ASSERT(m_responseType == ResponseType::Arraybuffer);
     ASSERT(doneWithoutErrors());
 
-    auto result = m_binaryResponseBuilder ? m_binaryResponseBuilder->tryCreateArrayBuffer() : ArrayBuffer::create(nullptr, 0);
+    auto result = m_binaryResponseBuilder ? m_binaryResponseBuilder->createArrayBuffer() : ArrayBuffer::create(nullptr, 0);
     m_binaryResponseBuilder = nullptr;
     return result;
 }
@@ -245,8 +245,8 @@ ExceptionOr<void> XMLHttpRequest::setTimeout(unsigned timeout)
         return { };
 
     // If timeout is zero, we should use the default network timeout. But we disabled it so let's mimic it with a 60 seconds timeout value.
-    Seconds interval = Seconds { m_timeoutMilliseconds ? m_timeoutMilliseconds / 1000. : 60. } - (MonotonicTime::now() - m_sendingTime);
-    m_timeoutTimer.startOneShot(std::max(interval, 0_s));
+    std::chrono::duration<double> interval = std::chrono::milliseconds { m_timeoutMilliseconds ? m_timeoutMilliseconds : 60000 } - (std::chrono::steady_clock::now() - m_sendingTime);
+    m_timeoutTimer.startOneShot(std::max(0.0, interval.count()));
     return { };
 }
 
@@ -424,6 +424,11 @@ ExceptionOr<void> XMLHttpRequest::open(const String& method, const URL& url, boo
         return Exception { SECURITY_ERR };
 
     if (!async && scriptExecutionContext()->isDocument()) {
+        if (document()->settings() && !document()->settings()->syncXHRInDocumentsEnabled()) {
+            logConsoleError(scriptExecutionContext(), "Synchronous XMLHttpRequests are disabled for this page.");
+            return Exception { INVALID_ACCESS_ERR };
+        }
+
         // Newer functionality is not available to synchronous requests in window contexts, as a spec-mandated
         // attempt to discourage synchronous XHR use. responseType is one such piece of functionality.
         // We'll only disable this functionality for HTTP(S) requests since sync requests for local protocols
@@ -491,78 +496,12 @@ std::optional<ExceptionOr<void>> XMLHttpRequest::prepareToSend()
             return ExceptionOr<void> { Exception { NETWORK_ERR } };
         setPendingActivity(this);
         m_timeoutTimer.stop();
-        m_networkErrorTimer.startOneShot(0_s);
+        m_networkErrorTimer.startOneShot(0);
         return ExceptionOr<void> { };
     }
 
     m_error = false;
     return std::nullopt;
-}
-
-namespace {
-
-// FIXME: This should be abstracted out, so that any IDL function can be passed the line/column/url tuple.
-
-// FIXME: This should probably use ShadowChicken so that we get the right frame even when it did a tail call.
-// https://bugs.webkit.org/show_bug.cgi?id=155688
-
-class SendFunctor {
-public:
-    SendFunctor() = default;
-
-    unsigned line() const { return m_line; }
-    unsigned column() const { return m_column; }
-    String url() const { return m_url; }
-
-    JSC::StackVisitor::Status operator()(JSC::StackVisitor& visitor) const
-    {
-        if (!m_hasSkippedFirstFrame) {
-            m_hasSkippedFirstFrame = true;
-            return JSC::StackVisitor::Continue;
-        }
-
-        unsigned line = 0;
-        unsigned column = 0;
-        visitor->computeLineAndColumn(line, column);
-        m_line = line;
-        m_column = column;
-        m_url = visitor->sourceURL();
-        return JSC::StackVisitor::Done;
-    }
-
-private:
-    mutable bool m_hasSkippedFirstFrame { false };
-    mutable unsigned m_line { 0 };
-    mutable unsigned m_column { 0 };
-    mutable String m_url;
-};
-
-}
-
-ExceptionOr<void> XMLHttpRequest::send(JSC::ExecState& state, std::optional<SendTypes>&& sendType)
-{
-    InspectorInstrumentation::willSendXMLHttpRequest(scriptExecutionContext(), url());
-
-    ExceptionOr<void> result;
-    if (!sendType)
-        result = send();
-    else {
-        result = WTF::switchOn(sendType.value(),
-            [this] (const RefPtr<Document>& document) -> ExceptionOr<void> { return send(*document); },
-            [this] (const RefPtr<Blob>& blob) -> ExceptionOr<void> { return send(*blob); },
-            [this] (const RefPtr<JSC::ArrayBufferView>& arrayBufferView) -> ExceptionOr<void> { return send(*arrayBufferView); },
-            [this] (const RefPtr<JSC::ArrayBuffer>& arrayBuffer) -> ExceptionOr<void> { return send(*arrayBuffer); },
-            [this] (const RefPtr<DOMFormData>& formData) -> ExceptionOr<void> { return send(*formData); },
-            [this] (const String& string) -> ExceptionOr<void> { return send(string); }
-        );
-    }
-
-    SendFunctor functor;
-    state.iterate(functor);
-    setLastSendLineAndColumnNumber(functor.line(), functor.column());
-    setLastSendURL(functor.url());
-
-    return result;
 }
 
 ExceptionOr<void> XMLHttpRequest::send(Document& document)
@@ -730,15 +669,14 @@ ExceptionOr<void> XMLHttpRequest::createRequest()
     options.contentSecurityPolicyEnforcement = scriptExecutionContext()->shouldBypassMainWorldContentSecurityPolicy() ? ContentSecurityPolicyEnforcement::DoNotEnforce : ContentSecurityPolicyEnforcement::EnforceConnectSrcDirective;
     options.initiator = cachedResourceRequestInitiators().xmlhttprequest;
     options.sameOriginDataURLFlag = SameOriginDataURLFlag::Set;
-    options.filteringPolicy = ResponseFilteringPolicy::Enable;
 
     if (m_timeoutMilliseconds) {
         if (!m_async)
             request.setTimeoutInterval(m_timeoutMilliseconds / 1000.0);
         else {
             request.setTimeoutInterval(std::numeric_limits<double>::infinity());
-            m_sendingTime = MonotonicTime::now();
-            m_timeoutTimer.startOneShot(1_ms * m_timeoutMilliseconds);
+            m_sendingTime = std::chrono::steady_clock::now();
+            m_timeoutTimer.startOneShot(std::chrono::milliseconds { m_timeoutMilliseconds });
         }
     }
 
@@ -746,6 +684,9 @@ ExceptionOr<void> XMLHttpRequest::createRequest()
     m_error = false;
 
     if (m_async) {
+        if (m_upload)
+            request.setReportUploadProgress(true);
+
         // ThreadableLoader::create can return null here, for example if we're no longer attached to a page or if a content blocker blocks the load.
         // This is true while running onunload handlers.
         // FIXME: Maybe we need to be able to send XMLHttpRequests from onunload, <http://bugs.webkit.org/show_bug.cgi?id=10904>.
@@ -930,27 +871,18 @@ String XMLHttpRequest::getAllResponseHeaders() const
     if (m_state < HEADERS_RECEIVED || m_error)
         return emptyString();
 
-    if (!m_allResponseHeaders) {
-        Vector<String> headers;
-        headers.reserveInitialCapacity(m_response.httpHeaderFields().size());
+    StringBuilder stringBuilder;
 
-        for (auto& header : m_response.httpHeaderFields()) {
-            StringBuilder stringBuilder;
-            stringBuilder.append(header.key.convertToASCIILowercase());
-            stringBuilder.append(": ");
-            stringBuilder.append(header.value);
-            stringBuilder.append("\r\n");
-            headers.uncheckedAppend(stringBuilder.toString());
-        }
-        std::sort(headers.begin(), headers.end(), WTF::codePointCompareLessThan);
-
-        StringBuilder stringBuilder;
-        for (auto& header : headers)
-            stringBuilder.append(header);
-        m_allResponseHeaders = stringBuilder.toString();
+    for (const auto& header : m_response.httpHeaderFields()) {
+        stringBuilder.append(header.key);
+        stringBuilder.append(':');
+        stringBuilder.append(' ');
+        stringBuilder.append(header.value);
+        stringBuilder.append('\r');
+        stringBuilder.append('\n');
     }
 
-    return m_allResponseHeaders;
+    return stringBuilder.toString();
 }
 
 String XMLHttpRequest::getResponseHeader(const String& name) const
@@ -1028,14 +960,14 @@ void XMLHttpRequest::didFail(const ResourceError& error)
         m_sendFlag = false;
         setPendingActivity(this);
         m_timeoutTimer.stop();
-        m_networkErrorTimer.startOneShot(0_s);
+        m_networkErrorTimer.startOneShot(0);
         return;
     }
     m_exceptionCode = NETWORK_ERR;
     networkError();
 }
 
-void XMLHttpRequest::didFinishLoading(unsigned long identifier)
+void XMLHttpRequest::didFinishLoading(unsigned long identifier, double)
 {
     if (m_error)
         return;
@@ -1249,7 +1181,7 @@ void XMLHttpRequest::resume()
     // We are not allowed to execute arbitrary JS in resume() so dispatch
     // the error event in a timer.
     if (m_dispatchErrorOnResuming && !m_resumeTimer.isActive())
-        m_resumeTimer.startOneShot(0_s);
+        m_resumeTimer.startOneShot(0);
 }
 
 void XMLHttpRequest::resumeTimerFired()

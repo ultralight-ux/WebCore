@@ -86,10 +86,12 @@ RegExpConstructor::RegExpConstructor(VM& vm, Structure* structure, RegExpPrototy
 void RegExpConstructor::finishCreation(VM& vm, RegExpPrototype* regExpPrototype, GetterSetter* speciesSymbol)
 {
     Base::finishCreation(vm, ASCIILiteral("RegExp"));
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, regExpPrototype, DontEnum | DontDelete | ReadOnly);
-    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(2), ReadOnly | DontEnum);
+
+    // no. of arguments for constructor
+    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(2), ReadOnly | DontDelete | DontEnum);
 
     putDirectNonIndexAccessor(vm, vm.propertyNames->speciesSymbol, speciesSymbol, Accessor | ReadOnly | DontEnum);
 }
@@ -181,7 +183,7 @@ EncodedJSValue regExpConstructorRightContext(ExecState* exec, EncodedJSValue thi
 
 bool setRegExpConstructorInput(ExecState* exec, EncodedJSValue thisValue, EncodedJSValue value)
 {
-    if (auto constructor = jsDynamicCast<RegExpConstructor*>(exec->vm(), JSValue::decode(thisValue))) {
+    if (auto constructor = jsDynamicCast<RegExpConstructor*>(JSValue::decode(thisValue))) {
         constructor->setInput(exec, JSValue::decode(value).toString(exec));
         return true;
     }
@@ -190,7 +192,7 @@ bool setRegExpConstructorInput(ExecState* exec, EncodedJSValue thisValue, Encode
 
 bool setRegExpConstructorMultiline(ExecState* exec, EncodedJSValue thisValue, EncodedJSValue value)
 {
-    if (auto constructor = jsDynamicCast<RegExpConstructor*>(exec->vm(), JSValue::decode(thisValue))) {
+    if (auto constructor = jsDynamicCast<RegExpConstructor*>(JSValue::decode(thisValue))) {
         constructor->setMultiline(JSValue::decode(value).toBoolean(exec));
         return true;
     }
@@ -253,7 +255,7 @@ JSObject* constructRegExp(ExecState* exec, JSGlobalObject* globalObject, const A
     JSValue patternArg = args.at(0);
     JSValue flagsArg = args.at(1);
 
-    bool isPatternRegExp = patternArg.inherits(vm, RegExpObject::info());
+    bool isPatternRegExp = patternArg.inherits(RegExpObject::info());
     bool constructAsRegexp = isRegExp(vm, exec, patternArg);
     RETURN_IF_EXCEPTION(scope, nullptr);
 

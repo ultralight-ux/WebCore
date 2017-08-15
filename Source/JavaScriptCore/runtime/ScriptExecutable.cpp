@@ -176,64 +176,41 @@ CodeBlock* ScriptExecutable::newCodeBlockFor(
     ASSERT(vm->heap.isDeferred());
     ASSERT(endColumn() != UINT_MAX);
 
-    JSGlobalObject* globalObject = scope->globalObject();
-    ExecState* exec = globalObject->globalExec();
-
-    if (classInfo(*vm) == EvalExecutable::info()) {
+    if (classInfo() == EvalExecutable::info()) {
         EvalExecutable* executable = jsCast<EvalExecutable*>(this);
         RELEASE_ASSERT(kind == CodeForCall);
         RELEASE_ASSERT(!executable->m_evalCodeBlock);
         RELEASE_ASSERT(!function);
-        auto codeBlock = EvalCodeBlock::create(vm,
+        return EvalCodeBlock::create(vm,
             executable, executable->m_unlinkedEvalCodeBlock.get(), scope,
             executable->source().provider());
-        if (!codeBlock) {
-            exception = throwException(
-                exec, throwScope,
-                createOutOfMemoryError(exec));
-            return nullptr;
-        }
-        return codeBlock;
     }
     
-    if (classInfo(*vm) == ProgramExecutable::info()) {
+    if (classInfo() == ProgramExecutable::info()) {
         ProgramExecutable* executable = jsCast<ProgramExecutable*>(this);
         RELEASE_ASSERT(kind == CodeForCall);
         RELEASE_ASSERT(!executable->m_programCodeBlock);
         RELEASE_ASSERT(!function);
-        auto codeBlock = ProgramCodeBlock::create(vm,
+        return ProgramCodeBlock::create(vm,
             executable, executable->m_unlinkedProgramCodeBlock.get(), scope,
             executable->source().provider(), startColumn());
-        if (!codeBlock) {
-            exception = throwException(
-                exec, throwScope,
-                createOutOfMemoryError(exec));
-            return nullptr;
-        }
-        return codeBlock;
     }
 
-    if (classInfo(*vm) == ModuleProgramExecutable::info()) {
+    if (classInfo() == ModuleProgramExecutable::info()) {
         ModuleProgramExecutable* executable = jsCast<ModuleProgramExecutable*>(this);
         RELEASE_ASSERT(kind == CodeForCall);
         RELEASE_ASSERT(!executable->m_moduleProgramCodeBlock);
         RELEASE_ASSERT(!function);
-        auto codeBlock = ModuleProgramCodeBlock::create(vm,
+        return ModuleProgramCodeBlock::create(vm,
             executable, executable->m_unlinkedModuleProgramCodeBlock.get(), scope,
             executable->source().provider(), startColumn());
-        if (!codeBlock) {
-            exception = throwException(
-                exec, throwScope,
-                createOutOfMemoryError(exec));
-            return nullptr;
-        }
-        return codeBlock;
     }
 
-    RELEASE_ASSERT(classInfo(*vm) == FunctionExecutable::info());
+    RELEASE_ASSERT(classInfo() == FunctionExecutable::info());
     RELEASE_ASSERT(function);
     FunctionExecutable* executable = jsCast<FunctionExecutable*>(this);
     RELEASE_ASSERT(!executable->codeBlockFor(kind));
+    JSGlobalObject* globalObject = scope->globalObject();
     ParserError error;
     DebuggerMode debuggerMode = globalObject->hasInteractiveDebugger() ? DebuggerOn : DebuggerOff;
     UnlinkedFunctionCodeBlock* unlinkedCodeBlock = 
@@ -258,47 +235,46 @@ CodeBlock* ScriptExecutable::newCodeBlockFor(
 CodeBlock* ScriptExecutable::newReplacementCodeBlockFor(
     CodeSpecializationKind kind)
 {
-    VM& vm = *this->vm();
-    if (classInfo(vm) == EvalExecutable::info()) {
+    if (classInfo() == EvalExecutable::info()) {
         RELEASE_ASSERT(kind == CodeForCall);
         EvalExecutable* executable = jsCast<EvalExecutable*>(this);
         EvalCodeBlock* baseline = static_cast<EvalCodeBlock*>(
             executable->m_evalCodeBlock->baselineVersion());
-        EvalCodeBlock* result = EvalCodeBlock::create(&vm,
+        EvalCodeBlock* result = EvalCodeBlock::create(vm(),
             CodeBlock::CopyParsedBlock, *baseline);
-        result->setAlternative(vm, baseline);
+        result->setAlternative(*vm(), baseline);
         return result;
     }
     
-    if (classInfo(vm) == ProgramExecutable::info()) {
+    if (classInfo() == ProgramExecutable::info()) {
         RELEASE_ASSERT(kind == CodeForCall);
         ProgramExecutable* executable = jsCast<ProgramExecutable*>(this);
         ProgramCodeBlock* baseline = static_cast<ProgramCodeBlock*>(
             executable->m_programCodeBlock->baselineVersion());
-        ProgramCodeBlock* result = ProgramCodeBlock::create(&vm,
+        ProgramCodeBlock* result = ProgramCodeBlock::create(vm(),
             CodeBlock::CopyParsedBlock, *baseline);
-        result->setAlternative(vm, baseline);
+        result->setAlternative(*vm(), baseline);
         return result;
     }
 
-    if (classInfo(vm) == ModuleProgramExecutable::info()) {
+    if (classInfo() == ModuleProgramExecutable::info()) {
         RELEASE_ASSERT(kind == CodeForCall);
         ModuleProgramExecutable* executable = jsCast<ModuleProgramExecutable*>(this);
         ModuleProgramCodeBlock* baseline = static_cast<ModuleProgramCodeBlock*>(
             executable->m_moduleProgramCodeBlock->baselineVersion());
-        ModuleProgramCodeBlock* result = ModuleProgramCodeBlock::create(&vm,
+        ModuleProgramCodeBlock* result = ModuleProgramCodeBlock::create(vm(),
             CodeBlock::CopyParsedBlock, *baseline);
-        result->setAlternative(vm, baseline);
+        result->setAlternative(*vm(), baseline);
         return result;
     }
 
-    RELEASE_ASSERT(classInfo(vm) == FunctionExecutable::info());
+    RELEASE_ASSERT(classInfo() == FunctionExecutable::info());
     FunctionExecutable* executable = jsCast<FunctionExecutable*>(this);
     FunctionCodeBlock* baseline = static_cast<FunctionCodeBlock*>(
         executable->codeBlockFor(kind)->baselineVersion());
-    FunctionCodeBlock* result = FunctionCodeBlock::create(&vm,
+    FunctionCodeBlock* result = FunctionCodeBlock::create(vm(),
         CodeBlock::CopyParsedBlock, *baseline);
-    result->setAlternative(vm, baseline);
+    result->setAlternative(*vm(), baseline);
     return result;
 }
 

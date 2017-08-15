@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011 Google Inc.  All rights reserved.
+ * Copyright (C) 2011, 2012, 2013 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -30,10 +30,13 @@
  */
 
 #include "config.h"
-#include "AudioTrack.h"
 
 #if ENABLE(VIDEO_TRACK)
 
+#include "AudioTrack.h"
+
+#include "AudioTrackList.h"
+#include "Event.h"
 #include "HTMLMediaElement.h"
 #include <wtf/NeverDestroyed.h>
 
@@ -75,10 +78,10 @@ const AtomicString& AudioTrack::commentaryKeyword()
     return commentary;
 }
 
-AudioTrack::AudioTrack(AudioTrackClient& client, AudioTrackPrivate& trackPrivate)
-    : MediaTrackBase(MediaTrackBase::AudioTrack, trackPrivate.id(), trackPrivate.label(), trackPrivate.language())
-    , m_enabled(trackPrivate.enabled())
-    , m_client(&client)
+AudioTrack::AudioTrack(AudioTrackClient* client, PassRefPtr<AudioTrackPrivate> trackPrivate)
+    : MediaTrackBase(MediaTrackBase::AudioTrack, trackPrivate->id(), trackPrivate->label(), trackPrivate->language())
+    , m_enabled(trackPrivate->enabled())
+    , m_client(client)
     , m_private(trackPrivate)
 {
     m_private->setClient(this);
@@ -90,70 +93,80 @@ AudioTrack::~AudioTrack()
     m_private->setClient(nullptr);
 }
 
-void AudioTrack::setPrivate(AudioTrackPrivate& trackPrivate)
+void AudioTrack::setPrivate(PassRefPtr<AudioTrackPrivate> trackPrivate)
 {
-    if (m_private.ptr() == &trackPrivate)
+    ASSERT(m_private);
+    ASSERT(trackPrivate);
+
+    if (m_private == trackPrivate)
         return;
 
     m_private->setClient(nullptr);
     m_private = trackPrivate;
-    m_private->setEnabled(m_enabled);
     m_private->setClient(this);
 
+    m_private->setEnabled(m_enabled);
     updateKindFromPrivate();
 }
 
 bool AudioTrack::isValidKind(const AtomicString& value) const
 {
     return value == alternativeKeyword()
-        || value == commentaryKeyword()
         || value == descriptionKeyword()
         || value == mainKeyword()
         || value == mainDescKeyword()
-        || value == translationKeyword();
+        || value == translationKeyword()
+        || value == commentaryKeyword();
 }
 
-void AudioTrack::setEnabled(bool enabled)
-{
-    if (m_enabled == enabled)
-        return;
-
-    m_private->setEnabled(enabled);
-}
-
-size_t AudioTrack::inbandTrackIndex() const
-{
-    return m_private->trackIndex();
-}
-
-void AudioTrack::enabledChanged(bool enabled)
+void AudioTrack::setEnabled(const bool enabled)
 {
     if (m_enabled == enabled)
         return;
 
     m_enabled = enabled;
+    m_private->setEnabled(enabled);
 
     if (m_client)
-        m_client->audioTrackEnabledChanged(*this);
+        m_client->audioTrackEnabledChanged(this);
 }
 
-void AudioTrack::idChanged(const AtomicString& id)
+size_t AudioTrack::inbandTrackIndex()
 {
+    ASSERT(m_private);
+    return m_private->trackIndex();
+}
+
+void AudioTrack::enabledChanged(AudioTrackPrivate* trackPrivate, bool enabled)
+{
+    ASSERT_UNUSED(trackPrivate, trackPrivate == m_private);
+    m_enabled = enabled;
+
+    if (m_client)
+        m_client->audioTrackEnabledChanged(this);
+}
+
+void AudioTrack::idChanged(TrackPrivateBase* trackPrivate, const AtomicString& id)
+{
+    ASSERT_UNUSED(trackPrivate, trackPrivate == m_private);
     setId(id);
 }
 
-void AudioTrack::labelChanged(const AtomicString& label)
+void AudioTrack::labelChanged(TrackPrivateBase* trackPrivate, const AtomicString& label)
 {
+    ASSERT_UNUSED(trackPrivate, trackPrivate == m_private);
     setLabel(label);
 }
 
-void AudioTrack::languageChanged(const AtomicString& language)
+void AudioTrack::languageChanged(TrackPrivateBase* trackPrivate, const AtomicString& language)
 {
+    ASSERT_UNUSED(trackPrivate, trackPrivate == m_private);
     setLanguage(language);
 }
 
-void AudioTrack::willRemove()
+void AudioTrack::willRemove(TrackPrivateBase* trackPrivate)
 {
+    ASSERT_UNUSED(trackPrivate, trackPrivate == m_private);
     mediaElement()->removeAudioTrack(*this);
 }
 

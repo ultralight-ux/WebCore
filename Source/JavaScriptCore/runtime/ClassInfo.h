@@ -99,7 +99,7 @@ struct MethodTable {
     typedef ArrayBuffer* (*SlowDownAndWasteMemory)(JSArrayBufferView*);
     SlowDownAndWasteMemory slowDownAndWasteMemory;
     
-    typedef RefPtr<ArrayBufferView> (*GetTypedArrayImpl)(JSArrayBufferView*);
+    typedef PassRefPtr<ArrayBufferView> (*GetTypedArrayImpl)(JSArrayBufferView*);
     GetTypedArrayImpl getTypedArrayImpl;
 
     typedef bool (*PreventExtensionsFunctionPtr)(JSObject*, ExecState*);

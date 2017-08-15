@@ -9,6 +9,7 @@ set(PROJECT_VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_
 
 WEBKIT_OPTION_BEGIN()
 WEBKIT_OPTION_DEFINE(ENABLE_STATIC_JSC "Whether to build JavaScriptCore as a static library." PUBLIC OFF)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_FTL_JIT PUBLIC ON)
 WEBKIT_OPTION_END()
 
 set(ALL_EVENT_LOOP_TYPES
@@ -47,6 +48,11 @@ endif ()
 if (NOT APPLE)
     find_package(ICU REQUIRED)
 else ()
+    set(ICU_INCLUDE_DIRS
+        "${WEBCORE_DIR}/icu"
+        "${JAVASCRIPTCORE_DIR}/icu"
+        "${WTF_DIR}/icu"
+    )
     set(ICU_LIBRARIES libicucore.dylib)
 endif ()
 

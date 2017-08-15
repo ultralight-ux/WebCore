@@ -40,7 +40,6 @@
 #include "Geoposition.h"
 #include "Page.h"
 #include "PositionError.h"
-#include "RuntimeApplicationChecks.h"
 #include "SecurityOrigin.h"
 #include <wtf/CurrentTime.h>
 #include <wtf/Ref.h>
@@ -190,7 +189,7 @@ void Geolocation::resume()
     ActiveDOMObject::resume();
 
     if (!m_resumeTimer.isActive())
-        m_resumeTimer.startOneShot(0_s);
+        m_resumeTimer.startOneShot(0);
 }
 
 void Geolocation::resumeTimerFired()
@@ -347,24 +346,13 @@ static void logError(const String& target, const bool isSecure, const bool isMix
     document->addConsoleMessage(MessageSource::Security, MessageLevel::Error, message.toString());
 }
 
-// FIXME: remove this function when rdar://problem/32137821 is fixed.
-static bool isRequestFromIBooks()
-{
-#if PLATFORM(MAC)
-    return MacApplication::isIBooks();
-#elif PLATFORM(IOS)
-    return IOSApplication::isIBooks();
-#endif
-    return false;
-}
-    
 bool Geolocation::shouldBlockGeolocationRequests()
 {
     bool isSecure = SecurityOrigin::isSecure(document()->url());
     bool hasMixedContent = document()->foundMixedContent();
-    bool isLocalOrigin = securityOrigin()->isLocal();
+    bool isLocalFile = document()->url().isLocalFile();
     if (securityOrigin()->canRequestGeolocation()) {
-        if (isLocalOrigin || (isSecure && !hasMixedContent) || isRequestFromIBooks())
+        if (isLocalFile || (isSecure && !hasMixedContent))
             return false;
     }
     

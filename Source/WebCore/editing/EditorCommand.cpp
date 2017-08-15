@@ -33,7 +33,6 @@
 #include "Chrome.h"
 #include "CreateLinkCommand.h"
 #include "DocumentFragment.h"
-#include "Editing.h"
 #include "EditorClient.h"
 #include "Event.h"
 #include "EventHandler.h"
@@ -59,6 +58,7 @@
 #include "UnlinkCommand.h"
 #include "UserGestureIndicator.h"
 #include "UserTypingGestureIndicator.h"
+#include "htmlediting.h"
 #include "markup.h"
 #include <wtf/text/AtomicString.h>
 
@@ -155,10 +155,10 @@ static bool executeApplyParagraphStyle(Frame& frame, EditorCommandSource source,
     return false;
 }
 
-static bool executeInsertFragment(Frame& frame, Ref<DocumentFragment>&& fragment)
+static bool executeInsertFragment(Frame& frame, PassRefPtr<DocumentFragment> fragment)
 {
     ASSERT(frame.document());
-    ReplaceSelectionCommand::create(*frame.document(), WTFMove(fragment), ReplaceSelectionCommand::PreventNesting, EditActionInsert)->apply();
+    applyCommand(ReplaceSelectionCommand::create(*frame.document(), fragment, ReplaceSelectionCommand::PreventNesting, EditActionInsert));
     return true;
 }
 
@@ -251,7 +251,7 @@ static bool executeCreateLink(Frame& frame, Event*, EditorCommandSource, const S
     if (value.isEmpty())
         return false;
     ASSERT(frame.document());
-    CreateLinkCommand::create(*frame.document(), value)->apply();
+    applyCommand(CreateLinkCommand::create(*frame.document(), value));
     return true;
 }
 
@@ -415,7 +415,7 @@ static bool executeFormatBlock(Frame& frame, Event*, EditorCommandSource, const 
 
     ASSERT(frame.document());
     auto command = FormatBlockCommand::create(*frame.document(), qualifiedTagName.releaseReturnValue());
-    command->apply();
+    applyCommand(command.copyRef());
     return command->didApply();
 }
 
@@ -446,7 +446,7 @@ static bool executeIgnoreSpelling(Frame& frame, Event*, EditorCommandSource, con
 static bool executeIndent(Frame& frame, Event*, EditorCommandSource, const String&)
 {
     ASSERT(frame.document());
-    IndentOutdentCommand::create(*frame.document(), IndentOutdentCommand::Indent)->apply();
+    applyCommand(IndentOutdentCommand::create(*frame.document(), IndentOutdentCommand::Indent));
     return true;
 }
 
@@ -508,7 +508,7 @@ static bool executeInsertNewlineInQuotedContent(Frame& frame, Event*, EditorComm
 static bool executeInsertOrderedList(Frame& frame, Event*, EditorCommandSource, const String&)
 {
     ASSERT(frame.document());
-    InsertListCommand::create(*frame.document(), InsertListCommand::OrderedList)->apply();
+    applyCommand(InsertListCommand::create(*frame.document(), InsertListCommand::OrderedList));
     return true;
 }
 
@@ -532,7 +532,7 @@ static bool executeInsertText(Frame& frame, Event*, EditorCommandSource, const S
 static bool executeInsertUnorderedList(Frame& frame, Event*, EditorCommandSource, const String&)
 {
     ASSERT(frame.document());
-    InsertListCommand::create(*frame.document(), InsertListCommand::UnorderedList)->apply();
+    applyCommand(InsertListCommand::create(*frame.document(), InsertListCommand::UnorderedList));
     return true;
 }
 
@@ -869,7 +869,7 @@ static bool executeMoveToRightEndOfLineAndModifySelection(Frame& frame, Event*, 
 static bool executeOutdent(Frame& frame, Event*, EditorCommandSource, const String&)
 {
     ASSERT(frame.document());
-    IndentOutdentCommand::create(*frame.document(), IndentOutdentCommand::Outdent)->apply();
+    applyCommand(IndentOutdentCommand::create(*frame.document(), IndentOutdentCommand::Outdent));
     return true;
 }
 
@@ -930,7 +930,7 @@ static bool executePrint(Frame& frame, Event*, EditorCommandSource, const String
     Page* page = frame.page();
     if (!page)
         return false;
-    page->chrome().print(frame);
+    page->chrome().print(&frame);
     return true;
 }
 
@@ -1110,7 +1110,7 @@ static bool executeUndo(Frame& frame, Event*, EditorCommandSource, const String&
 static bool executeUnlink(Frame& frame, Event*, EditorCommandSource, const String&)
 {
     ASSERT(frame.document());
-    UnlinkCommand::create(*frame.document())->apply();
+    applyCommand(UnlinkCommand::create(*frame.document()));
     return true;
 }
 
@@ -1736,12 +1736,12 @@ static const EditorInternalCommand* internalCommand(const String& commandName)
 
 Editor::Command Editor::command(const String& commandName)
 {
-    return Command(internalCommand(commandName), CommandFromMenuOrKeyBinding, m_frame);
+    return Command(internalCommand(commandName), CommandFromMenuOrKeyBinding, &m_frame);
 }
 
 Editor::Command Editor::command(const String& commandName, EditorCommandSource source)
 {
-    return Command(internalCommand(commandName), source, m_frame);
+    return Command(internalCommand(commandName), source, &m_frame);
 }
 
 bool Editor::commandIsSupportedFromMenuOrKeyBinding(const String& commandName)
@@ -1753,12 +1753,16 @@ Editor::Command::Command()
 {
 }
 
-Editor::Command::Command(const EditorInternalCommand* command, EditorCommandSource source, Frame& frame)
+Editor::Command::Command(const EditorInternalCommand* command, EditorCommandSource source, PassRefPtr<Frame> frame)
     : m_command(command)
     , m_source(source)
-    , m_frame(command ? &frame : nullptr)
+    , m_frame(command ? frame : 0)
 {
-    ASSERT(command || !m_frame);
+    // Use separate assertions so we can tell which bad thing happened.
+    if (!command)
+        ASSERT(!m_frame);
+    else
+        ASSERT(m_frame);
 }
 
 bool Editor::Command::execute(const String& parameter, Event* triggeringEvent) const

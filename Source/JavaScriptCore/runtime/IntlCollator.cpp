@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2015 Andy VanWagoner (thetalecrafter@gmail.com)
  * Copyright (C) 2015 Sukolsak Sakshuwong (sukolsak@gmail.com)
- * Copyright (C) 2016-2017 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2016 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,10 +45,10 @@ namespace JSC {
 
 const ClassInfo IntlCollator::s_info = { "Object", &Base::s_info, 0, CREATE_METHOD_TABLE(IntlCollator) };
 
-static const char* const relevantExtensionKeys[3] = { "co", "kn", "kf" };
+// FIXME: Implement kf (caseFirst).
+static const char* const relevantExtensionKeys[2] = { "co", "kn" };
 static const size_t indexOfExtensionKeyCo = 0;
 static const size_t indexOfExtensionKeyKn = 1;
-static const size_t indexOfExtensionKeyKf = 2;
 
 void IntlCollator::UCollatorDeleter::operator()(UCollator* collator) const
 {
@@ -76,7 +76,7 @@ IntlCollator::IntlCollator(VM& vm, Structure* structure)
 void IntlCollator::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 }
 
 void IntlCollator::destroy(JSCell* cell)
@@ -133,12 +133,6 @@ static Vector<String> sortLocaleData(const String& locale, size_t keyIndex)
         keyLocaleData.uncheckedAppend(ASCIILiteral("false"));
         keyLocaleData.uncheckedAppend(ASCIILiteral("true"));
         break;
-    case indexOfExtensionKeyKf:
-        keyLocaleData.reserveInitialCapacity(3);
-        keyLocaleData.uncheckedAppend(ASCIILiteral("false"));
-        keyLocaleData.uncheckedAppend(ASCIILiteral("lower"));
-        keyLocaleData.uncheckedAppend(ASCIILiteral("upper"));
-        break;
     default:
         ASSERT_NOT_REACHED();
     }
@@ -159,12 +153,6 @@ static Vector<String> searchLocaleData(const String&, size_t keyIndex)
         keyLocaleData.reserveInitialCapacity(2);
         keyLocaleData.uncheckedAppend(ASCIILiteral("false"));
         keyLocaleData.uncheckedAppend(ASCIILiteral("true"));
-        break;
-    case indexOfExtensionKeyKf:
-        keyLocaleData.reserveInitialCapacity(3);
-        keyLocaleData.uncheckedAppend(ASCIILiteral("false"));
-        keyLocaleData.uncheckedAppend(ASCIILiteral("lower"));
-        keyLocaleData.uncheckedAppend(ASCIILiteral("upper"));
         break;
     default:
         ASSERT_NOT_REACHED();
@@ -287,15 +275,7 @@ void IntlCollator::initializeCollator(ExecState& state, JSValue locales, JSValue
     // g. Increase k by 1.
     const String& collation = result.get(ASCIILiteral("co"));
     m_collation = collation.isNull() ? ASCIILiteral("default") : collation;
-    m_numeric = result.get(ASCIILiteral("kn")) == "true";
-
-    const String& caseFirst = result.get(ASCIILiteral("kf"));
-    if (caseFirst == "lower")
-        m_caseFirst = CaseFirst::Lower;
-    else if (caseFirst == "upper")
-        m_caseFirst = CaseFirst::Upper;
-    else
-        m_caseFirst = CaseFirst::False;
+    m_numeric = (result.get(ASCIILiteral("kn")) == "true");
 
     // 24. Let s be GetOption(options, "sensitivity", "string", «"base", "accent", "case", "variant"», undefined).
     String sensitivityString = intlStringOption(state, options, vm.propertyNames->sensitivity, { "base", "accent", "case", "variant" }, "sensitivity must be either \"base\", \"accent\", \"case\", or \"variant\"", nullptr);
@@ -343,7 +323,7 @@ void IntlCollator::createCollator(ExecState& state)
 
     if (!m_initializedCollator) {
         initializeCollator(state, jsUndefined(), jsUndefined());
-        scope.assertNoException();
+        ASSERT_UNUSED(scope, !scope.exception());
     }
 
     UErrorCode status = U_ZERO_ERROR;
@@ -353,7 +333,6 @@ void IntlCollator::createCollator(ExecState& state)
 
     UColAttributeValue strength = UCOL_PRIMARY;
     UColAttributeValue caseLevel = UCOL_OFF;
-    UColAttributeValue caseFirst = UCOL_OFF;
     switch (m_sensitivity) {
     case Sensitivity::Base:
         break;
@@ -366,21 +345,12 @@ void IntlCollator::createCollator(ExecState& state)
     case Sensitivity::Variant:
         strength = UCOL_TERTIARY;
         break;
+    default:
+        ASSERT_NOT_REACHED();
     }
-    switch (m_caseFirst) {
-    case CaseFirst::False:
-        break;
-    case CaseFirst::Lower:
-        caseFirst = UCOL_LOWER_FIRST;
-        break;
-    case CaseFirst::Upper:
-        caseFirst = UCOL_UPPER_FIRST;
-        break;
-    }
-
     ucol_setAttribute(collator.get(), UCOL_STRENGTH, strength, &status);
     ucol_setAttribute(collator.get(), UCOL_CASE_LEVEL, caseLevel, &status);
-    ucol_setAttribute(collator.get(), UCOL_CASE_FIRST, caseFirst, &status);
+
     ucol_setAttribute(collator.get(), UCOL_NUMERIC_COLLATION, m_numeric ? UCOL_ON : UCOL_OFF, &status);
 
     // FIXME: Setting UCOL_ALTERNATE_HANDLING to UCOL_SHIFTED causes punctuation and whitespace to be
@@ -445,20 +415,6 @@ const char* IntlCollator::sensitivityString(Sensitivity sensitivity)
     return nullptr;
 }
 
-const char* IntlCollator::caseFirstString(CaseFirst caseFirst)
-{
-    switch (caseFirst) {
-    case CaseFirst::False:
-        return "false";
-    case CaseFirst::Lower:
-        return "lower";
-    case CaseFirst::Upper:
-        return "upper";
-    }
-    ASSERT_NOT_REACHED();
-    return nullptr;
-}
-
 JSObject* IntlCollator::resolvedOptions(ExecState& state)
 {
     VM& vm = state.vm();
@@ -475,7 +431,7 @@ JSObject* IntlCollator::resolvedOptions(ExecState& state)
 
     if (!m_initializedCollator) {
         initializeCollator(state, jsUndefined(), jsUndefined());
-        scope.assertNoException();
+        ASSERT_UNUSED(scope, !scope.exception());
     }
 
     JSObject* options = constructEmptyObject(&state);
@@ -485,7 +441,6 @@ JSObject* IntlCollator::resolvedOptions(ExecState& state)
     options->putDirect(vm, vm.propertyNames->ignorePunctuation, jsBoolean(m_ignorePunctuation));
     options->putDirect(vm, vm.propertyNames->collation, jsString(&state, m_collation));
     options->putDirect(vm, vm.propertyNames->numeric, jsBoolean(m_numeric));
-    options->putDirect(vm, vm.propertyNames->caseFirst, jsNontrivialString(&state, ASCIILiteral(caseFirstString(m_caseFirst))));
     return options;
 }
 

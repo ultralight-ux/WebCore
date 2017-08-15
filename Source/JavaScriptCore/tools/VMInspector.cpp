@@ -29,7 +29,6 @@
 #include "CodeBlock.h"
 #include "CodeBlockSet.h"
 #include "HeapInlines.h"
-#include "MachineContext.h"
 #include <mutex>
 #include <wtf/Expected.h>
 
@@ -61,7 +60,7 @@ void VMInspector::remove(VM* vm)
     m_list.remove(vm);
 }
 
-auto VMInspector::lock(Seconds timeout) -> Expected<Locker, Error>
+auto VMInspector::lock(Seconds timeout) -> Expected<LockToken, Error>
 {
     // This function may be called from a signal handler (e.g. via visit()). Hence,
     // it should only use APIs that are safe to call from signal handlers. This is
@@ -70,19 +69,19 @@ auto VMInspector::lock(Seconds timeout) -> Expected<Locker, Error>
     // We'll be doing sleep(1) between tries below. Hence, sleepPerRetry is 1.
     unsigned maxRetries = (timeout < Seconds::infinity()) ? timeout.value() : UINT_MAX;
 
-    Expected<Locker, Error> locker = Locker::tryLock(m_lock);
+    bool locked = m_lock.tryLock();
     unsigned tryCount = 0;
-    while (!locker && tryCount < maxRetries) {
+    while (!locked && tryCount < maxRetries) {
         // We want the version of sleep from unistd.h. Cast to disambiguate.
 #if !OS(WINDOWS)
         (static_cast<unsigned (*)(unsigned)>(sleep))(1);
 #endif
-        locker = Locker::tryLock(m_lock);
+        locked = m_lock.tryLock();
     }
 
-    if (!locker)
+    if (!locked)
         return makeUnexpected(Error::TimedOut);
-    return locker;
+    return LockToken::LockedValue;
 }
 
 #if ENABLE(JIT)
@@ -102,13 +101,13 @@ static bool ensureIsSafeToLock(Lock& lock)
 };
 #endif // ENABLE(JIT)
 
-auto VMInspector::isValidExecutableMemory(const VMInspector::Locker&, void* machinePC) -> Expected<bool, Error>
+auto VMInspector::isValidExecutableMemory(VMInspector::LockToken, void* machinePC) -> Expected<bool, Error>
 {
 #if ENABLE(JIT)
     bool found = false;
     bool hasTimeout = false;
-    iterate([&] (VM&) -> FunctorStatus {
-        auto& allocator = ExecutableAllocator::singleton();
+    iterate([&] (VM& vm) -> FunctorStatus {
+        auto allocator = vm.executableAllocator;
         auto& lock = allocator.getLock();
 
         bool isSafeToLock = ensureIsSafeToLock(lock);
@@ -134,35 +133,34 @@ auto VMInspector::isValidExecutableMemory(const VMInspector::Locker&, void* mach
 #endif
 }
 
-auto VMInspector::codeBlockForMachinePC(const VMInspector::Locker&, void* machinePC) -> Expected<CodeBlock*, Error>
+auto VMInspector::codeBlockForMachinePC(VMInspector::LockToken, void* machinePC) -> Expected<CodeBlock*, Error>
 {
 #if ENABLE(JIT)
     CodeBlock* codeBlock = nullptr;
     bool hasTimeout = false;
     iterate([&] (VM& vm) {
-        if (!vm.currentThreadIsHoldingAPILock())
+        if (!vm.apiLock().currentThreadIsHoldingLock())
             return FunctorStatus::Continue;
 
         // It is safe to call Heap::forEachCodeBlockIgnoringJITPlans here because:
         // 1. CodeBlocks are added to the CodeBlockSet from the main thread before
         //    they are handed to the JIT plans. Those codeBlocks will have a null jitCode,
         //    but we check for that in our lambda functor.
-        // 2. We will acquire the CodeBlockSet lock before iterating.
+        // 2. CodeBlockSet::iterate() will acquire the CodeBlockSet lock before iterating.
         //    This ensures that a CodeBlock won't be GCed while we're iterating.
         // 3. We do a tryLock on the CodeBlockSet's lock first to ensure that it is
         //    safe for the current thread to lock it before calling
         //    Heap::forEachCodeBlockIgnoringJITPlans(). Hence, there's no risk of
         //    re-entering the lock and deadlocking on it.
 
-        auto& codeBlockSetLock = vm.heap.codeBlockSet().getLock();
-        bool isSafeToLock = ensureIsSafeToLock(codeBlockSetLock);
+        auto& lock = vm.heap.codeBlockSet().getLock();
+        bool isSafeToLock = ensureIsSafeToLock(lock);
         if (!isSafeToLock) {
             hasTimeout = true;
             return FunctorStatus::Continue; // Skip this VM.
         }
 
-        auto locker = holdLock(codeBlockSetLock);
-        vm.heap.forEachCodeBlockIgnoringJITPlans(locker, [&] (CodeBlock* cb) {
+        vm.heap.forEachCodeBlockIgnoringJITPlans([&] (CodeBlock* cb) {
             JITCode* jitCode = cb->jitCode().get();
             if (!jitCode) {
                 // If the codeBlock is a replacement codeBlock which is in the process of being

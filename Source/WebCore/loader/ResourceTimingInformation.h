@@ -34,21 +34,22 @@
 namespace WebCore {
 
 class CachedResource;
+class CachedResourceRequest;
 class Document;
 class Frame;
-class ResourceTiming;
+class LoadTiming;
 
 class ResourceTimingInformation {
 public:
-    static bool shouldAddResourceTiming(CachedResource&);
 
-    void addResourceTiming(CachedResource&, Document&, ResourceTiming&&);
+    void addResourceTiming(CachedResource*, Document&, const LoadTiming&);
     void storeResourceTimingInitiatorInformation(const CachedResourceHandle<CachedResource>&, const AtomicString&, Frame*);
 
 private:
     enum AlreadyAdded { NotYetAdded, Added };
     struct InitiatorInfo {
         AtomicString name;
+        double startTime;
         AlreadyAdded added;
     };
     HashMap<CachedResource*, InitiatorInfo> m_initiatorMap;

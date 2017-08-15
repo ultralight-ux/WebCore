@@ -98,7 +98,7 @@ public:
         return u.character;
     }
 
-    const StringImpl* tryGetStringImpl(VM&) const;
+    const StringImpl* tryGetStringImpl() const;
     
     String tryGetString(Graph&) const;
     

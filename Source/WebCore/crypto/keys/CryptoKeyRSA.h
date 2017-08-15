@@ -31,15 +31,14 @@
 
 #if ENABLE(SUBTLE_CRYPTO)
 
-#if OS(DARWIN) && !PLATFORM(GTK)
+#if OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK)
 typedef struct _CCRSACryptor *CCRSACryptorRef;
 typedef CCRSACryptorRef PlatformRSAKey;
 #endif
 
-#if PLATFORM(GTK) || PLATFORM(WPE)
-// gcry_sexp* equates gcry_sexp_t.
-struct gcry_sexp;
-typedef gcry_sexp* PlatformRSAKey;
+#if PLATFORM(GTK) || PLATFORM(EFL)
+typedef struct _PlatformRSAKeyGnuTLS PlatformRSAKeyGnuTLS;
+typedef PlatformRSAKeyGnuTLS *PlatformRSAKey;
 #endif
 
 namespace WebCore {

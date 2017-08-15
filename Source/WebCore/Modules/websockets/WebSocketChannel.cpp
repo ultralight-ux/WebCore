@@ -46,6 +46,7 @@
 #include "ProgressTracker.h"
 #include "ResourceRequest.h"
 #include "ScriptExecutionContext.h"
+#include "Settings.h"
 #include "SocketProvider.h"
 #include "SocketStreamError.h"
 #include "SocketStreamHandle.h"
@@ -61,7 +62,7 @@
 
 namespace WebCore {
 
-const Seconds TCPMaximumSegmentLifetime { 2_min };
+const double TCPMaximumSegmentLifetime = 2 * 60.0;
 
 WebSocketChannel::WebSocketChannel(Document& document, WebSocketChannelClient& client, SocketProvider& provider)
     : m_document(&document)
@@ -124,8 +125,7 @@ void WebSocketChannel::connect(const URL& requestedURL, const String& protocol)
         ref();
         Page* page = frame->page();
         SessionID sessionID = page ? page->sessionID() : SessionID::defaultSessionID();
-        String partition = m_document->topDocument().securityOrigin().domainForCachePartition();
-        m_handle = m_socketProvider->createSocketStreamHandle(m_handshake->url(), *this, sessionID, partition);
+        m_handle = m_socketProvider->createSocketStreamHandle(m_handshake->url(), *this, sessionID);
     }
 }
 
@@ -207,7 +207,7 @@ void WebSocketChannel::close(int code, const String& reason)
     Ref<WebSocketChannel> protectedThis(*this); // An attempt to send closing handshake may fail, which will get the channel closed and dereferenced.
     startClosingHandshake(code, reason);
     if (m_closing && !m_closingTimer.isActive())
-        m_closingTimer.startOneShot(TCPMaximumSegmentLifetime * 2);
+        m_closingTimer.startOneShot(2 * TCPMaximumSegmentLifetime);
 }
 
 void WebSocketChannel::fail(const String& reason)
@@ -238,7 +238,10 @@ void WebSocketChannel::fail(const String& reason)
     m_client->didReceiveMessageError();
 
     if (m_handle && !m_closed)
-        m_handle->disconnect(); // Will call didCloseSocketStream() but maybe not synchronously.
+        m_handle->disconnect(); // Will call didClose().
+
+    // We should be closed by now, but if we never got a handshake then we never even opened.
+    ASSERT(m_closed || !m_handshake);
 }
 
 void WebSocketChannel::disconnect()
@@ -263,7 +266,7 @@ void WebSocketChannel::resume()
 {
     m_suspended = false;
     if ((!m_buffer.isEmpty() || m_closed) && m_client && !m_resumeTimer.isActive())
-        m_resumeTimer.startOneShot(0_s);
+        m_resumeTimer.startOneShot(0);
 }
 
 void WebSocketChannel::didOpenSocketStream(SocketStreamHandle& handle)
@@ -275,10 +278,8 @@ void WebSocketChannel::didOpenSocketStream(SocketStreamHandle& handle)
     if (m_identifier)
         InspectorInstrumentation::willSendWebSocketHandshakeRequest(m_document, m_identifier, m_handshake->clientHandshakeRequest());
     CString handshakeMessage = m_handshake->clientHandshakeMessage();
-    handle.sendData(handshakeMessage.data(), handshakeMessage.length(), [this, protectedThis = makeRef(*this)] (bool success) {
-        if (!success)
-            fail("Failed to send WebSocket handshake.");
-    });
+    if (!handle.send(handshakeMessage.data(), handshakeMessage.length()))
+        fail("Failed to send WebSocket handshake.");
 }
 
 void WebSocketChannel::didCloseSocketStream(SocketStreamHandle& handle)
@@ -306,15 +307,18 @@ void WebSocketChannel::didCloseSocketStream(SocketStreamHandle& handle)
     deref();
 }
 
-void WebSocketChannel::didReceiveSocketStreamData(SocketStreamHandle& handle, const char* data, size_t length)
+void WebSocketChannel::didReceiveSocketStreamData(SocketStreamHandle& handle, const char* data, std::optional<size_t> len)
 {
-    LOG(Network, "WebSocketChannel %p didReceiveSocketStreamData() Received %zu bytes", this, length);
+    if (len)
+        LOG(Network, "WebSocketChannel %p didReceiveSocketStreamData() Received %zu bytes", this, len.value());
+    else
+        LOG(Network, "WebSocketChannel %p didReceiveSocketStreamData() Received no bytes", this);
     Ref<WebSocketChannel> protectedThis(*this); // The client can close the channel, potentially removing the last reference.
     ASSERT(&handle == m_handle);
     if (!m_document) {
         return;
     }
-    if (!length) {
+    if (!len || !len.value()) {
         handle.disconnect();
         return;
     }
@@ -325,7 +329,7 @@ void WebSocketChannel::didReceiveSocketStreamData(SocketStreamHandle& handle, co
     }
     if (m_shouldDiscardReceivedData)
         return;
-    if (!appendToBuffer(data, length)) {
+    if (!appendToBuffer(data, len.value())) {
         m_shouldDiscardReceivedData = true;
         fail("Ran out of memory while receiving WebSocket data.");
         return;
@@ -334,11 +338,6 @@ void WebSocketChannel::didReceiveSocketStreamData(SocketStreamHandle& handle, co
         if (!processBuffer())
             break;
     }
-}
-
-void WebSocketChannel::didFailToReceiveSocketStreamData(SocketStreamHandle& handle)
-{
-    handle.disconnect();
 }
 
 void WebSocketChannel::didUpdateBufferedAmount(SocketStreamHandle&, size_t bufferedAmount)
@@ -363,8 +362,6 @@ void WebSocketChannel::didFailSocketStream(SocketStreamHandle& handle, const Soc
         m_document->addConsoleMessage(MessageSource::Network, MessageLevel::Error, message);
     }
     m_shouldDiscardReceivedData = true;
-    if (m_client)
-        m_client->didReceiveMessageError();
     handle.disconnect();
 }
 
@@ -743,18 +740,14 @@ void WebSocketChannel::processOutgoingFrameQueue()
         auto frame = m_outgoingFrameQueue.takeFirst();
         switch (frame->frameType) {
         case QueuedFrameTypeString: {
-            sendFrame(frame->opCode, frame->stringData.data(), frame->stringData.length(), [this, protectedThis = makeRef(*this)] (bool success) {
-                if (!success)
-                    fail("Failed to send WebSocket frame.");
-            });
+            if (!sendFrame(frame->opCode, frame->stringData.data(), frame->stringData.length()))
+                fail("Failed to send WebSocket frame.");
             break;
         }
 
         case QueuedFrameTypeVector:
-            sendFrame(frame->opCode, frame->vectorData.data(), frame->vectorData.size(), [this, protectedThis = makeRef(*this)] (bool success) {
-                if (!success)
-                    fail("Failed to send WebSocket frame.");
-            });
+            if (!sendFrame(frame->opCode, frame->vectorData.data(), frame->vectorData.size()))
+                fail("Failed to send WebSocket frame.");
             break;
 
         case QueuedFrameTypeBlob: {
@@ -778,10 +771,8 @@ void WebSocketChannel::processOutgoingFrameQueue()
                 RefPtr<ArrayBuffer> result = m_blobLoader->arrayBufferResult();
                 m_blobLoader = nullptr;
                 m_blobLoaderStatus = BlobLoaderNotStarted;
-                sendFrame(frame->opCode, static_cast<const char*>(result->data()), result->byteLength(), [this, protectedThis = makeRef(*this)] (bool success) {
-                    if (!success)
-                        fail("Failed to send WebSocket frame.");
-                });
+                if (!sendFrame(frame->opCode, static_cast<const char*>(result->data()), result->byteLength()))
+                    fail("Failed to send WebSocket frame.");
                 break;
             }
             }
@@ -811,7 +802,7 @@ void WebSocketChannel::abortOutgoingFrameQueue()
     }
 }
 
-void WebSocketChannel::sendFrame(WebSocketFrame::OpCode opCode, const char* data, size_t dataLength, Function<void(bool)> completionHandler)
+bool WebSocketChannel::sendFrame(WebSocketFrame::OpCode opCode, const char* data, size_t dataLength)
 {
     ASSERT(m_handle);
     ASSERT(!m_suspended);
@@ -822,13 +813,13 @@ void WebSocketChannel::sendFrame(WebSocketFrame::OpCode opCode, const char* data
     auto deflateResult = m_deflateFramer.deflate(frame);
     if (!deflateResult->succeeded()) {
         fail(deflateResult->failureReason());
-        return completionHandler(false);
+        return false;
     }
 
     Vector<char> frameData;
     frame.makeFrameData(frameData);
 
-    m_handle->sendData(frameData.data(), frameData.size(), WTFMove(completionHandler));
+    return m_handle->send(frameData.data(), frameData.size());
 }
 
 }  // namespace WebCore

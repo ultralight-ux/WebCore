@@ -23,7 +23,6 @@
 
 #include <utility>
 #include <wtf/text/AtomicStringImpl.h>
-#include <wtf/text/IntegerToStringConversion.h>
 #include <wtf/text/WTFString.h>
 
 // Define 'NO_IMPLICIT_ATOMICSTRING' before including this header,
@@ -360,12 +359,6 @@ inline bool equalIgnoringASCIICase(const AtomicString& a, const char* b)
 {
     return equalIgnoringASCIICase(a.string(), b);
 }
-
-template<> struct IntegerToStringConversionTrait<AtomicString> {
-    using ReturnType = AtomicString;
-    using AdditionalArgumentType = void;
-    static AtomicString flush(LChar* characters, unsigned length, void*) { return { characters, length }; }
-};
 
 } // namespace WTF
 

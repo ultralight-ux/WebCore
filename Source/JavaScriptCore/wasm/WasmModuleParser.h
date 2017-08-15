@@ -30,16 +30,26 @@
 #include "WasmFormat.h"
 #include "WasmOps.h"
 #include "WasmParser.h"
-#include <wtf/Optional.h>
 #include <wtf/Vector.h>
 
 namespace JSC { namespace Wasm {
 
-class ModuleParser : public Parser<void> {
+struct ModuleParserResult {
+    std::unique_ptr<ModuleInformation> module;
+    FunctionIndexSpace functionIndexSpace;
+    Vector<FunctionLocationInBinary> functionLocationInBinary;
+};
+
+class ModuleParser : public Parser<ModuleParserResult> {
 public:
-    ModuleParser(const uint8_t* sourceBuffer, size_t sourceLength, ModuleInformation& info)
+
+    ModuleParser(VM* vm, const uint8_t* sourceBuffer, size_t sourceLength)
         : Parser(sourceBuffer, sourceLength)
-        , m_info(info)
+        , m_vm(vm)
+    {
+    }
+    ModuleParser(VM* vm, const Vector<uint8_t>& sourceBuffer)
+        : ModuleParser(vm, sourceBuffer.data(), sourceBuffer.size())
     {
     }
 
@@ -51,14 +61,14 @@ private:
     FOR_EACH_WASM_SECTION(WASM_SECTION_DECLARE_PARSER)
 #undef WASM_SECTION_DECLARE_PARSER
 
-    PartialResult WARN_UNUSED_RETURN parseCustom(uint32_t);
     PartialResult WARN_UNUSED_RETURN parseGlobalType(Global&);
     PartialResult WARN_UNUSED_RETURN parseMemoryHelper(bool isImport);
     PartialResult WARN_UNUSED_RETURN parseTableHelper(bool isImport);
     PartialResult WARN_UNUSED_RETURN parseResizableLimits(uint32_t& initial, std::optional<uint32_t>& maximum);
-    PartialResult WARN_UNUSED_RETURN parseInitExpr(uint8_t&, uint64_t&, Type& initExprType);
+    PartialResult WARN_UNUSED_RETURN parseInitExpr(uint8_t&, uint64_t&);
 
-    Ref<ModuleInformation> m_info;
+    VM* m_vm;
+    ModuleParserResult m_result;
     bool m_hasTable { false };
 };
 

@@ -122,7 +122,6 @@ public:
     static Identifier fromString(ExecState*, const AtomicString&);
     static Identifier fromString(ExecState*, const String&);
     static Identifier fromString(ExecState*, const char*);
-    static Identifier fromString(VM* vm, const Vector<LChar>& characters) { return fromString(vm, characters.data(), characters.size()); }
 
     static Identifier fromUid(VM*, UniquedStringImpl* uid);
     static Identifier fromUid(ExecState*, UniquedStringImpl* uid);
@@ -219,7 +218,7 @@ Ref<StringImpl> Identifier::add(VM* vm, const T* s, int length)
     if (length == 1) {
         T c = s[0];
         if (canUseSingleCharacterString(c))
-            return vm->smallStrings.singleCharacterStringRep(c);
+            return *vm->smallStrings.singleCharacterStringRep(c);
     }
     if (!length)
         return *StringImpl::empty();

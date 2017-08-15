@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -227,8 +227,7 @@ extern "C" SlowPathReturnType llint_trace_value(ExecState* exec, Instruction* pc
 
 LLINT_SLOW_PATH_DECL(trace_prologue)
 {
-    dataLogF("%p / %p: in prologue of ", exec->codeBlock(), exec);
-    dataLog(*exec->codeBlock(), "\n");
+    dataLogF("%p / %p: in prologue.\n", exec->codeBlock(), exec);
     LLINT_END_IMPL();
 }
 
@@ -237,10 +236,10 @@ static void traceFunctionPrologue(ExecState* exec, const char* comment, CodeSpec
     JSFunction* callee = jsCast<JSFunction*>(exec->jsCallee());
     FunctionExecutable* executable = callee->jsExecutable();
     CodeBlock* codeBlock = executable->codeBlockFor(kind);
-    dataLogF("%p / %p: in %s of ", codeBlock, exec, comment);
-    dataLog(*codeBlock);
-    dataLogF(" function %p, executable %p; numVars = %u, numParameters = %u, numCalleeLocals = %u, caller = %p.\n",
-        callee, executable, codeBlock->m_numVars, codeBlock->numParameters(), codeBlock->m_numCalleeLocals, exec->callerFrame());
+    dataLogF("%p / %p: in %s of function %p, executable %p; numVars = %u, numParameters = %u, numCalleeLocals = %u, caller = %p.\n",
+            codeBlock, exec, comment, callee, executable,
+            codeBlock->m_numVars, codeBlock->numParameters(), codeBlock->m_numCalleeLocals,
+            exec->callerFrame());
 }
 
 LLINT_SLOW_PATH_DECL(trace_prologue_function_for_call)
@@ -491,7 +490,7 @@ LLINT_SLOW_PATH_DECL(stack_check)
 
 #if LLINT_SLOW_PATH_TRACING
     dataLogF("Checking stack height with exec = %p.\n", exec);
-    dataLog("CodeBlock = ", *exec->codeBlock(), "\n");
+    dataLogF("CodeBlock = %p.\n", exec->codeBlock());
     dataLogF("Num callee registers = %u.\n", exec->codeBlock()->m_numCalleeLocals);
     dataLogF("Num vars = %u.\n", exec->codeBlock()->m_numVars);
 
@@ -1493,13 +1492,13 @@ LLINT_SLOW_PATH_DECL(slow_path_throw)
     LLINT_THROW(LLINT_OP_C(1).jsValue());
 }
 
-LLINT_SLOW_PATH_DECL(slow_path_handle_traps)
+LLINT_SLOW_PATH_DECL(slow_path_handle_watchdog_timer)
 {
     LLINT_BEGIN_NO_SET_PC();
-    ASSERT(vm.needTrapHandling());
-    vm.handleTraps(exec);
-    UNUSED_PARAM(pc);
-    LLINT_RETURN_TWO(throwScope.exception(), exec);
+    ASSERT(vm.watchdog());
+    if (UNLIKELY(vm.shouldTriggerTermination(exec)))
+        LLINT_THROW(createTerminatedExecutionException(&vm));
+    LLINT_RETURN_TWO(0, exec);
 }
 
 LLINT_SLOW_PATH_DECL(slow_path_debug)
@@ -1601,7 +1600,7 @@ LLINT_SLOW_PATH_DECL(slow_path_check_if_exception_is_uncatchable_and_notify_prof
     LLINT_BEGIN();
     RELEASE_ASSERT(!!throwScope.exception());
 
-    if (isTerminatedExecutionException(vm, throwScope.exception()))
+    if (isTerminatedExecutionException(throwScope.exception()))
         LLINT_RETURN_TWO(pc, bitwise_cast<void*>(static_cast<uintptr_t>(1)));
     LLINT_RETURN_TWO(pc, 0);
 }

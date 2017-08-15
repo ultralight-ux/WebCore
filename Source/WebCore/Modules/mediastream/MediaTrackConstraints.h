@@ -34,7 +34,7 @@
 
 namespace WebCore {
 
-struct MediaConstraints;
+class MediaConstraintsImpl;
 
 struct ConstrainBooleanParameters {
     std::optional<bool> exact;
@@ -79,7 +79,7 @@ struct MediaTrackConstraints : MediaTrackConstraintSet {
     std::optional<Vector<MediaTrackConstraintSet>> advanced;
 };
 
-MediaConstraints createMediaConstraints(const MediaTrackConstraints&);
+Ref<MediaConstraintsImpl> createMediaConstraintsImpl(const MediaTrackConstraints&);
 
 }
 

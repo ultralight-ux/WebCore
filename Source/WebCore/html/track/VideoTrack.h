@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011, 2012, 2013 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,12 +39,12 @@ class VideoTrack;
 class VideoTrackClient {
 public:
     virtual ~VideoTrackClient() { }
-    virtual void videoTrackSelectedChanged(VideoTrack&) = 0;
+    virtual void videoTrackSelectedChanged(VideoTrack*) = 0;
 };
 
-class VideoTrack final : public MediaTrackBase, private VideoTrackPrivateClient {
+class VideoTrack final : public MediaTrackBase, public VideoTrackPrivateClient {
 public:
-    static Ref<VideoTrack> create(VideoTrackClient& client, VideoTrackPrivate& trackPrivate)
+    static Ref<VideoTrack> create(VideoTrackClient* client, PassRefPtr<VideoTrackPrivate> trackPrivate)
     {
         return adoptRef(*new VideoTrack(client, trackPrivate));
     }
@@ -56,46 +56,48 @@ public:
     static const AtomicString& signKeyword();
     static const AtomicString& subtitlesKeyword();
     static const AtomicString& commentaryKeyword();
+    const AtomicString& defaultKindKeyword() const override { return emptyAtom; }
 
     bool selected() const { return m_selected; }
     virtual void setSelected(const bool);
 
-    void clearClient() final { m_client = nullptr; }
+    void clearClient() override { m_client = 0; }
     VideoTrackClient* client() const { return m_client; }
 
     size_t inbandTrackIndex();
 
 #if ENABLE(MEDIA_SOURCE)
-    void setKind(const AtomicString&) final;
-    void setLanguage(const AtomicString&) final;
+    void setKind(const AtomicString&) override;
+    void setLanguage(const AtomicString&) override;
 #endif
 
     const MediaDescription& description() const;
 
-    void setPrivate(VideoTrackPrivate&);
+    void setPrivate(PassRefPtr<VideoTrackPrivate>);
+
+protected:
+    VideoTrack(VideoTrackClient*, PassRefPtr<VideoTrackPrivate> privateTrack);
 
 private:
-    VideoTrack(VideoTrackClient&, VideoTrackPrivate&);
-
-    bool isValidKind(const AtomicString&) const final;
+    bool isValidKind(const AtomicString&) const override;
 
     // VideoTrackPrivateClient
-    void selectedChanged(bool) final;
+    void selectedChanged(VideoTrackPrivate*, bool) override;
 
     // TrackPrivateBaseClient
-    void idChanged(const AtomicString&) final;
-    void labelChanged(const AtomicString&) final;
-    void languageChanged(const AtomicString&) final;
-    void willRemove() final;
+    void idChanged(TrackPrivateBase*, const AtomicString&) override;
+    void labelChanged(TrackPrivateBase*, const AtomicString&) override;
+    void languageChanged(TrackPrivateBase*, const AtomicString&) override;
+    void willRemove(TrackPrivateBase*) override;
 
-    bool enabled() const final { return selected(); }
+    bool enabled() const override { return selected(); }
 
     void updateKindFromPrivate();
 
     bool m_selected;
     VideoTrackClient* m_client;
 
-    Ref<VideoTrackPrivate> m_private;
+    RefPtr<VideoTrackPrivate> m_private;
 };
 
 } // namespace WebCore

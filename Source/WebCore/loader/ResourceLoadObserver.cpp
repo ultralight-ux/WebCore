@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,14 +42,10 @@
 #include "Settings.h"
 #include "SharedBuffer.h"
 #include "URL.h"
-#include <wtf/CurrentTime.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
-
-// One hour in seconds.
-static auto timestampResolution = 3600;
 
 ResourceLoadObserver& ResourceLoadObserver::sharedObserver()
 {
@@ -60,25 +56,6 @@ ResourceLoadObserver& ResourceLoadObserver::sharedObserver()
 void ResourceLoadObserver::setStatisticsStore(Ref<ResourceLoadStatisticsStore>&& store)
 {
     m_store = WTFMove(store);
-}
-
-void ResourceLoadObserver::clearInMemoryStore()
-{
-    if (m_store)
-        m_store->clearInMemory();
-}
-    
-void ResourceLoadObserver::clearInMemoryAndPersistentStore()
-{
-    if (m_store)
-        m_store->clearInMemoryAndPersistent();
-}
-
-void ResourceLoadObserver::clearInMemoryAndPersistentStore(std::chrono::system_clock::time_point modifiedSince)
-{
-    // For now, be conservative and clear everything regardless of modifiedSince
-    UNUSED_PARAM(modifiedSince);
-    clearInMemoryAndPersistentStore();
 }
 
 static inline bool is3xxRedirect(const ResourceResponse& response)
@@ -301,12 +278,7 @@ void ResourceLoadObserver::logWebSocketLoading(const Frame* frame, const URL& ta
         m_store->fireDataModificationHandler();
 }
 
-static double reduceTimeResolution(double seconds)
-{
-    return std::floor(seconds / timestampResolution) * timestampResolution;
-}
-
-void ResourceLoadObserver::logUserInteractionWithReducedTimeResolution(const Document& document)
+void ResourceLoadObserver::logUserInteraction(const Document& document)
 {
     ASSERT(document.page());
 
@@ -314,153 +286,19 @@ void ResourceLoadObserver::logUserInteractionWithReducedTimeResolution(const Doc
         return;
 
     auto& url = document.url();
+
     if (url.isBlankURL() || url.isEmpty())
         return;
 
-    auto primaryDomainStr = primaryDomain(url);
-
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomainStr);
-    double newTimestamp = reduceTimeResolution(WTF::currentTime());
-    if (newTimestamp == statistics.mostRecentUserInteraction)
-        return;
-
+    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(url));
     statistics.hadUserInteraction = true;
-    statistics.mostRecentUserInteraction = newTimestamp;
-
     m_store->fireDataModificationHandler();
 }
-
-void ResourceLoadObserver::logUserInteraction(const URL& url)
-{
-    if (url.isBlankURL() || url.isEmpty())
-        return;
-
-    auto primaryDomainStr = primaryDomain(url);
-
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomainStr);
-    statistics.hadUserInteraction = true;
-    statistics.mostRecentUserInteraction = WTF::currentTime();
-
-    m_store->fireShouldPartitionCookiesHandler({primaryDomainStr}, { }, false);
-}
-
-void ResourceLoadObserver::clearUserInteraction(const URL& url)
-{
-    if (url.isBlankURL() || url.isEmpty())
-        return;
-
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(url));
     
-    statistics.hadUserInteraction = false;
-    statistics.mostRecentUserInteraction = 0;
-}
-
-bool ResourceLoadObserver::hasHadUserInteraction(const URL& url)
-{
-    if (url.isBlankURL() || url.isEmpty())
-        return false;
-
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(url));
-    
-    return m_store->hasHadRecentUserInteraction(statistics);
-}
-
-void ResourceLoadObserver::setPrevalentResource(const URL& url)
-{
-    if (url.isBlankURL() || url.isEmpty())
-        return;
-
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(url));
-    
-    statistics.isPrevalentResource = true;
-}
-
-bool ResourceLoadObserver::isPrevalentResource(const URL& url)
-{
-    if (url.isBlankURL() || url.isEmpty())
-        return false;
-
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(url));
-    
-    return statistics.isPrevalentResource;
-}
-    
-void ResourceLoadObserver::clearPrevalentResource(const URL& url)
-{
-    if (url.isBlankURL() || url.isEmpty())
-        return;
-
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(url));
-    
-    statistics.isPrevalentResource = false;
-}
-
-void ResourceLoadObserver::setSubframeUnderTopFrameOrigin(const URL& subframe, const URL& topFrame)
-{
-    if (subframe.isBlankURL() || subframe.isEmpty() || topFrame.isBlankURL() || topFrame.isEmpty())
-        return;
-    
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(subframe));
-    statistics.subframeUnderTopFrameOrigins.add(primaryDomain(topFrame));
-}
-
-void ResourceLoadObserver::setSubresourceUnderTopFrameOrigin(const URL& subresource, const URL& topFrame)
-{
-    if (subresource.isBlankURL() || subresource.isEmpty() || topFrame.isBlankURL() || topFrame.isEmpty())
-        return;
-    
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(subresource));
-    statistics.subresourceUnderTopFrameOrigins.add(primaryDomain(topFrame));
-}
-
-void ResourceLoadObserver::setSubresourceUniqueRedirectTo(const URL& subresource, const URL& hostNameRedirectedTo)
-{
-    if (subresource.isBlankURL() || subresource.isEmpty() || hostNameRedirectedTo.isBlankURL() || hostNameRedirectedTo.isEmpty())
-        return;
-    
-    auto& statistics = m_store->ensureResourceStatisticsForPrimaryDomain(primaryDomain(subresource));
-    statistics.subresourceUniqueRedirectsTo.add(primaryDomain(hostNameRedirectedTo));
-}
-
-void ResourceLoadObserver::setTimeToLiveUserInteraction(double seconds)
-{
-    m_store->setTimeToLiveUserInteraction(seconds);
-}
-
-void ResourceLoadObserver::setTimeToLiveCookiePartitionFree(double seconds)
-{
-    m_store->setTimeToLiveCookiePartitionFree(seconds);
-}
-
-void ResourceLoadObserver::setReducedTimestampResolution(double seconds)
-{
-    if (seconds > 0)
-        timestampResolution = seconds;
-}
-
-void ResourceLoadObserver::fireDataModificationHandler()
-{
-    m_store->fireDataModificationHandler();
-}
-
-void ResourceLoadObserver::fireShouldPartitionCookiesHandler()
-{
-    m_store->fireShouldPartitionCookiesHandler();
-}
-
-void ResourceLoadObserver::fireShouldPartitionCookiesHandler(const Vector<String>& domainsToRemove, const Vector<String>& domainsToAdd, bool clearFirst)
-{
-    m_store->fireShouldPartitionCookiesHandler(domainsToRemove, domainsToAdd, clearFirst);
-}
-
 String ResourceLoadObserver::primaryDomain(const URL& url)
 {
-    return primaryDomain(url.host());
-}
-
-String ResourceLoadObserver::primaryDomain(const String& host)
-{
     String primaryDomain;
+    String host = url.host();
     if (host.isNull() || host.isEmpty())
         primaryDomain = "nullOrigin";
 #if ENABLE(PUBLIC_SUFFIX_LIST)

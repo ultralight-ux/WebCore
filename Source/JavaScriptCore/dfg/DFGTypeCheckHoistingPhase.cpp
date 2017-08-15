@@ -272,7 +272,8 @@ private:
                     if (!shouldConsiderForHoisting<StructureTypeCheck>(variable))
                         break;
                     Node* source = node->child1().node();
-                    for (auto* subNode : *block) {
+                    for (unsigned subIndexInBlock = 0; subIndexInBlock < block->size(); ++subIndexInBlock) {
+                        Node* subNode = block->at(subIndexInBlock);
                         switch (subNode->op()) {
                         case CheckStructure: {
                             if (subNode->child1() != source)
@@ -304,7 +305,8 @@ private:
             BasicBlock* block = m_graph.block(blockIndex);
             if (!block)
                 continue;
-            for (auto* node : *block) {
+            for (unsigned indexInBlock = 0; indexInBlock < block->size(); ++indexInBlock) {
+                Node* node = block->at(indexInBlock);
                 switch (node->op()) {
                 case CheckArray: {
                     Node* child = node->child1().node();
@@ -362,7 +364,8 @@ private:
                     if (!shouldConsiderForHoisting<ArrayTypeCheck>(variable))
                         break;
                     Node* source = node->child1().node();
-                    for (auto subNode : *block) {
+                    for (unsigned subIndexInBlock = 0; subIndexInBlock < block->size(); ++subIndexInBlock) {
+                        Node* subNode = block->at(subIndexInBlock);
                         switch (subNode->op()) {
                         case CheckStructure: {
                             if (subNode->child1() != source)

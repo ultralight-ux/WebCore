@@ -66,7 +66,7 @@ void JSModuleRecord::destroy(JSCell* cell)
 void JSModuleRecord::finishCreation(ExecState* exec, VM& vm)
 {
     Base::finishCreation(exec, vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 }
 
 void JSModuleRecord::visitChildren(JSCell* cell, SlotVisitor& visitor)
@@ -86,9 +86,8 @@ void JSModuleRecord::link(ExecState* exec)
         throwSyntaxError(exec, scope);
         return;
     }
-    instantiateDeclarations(exec, executable);
-    RETURN_IF_EXCEPTION(scope, void());
     m_moduleProgramExecutable.set(vm, this, executable);
+    instantiateDeclarations(exec, executable);
 }
 
 void JSModuleRecord::instantiateDeclarations(ExecState* exec, ModuleProgramExecutable* moduleProgramExecutable)

@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  * Copyright (C) 2011 Motorola Mobility. All rights reserved.
  *
@@ -93,16 +93,16 @@ String HTMLElement::nodeName() const
 static inline CSSValueID unicodeBidiAttributeForDirAuto(HTMLElement& element)
 {
     if (element.hasTagName(preTag) || element.hasTagName(textareaTag))
-        return CSSValuePlaintext;
+        return CSSValueWebkitPlaintext;
     // FIXME: For bdo element, dir="auto" should result in "bidi-override isolate" but we don't support having multiple values in unicode-bidi yet.
     // See https://bugs.webkit.org/show_bug.cgi?id=73164.
-    return CSSValueIsolate;
+    return CSSValueWebkitIsolate;
 }
 
 unsigned HTMLElement::parseBorderWidthAttribute(const AtomicString& value) const
 {
-    if (auto optionalBorderWidth = parseHTMLNonNegativeInteger(value))
-        return optionalBorderWidth.value();
+    if (std::optional<unsigned> borderWidth = parseHTMLNonNegativeInteger(value))
+        return borderWidth.value();
 
     return hasTagName(tableTag) ? 1 : 0;
 }
@@ -183,7 +183,7 @@ void HTMLElement::collectStyleForPresentationAttribute(const QualifiedName& name
         case ContentEditableType::True:
             addPropertyToPresentationAttributeStyle(style, CSSPropertyWordWrap, CSSValueBreakWord);
             addPropertyToPresentationAttributeStyle(style, CSSPropertyWebkitNbspMode, CSSValueSpace);
-            addPropertyToPresentationAttributeStyle(style, CSSPropertyLineBreak, CSSValueAfterWhiteSpace);
+            addPropertyToPresentationAttributeStyle(style, CSSPropertyWebkitLineBreak, CSSValueAfterWhiteSpace);
 #if PLATFORM(IOS)
             addPropertyToPresentationAttributeStyle(style, CSSPropertyWebkitTextSizeAdjust, CSSValueNone);
 #endif
@@ -424,8 +424,8 @@ void HTMLElement::parseAttribute(const QualifiedName& name, const AtomicString& 
     if (name == tabindexAttr) {
         if (value.isEmpty())
             clearTabIndexExplicitlyIfNeeded();
-        else if (auto optionalTabIndex = parseHTMLInteger(value))
-            setTabIndexExplicitly(optionalTabIndex.value());
+        else if (std::optional<int> tabIndex = parseHTMLInteger(value))
+            setTabIndexExplicitly(tabIndex.value());
         return;
     }
 
@@ -451,10 +451,7 @@ static Ref<DocumentFragment> textToFragment(Document& document, const String& te
                 break;
         }
 
-        // If text is not the empty string, then append a new Text node whose data is text and node document is document to fragment.
-        if (i > start)
-            fragment->appendChild(Text::create(document, text.substring(start, i - start)));
-
+        fragment->appendChild(Text::create(document, text.substring(start, i - start)));
         if (i == length)
             break;
 
@@ -467,6 +464,20 @@ static Ref<DocumentFragment> textToFragment(Document& document, const String& te
     }
 
     return fragment;
+}
+
+static inline bool shouldProhibitSetInnerOuterText(const HTMLElement& element)
+{
+    return element.hasTagName(colTag)
+        || element.hasTagName(colgroupTag)
+        || element.hasTagName(framesetTag)
+        || element.hasTagName(headTag)
+        || element.hasTagName(htmlTag)
+        || element.hasTagName(tableTag)
+        || element.hasTagName(tbodyTag)
+        || element.hasTagName(tfootTag)
+        || element.hasTagName(theadTag)
+        || element.hasTagName(trTag);
 }
 
 // Returns the conforming 'dir' value associated with the state the attribute is in (in its canonical case), if any,
@@ -499,30 +510,32 @@ void HTMLElement::setDir(const AtomicString& value)
 
 ExceptionOr<void> HTMLElement::setInnerText(const String& text)
 {
+    if (ieForbidsInsertHTML())
+        return Exception { NO_MODIFICATION_ALLOWED_ERR };
+    if (shouldProhibitSetInnerOuterText(*this))
+        return Exception { NO_MODIFICATION_ALLOWED_ERR };
+
     // FIXME: This doesn't take whitespace collapsing into account at all.
 
     if (!text.contains('\n') && !text.contains('\r')) {
-        if (text.isEmpty())
-            replaceAllChildren(nullptr);
-        else
-            replaceAllChildren(document().createTextNode(text));
-        return { };
+        if (text.isEmpty()) {
+            removeChildren();
+            return { };
+        }
+        return replaceChildrenWithText(*this, text);
     }
 
     // FIXME: Do we need to be able to detect preserveNewline style even when there's no renderer?
     // FIXME: Can the renderer be out of date here? Do we need to call updateStyleIfNeeded?
     // For example, for the contents of textarea elements that are display:none?
-    auto* r = renderer();
-    if ((r && r->style().preserveNewline()) || (isConnected() && isTextControlInnerTextElement())) {
-        if (!text.contains('\r')) {
-            replaceAllChildren(document().createTextNode(text));
-            return { };
-        }
+    auto r = renderer();
+    if ((r && r->style().preserveNewline()) || (inDocument() && isTextControlInnerTextElement())) {
+        if (!text.contains('\r'))
+            return replaceChildrenWithText(*this, text);
         String textWithConsistentLineBreaks = text;
         textWithConsistentLineBreaks.replace("\r\n", "\n");
         textWithConsistentLineBreaks.replace('\r', '\n');
-        replaceAllChildren(document().createTextNode(textWithConsistentLineBreaks));
-        return { };
+        return replaceChildrenWithText(*this, textWithConsistentLineBreaks);
     }
 
     // Add text nodes and <br> elements.
@@ -535,6 +548,11 @@ ExceptionOr<void> HTMLElement::setInnerText(const String& text)
 
 ExceptionOr<void> HTMLElement::setOuterText(const String& text)
 {
+    if (ieForbidsInsertHTML())
+        return Exception { NO_MODIFICATION_ALLOWED_ERR };
+    if (shouldProhibitSetInnerOuterText(*this))
+        return Exception { NO_MODIFICATION_ALLOWED_ERR };
+
     RefPtr<ContainerNode> parent = parentNode();
     if (!parent)
         return Exception { NO_MODIFICATION_ALLOWED_ERR };
@@ -728,7 +746,7 @@ RenderPtr<RenderElement> HTMLElement::createElementRenderer(RenderStyle&& style,
     return RenderElement::createFor(*this, WTFMove(style));
 }
 
-HTMLFormElement* HTMLElement::form() const
+HTMLFormElement* HTMLElement::virtualForm() const
 {
     return HTMLFormElement::findClosestFormAncestor(*this);
 }

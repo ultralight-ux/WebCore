@@ -26,12 +26,11 @@
 class TimeLabel extends LayoutNode
 {
 
-    constructor(timeControl)
+    constructor()
     {
-        super(`<div class="time-label"></div>`);
+        super(`<div class="time-label">`);
 
         this.value = 0;
-        this._timeControl = timeControl;
     }
 
     // Public
@@ -54,11 +53,8 @@ class TimeLabel extends LayoutNode
 
     commitProperty(propertyName)
     {
-        if (propertyName === "value") {
+        if (propertyName === "value")
             this.element.textContent = this._formattedTime();
-            if (this._timeControl)
-                this._timeControl.updateScrubberLabel();
-        }
         else
             super.commitProperty(propertyName);
     }
@@ -67,13 +63,17 @@ class TimeLabel extends LayoutNode
 
     _formattedTime()
     {
-        const value = this._value || 0;
-        const time = formatTimeByUnit(value);
-        const timeStrings = [time.minutes, time.seconds];
-        if (time.hours > 0 || (this._timeControl && this._timeControl.useSixDigitsForTimeLabels))
-            timeStrings.unshift(time.hours);
+        const time = this._value || 0;
+        const absTime = Math.abs(time);
+        const intSeconds = Math.floor(absTime % 60).toFixed(0);
+        const intMinutes = Math.floor((absTime / 60) % 60).toFixed(0);
+        const intHours = Math.floor(absTime / (60 * 60)).toFixed(0);
 
-        const sign = value < 0 ? "-" : "";
+        const timeStrings = [intMinutes, intSeconds];
+        if (intHours > 0)
+            timeStrings.unshift(intHours);
+
+        const sign = time < 0 ? "-" : "";
         return sign + timeStrings.map(x => `00${x}`.slice(-2)).join(":");
     }
 

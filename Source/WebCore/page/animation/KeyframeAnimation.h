@@ -60,7 +60,7 @@ public:
     void setUnanimatedStyle(std::unique_ptr<RenderStyle> style) { m_unanimatedStyle = WTFMove(style); }
     RenderStyle* unanimatedStyle() const { return m_unanimatedStyle.get(); }
 
-    std::optional<Seconds> timeToNextService() override;
+    double timeToNextService() override;
 
 protected:
     void onAnimationStart(double elapsedTime) override;

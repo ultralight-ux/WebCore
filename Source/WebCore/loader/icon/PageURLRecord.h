@@ -61,7 +61,7 @@ public:
 
     inline String url() const { return m_pageURL; }
     
-    void setIconRecord(RefPtr<IconRecord>&&);
+    void setIconRecord(PassRefPtr<IconRecord>);
     IconRecord* iconRecord() { return m_iconRecord.get(); }
 
     PageURLSnapshot snapshot(bool forDeletion = false) const;
@@ -82,12 +82,12 @@ public:
         return m_retainCount > 0;
     }
 
-    int retainCount() const { return m_retainCount; }
+    inline int retainCount() const { return m_retainCount; }
 
 private:
     String m_pageURL;
     RefPtr<IconRecord> m_iconRecord;
-    int m_retainCount { 0 };
+    int m_retainCount;
 };
 
 } // namespace WebCore

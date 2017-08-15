@@ -27,8 +27,6 @@
 
 #if ENABLE(B3_JIT)
 
-#include "B3Common.h"
-
 namespace JSC {
 
 class CCallHelpers;
@@ -40,7 +38,7 @@ namespace Air { class Code; }
 
 // This takes a B3::Procedure, optimizes it in-place, lowers it to Air, and prepares the Air for
 // generation.
-JS_EXPORT_PRIVATE void prepareForGeneration(Procedure&);
+JS_EXPORT_PRIVATE void prepareForGeneration(Procedure&, unsigned optLevel = 1);
 
 // This takes a B3::Procedure that has been prepared for generation (i.e. it has been lowered to Air and
 // the Air has been prepared for generation) and generates it. This is the equivalent of calling
@@ -50,7 +48,7 @@ JS_EXPORT_PRIVATE void generate(Procedure&, CCallHelpers&);
 // This takes a B3::Procedure, optimizes it in-place, and lowers it to Air. You can then generate
 // the Air to machine code using Air::prepareForGeneration() and Air::generate() on the Procedure's
 // code().
-void generateToAir(Procedure&);
+void generateToAir(Procedure&, unsigned optLevel = 1);
 
 } } // namespace JSC::B3
 

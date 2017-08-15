@@ -38,6 +38,6 @@
     [NotEnumerable] void close();
     [NotEnumerable] void error(optional any error);
 
-    [NotEnumerable] readonly attribute ReadableStreamBYOBRequest byobRequest;
+    //FIXME: Add byobRequest when implemented.
     [NotEnumerable] readonly attribute double desiredSize;
 };

@@ -52,18 +52,6 @@ HTMLFormControlsCollection::~HTMLFormControlsCollection()
 {
 }
 
-std::optional<Variant<RefPtr<RadioNodeList>, RefPtr<Element>>> HTMLFormControlsCollection::namedItemOrItems(const String& name) const
-{
-    auto namedItems = this->namedItems(name);
-
-    if (namedItems.isEmpty())
-        return std::nullopt;
-    if (namedItems.size() == 1)
-        return Variant<RefPtr<RadioNodeList>, RefPtr<Element>> { RefPtr<Element> { WTFMove(namedItems[0]) } };
-
-    return Variant<RefPtr<RadioNodeList>, RefPtr<Element>> { RefPtr<RadioNodeList> { ownerNode().radioNodeList(name) } };
-}
-
 const Vector<FormAssociatedElement*>& HTMLFormControlsCollection::formControlElements() const
 {
     ASSERT(is<HTMLFormElement>(ownerNode()) || is<HTMLFieldSetElement>(ownerNode()));
@@ -153,9 +141,9 @@ void HTMLFormControlsCollection::updateNamedElementCache() const
     setNamedItemCache(WTFMove(cache));
 }
 
-void HTMLFormControlsCollection::invalidateCacheForDocument(Document& document)
+void HTMLFormControlsCollection::invalidateCache(Document& document)
 {
-    CachedHTMLCollection<HTMLFormControlsCollection, CollectionTypeTraits<FormControls>::traversalType>::invalidateCacheForDocument(document);
+    CachedHTMLCollection<HTMLFormControlsCollection, CollectionTypeTraits<FormControls>::traversalType>::invalidateCache(document);
     m_cachedElement = nullptr;
     m_cachedElementOffsetInArray = 0;
 }

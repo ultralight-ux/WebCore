@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,18 +23,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef PlatformSpeechSynthesisVoice_h
+#define PlatformSpeechSynthesisVoice_h
 
 #if ENABLE(SPEECH_SYNTHESIS)
 
+#include <wtf/PassRefPtr.h>
+#include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class PlatformSpeechSynthesisVoice : public RefCounted<PlatformSpeechSynthesisVoice> {
 public:
-    WEBCORE_EXPORT static Ref<PlatformSpeechSynthesisVoice> create(const String& voiceURI, const String& name, const String& lang, bool localService, bool isDefault);
-    static Ref<PlatformSpeechSynthesisVoice> create();
+    WEBCORE_EXPORT static PassRefPtr<PlatformSpeechSynthesisVoice> create(const String& voiceURI, const String& name, const String& lang, bool localService, bool isDefault);
+    static PassRefPtr<PlatformSpeechSynthesisVoice> create();
 
     const String& voiceURI() const { return m_voiceURI; }
     void setVoiceURI(const String& voiceURI) { m_voiceURI = voiceURI; }
@@ -53,15 +56,17 @@ public:
 
 private:
     PlatformSpeechSynthesisVoice(const String& voiceURI, const String& name, const String& lang, bool localService, bool isDefault);
-    PlatformSpeechSynthesisVoice() = default;
+    PlatformSpeechSynthesisVoice();
 
     String m_voiceURI;
     String m_name;
     String m_lang;
-    bool m_localService { false };
-    bool m_default { false };
+    bool m_localService;
+    bool m_default;
 };
 
 } // namespace WebCore
 
 #endif // ENABLE(SPEECH_SYNTHESIS)
+
+#endif // PlatformSpeechSynthesisVoice_h

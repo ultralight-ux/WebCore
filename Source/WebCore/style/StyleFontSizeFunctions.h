@@ -31,6 +31,7 @@ namespace WebCore {
 
 class Document;
 class RenderStyle;
+class Settings;
 
 namespace Style {
 

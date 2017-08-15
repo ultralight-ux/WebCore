@@ -1109,7 +1109,8 @@ public:
             
                 m_relationships = m_relationshipsAtHead[block];
             
-                for (auto* node : *block) {
+                for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
+                    Node* node = block->at(nodeIndex);
                     if (verbose)
                         dataLog("Analysis: at ", node, ": ", listDump(sortedRelationships()), "\n");
                     executeNode(node);

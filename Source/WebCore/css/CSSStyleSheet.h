@@ -41,6 +41,7 @@ class CachedCSSStyleSheet;
 class Document;
 class Element;
 class MediaQuerySet;
+class SecurityOrigin;
 class StyleRuleKeyframes;
 class StyleSheetContents;
 

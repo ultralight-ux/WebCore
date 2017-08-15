@@ -33,26 +33,27 @@ sub GenerateStrings($)
 
     my @result = ();
 
-    push(@result, <<END);
-#if COMPILER(MSVC)
-#pragma warning(push)
-#pragma warning(disable: 4307)
-#endif
+    for my $name (sort keys %strings) {
+        push(@result, "static const LChar ${name}String8[] = \"$strings{$name}\";\n");
+    }
 
-END
+    push(@result, "\n");
 
     for my $name (sort keys %strings) {
         my $value = $strings{$name};
-        push(@result, "static StringImpl::StaticStringImpl ${name}Data(\"${value}\");\n");
+        my $length = length($value);
+        my $hash = Hasher::GenerateHashValue($value);
+        push(@result, <<END);
+static StringImpl::StaticASCIILiteral ${name}Data = {
+    StringImpl::StaticASCIILiteral::s_initialRefCount,
+    $length,
+    ${name}String8,
+    StringImpl::StaticASCIILiteral::s_initialFlags | (${hash} << StringImpl::StaticASCIILiteral::s_hashShift)
+};
+END
     }
 
-    push(@result, <<END);
-
-#if COMPILER(MSVC)
-#pragma warning(pop)
-#endif
-
-END
+    push(@result, "\n");
 
     return join "", @result;
 }

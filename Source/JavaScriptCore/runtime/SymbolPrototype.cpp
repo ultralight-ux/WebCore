@@ -60,10 +60,9 @@ void SymbolPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject)
 {
     Base::finishCreation(vm);
     putDirectWithoutTransition(vm, vm.propertyNames->toStringTagSymbol, jsString(&vm, "Symbol"), DontEnum | ReadOnly);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
-    JSFunction* toPrimitiveFunction = JSFunction::create(vm, globalObject, 1, ASCIILiteral("[Symbol.toPrimitive]"), symbolProtoFuncValueOf, NoIntrinsic);
-    putDirectWithoutTransition(vm, vm.propertyNames->toPrimitiveSymbol, toPrimitiveFunction, DontEnum | ReadOnly);
+    JSC_NATIVE_FUNCTION(vm.propertyNames->toPrimitiveSymbol, symbolProtoFuncValueOf, DontEnum | ReadOnly, 1);
 }
 
 // ------------------------------ Functions ---------------------------
@@ -84,7 +83,7 @@ EncodedJSValue JSC_HOST_CALL symbolProtoFuncToString(ExecState* exec)
         if (!thisValue.isObject())
             return throwVMTypeError(exec, scope, SymbolToStringTypeError);
         JSObject* thisObject = asObject(thisValue);
-        if (!thisObject->inherits(vm, SymbolObject::info()))
+        if (!thisObject->inherits(SymbolObject::info()))
             return throwVMTypeError(exec, scope, SymbolToStringTypeError);
         symbol = asSymbol(jsCast<SymbolObject*>(thisObject)->internalValue());
     }
@@ -105,7 +104,7 @@ EncodedJSValue JSC_HOST_CALL symbolProtoFuncValueOf(ExecState* exec)
         return throwVMTypeError(exec, scope, SymbolValueOfTypeError);
 
     JSObject* thisObject = asObject(thisValue);
-    if (!thisObject->inherits(vm, SymbolObject::info()))
+    if (!thisObject->inherits(SymbolObject::info()))
         return throwVMTypeError(exec, scope, SymbolValueOfTypeError);
 
     return JSValue::encode(jsCast<SymbolObject*>(thisObject)->internalValue());

@@ -156,6 +156,7 @@ public:
     virtual bool propagatesSilence() const;
     bool inputsAreSilent();
     void silenceOutputs();
+    void unsilenceOutputs();
 
     void enableOutputsIfNecessary();
     void disableOutputsIfNecessary();

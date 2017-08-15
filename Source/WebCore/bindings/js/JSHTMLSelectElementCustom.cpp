@@ -39,10 +39,18 @@ void selectElementIndexSetter(JSC::ExecState& state, HTMLSelectElement& element,
     VM& vm = state.vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 
-    auto* option = convert<IDLNullable<IDLInterface<HTMLOptionElement>>>(state, value);
-    RETURN_IF_EXCEPTION(throwScope, void());
+    if (value.isUndefinedOrNull()) {
+        element.remove(index);
+        return;
+    }
 
-    propagateException(state, throwScope, element.setItem(index, option));
+    auto* option = JSHTMLOptionElement::toWrapped(value);
+    if (!option) {
+        setDOMException(&state, throwScope, TYPE_MISMATCH_ERR);
+        return;
+    }
+
+    propagateException(state, throwScope, element.setOption(index, *option));
 }
 
 void JSHTMLSelectElement::indexSetter(JSC::ExecState* state, unsigned index, JSC::JSValue value)

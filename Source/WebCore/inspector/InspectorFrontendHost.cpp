@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2008 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Matt Lilek <webkit@mattlilek.com>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -158,8 +158,6 @@ void InspectorFrontendHost::requestSetDockSide(const String& side)
         m_client->requestSetDockSide(InspectorFrontendClient::DockSide::Undocked);
     else if (side == "right")
         m_client->requestSetDockSide(InspectorFrontendClient::DockSide::Right);
-    else if (side == "left")
-        m_client->requestSetDockSide(InspectorFrontendClient::DockSide::Left);
     else if (side == "bottom")
         m_client->requestSetDockSide(InspectorFrontendClient::DockSide::Bottom);
 }
@@ -196,14 +194,6 @@ float InspectorFrontendHost::zoomFactor()
         return m_frontendPage->mainFrame().pageZoomFactor();
 
     return 1.0;
-}
-
-String InspectorFrontendHost::userInterfaceLayoutDirection()
-{
-    if (m_client && m_client->userInterfaceLayoutDirection() == UserInterfaceLayoutDirection::RTL)
-        return ASCIILiteral("rtl");
-
-    return ASCIILiteral("ltr");
 }
 
 void InspectorFrontendHost::setAttachedWindowHeight(unsigned height)
@@ -273,6 +263,8 @@ String InspectorFrontendHost::port()
 {
 #if PLATFORM(GTK)
     return ASCIILiteral("gtk");
+#elif PLATFORM(EFL)
+    return ASCIILiteral("efl");
 #else
     return ASCIILiteral("unknown");
 #endif
@@ -347,8 +339,8 @@ void InspectorFrontendHost::showContextMenu(Event* event, const Vector<ContextMe
         return;
     }
     auto menuProvider = FrontendMenuProvider::create(this, { &state, frontendApiObject }, items);
+    m_frontendPage->contextMenuController().showContextMenu(event, menuProvider.ptr());
     m_menuProvider = menuProvider.ptr();
-    m_frontendPage->contextMenuController().showContextMenu(*event, menuProvider);
 }
 
 #endif
@@ -363,7 +355,7 @@ void InspectorFrontendHost::dispatchEventAsContextMenuEvent(Event* event)
     MouseEvent& mouseEvent = downcast<MouseEvent>(*event);
     IntPoint mousePoint = IntPoint(mouseEvent.clientX(), mouseEvent.clientY());
 
-    m_frontendPage->contextMenuController().showContextMenuAt(*frame, mousePoint);
+    m_frontendPage->contextMenuController().showContextMenuAt(frame, mousePoint);
 #else
     UNUSED_PARAM(event);
 #endif

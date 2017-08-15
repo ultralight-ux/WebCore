@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc.  All rights reserved.
+ * Copyright (C) 2016 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,8 +51,6 @@ void ResourceLoadStatistics::encode(KeyedEncoder& encoder) const
     
     // User interaction
     encoder.encodeBool("hadUserInteraction", hadUserInteraction);
-    encoder.encodeDouble("mostRecentUserInteraction", mostRecentUserInteraction);
-    encoder.encodeBool("grandfathered", grandfathered);
     
     // Top frame stats
     encoder.encodeBool("topFrameHasBeenNavigatedToBefore", topFrameHasBeenNavigatedToBefore);
@@ -179,16 +177,7 @@ bool ResourceLoadStatistics::decode(KeyedDecoder& decoder, unsigned version)
 
     if (!decoder.decodeUInt32("dataRecordsRemoved", dataRecordsRemoved))
         return false;
-
-    if (version < 3)
-        return true;
-
-    if (!decoder.decodeDouble("mostRecentUserInteraction", mostRecentUserInteraction))
-        return false;
-
-    if (!decoder.decodeBool("grandfathered", grandfathered))
-        return false;
-
+    
     return true;
 }
 
@@ -224,11 +213,6 @@ String ResourceLoadStatistics::toString() const
     
     // User interaction
     appendBoolean(builder, "hadUserInteraction", hadUserInteraction);
-    builder.append('\n');
-    builder.appendLiteral("    mostRecentUserInteraction: ");
-    builder.appendNumber(mostRecentUserInteraction);
-    builder.append('\n');
-    appendBoolean(builder, "    grandfathered", grandfathered);
     builder.append('\n');
     
     // Top frame stats
@@ -294,10 +278,6 @@ String ResourceLoadStatistics::toString() const
     builder.appendNumber(dataRecordsRemoved);
     builder.append('\n');
 
-    // In-memory only
-    appendBoolean(builder, "isMarkedForCookiePartitioning", isMarkedForCookiePartitioning);
-    builder.append('\n');
-
     builder.append('\n');
 
     return builder.toString();
@@ -314,19 +294,7 @@ void ResourceLoadStatistics::merge(const ResourceLoadStatistics& other)
 {
     ASSERT(other.highLevelDomain == highLevelDomain);
 
-    if (!other.hadUserInteraction) {
-        // If user interaction has been reset do so here too.
-        // Else, do nothing.
-        if (!other.mostRecentUserInteraction) {
-            hadUserInteraction = false;
-            mostRecentUserInteraction = 0;
-        }
-    } else {
-        hadUserInteraction = true;
-        if (mostRecentUserInteraction < other.mostRecentUserInteraction)
-            mostRecentUserInteraction = other.mostRecentUserInteraction;
-    }
-    grandfathered |= other.grandfathered;
+    hadUserInteraction |= other.hadUserInteraction;
     
     // Top frame stats
     topFrameHasBeenRedirectedTo += other.topFrameHasBeenRedirectedTo;
@@ -357,9 +325,6 @@ void ResourceLoadStatistics::merge(const ResourceLoadStatistics& other)
     mergeHashCountedSet(redirectedToOtherPrevalentResourceOrigins, other.redirectedToOtherPrevalentResourceOrigins);
     isPrevalentResource |= other.isPrevalentResource;
     dataRecordsRemoved += other.dataRecordsRemoved;
-    
-    // In-memory only
-    isMarkedForCookiePartitioning |= other.isMarkedForCookiePartitioning;
 }
 
 }

@@ -86,29 +86,29 @@ static inline int32_t getJumpDistance(const DFABytecode* bytecode, uint32_t byte
     }
 }
 
-static inline bool matchesCondition(uint64_t actionAndFlags, const DFABytecodeInterpreter::Actions& conditionActions)
+static inline bool matchesDomain(uint64_t actionAndFlags, const DFABytecodeInterpreter::Actions& domainActions)
 {
-    bool ifCondition = actionAndFlags & IfConditionFlag;
-    bool condition = conditionActions.contains(actionAndFlags);
-    return ifCondition == condition;
+    bool ifDomain = actionAndFlags & IfDomainFlag;
+    bool domain = domainActions.contains(actionAndFlags);
+    return ifDomain == domain;
 }
 
-void DFABytecodeInterpreter::interpretAppendAction(uint32_t& programCounter, Actions& actions, bool ifCondition)
+void DFABytecodeInterpreter::interpretAppendAction(uint32_t& programCounter, Actions& actions, bool ifDomain)
 {
     ASSERT(getInstruction(m_bytecode, m_bytecodeLength, programCounter) == DFABytecodeInstruction::AppendAction
-        || getInstruction(m_bytecode, m_bytecodeLength, programCounter) == DFABytecodeInstruction::AppendActionWithIfCondition);
-    uint64_t action = (ifCondition ? IfConditionFlag : 0) | static_cast<uint64_t>(getBits<uint32_t>(m_bytecode, m_bytecodeLength, programCounter + sizeof(DFABytecodeInstruction)));
-    if (!m_topURLActions || matchesCondition(action, *m_topURLActions))
+        || getInstruction(m_bytecode, m_bytecodeLength, programCounter) == DFABytecodeInstruction::AppendActionWithIfDomain);
+    uint64_t action = (ifDomain ? IfDomainFlag : 0) | static_cast<uint64_t>(getBits<uint32_t>(m_bytecode, m_bytecodeLength, programCounter + sizeof(DFABytecodeInstruction)));
+    if (!m_domainActions || matchesDomain(action, *m_domainActions))
         actions.add(action);
     
     programCounter += instructionSizeWithArguments(DFABytecodeInstruction::AppendAction);
-    ASSERT(instructionSizeWithArguments(DFABytecodeInstruction::AppendAction) == instructionSizeWithArguments(DFABytecodeInstruction::AppendActionWithIfCondition));
+    ASSERT(instructionSizeWithArguments(DFABytecodeInstruction::AppendAction) == instructionSizeWithArguments(DFABytecodeInstruction::AppendActionWithIfDomain));
 }
 
-void DFABytecodeInterpreter::interpretTestFlagsAndAppendAction(uint32_t& programCounter, uint16_t flags, Actions& actions, bool ifCondition)
+void DFABytecodeInterpreter::interpretTestFlagsAndAppendAction(uint32_t& programCounter, uint16_t flags, Actions& actions, bool ifDomain)
 {
     ASSERT(getInstruction(m_bytecode, m_bytecodeLength, programCounter) == DFABytecodeInstruction::TestFlagsAndAppendAction
-        || getInstruction(m_bytecode, m_bytecodeLength, programCounter) == DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition);
+        || getInstruction(m_bytecode, m_bytecodeLength, programCounter) == DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain);
     uint16_t flagsToCheck = getBits<uint16_t>(m_bytecode, m_bytecodeLength, programCounter + sizeof(DFABytecodeInstruction));
 
     uint16_t loadTypeFlags = flagsToCheck & LoadTypeMask;
@@ -118,12 +118,12 @@ void DFABytecodeInterpreter::interpretTestFlagsAndAppendAction(uint32_t& program
     bool resourceTypeMatches = resourceTypeFlags ? (resourceTypeFlags & flags) : true;
     
     if (loadTypeMatches && resourceTypeMatches) {
-        uint64_t actionAndFlags = (ifCondition ? IfConditionFlag : 0) | (static_cast<uint64_t>(flagsToCheck) << 32) | static_cast<uint64_t>(getBits<uint32_t>(m_bytecode, m_bytecodeLength, programCounter + sizeof(DFABytecodeInstruction) + sizeof(uint16_t)));
-        if (!m_topURLActions || matchesCondition(actionAndFlags, *m_topURLActions))
+        uint64_t actionAndFlags = (ifDomain ? IfDomainFlag : 0) | (static_cast<uint64_t>(flagsToCheck) << 32) | static_cast<uint64_t>(getBits<uint32_t>(m_bytecode, m_bytecodeLength, programCounter + sizeof(DFABytecodeInstruction) + sizeof(uint16_t)));
+        if (!m_domainActions || matchesDomain(actionAndFlags, *m_domainActions))
             actions.add(actionAndFlags);
     }
     programCounter += instructionSizeWithArguments(DFABytecodeInstruction::TestFlagsAndAppendAction);
-    ASSERT(instructionSizeWithArguments(DFABytecodeInstruction::TestFlagsAndAppendAction) == instructionSizeWithArguments(DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition));
+    ASSERT(instructionSizeWithArguments(DFABytecodeInstruction::TestFlagsAndAppendAction) == instructionSizeWithArguments(DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain));
 }
 
 template<bool caseSensitive>
@@ -157,24 +157,24 @@ DFABytecodeInterpreter::Actions DFABytecodeInterpreter::actionsMatchingEverythin
         DFABytecodeInstruction instruction = getInstruction(m_bytecode, m_bytecodeLength, programCounter);
         if (instruction == DFABytecodeInstruction::AppendAction)
             interpretAppendAction(programCounter, actions, false);
-        else if (instruction == DFABytecodeInstruction::AppendActionWithIfCondition)
+        else if (instruction == DFABytecodeInstruction::AppendActionWithIfDomain)
             interpretAppendAction(programCounter, actions, true);
         else if (instruction == DFABytecodeInstruction::TestFlagsAndAppendAction)
             programCounter += instructionSizeWithArguments(DFABytecodeInstruction::TestFlagsAndAppendAction);
-        else if (instruction == DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition)
-            programCounter += instructionSizeWithArguments(DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition);
+        else if (instruction == DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain)
+            programCounter += instructionSizeWithArguments(DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain);
         else
             break;
     }
     return actions;
 }
     
-DFABytecodeInterpreter::Actions DFABytecodeInterpreter::interpretWithConditions(const CString& urlCString, uint16_t flags, const DFABytecodeInterpreter::Actions& topURLActions)
+DFABytecodeInterpreter::Actions DFABytecodeInterpreter::interpretWithDomains(const CString& urlCString, uint16_t flags, const DFABytecodeInterpreter::Actions& domainActions)
 {
-    ASSERT(!m_topURLActions);
-    m_topURLActions = &topURLActions;
+    ASSERT(!m_domainActions);
+    m_domainActions = &domainActions;
     DFABytecodeInterpreter::Actions actions = interpret(urlCString, flags);
-    m_topURLActions = nullptr;
+    m_domainActions = nullptr;
     return actions;
 }
 
@@ -199,11 +199,11 @@ DFABytecodeInterpreter::Actions DFABytecodeInterpreter::interpret(const CString&
                 DFABytecodeInstruction instruction = getInstruction(m_bytecode, m_bytecodeLength, programCounter);
                 if (instruction == DFABytecodeInstruction::AppendAction)
                     programCounter += instructionSizeWithArguments(DFABytecodeInstruction::AppendAction);
-                else if (instruction == DFABytecodeInstruction::AppendActionWithIfCondition)
-                    programCounter += instructionSizeWithArguments(DFABytecodeInstruction::AppendActionWithIfCondition);
+                else if (instruction == DFABytecodeInstruction::AppendActionWithIfDomain)
+                    programCounter += instructionSizeWithArguments(DFABytecodeInstruction::AppendActionWithIfDomain);
                 else if (instruction == DFABytecodeInstruction::TestFlagsAndAppendAction)
                     interpretTestFlagsAndAppendAction(programCounter, flags, actions, false);
-                else if (instruction == DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition)
+                else if (instruction == DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain)
                     interpretTestFlagsAndAppendAction(programCounter, flags, actions, true);
                 else
                     break;
@@ -212,9 +212,9 @@ DFABytecodeInterpreter::Actions DFABytecodeInterpreter::interpret(const CString&
                 return actions;
         } else {
             ASSERT_WITH_MESSAGE(getInstruction(m_bytecode, m_bytecodeLength, programCounter) != DFABytecodeInstruction::AppendAction
-                && getInstruction(m_bytecode, m_bytecodeLength, programCounter) != DFABytecodeInstruction::AppendActionWithIfCondition
+                && getInstruction(m_bytecode, m_bytecodeLength, programCounter) != DFABytecodeInstruction::AppendActionWithIfDomain
                 && getInstruction(m_bytecode, m_bytecodeLength, programCounter) != DFABytecodeInstruction::TestFlagsAndAppendAction
-                && getInstruction(m_bytecode, m_bytecodeLength, programCounter) != DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition,
+                && getInstruction(m_bytecode, m_bytecodeLength, programCounter) != DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain,
                 "Triggers that match everything should only be in the first DFA.");
         }
         
@@ -329,7 +329,7 @@ DFABytecodeInterpreter::Actions DFABytecodeInterpreter::interpret(const CString&
                 interpretAppendAction(programCounter, actions, false);
                 break;
                     
-            case DFABytecodeInstruction::AppendActionWithIfCondition:
+            case DFABytecodeInstruction::AppendActionWithIfDomain:
                 interpretAppendAction(programCounter, actions, true);
                 break;
                     
@@ -337,7 +337,7 @@ DFABytecodeInterpreter::Actions DFABytecodeInterpreter::interpret(const CString&
                 interpretTestFlagsAndAppendAction(programCounter, flags, actions, false);
                 break;
             
-            case DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition:
+            case DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain:
                 interpretTestFlagsAndAppendAction(programCounter, flags, actions, true);
                 break;
                     

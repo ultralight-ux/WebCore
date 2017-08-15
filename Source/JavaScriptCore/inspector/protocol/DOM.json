@@ -80,9 +80,7 @@
                 { "name": "handlerBody", "type": "string", "description": "Event handler function body." },
                 { "name": "location", "$ref": "Debugger.Location", "optional": true, "description": "Handler code location." },
                 { "name": "sourceName", "type": "string", "optional": true, "description": "Source script URL." },
-                { "name": "handler", "$ref": "Runtime.RemoteObject", "optional": true, "description": "Event handler function value." },
-                { "name": "passive", "type": "boolean", "optional": true, "description": "<code>EventListener</code>'s passive." },
-                { "name": "once", "type": "boolean", "optional": true, "description": "<code>EventListener</code>'s once." }
+                { "name": "handler", "$ref": "Runtime.RemoteObject", "optional": true, "description": "Event handler function value." }
             ],
             "description": "A structure holding event listener properties."
         },

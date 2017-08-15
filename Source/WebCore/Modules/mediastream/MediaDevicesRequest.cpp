@@ -34,7 +34,6 @@
 #include "Frame.h"
 #include "JSMediaDeviceInfo.h"
 #include "MediaDevicesEnumerationRequest.h"
-#include "RealtimeMediaSourceCenter.h"
 #include "SecurityOrigin.h"
 #include "UserMediaController.h"
 #include <wtf/MainThread.h>
@@ -76,34 +75,6 @@ void MediaDevicesRequest::contextDestroyed()
     ContextDestructionObserver::contextDestroyed();
 }
 
-void MediaDevicesRequest::filterDeviceList(Vector<RefPtr<MediaDeviceInfo>>& devices)
-{
-#if !PLATFORM(COCOA)
-    UNUSED_PARAM(devices);
-#else
-
-#if PLATFORM(IOS)
-    static const int defaultCameraCount = 2;
-#endif
-#if PLATFORM(MAC)
-    static const int defaultCameraCount = 1;
-#endif
-    static const int defaultMicrophoneCount = 1;
-
-    int cameraCount = 0;
-    int microphoneCount = 0;
-    devices.removeAllMatching([&](const RefPtr<MediaDeviceInfo>& device) -> bool {
-        if (device->kind() == MediaDeviceInfo::Kind::Videoinput && ++cameraCount > defaultCameraCount)
-            return true;
-        if (device->kind() == MediaDeviceInfo::Kind::Audioinput && ++microphoneCount > defaultMicrophoneCount)
-            return true;
-
-        return false;
-    });
-
-#endif
-}
-
 void MediaDevicesRequest::start()
 {
     RefPtr<MediaDevicesRequest> protectedThis = this;
@@ -115,7 +86,11 @@ void MediaDevicesRequest::start()
             return;
 
         Document& document = downcast<Document>(*scriptExecutionContext());
-        document.setDeviceIDHashSalt(deviceIdentifierHashSalt);
+        UserMediaController* controller = UserMediaController::from(document.page());
+        if (!controller)
+            return;
+
+        m_idHashSalt = deviceIdentifierHashSalt;
 
         Vector<RefPtr<MediaDeviceInfo>> devices;
         for (auto& deviceInfo : captureDevices) {
@@ -123,17 +98,14 @@ void MediaDevicesRequest::start()
             if (originHasPersistentAccess || document.hasHadActiveMediaStreamTrack())
                 label = deviceInfo.label();
 
-            auto id = RealtimeMediaSourceCenter::singleton().hashStringWithSalt(deviceInfo.persistentId(), deviceIdentifierHashSalt);
+            auto id = hashID(deviceInfo.persistentId());
             if (id.isEmpty())
                 continue;
 
-            auto groupId = RealtimeMediaSourceCenter::singleton().hashStringWithSalt(deviceInfo.groupId(), deviceIdentifierHashSalt);
-            auto deviceType = deviceInfo.type() == CaptureDevice::DeviceType::Audio ? MediaDeviceInfo::Kind::Audioinput : MediaDeviceInfo::Kind::Videoinput;
+            auto groupId = hashID(deviceInfo.groupId());
+            auto deviceType = deviceInfo.kind() == CaptureDevice::SourceKind::Audio ? MediaDeviceInfo::Kind::Audioinput : MediaDeviceInfo::Kind::Videoinput;
             devices.append(MediaDeviceInfo::create(scriptExecutionContext(), label, id, groupId, deviceType));
         }
-
-        if (!originHasPersistentAccess && !document.hasHadActiveMediaStreamTrack())
-            filterDeviceList(devices);
 
         callOnMainThread([protectedThis = makeRef(*this), devices = WTFMove(devices)]() mutable {
             protectedThis->m_promise.resolve(devices);
@@ -142,6 +114,38 @@ void MediaDevicesRequest::start()
 
     m_enumerationRequest = MediaDevicesEnumerationRequest::create(*downcast<Document>(scriptExecutionContext()), WTFMove(completion));
     m_enumerationRequest->start();
+}
+
+static void hashString(SHA1& sha1, const String& string)
+{
+    if (string.isEmpty())
+        return;
+
+    if (string.is8Bit() && string.containsOnlyASCII()) {
+        const uint8_t nullByte = 0;
+        sha1.addBytes(string.characters8(), string.length());
+        sha1.addBytes(&nullByte, 1);
+        return;
+    }
+
+    auto utf8 = string.utf8();
+    sha1.addBytes(reinterpret_cast<const uint8_t*>(utf8.data()), utf8.length() + 1); // Include terminating null byte.
+}
+
+String MediaDevicesRequest::hashID(const String& id)
+{
+    if (id.isEmpty() || m_idHashSalt.isEmpty())
+        return emptyString();
+
+    SHA1 sha1;
+
+    hashString(sha1, id);
+    hashString(sha1, m_idHashSalt);
+
+    SHA1::Digest digest;
+    sha1.computeHash(digest);
+
+    return SHA1::hexDigest(digest).data();
 }
 
 } // namespace WebCore

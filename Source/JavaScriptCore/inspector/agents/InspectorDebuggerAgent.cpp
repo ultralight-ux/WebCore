@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2013, 2015 Apple Inc. All rights reserved.
  * Copyright (C) 2010, 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,7 +56,7 @@ const char* InspectorDebuggerAgent::backtraceObjectGroup = "backtrace";
 // create objects in the same group.
 static String objectGroupForBreakpointAction(const ScriptBreakpointAction& action)
 {
-    static NeverDestroyed<String> objectGroup(MAKE_STATIC_STRING_IMPL("breakpoint-action-"));
+    static NeverDestroyed<String> objectGroup(ASCIILiteral("breakpoint-action-"));
     return makeString(objectGroup.get(), String::number(action.identifier));
 }
 
@@ -230,9 +230,9 @@ void InspectorDebuggerAgent::didScheduleAsyncCall(JSC::ExecState* exec, int asyn
     if (!m_scriptDebugServer.breakpointsActive())
         return;
 
-    Ref<ScriptCallStack> callStack = createScriptCallStack(exec, m_asyncStackTraceDepth);
-    ASSERT(callStack->size());
-    if (!callStack->size())
+    RefPtr<ScriptCallStack> callStack = createScriptCallStack(exec, m_asyncStackTraceDepth);
+    ASSERT(callStack && callStack->size());
+    if (!callStack || !callStack->size())
         return;
 
     RefPtr<AsyncStackTrace> parentStackTrace;
@@ -783,11 +783,8 @@ void InspectorDebuggerAgent::didBecomeIdle()
 {
     m_registeredIdleCallback = false;
 
-    if (m_conditionToDispatchResumed == ShouldDispatchResumed::WhenIdle) {
-        cancelPauseOnNextStatement();
-        m_scriptDebugServer.continueProgram();
+    if (m_conditionToDispatchResumed == ShouldDispatchResumed::WhenIdle)
         m_frontendDispatcher->resumed();
-    }
 
     m_conditionToDispatchResumed = ShouldDispatchResumed::No;
 

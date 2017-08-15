@@ -207,10 +207,10 @@ public:
     void setExecutableDuringCompilation(ExecutableBase*);
     ExecutableBase* executable();
     
-    void setStub(Ref<PolymorphicCallStubRoutine>&& newStub)
+    void setStub(PassRefPtr<PolymorphicCallStubRoutine> newStub)
     {
         clearStub();
-        m_stub = WTFMove(newStub);
+        m_stub = newStub;
     }
 
     void clearStub();
@@ -220,9 +220,9 @@ public:
         return m_stub.get();
     }
 
-    void setSlowStub(Ref<JITStubRoutine>&& newSlowStub)
+    void setSlowStub(PassRefPtr<JITStubRoutine> newSlowStub)
     {
-        m_slowStub = WTFMove(newSlowStub);
+        m_slowStub = newSlowStub;
     }
 
     void clearSlowStub()

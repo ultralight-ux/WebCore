@@ -31,7 +31,6 @@
 #include <wtf/HashFunctions.h>
 #include <wtf/HashSet.h>
 #include <wtf/Hasher.h>
-#include <wtf/MemoryPressureHandler.h>
 
 namespace WebCore {
 
@@ -119,46 +118,29 @@ public:
     {
     }
 
-    float* add(StringView text, float entry)
-    {
-        if (MemoryPressureHandler::singleton().isUnderMemoryPressure())
-            return nullptr;
-
-        if (static_cast<unsigned>(text.length()) > SmallStringKey::capacity())
-            return nullptr;
-
-        if (m_countdown > 0) {
-            --m_countdown;
-            return nullptr;
-        }
-        return addSlowCase(text, entry);
-    }
-
     float* add(const TextRun& run, float entry, bool hasKerningOrLigatures, bool hasWordSpacingOrLetterSpacing, GlyphOverflow* glyphOverflow)
     {
-        if (MemoryPressureHandler::singleton().isUnderMemoryPressure())
-            return nullptr;
         // The width cache is not really profitable unless we're doing expensive glyph transformations.
         if (!hasKerningOrLigatures)
-            return nullptr;
+            return 0;
         // Word spacing and letter spacing can change the width of a word.
         if (hasWordSpacingOrLetterSpacing)
-            return nullptr;
+            return 0;
         // Since this is just a width cache, we don't have enough information to satisfy glyph queries.
         if (glyphOverflow)
-            return nullptr;
+            return 0;
         // If we allow tabs and a tab occurs inside a word, the width of the word varies based on its position on the line.
         if (run.allowTabs())
-            return nullptr;
+            return 0;
         if (static_cast<unsigned>(run.length()) > SmallStringKey::capacity())
-            return nullptr;
+            return 0;
 
         if (m_countdown > 0) {
             --m_countdown;
-            return nullptr;
+            return 0;
         }
 
-        return addSlowCase(run.text(), entry);
+        return addSlowCase(run, entry);
     }
 
     void clear()
@@ -168,24 +150,23 @@ public:
     }
 
 private:
-
-    float* addSlowCase(StringView text, float entry)
+    float* addSlowCase(const TextRun& run, float entry)
     {
-        int length = text.length();
+        int length = run.length();
         bool isNewEntry;
-        float* value;
+        float *value;
         if (length == 1) {
-            SingleCharMap::AddResult addResult = m_singleCharMap.fastAdd(text[0], entry);
+            SingleCharMap::AddResult addResult = m_singleCharMap.add(run[0], entry);
             isNewEntry = addResult.isNewEntry;
             value = &addResult.iterator->value;
         } else {
             SmallStringKey smallStringKey;
-            if (text.is8Bit())
-                smallStringKey = SmallStringKey(text.characters8(), length);
+            if (run.is8Bit())
+                smallStringKey = SmallStringKey(run.characters8(), length);
             else
-                smallStringKey = SmallStringKey(text.characters16(), length);
+                smallStringKey = SmallStringKey(run.characters16(), length);
 
-            Map::AddResult addResult = m_map.fastAdd(smallStringKey, entry);
+            Map::AddResult addResult = m_map.add(smallStringKey, entry);
             isNewEntry = addResult.isNewEntry;
             value = &addResult.iterator->value;
         }
@@ -207,7 +188,7 @@ private:
         // No need to be fancy: we're just trying to avoid pathological growth.
         m_singleCharMap.clear();
         m_map.clear();
-        return nullptr;
+        return 0;
     }
 
     typedef HashMap<SmallStringKey, float, SmallStringKeyHash, SmallStringKeyHashTraits> Map;

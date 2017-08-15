@@ -33,11 +33,8 @@ namespace WebCore {
 
 class URLSearchParams : public RefCounted<URLSearchParams> {
 public:
-    static ExceptionOr<Ref<URLSearchParams>> create(Variant<Vector<Vector<String>>, Vector<WTF::KeyValuePair<String, String>>, String>&&);
-    static Ref<URLSearchParams> create(const String& string, DOMURL* associatedURL)
-    {
-        return adoptRef(*new URLSearchParams(string, associatedURL));
-    }
+    using StringOrURLSearchParams = WTF::Variant<String, RefPtr<URLSearchParams>>;
+    static Ref<URLSearchParams> create(const StringOrURLSearchParams&, DOMURL* associatedURL = nullptr);
 
     void associatedURLDestroyed() { m_associatedURL = nullptr; }
     void append(const String& name, const String& value);
@@ -47,8 +44,9 @@ public:
     bool has(const String& name) const;
     void set(const String& name, const String& value);
     String toString() const;
+    const Vector<std::pair<String, String>>& pairs() const { return m_pairs; }
+    operator const Vector<std::pair<String, String>>&() { return m_pairs; }
     void updateFromAssociatedURL();
-    void sort();
 
     class Iterator {
     public:
@@ -62,13 +60,22 @@ public:
     Iterator createIterator() { return Iterator { *this }; }
 
 private:
-    const Vector<WTF::KeyValuePair<String, String>>& pairs() const { return m_pairs; }
     URLSearchParams(const String&, DOMURL*);
-    URLSearchParams(const Vector<WTF::KeyValuePair<String, String>>&);
+    explicit URLSearchParams(const Vector<std::pair<String, String>>&);
     void updateURL();
 
     DOMURL* m_associatedURL { nullptr };
-    Vector<WTF::KeyValuePair<String, String>> m_pairs;
+    Vector<std::pair<String, String>> m_pairs;
 };
+
+inline Ref<URLSearchParams> URLSearchParams::create(const StringOrURLSearchParams& variant, DOMURL* associatedURL)
+{
+    auto visitor = WTF::makeVisitor([&](const String& string) {
+        return adoptRef(*new URLSearchParams(string, associatedURL));
+    }, [&](const RefPtr<URLSearchParams>& params) {
+        return adoptRef(*new URLSearchParams(static_cast<const Vector<std::pair<String, String>>&>(*params)));
+    });
+    return WTF::visit(visitor, variant);
+}
 
 } // namespace WebCore

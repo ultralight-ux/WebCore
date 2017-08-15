@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,41 +28,43 @@
 #if ENABLE(VIDEO_TRACK)
 
 #include "TextTrackCue.h"
+#include <wtf/PassRefPtr.h>
+#include <wtf/RefCounted.h>
+#include <wtf/Vector.h>
 
 namespace WebCore {
 
 class TextTrackCueList : public RefCounted<TextTrackCueList> {
 public:
-    static Ref<TextTrackCueList> create();
+    static Ref<TextTrackCueList> create()
+    {
+        return adoptRef(*new TextTrackCueList);
+    }
 
-    unsigned length() const;
+    ~TextTrackCueList() { }
+
+    unsigned long length() const;
+    unsigned long getCueIndex(TextTrackCue*) const;
+
     TextTrackCue* item(unsigned index) const;
     TextTrackCue* getCueById(const String&) const;
+    TextTrackCueList* activeCues();
 
-    unsigned cueIndex(TextTrackCue&) const;
-
-    void add(Ref<TextTrackCue>&&);
-    void remove(TextTrackCue&);
-    void updateCueIndex(TextTrackCue&);
-
-    TextTrackCueList& activeCues();
+    bool add(PassRefPtr<TextTrackCue>);
+    bool remove(TextTrackCue*);
+    bool contains(TextTrackCue*) const;
+    
+    bool updateCueIndex(TextTrackCue*);
 
 private:
-    TextTrackCueList() = default;
+    TextTrackCueList();
+    bool add(PassRefPtr<TextTrackCue>, size_t, size_t);
+    void clear();
+    void invalidateCueIndexes(size_t);
 
-    Vector<RefPtr<TextTrackCue>> m_vector;
+    Vector<RefPtr<TextTrackCue>> m_list;
     RefPtr<TextTrackCueList> m_activeCues;
 };
-
-inline Ref<TextTrackCueList> TextTrackCueList::create()
-{
-    return adoptRef(*new TextTrackCueList);
-}
-
-inline unsigned TextTrackCueList::length() const
-{
-    return m_vector.size();
-}
 
 } // namespace WebCore
 

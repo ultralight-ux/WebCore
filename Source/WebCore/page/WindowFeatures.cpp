@@ -24,7 +24,6 @@
 #include "WindowFeatures.h"
 
 #include "FloatRect.h"
-#include <wtf/ASCIICType.h>
 #include <wtf/Assertions.h>
 #include <wtf/HashMap.h>
 #include <wtf/MathExtras.h>
@@ -40,13 +39,9 @@ static DialogFeaturesMap parseDialogFeaturesMap(const String&);
 static std::optional<bool> boolFeature(const DialogFeaturesMap&, const char* key);
 static std::optional<float> floatFeature(const DialogFeaturesMap&, const char* key, float min, float max);
 
-// https://html.spec.whatwg.org/#feature-separator
-static bool isSeparator(UChar character, FeatureMode mode)
+static bool isSeparator(UChar character)
 {
-    if (mode == FeatureMode::Viewport)
-        return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '=' || character == ',';
-
-    return isASCIISpace(character) || character == '=' || character == ',';
+    return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '=' || character == ',';
 }
 
 WindowFeatures parseWindowFeatures(StringView featuresString)
@@ -68,49 +63,43 @@ WindowFeatures parseWindowFeatures(StringView featuresString)
     features.toolBarVisible = false;
     features.locationBarVisible = false;
     features.scrollbarsVisible = false;
-    features.noopener = false;
 
-    processFeaturesString(featuresString, FeatureMode::Window, [&features](StringView key, StringView value) {
+    processFeaturesString(featuresString, [&features](StringView key, StringView value) {
         setWindowFeature(features, key, value);
     });
 
     return features;
 }
 
-// Window: https://html.spec.whatwg.org/#concept-window-open-features-tokenize
-// Viewport: https://developer.apple.com/library/content/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/MetaTags.html#//apple_ref/doc/uid/TP40008193-SW6
-// FIXME: We should considering aligning Viewport feature parsing with Window features parsing.
-void processFeaturesString(StringView features, FeatureMode mode, std::function<void(StringView type, StringView value)> callback)
+void processFeaturesString(StringView features, std::function<void(StringView type, StringView value)> callback)
 {
     unsigned length = features.length();
     for (unsigned i = 0; i < length; ) {
-        // Skip to first non-separator.
-        while (i < length && isSeparator(features[i], mode))
+        // skip to first non-separator
+        while (i < length && isSeparator(features[i]))
             ++i;
         unsigned keyBegin = i;
 
-        // Skip to first separator.
-        while (i < length && !isSeparator(features[i], mode))
+        // skip to first separator
+        while (i < length && !isSeparator(features[i]))
             i++;
         unsigned keyEnd = i;
 
-        // Skip to first '=', but don't skip past a ',' or a non-separator.
-        while (i < length && features[i] != '=' && features[i] != ',' && (mode == FeatureMode::Viewport || isSeparator(features[i], mode)))
+        // skip to first '=', but don't skip past a ','
+        while (i < length && features[i] != '=' && features[i] != ',')
             ++i;
 
-        // Skip to first non-separator, but don't skip past a ','.
-        if (mode == FeatureMode::Viewport || (i < length && isSeparator(features[i], mode))) {
-            while (i < length && isSeparator(features[i], mode) && features[i] != ',')
-                ++i;
-            unsigned valueBegin = i;
+        // skip to first non-separator, but don't skip past a ','
+        while (i < length && isSeparator(features[i]) && features[i] != ',')
+            ++i;
+        unsigned valueBegin = i;
 
-            // Skip to first separator.
-            while (i < length && !isSeparator(features[i], mode))
-                ++i;
-            unsigned valueEnd = i;
-            callback(features.substring(keyBegin, keyEnd - keyBegin), features.substring(valueBegin, valueEnd - valueBegin));
-        } else
-            callback(features.substring(keyBegin, keyEnd - keyBegin), StringView());
+        // skip to first separator
+        while (i < length && !isSeparator(features[i]))
+            ++i;
+        unsigned valueEnd = i;
+
+        callback(features.substring(keyBegin, keyEnd - keyBegin), features.substring(valueBegin, valueEnd - valueBegin));
     }
 }
 
@@ -146,8 +135,6 @@ static void setWindowFeature(WindowFeatures& features, StringView key, StringVie
         features.fullscreen = numericValue;
     else if (equalLettersIgnoringASCIICase(key, "scrollbars"))
         features.scrollbarsVisible = numericValue;
-    else if (equalLettersIgnoringASCIICase(key, "noopener"))
-        features.noopener = numericValue;
     else if (numericValue == 1)
         features.additionalFeatures.append(key.toString());
 }

@@ -22,7 +22,8 @@
  *
  */
 
-#pragma once
+#ifndef AnimationList_h
+#define AnimationList_h
 
 #include "Animation.h"
 #include <wtf/RefPtr.h>
@@ -35,7 +36,6 @@ class AnimationList {
 public:
     AnimationList() { }
     AnimationList(const AnimationList&);
-    AnimationList(AnimationList&&) = default;
 
     void fillUnsetProperties();
     bool operator==(const AnimationList&) const;
@@ -49,17 +49,22 @@ public:
     
     void resize(size_t n) { m_animations.resize(n); }
     void remove(size_t i) { m_animations.remove(i); }
-    void append(Ref<Animation>&& animation) { m_animations.append(WTFMove(animation)); }
-
-    Animation& animation(size_t i) { return m_animations[i].get(); }
-    const Animation& animation(size_t i) const { return m_animations[i].get(); }
+    void append(PassRefPtr<Animation> animation)
+    {
+        ASSERT(animation);
+        m_animations.append(animation);
+    }
+    
+    Animation& animation(size_t i) { return *m_animations[i]; }
+    const Animation& animation(size_t i) const { return *m_animations[i]; }
     
 private:
     AnimationList& operator=(const AnimationList&);
-    AnimationList& operator=(AnimationList&&) = default;
 
-    Vector<Ref<Animation>> m_animations;
+    Vector<RefPtr<Animation>> m_animations;
 };    
 
 
 } // namespace WebCore
+
+#endif // AnimationList_h

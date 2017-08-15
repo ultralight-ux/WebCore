@@ -26,7 +26,6 @@
 #define FontDescription_h
 
 #include "CSSValueKeywords.h"
-#include "FontSelectionAlgorithm.h"
 #include "FontTaggedSettings.h"
 #include "TextFlags.h"
 #include "WebKitFontFamilyNames.h"
@@ -46,11 +45,11 @@ public:
     bool operator!=(const FontDescription& other) const { return !(*this == other); }
 
     float computedSize() const { return m_computedSize; }
-    FontSelectionValue italic() const { return m_fontSelectionRequest.slope; }
-    FontSelectionValue stretch() const { return m_fontSelectionRequest.width; }
-    FontSelectionValue weight() const { return m_fontSelectionRequest.weight; }
-    FontSelectionRequest fontSelectionRequest() const { return m_fontSelectionRequest; }
+    FontItalic italic() const { return static_cast<FontItalic>(m_italic); }
     int computedPixelSize() const { return int(m_computedSize + 0.5f); }
+    FontWeight weight() const { return static_cast<FontWeight>(m_weight); }
+    FontWeight lighterWeight() const;
+    FontWeight bolderWeight() const;
     FontRenderingMode renderingMode() const { return static_cast<FontRenderingMode>(m_renderingMode); }
     TextRenderingMode textRenderingMode() const { return static_cast<TextRenderingMode>(m_textRendering); }
     UScriptCode script() const { return static_cast<UScriptCode>(m_script); }
@@ -95,13 +94,11 @@ public:
             variantEastAsianWidth(),
             variantEastAsianRuby() };
     }
-    FontOpticalSizing opticalSizing() const { return static_cast<FontOpticalSizing>(m_opticalSizing); }
 
     void setComputedSize(float s) { m_computedSize = clampToFloat(s); }
-    void setItalic(FontSelectionValue italic) { m_fontSelectionRequest.slope = italic; }
-    void setStretch(FontSelectionValue stretch) { m_fontSelectionRequest.width = stretch; }
-    void setIsItalic(bool i) { setItalic(i ? italicValue() : normalItalicValue()); }
-    void setWeight(FontSelectionValue weight) { m_fontSelectionRequest.weight = weight; }
+    void setItalic(FontItalic i) { m_italic = i; }
+    void setIsItalic(bool i) { setItalic(i ? FontItalicOn : FontItalicOff); }
+    void setWeight(FontWeight w) { m_weight = w; }
     void setRenderingMode(FontRenderingMode mode) { m_renderingMode = static_cast<unsigned>(mode); }
     void setTextRenderingMode(TextRenderingMode rendering) { m_textRendering = rendering; }
     void setOrientation(FontOrientation orientation) { m_orientation = orientation; }
@@ -128,7 +125,8 @@ public:
     void setVariantEastAsianVariant(FontVariantEastAsianVariant variant) { m_variantEastAsianVariant = static_cast<unsigned>(variant); }
     void setVariantEastAsianWidth(FontVariantEastAsianWidth variant) { m_variantEastAsianWidth = static_cast<unsigned>(variant); }
     void setVariantEastAsianRuby(FontVariantEastAsianRuby variant) { m_variantEastAsianRuby = static_cast<unsigned>(variant); }
-    void setOpticalSizing(FontOpticalSizing sizing) { m_opticalSizing = static_cast<unsigned>(sizing); }
+
+    FontTraitsMask traitsMask() const;
 
 private:
     // FIXME: Investigate moving these into their own object on the heap (to save memory).
@@ -136,11 +134,12 @@ private:
     FontVariationSettings m_variationSettings;
     AtomicString m_locale;
 
-    FontSelectionRequest m_fontSelectionRequest;
     float m_computedSize { 0 }; // Computed size adjusted for the minimum font size and the zoom factor.
     unsigned m_orientation : 1; // FontOrientation - Whether the font is rendering on a horizontal line or a vertical line.
     unsigned m_nonCJKGlyphOrientation : 1; // NonCJKGlyphOrientation - Only used by vertical text. Determines the default orientation for non-ideograph glyphs.
     unsigned m_widthVariant : 2; // FontWidthVariant
+    unsigned m_italic : 1; // FontItalic
+    unsigned m_weight : 8; // FontWeight
     unsigned m_renderingMode : 1; // Used to switch between CG and GDI text on Windows.
     unsigned m_textRendering : 2; // TextRenderingMode
     unsigned m_script : 7; // Used to help choose an appropriate font for generic font families.
@@ -160,13 +159,13 @@ private:
     unsigned m_variantEastAsianVariant : 3; // FontVariantEastAsianVariant
     unsigned m_variantEastAsianWidth : 2; // FontVariantEastAsianWidth
     unsigned m_variantEastAsianRuby : 1; // FontVariantEastAsianRuby
-    unsigned m_opticalSizing : 1; // FontOpticalSizing
 };
 
 inline bool FontDescription::operator==(const FontDescription& other) const
 {
     return m_computedSize == other.m_computedSize
-        && m_fontSelectionRequest == other.m_fontSelectionRequest
+        && m_italic == other.m_italic
+        && m_weight == other.m_weight
         && m_renderingMode == other.m_renderingMode
         && m_textRendering == other.m_textRendering
         && m_orientation == other.m_orientation
@@ -192,14 +191,13 @@ inline bool FontDescription::operator==(const FontDescription& other) const
         && m_variantAlternates == other.m_variantAlternates
         && m_variantEastAsianVariant == other.m_variantEastAsianVariant
         && m_variantEastAsianWidth == other.m_variantEastAsianWidth
-        && m_variantEastAsianRuby == other.m_variantEastAsianRuby
-        && m_opticalSizing == other.m_opticalSizing;
+        && m_variantEastAsianRuby == other.m_variantEastAsianRuby;
 }
 
 // FIXME: Move to a file of its own.
 class FontCascadeDescription : public FontDescription {
 public:
-    WEBCORE_EXPORT FontCascadeDescription();
+    FontCascadeDescription();
 
     bool operator==(const FontCascadeDescription&) const;
     bool operator!=(const FontCascadeDescription& other) const { return !(*this == other); }
@@ -211,10 +209,8 @@ public:
 
     float specifiedSize() const { return m_specifiedSize; }
     bool isAbsoluteSize() const { return m_isAbsoluteSize; }
-    FontSelectionValue lighterWeight() const { return lighterWeight(weight()); }
-    FontSelectionValue bolderWeight() const { return bolderWeight(weight()); }
-    static FontSelectionValue lighterWeight(FontSelectionValue);
-    static FontSelectionValue bolderWeight(FontSelectionValue);
+    FontWeight lighterWeight() const;
+    FontWeight bolderWeight() const;
 
     // only use fixed default size when there is only one font family, and that family is "monospace"
     bool useFixedDefaultSize() const { return familyCount() == 1 && firstFamily() == monospaceFamily; }
@@ -264,9 +260,7 @@ public:
 #endif
 
     // Initial values for font properties.
-    static FontSelectionValue initialItalic() { return normalItalicValue(); }
-    static FontSelectionValue initialWeight() { return normalWeightValue(); }
-    static FontSelectionValue initialStretch() { return normalStretchValue(); }
+    static FontItalic initialItalic() { return FontItalicOff; }
     static FontSmallCaps initialSmallCaps() { return FontSmallCapsOff; }
     static Kerning initialKerning() { return Kerning::Auto; }
     static FontSmoothingMode initialFontSmoothing() { return AutoSmoothing; }
@@ -275,7 +269,6 @@ public:
     static FontVariantPosition initialVariantPosition() { return FontVariantPosition::Normal; }
     static FontVariantCaps initialVariantCaps() { return FontVariantCaps::Normal; }
     static FontVariantAlternates initialVariantAlternates() { return FontVariantAlternates::Normal; }
-    static FontOpticalSizing initialOpticalSizing() { return FontOpticalSizing::Enabled; }
     static const AtomicString& initialLocale() { return nullAtom; }
 
 private:

@@ -27,7 +27,7 @@
 
 #pragma once
 
-#include "MediaQueryExpression.h"
+#include "MediaQueryExp.h"
 
 namespace WebCore {
 

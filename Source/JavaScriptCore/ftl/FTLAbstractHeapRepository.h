@@ -51,8 +51,7 @@ namespace JSC { namespace FTL {
     macro(DirectArguments_callee, DirectArguments::offsetOfCallee()) \
     macro(DirectArguments_length, DirectArguments::offsetOfLength()) \
     macro(DirectArguments_minCapacity, DirectArguments::offsetOfMinCapacity()) \
-    macro(DirectArguments_mappedArguments, DirectArguments::offsetOfMappedArguments()) \
-    macro(DirectArguments_modifiedArgumentsDescriptor, DirectArguments::offsetOfModifiedArgumentsDescriptor()) \
+    macro(DirectArguments_overrides, DirectArguments::offsetOfOverrides()) \
     macro(GetterSetter_getter, GetterSetter::offsetOfGetter()) \
     macro(GetterSetter_setter, GetterSetter::offsetOfSetter()) \
     macro(JSArrayBufferView_length, JSArrayBufferView::offsetOfLength()) \
@@ -224,7 +223,6 @@ public:
     void decoratePatchpointWrite(const AbstractHeap*, B3::Value*);
     void decorateFenceRead(const AbstractHeap*, B3::Value*);
     void decorateFenceWrite(const AbstractHeap*, B3::Value*);
-    void decorateFencedAccess(const AbstractHeap*, B3::Value*);
 
     void computeRangesAndDecorateInstructions();
 
@@ -252,7 +250,6 @@ private:
     Vector<HeapForValue> m_heapForPatchpointWrite;
     Vector<HeapForValue> m_heapForFenceRead;
     Vector<HeapForValue> m_heapForFenceWrite;
-    Vector<HeapForValue> m_heapForFencedAccess;
 };
 
 } } // namespace JSC::FTL

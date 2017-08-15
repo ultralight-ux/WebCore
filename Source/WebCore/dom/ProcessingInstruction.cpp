@@ -58,7 +58,7 @@ ProcessingInstruction::~ProcessingInstruction()
     if (m_cachedSheet)
         m_cachedSheet->removeClient(*this);
 
-    if (isConnected())
+    if (inDocument())
         document().styleScope().removeStyleSheetCandidateNode(*this);
 }
 
@@ -134,14 +134,9 @@ void ProcessingInstruction::checkStyleSheet()
                 m_cachedSheet = nullptr;
             }
 
-            if (m_loading) {
-                m_loading = false;
-                document().styleScope().removePendingSheet(*this);
-            }
+            String url = document().completeURL(href).string();
 
             Ref<Document> originalDocument = document();
-
-            String url = document().completeURL(href).string();
 
             {
             SetForScope<bool> change(m_isHandlingBeforeLoad, true);
@@ -149,12 +144,12 @@ void ProcessingInstruction::checkStyleSheet()
                 return;
             }
 
-            bool didEventListenerDisconnectThisElement = !isConnected() || &document() != originalDocument.ptr();
+            bool didEventListenerDisconnectThisElement = !inDocument() || &document() != originalDocument.ptr();
             if (didEventListenerDisconnectThisElement)
                 return;
-            
+
             m_loading = true;
-            document().styleScope().addPendingSheet(*this);
+            document().styleScope().addPendingSheet();
 
             ASSERT_WITH_SECURITY_IMPLICATION(!m_cachedSheet);
 
@@ -176,7 +171,7 @@ void ProcessingInstruction::checkStyleSheet()
             else {
                 // The request may have been denied if (for example) the stylesheet is local and the document is remote.
                 m_loading = false;
-                document().styleScope().removePendingSheet(*this);
+                document().styleScope().removePendingSheet();
 #if ENABLE(XSLT)
                 if (m_isXSL)
                     document().styleScope().flushPendingUpdate();
@@ -198,8 +193,7 @@ bool ProcessingInstruction::isLoading() const
 bool ProcessingInstruction::sheetLoaded()
 {
     if (!isLoading()) {
-        if (document().styleScope().hasPendingSheet(*this))
-            document().styleScope().removePendingSheet(*this);
+        document().styleScope().removePendingSheet();
 #if ENABLE(XSLT)
         if (m_isXSL)
             document().styleScope().flushPendingUpdate();
@@ -211,7 +205,7 @@ bool ProcessingInstruction::sheetLoaded()
 
 void ProcessingInstruction::setCSSStyleSheet(const String& href, const URL& baseURL, const String& charset, const CachedCSSStyleSheet* sheet)
 {
-    if (!isConnected()) {
+    if (!inDocument()) {
         ASSERT(!m_sheet);
         return;
     }
@@ -277,7 +271,7 @@ void ProcessingInstruction::addSubresourceAttributeURLs(ListHashSet<URL>& urls) 
 Node::InsertionNotificationRequest ProcessingInstruction::insertedInto(ContainerNode& insertionPoint)
 {
     CharacterData::insertedInto(insertionPoint);
-    if (!insertionPoint.isConnected())
+    if (!insertionPoint.inDocument())
         return InsertionDone;
     document().styleScope().addStyleSheetCandidateNode(*this, m_createdByParser);
     checkStyleSheet();
@@ -287,7 +281,7 @@ Node::InsertionNotificationRequest ProcessingInstruction::insertedInto(Container
 void ProcessingInstruction::removedFrom(ContainerNode& insertionPoint)
 {
     CharacterData::removedFrom(insertionPoint);
-    if (!insertionPoint.isConnected())
+    if (!insertionPoint.inDocument())
         return;
     
     document().styleScope().removeStyleSheetCandidateNode(*this);
@@ -300,7 +294,7 @@ void ProcessingInstruction::removedFrom(ContainerNode& insertionPoint)
 
     if (m_loading) {
         m_loading = false;
-        document().styleScope().removePendingSheet(*this);
+        document().styleScope().removePendingSheet();
     }
 
     document().styleScope().didChangeActiveStyleSheetCandidates();

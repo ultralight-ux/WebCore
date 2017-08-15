@@ -102,7 +102,9 @@ public:
             if (!loop)
                 continue;
             LoopData& data = m_data[loop->index()];
-            for (auto* node : *block) {
+            for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
+                Node* node = block->at(nodeIndex);
+                
                 // Don't look beyond parts of the code that definitely always exit.
                 // FIXME: This shouldn't be needed.
                 // https://bugs.webkit.org/show_bug.cgi?id=128584

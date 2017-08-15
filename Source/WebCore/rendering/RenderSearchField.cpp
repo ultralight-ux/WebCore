@@ -58,17 +58,10 @@ RenderSearchField::RenderSearchField(HTMLInputElement& element, RenderStyle&& st
 
 RenderSearchField::~RenderSearchField()
 {
-    // Do not add any code here. Add it to willBeDestroyed() instead.
-}
-
-void RenderSearchField::willBeDestroyed()
-{
     if (m_searchPopup) {
         m_searchPopup->popupMenu()->disconnectClient();
         m_searchPopup = nullptr;
     }
-
-    RenderTextControlSingleLine::willBeDestroyed();
 }
 
 inline HTMLElement* RenderSearchField::resultsButtonElement() const
@@ -90,7 +83,7 @@ void RenderSearchField::addSearchResult()
     if (value.isEmpty())
         return;
 
-    if (page().usesEphemeralSession())
+    if (frame().page()->usesEphemeralSession())
         return;
 
     m_recentSearches.removeAllMatching([value] (const RecentSearch& recentSearch) {
@@ -104,7 +97,7 @@ void RenderSearchField::addSearchResult()
 
     const AtomicString& name = autosaveName();
     if (!m_searchPopup)
-        m_searchPopup = page().chrome().createSearchPopupMenu(*this);
+        m_searchPopup = document().page()->chrome().createSearchPopupMenu(this);
 
     m_searchPopup->saveRecentSearches(name, m_recentSearches);
 }
@@ -115,7 +108,7 @@ void RenderSearchField::showPopup()
         return;
 
     if (!m_searchPopup)
-        m_searchPopup = page().chrome().createSearchPopupMenu(*this);
+        m_searchPopup = document().page()->chrome().createSearchPopupMenu(this);
 
     if (!m_searchPopup->enabled())
         return;
@@ -134,10 +127,7 @@ void RenderSearchField::showPopup()
         m_searchPopup->saveRecentSearches(name, m_recentSearches);
     }
 
-    FloatPoint absTopLeft = localToAbsolute(FloatPoint(), UseTransforms);
-    IntRect absBounds = absoluteBoundingBoxRectIgnoringTransforms();
-    absBounds.setLocation(roundedIntPoint(absTopLeft));
-    m_searchPopup->popupMenu()->show(absBounds, &view().frameView(), -1);
+    m_searchPopup->popupMenu()->show(snappedIntRect(absoluteBoundingBoxRect()), &view().frameView(), -1);
 }
 
 void RenderSearchField::hidePopup()
@@ -211,7 +201,7 @@ void RenderSearchField::valueChanged(unsigned listIndex, bool fireEvents)
             const AtomicString& name = autosaveName();
             if (!name.isEmpty()) {
                 if (!m_searchPopup)
-                    m_searchPopup = page().chrome().createSearchPopupMenu(*this);
+                    m_searchPopup = document().page()->chrome().createSearchPopupMenu(this);
                 m_searchPopup->saveRecentSearches(name, m_recentSearches);
             }
         }

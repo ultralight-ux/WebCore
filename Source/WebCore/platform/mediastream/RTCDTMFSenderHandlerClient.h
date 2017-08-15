@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2013 Google Inc. All rights reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,9 +23,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef RTCDTMFSenderHandlerClient_h
+#define RTCDTMFSenderHandlerClient_h
 
-#if ENABLE(WEB_RTC_DTMF)
+#if ENABLE(WEB_RTC)
 
 namespace WebCore {
 
@@ -40,3 +40,5 @@ public:
 } // namespace WebCore
 
 #endif // ENABLE(WEB_RTC)
+
+#endif // RTCDTMFSenderHandlerClient_h

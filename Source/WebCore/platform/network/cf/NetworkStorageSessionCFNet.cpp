@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,42 +38,16 @@
 #include <WebKitSystemInterface/WebKitSystemInterface.h>
 #endif
 
+// FIXME: This file is mostly Cocoa code, not CFNetwork code. This code should be moved.
+
 namespace WebCore {
 
 static bool cookieStoragePartitioningEnabled;
 
-static RetainPtr<CFURLStorageSessionRef> createCFStorageSessionForIdentifier(CFStringRef identifier)
-{
-    auto storageSession = adoptCF(_CFURLStorageSessionCreate(kCFAllocatorDefault, identifier, nullptr));
-
-    if (!storageSession)
-        return nullptr;
-
-    auto cache = adoptCF(_CFURLStorageSessionCopyCache(kCFAllocatorDefault, storageSession.get()));
-    if (!cache)
-        return nullptr;
-
-    CFURLCacheSetDiskCapacity(cache.get(), 0);
-
-    auto sharedCache = adoptCF(CFURLCacheCopySharedURLCache());
-    CFURLCacheSetMemoryCapacity(cache.get(), CFURLCacheMemoryCapacity(sharedCache.get()));
-
-    auto cookieStorage = adoptCF(_CFURLStorageSessionCopyCookieStorage(kCFAllocatorDefault, storageSession.get()));
-    if (!cookieStorage)
-        return nullptr;
-
-    auto sharedCookieStorage = _CFHTTPCookieStorageGetDefault(kCFAllocatorDefault);
-    auto sharedPolicy = CFHTTPCookieStorageGetCookieAcceptPolicy(sharedCookieStorage);
-    CFHTTPCookieStorageSetCookieAcceptPolicy(cookieStorage.get(), sharedPolicy);
-
-    return storageSession;
-}
-
-NetworkStorageSession::NetworkStorageSession(SessionID sessionID, RetainPtr<CFURLStorageSessionRef>&& platformSession, RetainPtr<CFHTTPCookieStorageRef>&& platformCookieStorage)
+NetworkStorageSession::NetworkStorageSession(SessionID sessionID, RetainPtr<CFURLStorageSessionRef> platformSession)
     : m_sessionID(sessionID)
-    , m_platformSession(WTFMove(platformSession))
+    , m_platformSession(platformSession)
 {
-    m_platformCookieStorage = platformCookieStorage ? WTFMove(platformCookieStorage) : cookieStorage();
 }
 
 static std::unique_ptr<NetworkStorageSession>& defaultNetworkStorageSession()
@@ -87,68 +61,37 @@ void NetworkStorageSession::switchToNewTestingSession()
 {
     // Session name should be short enough for shared memory region name to be under the limit, otehrwise sandbox rules won't work (see <rdar://problem/13642852>).
     String sessionName = String::format("WebKit Test-%u", static_cast<uint32_t>(getCurrentProcessID()));
-
-    RetainPtr<CFURLStorageSessionRef> session;
 #if PLATFORM(COCOA)
-    session = adoptCF(wkCreatePrivateStorageSession(sessionName.createCFString().get()));
+    defaultNetworkStorageSession() = std::make_unique<NetworkStorageSession>(SessionID::defaultSessionID(), adoptCF(wkCreatePrivateStorageSession(sessionName.createCFString().get())));
 #else
-    session = adoptCF(wkCreatePrivateStorageSession(sessionName.createCFString().get(), defaultNetworkStorageSession()->platformSession()));
+    defaultNetworkStorageSession() = std::make_unique<NetworkStorageSession>(SessionID::defaultSessionID(), adoptCF(wkCreatePrivateStorageSession(sessionName.createCFString().get(), defaultNetworkStorageSession()->platformSession())));
 #endif
-
-    RetainPtr<CFHTTPCookieStorageRef> cookieStorage;
-    if (session)
-        cookieStorage = adoptCF(_CFURLStorageSessionCopyCookieStorage(kCFAllocatorDefault, session.get()));
-
-    defaultNetworkStorageSession() = std::make_unique<NetworkStorageSession>(SessionID::defaultSessionID(), WTFMove(session), WTFMove(cookieStorage));
 }
 
 NetworkStorageSession& NetworkStorageSession::defaultStorageSession()
 {
     if (!defaultNetworkStorageSession())
-        defaultNetworkStorageSession() = std::make_unique<NetworkStorageSession>(SessionID::defaultSessionID(), nullptr, nullptr);
+        defaultNetworkStorageSession() = std::make_unique<NetworkStorageSession>(SessionID::defaultSessionID(), nullptr);
     return *defaultNetworkStorageSession();
 }
 
 void NetworkStorageSession::ensurePrivateBrowsingSession(SessionID sessionID, const String& identifierBase)
 {
-    ASSERT(sessionID.isEphemeral());
-    ensureSession(sessionID, identifierBase);
-}
-
-void NetworkStorageSession::ensureSession(SessionID sessionID, const String& identifierBase, RetainPtr<CFHTTPCookieStorageRef>&& cookieStorage)
-{
-    auto addResult = globalSessionMap().add(sessionID, nullptr);
-    if (!addResult.isNewEntry)
+    if (globalSessionMap().contains(sessionID))
         return;
-
     RetainPtr<CFStringRef> cfIdentifier = String(identifierBase + ".PrivateBrowsing").createCFString();
 
-    RetainPtr<CFURLStorageSessionRef> storageSession;
-    if (sessionID.isEphemeral()) {
 #if PLATFORM(COCOA)
-        storageSession = adoptCF(wkCreatePrivateStorageSession(cfIdentifier.get()));
+    auto session = std::make_unique<NetworkStorageSession>(sessionID, adoptCF(wkCreatePrivateStorageSession(cfIdentifier.get())));
 #else
-        storageSession = adoptCF(wkCreatePrivateStorageSession(cfIdentifier.get(), defaultNetworkStorageSession()->platformSession()));
+    auto session = std::make_unique<NetworkStorageSession>(sessionID, adoptCF(wkCreatePrivateStorageSession(cfIdentifier.get(), defaultNetworkStorageSession()->platformSession())));
 #endif
-    } else
-        storageSession = createCFStorageSessionForIdentifier(cfIdentifier.get());
 
-    if (!cookieStorage && storageSession)
-        cookieStorage = adoptCF(_CFURLStorageSessionCopyCookieStorage(kCFAllocatorDefault, storageSession.get()));
-
-    addResult.iterator->value = std::make_unique<NetworkStorageSession>(sessionID, WTFMove(storageSession), WTFMove(cookieStorage));
-}
-
-void NetworkStorageSession::ensureSession(SessionID sessionID, const String& identifierBase)
-{
-    ensureSession(sessionID, identifierBase, nullptr);
+    globalSessionMap().add(sessionID, WTFMove(session));
 }
 
 RetainPtr<CFHTTPCookieStorageRef> NetworkStorageSession::cookieStorage() const
 {
-    if (m_platformCookieStorage)
-        return m_platformCookieStorage;
-
     if (m_platformSession)
         return adoptCF(_CFURLStorageSessionCopyCookieStorage(kCFAllocatorDefault, m_platformSession.get()));
 
@@ -165,70 +108,36 @@ void NetworkStorageSession::setCookieStoragePartitioningEnabled(bool enabled)
     cookieStoragePartitioningEnabled = enabled;
 }
 
-#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+#if PLATFORM(COCOA)
 
-String NetworkStorageSession::cookieStoragePartition(const ResourceRequest& request) const
+String cookieStoragePartition(const ResourceRequest& request)
 {
     return cookieStoragePartition(request.firstPartyForCookies(), request.url());
 }
 
-static inline String getPartitioningDomain(const URL& url) 
+static inline bool hostIsInDomain(StringView host, StringView domain)
 {
-#if ENABLE(PUBLIC_SUFFIX_LIST)
-    auto domain = topPrivatelyControlledDomain(url.host());
-    if (domain.isEmpty())
-        domain = url.host();
-#else
-    auto domain = url.host();
-#endif
-    return domain;
+    if (!host.endsWithIgnoringASCIICase(domain))
+        return false;
+
+    ASSERT(host.length() >= domain.length());
+    unsigned suffixOffset = host.length() - domain.length();
+    return suffixOffset == 0 || host[suffixOffset - 1] == '.';
 }
 
-String NetworkStorageSession::cookieStoragePartition(const URL& firstPartyForCookies, const URL& resource) const
+String cookieStoragePartition(const URL& firstPartyForCookies, const URL& resource)
 {
     if (!cookieStoragePartitioningEnabled)
         return emptyString();
+
+    String firstPartyDomain = firstPartyForCookies.host();
+#if ENABLE(PUBLIC_SUFFIX_LIST)
+    firstPartyDomain = topPrivatelyControlledDomain(firstPartyDomain);
+#endif
     
-    auto resourceDomain = getPartitioningDomain(resource);
-    if (!shouldPartitionCookies(resourceDomain))
-        return emptyString();
-
-    auto firstPartyDomain = getPartitioningDomain(firstPartyForCookies);
-    if (firstPartyDomain == resourceDomain)
-        return emptyString();
-
-    return firstPartyDomain;
+    return hostIsInDomain(resource.host(), firstPartyDomain) ? emptyString() : firstPartyDomain;
 }
 
-bool NetworkStorageSession::shouldPartitionCookies(const String& topPrivatelyControlledDomain) const
-{
-    if (topPrivatelyControlledDomain.isEmpty())
-        return false;
-
-    return m_topPrivatelyControlledDomainsForCookiePartitioning.contains(topPrivatelyControlledDomain);
-}
-
-void NetworkStorageSession::setShouldPartitionCookiesForHosts(const Vector<String>& domainsToRemove, const Vector<String>& domainsToAdd, bool clearFirst)
-{
-    if (clearFirst)
-        m_topPrivatelyControlledDomainsForCookiePartitioning.clear();
-
-    if (!domainsToRemove.isEmpty()) {
-        for (auto& domain : domainsToRemove)
-            m_topPrivatelyControlledDomainsForCookiePartitioning.remove(domain);
-    }
-        
-    if (!domainsToAdd.isEmpty())
-        m_topPrivatelyControlledDomainsForCookiePartitioning.add(domainsToAdd.begin(), domainsToAdd.end());
-}
-
-#endif // HAVE(CFNETWORK_STORAGE_PARTITIONING)
-
-#if !PLATFORM(COCOA)
-void NetworkStorageSession::setCookies(const Vector<Cookie>&, const URL&, const URL&)
-{
-    // FIXME: Implement this. <https://webkit.org/b/156298>
-}
 #endif
 
 }

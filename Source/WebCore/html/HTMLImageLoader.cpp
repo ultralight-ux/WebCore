@@ -66,7 +66,8 @@ void HTMLImageLoader::dispatchLoadEvent()
 String HTMLImageLoader::sourceURI(const AtomicString& attr) const
 {
 #if ENABLE(DASHBOARD_SUPPORT)
-    if (element().document().settings().usesDashboardBackwardCompatibilityMode() && attr.length() > 7 && attr.startsWith("url(\"") && attr.endsWith("\")"))
+    Settings* settings = element().document().settings();
+    if (settings && settings->usesDashboardBackwardCompatibilityMode() && attr.length() > 7 && attr.startsWith("url(\"") && attr.endsWith("\")"))
         return attr.string().substring(5, attr.length() - 7);
 #endif
 
@@ -83,7 +84,7 @@ void HTMLImageLoader::notifyFinished(CachedResource&)
 
     bool loadError = cachedImage.errorOccurred() || cachedImage.response().httpStatusCode() >= 400;
     if (!loadError) {
-        if (!element().isConnected()) {
+        if (!element().inDocument()) {
             JSC::VM& vm = commonVM();
             JSC::JSLockHolder lock(vm);
             // FIXME: Adopt reportExtraMemoryVisited, and switch to reportExtraMemoryAllocated.

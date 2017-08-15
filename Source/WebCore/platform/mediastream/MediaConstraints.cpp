@@ -68,7 +68,7 @@ double StringConstraint::fitnessDistance(const String& value) const
         return std::numeric_limits<double>::infinity();
 
     // 3. If no ideal value is specified, the fitness distance is 0.
-    if (m_ideal.isEmpty())
+    if (m_exact.isEmpty())
         return 0;
 
     // 5. For all string and enum non-required constraints (deviceId, groupId, facingMode,
@@ -340,62 +340,6 @@ bool MediaTrackConstraintSetMap::isEmpty() const
     return !size();
 }
 
-static inline void addDefaultVideoConstraints(MediaTrackConstraintSetMap& videoConstraints, bool addFrameRateConstraint, bool addSizeConstraint, bool addFacingModeConstraint)
-{
-    if (addFrameRateConstraint) {
-        DoubleConstraint frameRateConstraint({ }, MediaConstraintType::FrameRate);
-        frameRateConstraint.setIdeal(30);
-        videoConstraints.set(MediaConstraintType::FrameRate, WTFMove(frameRateConstraint));
-    }
-    if (addSizeConstraint) {
-        IntConstraint widthConstraint({ }, MediaConstraintType::Width);
-        widthConstraint.setIdeal(640);
-        videoConstraints.set(MediaConstraintType::Width, WTFMove(widthConstraint));
-        
-        IntConstraint heightConstraint({ }, MediaConstraintType::Height);
-        heightConstraint.setIdeal(480);
-        videoConstraints.set(MediaConstraintType::Height, WTFMove(heightConstraint));
-    }
-    if (addFacingModeConstraint) {
-        StringConstraint facingModeConstraint({ }, MediaConstraintType::FacingMode);
-        facingModeConstraint.setIdeal(ASCIILiteral("user"));
-        videoConstraints.set(MediaConstraintType::FacingMode, WTFMove(facingModeConstraint));
-    }
-}
-
-bool MediaConstraints::isConstraintSet(std::function<bool(const MediaTrackConstraintSetMap&)>&& callback)
-{
-    if (callback(mandatoryConstraints))
-        return true;
-    
-    for (const auto& constraint : advancedConstraints) {
-        if (callback(constraint))
-            return true;
-    }
-    return false;
-}
-
-void MediaConstraints::setDefaultVideoConstraints()
-{
-    // 640x480, 30fps, font-facing camera
-    bool hasFrameRateConstraints = isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
-        return !!constraint.frameRate();
-    });
-    
-    bool hasSizeConstraints = isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
-        return !!constraint.width() || !!constraint.height();
-    });
-    
-    bool hasFacingModeConstraints = isConstraintSet([](const MediaTrackConstraintSetMap& constraint) {
-        return !!constraint.facingMode();
-    });
-    
-    if (hasFrameRateConstraints && hasSizeConstraints && hasFacingModeConstraints)
-        return;
-    
-    addDefaultVideoConstraints(mandatoryConstraints, !hasFrameRateConstraints, !hasSizeConstraints, !hasFacingModeConstraints);
-}
-    
 }
 
 #endif // ENABLE(MEDIA_STREAM)

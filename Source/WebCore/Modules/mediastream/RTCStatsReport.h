@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,137 +24,38 @@
 
 #pragma once
 
-#include "JSDOMMapLike.h"
+#include "ScriptWrappable.h"
+#include <wtf/HashMap.h>
+#include <wtf/RefCounted.h>
+#include <wtf/Vector.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-class RTCStatsReport : public RefCounted<RTCStatsReport> {
+class RTCStatsReport : public RefCounted<RTCStatsReport>, public ScriptWrappable {
 public:
-    static Ref<RTCStatsReport> create() { return adoptRef(*new RTCStatsReport); }
+    static Ref<RTCStatsReport> create(const String& id, const String& type, double timestamp);
 
-    void synchronizeBackingMap(Ref<DOMMapLike>&& mapLike) { m_mapLike = WTFMove(mapLike); }
-    DOMMapLike* backingMap() { return m_mapLike.get(); }
+    double timestamp() const { return m_timestamp; }
+    String id() { return m_id; }
+    String type() { return m_type; }
+    String stat(const String& name) { return m_stats.get(name); }
+    Vector<String> names() const;
 
-    template<typename Value> void addStats(typename Value::ParameterType&& value) { m_mapLike->set<IDLDOMString, Value>(value.id, std::forward<typename Value::ParameterType>(value)); }
+    // DEPRECATED
+    RTCStatsReport& local();
+    // DEPRECATED
+    RTCStatsReport& remote();
 
-
-    enum class Type {
-        Codec,
-        InboundRtp,
-        OutboundRtp,
-        PeerConnection,
-        DataChannel,
-        Track,
-        Transport,
-        CandidatePair,
-        LocalCandidate,
-        RemoteCandidate,
-        Certificate
-    };
-    struct Stats {
-        unsigned long long timestamp;
-        Type type;
-        String id;
-    };
-
-    struct RTCRTPStreamStats : Stats {
-        uint32_t ssrc;
-        String associateStatsId;
-        bool isRemote { false };
-        String mediaType;
-
-        String mediaTrackId;
-        String transportId;
-        String codecId;
-        unsigned long firCount { 0 };
-        unsigned long pliCount { 0 };
-        unsigned long nackCount { 0 };
-        unsigned long sliCount { 0 };
-        unsigned long long qpSum { 0 };
-    };
-
-    struct InboundRTPStreamStats : RTCRTPStreamStats {
-        InboundRTPStreamStats() { type = RTCStatsReport::Type::InboundRtp; }
-
-        uint32_t ssrc;
-        String associateStatsId;
-        bool isRemote { false };
-        String mediaType;
-        String mediaTrackId;
-        String transportId;
-        String codecId;
-        unsigned long firCount { 0 };
-        unsigned long pliCount { 0 };
-        unsigned long nackCount { 0 };
-        unsigned long sliCount { 0 };
-        unsigned long long qpSum { 0 };
-        unsigned long packetsReceived { 0 };
-        unsigned long long bytesReceived { 0 };
-        unsigned long packetsLost { 0 };
-        double jitter { 0 };
-        double fractionLost { 0 };
-        unsigned long packetsDiscarded { 0 };
-        unsigned long packetsRepaired { 0 };
-        unsigned long burstPacketsLost { 0 };
-        unsigned long burstPacketsDiscarded { 0 };
-        unsigned long burstLossCount { 0 };
-        unsigned long burstDiscardCount { 0 };
-        double burstLossRate { 0 };
-        double burstDiscardRate { 0 };
-        double gapLossRate { 0 };
-        double gapDiscardRate { 0 };
-        unsigned long framesDecoded { 0 };
-    };
-
-    struct OutboundRTPStreamStats : RTCRTPStreamStats {
-        OutboundRTPStreamStats() { type = RTCStatsReport::Type::OutboundRtp; }
-
-        unsigned long packetsSent { 0 };
-        unsigned long long bytesSent { 0 };
-        double targetBitrate { 0 };
-        unsigned long framesEncoded { 0 };
-    };
-
-    struct MediaStreamTrackStats : Stats {
-        MediaStreamTrackStats() { type = RTCStatsReport::Type::Track; }
-
-        String trackIdentifier;
-        bool remoteSource { false };
-        bool ended { false };
-        bool detached { false };
-        unsigned long frameWidth { 0 };
-        unsigned long frameHeight { 0 };
-        double framesPerSecond { 0 };
-        unsigned long framesSent { 0 };
-        unsigned long framesReceived { 0 };
-        unsigned long framesDecoded { 0 };
-        unsigned long framesDropped { 0 };
-        unsigned long framesCorrupted { 0 };
-        unsigned long partialFramesLost { 0 };
-        unsigned long fullFramesLost { 0 };
-        double audioLevel { 0 };
-        double echoReturnLoss { 0 };
-        double echoReturnLossEnhancement { 0 };
-    };
-
-    struct DataChannelStats : Stats {
-        DataChannelStats() { type = RTCStatsReport::Type::DataChannel; }
-        
-        String label;
-        String protocol;
-        long datachannelid { 0 };
-        String state;
-        unsigned long messagesSent { 0 };
-        unsigned long long bytesSent { 0 };
-        unsigned long messagesReceived { 0 };
-        unsigned long long bytesReceived { 0 };
-    };
+    void addStatistic(const String& name, const String& value);
 
 private:
-    RTCStatsReport() = default;
+    RTCStatsReport(const String& id, const String& type, double timestamp);
 
-private:
-    RefPtr<DOMMapLike> m_mapLike;
+    String m_id;
+    String m_type;
+    double m_timestamp;
+    HashMap<String, String> m_stats;
 };
 
 } // namespace WebCore

@@ -43,6 +43,7 @@ public:
 private:
     const char* renderName() const override { return "RenderProgress"; }
     bool isProgress() const override { return true; }
+    bool requiresForcedStyleRecalcPropagation() const override { return true; }
     LogicalExtentComputedValues computeLogicalHeight(LayoutUnit logicalHeight, LayoutUnit logicalTop) const override;
 
     void animationTimerFired();
@@ -50,7 +51,7 @@ private:
 
     double m_position;
     double m_animationStartTime;
-    Seconds m_animationRepeatInterval;
+    double m_animationRepeatInterval;
     double m_animationDuration;
     bool m_animating;
     Timer m_animationTimer;

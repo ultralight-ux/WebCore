@@ -59,7 +59,7 @@ static URLSchemesMap& secureSchemes()
         secureSchemes.get().add("about");
         secureSchemes.get().add("data");
         secureSchemes.get().add("wss");
-#if PLATFORM(GTK) || PLATFORM(WPE)
+#if PLATFORM(GTK)
         secureSchemes.get().add("resource");
 #endif
     }
@@ -167,11 +167,13 @@ static URLSchemesMap& ContentSecurityPolicyBypassingSchemes()
     return schemes;
 }
 
+#if ENABLE(CACHE_PARTITIONING)
 static URLSchemesMap& cachePartitioningSchemes()
 {
     static NeverDestroyed<URLSchemesMap> schemes;
     return schemes;
 }
+#endif
 
 static URLSchemesMap& alwaysRevalidatedSchemes()
 {
@@ -341,6 +343,7 @@ bool SchemeRegistry::shouldAlwaysRevalidateURLScheme(const String& scheme)
     return alwaysRevalidatedSchemes().contains(scheme);
 }
 
+#if ENABLE(CACHE_PARTITIONING)
 void SchemeRegistry::registerURLSchemeAsCachePartitioned(const String& scheme)
 {
     cachePartitioningSchemes().add(scheme);
@@ -352,6 +355,7 @@ bool SchemeRegistry::shouldPartitionCacheForURLScheme(const String& scheme)
         return false;
     return cachePartitioningSchemes().contains(scheme);
 }
+#endif
 
 bool SchemeRegistry::isUserExtensionScheme(const String& scheme)
 {

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,9 +37,9 @@
 
 namespace WebCore {
 
-SessionRequestNotifier::SessionRequestNotifier(RefPtr<RTCSessionDescriptionRequest>&& request, RefPtr<RTCSessionDescriptionDescriptor>&& descriptor, const String& errorName)
-    : m_request(WTFMove(request))
-    , m_descriptor(WTFMove(descriptor))
+SessionRequestNotifier::SessionRequestNotifier(PassRefPtr<RTCSessionDescriptionRequest> request, PassRefPtr<RTCSessionDescriptionDescriptor> descriptor, const String& errorName)
+    : m_request(request)
+    , m_descriptor(descriptor)
     , m_errorName(errorName)
 {
 }
@@ -48,13 +47,13 @@ SessionRequestNotifier::SessionRequestNotifier(RefPtr<RTCSessionDescriptionReque
 void SessionRequestNotifier::fire()
 {
     if (m_descriptor)
-        m_request->requestSucceeded(*m_descriptor);
+        m_request->requestSucceeded(m_descriptor);
     else
         m_request->requestFailed(m_errorName);
 }
 
-VoidRequestNotifier::VoidRequestNotifier(RefPtr<RTCVoidRequest>&& request, bool success, const String& errorName)
-    : m_request(WTFMove(request))
+VoidRequestNotifier::VoidRequestNotifier(PassRefPtr<RTCVoidRequest> request, bool success, const String& errorName)
+    : m_request(request)
     , m_success(success)
     , m_errorName(errorName)
 {
@@ -68,7 +67,7 @@ void VoidRequestNotifier::fire()
         m_request->requestFailed(m_errorName);
 }
 
-IceConnectionNotifier::IceConnectionNotifier(RTCPeerConnectionHandlerClient* client, RTCIceConnectionState connectionState, RTCIceGatheringState gatheringState)
+IceConnectionNotifier::IceConnectionNotifier(RTCPeerConnectionHandlerClient* client, RTCPeerConnectionHandlerClient::IceConnectionState connectionState, RTCPeerConnectionHandlerClient::IceGatheringState gatheringState)
     : m_client(client)
     , m_connectionState(connectionState)
     , m_gatheringState(gatheringState)
@@ -81,7 +80,7 @@ void IceConnectionNotifier::fire()
     m_client->didChangeIceConnectionState(m_connectionState);
 }
 
-SignalingStateNotifier::SignalingStateNotifier(RTCPeerConnectionHandlerClient* client, RTCSignalingState signalingState)
+SignalingStateNotifier::SignalingStateNotifier(RTCPeerConnectionHandlerClient* client, RTCPeerConnectionHandlerClient::SignalingState signalingState)
     : m_client(client)
     , m_signalingState(signalingState)
 {
@@ -102,7 +101,7 @@ void RemoteDataChannelNotifier::fire()
     m_client->didAddRemoteDataChannel(std::make_unique<RTCDataChannelHandlerMock>("RTCDataChannelHandlerMock", RTCDataChannelInit()));
 }
 
-DataChannelStateNotifier::DataChannelStateNotifier(RTCDataChannelHandlerClient* client, RTCDataChannelState state)
+DataChannelStateNotifier::DataChannelStateNotifier(RTCDataChannelHandlerClient* client, RTCDataChannelHandlerClient::ReadyState state)
     : m_client(client)
     , m_state(state)
 {

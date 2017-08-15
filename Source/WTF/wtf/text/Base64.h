@@ -25,7 +25,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
+#ifndef Base64_h
+#define Base64_h
 
 #include <wtf/Vector.h>
 #include <wtf/text/CString.h>
@@ -151,7 +152,6 @@ String base64Encode(ConstSignedOrUnsignedCharVectorAdapter, Base64EncodePolicy =
 String base64Encode(const CString&, Base64EncodePolicy = Base64DoNotInsertLFs);
 
 WTF_EXPORT_PRIVATE bool base64Decode(const String&, SignedOrUnsignedCharVectorAdapter, unsigned options = Base64Default);
-WTF_EXPORT_PRIVATE bool base64Decode(StringView, SignedOrUnsignedCharVectorAdapter, unsigned options = Base64Default);
 WTF_EXPORT_PRIVATE bool base64Decode(const Vector<char>&, SignedOrUnsignedCharVectorAdapter, unsigned options = Base64Default);
 WTF_EXPORT_PRIVATE bool base64Decode(const char*, unsigned, SignedOrUnsignedCharVectorAdapter, unsigned options = Base64Default);
 
@@ -189,7 +189,6 @@ String base64URLEncode(ConstSignedOrUnsignedCharVectorAdapter);
 String base64URLEncode(const CString&);
 
 WTF_EXPORT_PRIVATE bool base64URLDecode(const String&, SignedOrUnsignedCharVectorAdapter);
-WTF_EXPORT_PRIVATE bool base64URLDecode(StringView, SignedOrUnsignedCharVectorAdapter);
 WTF_EXPORT_PRIVATE bool base64URLDecode(const Vector<char>&, SignedOrUnsignedCharVectorAdapter);
 WTF_EXPORT_PRIVATE bool base64URLDecode(const char*, unsigned, SignedOrUnsignedCharVectorAdapter);
 
@@ -213,11 +212,6 @@ inline String base64URLEncode(const CString& in)
     return base64URLEncode(in.data(), in.length());
 }
 
-template<typename CharacterType> static inline bool isBase64OrBase64URLCharacter(CharacterType c)
-{
-    return isASCIIAlphanumeric(c) || c == '+' || c == '/' || c == '-' || c == '_';
-}
-
 } // namespace WTF
 
 using WTF::Base64EncodePolicy;
@@ -228,4 +222,5 @@ using WTF::Base64IgnoreSpacesAndNewLines;
 using WTF::base64Encode;
 using WTF::base64Decode;
 using WTF::base64URLDecode;
-using WTF::isBase64OrBase64URLCharacter;
+
+#endif // Base64_h

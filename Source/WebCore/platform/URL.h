@@ -72,7 +72,7 @@ public:
     URL(const URL& base, const String& relative, const TextEncoding&);
 
     static URL fakeURLWithRelativePart(const String&);
-    WEBCORE_EXPORT static URL fileURLWithFileSystemPath(const String&);
+    static URL fileURLWithFileSystemPath(const String&);
 
     String strippedForUseAsReferrer() const;
 
@@ -104,7 +104,6 @@ public:
     WEBCORE_EXPORT String host() const;
     WEBCORE_EXPORT std::optional<uint16_t> port() const;
     WEBCORE_EXPORT String hostAndPort() const;
-    WEBCORE_EXPORT String protocolHostAndPort() const;
     WEBCORE_EXPORT String user() const;
     WEBCORE_EXPORT String pass() const;
     WEBCORE_EXPORT String path() const;
@@ -136,7 +135,6 @@ public:
     bool protocolIsInHTTPFamily() const;
     WEBCORE_EXPORT bool isLocalFile() const;
     bool isBlankURL() const;
-    bool cannotBeABaseURL() const { return m_cannotBeABaseURL; }
 
     WEBCORE_EXPORT bool setProtocol(const String&);
     void setHost(const String&);
@@ -159,7 +157,7 @@ public:
     // URL (with nothing after it). To clear the query, pass a null string.
     void setQuery(const String&);
 
-    void setFragmentIdentifier(StringView);
+    void setFragmentIdentifier(const String&);
     void removeFragmentIdentifier();
 
     WEBCORE_EXPORT friend bool equalIgnoringFragmentIdentifier(const URL&, const URL&);
@@ -312,7 +310,6 @@ WEBCORE_EXPORT const URL& blankURL();
 
 WEBCORE_EXPORT bool protocolIs(const String& url, const char* protocol);
 WEBCORE_EXPORT bool protocolIsJavaScript(const String& url);
-bool protocolIsJavaScript(StringView url);
 WEBCORE_EXPORT bool protocolIsInHTTPFamily(const String& url);
 
 std::optional<uint16_t> defaultPortForProtocol(StringView protocol);

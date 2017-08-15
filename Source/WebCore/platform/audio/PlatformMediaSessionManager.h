@@ -29,6 +29,7 @@
 #include "AudioHardwareListener.h"
 #include "PlatformMediaSession.h"
 #include "RemoteCommandListener.h"
+#include "Settings.h"
 #include "SystemSleepListener.h"
 #include <map>
 #include <wtf/Vector.h>
@@ -135,7 +136,7 @@ private:
     void systemWillSleep() override;
     void systemDidWake() override;
 
-    SessionRestrictions m_restrictions[PlatformMediaSession::MediaStreamCapturingAudio + 1];
+    SessionRestrictions m_restrictions[PlatformMediaSession::WebAudio + 1];
     mutable Vector<PlatformMediaSession*> m_sessions;
     std::unique_ptr<RemoteCommandListener> m_remoteCommandListener;
     std::unique_ptr<SystemSleepListener> m_systemSleepListener;

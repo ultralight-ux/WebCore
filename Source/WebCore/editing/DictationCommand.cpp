@@ -62,10 +62,9 @@ public:
 
     void addMarkersToTextNode(Text* textNode, unsigned offsetOfInsertion, const String& textToBeInserted) override
     {
-        auto& markerController = textNode->document().markers();
+        DocumentMarkerController& markerController = textNode->document().markers();
         for (auto& alternative : m_alternatives) {
-            DocumentMarker::DictationData data { alternative.dictationContext, textToBeInserted.substring(alternative.rangeStart, alternative.rangeLength) };
-            markerController.addMarkerToNode(textNode, alternative.rangeStart + offsetOfInsertion, alternative.rangeLength, DocumentMarker::DictationAlternatives, WTFMove(data));
+            markerController.addMarkerToNode(textNode, alternative.rangeStart + offsetOfInsertion, alternative.rangeLength, DocumentMarker::DictationAlternatives, DictationMarkerDetails::create(textToBeInserted.substring(alternative.rangeStart, alternative.rangeLength), alternative.dictationContext));
             markerController.addMarkerToNode(textNode, alternative.rangeStart + offsetOfInsertion, alternative.rangeLength, DocumentMarker::SpellCheckingExemption);
         }
     }
@@ -116,8 +115,8 @@ void DictationCommand::insertTextRunWithoutNewlines(size_t lineStart, size_t lin
 {
     Vector<DictationAlternative> alternativesInLine;
     collectDictationAlternativesInRange(lineStart, lineLength, alternativesInLine);
-    auto command = InsertTextCommand::createWithMarkerSupplier(document(), m_textToInsert.substring(lineStart, lineLength), DictationMarkerSupplier::create(alternativesInLine), EditActionDictation);
-    applyCommandToComposite(WTFMove(command), endingSelection());
+    RefPtr<InsertTextCommand> command = InsertTextCommand::createWithMarkerSupplier(document(), m_textToInsert.substring(lineStart, lineLength), DictationMarkerSupplier::create(alternativesInLine), EditActionDictation);
+    applyCommandToComposite(command, endingSelection());
 }
 
 void DictationCommand::insertParagraphSeparator()

@@ -26,10 +26,8 @@
 #include "CustomGlobalObjectClassTest.h"
 
 #include <JavaScriptCore/JSObjectRefPrivate.h>
-#include <JavaScriptCore/JavaScript.h>
+#include <JavaScriptCore/JavaScriptCore.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 extern bool assertTrue(bool value, const char* message);
 

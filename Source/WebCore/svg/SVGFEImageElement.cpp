@@ -88,7 +88,7 @@ void SVGFEImageElement::requestImageResource()
     options.contentSecurityPolicyImposition = isInUserAgentShadowTree() ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck;
 
     CachedResourceRequest request(ResourceRequest(document().completeURL(href())), options);
-    request.setInitiator(*this);
+    request.setInitiator(this);
     m_cachedImage = document().cachedResourceLoader().requestImage(WTFMove(request));
 
     if (m_cachedImage)
@@ -98,7 +98,7 @@ void SVGFEImageElement::requestImageResource()
 void SVGFEImageElement::buildPendingResource()
 {
     clearResourceReferences();
-    if (!isConnected())
+    if (!inDocument())
         return;
 
     String id;
@@ -164,13 +164,13 @@ void SVGFEImageElement::finishedInsertingSubtree()
 void SVGFEImageElement::removedFrom(ContainerNode& rootParent)
 {
     SVGFilterPrimitiveStandardAttributes::removedFrom(rootParent);
-    if (rootParent.isConnected())
+    if (rootParent.inDocument())
         clearResourceReferences();
 }
 
 void SVGFEImageElement::notifyFinished(CachedResource&)
 {
-    if (!isConnected())
+    if (!inDocument())
         return;
 
     Element* parent = parentElement();

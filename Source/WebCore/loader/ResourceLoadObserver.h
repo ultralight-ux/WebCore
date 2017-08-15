@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc.  All rights reserved.
+ * Copyright (C) 2016 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,39 +48,16 @@ public:
     void logFrameNavigation(const Frame& frame, const Frame& topFrame, const ResourceRequest& newRequest, const ResourceResponse& redirectResponse);
     void logSubresourceLoading(const Frame*, const ResourceRequest& newRequest, const ResourceResponse& redirectResponse);
     void logWebSocketLoading(const Frame*, const URL&);
-    void logUserInteractionWithReducedTimeResolution(const Document&);
 
-    WEBCORE_EXPORT void logUserInteraction(const URL&);
-    WEBCORE_EXPORT bool hasHadUserInteraction(const URL&);
-    WEBCORE_EXPORT void clearUserInteraction(const URL&);
-
-    WEBCORE_EXPORT void setPrevalentResource(const URL&);
-    WEBCORE_EXPORT bool isPrevalentResource(const URL&);
-    WEBCORE_EXPORT void clearPrevalentResource(const URL&);
-
-    WEBCORE_EXPORT void setSubframeUnderTopFrameOrigin(const URL& subframe, const URL& topFrame);
-    WEBCORE_EXPORT void setSubresourceUnderTopFrameOrigin(const URL& subresource, const URL& topFrame);
-    WEBCORE_EXPORT void setSubresourceUniqueRedirectTo(const URL& subresource, const URL& hostNameRedirectedTo);
-
-    WEBCORE_EXPORT void setTimeToLiveUserInteraction(double seconds);
-    WEBCORE_EXPORT void setTimeToLiveCookiePartitionFree(double seconds);
-    WEBCORE_EXPORT void setReducedTimestampResolution(double seconds);
-
-    WEBCORE_EXPORT void fireDataModificationHandler();
-    WEBCORE_EXPORT void fireShouldPartitionCookiesHandler();
-    WEBCORE_EXPORT void fireShouldPartitionCookiesHandler(const Vector<String>& domainsToRemove, const Vector<String>& domainsToAdd, bool clearFirst);
-
+    void logUserInteraction(const Document&);
+    
     WEBCORE_EXPORT void setStatisticsStore(Ref<ResourceLoadStatisticsStore>&&);
-    WEBCORE_EXPORT void clearInMemoryStore();
-    WEBCORE_EXPORT void clearInMemoryAndPersistentStore();
-    WEBCORE_EXPORT void clearInMemoryAndPersistentStore(std::chrono::system_clock::time_point modifiedSince);
 
     WEBCORE_EXPORT String statisticsForOrigin(const String&);
 
 private:
     bool shouldLog(Page*);
     static String primaryDomain(const URL&);
-    static String primaryDomain(const String& host);
 
     RefPtr<ResourceLoadStatisticsStore> m_store;
     HashMap<String, size_t> m_originsVisitedMap;

@@ -35,10 +35,7 @@ namespace WebCore {
 
 class PaymentMerchantSession;
 class URL;
-struct PaymentAuthorizationResult;
-struct PaymentMethodUpdate;
-struct ShippingContactUpdate;
-struct ShippingMethodUpdate;
+enum class PaymentAuthorizationStatus;
 
 class PaymentCoordinatorClient {
 public:
@@ -49,12 +46,11 @@ public:
 
     virtual bool showPaymentUI(const URL& originatingURL, const Vector<URL>& linkIconURLs, const PaymentRequest&) = 0;
     virtual void completeMerchantValidation(const PaymentMerchantSession&) = 0;
-    virtual void completeShippingMethodSelection(std::optional<ShippingMethodUpdate>&&) = 0;
-    virtual void completeShippingContactSelection(std::optional<ShippingContactUpdate>&&) = 0;
-    virtual void completePaymentMethodSelection(std::optional<PaymentMethodUpdate>&&) = 0;
-    virtual void completePaymentSession(std::optional<PaymentAuthorizationResult>&&) = 0;
+    virtual void completeShippingMethodSelection(PaymentAuthorizationStatus, std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
+    virtual void completeShippingContactSelection(PaymentAuthorizationStatus, const Vector<PaymentRequest::ShippingMethod>& newShippingMethods, std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
+    virtual void completePaymentMethodSelection(std::optional<WebCore::PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
+    virtual void completePaymentSession(PaymentAuthorizationStatus) = 0;
     virtual void abortPaymentSession() = 0;
-    virtual void cancelPaymentSession() = 0;
     virtual void paymentCoordinatorDestroyed() = 0;
 
 protected:

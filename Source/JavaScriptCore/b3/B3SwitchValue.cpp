@@ -37,12 +37,15 @@ SwitchValue::~SwitchValue()
 {
 }
 
-BasicBlock* SwitchValue::fallThrough(const BasicBlock* owner)
+SwitchCase SwitchValue::removeCase(BasicBlock* block, unsigned index)
 {
-    ASSERT(hasFallThrough());
-    BasicBlock* fallThrough = owner->successor(owner->numSuccessors() - 1).block();
-    ASSERT(fallThrough == owner->fallThrough().block());
-    return fallThrough;
+    FrequentedBlock resultBlock = block->successor(index);
+    int64_t resultValue = m_values[index];
+    block->successor(index) = block->successors().last();
+    block->successors().removeLast();
+    m_values[index] = m_values.last();
+    m_values.removeLast();
+    return SwitchCase(resultValue, resultBlock);
 }
 
 bool SwitchValue::hasFallThrough(const BasicBlock* block) const

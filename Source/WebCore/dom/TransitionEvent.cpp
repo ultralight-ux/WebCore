@@ -27,6 +27,8 @@
 #include "config.h"
 #include "TransitionEvent.h"
 
+#include "EventNames.h"
+
 namespace WebCore {
 
 TransitionEvent::TransitionEvent(const AtomicString& type, const String& propertyName, double elapsedTime, const String& pseudoElement)

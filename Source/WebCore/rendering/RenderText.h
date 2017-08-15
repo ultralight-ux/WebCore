@@ -78,7 +78,6 @@ public:
 
     Vector<FloatQuad> absoluteQuadsClippedToEllipsis() const;
 
-    Position positionForPoint(const LayoutPoint&) override;
     VisiblePosition positionForPoint(const LayoutPoint&, const RenderRegion*) override;
 
     bool is8Bit() const { return m_text.impl()->is8Bit(); }
@@ -138,7 +137,6 @@ public:
     bool containsCaretOffset(unsigned) const;
     bool hasRenderedText() const;
 
-    // FIXME: These should return unsigneds.
     int previousOffset(int current) const final;
     int previousOffsetForBackwardDeletion(int current) const final;
     int nextOffset(int current) const final;
@@ -173,10 +171,6 @@ public:
     LayoutUnit topOfFirstText() const;
     
     bool containsOnlyWhitespace(unsigned from, unsigned len) const;
-    
-    bool canUseSimplifiedTextMeasuring() const { return m_canUseSimplifiedTextMeasuring; }
-
-    Vector<std::pair<unsigned, unsigned>> draggedContentRangesBetweenOffsets(unsigned startOffset, unsigned endOffset) const;
 
 protected:
     virtual void computePreferredLogicalWidths(float leadWidth);
@@ -208,7 +202,6 @@ private:
     void secureText(UChar mask);
 
     LayoutRect collectSelectionRectsForLineBoxes(const RenderLayerModelObject* repaintContainer, bool clipToVisibleContent, Vector<LayoutRect>*);
-    bool computeCanUseSimplifiedTextMeasuring() const;
 
     void node() const = delete;
     void container() const = delete; // Use parent() instead.
@@ -230,7 +223,6 @@ private:
     mutable unsigned m_knownToHaveNoOverflowAndNoFallbackFonts : 1;
     unsigned m_useBackslashAsYenSymbol : 1;
     unsigned m_originalTextDiffersFromRendered : 1;
-    unsigned m_canUseSimplifiedTextMeasuring : 1;
 
 #if ENABLE(TEXT_AUTOSIZING)
     // FIXME: This should probably be part of the text sizing structures in Document instead. That would save some memory.

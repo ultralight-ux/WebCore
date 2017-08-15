@@ -26,6 +26,10 @@
 #include "TextureMapperPlatformLayer.h"
 #include <wtf/RefPtr.h>
 
+#if USE(GRAPHICS_SURFACE)
+#include "GraphicsSurface.h"
+#endif
+
 namespace WebCore {
 
 class GraphicsLayer;

@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include "UserInterfaceLayoutDirection.h"
 #include <wtf/Forward.h>
 #include <wtf/text/WTFString.h>
 
@@ -41,7 +40,6 @@ public:
     enum class DockSide {
         Undocked = 0,
         Right,
-        Left,
         Bottom,
     };
 
@@ -60,8 +58,6 @@ public:
 
     virtual void bringToFront() = 0;
     virtual void closeWindow() = 0;
-
-    virtual UserInterfaceLayoutDirection userInterfaceLayoutDirection() const = 0;
 
     WEBCORE_EXPORT virtual void requestSetDockSide(DockSide) = 0;
     WEBCORE_EXPORT virtual void changeAttachedWindowHeight(unsigned) = 0;

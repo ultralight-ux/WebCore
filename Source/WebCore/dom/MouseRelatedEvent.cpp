@@ -31,6 +31,30 @@
 
 namespace WebCore {
 
+MouseRelatedEvent::MouseRelatedEvent()
+    : m_isSimulated(false)
+    , m_hasCachedRelativePosition(false)
+{
+}
+
+static LayoutSize contentsScrollOffset(DOMWindow* DOMWindow)
+{
+    if (!DOMWindow)
+        return LayoutSize();
+    Frame* frame = DOMWindow->frame();
+    if (!frame)
+        return LayoutSize();
+    FrameView* frameView = frame->view();
+    if (!frameView)
+        return LayoutSize();
+#if !PLATFORM(IOS)
+    float scaleFactor = frame->pageZoomFactor() * frame->frameScaleFactor();
+    return LayoutSize(frameView->scrollX() / scaleFactor, frameView->scrollY() / scaleFactor);
+#else
+    return LayoutSize(frameView->actualScrollX(), frameView->actualScrollY());
+#endif
+}
+
 MouseRelatedEvent::MouseRelatedEvent(const AtomicString& eventType, bool canBubble, bool cancelable, double timestamp, DOMWindow* DOMWindow,
                                      int detail, const IntPoint& screenLocation, const IntPoint& windowLocation,
 #if ENABLE(POINTER_LOCK)
@@ -53,21 +77,31 @@ MouseRelatedEvent::MouseRelatedEvent(const AtomicString& eventType, const MouseR
 #if ENABLE(POINTER_LOCK)
     , m_movementDelta(IntPoint(0, 0))
 #endif
+    , m_isSimulated(false)
 {
     init(false, IntPoint(0, 0));
 }
 
 void MouseRelatedEvent::init(bool isSimulated, const IntPoint& windowLocation)
 {
-    auto* frame = view() ? view()->frame() : nullptr;
+    LayoutPoint adjustedPageLocation;
+    LayoutPoint scrollPosition;
+
+    Frame* frame = view() ? view()->frame() : nullptr;
     if (frame && !isSimulated) {
         if (FrameView* frameView = frame->view()) {
-            FloatPoint absolutePoint = frameView->windowToContents(windowLocation);
-            FloatPoint documentPoint = frameView->absoluteToDocumentPoint(absolutePoint);
-            m_pageLocation = flooredLayoutPoint(documentPoint);
-            m_clientLocation = flooredLayoutPoint(frameView->documentToClientPoint(documentPoint));
+            scrollPosition = frameView->contentsScrollPosition();
+            adjustedPageLocation = frameView->windowToContents(windowLocation);
+            float scaleFactor = 1 / (frame->pageZoomFactor() * frame->frameScaleFactor());
+            if (scaleFactor != 1.0f) {
+                adjustedPageLocation.scale(scaleFactor);
+                scrollPosition.scale(scaleFactor);
+            }
         }
     }
+
+    m_clientLocation = adjustedPageLocation - toLayoutSize(scrollPosition);
+    m_pageLocation = adjustedPageLocation;
 
     initCoordinates();
 }
@@ -87,15 +121,8 @@ void MouseRelatedEvent::initCoordinates(const LayoutPoint& clientLocation)
 {
     // Set up initial values for coordinates.
     // Correct values are computed lazily, see computeRelativePosition.
-    FloatSize documentToClientOffset;
-    auto* frame = view() ? view()->frame() : nullptr;
-    if (frame) {
-        if (FrameView* frameView = frame->view())
-            documentToClientOffset = frameView->documentToClientOffset();
-    }
-
     m_clientLocation = clientLocation;
-    m_pageLocation = clientLocation - LayoutSize(documentToClientOffset);
+    m_pageLocation = clientLocation + contentsScrollOffset(view());
 
     m_layerLocation = m_pageLocation;
     m_offsetLocation = m_pageLocation;

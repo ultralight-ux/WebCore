@@ -42,22 +42,17 @@
 #include <array>
 #include <mutex>
 
-#if BOS(DARWIN)
-#include <dispatch/dispatch.h>
-#endif
-
 namespace bmalloc {
 
 class BeginTag;
 class BumpAllocator;
-class DebugHeap;
 class EndTag;
 
 class Heap {
 public:
     Heap(std::lock_guard<StaticMutex>&);
     
-    DebugHeap* debugHeap() { return m_debugHeap; }
+    Environment& environment() { return m_environment; }
 
     void allocateSmallBumpRanges(std::lock_guard<StaticMutex>&, size_t sizeClass, BumpAllocator&, BumpRangeCache&);
     void derefSmallLine(std::lock_guard<StaticMutex>&, Object);
@@ -70,14 +65,10 @@ public:
     size_t largeSize(std::lock_guard<StaticMutex>&, void*);
     void shrinkLarge(std::lock_guard<StaticMutex>&, const Range&, size_t);
 
-    void scavenge(std::unique_lock<StaticMutex>&, ScavengeMode);
-
-#if BPLATFORM(IOS)
-    size_t memoryFootprint();
-    double percentAvailableMemoryInUse();
-#endif
+    void scavenge(std::unique_lock<StaticMutex>&, std::chrono::milliseconds sleepDuration);
 
 #if BOS(DARWIN)
+    qos_class_t takeRequestedScavengerThreadQOSClass() { return std::exchange(m_requestedScavengerThreadQOSClass, QOS_CLASS_UNSPECIFIED); }
     void setScavengerThreadQOSClass(qos_class_t overrideClass) { m_requestedScavengerThreadQOSClass = overrideClass; }
 #endif
 
@@ -111,12 +102,8 @@ private:
     LargeRange splitAndAllocate(LargeRange&, size_t alignment, size_t);
 
     void concurrentScavenge();
-    void scavengeSmallPages(std::unique_lock<StaticMutex>&, ScavengeMode);
-    void scavengeLargeObjects(std::unique_lock<StaticMutex>&, ScavengeMode);
-
-#if BPLATFORM(IOS)
-    void updateMemoryInUseParameters();
-#endif
+    void scavengeSmallPages(std::unique_lock<StaticMutex>&, std::chrono::milliseconds);
+    void scavengeLargeObjects(std::unique_lock<StaticMutex>&, std::chrono::milliseconds);
 
     size_t m_vmPageSizePhysical;
     Vector<LineMetadata> m_smallLineMetadata;
@@ -130,27 +117,15 @@ private:
 
     Map<Chunk*, ObjectType, ChunkHash> m_objectTypes;
 
-    std::array<bool, pageClassCount> m_isAllocatingPages;
-    bool m_isAllocatingLargePages;
-
+    bool m_isAllocatingPages;
     AsyncTask<Heap, decltype(&Heap::concurrentScavenge)> m_scavenger;
 
     Environment m_environment;
-    DebugHeap* m_debugHeap;
-
-    std::chrono::milliseconds m_scavengeSleepDuration = { maxScavengeSleepDuration };
-
-#if BPLATFORM(IOS)
-    size_t m_maxAvailableMemory;
-    size_t m_memoryFootprint;
-    double m_percentAvailableMemoryInUse;
-#endif
 
     VMHeap m_vmHeap;
 
 #if BOS(DARWIN)
-    dispatch_source_t m_pressureHandlerDispatchSource;
-    qos_class_t m_requestedScavengerThreadQOSClass { QOS_CLASS_USER_INITIATED };
+    qos_class_t m_requestedScavengerThreadQOSClass { QOS_CLASS_UNSPECIFIED };
 #endif
 };
 
@@ -169,18 +144,6 @@ inline void Heap::derefSmallLine(std::lock_guard<StaticMutex>& lock, Object obje
         return;
     deallocateSmallLine(lock, object);
 }
-
-#if BPLATFORM(IOS)
-inline size_t Heap::memoryFootprint()
-{
-    return m_memoryFootprint;
-}
-
-inline double Heap::percentAvailableMemoryInUse()
-{
-    return m_percentAvailableMemoryInUse;
-}
-#endif
 
 } // namespace bmalloc
 

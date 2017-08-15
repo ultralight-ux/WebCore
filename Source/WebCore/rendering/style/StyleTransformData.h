@@ -36,18 +36,18 @@ public:
     static Ref<StyleTransformData> create() { return adoptRef(*new StyleTransformData); }
     Ref<StyleTransformData> copy() const;
 
-    bool operator==(const StyleTransformData&) const;
-    bool operator!=(const StyleTransformData& other) const
+    bool operator==(const StyleTransformData& o) const;
+    bool operator!=(const StyleTransformData& o) const
     {
-        return !(*this == other);
+        return !(*this == o);
     }
     
-    bool hasTransform() const { return operations.size(); }
+    bool hasTransform() const { return m_operations.size(); }
 
-    TransformOperations operations;
-    Length x;
-    Length y;
-    float z;
+    TransformOperations m_operations;
+    Length m_x;
+    Length m_y;
+    float m_z;
 
 private:
     StyleTransformData();

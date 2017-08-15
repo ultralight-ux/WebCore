@@ -43,7 +43,7 @@ Color StyleColor::colorFromKeyword(CSSValueID keyword)
         if (const NamedColor* namedColor = findColor(valueName, strlen(valueName)))
             return Color(namedColor->ARGBValue);
     }
-    return RenderTheme::singleton().systemColor(keyword);
+    return RenderTheme::defaultTheme()->systemColor(keyword);
 }
 
 bool StyleColor::isColorKeyword(CSSValueID id)

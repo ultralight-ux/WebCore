@@ -34,6 +34,7 @@
 #include "InstrumentingAgents.h"
 #include "MainFrame.h"
 #include "NetworkStateNotifier.h"
+#include "Page.h"
 #include <inspector/InspectorValues.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -68,17 +69,16 @@ void InspectorApplicationCacheAgent::enable(ErrorString&)
 
 void InspectorApplicationCacheAgent::updateApplicationCacheStatus(Frame* frame)
 {
-    if (!frame)
-        return;
-    auto* documentLoader = frame->loader().documentLoader();
+    DocumentLoader* documentLoader = frame->loader().documentLoader();
     if (!documentLoader)
         return;
 
-    auto& host = documentLoader->applicationCacheHost();
-    int status = host.status();
-    auto manifestURL = host.applicationCacheInfo().manifest.string();
+    ApplicationCacheHost* host = documentLoader->applicationCacheHost();
+    ApplicationCacheHost::Status status = host->status();
+    ApplicationCacheHost::CacheInfo info = host->applicationCacheInfo();
 
-    m_frontendDispatcher->applicationCacheStatusUpdated(m_pageAgent->frameId(frame), manifestURL, status);
+    String manifestURL = info.m_manifest.string();
+    m_frontendDispatcher->applicationCacheStatusUpdated(m_pageAgent->frameId(frame), manifestURL, static_cast<int>(status));
 }
 
 void InspectorApplicationCacheAgent::networkStateChanged()
@@ -92,18 +92,20 @@ void InspectorApplicationCacheAgent::getFramesWithManifests(ErrorString&, RefPtr
     result = Inspector::Protocol::Array<Inspector::Protocol::ApplicationCache::FrameWithManifest>::create();
 
     for (Frame* frame = &m_pageAgent->mainFrame(); frame; frame = frame->tree().traverseNext()) {
-        auto* documentLoader = frame->loader().documentLoader();
+        DocumentLoader* documentLoader = frame->loader().documentLoader();
         if (!documentLoader)
             continue;
 
-        auto& host = documentLoader->applicationCacheHost();
-        String manifestURL = host.applicationCacheInfo().manifest.string();
+        ApplicationCacheHost* host = documentLoader->applicationCacheHost();
+        ApplicationCacheHost::CacheInfo info = host->applicationCacheInfo();
+        String manifestURL = info.m_manifest.string();
         if (!manifestURL.isEmpty()) {
-            result->addItem(Inspector::Protocol::ApplicationCache::FrameWithManifest::create()
+            Ref<Inspector::Protocol::ApplicationCache::FrameWithManifest> value = Inspector::Protocol::ApplicationCache::FrameWithManifest::create()
                 .setFrameId(m_pageAgent->frameId(frame))
                 .setManifestURL(manifestURL)
-                .setStatus(static_cast<int>(host.status()))
-                .release());
+                .setStatus(static_cast<int>(host->status()))
+                .release();
+            result->addItem(WTFMove(value));
         }
     }
 }
@@ -123,60 +125,68 @@ void InspectorApplicationCacheAgent::getManifestForFrame(ErrorString& errorStrin
     if (!documentLoader)
         return;
 
-    *manifestURL = documentLoader->applicationCacheHost().applicationCacheInfo().manifest.string();
+    ApplicationCacheHost::CacheInfo info = documentLoader->applicationCacheHost()->applicationCacheInfo();
+    *manifestURL = info.m_manifest.string();
 }
 
 void InspectorApplicationCacheAgent::getApplicationCacheForFrame(ErrorString& errorString, const String& frameId, RefPtr<Inspector::Protocol::ApplicationCache::ApplicationCache>& applicationCache)
 {
-    auto* documentLoader = assertFrameWithDocumentLoader(errorString, frameId);
+    DocumentLoader* documentLoader = assertFrameWithDocumentLoader(errorString, frameId);
     if (!documentLoader)
         return;
 
-    auto& host = documentLoader->applicationCacheHost();
-    applicationCache = buildObjectForApplicationCache(host.resourceList(), host.applicationCacheInfo());
+    ApplicationCacheHost* host = documentLoader->applicationCacheHost();
+    ApplicationCacheHost::CacheInfo info = host->applicationCacheInfo();
+
+    ApplicationCacheHost::ResourceInfoList resources;
+    host->fillResourceList(&resources);
+
+    applicationCache = buildObjectForApplicationCache(resources, info);
 }
 
-Ref<Inspector::Protocol::ApplicationCache::ApplicationCache> InspectorApplicationCacheAgent::buildObjectForApplicationCache(const Vector<ApplicationCacheHost::ResourceInfo>& applicationCacheResources, const ApplicationCacheHost::CacheInfo& applicationCacheInfo)
+Ref<Inspector::Protocol::ApplicationCache::ApplicationCache> InspectorApplicationCacheAgent::buildObjectForApplicationCache(const ApplicationCacheHost::ResourceInfoList& applicationCacheResources, const ApplicationCacheHost::CacheInfo& applicationCacheInfo)
 {
     return Inspector::Protocol::ApplicationCache::ApplicationCache::create()
-        .setManifestURL(applicationCacheInfo.manifest.string())
-        .setSize(applicationCacheInfo.size)
-        .setCreationTime(applicationCacheInfo.creationTime)
-        .setUpdateTime(applicationCacheInfo.updateTime)
+        .setManifestURL(applicationCacheInfo.m_manifest.string())
+        .setSize(applicationCacheInfo.m_size)
+        .setCreationTime(applicationCacheInfo.m_creationTime)
+        .setUpdateTime(applicationCacheInfo.m_updateTime)
         .setResources(buildArrayForApplicationCacheResources(applicationCacheResources))
         .release();
 }
 
-Ref<Inspector::Protocol::Array<Inspector::Protocol::ApplicationCache::ApplicationCacheResource>> InspectorApplicationCacheAgent::buildArrayForApplicationCacheResources(const Vector<ApplicationCacheHost::ResourceInfo>& applicationCacheResources)
+Ref<Inspector::Protocol::Array<Inspector::Protocol::ApplicationCache::ApplicationCacheResource>> InspectorApplicationCacheAgent::buildArrayForApplicationCacheResources(const ApplicationCacheHost::ResourceInfoList& applicationCacheResources)
 {
-    auto result = Inspector::Protocol::Array<Inspector::Protocol::ApplicationCache::ApplicationCacheResource>::create();
-    for (auto& info : applicationCacheResources)
-        result->addItem(buildObjectForApplicationCacheResource(info));
-    return result;
+    auto resources = Inspector::Protocol::Array<Inspector::Protocol::ApplicationCache::ApplicationCacheResource>::create();
+
+    for (const auto& resourceInfo : applicationCacheResources)
+        resources->addItem(buildObjectForApplicationCacheResource(resourceInfo));
+
+    return resources;
 }
 
 Ref<Inspector::Protocol::ApplicationCache::ApplicationCacheResource> InspectorApplicationCacheAgent::buildObjectForApplicationCacheResource(const ApplicationCacheHost::ResourceInfo& resourceInfo)
 {
     StringBuilder types;
 
-    if (resourceInfo.isMaster)
+    if (resourceInfo.m_isMaster)
         types.appendLiteral("Master ");
 
-    if (resourceInfo.isManifest)
+    if (resourceInfo.m_isManifest)
         types.appendLiteral("Manifest ");
 
-    if (resourceInfo.isFallback)
+    if (resourceInfo.m_isFallback)
         types.appendLiteral("Fallback ");
 
-    if (resourceInfo.isForeign)
+    if (resourceInfo.m_isForeign)
         types.appendLiteral("Foreign ");
 
-    if (resourceInfo.isExplicit)
+    if (resourceInfo.m_isExplicit)
         types.appendLiteral("Explicit ");
 
     return Inspector::Protocol::ApplicationCache::ApplicationCacheResource::create()
-        .setUrl(resourceInfo.resource.string())
-        .setSize(static_cast<int>(resourceInfo.size))
+        .setUrl(resourceInfo.m_resource.string())
+        .setSize(static_cast<int>(resourceInfo.m_size))
         .setType(types.toString())
         .release();
 }

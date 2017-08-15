@@ -28,7 +28,6 @@
 
 #include "Document.h"
 #include "DocumentMarkerController.h"
-#include "Editing.h"
 #include "Editor.h"
 #include "Frame.h"
 #include "Page.h"
@@ -37,12 +36,13 @@
 #include "Settings.h"
 #include "TextCheckerClient.h"
 #include "TextCheckingHelper.h"
+#include "htmlediting.h"
 
 namespace WebCore {
 
-SpellCheckRequest::SpellCheckRequest(Ref<Range>&& checkingRange, Ref<Range>&& paragraphRange, const String& text, TextCheckingTypeMask mask, TextCheckingProcessType processType)
-    : m_checkingRange(WTFMove(checkingRange))
-    , m_paragraphRange(WTFMove(paragraphRange))
+SpellCheckRequest::SpellCheckRequest(PassRefPtr<Range> checkingRange, PassRefPtr<Range> paragraphRange, const String& text, TextCheckingTypeMask mask, TextCheckingProcessType processType)
+    : m_checkingRange(checkingRange)
+    , m_paragraphRange(paragraphRange)
     , m_rootEditableElement(m_checkingRange->startContainer().rootEditableElement())
     , m_requestData(unrequestedTextCheckingSequence, text, mask, processType)
 {
@@ -52,13 +52,17 @@ SpellCheckRequest::~SpellCheckRequest()
 {
 }
 
-RefPtr<SpellCheckRequest> SpellCheckRequest::create(TextCheckingTypeMask textCheckingOptions, TextCheckingProcessType processType, Ref<Range>&& checkingRange, Ref<Range>&& paragraphRange)
+// static
+RefPtr<SpellCheckRequest> SpellCheckRequest::create(TextCheckingTypeMask textCheckingOptions, TextCheckingProcessType processType, PassRefPtr<Range> checkingRange, PassRefPtr<Range> paragraphRange)
 {
+    ASSERT(checkingRange);
+    ASSERT(paragraphRange);
+
     String text = checkingRange->text();
     if (!text.length())
         return nullptr;
 
-    return adoptRef(*new SpellCheckRequest(WTFMove(checkingRange), WTFMove(paragraphRange), text, textCheckingOptions, processType));
+    return adoptRef(*new SpellCheckRequest(checkingRange, paragraphRange, text, textCheckingOptions, processType));
 }
 
 const TextCheckingRequestData& SpellCheckRequest::data() const
@@ -137,24 +141,24 @@ bool SpellChecker::isAsynchronousEnabled() const
     return m_frame.settings().asynchronousSpellCheckingEnabled();
 }
 
-bool SpellChecker::canCheckAsynchronously(Range& range) const
+bool SpellChecker::canCheckAsynchronously(Range* range) const
 {
     return client() && isCheckable(range) && isAsynchronousEnabled();
 }
 
-bool SpellChecker::isCheckable(Range& range) const
+bool SpellChecker::isCheckable(Range* range) const
 {
-    if (!range.firstNode() || !range.firstNode()->renderer())
+    if (!range || !range->firstNode() || !range->firstNode()->renderer())
         return false;
-    const Node& node = range.startContainer();
+    const Node& node = range->startContainer();
     if (is<Element>(node) && !downcast<Element>(node).isSpellCheckingEnabled())
         return false;
     return true;
 }
 
-void SpellChecker::requestCheckingFor(Ref<SpellCheckRequest>&& request)
+void SpellChecker::requestCheckingFor(PassRefPtr<SpellCheckRequest> request)
 {
-    if (!canCheckAsynchronously(request->paragraphRange()))
+    if (!request || !canCheckAsynchronously(request->paragraphRange().get()))
         return;
 
     ASSERT(request->data().sequence() == unrequestedTextCheckingSequence);
@@ -165,33 +169,35 @@ void SpellChecker::requestCheckingFor(Ref<SpellCheckRequest>&& request)
     request->setCheckerAndSequence(this, sequence);
 
     if (m_timerToProcessQueuedRequest.isActive() || m_processingRequest) {
-        enqueueRequest(WTFMove(request));
+        enqueueRequest(request);
         return;
     }
 
-    invokeRequest(WTFMove(request));
+    invokeRequest(request);
 }
 
-void SpellChecker::invokeRequest(Ref<SpellCheckRequest>&& request)
+void SpellChecker::invokeRequest(PassRefPtr<SpellCheckRequest> request)
 {
     ASSERT(!m_processingRequest);
     if (!client())
         return;
-    m_processingRequest = WTFMove(request);
-    client()->requestCheckingOfString(*m_processingRequest, m_frame.selection().selection());
+    m_processingRequest = request;
+    client()->requestCheckingOfString(m_processingRequest, m_frame.selection().selection());
 }
 
-void SpellChecker::enqueueRequest(Ref<SpellCheckRequest>&& request)
+void SpellChecker::enqueueRequest(PassRefPtr<SpellCheckRequest> request)
 {
+    ASSERT(request);
+
     for (auto& queue : m_requestQueue) {
         if (request->rootEditableElement() != queue->rootEditableElement())
             continue;
 
-        queue = WTFMove(request);
+        queue = request;
         return;
     }
 
-    m_requestQueue.append(WTFMove(request));
+    m_requestQueue.append(request);
 }
 
 void SpellChecker::didCheck(int sequence, const Vector<TextCheckingResult>& results)
@@ -203,14 +209,14 @@ void SpellChecker::didCheck(int sequence, const Vector<TextCheckingResult>& resu
         return;
     }
 
-    m_frame.editor().markAndReplaceFor(*m_processingRequest, results);
+    m_frame.editor().markAndReplaceFor(m_processingRequest, results);
 
     if (m_lastProcessedSequence < sequence)
         m_lastProcessedSequence = sequence;
 
     m_processingRequest = nullptr;
     if (!m_requestQueue.isEmpty())
-        m_timerToProcessQueuedRequest.startOneShot(0_s);
+        m_timerToProcessQueuedRequest.startOneShot(0);
 }
 
 void SpellChecker::didCheckSucceed(int sequence, const Vector<TextCheckingResult>& results)
@@ -223,7 +229,7 @@ void SpellChecker::didCheckSucceed(int sequence, const Vector<TextCheckingResult
         if (requestData.mask() & TextCheckingTypeGrammar)
             markers |= DocumentMarker::Grammar;
         if (markers)
-            m_frame.document()->markers().removeMarkers(&m_processingRequest->checkingRange(), markers);
+            m_frame.document()->markers().removeMarkers(m_processingRequest->checkingRange().get(), markers);
     }
     didCheck(sequence, results);
 }

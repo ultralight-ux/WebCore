@@ -30,7 +30,6 @@
 #include "CSSCalculationValue.h"
 #include "CSSContentDistributionValue.h"
 #include "CSSFontFeatureValue.h"
-#include "CSSFontStyleValue.h"
 #include "CSSFontVariationValue.h"
 #include "CSSFunctionValue.h"
 #include "CSSGridAutoRepeatValue.h"
@@ -40,12 +39,11 @@
 #include "CSSImageSetValue.h"
 #include "CSSImageValue.h"
 #include "CSSPrimitiveValue.h"
-#include "CSSPrimitiveValueMappings.h"
 #include "CSSReflectValue.h"
-#include "FontSelectionValueInlines.h"
 #include "Frame.h"
 #include "LayoutUnit.h"
 #include "Length.h"
+#include "LengthRepeat.h"
 #include "Pair.h"
 #include "QuotesData.h"
 #include "RuntimeEnabledFeatures.h"
@@ -65,18 +63,18 @@ public:
     static Length convertLengthOrAuto(StyleResolver&, const CSSValue&);
     static Length convertLengthSizing(StyleResolver&, const CSSValue&);
     static Length convertLengthMaxSizing(StyleResolver&, const CSSValue&);
-    template<typename T> static T convertComputedLength(StyleResolver&, const CSSValue&);
-    template<typename T> static T convertLineWidth(StyleResolver&, const CSSValue&);
+    template <typename T> static T convertComputedLength(StyleResolver&, const CSSValue&);
+    template <typename T> static T convertLineWidth(StyleResolver&, const CSSValue&);
     static float convertSpacing(StyleResolver&, const CSSValue&);
     static LengthSize convertRadius(StyleResolver&, const CSSValue&);
     static LengthPoint convertObjectPosition(StyleResolver&, const CSSValue&);
     static TextDecoration convertTextDecoration(StyleResolver&, const CSSValue&);
-    template<typename T> static T convertNumber(StyleResolver&, const CSSValue&);
-    template<typename T> static T convertNumberOrAuto(StyleResolver&, const CSSValue&);
+    template <typename T> static T convertNumber(StyleResolver&, const CSSValue&);
+    template <typename T> static T convertNumberOrAuto(StyleResolver&, const CSSValue&);
     static short convertWebkitHyphenateLimitLines(StyleResolver&, const CSSValue&);
-    template<CSSPropertyID> static NinePieceImage convertBorderImage(StyleResolver&, CSSValue&);
-    template<CSSPropertyID> static NinePieceImage convertBorderMask(StyleResolver&, CSSValue&);
-    template<CSSPropertyID> static RefPtr<StyleImage> convertStyleImage(StyleResolver&, CSSValue&);
+    template <CSSPropertyID property> static NinePieceImage convertBorderImage(StyleResolver&, CSSValue&);
+    template <CSSPropertyID property> static NinePieceImage convertBorderMask(StyleResolver&, CSSValue&);
+    template <CSSPropertyID property> static PassRefPtr<StyleImage> convertStyleImage(StyleResolver&, CSSValue&);
     static TransformOperations convertTransform(StyleResolver&, const CSSValue&);
     static String convertString(StyleResolver&, const CSSValue&);
     static String convertStringOrAuto(StyleResolver&, const CSSValue&);
@@ -94,15 +92,18 @@ public:
     static float convertTextStrokeWidth(StyleResolver&, const CSSValue&);
     static LineBoxContain convertLineBoxContain(StyleResolver&, const CSSValue&);
     static TextDecorationSkip convertTextDecorationSkip(StyleResolver&, const CSSValue&);
-    static RefPtr<ShapeValue> convertShapeValue(StyleResolver&, CSSValue&);
+    static PassRefPtr<ShapeValue> convertShapeValue(StyleResolver&, CSSValue&);
 #if ENABLE(CSS_SCROLL_SNAP)
-    static ScrollSnapType convertScrollSnapType(StyleResolver&, const CSSValue&);
-    static ScrollSnapAlign convertScrollSnapAlign(StyleResolver&, const CSSValue&);
+    static std::unique_ptr<ScrollSnapPoints> convertScrollSnapPoints(StyleResolver&, const CSSValue&);
+    static LengthSize convertSnapCoordinatePair(StyleResolver&, const CSSValue&, size_t offset = 0);
+    static Vector<LengthSize> convertScrollSnapCoordinates(StyleResolver&, const CSSValue&);
 #endif
+#if ENABLE(CSS_GRID_LAYOUT)
     static GridTrackSize convertGridTrackSize(StyleResolver&, const CSSValue&);
     static Vector<GridTrackSize> convertGridTrackSizeList(StyleResolver&, const CSSValue&);
     static std::optional<GridPosition> convertGridPosition(StyleResolver&, const CSSValue&);
     static GridAutoFlow convertGridAutoFlow(StyleResolver&, const CSSValue&);
+#endif // ENABLE(CSS_GRID_LAYOUT)
     static std::optional<Length> convertWordSpacing(StyleResolver&, const CSSValue&);
     static std::optional<float> convertPerspective(StyleResolver&, const CSSValue&);
     static std::optional<Length> convertMarqueeIncrement(StyleResolver&, const CSSValue&);
@@ -117,12 +118,6 @@ public:
     static bool convertOverflowScrolling(StyleResolver&, const CSSValue&);
 #endif
     static FontFeatureSettings convertFontFeatureSettings(StyleResolver&, const CSSValue&);
-    static FontSelectionValue convertFontWeightFromValue(const CSSValue&);
-    static FontSelectionValue convertFontStretchFromValue(const CSSValue&);
-    static FontSelectionValue convertFontStyleFromValue(const CSSValue&);
-    static FontSelectionValue convertFontWeight(StyleResolver&, const CSSValue&);
-    static FontSelectionValue convertFontStretch(StyleResolver&, const CSSValue&);
-    static FontSelectionValue convertFontStyle(StyleResolver&, const CSSValue&);
 #if ENABLE(VARIATION_FONTS)
     static FontVariationSettings convertFontVariationSettings(StyleResolver&, const CSSValue&);
 #endif
@@ -167,12 +162,14 @@ private:
     static Length convertTo100PercentMinusLength(const Length&);
     template<CSSValueID, CSSValueID> static Length convertPositionComponent(StyleResolver&, const CSSPrimitiveValue&);
 
+#if ENABLE(CSS_GRID_LAYOUT)
     static GridLength createGridTrackBreadth(const CSSPrimitiveValue&, StyleResolver&);
     static GridTrackSize createGridTrackSize(const CSSValue&, StyleResolver&);
     struct TracksData;
     static bool createGridTrackList(const CSSValue&, TracksData&, StyleResolver&);
     static bool createGridPosition(const CSSValue&, GridPosition&);
     static void createImplicitNamedGridLinesFromGridArea(const NamedGridAreaMap&, NamedGridLinesMap&, GridTrackSizingDirection);
+#endif // ENABLE(CSS_GRID_LAYOUT)
     static CSSToLengthConversionData csstoLengthConversionDataWithTextZoomFactor(StyleResolver&);
 };
 
@@ -216,15 +213,12 @@ inline Length StyleBuilderConverter::convertLengthSizing(StyleResolver& styleRes
         return Length(Intrinsic);
     case CSSValueMinIntrinsic:
         return Length(MinIntrinsic);
-    case CSSValueMinContent:
     case CSSValueWebkitMinContent:
         return Length(MinContent);
-    case CSSValueMaxContent:
     case CSSValueWebkitMaxContent:
         return Length(MaxContent);
     case CSSValueWebkitFillAvailable:
         return Length(FillAvailable);
-    case CSSValueFitContent:
     case CSSValueWebkitFitContent:
         return Length(FitContent);
     case CSSValueAuto:
@@ -242,13 +236,13 @@ inline Length StyleBuilderConverter::convertLengthMaxSizing(StyleResolver& style
     return convertLengthSizing(styleResolver, value);
 }
 
-template<typename T>
+template <typename T>
 inline T StyleBuilderConverter::convertComputedLength(StyleResolver& styleResolver, const CSSValue& value)
 {
     return downcast<CSSPrimitiveValue>(value).computeLength<T>(styleResolver.state().cssToLengthConversionData());
 }
 
-template<typename T>
+template <typename T>
 inline T StyleBuilderConverter::convertLineWidth(StyleResolver& styleResolver, const CSSValue& value)
 {
     auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
@@ -302,19 +296,21 @@ inline Length StyleBuilderConverter::convertToRadiusLength(CSSToLengthConversion
 
 inline LengthSize StyleBuilderConverter::convertRadius(StyleResolver& styleResolver, const CSSValue& value)
 {
-    auto* pair = downcast<CSSPrimitiveValue>(value).pairValue();
+    auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
+    Pair* pair = primitiveValue.pairValue();
     if (!pair || !pair->first() || !pair->second())
-        return { { 0, Fixed }, { 0, Fixed } };
+        return LengthSize(Length(0, Fixed), Length(0, Fixed));
 
     CSSToLengthConversionData conversionData = styleResolver.state().cssToLengthConversionData();
-    LengthSize radius { convertToRadiusLength(conversionData, *pair->first()), convertToRadiusLength(conversionData, *pair->second()) };
+    Length radiusWidth = convertToRadiusLength(conversionData, *pair->first());
+    Length radiusHeight = convertToRadiusLength(conversionData, *pair->second());
 
-    ASSERT(!radius.width.isNegative());
-    ASSERT(!radius.height.isNegative());
-    if (radius.width.isZero() || radius.height.isZero())
-        return { { 0, Fixed }, { 0, Fixed } };
+    ASSERT(!radiusWidth.isNegative());
+    ASSERT(!radiusHeight.isNegative());
+    if (radiusWidth.isZero() || radiusHeight.isZero())
+        return LengthSize(Length(0, Fixed), Length(0, Fixed));
 
-    return radius;
+    return LengthSize(radiusWidth, radiusHeight);
 }
 
 inline Length StyleBuilderConverter::convertTo100PercentMinusLength(const Length& length)
@@ -339,7 +335,7 @@ inline Length StyleBuilderConverter::convertPositionComponentY(StyleResolver& st
     return convertPositionComponent<CSSValueTop, CSSValueBottom>(styleResolver, downcast<CSSPrimitiveValue>(value));
 }
 
-template<CSSValueID cssValueFor0, CSSValueID cssValueFor100>
+template <CSSValueID cssValueFor0, CSSValueID cssValueFor100>
 inline Length StyleBuilderConverter::convertPositionComponent(StyleResolver& styleResolver, const CSSPrimitiveValue& value)
 {
     Length length;
@@ -398,13 +394,13 @@ inline TextDecoration StyleBuilderConverter::convertTextDecoration(StyleResolver
     return result;
 }
 
-template<typename T>
+template <typename T>
 inline T StyleBuilderConverter::convertNumber(StyleResolver&, const CSSValue& value)
 {
     return downcast<CSSPrimitiveValue>(value).value<T>(CSSPrimitiveValue::CSS_NUMBER);
 }
 
-template<typename T>
+template <typename T>
 inline T StyleBuilderConverter::convertNumberOrAuto(StyleResolver& styleResolver, const CSSValue& value)
 {
     if (downcast<CSSPrimitiveValue>(value).valueID() == CSSValueAuto)
@@ -420,7 +416,7 @@ inline short StyleBuilderConverter::convertWebkitHyphenateLimitLines(StyleResolv
     return primitiveValue.value<short>(CSSPrimitiveValue::CSS_NUMBER);
 }
 
-template<CSSPropertyID property>
+template <CSSPropertyID property>
 inline NinePieceImage StyleBuilderConverter::convertBorderImage(StyleResolver& styleResolver, CSSValue& value)
 {
     NinePieceImage image;
@@ -428,7 +424,7 @@ inline NinePieceImage StyleBuilderConverter::convertBorderImage(StyleResolver& s
     return image;
 }
 
-template<CSSPropertyID property>
+template <CSSPropertyID property>
 inline NinePieceImage StyleBuilderConverter::convertBorderMask(StyleResolver& styleResolver, CSSValue& value)
 {
     NinePieceImage image;
@@ -437,8 +433,8 @@ inline NinePieceImage StyleBuilderConverter::convertBorderMask(StyleResolver& st
     return image;
 }
 
-template<CSSPropertyID>
-inline RefPtr<StyleImage> StyleBuilderConverter::convertStyleImage(StyleResolver& styleResolver, CSSValue& value)
+template <CSSPropertyID property>
+inline PassRefPtr<StyleImage> StyleBuilderConverter::convertStyleImage(StyleResolver& styleResolver, CSSValue& value)
 {
     return styleResolver.styleImage(value);
 }
@@ -566,9 +562,10 @@ inline EResize StyleBuilderConverter::convertResize(StyleResolver& styleResolver
     auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
 
     EResize resize = RESIZE_NONE;
-    if (primitiveValue.valueID() == CSSValueAuto)
-        resize = styleResolver.settings().textAreasAreResizable() ? RESIZE_BOTH : RESIZE_NONE;
-    else
+    if (primitiveValue.valueID() == CSSValueAuto) {
+        if (Settings* settings = styleResolver.document().settings())
+            resize = settings->textAreasAreResizable() ? RESIZE_BOTH : RESIZE_NONE;
+    } else
         resize = primitiveValue;
 
     return resize;
@@ -763,7 +760,7 @@ static inline bool isImageShape(const CSSValue& value)
     return is<CSSImageValue>(value) || is<CSSImageSetValue>(value) || is<CSSImageGeneratorValue>(value);
 }
 
-inline RefPtr<ShapeValue> StyleBuilderConverter::convertShapeValue(StyleResolver& styleResolver, CSSValue& value)
+inline PassRefPtr<ShapeValue> StyleBuilderConverter::convertShapeValue(StyleResolver& styleResolver, CSSValue& value)
 {
     if (is<CSSPrimitiveValue>(value)) {
         ASSERT(downcast<CSSPrimitiveValue>(value).valueID() == CSSValueNone);
@@ -771,12 +768,12 @@ inline RefPtr<ShapeValue> StyleBuilderConverter::convertShapeValue(StyleResolver
     }
 
     if (isImageShape(value))
-        return ShapeValue::create(styleResolver.styleImage(value).releaseNonNull());
+        return ShapeValue::createImageValue(styleResolver.styleImage(value));
 
     RefPtr<BasicShape> shape;
     CSSBoxType referenceBox = BoxMissing;
     for (auto& currentValue : downcast<CSSValueList>(value)) {
-        auto& primitiveValue = downcast<CSSPrimitiveValue>(currentValue.get());
+        CSSPrimitiveValue& primitiveValue = downcast<CSSPrimitiveValue>(currentValue.get());
         if (primitiveValue.isShape())
             shape = basicShapeForValue(styleResolver.state().cssToLengthConversionData(), *primitiveValue.shapeValue());
         else if (primitiveValue.valueID() == CSSValueContentBox
@@ -791,62 +788,117 @@ inline RefPtr<ShapeValue> StyleBuilderConverter::convertShapeValue(StyleResolver
     }
 
     if (shape)
-        return ShapeValue::create(shape.releaseNonNull(), referenceBox);
+        return ShapeValue::createShapeValue(WTFMove(shape), referenceBox);
 
     if (referenceBox != BoxMissing)
-        return ShapeValue::create(referenceBox);
+        return ShapeValue::createBoxShapeValue(referenceBox);
 
     ASSERT_NOT_REACHED();
     return nullptr;
 }
 
 #if ENABLE(CSS_SCROLL_SNAP)
-
-inline ScrollSnapType StyleBuilderConverter::convertScrollSnapType(StyleResolver&, const CSSValue& value)
+inline Length StyleBuilderConverter::parseSnapCoordinate(StyleResolver& styleResolver, const CSSValue& value)
 {
-    ScrollSnapType type;
-    auto& values = downcast<CSSValueList>(value);
-    auto& firstValue = downcast<CSSPrimitiveValue>(*values.item(0));
-    if (values.length() == 2) {
-        type.axis = firstValue;
-        type.strictness = downcast<CSSPrimitiveValue>(*values.item(1));
-        return type;
-    }
-
-    switch (firstValue.valueID()) {
-    case CSSValueNone:
-    case CSSValueMandatory:
-    case CSSValueProximity:
-        type.strictness = firstValue;
-        break;
-    default:
-        type.axis = firstValue;
-        type.strictness = ScrollSnapStrictness::Proximity;
-        break;
-    }
-    return type;
+    return downcast<CSSPrimitiveValue>(value).convertToLength<FixedIntegerConversion | PercentConversion | CalculatedConversion | AutoConversion>(styleResolver.state().cssToLengthConversionData());
 }
 
-inline ScrollSnapAlign StyleBuilderConverter::convertScrollSnapAlign(StyleResolver&, const CSSValue& value)
+inline std::unique_ptr<ScrollSnapPoints> StyleBuilderConverter::convertScrollSnapPoints(StyleResolver& styleResolver, const CSSValue& value)
 {
-    auto& values = downcast<CSSValueList>(value);
-    ScrollSnapAlign alignment;
-    alignment.x = downcast<CSSPrimitiveValue>(*values.item(0));
-    if (values.length() == 1)
-        alignment.y = alignment.x;
-    else
-        alignment.y = downcast<CSSPrimitiveValue>(*values.item(1));
-    return alignment;
+    // FIXME-NEWPARSER: Old parser supports an identifier value called "elements" when it seems like
+    // "none" is what others use. For now, support both in the converter.
+    auto points = std::make_unique<ScrollSnapPoints>();
+    
+    if (is<CSSPrimitiveValue>(value)) {
+        ASSERT(downcast<CSSPrimitiveValue>(value).valueID() == CSSValueElements || downcast<CSSPrimitiveValue>(value).valueID() == CSSValueNone);
+        points->usesElements = true;
+        return points;
+    }
+    
+    for (auto& currentValue : downcast<CSSValueList>(value)) {
+        if (is<CSSFunctionValue>(currentValue.get())) {
+            auto& functionValue = downcast<CSSFunctionValue>(currentValue.get());
+            points->repeatOffset = parseSnapCoordinate(styleResolver, *functionValue.item(0));
+            points->hasRepeat = true;
+            break;
+        }
+        
+        auto& itemValue = downcast<CSSPrimitiveValue>(currentValue.get());
+        if (auto* lengthRepeat = itemValue.lengthRepeatValue()) {
+            // FIXME-NEWPARSER: Old parsing code, which uses a special primitive value.
+            // Can remove this once new parser turns on.
+            if (auto* interval = lengthRepeat->interval()) {
+                points->repeatOffset = parseSnapCoordinate(styleResolver, *interval);
+                points->hasRepeat = true;
+                break;
+            }
+        }
+        points->offsets.append(parseSnapCoordinate(styleResolver, itemValue));
+    }
+
+    return points;
 }
 
+inline LengthSize StyleBuilderConverter::convertSnapCoordinatePair(StyleResolver& styleResolver, const CSSValue& value, size_t offset)
+{
+    // FIXME-NEWPARSER: Can make this unconditional once old parser is gone. This is just how
+    // we detect that we're dealing with the new parser's pairs.
+    if (value.isPrimitiveValue() && downcast<CSSPrimitiveValue>(value).pairValue()) {
+        Pair* pair = downcast<CSSPrimitiveValue>(value).pairValue();
+        Length lengthX = convertPositionComponent<CSSValueLeft, CSSValueRight>(styleResolver, *pair->first());
+        Length lengthY = convertPositionComponent<CSSValueTop, CSSValueBottom>(styleResolver, *pair->second());
+        return LengthSize(lengthX, lengthY);
+    }
+
+    // FIXME-NEWPARSER: Remove once old parser is gone.
+    auto& valueList = downcast<CSSValueList>(value);
+    return LengthSize(parseSnapCoordinate(styleResolver, *valueList.item(offset)), parseSnapCoordinate(styleResolver, *valueList.item(offset + 1)));
+}
+
+inline Vector<LengthSize> StyleBuilderConverter::convertScrollSnapCoordinates(StyleResolver& styleResolver, const CSSValue& value)
+{
+    if (is<CSSPrimitiveValue>(value)) {
+        ASSERT(downcast<CSSPrimitiveValue>(value).valueID() == CSSValueNone);
+        return Vector<LengthSize>();
+    }
+
+    auto& valueList = downcast<CSSValueList>(value);
+    if (!valueList.length())
+        return Vector<LengthSize>();
+    
+    // FIXME-NEWPARSER: Can make this unconditional once old parser is gone. This is just how
+    // we detect that we're dealing with the new parser's pairs.
+    if (valueList.item(0)->isPrimitiveValue() && downcast<CSSPrimitiveValue>(*valueList.item(0)).pairValue()) {
+        Vector<LengthSize> coordinates;
+        coordinates.reserveInitialCapacity(valueList.length());
+        for (auto& snapCoordinate : valueList) {
+            Pair* pair = downcast<CSSPrimitiveValue>(*snapCoordinate.ptr()).pairValue();
+            Length lengthX = convertPositionComponent<CSSValueLeft, CSSValueRight>(styleResolver, *pair->first());
+            Length lengthY = convertPositionComponent<CSSValueTop, CSSValueBottom>(styleResolver, *pair->second());
+            coordinates.uncheckedAppend(LengthSize(lengthX, lengthY));
+        }
+        return coordinates;
+    }
+    
+    // FIXME-NEWPARSER: Remove all of this once old parser is gone, including all the functions
+    // it calls.
+    ASSERT(!(valueList.length() % 2));
+    size_t pointCount = valueList.length() / 2;
+    Vector<LengthSize> coordinates;
+    coordinates.reserveInitialCapacity(pointCount);
+    for (size_t i = 0; i < pointCount; ++i)
+        coordinates.uncheckedAppend(convertSnapCoordinatePair(styleResolver, valueList, i * 2));
+    return coordinates;
+}
 #endif
 
+#if ENABLE(CSS_GRID_LAYOUT)
 inline GridLength StyleBuilderConverter::createGridTrackBreadth(const CSSPrimitiveValue& primitiveValue, StyleResolver& styleResolver)
 {
-    if (primitiveValue.valueID() == CSSValueMinContent || primitiveValue.valueID() == CSSValueWebkitMinContent)
+    if (primitiveValue.valueID() == CSSValueWebkitMinContent)
         return Length(MinContent);
 
-    if (primitiveValue.valueID() == CSSValueMaxContent || primitiveValue.valueID() == CSSValueWebkitMaxContent)
+    if (primitiveValue.valueID() == CSSValueWebkitMaxContent)
         return Length(MaxContent);
 
     // Fractional unit.
@@ -1073,6 +1125,7 @@ inline GridAutoFlow StyleBuilderConverter::convertGridAutoFlow(StyleResolver&, c
 
     return autoFlow;
 }
+#endif // ENABLE(CSS_GRID_LAYOUT)
 
 inline CSSToLengthConversionData StyleBuilderConverter::csstoLengthConversionDataWithTextZoomFactor(StyleResolver& styleResolver)
 {
@@ -1165,84 +1218,6 @@ inline FontFeatureSettings StyleBuilderConverter::convertFontFeatureSettings(Sty
     return settings;
 }
 
-inline FontSelectionValue StyleBuilderConverter::convertFontWeightFromValue(const CSSValue& value)
-{
-    ASSERT(is<CSSPrimitiveValue>(value));
-    auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
-
-    if (primitiveValue.isNumber())
-        return FontSelectionValue::clampFloat(primitiveValue.floatValue());
-
-    ASSERT(primitiveValue.isValueID());
-    switch (primitiveValue.valueID()) {
-    case CSSValueNormal:
-        return normalWeightValue();
-    case CSSValueBold:
-    case CSSValueBolder:
-        return boldWeightValue();
-    case CSSValueLighter:
-        return lightWeightValue();
-    default:
-        ASSERT_NOT_REACHED();
-        return normalWeightValue();
-    }
-}
-
-inline FontSelectionValue StyleBuilderConverter::convertFontStretchFromValue(const CSSValue& value)
-{
-    ASSERT(is<CSSPrimitiveValue>(value));
-    const auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
-
-    if (primitiveValue.isPercentage())
-        return FontSelectionValue::clampFloat(primitiveValue.floatValue());
-
-    ASSERT(primitiveValue.isValueID());
-    if (auto value = fontStretchValue(primitiveValue.valueID()))
-        return value.value();
-    ASSERT_NOT_REACHED();
-    return normalStretchValue();
-}
-
-inline FontSelectionValue StyleBuilderConverter::convertFontStyleFromValue(const CSSValue& value)
-{
-    ASSERT(is<CSSFontStyleValue>(value));
-    const auto& fontStyleValue = downcast<CSSFontStyleValue>(value);
-
-    auto valueID = fontStyleValue.fontStyleValue->valueID();
-    if (valueID == CSSValueNormal)
-        return normalItalicValue();
-    if (valueID == CSSValueItalic)
-        return italicValue();
-    ASSERT(valueID == CSSValueOblique);
-    if (auto* obliqueValue = fontStyleValue.obliqueValue.get())
-        return FontSelectionValue(obliqueValue->value<float>(CSSPrimitiveValue::CSS_DEG));
-    return italicValue();
-}
-
-inline FontSelectionValue StyleBuilderConverter::convertFontWeight(StyleResolver& styleResolver, const CSSValue& value)
-{
-    ASSERT(is<CSSPrimitiveValue>(value));
-    auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
-    if (primitiveValue.isValueID()) {
-        auto valueID = primitiveValue.valueID();
-        if (valueID == CSSValueBolder)
-            return FontCascadeDescription::bolderWeight(styleResolver.parentStyle()->fontDescription().weight());
-        if (valueID == CSSValueLighter)
-            return FontCascadeDescription::lighterWeight(styleResolver.parentStyle()->fontDescription().weight());
-    }
-    return convertFontWeightFromValue(value);
-}
-
-inline FontSelectionValue StyleBuilderConverter::convertFontStretch(StyleResolver&, const CSSValue& value)
-{
-    return convertFontStretchFromValue(value);
-}
-
-inline FontSelectionValue StyleBuilderConverter::convertFontStyle(StyleResolver&, const CSSValue& value)
-{
-    return convertFontStyleFromValue(value);
-}
-
 #if ENABLE(VARIATION_FONTS)
 inline FontVariationSettings StyleBuilderConverter::convertFontVariationSettings(StyleResolver&, const CSSValue& value)
 {
@@ -1312,20 +1287,20 @@ inline PaintOrder StyleBuilderConverter::convertPaintOrder(StyleResolver&, const
 {
     if (is<CSSPrimitiveValue>(value)) {
         ASSERT(downcast<CSSPrimitiveValue>(value).valueID() == CSSValueNormal);
-        return PaintOrder::Normal;
+        return PaintOrderNormal;
     }
 
     auto& orderTypeList = downcast<CSSValueList>(value);
     switch (downcast<CSSPrimitiveValue>(*orderTypeList.itemWithoutBoundsCheck(0)).valueID()) {
     case CSSValueFill:
-        return orderTypeList.length() > 1 ? PaintOrder::FillMarkers : PaintOrder::Fill;
+        return orderTypeList.length() > 1 ? PaintOrderFillMarkers : PaintOrderFill;
     case CSSValueStroke:
-        return orderTypeList.length() > 1 ? PaintOrder::StrokeMarkers : PaintOrder::Stroke;
+        return orderTypeList.length() > 1 ? PaintOrderStrokeMarkers : PaintOrderStroke;
     case CSSValueMarkers:
-        return orderTypeList.length() > 1 ? PaintOrder::MarkersStroke : PaintOrder::Markers;
+        return orderTypeList.length() > 1 ? PaintOrderMarkersStroke : PaintOrderMarkers;
     default:
         ASSERT_NOT_REACHED();
-        return PaintOrder::Normal;
+        return PaintOrderNormal;
     }
 }
 
@@ -1361,10 +1336,6 @@ inline StyleSelfAlignmentData StyleBuilderConverter::convertSelfOrDefaultAlignme
         if (pairValue->first()->valueID() == CSSValueLegacy) {
             alignmentData.setPositionType(LegacyPosition);
             alignmentData.setPosition(*pairValue->second());
-        } else if (pairValue->first()->valueID() == CSSValueFirst) {
-            alignmentData.setPosition(ItemPositionBaseline);
-        } else if (pairValue->first()->valueID() == CSSValueLast) {
-            alignmentData.setPosition(ItemPositionLastBaseline);
         } else {
             alignmentData.setPosition(*pairValue->first());
             alignmentData.setOverflow(*pairValue->second());
@@ -1377,6 +1348,7 @@ inline StyleSelfAlignmentData StyleBuilderConverter::convertSelfOrDefaultAlignme
 inline StyleContentAlignmentData StyleBuilderConverter::convertContentAlignmentData(StyleResolver&, const CSSValue& value)
 {
     StyleContentAlignmentData alignmentData = RenderStyle::initialContentAlignment();
+#if ENABLE(CSS_GRID_LAYOUT)
     if (RuntimeEnabledFeatures::sharedFeatures().isCSSGridLayoutEnabled()) {
         if (!is<CSSContentDistributionValue>(value))
             return alignmentData;
@@ -1389,6 +1361,7 @@ inline StyleContentAlignmentData StyleBuilderConverter::convertContentAlignmentD
             alignmentData.setOverflow(contentValue.overflow().get());
         return alignmentData;
     }
+#endif
     if (!is<CSSPrimitiveValue>(value))
         return alignmentData;
     auto& primitiveValue = downcast<CSSPrimitiveValue>(value);

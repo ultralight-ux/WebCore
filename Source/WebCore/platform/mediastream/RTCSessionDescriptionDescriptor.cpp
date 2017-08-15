@@ -36,9 +36,9 @@
 
 namespace WebCore {
 
-Ref<RTCSessionDescriptionDescriptor> RTCSessionDescriptionDescriptor::create(const String& type, const String& sdp)
+PassRefPtr<RTCSessionDescriptionDescriptor> RTCSessionDescriptionDescriptor::create(const String& type, const String& sdp)
 {
-    return adoptRef(*new RTCSessionDescriptionDescriptor(type, sdp));
+    return adoptRef(new RTCSessionDescriptionDescriptor(type, sdp));
 }
 
 RTCSessionDescriptionDescriptor::RTCSessionDescriptionDescriptor(const String& type, const String& sdp)

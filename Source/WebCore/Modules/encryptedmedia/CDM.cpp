@@ -30,7 +30,6 @@
 
 #include "CDMPrivate.h"
 #include "Document.h"
-#include "InitDataRegistry.h"
 #include "MediaKeysRestrictions.h"
 #include "MediaPlayer.h"
 #include "NotImplemented.h"
@@ -412,10 +411,12 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
     if (!document)
         return std::nullopt;
 
-    SecurityOrigin& origin = document->securityOrigin();
-    SecurityOrigin& topOrigin = document->topOrigin();
+    SecurityOrigin* origin = document->securityOrigin();
+    SecurityOrigin* topOrigin = document->topOrigin();
+    if (!origin || !topOrigin)
+        return std::nullopt;
 
-    if ((accumulatedConfiguration.distinctiveIdentifier == MediaKeysRequirement::Required || accumulatedConfiguration.persistentState == MediaKeysRequirement::Required) && !origin.canAccessLocalStorage(&topOrigin))
+    if ((accumulatedConfiguration.distinctiveIdentifier == MediaKeysRequirement::Required || accumulatedConfiguration.persistentState == MediaKeysRequirement::Required) && !origin->canAccessLocalStorage(topOrigin))
         return std::nullopt;
 
     return WTFMove(accumulatedConfiguration);
@@ -545,8 +546,12 @@ void CDM::getConsentStatus(MediaKeySystemConfiguration&& accumulatedConfiguratio
             return;
         }
 
-        SecurityOrigin& origin = document->securityOrigin();
-        SecurityOrigin& topOrigin = document->topOrigin();
+        SecurityOrigin* origin = document->securityOrigin();
+        SecurityOrigin* topOrigin = document->topOrigin();
+        if (!origin || !topOrigin) {
+            callback(ConsentStatus::ConsentDenied, WTFMove(accumulatedConfiguration), WTFMove(restrictions));
+            return;
+        }
 
         // 3.1.1.2 Get Supported Configuration and Consent, ctd.
         // 21. If accumulated configuration's distinctiveIdentifier value is "required" and the Distinctive Identifier(s) associated
@@ -586,7 +591,7 @@ void CDM::getConsentStatus(MediaKeySystemConfiguration&& accumulatedConfiguratio
         // 3.2.1. Update restrictions to reflect the configurations for which consent was denied.
         // 3.2.1. Return ConsentDenied and restrictions.
         // NOTE: assume implied consent if the combination of origin and topOrigin allows it.
-        if (accumulatedConfiguration.distinctiveIdentifier == MediaKeysRequirement::Required && !origin.canAccessLocalStorage(&topOrigin)) {
+        if (accumulatedConfiguration.distinctiveIdentifier == MediaKeysRequirement::Required && !origin->canAccessLocalStorage(topOrigin)) {
             restrictions.distinctiveIdentifierDenied = true;
             callback(ConsentStatus::ConsentDenied, WTFMove(accumulatedConfiguration), WTFMove(restrictions));
             return;
@@ -604,58 +609,6 @@ void CDM::getConsentStatus(MediaKeySystemConfiguration&& accumulatedConfiguratio
         // 6. Return Allowed.
         callback(ConsentStatus::Allowed, WTFMove(accumulatedConfiguration), WTFMove(restrictions));
     });
-}
-
-void CDM::loadAndInitialize()
-{
-    if (m_private)
-        m_private->loadAndInitialize();
-}
-
-RefPtr<CDMInstance> CDM::createInstance()
-{
-    if (!m_private)
-        return nullptr;
-    return m_private->createInstance();
-}
-
-bool CDM::supportsServerCertificates() const
-{
-    return m_private && m_private->supportsServerCertificates();
-}
-
-bool CDM::supportsSessions() const
-{
-    return m_private && m_private->supportsSessions();
-}
-
-bool CDM::supportsInitDataType(const AtomicString& initDataType) const
-{
-    return m_private && m_private->supportsInitDataType(initDataType);
-}
-
-RefPtr<SharedBuffer> CDM::sanitizeInitData(const AtomicString& initDataType, const SharedBuffer& initData)
-{
-    return InitDataRegistry::shared().sanitizeInitData(initDataType, initData);
-}
-
-bool CDM::supportsInitData(const AtomicString& initDataType, const SharedBuffer& initData)
-{
-    return m_private && m_private->supportsInitData(initDataType, initData);
-}
-
-RefPtr<SharedBuffer> CDM::sanitizeResponse(const SharedBuffer& response)
-{
-    if (!m_private)
-        return nullptr;
-    return m_private->sanitizeResponse(response);
-}
-
-std::optional<String> CDM::sanitizeSessionId(const String& sessionId)
-{
-    if (!m_private)
-        return std::nullopt;
-    return m_private->sanitizeSessionId(sessionId);
 }
 
 }

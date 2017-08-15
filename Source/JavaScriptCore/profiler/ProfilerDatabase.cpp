@@ -62,7 +62,7 @@ Bytecodes* Database::ensureBytecodesFor(CodeBlock* codeBlock)
     return ensureBytecodesFor(locker, codeBlock);
 }
 
-Bytecodes* Database::ensureBytecodesFor(const AbstractLocker&, CodeBlock* codeBlock)
+Bytecodes* Database::ensureBytecodesFor(const LockHolder&, CodeBlock* codeBlock)
 {
     codeBlock = codeBlock->baselineAlternative();
     
@@ -86,13 +86,15 @@ void Database::notifyDestruction(CodeBlock* codeBlock)
     m_compilationMap.remove(codeBlock);
 }
 
-void Database::addCompilation(CodeBlock* codeBlock, Ref<Compilation>&& compilation)
+void Database::addCompilation(CodeBlock* codeBlock, PassRefPtr<Compilation> passedCompilation)
 {
     LockHolder locker(m_lock);
     ASSERT(!isCompilationThread());
 
-    m_compilations.append(compilation.copyRef());
-    m_compilationMap.set(codeBlock, WTFMove(compilation));
+    RefPtr<Compilation> compilation = passedCompilation;
+    
+    m_compilations.append(compilation);
+    m_compilationMap.set(codeBlock, compilation);
 }
 
 JSValue Database::toJS(ExecState* exec) const

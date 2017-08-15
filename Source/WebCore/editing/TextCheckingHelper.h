@@ -33,10 +33,12 @@ struct TextCheckingResult;
 
 class TextCheckingParagraph {
 public:
-    explicit TextCheckingParagraph(Ref<Range>&& checkingRange, Range* paragraphRange = nullptr);
+    explicit TextCheckingParagraph(PassRefPtr<Range> checkingRange);
+    TextCheckingParagraph(PassRefPtr<Range> checkingRange, PassRefPtr<Range> paragraphRange);
+    ~TextCheckingParagraph();
 
     int rangeLength() const;
-    Ref<Range> subrange(int characterOffset, int characterCount) const;
+    PassRefPtr<Range> subrange(int characterOffset, int characterCount) const;
     ExceptionOr<int> offsetTo(const Position&) const;
     void expandRangeToNextEnd();
 
@@ -58,13 +60,13 @@ public:
     bool checkingRangeMatches(int location, int length) const { return location == checkingStart() && length == checkingLength(); }
     bool isCheckingRangeCoveredBy(int location, int length) const { return location <= checkingStart() && location + length >= checkingStart() + checkingLength(); }
     bool checkingRangeCovers(int location, int length) const { return location < checkingEnd() && location + length > checkingStart(); }
-    Range& paragraphRange() const;
+    PassRefPtr<Range> paragraphRange() const;
 
 private:
     void invalidateParagraphRangeValues();
-    Range& offsetAsRange() const;
+    PassRefPtr<Range> offsetAsRange() const;
 
-    Ref<Range> m_checkingRange;
+    RefPtr<Range> m_checkingRange;
     mutable RefPtr<Range> m_paragraphRange;
     mutable RefPtr<Range> m_offsetAsRange;
     mutable String m_text;
@@ -76,7 +78,7 @@ private:
 class TextCheckingHelper {
     WTF_MAKE_NONCOPYABLE(TextCheckingHelper);
 public:
-    TextCheckingHelper(EditorClient&, Range&);
+    TextCheckingHelper(EditorClient*, PassRefPtr<Range>);
     ~TextCheckingHelper();
 
     String findFirstMisspelling(int& firstMisspellingOffset, bool markAll, RefPtr<Range>& firstMisspellingRange);
@@ -90,8 +92,8 @@ public:
     Vector<String> guessesForMisspelledOrUngrammaticalRange(bool checkGrammar, bool& misspelled, bool& ungrammatical) const;
 
 private:
-    EditorClient& m_client;
-    Ref<Range> m_range;
+    EditorClient* m_client;
+    RefPtr<Range> m_range;
 
     bool unifiedTextCheckerEnabled() const;
 #if USE(GRAMMAR_CHECKING)

@@ -41,12 +41,12 @@ TypeSet::TypeSet()
 {
 }
 
-void TypeSet::addTypeInformation(RuntimeType type, RefPtr<StructureShape>&& passedNewShape, Structure* structure)
+void TypeSet::addTypeInformation(RuntimeType type, PassRefPtr<StructureShape> prpNewShape, Structure* structure) 
 {
+    RefPtr<StructureShape> newShape = prpNewShape;
     m_seenTypes = m_seenTypes | type;
 
-    if (structure && passedNewShape && !runtimeTypeIsPrimitive(type)) {
-        Ref<StructureShape> newShape = passedNewShape.releaseNonNull();
+    if (structure && newShape && !runtimeTypeIsPrimitive(type)) {
         if (!m_structureSet.contains(structure)) {
             {
                 ConcurrentJSLocker locker(m_lock);
@@ -56,22 +56,27 @@ void TypeSet::addTypeInformation(RuntimeType type, RefPtr<StructureShape>&& pass
             // - We don't have two instances of the same shape. (Same shapes may have different Structures).
             // - We don't have two shapes that share the same prototype chain. If these shapes share the same 
             //   prototype chain, they will be merged into one shape.
+            bool found = false;
             String hash = newShape->propertyHash();
-            for (auto& seenShape : m_structureHistory) {
-                if (seenShape->propertyHash() == hash)
-                    return;
-                if (seenShape->hasSamePrototypeChain(newShape.get())) {
-                    seenShape = StructureShape::merge(seenShape.copyRef(), WTFMove(newShape));
-                    return;
+            for (size_t i = 0; i < m_structureHistory.size(); i++) {
+                RefPtr<StructureShape>& seenShape = m_structureHistory.at(i);
+                if (seenShape->propertyHash() == hash) {
+                    found = true;
+                    break;
+                } 
+                if (seenShape->hasSamePrototypeChain(newShape)) {
+                    seenShape = StructureShape::merge(seenShape, newShape);
+                    found = true;
+                    break;
                 }
             }
 
-            if (m_structureHistory.size() < 100) {
-                m_structureHistory.append(WTFMove(newShape));
-                return;
+            if (!found) {
+                if (m_structureHistory.size() < 100)
+                    m_structureHistory.append(newShape);
+                else if (!m_isOverflown)
+                    m_isOverflown = true;
             }
-            if (!m_isOverflown)
-                m_isOverflown = true;
         }
     }
 }
@@ -109,15 +114,16 @@ String TypeSet::dumpTypes() const
     if (m_seenTypes & TypeSymbol)
         seen.appendLiteral("Symbol ");
 
-    for (const auto& shape : m_structureHistory) {
+    for (size_t i = 0; i < m_structureHistory.size(); i++) {
+        RefPtr<StructureShape> shape = m_structureHistory.at(i);
         seen.append(shape->m_constructorName);
         seen.append(' ');
     }
 
     if (m_structureHistory.size()) 
         seen.appendLiteral("\nStructures:[ ");
-    for (const auto& shape : m_structureHistory) {
-        seen.append(shape->stringRepresentation());
+    for (size_t i = 0; i < m_structureHistory.size(); i++) {
+        seen.append(m_structureHistory.at(i)->stringRepresentation());
         seen.append(' ');
     }
     if (m_structureHistory.size())
@@ -218,8 +224,8 @@ Ref<Inspector::Protocol::Array<Inspector::Protocol::Runtime::StructureDescriptio
 {
     auto description = Inspector::Protocol::Array<Inspector::Protocol::Runtime::StructureDescription>::create();
 
-    for (auto& shape : m_structureHistory)
-        description->addItem(shape->inspectorRepresentation());
+    for (size_t i = 0; i < m_structureHistory.size(); i++)
+        description->addItem(m_structureHistory.at(i)->inspectorRepresentation());
 
     return description;
 }
@@ -363,30 +369,30 @@ String StructureShape::propertyHash()
     return *m_propertyHash;
 }
 
-String StructureShape::leastCommonAncestor(const Vector<Ref<StructureShape>>& shapes)
+String StructureShape::leastCommonAncestor(const Vector<RefPtr<StructureShape>> shapes)
 {
-    if (shapes.isEmpty())
+    if (!shapes.size())
         return emptyString();
 
-    StructureShape* origin = shapes[0].ptr();
+    RefPtr<StructureShape> origin = shapes.at(0);
     for (size_t i = 1; i < shapes.size(); i++) {
         bool foundLUB = false;
         while (!foundLUB) {
-            StructureShape* check = shapes[i].ptr();
+            RefPtr<StructureShape> check = shapes.at(i);
             String curCtorName = origin->m_constructorName;
             while (check) {
                 if (check->m_constructorName == curCtorName) {
                     foundLUB = true;
                     break;
                 }
-                check = check->m_proto.get();
+                check = check->m_proto;
             }
             if (!foundLUB) {
+                origin = origin->m_proto;
                 // This is unlikely to happen, because we usually bottom out at "Object", but there are some sets of Objects
                 // that may cause this behavior. We fall back to "Object" because it's our version of Top.
-                if (!origin->m_proto)
+                if (!origin)
                     return ASCIILiteral("Object");
-                origin = origin->m_proto.get();
             }
         }
 
@@ -525,23 +531,25 @@ Ref<Inspector::Protocol::Runtime::StructureDescription> StructureShape::inspecto
     return base;
 }
 
-bool StructureShape::hasSamePrototypeChain(const StructureShape& otherRef)
+bool StructureShape::hasSamePrototypeChain(PassRefPtr<StructureShape> prpOther)
 {
-    const StructureShape* self = this;
-    const StructureShape* other = &otherRef;
+    RefPtr<StructureShape> self = this;
+    RefPtr<StructureShape> other = prpOther;
     while (self && other) {
         if (self->m_constructorName != other->m_constructorName)
             return false;
-        self = self->m_proto.get();
-        other = other->m_proto.get();
+        self = self->m_proto;
+        other = other->m_proto;
     }
 
     return !self && !other;
 }
 
-Ref<StructureShape> StructureShape::merge(Ref<StructureShape>&& a, Ref<StructureShape>&& b)
+PassRefPtr<StructureShape> StructureShape::merge(const PassRefPtr<StructureShape> prpA, const PassRefPtr<StructureShape> prpB)
 {
-    ASSERT(a->hasSamePrototypeChain(b.get()));
+    RefPtr<StructureShape> a = prpA;
+    RefPtr<StructureShape> b = prpB;
+    ASSERT(a->hasSamePrototypeChain(b));
 
     auto merged = StructureShape::create();
     for (auto field : a->m_fields) {
@@ -568,12 +576,12 @@ Ref<StructureShape> StructureShape::merge(Ref<StructureShape>&& a, Ref<Structure
 
     if (a->m_proto) {
         RELEASE_ASSERT(b->m_proto);
-        merged->setProto(StructureShape::merge(*a->m_proto, *b->m_proto));
+        merged->setProto(StructureShape::merge(a->m_proto, b->m_proto));
     }
 
     merged->markAsFinal();
 
-    return merged;
+    return WTFMove(merged);
 }
 
 void StructureShape::enterDictionaryMode()

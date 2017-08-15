@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,9 +32,6 @@
 #include "CaptionUserPreferencesMediaAF.h"
 
 #include "AudioTrackList.h"
-#if PLATFORM(WIN)
-#include "CoreTextSPIWin.h"
-#endif
 #include "FloatConversion.h"
 #include "HTMLMediaElement.h"
 #include "URL.h"
@@ -46,7 +43,6 @@
 #include "TextTrackList.h"
 #include "UserStyleSheetTypes.h"
 #include "VTTCue.h"
-#include <algorithm>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/PlatformUserPreferredLanguages.h>
 #include <wtf/RetainPtr.h>
@@ -80,6 +76,14 @@
 #define SOFT_LINK_AVF_POINTER(Lib, Name, Type) SOFT_LINK_VARIABLE_DLL_IMPORT_OPTIONAL(Lib, Name, Type)
 #define SOFT_LINK_AVF_FRAMEWORK_IMPORT(Lib, Fun, ReturnType, Arguments, Signature) SOFT_LINK_DLL_IMPORT(Lib, Fun, ReturnType, __cdecl, Arguments, Signature)
 #define SOFT_LINK_AVF_FRAMEWORK_IMPORT_OPTIONAL(Lib, Fun, ReturnType, Arguments) SOFT_LINK_DLL_IMPORT_OPTIONAL(Lib, Fun, ReturnType, __cdecl, Arguments)
+
+// CoreText only needs to be soft-linked on Windows.
+SOFT_LINK_AVF_FRAMEWORK(CoreText)
+SOFT_LINK_AVF_FRAMEWORK_IMPORT(CoreText, CTFontDescriptorCopyAttribute,  CFTypeRef, (CTFontDescriptorRef descriptor, CFStringRef attribute), (descriptor, attribute));
+SOFT_LINK_AVF_POINTER(CoreText, kCTFontNameAttribute, CFStringRef)
+#define kCTFontNameAttribute getkCTFontNameAttribute()
+
+#define CTFontDescriptorCopyAttribute softLink_CTFontDescriptorCopyAttribute
 
 SOFT_LINK_AVF_FRAMEWORK(CoreMedia)
 SOFT_LINK_AVF_FRAMEWORK_IMPORT_OPTIONAL(CoreMedia, MTEnableCaption2015Behavior, Boolean, ())
@@ -242,7 +246,7 @@ void CaptionUserPreferencesMediaAF::setInterestedInCaptionPreferenceChanges()
 
     // Generating and registering the caption stylesheet can be expensive and this method is called indirectly when the parser creates an audio or
     // video element, so do it after a brief pause.
-    m_updateStyleSheetTimer.startOneShot(0_s);
+    m_updateStyleSheetTimer.startOneShot(0);
 }
 
 void CaptionUserPreferencesMediaAF::captionPreferencesChanged()
@@ -323,16 +327,6 @@ String CaptionUserPreferencesMediaAF::captionsTextColorCSS() const
 
     return colorPropertyCSS(CSSPropertyColor, textColor, important);
 }
-
-static void appendCSS(StringBuilder& builder, CSSPropertyID id, const String& value, bool important)
-{
-    builder.append(getPropertyNameString(id));
-    builder.append(':');
-    builder.append(value);
-    if (important)
-        builder.appendLiteral(" !important");
-    builder.append(';');
-}
     
 String CaptionUserPreferencesMediaAF::windowRoundedCornerRadiusCSS() const
 {
@@ -342,70 +336,91 @@ String CaptionUserPreferencesMediaAF::windowRoundedCornerRadiusCSS() const
         return emptyString();
 
     StringBuilder builder;
-    appendCSS(builder, CSSPropertyBorderRadius, String::format("%.02fpx", radius), behavior == kMACaptionAppearanceBehaviorUseValue);
+    builder.append(getPropertyNameString(CSSPropertyBorderRadius));
+    builder.append(String::format(":%.02fpx", radius));
+    if (behavior == kMACaptionAppearanceBehaviorUseValue)
+        builder.appendLiteral(" !important");
+    builder.append(';');
+
+    return builder.toString();
+}
+    
+Color CaptionUserPreferencesMediaAF::captionsEdgeColorForTextColor(const Color& textColor) const
+{
+    int distanceFromWhite = differenceSquared(textColor, Color::white);
+    int distanceFromBlack = differenceSquared(textColor, Color::black);
+    
+    if (distanceFromWhite < distanceFromBlack)
+        return textColor.dark();
+    
+    return textColor.light();
+}
+
+String CaptionUserPreferencesMediaAF::cssPropertyWithTextEdgeColor(CSSPropertyID id, const String& value, const Color& textColor, bool important) const
+{
+    StringBuilder builder;
+    
+    builder.append(getPropertyNameString(id));
+    builder.append(':');
+    builder.append(value);
+    builder.append(' ');
+    builder.append(captionsEdgeColorForTextColor(textColor).serialized());
+    if (important)
+        builder.appendLiteral(" !important");
+    builder.append(';');
+    
     return builder.toString();
 }
 
 String CaptionUserPreferencesMediaAF::colorPropertyCSS(CSSPropertyID id, const Color& color, bool important) const
 {
     StringBuilder builder;
-    appendCSS(builder, id, color.serialized(), important);
+    
+    builder.append(getPropertyNameString(id));
+    builder.append(':');
+    builder.append(color.serialized());
+    if (important)
+        builder.appendLiteral(" !important");
+    builder.append(';');
+    
     return builder.toString();
-}
-
-bool CaptionUserPreferencesMediaAF::captionStrokeWidthForFont(float fontSize, const String& language, float& strokeWidth, bool& important) const
-{
-    if (!canLoad_MediaAccessibility_MACaptionAppearanceCopyFontDescriptorWithStrokeForStyle())
-        return false;
-    
-    MACaptionAppearanceBehavior behavior;
-    auto trackLanguage = language.createCFString();
-    CGFloat strokeWidthPt;
-    
-    auto fontDescriptor = adoptCF(MACaptionAppearanceCopyFontDescriptorWithStrokeForStyle(kMACaptionAppearanceDomainUser, &behavior, kMACaptionAppearanceFontStyleDefault, trackLanguage.get(), fontSize, &strokeWidthPt));
-
-    if (!fontDescriptor)
-        return false;
-
-    strokeWidth = strokeWidthPt;
-    important = behavior == kMACaptionAppearanceBehaviorUseValue;
-    
-    // Currently, MACaptionAppearanceCopyFontDescriptorWithStrokeForStyle is returning very large stroke widths, see <rdar://problem/31126629>.
-    // To avoid stroke widths that are too large, we set a maximum value of 10% of the font size.
-    strokeWidth = std::min(strokeWidth, fontSize / 10.0f);
-    
-    return true;
 }
 
 String CaptionUserPreferencesMediaAF::captionsTextEdgeCSS() const
 {
-    static NeverDestroyed<const String> edgeStyleRaised(MAKE_STATIC_STRING_IMPL(" -.1em -.1em .16em "));
-    static NeverDestroyed<const String> edgeStyleDepressed(MAKE_STATIC_STRING_IMPL(" .1em .1em .16em "));
-    static NeverDestroyed<const String> edgeStyleDropShadow(MAKE_STATIC_STRING_IMPL(" 0 .1em .16em "));
+    static NeverDestroyed<const String> edgeStyleRaised(ASCIILiteral(" -.05em -.05em 0 "));
+    static NeverDestroyed<const String> edgeStyleDepressed(ASCIILiteral(" .05em .05em 0 "));
+    static NeverDestroyed<const String> edgeStyleDropShadow(ASCIILiteral(" .075em .075em 0 "));
+    static NeverDestroyed<const String> edgeStyleUniform(ASCIILiteral(" .03em "));
+
+    bool unused;
+    Color color = captionsTextColor(unused);
+    if (!color.isValid())
+        color = Color { Color::black };
+    color = captionsEdgeColorForTextColor(color);
 
     MACaptionAppearanceBehavior behavior;
     MACaptionAppearanceTextEdgeStyle textEdgeStyle = MACaptionAppearanceGetTextEdgeStyle(kMACaptionAppearanceDomainUser, &behavior);
-    
-    if (textEdgeStyle == kMACaptionAppearanceTextEdgeStyleUndefined || textEdgeStyle == kMACaptionAppearanceTextEdgeStyleNone)
+    switch (textEdgeStyle) {
+    case kMACaptionAppearanceTextEdgeStyleUndefined:
+    case kMACaptionAppearanceTextEdgeStyleNone:
         return emptyString();
-
-    StringBuilder builder;
-    bool important = behavior == kMACaptionAppearanceBehaviorUseValue;
-    if (textEdgeStyle == kMACaptionAppearanceTextEdgeStyleRaised)
-        appendCSS(builder, CSSPropertyTextShadow, makeString(edgeStyleRaised.get(), " black"), important);
-    else if (textEdgeStyle == kMACaptionAppearanceTextEdgeStyleDepressed)
-        appendCSS(builder, CSSPropertyTextShadow, makeString(edgeStyleDepressed.get(), " black"), important);
-    else if (textEdgeStyle == kMACaptionAppearanceTextEdgeStyleDropShadow)
-        appendCSS(builder, CSSPropertyTextShadow, makeString(edgeStyleDropShadow.get(), " black"), important);
-
-    if (textEdgeStyle == kMACaptionAppearanceTextEdgeStyleDropShadow || textEdgeStyle == kMACaptionAppearanceTextEdgeStyleUniform) {
-        appendCSS(builder, CSSPropertyWebkitTextStrokeColor, "black", important);
-        appendCSS(builder, CSSPropertyPaintOrder, getValueName(CSSValueStroke), important);
-        appendCSS(builder, CSSPropertyStrokeLinejoin, getValueName(CSSValueRound), important);
-        appendCSS(builder, CSSPropertyStrokeLinecap, getValueName(CSSValueRound), important);
+            
+    case kMACaptionAppearanceTextEdgeStyleRaised:
+        return cssPropertyWithTextEdgeColor(CSSPropertyTextShadow, edgeStyleRaised, color, behavior == kMACaptionAppearanceBehaviorUseValue);
+    case kMACaptionAppearanceTextEdgeStyleDepressed:
+        return cssPropertyWithTextEdgeColor(CSSPropertyTextShadow, edgeStyleDepressed, color, behavior == kMACaptionAppearanceBehaviorUseValue);
+    case kMACaptionAppearanceTextEdgeStyleDropShadow:
+        return cssPropertyWithTextEdgeColor(CSSPropertyTextShadow, edgeStyleDropShadow, color, behavior == kMACaptionAppearanceBehaviorUseValue);
+    case kMACaptionAppearanceTextEdgeStyleUniform:
+        return cssPropertyWithTextEdgeColor(CSSPropertyWebkitTextStroke, edgeStyleUniform, color, behavior == kMACaptionAppearanceBehaviorUseValue);
+            
+    default:
+        ASSERT_NOT_REACHED();
+        break;
     }
     
-    return builder.toString();
+    return emptyString();
 }
 
 String CaptionUserPreferencesMediaAF::captionsDefaultFontCSS() const
@@ -419,30 +434,13 @@ String CaptionUserPreferencesMediaAF::captionsDefaultFontCSS() const
     RetainPtr<CFTypeRef> name = adoptCF(CTFontDescriptorCopyAttribute(font.get(), kCTFontNameAttribute));
     if (!name)
         return emptyString();
-
+    
     StringBuilder builder;
     
     builder.append(getPropertyNameString(CSSPropertyFontFamily));
     builder.appendLiteral(": \"");
     builder.append(static_cast<CFStringRef>(name.get()));
     builder.append('"');
-
-    auto cascadeList = adoptCF(static_cast<CFArrayRef>(CTFontDescriptorCopyAttribute(font.get(), kCTFontCascadeListAttribute)));
-
-    if (cascadeList) {
-        for (CFIndex i = 0; i < CFArrayGetCount(cascadeList.get()); i++) {
-            auto fontCascade = static_cast<CTFontDescriptorRef>(CFArrayGetValueAtIndex(cascadeList.get(), i));
-            if (!fontCascade)
-                continue;
-            auto fontCascadeName = adoptCF(CTFontDescriptorCopyAttribute(fontCascade, kCTFontNameAttribute));
-            if (!fontCascadeName)
-                continue;
-            builder.append(", \"");
-            builder.append(static_cast<CFStringRef>(fontCascadeName.get()));
-            builder.append('"');
-        }
-    }
-    
     if (behavior == kMACaptionAppearanceBehaviorUseValue)
         builder.appendLiteral(" !important");
     builder.append(';');
@@ -594,7 +592,7 @@ String CaptionUserPreferencesMediaAF::captionsStyleSheetOverride() const
     }
 #endif // HAVE(MEDIA_ACCESSIBILITY_FRAMEWORK)
 
-    LOG(Media, "CaptionUserPreferencesMediaAF::captionsStyleSheetOverrideSetting style to:\n%s", captionsOverrideStyleSheet.toString().utf8().data());
+    LOG(Media, "CaptionUserPreferencesMediaAF::captionsStyleSheetOverrideSetting sytle to:\n%s", captionsOverrideStyleSheet.toString().utf8().data());
 
     return captionsOverrideStyleSheet.toString();
 }
@@ -616,7 +614,7 @@ static String languageIdentifier(const String& languageCode)
 static void buildDisplayStringForTrackBase(StringBuilder& displayName, const TrackBase& track)
 {
     String label = track.label();
-    String trackLanguageIdentifier = track.validBCP47Language();
+    String trackLanguageIdentifier = track.language();
 
     RetainPtr<CFLocaleRef> currentLocale = adoptCF(CFLocaleCreate(kCFAllocatorDefault, defaultLanguage().createCFString().get()));
     RetainPtr<CFStringRef> localeIdentifier = adoptCF(CFLocaleCreateCanonicalLocaleIdentifierFromString(kCFAllocatorDefault, trackLanguageIdentifier.createCFString().get()));
@@ -739,7 +737,7 @@ int CaptionUserPreferencesMediaAF::textTrackSelectionScore(TextTrack* track, HTM
         if (!mediaElement || !mediaElement->player())
             return 0;
 
-        String textTrackLanguage = track->validBCP47Language();
+        String textTrackLanguage = track->language();
         if (textTrackLanguage.isEmpty())
             return 0;
 
@@ -806,7 +804,7 @@ int CaptionUserPreferencesMediaAF::textTrackSelectionScore(TextTrack* track, HTM
 static bool textTrackCompare(const RefPtr<TextTrack>& a, const RefPtr<TextTrack>& b)
 {
     String preferredLanguageDisplayName = displayNameForLanguageLocale(languageIdentifier(defaultLanguage()));
-    String aLanguageDisplayName = displayNameForLanguageLocale(languageIdentifier(a->validBCP47Language()));
+    String aLanguageDisplayName = displayNameForLanguageLocale(languageIdentifier(a->language()));
     String bLanguageDisplayName = displayNameForLanguageLocale(languageIdentifier(b->language()));
 
     // Tracks in the user's preferred language are always at the top of the menu.
@@ -846,7 +844,7 @@ Vector<RefPtr<AudioTrack>> CaptionUserPreferencesMediaAF::sortedTrackListForMenu
     
     for (unsigned i = 0, length = trackList->length(); i < length; ++i) {
         AudioTrack* track = trackList->item(i);
-        String language = displayNameForLanguageLocale(track->validBCP47Language());
+        String language = displayNameForLanguageLocale(track->language());
         tracksForMenu.append(track);
     }
     
@@ -869,7 +867,7 @@ Vector<RefPtr<TextTrack>> CaptionUserPreferencesMediaAF::sortedTrackListForMenu(
 
     for (unsigned i = 0, length = trackList->length(); i < length; ++i) {
         TextTrack* track = trackList->item(i);
-        String language = displayNameForLanguageLocale(track->validBCP47Language());
+        String language = displayNameForLanguageLocale(track->language());
 
         if (displayMode == Manual) {
             LOG(Media, "CaptionUserPreferencesMediaAF::sortedTrackListForMenu - adding '%s' track with language '%s' because selection mode is 'manual'", track->kindKeyword().string().utf8().data(), language.utf8().data());

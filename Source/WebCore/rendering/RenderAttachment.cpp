@@ -32,6 +32,8 @@
 #include "FloatRoundedRect.h"
 #include "FrameSelection.h"
 #include "HTMLAttachmentElement.h"
+#include "Page.h"
+#include "PaintInfo.h"
 #include "RenderTheme.h"
 #include "URL.h"
 
@@ -51,7 +53,7 @@ HTMLAttachmentElement& RenderAttachment::attachmentElement() const
 
 void RenderAttachment::layout()
 {
-    LayoutSize newIntrinsicSize = theme().attachmentIntrinsicSize(*this);
+    LayoutSize newIntrinsicSize = document().page()->theme().attachmentIntrinsicSize(*this);
     m_minimumIntrinsicWidth = std::max(m_minimumIntrinsicWidth, newIntrinsicSize.width());
     newIntrinsicSize.setWidth(m_minimumIntrinsicWidth);
     setIntrinsicSize(newIntrinsicSize);
@@ -67,7 +69,7 @@ void RenderAttachment::invalidate()
 
 int RenderAttachment::baselinePosition(FontBaseline, bool, LineDirectionMode, LinePositionMode) const
 {
-    return theme().attachmentBaseline(*this);
+    return document().page()->theme().attachmentBaseline(*this);
 }
 
 } // namespace WebCore

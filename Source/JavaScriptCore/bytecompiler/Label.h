@@ -39,7 +39,6 @@ namespace JSC {
     class BytecodeGenerator;
 
     class Label {
-    WTF_MAKE_NONCOPYABLE(Label);
     public:
         explicit Label(BytecodeGenerator& generator)
             : m_refCount(0)

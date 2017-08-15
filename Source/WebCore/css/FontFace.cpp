@@ -26,10 +26,8 @@
 #include "config.h"
 #include "FontFace.h"
 
-#include "CSSComputedStyleDeclaration.h"
 #include "CSSFontFaceSource.h"
 #include "CSSFontFeatureValue.h"
-#include "CSSFontStyleValue.h"
 #include "CSSParser.h"
 #include "CSSUnicodeRangeValue.h"
 #include "CSSValueList.h"
@@ -38,10 +36,6 @@
 #include "FontVariantBuilder.h"
 #include "JSFontFace.h"
 #include "StyleProperties.h"
-#include <runtime/ArrayBuffer.h>
-#include <runtime/ArrayBufferView.h>
-#include <runtime/JSCInlines.h>
-#include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
@@ -52,7 +46,7 @@ static bool populateFontFaceWithArrayBuffer(CSSFontFace& fontFace, Ref<JSC::Arra
     return false;
 }
 
-ExceptionOr<Ref<FontFace>> FontFace::create(Document& document, const String& family, Source&& source, const Descriptors& descriptors)
+ExceptionOr<Ref<FontFace>> FontFace::create(JSC::ExecState& state, Document& document, const String& family, JSC::JSValue source, const Descriptors& descriptors)
 {
     auto result = adoptRef(*new FontFace(document.fontSelector()));
 
@@ -62,28 +56,17 @@ ExceptionOr<Ref<FontFace>> FontFace::create(Document& document, const String& fa
     if (setFamilyResult.hasException())
         return setFamilyResult.releaseException();
 
-    auto sourceConversionResult = WTF::switchOn(source,
-        [&] (String& string) -> ExceptionOr<void> {
-            auto value = FontFace::parseString(string, CSSPropertySrc);
-            if (!is<CSSValueList>(value.get()))
-                return Exception { SYNTAX_ERR };
-            CSSFontFace::appendSources(result->backing(), downcast<CSSValueList>(*value), &document, false);
-            return { };
-        },
-        [&] (RefPtr<ArrayBufferView>& arrayBufferView) -> ExceptionOr<void> {
-            dataRequiresAsynchronousLoading = populateFontFaceWithArrayBuffer(result->backing(), arrayBufferView.releaseNonNull());
-            return { };
-        },
-        [&] (RefPtr<ArrayBuffer>& arrayBuffer) -> ExceptionOr<void> {
-            unsigned byteLength = arrayBuffer->byteLength();
-            auto arrayBufferView = JSC::Uint8Array::create(WTFMove(arrayBuffer), 0, byteLength);
-            dataRequiresAsynchronousLoading = populateFontFaceWithArrayBuffer(result->backing(), arrayBufferView.releaseNonNull());
-            return { };
-        }
-    );
-
-    if (sourceConversionResult.hasException())
-        return sourceConversionResult.releaseException();
+    if (source.isString()) {
+        auto value = FontFace::parseString(asString(source)->value(&state), CSSPropertySrc);
+        if (!is<CSSValueList>(value.get()))
+            return Exception { SYNTAX_ERR };
+        CSSFontFace::appendSources(result->backing(), downcast<CSSValueList>(*value), &document, false);
+    } else if (auto arrayBufferView = toUnsharedArrayBufferView(source))
+        dataRequiresAsynchronousLoading = populateFontFaceWithArrayBuffer(result->backing(), arrayBufferView.releaseNonNull());
+    else if (auto arrayBuffer = toUnsharedArrayBuffer(source)) {
+        auto arrayBufferView = JSC::Uint8Array::create(arrayBuffer, 0, arrayBuffer->byteLength());
+        dataRequiresAsynchronousLoading = populateFontFaceWithArrayBuffer(result->backing(), arrayBufferView.releaseNonNull());
+    }
 
     // These ternaries match the default strings inside the FontFaceDescriptors dictionary inside FontFace.idl.
     auto setStyleResult = result->setStyle(descriptors.style.isEmpty() ? ASCIILiteral("normal") : descriptors.style);
@@ -107,8 +90,7 @@ ExceptionOr<Ref<FontFace>> FontFace::create(Document& document, const String& fa
 
     if (!dataRequiresAsynchronousLoading) {
         result->backing().load();
-        auto status = result->backing().status();
-        ASSERT_UNUSED(status, status == CSSFontFace::Status::Success || status == CSSFontFace::Status::Failure);
+        ASSERT(result->backing().status() == CSSFontFace::Status::Success);
     }
 
     return WTFMove(result);
@@ -167,11 +149,12 @@ ExceptionOr<void> FontFace::setStyle(const String& style)
     if (style.isEmpty())
         return Exception { SYNTAX_ERR };
 
-    if (auto value = parseString(style, CSSPropertyFontStyle)) {
-        m_backing->setStyle(*value);
-        return { };
-    }
-    return Exception { SYNTAX_ERR };
+    bool success = false;
+    if (auto value = parseString(style, CSSPropertyFontStyle))
+        success = m_backing->setStyle(*value);
+    if (!success)
+        return Exception { SYNTAX_ERR };
+    return { };
 }
 
 ExceptionOr<void> FontFace::setWeight(const String& weight)
@@ -179,23 +162,18 @@ ExceptionOr<void> FontFace::setWeight(const String& weight)
     if (weight.isEmpty())
         return Exception { SYNTAX_ERR };
 
-    if (auto value = parseString(weight, CSSPropertyFontWeight)) {
-        m_backing->setWeight(*value);
-        return { };
-    }
-    return Exception { SYNTAX_ERR };
+    bool success = false;
+    if (auto value = parseString(weight, CSSPropertyFontWeight))
+        success = m_backing->setWeight(*value);
+    if (!success)
+        return Exception { SYNTAX_ERR };
+    return { };
 }
 
-ExceptionOr<void> FontFace::setStretch(const String& stretch)
+ExceptionOr<void> FontFace::setStretch(const String&)
 {
-    if (stretch.isEmpty())
-        return Exception { SYNTAX_ERR };
-
-    if (auto value = parseString(stretch, CSSPropertyFontStretch)) {
-        m_backing->setStretch(*value);
-        return { };
-    }
-    return Exception { SYNTAX_ERR };
+    // We don't support font-stretch. Swallow the call.
+    return { };
 }
 
 ExceptionOr<void> FontFace::setUnicodeRange(const String& unicodeRange)
@@ -280,85 +258,58 @@ ExceptionOr<void> FontFace::setFeatureSettings(const String& featureSettings)
 
 String FontFace::family() const
 {
-    m_backing->updateStyleIfNeeded();
+    const_cast<CSSFontFace&>(m_backing.get()).updateStyleIfNeeded();
     return m_backing->families()->cssText();
 }
 
 String FontFace::style() const
 {
-    m_backing->updateStyleIfNeeded();
-    auto style = m_backing->italic();
-
-    auto minimum = ComputedStyleExtractor::fontStyleFromStyleValue(style.minimum);
-    auto maximum = ComputedStyleExtractor::fontStyleFromStyleValue(style.maximum);
-
-    if (minimum.get().equals(maximum.get()))
-        return minimum->cssText();
-
-    auto minimumNonKeyword = ComputedStyleExtractor::fontNonKeywordStyleFromStyleValue(style.minimum);
-    auto maximumNonKeyword = ComputedStyleExtractor::fontNonKeywordStyleFromStyleValue(style.maximum);
-
-    ASSERT(minimumNonKeyword->fontStyleValue->valueID() == CSSValueOblique);
-    ASSERT(maximumNonKeyword->fontStyleValue->valueID() == CSSValueOblique);
-
-    StringBuilder builder;
-    builder.append(minimumNonKeyword->fontStyleValue->cssText());
-    builder.append(' ');
-    if (minimum->obliqueValue.get() == maximum->obliqueValue.get())
-        builder.append(minimumNonKeyword->obliqueValue->cssText());
-    else {
-        builder.append(minimumNonKeyword->obliqueValue->cssText());
-        builder.append(' ');
-        builder.append(maximumNonKeyword->obliqueValue->cssText());
+    const_cast<CSSFontFace&>(m_backing.get()).updateStyleIfNeeded();
+    switch (m_backing->traitsMask() & FontStyleMask) {
+    case FontStyleNormalMask:
+        return String("normal", String::ConstructFromLiteral);
+    case FontStyleItalicMask:
+        return String("italic", String::ConstructFromLiteral);
     }
-    return builder.toString();
+    ASSERT_NOT_REACHED();
+    return String("normal", String::ConstructFromLiteral);
 }
 
 String FontFace::weight() const
 {
-    m_backing->updateStyleIfNeeded();
-    auto weight = m_backing->weight();
-
-    auto minimum = ComputedStyleExtractor::fontWeightFromStyleValue(weight.minimum);
-    auto maximum = ComputedStyleExtractor::fontWeightFromStyleValue(weight.maximum);
-
-    if (minimum.get().equals(maximum.get()))
-        return minimum->cssText();
-
-    auto minimumNonKeyword = ComputedStyleExtractor::fontNonKeywordWeightFromStyleValue(weight.minimum);
-    auto maximumNonKeyword = ComputedStyleExtractor::fontNonKeywordWeightFromStyleValue(weight.maximum);
-
-    StringBuilder builder;
-    builder.append(minimumNonKeyword->cssText());
-    builder.append(' ');
-    builder.append(maximumNonKeyword->cssText());
-    return builder.toString();
+    const_cast<CSSFontFace&>(m_backing.get()).updateStyleIfNeeded();
+    switch (m_backing->traitsMask() & FontWeightMask) {
+    case FontWeight100Mask:
+        return String("100", String::ConstructFromLiteral);
+    case FontWeight200Mask:
+        return String("200", String::ConstructFromLiteral);
+    case FontWeight300Mask:
+        return String("300", String::ConstructFromLiteral);
+    case FontWeight400Mask:
+        return String("normal", String::ConstructFromLiteral);
+    case FontWeight500Mask:
+        return String("500", String::ConstructFromLiteral);
+    case FontWeight600Mask:
+        return String("600", String::ConstructFromLiteral);
+    case FontWeight700Mask:
+        return String("bold", String::ConstructFromLiteral);
+    case FontWeight800Mask:
+        return String("800", String::ConstructFromLiteral);
+    case FontWeight900Mask:
+        return String("900", String::ConstructFromLiteral);
+    }
+    ASSERT_NOT_REACHED();
+    return String("normal", String::ConstructFromLiteral);
 }
 
 String FontFace::stretch() const
 {
-    m_backing->updateStyleIfNeeded();
-    auto stretch = m_backing->stretch();
-
-    auto minimum = ComputedStyleExtractor::fontStretchFromStyleValue(stretch.minimum);
-    auto maximum = ComputedStyleExtractor::fontStretchFromStyleValue(stretch.maximum);
-
-    if (minimum.get().equals(maximum.get()))
-        return minimum->cssText();
-
-    auto minimumNonKeyword = ComputedStyleExtractor::fontNonKeywordStretchFromStyleValue(stretch.minimum);
-    auto maximumNonKeyword = ComputedStyleExtractor::fontNonKeywordStretchFromStyleValue(stretch.maximum);
-
-    StringBuilder builder;
-    builder.append(minimumNonKeyword->cssText());
-    builder.append(' ');
-    builder.append(maximumNonKeyword->cssText());
-    return builder.toString();
+    return ASCIILiteral("normal");
 }
 
 String FontFace::unicodeRange() const
 {
-    m_backing->updateStyleIfNeeded();
+    const_cast<CSSFontFace&>(m_backing.get()).updateStyleIfNeeded();
     if (!m_backing->ranges().size())
         return ASCIILiteral("U+0-10FFFF");
     RefPtr<CSSValueList> values = CSSValueList::createCommaSeparated();
@@ -369,13 +320,13 @@ String FontFace::unicodeRange() const
 
 String FontFace::variant() const
 {
-    m_backing->updateStyleIfNeeded();
+    const_cast<CSSFontFace&>(m_backing.get()).updateStyleIfNeeded();
     return computeFontVariant(m_backing->variantSettings())->cssText();
 }
 
 String FontFace::featureSettings() const
 {
-    m_backing->updateStyleIfNeeded();
+    const_cast<CSSFontFace&>(m_backing.get()).updateStyleIfNeeded();
     if (!m_backing->featureSettings().size())
         return ASCIILiteral("normal");
     RefPtr<CSSValueList> list = CSSValueList::createCommaSeparated();

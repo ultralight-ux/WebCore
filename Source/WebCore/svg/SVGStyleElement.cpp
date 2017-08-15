@@ -115,9 +115,9 @@ void SVGStyleElement::finishParsingChildren()
 
 Node::InsertionNotificationRequest SVGStyleElement::insertedInto(ContainerNode& rootParent)
 {
-    bool wasInDocument = isConnected();
+    bool wasInDocument = inDocument();
     auto result = SVGElement::insertedInto(rootParent);
-    if (rootParent.isConnected() && !wasInDocument)
+    if (rootParent.inDocument() && !wasInDocument)
         m_styleSheetOwner.insertedIntoDocument(*this);
     return result;
 }
@@ -125,7 +125,7 @@ Node::InsertionNotificationRequest SVGStyleElement::insertedInto(ContainerNode& 
 void SVGStyleElement::removedFrom(ContainerNode& rootParent)
 {
     SVGElement::removedFrom(rootParent);
-    if (rootParent.isConnected() && !isConnected())
+    if (rootParent.inDocument() && !inDocument())
         m_styleSheetOwner.removedFromDocument(*this);
 }
 

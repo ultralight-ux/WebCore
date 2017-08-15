@@ -58,7 +58,7 @@ SVGMPathElement::~SVGMPathElement()
 void SVGMPathElement::buildPendingResource()
 {
     clearResourceReferences();
-    if (!isConnected())
+    if (!inDocument())
         return;
 
     String id;
@@ -89,7 +89,7 @@ void SVGMPathElement::clearResourceReferences()
 Node::InsertionNotificationRequest SVGMPathElement::insertedInto(ContainerNode& rootParent)
 {
     SVGElement::insertedInto(rootParent);
-    if (rootParent.isConnected())
+    if (rootParent.inDocument())
         return InsertionShouldCallFinishedInsertingSubtree;
     return InsertionDone;
 }
@@ -103,7 +103,7 @@ void SVGMPathElement::removedFrom(ContainerNode& rootParent)
 {
     SVGElement::removedFrom(rootParent);
     notifyParentOfPathChange(&rootParent);
-    if (rootParent.isConnected())
+    if (rootParent.inDocument())
         clearResourceReferences();
 }
 

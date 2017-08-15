@@ -23,9 +23,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
+#ifndef ScrollableArea_h
+#define ScrollableArea_h
 
-#include "ScrollSnapOffsetsInfo.h"
 #include "Scrollbar.h"
 #include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
@@ -67,15 +67,11 @@ public:
     WeakPtr<ScrollableArea> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
 
 #if ENABLE(CSS_SCROLL_SNAP)
-    WEBCORE_EXPORT const Vector<LayoutUnit>* horizontalSnapOffsets() const;
-    WEBCORE_EXPORT const Vector<LayoutUnit>* verticalSnapOffsets() const;
-    WEBCORE_EXPORT const Vector<ScrollOffsetRange<LayoutUnit>>* horizontalSnapOffsetRanges() const;
-    WEBCORE_EXPORT const Vector<ScrollOffsetRange<LayoutUnit>>* verticalSnapOffsetRanges() const;
+    const Vector<LayoutUnit>* horizontalSnapOffsets() const { return m_horizontalSnapOffsets.get(); };
+    const Vector<LayoutUnit>* verticalSnapOffsets() const { return m_verticalSnapOffsets.get(); };
     virtual void updateSnapOffsets() { };
-    void setHorizontalSnapOffsets(const Vector<LayoutUnit>&);
-    void setVerticalSnapOffsets(const Vector<LayoutUnit>&);
-    void setHorizontalSnapOffsetRanges(const Vector<ScrollOffsetRange<LayoutUnit>>&);
-    void setVerticalSnapOffsetRanges(const Vector<ScrollOffsetRange<LayoutUnit>>&);
+    void setHorizontalSnapOffsets(std::unique_ptr<Vector<LayoutUnit>>);
+    void setVerticalSnapOffsets(std::unique_ptr<Vector<LayoutUnit>>);
     void clearHorizontalSnapOffsets();
     void clearVerticalSnapOffsets();
     unsigned currentHorizontalSnapPointIndex() const { return m_currentHorizontalSnapPointIndex; }
@@ -350,14 +346,14 @@ private:
     // This function should be overriden by subclasses to perform the actual
     // scroll of the content.
     virtual void setScrollOffset(const ScrollOffset&) = 0;
-    ScrollSnapOffsetsInfo<LayoutUnit>& ensureSnapOffsetsInfo();
 
     mutable std::unique_ptr<ScrollAnimator> m_scrollAnimator;
 
     WeakPtrFactory<ScrollableArea> m_weakPtrFactory { this };
 
 #if ENABLE(CSS_SCROLL_SNAP)
-    std::unique_ptr<ScrollSnapOffsetsInfo<LayoutUnit>> m_snapOffsetsInfo;
+    std::unique_ptr<Vector<LayoutUnit>> m_horizontalSnapOffsets;
+    std::unique_ptr<Vector<LayoutUnit>> m_verticalSnapOffsets;
     unsigned m_currentHorizontalSnapPointIndex { 0 };
     unsigned m_currentVerticalSnapPointIndex { 0 };
 #endif
@@ -390,3 +386,4 @@ private:
 
 } // namespace WebCore
 
+#endif // ScrollableArea_h

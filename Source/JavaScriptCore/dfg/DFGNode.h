@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,7 +27,6 @@
 
 #if ENABLE(DFG_JIT)
 
-#include "B3SparseCollection.h"
 #include "BasicBlockLocation.h"
 #include "CodeBlock.h"
 #include "DFGAbstractValue.h"
@@ -58,7 +57,6 @@
 #include "ValueProfile.h"
 #include <type_traits>
 #include <wtf/ListDump.h>
-#include <wtf/LoggingHashSet.h>
 
 namespace JSC {
 
@@ -247,10 +245,7 @@ struct CallDOMGetterData {
 //
 // Node represents a single operation in the data flow graph.
 struct Node {
-    WTF_MAKE_FAST_ALLOCATED;
 public:
-    static const char HashSetTemplateInstantiationString[];
-    
     enum VarArgTag { VarArg };
     
     Node() { }
@@ -743,17 +738,17 @@ public:
     }
      
     template<typename T>
-    T dynamicCastConstant(VM& vm)
+    T dynamicCastConstant()
     {
         if (!isCellConstant())
             return nullptr;
-        return jsDynamicCast<T>(vm, asCell());
+        return jsDynamicCast<T>(asCell());
     }
     
     template<typename T>
-    T castConstant(VM& vm)
+    T castConstant()
     {
-        T result = dynamicCastConstant<T>(vm);
+        T result = dynamicCastConstant<T>();
         RELEASE_ASSERT(result);
         return result;
     }
@@ -950,7 +945,6 @@ public:
         case DeleteById:
         case GetDynamicVar:
         case PutDynamicVar:
-        case ResolveScopeForHoistingFuncDeclInEval:
         case ResolveScope:
             return true;
         default:
@@ -1490,16 +1484,6 @@ public:
         case LoadFromJSMapBucket:
         case CallDOMGetter:
         case CallDOM:
-        case ParseInt:
-        case AtomicsAdd:
-        case AtomicsAnd:
-        case AtomicsCompareExchange:
-        case AtomicsExchange:
-        case AtomicsLoad:
-        case AtomicsOr:
-        case AtomicsStore:
-        case AtomicsSub:
-        case AtomicsXor:
             return true;
         default:
             return false;
@@ -1804,7 +1788,6 @@ public:
         switch (op()) {
         case GetIndexedPropertyStorage:
         case GetArrayLength:
-        case In:
         case PutByValDirect:
         case PutByVal:
         case PutByValAlias:
@@ -1817,15 +1800,6 @@ public:
         case ArrayPush:
         case ArrayPop:
         case HasIndexedProperty:
-        case AtomicsAdd:
-        case AtomicsAnd:
-        case AtomicsCompareExchange:
-        case AtomicsExchange:
-        case AtomicsLoad:
-        case AtomicsOr:
-        case AtomicsStore:
-        case AtomicsSub:
-        case AtomicsXor:
             return true;
         default:
             return false;
@@ -1894,17 +1868,6 @@ public:
         ASSERT(hasArithRoundingMode());
         m_opInfo = static_cast<uint32_t>(mode);
     }
-
-    bool hasArithUnaryType()
-    {
-        return op() == ArithUnary;
-    }
-
-    Arith::UnaryType arithUnaryType()
-    {
-        ASSERT(hasArithUnaryType());
-        return static_cast<Arith::UnaryType>(m_opInfo.as<uint32_t>());
-    }
     
     bool hasVirtualRegister()
     {
@@ -1940,11 +1903,9 @@ public:
         return m_refCount;
     }
     
-    // Return true if the execution of this Node does not affect our ability to OSR to the FTL.
-    // FIXME: Isn't this just like checking if the node has effects?
     bool isSemanticallySkippable()
     {
-        return op() == CountExecution || op() == InvalidationPoint;
+        return op() == CountExecution;
     }
 
     unsigned refCount()
@@ -2460,23 +2421,6 @@ public:
         return m_opInfo.as<const DOMJIT::Signature*>();
     }
 
-    bool hasInternalMethodType() const
-    {
-        return op() == HasIndexedProperty;
-    }
-
-    PropertySlot::InternalMethodType internalMethodType() const
-    {
-        ASSERT(hasInternalMethodType());
-        return static_cast<PropertySlot::InternalMethodType>(m_opInfo2.as<uint32_t>());
-    }
-
-    void setInternalMethodType(PropertySlot::InternalMethodType type)
-    {
-        ASSERT(hasInternalMethodType());
-        m_opInfo2 = static_cast<uint32_t>(type);
-    }
-
     Node* replacement() const
     {
         return m_misc.replacement;
@@ -2535,7 +2479,7 @@ public:
     AdjacencyList children;
 
 private:
-    friend class B3::SparseCollection<Node>;
+    friend class Graph;
 
     unsigned m_index { std::numeric_limits<unsigned>::max() };
     unsigned m_op : 10; // real type is NodeType
@@ -2665,10 +2609,6 @@ public:
     BasicBlock* owner;
 };
 
-// Uncomment this to log NodeSet operations.
-// typedef LoggingHashSet<Node::HashSetTemplateInstantiationString, Node*> NodeSet;
-typedef HashSet<Node*> NodeSet;
-
 struct NodeComparator {
     template<typename NodePtrType>
     bool operator()(NodePtrType a, NodePtrType b) const
@@ -2723,14 +2663,6 @@ void printInternal(PrintStream&, JSC::DFG::SwitchKind);
 void printInternal(PrintStream&, JSC::DFG::Node*);
 
 inline JSC::DFG::Node* inContext(JSC::DFG::Node* node, JSC::DumpContext*) { return node; }
-
-template<>
-struct LoggingHashKeyTraits<JSC::DFG::Node*> {
-    static void print(PrintStream& out, JSC::DFG::Node* key)
-    {
-        out.print("bitwise_cast<::JSC::DFG::Node*>(", RawPointer(key), "lu)");
-    }
-};
 
 } // namespace WTF
 

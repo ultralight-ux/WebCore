@@ -26,7 +26,6 @@
 #include "AttributeChangeInvalidation.h"
 #include "Event.h"
 #include "ExceptionCode.h"
-#include "NoEventDispatchAssertion.h"
 #include "ScopedEventQueue.h"
 #include "StyleProperties.h"
 #include "StyledElement.h"
@@ -40,14 +39,14 @@ namespace WebCore {
 using namespace HTMLNames;
 
 Attr::Attr(Element& element, const QualifiedName& name)
-    : Node(element.document(), CreateOther)
+    : ContainerNode(element.document())
     , m_element(&element)
     , m_name(name)
 {
 }
 
 Attr::Attr(Document& document, const QualifiedName& name, const AtomicString& standaloneValue)
-    : Node(document, CreateOther)
+    : ContainerNode(document)
     , m_name(name)
     , m_standaloneValue(standaloneValue)
 {
@@ -55,16 +54,34 @@ Attr::Attr(Document& document, const QualifiedName& name, const AtomicString& st
 
 Ref<Attr> Attr::create(Element& element, const QualifiedName& name)
 {
-    return adoptRef(*new Attr(element, name));
+    Ref<Attr> attr = adoptRef(*new Attr(element, name));
+    attr->createTextChild();
+    return attr;
 }
 
 Ref<Attr> Attr::create(Document& document, const QualifiedName& name, const AtomicString& value)
 {
-    return adoptRef(*new Attr(document, name, value));
+    Ref<Attr> attr = adoptRef(*new Attr(document, name, value));
+    attr->createTextChild();
+    return attr;
 }
 
 Attr::~Attr()
 {
+}
+
+void Attr::createTextChild()
+{
+    ASSERT(refCount());
+    if (!value().isEmpty()) {
+        auto textNode = document().createTextNode(value().string());
+
+        // This does everything appendChild() would do in this situation (assuming m_ignoreChildrenChanged was set),
+        // but much more efficiently.
+        textNode->setParentNode(this);
+        setFirstChild(textNode.ptr());
+        setLastChild(textNode.ptr());
+    }
 }
 
 ExceptionOr<void> Attr::setPrefix(const AtomicString& prefix)
@@ -86,21 +103,77 @@ ExceptionOr<void> Attr::setPrefix(const AtomicString& prefix)
 
 void Attr::setValue(const AtomicString& value)
 {
-    if (m_element)
-        m_element->setAttribute(qualifiedName(), value);
-    else
+    EventQueueScope scope;
+    m_ignoreChildrenChanged++;
+    removeChildren();
+    if (m_element) {
+        Style::AttributeChangeInvalidation styleInvalidation(*m_element, qualifiedName(), elementAttribute().value(), value);
+        elementAttribute().setValue(value);
+    } else
         m_standaloneValue = value;
+    createTextChild();
+    m_ignoreChildrenChanged--;
+
+    invalidateNodeListAndCollectionCachesInAncestors(&m_name, m_element);
+}
+
+void Attr::setValueForBindings(const AtomicString& value)
+{
+    AtomicString oldValue = this->value();
+    if (m_element)
+        m_element->willModifyAttribute(qualifiedName(), oldValue, value);
+    setValue(value);
+    if (m_element)
+        m_element->didModifyAttribute(qualifiedName(), oldValue, value);
 }
 
 ExceptionOr<void> Attr::setNodeValue(const String& value)
 {
-    setValue(value);
+    setValueForBindings(value);
     return { };
 }
 
 Ref<Node> Attr::cloneNodeInternal(Document& targetDocument, CloningOperation)
 {
-    return adoptRef(*new Attr(targetDocument, qualifiedName(), value()));
+    Ref<Attr> clone = adoptRef(*new Attr(targetDocument, qualifiedName(), value()));
+    cloneChildNodes(clone);
+    return WTFMove(clone);
+}
+
+// DOM Section 1.1.1
+bool Attr::childTypeAllowed(NodeType type) const
+{
+    return type == TEXT_NODE;
+}
+
+void Attr::childrenChanged(const ChildChange&)
+{
+    if (m_ignoreChildrenChanged > 0)
+        return;
+
+    invalidateNodeListAndCollectionCachesInAncestors(&qualifiedName(), m_element);
+
+    StringBuilder valueBuilder;
+    TextNodeTraversal::appendContents(*this, valueBuilder);
+
+    AtomicString oldValue = value();
+    AtomicString newValue = valueBuilder.toAtomicString();
+    if (m_element)
+        m_element->willModifyAttribute(qualifiedName(), oldValue, newValue);
+
+    if (m_element) {
+        Style::AttributeChangeInvalidation styleInvalidation(*m_element, qualifiedName(), oldValue, newValue);
+        elementAttribute().setValue(newValue);
+    } else
+        m_standaloneValue = newValue;
+
+    if (m_element)
+        m_element->attributeChanged(qualifiedName(), oldValue, newValue);
+}
+
+bool Attr::isId() const
+{
+    return qualifiedName().matches(HTMLNames::idAttr);
 }
 
 CSSStyleDeclaration* Attr::style()
@@ -110,7 +183,7 @@ CSSStyleDeclaration* Attr::style()
         return nullptr;
     m_style = MutableStyleProperties::create();
     downcast<StyledElement>(*m_element).collectStyleForPresentationAttribute(qualifiedName(), value(), *m_style);
-    return &m_style->ensureCSSStyleDeclaration();
+    return m_style->ensureCSSStyleDeclaration();
 }
 
 const AtomicString& Attr::value() const

@@ -53,7 +53,6 @@ class Document;
 class DocumentLoader;
 class Frame;
 class ImageLoader;
-class Settings;
 class URL;
 
 // The CachedResourceLoader provides a per-context interface to the MemoryCache
@@ -110,7 +109,7 @@ public:
     bool shouldDeferImageLoad(const URL&) const;
     bool shouldPerformImageLoad(const URL&) const;
     
-    CachePolicy cachePolicy(CachedResource::Type, const URL&) const;
+    CachePolicy cachePolicy(CachedResource::Type) const;
     
     Frame* frame() const; // Can be null
     Document* document() const { return m_document; } // Can be null
@@ -120,7 +119,7 @@ public:
 
     void removeCachedResource(CachedResource&);
 
-    void loadDone(bool shouldPerformPostLoadActions = true);
+    void loadDone(CachedResource*, bool shouldPerformPostLoadActions = true);
 
     WEBCORE_EXPORT void garbageCollectDocumentResources();
 
@@ -129,12 +128,9 @@ public:
     int requestCount() const { return m_requestCount; }
 
     WEBCORE_EXPORT bool isPreloaded(const String& urlString) const;
-    enum class ClearPreloadsMode { ClearSpeculativePreloads, ClearAllPreloads };
-    void clearPreloads(ClearPreloadsMode);
+    void clearPreloads();
     CachedResourceHandle<CachedResource> preload(CachedResource::Type, CachedResourceRequest&&);
     void printPreloadStats();
-    void warnUnusedPreloads();
-    void stopUnusedPreloadsTimer();
 
     bool updateRequestAfterRedirection(CachedResource::Type, ResourceRequest&, const ResourceLoaderOptions&);
 
@@ -190,7 +186,6 @@ private:
     int m_requestCount;
     
     std::unique_ptr<ListHashSet<CachedResource*>> m_preloads;
-    Timer m_unusedPreloadsTimer;
 
     Timer m_garbageCollectDocumentResourcesTimer;
 

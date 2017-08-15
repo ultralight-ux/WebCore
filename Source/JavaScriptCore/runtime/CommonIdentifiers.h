@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003, 2007, 2009, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -36,7 +36,6 @@
     macro(BYTES_PER_ELEMENT) \
     macro(Boolean) \
     macro(Collator) \
-    macro(Credential) \
     macro(CustomElementRegistry) \
     macro(Date) \
     macro(DateTimeFormat) \
@@ -86,13 +85,8 @@
     macro(Number) \
     macro(NumberFormat) \
     macro(Object) \
-    macro(PasswordCredential) \
     macro(PerformanceEntry) \
     macro(PerformanceEntryList) \
-    macro(PerformanceMark) \
-    macro(PerformanceMeasure) \
-    macro(PerformanceObserver) \
-    macro(PerformanceObserverEntryList) \
     macro(PerformanceResourceTiming) \
     macro(Promise) \
     macro(Proxy) \
@@ -100,13 +94,10 @@
     macro(ReferenceError) \
     macro(Reflect) \
     macro(RegExp) \
-    macro(Request) \
     macro(Response) \
-    macro(RTCDataChannel) \
-    macro(RTCDataChannelEvent) \
+    macro(Request) \
     macro(RTCDTMFToneChangeEvent) \
     macro(RTCIceCandidate) \
-    macro(RTCIceTransport) \
     macro(RTCPeerConnection) \
     macro(RTCRtpReceiver) \
     macro(RTCRtpSender) \
@@ -117,7 +108,6 @@
     macro(SetIterator)\
     macro(ShadowRoot) \
     macro(SharedArrayBuffer) \
-    macro(SiteBoundCredential) \
     macro(StaticRange) \
     macro(String) \
     macro(Symbol) \
@@ -129,28 +119,6 @@
     macro(WeakSet)\
     macro(WebGL2RenderingContext) \
     macro(WebGLVertexArrayObject) \
-    macro(WebGPUBuffer) \
-    macro(WebGPUCommandBuffer) \
-    macro(WebGPUCommandQueue) \
-    macro(WebGPUComputeCommandEncoder) \
-    macro(WebGPUComputePipelineState) \
-    macro(WebGPUDepthStencilDescriptor) \
-    macro(WebGPUDepthStencilState) \
-    macro(WebGPUDrawable) \
-    macro(WebGPUFunction) \
-    macro(WebGPULibrary) \
-    macro(WebGPURenderCommandEncoder) \
-    macro(WebGPURenderPassAttachmentDescriptor) \
-    macro(WebGPURenderPassColorAttachmentDescriptor) \
-    macro(WebGPURenderPassDepthAttachmentDescriptor) \
-    macro(WebGPURenderPassDescriptor) \
-    macro(WebGPURenderPipelineColorAttachmentDescriptor) \
-    macro(WebGPURenderPipelineDescriptor) \
-    macro(WebGPURenderPipelineState) \
-    macro(WebGPURenderingContext) \
-    macro(WebGPUSize) \
-    macro(WebGPUTexture) \
-    macro(WebGPUTextureDescriptor) \
     macro(WebSocket) \
     macro(WritableStream) \
     macro(__defineGetter__) \
@@ -211,7 +179,6 @@
     macro(focus) \
     macro(forEach) \
     macro(formatMatcher) \
-    macro(formatToParts) \
     macro(forward) \
     macro(frames) \
     macro(from) \
@@ -269,7 +236,6 @@
     macro(parent) \
     macro(parse) \
     macro(parseInt) \
-    macro(parseFloat) \
     macro(postMessage) \
     macro(profiledBytecodes) \
     macro(propertyIsEnumerable) \
@@ -289,7 +255,6 @@
     macro(sourceCode) \
     macro(sourceURL) \
     macro(stack) \
-    macro(stackTraceLimit) \
     macro(sticky) \
     macro(subarray) \
     macro(summary) \
@@ -314,7 +279,6 @@
     macro(valueOf) \
     macro(webkit) \
     macro(collectMatchingElementsInFlatTree) \
-    macro(matchingElementInFlatTree) \
     macro(webkitIDBCursor) \
     macro(webkitIDBDatabase) \
     macro(webkitIDBFactory) \

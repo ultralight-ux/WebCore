@@ -34,7 +34,7 @@ namespace WebCore {
 using namespace HTMLNames;
 
 LabelsNodeList::LabelsNodeList(LabelableElement& forNode)
-    : CachedLiveNodeList(forNode, InvalidateOnForTypeAttrChange)
+    : CachedLiveNodeList(forNode, InvalidateOnForAttrChange)
 {
 }
 

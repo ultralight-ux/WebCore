@@ -48,6 +48,7 @@
 #include "RenderInline.h"
 #include "SVGAElement.h"
 #include "SVGImageElement.h"
+#include "SVGNames.h"
 #include "Scrollbar.h"
 #include "ShadowRoot.h"
 #include "TextIterator.h"
@@ -747,7 +748,7 @@ Vector<String> HitTestResult::dictationAlternatives() const
     if (!frame)
         return Vector<String>();
 
-    return frame->editor().dictationAlternativesForMarker(*marker);
+    return frame->editor().dictationAlternativesForMarker(marker);
 }
 
 Node* HitTestResult::targetNode() const
@@ -755,11 +756,11 @@ Node* HitTestResult::targetNode() const
     Node* node = innerNode();
     if (!node)
         return 0;
-    if (node->isConnected())
+    if (node->inDocument())
         return node;
 
     Element* element = node->parentElement();
-    if (element && element->isConnected())
+    if (element && element->inDocument())
         return element;
 
     return node;

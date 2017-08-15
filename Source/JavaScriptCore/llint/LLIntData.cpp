@@ -138,7 +138,7 @@ void Data::performAssertions(VM& vm)
 #endif
 #if (CPU(X86_64) && !OS(WINDOWS)) || CPU(ARM64) || !ENABLE(JIT)
     STATIC_ASSERT(!maxFrameExtentForSlowPathCall);
-#elif CPU(ARM)
+#elif CPU(ARM) || CPU(SH4)
     STATIC_ASSERT(maxFrameExtentForSlowPathCall == 24);
 #elif CPU(X86) || CPU(MIPS)
     STATIC_ASSERT(maxFrameExtentForSlowPathCall == 40);
@@ -156,21 +156,21 @@ void Data::performAssertions(VM& vm)
     
     STATIC_ASSERT(StringType == 6);
     STATIC_ASSERT(SymbolType == 7);
-    STATIC_ASSERT(ObjectType == 24);
-    STATIC_ASSERT(FinalObjectType == 25);
-    STATIC_ASSERT(JSFunctionType == 27);
-    STATIC_ASSERT(ArrayType == 35);
-    STATIC_ASSERT(DerivedArrayType == 36);
-    STATIC_ASSERT(ProxyObjectType == 54);
-    STATIC_ASSERT(Int8ArrayType == 37);
-    STATIC_ASSERT(Int16ArrayType == 38);
-    STATIC_ASSERT(Int32ArrayType == 39);
-    STATIC_ASSERT(Uint8ArrayType == 40);
-    STATIC_ASSERT(Uint8ClampedArrayType == 41);
-    STATIC_ASSERT(Uint16ArrayType == 42);
-    STATIC_ASSERT(Uint32ArrayType == 43);
-    STATIC_ASSERT(Float32ArrayType == 44);
-    STATIC_ASSERT(Float64ArrayType == 45);
+    STATIC_ASSERT(ObjectType == 21);
+    STATIC_ASSERT(FinalObjectType == 22);
+    STATIC_ASSERT(JSFunctionType == 24);
+    STATIC_ASSERT(ArrayType == 32);
+    STATIC_ASSERT(DerivedArrayType == 33);
+    STATIC_ASSERT(ProxyObjectType == 51);
+    STATIC_ASSERT(Int8ArrayType == 34);
+    STATIC_ASSERT(Int16ArrayType == 35);
+    STATIC_ASSERT(Int32ArrayType == 36);
+    STATIC_ASSERT(Uint8ArrayType == 37);
+    STATIC_ASSERT(Uint8ClampedArrayType == 38);
+    STATIC_ASSERT(Uint16ArrayType == 39);
+    STATIC_ASSERT(Uint32ArrayType == 40);
+    STATIC_ASSERT(Float32ArrayType == 41);
+    STATIC_ASSERT(Float64ArrayType == 42);
     STATIC_ASSERT(MasqueradesAsUndefined == 1);
     STATIC_ASSERT(ImplementsDefaultHasInstance == 2);
     STATIC_ASSERT(FirstConstantRegisterIndex == 0x40000000);

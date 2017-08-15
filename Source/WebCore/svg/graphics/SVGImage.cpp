@@ -32,7 +32,6 @@
 #include "CommonVM.h"
 #include "DOMWindow.h"
 #include "DocumentLoader.h"
-#include "EditorClient.h"
 #include "ElementIterator.h"
 #include "FrameLoader.h"
 #include "FrameView.h"
@@ -40,7 +39,6 @@
 #include "ImageObserver.h"
 #include "IntRect.h"
 #include "JSDOMWindowBase.h"
-#include "LibWebRTCProvider.h"
 #include "MainFrame.h"
 #include "Page.h"
 #include "PageConfiguration.h"
@@ -53,7 +51,6 @@
 #include "SVGImageElement.h"
 #include "SVGSVGElement.h"
 #include "Settings.h"
-#include "SocketProvider.h"
 #include "TextStream.h"
 #include <runtime/JSCInlines.h>
 #include <runtime/JSLock.h>
@@ -188,7 +185,7 @@ void SVGImage::drawForContainer(GraphicsContext& context, const FloatSize contai
     adjustedSrcSize.scale(roundedContainerSize.width() / containerSize.width(), roundedContainerSize.height() / containerSize.height());
     scaledSrc.setSize(adjustedSrcSize);
 
-    draw(context, dstRect, scaledSrc, compositeOp, blendMode, DecodingMode::Synchronous, ImageOrientationDescription());
+    draw(context, dstRect, scaledSrc, compositeOp, blendMode, ImageOrientationDescription());
 
     setImageObserver(observer);
 }
@@ -206,7 +203,7 @@ NativeImagePtr SVGImage::nativeImageForCurrentFrame(const GraphicsContext*)
     if (!buffer) // failed to allocate image
         return nullptr;
 
-    draw(buffer->context(), rect(), rect(), CompositeSourceOver, BlendModeNormal, DecodingMode::Synchronous, ImageOrientationDescription());
+    draw(buffer->context(), rect(), rect(), CompositeSourceOver, BlendModeNormal, ImageOrientationDescription());
 
     // FIXME: WK(Bug 113657): We should use DontCopyBackingStore here.
     return buffer->copyImage(CopyBackingStore)->nativeImageForCurrentFrame();
@@ -230,7 +227,7 @@ NativeImagePtr SVGImage::nativeImage(const GraphicsContext* targetContext)
 
     GraphicsContext localContext(nativeImageTarget.get());
 
-    draw(localContext, rect(), rect(), CompositeSourceOver, BlendModeNormal, DecodingMode::Synchronous, ImageOrientationDescription());
+    draw(localContext, rect(), rect(), CompositeSourceOver, BlendModeNormal, ImageOrientationDescription());
 
     COMPtr<ID2D1Bitmap> nativeImage;
     hr = nativeImageTarget->GetBitmap(&nativeImage);
@@ -276,7 +273,7 @@ void SVGImage::drawPatternForContainer(GraphicsContext& context, const FloatSize
     image->drawPattern(context, dstRect, scaledSrcRect, unscaledPatternTransform, phase, spacing, compositeOp, blendMode);
 }
 
-void SVGImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator compositeOp, BlendMode blendMode, DecodingMode, ImageOrientationDescription)
+void SVGImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator compositeOp, BlendMode blendMode, ImageOrientationDescription)
 {
     if (!m_page)
         return;
@@ -321,7 +318,7 @@ void SVGImage::draw(GraphicsContext& context, const FloatRect& dstRect, const Fl
     stateSaver.restore();
 
     if (imageObserver())
-        imageObserver()->didDraw(*this);
+        imageObserver()->didDraw(this);
 }
 
 RenderBox* SVGImage::embeddedContentBox() const
@@ -374,7 +371,7 @@ void SVGImage::computeIntrinsicDimensions(Length& intrinsicWidth, Length& intrin
 void SVGImage::startAnimation()
 {
     SVGSVGElement* rootElement = this->rootElement();
-    if (!rootElement || !rootElement->animationsPaused())
+    if (!rootElement)
         return;
     rootElement->unpauseAnimations();
     rootElement->setCurrentTime(0);
@@ -393,14 +390,6 @@ void SVGImage::resetAnimation()
     stopAnimation();
 }
 
-bool SVGImage::isAnimating() const
-{
-    SVGSVGElement* rootElement = this->rootElement();
-    if (!rootElement)
-        return false;
-    return rootElement->hasActiveAnimation();
-}
-
 void SVGImage::reportApproximateMemoryCost() const
 {
     Document* document = m_page->mainFrame().document();
@@ -416,18 +405,14 @@ void SVGImage::reportApproximateMemoryCost() const
     vm.heap.deprecatedReportExtraMemory(decodedImageMemoryCost + data()->size());
 }
 
-EncodedDataStatus SVGImage::dataChanged(bool allDataReceived)
+bool SVGImage::dataChanged(bool allDataReceived)
 {
-    // Don't do anything; it is an empty image.
+    // Don't do anything if is an empty image.
     if (!data()->size())
-        return EncodedDataStatus::Complete;
+        return true;
 
     if (allDataReceived) {
-        PageConfiguration pageConfiguration(
-            createEmptyEditorClient(),
-            SocketProvider::create(),
-            makeUniqueRef<LibWebRTCProvider>()
-        );
+        PageConfiguration pageConfiguration(makeUniqueRef<EmptyEditorClient>(), SocketProvider::create());
         fillWithEmptyClients(pageConfiguration);
         m_chromeClient = std::make_unique<SVGImageChromeClient>(this);
         pageConfiguration.chromeClient = m_chromeClient.get();
@@ -459,14 +444,12 @@ EncodedDataStatus SVGImage::dataChanged(bool allDataReceived)
         loader.activeDocumentLoader()->writer().addData(data()->data(), data()->size());
         loader.activeDocumentLoader()->writer().end();
 
-        frame.document()->updateLayoutIgnorePendingStylesheets();
-
         // Set the intrinsic size before a container size is available.
         m_intrinsicSize = containerSize();
         reportApproximateMemoryCost();
     }
 
-    return m_page ? EncodedDataStatus::Complete : EncodedDataStatus::Unknown;
+    return m_page != nullptr;
 }
 
 String SVGImage::filenameExtension() const

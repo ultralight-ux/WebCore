@@ -45,6 +45,7 @@ class ArrayBuffer;
 namespace WebCore {
 
 class Blob;
+class ScriptExecutionContext;
 
 class FileReader final : public RefCounted<FileReader>, public ActiveDOMObject, public EventTargetWithInlineData, private FileReaderLoaderClient {
 public:
@@ -69,7 +70,8 @@ public:
     ReadyState readyState() const { return m_state; }
     RefPtr<FileError> error() { return m_error; }
     FileReaderLoader::ReadType readType() const { return m_readType; }
-    std::optional<Variant<String, RefPtr<JSC::ArrayBuffer>>> result() const;
+    RefPtr<JSC::ArrayBuffer> arrayBufferResult() const;
+    String stringResult();
 
     using RefCounted::ref;
     using RefCounted::deref;

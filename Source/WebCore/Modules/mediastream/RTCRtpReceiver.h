@@ -32,38 +32,24 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "RTCRtpParameters.h"
 #include "RTCRtpSenderReceiverBase.h"
 
 namespace WebCore {
 
-
 class RTCRtpReceiver : public RTCRtpSenderReceiverBase {
 public:
-    class Backend {
-    public:
-        virtual ~Backend() { }
-        virtual RTCRtpParameters getParameters() { return { }; }
-    };
-
-    static Ref<RTCRtpReceiver> create(Ref<MediaStreamTrack>&& track, Backend* backend = nullptr)
+    static Ref<RTCRtpReceiver> create(Ref<MediaStreamTrack>&& track)
     {
-        return adoptRef(*new RTCRtpReceiver(WTFMove(track), backend));
+        return adoptRef(*new RTCRtpReceiver(WTFMove(track)));
     }
-
-    void stop() { m_backend = nullptr; }
-    // FIXME: We should pass a UniqueRef here.
-    void setBackend(std::unique_ptr<Backend>&& backend) { m_backend = WTFMove(backend); }
 
     bool isDispatched() const { return m_isDispatched; }
     void setDispatched(bool isDispatched) { m_isDispatched = isDispatched; }
-    RTCRtpParameters getParameters() { return m_backend ? m_backend->getParameters() : RTCRtpParameters(); }
 
 private:
-    explicit RTCRtpReceiver(Ref<MediaStreamTrack>&&, Backend*);
+    explicit RTCRtpReceiver(Ref<MediaStreamTrack>&&);
 
     bool m_isDispatched { false };
-    std::unique_ptr<Backend> m_backend;
 };
 
 } // namespace WebCore

@@ -54,7 +54,6 @@
 #endif
 
 #if PLATFORM(IOS) || PLATFORM(MAC)
-extern "C" const CFStringRef kCFStreamPropertySourceApplication;
 extern "C" const CFStringRef _kCFStreamSocketSetNoDelay;
 #endif
 
@@ -64,14 +63,12 @@ extern "C" const CFStringRef _kCFStreamSocketSetNoDelay;
 
 namespace WebCore {
 
-SocketStreamHandleImpl::SocketStreamHandleImpl(const URL& url, SocketStreamHandleClient& client, SessionID sessionID, const String& credentialPartition, SourceApplicationAuditToken&& auditData)
+SocketStreamHandleImpl::SocketStreamHandleImpl(const URL& url, SocketStreamHandleClient& client, SessionID sessionID)
     : SocketStreamHandle(url, client)
     , m_connectingSubstate(New)
     , m_connectionType(Unknown)
     , m_sentStoredCredentials(false)
     , m_sessionID(sessionID)
-    , m_credentialPartition(credentialPartition)
-    , m_auditData(WTFMove(auditData))
 {
     LOG(Network, "SocketStreamHandle %p new client %p", this, &m_client);
 
@@ -315,14 +312,9 @@ void SocketStreamHandleImpl::createStreams()
     CFReadStreamRef readStream = 0;
     CFWriteStreamRef writeStream = 0;
     CFStreamCreatePairWithSocketToHost(0, host.get(), port(), &readStream, &writeStream);
-#if PLATFORM(COCOA)
+#if PLATFORM(IOS) || PLATFORM(MAC)
     // <rdar://problem/12855587> _kCFStreamSocketSetNoDelay is not exported on Windows
     CFWriteStreamSetProperty(writeStream, _kCFStreamSocketSetNoDelay, kCFBooleanTrue);
-    if (m_auditData.sourceApplicationAuditData && m_auditData.sourceApplicationAuditData.get()) {
-        CFReadStreamSetProperty(readStream, kCFStreamPropertySourceApplication, m_auditData.sourceApplicationAuditData.get());
-        CFWriteStreamSetProperty(writeStream, kCFStreamPropertySourceApplication, m_auditData.sourceApplicationAuditData.get());
-    }
-    
 #endif
 
     m_readStream = adoptCF(readStream);
@@ -367,7 +359,7 @@ bool SocketStreamHandleImpl::getStoredCONNECTProxyCredentials(const ProtectionSp
     if (auto* storageSession = NetworkStorageSession::storageSession(m_sessionID)) {
         storedCredential = storageSession->credentialStorage().getFromPersistentStorage(protectionSpace);
         if (storedCredential.isEmpty())
-            storedCredential = storageSession->credentialStorage().get(m_credentialPartition, protectionSpace);
+            storedCredential = storageSession->credentialStorage().get(protectionSpace);
     }
 
     if (storedCredential.isEmpty())
@@ -544,10 +536,11 @@ void SocketStreamHandleImpl::readStreamCallback(CFStreamEventType type)
         if (!length)
             return;
 
-        if (length == -1)
-            m_client.didFailToReceiveSocketStreamData(*this);
-        else
-            m_client.didReceiveSocketStreamData(*this, reinterpret_cast<const char*>(ptr), length);
+        std::optional<size_t> optionalLength;
+        if (length != -1)
+            optionalLength = length;
+        
+        m_client.didReceiveSocketStreamData(*this, reinterpret_cast<const char*>(ptr), optionalLength);
 
         return;
     }
@@ -660,7 +653,7 @@ SocketStreamHandleImpl::~SocketStreamHandleImpl()
     ASSERT(!m_pacRunLoopSource);
 }
 
-std::optional<size_t> SocketStreamHandleImpl::platformSendInternal(const char* data, size_t length)
+std::optional<size_t> SocketStreamHandleImpl::platformSend(const char* data, size_t length)
 {
     if (!m_writeStream)
         return 0;

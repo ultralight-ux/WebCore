@@ -39,10 +39,6 @@ StaticRange::StaticRange(Ref<Node>&& startContainer, unsigned startOffset, Ref<N
 {
 }
 
-StaticRange::~StaticRange()
-{
-}
-
 Ref<StaticRange> StaticRange::create(Ref<Node>&& startContainer, unsigned startOffset, Ref<Node>&& endContainer, unsigned endOffset)
 {
     return adoptRef(*new StaticRange(WTFMove(startContainer), startOffset, WTFMove(endContainer), endOffset));

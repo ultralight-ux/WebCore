@@ -1,6 +1,6 @@
 /*
 ********************************************************************************
-* Copyright (C) 2013-2014, International Business Machines Corporation and others.
+* Copyright (C) 2013, International Business Machines Corporation and others.
 * All Rights Reserved.
 ********************************************************************************
 *
@@ -32,6 +32,8 @@
 
 #if !UCONFIG_NO_FORMATTING
 
+#ifndef U_HIDE_DRAFT_API
+
 #include "unicode/localpointer.h"
 
 /**
@@ -39,7 +41,7 @@
  * Practically, this indicates which of the getters would return without conversion
  * or error.
  * @see icu::Formattable::Type
- * @stable ICU 52
+ * @draft ICU 52
  */
 typedef enum UFormattableType {
   UFMT_DATE = 0, /**< ufmt_getDate() will return without conversion. @see ufmt_getDate*/
@@ -57,7 +59,7 @@ typedef enum UFormattableType {
  * Opaque type representing various types of data which may be used for formatting
  * and parsing operations.
  * @see icu::Formattable
- * @stable ICU 52
+ * @draft ICU 52
  */
 typedef void *UFormattable;
 
@@ -66,21 +68,21 @@ typedef void *UFormattable;
  * may return error if memory allocation failed.
  * parameter status error code.
  * See {@link unum_parseToUFormattable} for example code.
- * @stable ICU 52
+ * @draft ICU 52
  * @return the new UFormattable
  * @see ufmt_close
  * @see icu::Formattable::Formattable()
  */
-U_STABLE UFormattable* U_EXPORT2
+U_DRAFT UFormattable* U_EXPORT2
 ufmt_open(UErrorCode* status);
 
 /**
  * Cleanup any additional memory allocated by this UFormattable.
  * @param fmt the formatter
- * @stable ICU 52
+ * @draft ICU 52
  * @see ufmt_open
  */
-U_STABLE void U_EXPORT2
+U_DRAFT void U_EXPORT2
 ufmt_close(UFormattable* fmt);
 
 #if U_SHOW_CPLUSPLUS_API
@@ -94,7 +96,7 @@ U_NAMESPACE_BEGIN
  *
  * @see LocalPointerBase
  * @see LocalPointer
- * @stable ICU 52
+ * @draft ICU 52
  */
 U_DEFINE_LOCAL_OPEN_POINTER(LocalUFormattablePointer, UFormattable, ufmt_close);
 
@@ -110,9 +112,9 @@ U_NAMESPACE_END
  * @return the value as a UFormattableType
  * @see ufmt_isNumeric
  * @see icu::Formattable::getType() const
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE UFormattableType U_EXPORT2
+U_DRAFT UFormattableType U_EXPORT2
 ufmt_getType(const UFormattable* fmt, UErrorCode *status);
 
 /**
@@ -121,9 +123,9 @@ ufmt_getType(const UFormattable* fmt, UErrorCode *status);
  * @return true if the object is a double, long, or int64 value, else false.
  * @see ufmt_getType
  * @see icu::Formattable::isNumeric() const
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE UBool U_EXPORT2
+U_DRAFT UBool U_EXPORT2
 ufmt_isNumeric(const UFormattable* fmt);
 
 /**
@@ -133,10 +135,10 @@ ufmt_isNumeric(const UFormattable* fmt);
  * @param fmt the UFormattable object
  * @param status the error code - any conversion or format errors
  * @return the value
- * @stable ICU 52
+ * @draft ICU 52
  * @see icu::Formattable::getDate(UErrorCode&) const
  */
-U_STABLE UDate U_EXPORT2
+U_DRAFT UDate U_EXPORT2
 ufmt_getDate(const UFormattable* fmt, UErrorCode *status);
 
 /**
@@ -151,10 +153,10 @@ ufmt_getDate(const UFormattable* fmt, UErrorCode *status);
  * @param fmt the UFormattable object
  * @param status the error code - any conversion or format errors
  * @return the value
- * @stable ICU 52
+ * @draft ICU 52
  * @see icu::Formattable::getDouble(UErrorCode&) const
  */
-U_STABLE double U_EXPORT2
+U_DRAFT double U_EXPORT2
 ufmt_getDouble(UFormattable* fmt, UErrorCode *status);
 
 /**
@@ -172,10 +174,10 @@ ufmt_getDouble(UFormattable* fmt, UErrorCode *status);
  * @param fmt the UFormattable object
  * @param status the error code - any conversion or format errors
  * @return the value
- * @stable ICU 52
+ * @draft ICU 52
  * @see icu::Formattable::getLong(UErrorCode&) const
  */
-U_STABLE int32_t U_EXPORT2
+U_DRAFT int32_t U_EXPORT2
 ufmt_getLong(UFormattable* fmt, UErrorCode *status);
 
 
@@ -193,10 +195,10 @@ ufmt_getLong(UFormattable* fmt, UErrorCode *status);
  * @param fmt the UFormattable object
  * @param status the error code - any conversion or format errors
  * @return the value
- * @stable ICU 52
+ * @draft ICU 52
  * @see icu::Formattable::getInt64(UErrorCode&) const
  */
-U_STABLE int64_t U_EXPORT2
+U_DRAFT int64_t U_EXPORT2
 ufmt_getInt64(UFormattable* fmt, UErrorCode *status);
 
 /**
@@ -206,10 +208,10 @@ ufmt_getInt64(UFormattable* fmt, UErrorCode *status);
  * @param fmt the UFormattable object
  * @param status the error code - any conversion or format errors
  * @return the value as a const void*. It is a polymorphic C++ object.
- * @stable ICU 52
+ * @draft ICU 52
  * @see icu::Formattable::getObject() const
  */
-U_STABLE const void *U_EXPORT2
+U_DRAFT const void *U_EXPORT2
 ufmt_getObject(const UFormattable* fmt, UErrorCode *status);
 
 /**
@@ -221,10 +223,10 @@ ufmt_getObject(const UFormattable* fmt, UErrorCode *status);
  * @param status the error code - any conversion or format errors
  * @param len if non null, contains the string length on return
  * @return the null terminated string value - must not be referenced after any other functions are called on this UFormattable.
- * @stable ICU 52
+ * @draft ICU 52
  * @see icu::Formattable::getString(UnicodeString&)const
  */
-U_STABLE const UChar* U_EXPORT2
+U_DRAFT const UChar* U_EXPORT2
 ufmt_getUChars(UFormattable* fmt, int32_t *len, UErrorCode *status);
 
 /**
@@ -232,10 +234,10 @@ ufmt_getUChars(UFormattable* fmt, int32_t *len, UErrorCode *status);
  * @param fmt the UFormattable object
  * @param status the error code - any conversion or format errors. U_ILLEGAL_ARGUMENT_ERROR if not an array type.
  * @return the number of array objects or undefined if not an array type
- * @stable ICU 52
+ * @draft ICU 52
  * @see ufmt_getArrayItemByIndex
  */
-U_STABLE int32_t U_EXPORT2
+U_DRAFT int32_t U_EXPORT2
 ufmt_getArrayLength(const UFormattable* fmt, UErrorCode *status);
 
 /**
@@ -244,10 +246,10 @@ ufmt_getArrayLength(const UFormattable* fmt, UErrorCode *status);
  * @param n the number of the array to return (0 based).
  * @param status the error code - any conversion or format errors. Returns an error if n is out of bounds.
  * @return the nth array value, only valid while the containing UFormattable is valid. NULL if not an array.
- * @stable ICU 52
+ * @draft ICU 52
  * @see icu::Formattable::getArray(int32_t&, UErrorCode&) const
  */
-U_STABLE UFormattable * U_EXPORT2
+U_DRAFT UFormattable * U_EXPORT2
 ufmt_getArrayItemByIndex(UFormattable* fmt, int32_t n, UErrorCode *status);
 
 /**
@@ -269,11 +271,12 @@ ufmt_getArrayItemByIndex(UFormattable* fmt, int32_t n, UErrorCode *status);
  * @param len if non-null, on exit contains the string length (not including the terminating null)
  * @param status the error code
  * @return the character buffer as a NULL terminated string, which is owned by the object and must not be accessed if any other functions are called on this object.
- * @stable ICU 52
+ * @draft ICU 52
  * @see icu::Formattable::getDecimalNumber(UErrorCode&)
  */
-U_STABLE const char * U_EXPORT2
+U_DRAFT const char * U_EXPORT2
 ufmt_getDecNumChars(UFormattable *fmt, int32_t *len, UErrorCode *status);
+#endif  /* U_HIDE_DRAFT_API */
 
 #endif
 

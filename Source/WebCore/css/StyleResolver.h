@@ -150,7 +150,7 @@ public:
     const Element* element() { return m_state.element(); }
     Document& document() { return m_document; }
     const Document& document() const { return m_document; }
-    const Settings& settings() const { return m_document.settings(); }
+    Settings* documentSettings() { return m_document.settings(); }
 
     void appendAuthorStyleSheets(const Vector<RefPtr<CSSStyleSheet>>&);
 
@@ -184,7 +184,7 @@ public:
     void applyPropertyToCurrentStyle(CSSPropertyID, CSSValue*);
 
     void updateFont();
-    void initializeFontStyle();
+    void initializeFontStyle(Settings*);
 
     void setFontSize(FontCascadeDescription&, float size);
 
@@ -308,10 +308,6 @@ public:
         WritingMode m_writingMode;
     };
 
-    // FIXME: Should make a StyleAdjuster class (like Blink has) that handles all RenderStyle
-    // adjustments. For now put this function on StyleResolver, since adjustRenderStyle is here.
-    static void adjustStyleForAlignment(RenderStyle&, const RenderStyle& parentStyle);
-    
 private:
     // This function fixes up the default font size if it detects that the current generic font family has changed. -dwh
     void checkForGenericFamilyChange(RenderStyle*, const RenderStyle* parentStyle);
@@ -321,7 +317,9 @@ private:
 #endif
 
     void adjustRenderStyle(RenderStyle&, const RenderStyle& parentStyle, const RenderStyle* parentBoxStyle, const Element*);
+#if ENABLE(CSS_GRID_LAYOUT)
     std::unique_ptr<GridPosition> adjustNamedGridItemPosition(const NamedGridAreaMap&, const NamedGridLinesMap&, const GridPosition&, GridPositionSide) const;
+#endif
     
     void adjustStyleForInterCharacterRuby();
     
@@ -535,20 +533,20 @@ inline bool StyleResolver::hasSelectorForAttribute(const Element& element, const
 {
     ASSERT(!attributeName.isEmpty());
     if (element.isHTMLElement())
-        return m_ruleSets.features().attributeCanonicalLocalNamesInRules.contains(attributeName);
-    return m_ruleSets.features().attributeLocalNamesInRules.contains(attributeName);
+        return m_ruleSets.features().attributeCanonicalLocalNamesInRules.contains(attributeName.impl());
+    return m_ruleSets.features().attributeLocalNamesInRules.contains(attributeName.impl());
 }
 
 inline bool StyleResolver::hasSelectorForClass(const AtomicString& classValue) const
 {
     ASSERT(!classValue.isEmpty());
-    return m_ruleSets.features().classesInRules.contains(classValue);
+    return m_ruleSets.features().classesInRules.contains(classValue.impl());
 }
 
 inline bool StyleResolver::hasSelectorForId(const AtomicString& idValue) const
 {
     ASSERT(!idValue.isEmpty());
-    return m_ruleSets.features().idsInRules.contains(idValue);
+    return m_ruleSets.features().idsInRules.contains(idValue.impl());
 }
 
 inline bool checkRegionSelector(const CSSSelector* regionSelector, const Element* regionElement)

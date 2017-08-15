@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <wtf/MemoryPressureHandler.h>
+#include "MemoryPressureHandler.h"
 
 namespace WebCore {
 
@@ -34,5 +34,6 @@ void platformReleaseMemory(Critical);
 void jettisonExpensiveObjectsOnTopLevelNavigation();
 WEBCORE_EXPORT void registerMemoryReleaseNotifyCallbacks();
 WEBCORE_EXPORT void logMemoryStatisticsAtTimeOfDeath();
+WEBCORE_EXPORT bool processIsEligibleForMemoryKill();
 
 } // namespace WebCore

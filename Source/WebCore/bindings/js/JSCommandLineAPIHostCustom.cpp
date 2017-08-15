@@ -101,12 +101,11 @@ JSValue JSCommandLineAPIHost::getEventListeners(ExecState& state)
     if (state.argumentCount() < 1)
         return jsUndefined();
 
-    VM& vm = state.vm();
     JSValue value = state.uncheckedArgument(0);
     if (!value.isObject() || value.isNull())
         return jsUndefined();
 
-    Node* node = JSNode::toWrapped(vm, value);
+    Node* node = JSNode::toWrapped(value);
     if (!node)
         return jsUndefined();
 
@@ -139,8 +138,7 @@ JSValue JSCommandLineAPIHost::databaseId(ExecState& state)
     if (state.argumentCount() < 1)
         return jsUndefined();
 
-    VM& vm = state.vm();
-    Database* database = JSDatabase::toWrapped(vm, state.uncheckedArgument(0));
+    Database* database = JSDatabase::toWrapped(state.uncheckedArgument(0));
     if (database)
         return jsStringWithCache(&state, wrapped().databaseIdImpl(database));
 
@@ -152,8 +150,7 @@ JSValue JSCommandLineAPIHost::storageId(ExecState& state)
     if (state.argumentCount() < 1)
         return jsUndefined();
 
-    VM& vm = state.vm();
-    Storage* storage = JSStorage::toWrapped(vm, state.uncheckedArgument(0));
+    Storage* storage = JSStorage::toWrapped(state.uncheckedArgument(0));
     if (storage)
         return jsStringWithCache(&state, wrapped().storageIdImpl(storage));
 

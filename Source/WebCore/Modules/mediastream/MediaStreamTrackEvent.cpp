@@ -27,6 +27,7 @@
 
 #include "MediaStreamTrackEvent.h"
 
+#include "EventNames.h"
 #include "MediaStreamTrack.h"
 
 namespace WebCore {

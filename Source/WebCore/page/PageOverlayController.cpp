@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -66,8 +66,10 @@ void PageOverlayController::createRootLayersIfNeeded()
 
     m_documentOverlayRootLayer = GraphicsLayer::create(m_mainFrame.page()->chrome().client().graphicsLayerFactory(), *this);
     m_viewOverlayRootLayer = GraphicsLayer::create(m_mainFrame.page()->chrome().client().graphicsLayerFactory(), *this);
-    m_documentOverlayRootLayer->setName("Document overlay Container");
-    m_viewOverlayRootLayer->setName("View overlay container");
+#ifndef NDEBUG
+    m_documentOverlayRootLayer->setName("Page Overlay container (document-relative)");
+    m_viewOverlayRootLayer->setName("Page Overlay container (view-relative)");
+#endif
 }
 
 GraphicsLayer* PageOverlayController::documentOverlayRootLayer() const
@@ -139,23 +141,27 @@ GraphicsLayer& PageOverlayController::layerWithViewOverlays()
     return *m_viewOverlayRootLayer;
 }
 
-void PageOverlayController::installPageOverlay(PageOverlay& overlay, PageOverlay::FadeMode fadeMode)
+void PageOverlayController::installPageOverlay(PassRefPtr<PageOverlay> pageOverlay, PageOverlay::FadeMode fadeMode)
 {
     createRootLayersIfNeeded();
 
-    if (m_pageOverlays.contains(&overlay))
+    RefPtr<PageOverlay> overlay = pageOverlay;
+
+    if (m_pageOverlays.contains(overlay))
         return;
 
-    m_pageOverlays.append(&overlay);
+    m_pageOverlays.append(overlay);
 
     std::unique_ptr<GraphicsLayer> layer = GraphicsLayer::create(m_mainFrame.page()->chrome().client().graphicsLayerFactory(), *this);
     layer->setAnchorPoint(FloatPoint3D());
-    layer->setBackgroundColor(overlay.backgroundColor());
-    layer->setName("Overlay content");
+    layer->setBackgroundColor(overlay->backgroundColor());
+#ifndef NDEBUG
+    layer->setName("Page Overlay content");
+#endif
 
     updateSettingsForLayer(*layer);
 
-    switch (overlay.overlayType()) {
+    switch (overlay->overlayType()) {
     case PageOverlay::OverlayType::View:
         m_viewOverlayRootLayer->addChild(layer.get());
         break;
@@ -165,33 +171,33 @@ void PageOverlayController::installPageOverlay(PageOverlay& overlay, PageOverlay
     }
 
     GraphicsLayer& rawLayer = *layer;
-    m_overlayGraphicsLayers.set(&overlay, WTFMove(layer));
+    m_overlayGraphicsLayers.set(overlay.get(), WTFMove(layer));
 
     updateForceSynchronousScrollLayerPositionUpdates();
 
-    overlay.setPage(m_mainFrame.page());
+    overlay->setPage(m_mainFrame.page());
 
     if (FrameView* frameView = m_mainFrame.view())
         frameView->enterCompositingMode();
 
-    updateOverlayGeometry(overlay, rawLayer);
+    updateOverlayGeometry(*overlay, rawLayer);
 
     if (fadeMode == PageOverlay::FadeMode::Fade)
-        overlay.startFadeInAnimation();
+        overlay->startFadeInAnimation();
 }
 
-void PageOverlayController::uninstallPageOverlay(PageOverlay& overlay, PageOverlay::FadeMode fadeMode)
+void PageOverlayController::uninstallPageOverlay(PageOverlay* overlay, PageOverlay::FadeMode fadeMode)
 {
     if (fadeMode == PageOverlay::FadeMode::Fade) {
-        overlay.startFadeOutAnimation();
+        overlay->startFadeOutAnimation();
         return;
     }
 
-    overlay.setPage(nullptr);
+    overlay->setPage(nullptr);
 
-    m_overlayGraphicsLayers.take(&overlay)->removeFromParent();
+    m_overlayGraphicsLayers.take(overlay)->removeFromParent();
 
-    bool removed = m_pageOverlays.removeFirst(&overlay);
+    bool removed = m_pageOverlays.removeFirst(overlay);
     ASSERT_UNUSED(removed, removed);
 
     updateForceSynchronousScrollLayerPositionUpdates();
@@ -243,13 +249,6 @@ GraphicsLayer& PageOverlayController::layerForOverlay(PageOverlay& overlay) cons
     return *m_overlayGraphicsLayers.get(&overlay);
 }
 
-void PageOverlayController::willDetachRootLayer()
-{
-    m_documentOverlayRootLayer = nullptr;
-    m_viewOverlayRootLayer = nullptr;
-    m_initialized = false;
-}
-
 void PageOverlayController::didChangeViewSize()
 {
     for (auto& overlayAndLayer : m_overlayGraphicsLayers) {
@@ -275,8 +274,7 @@ void PageOverlayController::didChangeSettings()
 
 void PageOverlayController::didChangeDeviceScaleFactor()
 {
-    if (!m_initialized)
-        return;
+    createRootLayersIfNeeded();
 
     m_documentOverlayRootLayer->noteDeviceOrPageScaleFactorChangedIncludingDescendants();
     m_viewOverlayRootLayer->noteDeviceOrPageScaleFactorChangedIncludingDescendants();

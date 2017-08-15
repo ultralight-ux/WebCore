@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,7 +39,6 @@
 #include "SVGPathParser.h"
 #include "SVGPathStringSource.h"
 #include "SVGVKernElement.h"
-#include <wtf/text/StringView.h>
 
 namespace WebCore {
 
@@ -1472,21 +1471,22 @@ SVGToOTFFontConverter::SVGToOTFFontConverter(const SVGFontElement& fontElement)
 
     // FIXME: Handle commas.
     if (m_fontFaceElement) {
-        auto& fontWeightAttribute = m_fontFaceElement->attributeWithoutSynchronization(SVGNames::font_weightAttr);
-        for (auto segment : StringView(fontWeightAttribute).split(' ')) {
+        Vector<String> segments;
+        m_fontFaceElement->attributeWithoutSynchronization(SVGNames::font_weightAttr).string().split(' ', segments);
+        for (auto& segment : segments) {
             if (equalLettersIgnoringASCIICase(segment, "bold")) {
                 m_weight = 7;
                 break;
             }
             bool ok;
-            int value = segment.toInt(ok);
+            int value = segment.toInt(&ok);
             if (ok && value >= 0 && value < 1000) {
                 m_weight = (value + 50) / 100;
                 break;
             }
         }
-        auto& fontStyleAttribute = m_fontFaceElement->attributeWithoutSynchronization(SVGNames::font_styleAttr);
-        for (auto segment : StringView(fontStyleAttribute).split(' ')) {
+        m_fontFaceElement->attributeWithoutSynchronization(SVGNames::font_styleAttr).string().split(' ', segments);
+        for (auto& segment : segments) {
             if (equalLettersIgnoringASCIICase(segment, "italic") || equalLettersIgnoringASCIICase(segment, "oblique")) {
                 m_italic = true;
                 break;

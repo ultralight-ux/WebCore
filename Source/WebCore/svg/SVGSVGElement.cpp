@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2010 Rob Buis <buis@kde.org>
- * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2015 Apple Inc. All rights reserved.
  * Copyright (C) 2014 Adobe Systems Incorporated. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -24,7 +24,6 @@
 #include "SVGSVGElement.h"
 
 #include "CSSHelper.h"
-#include "DOMWrapperWorld.h"
 #include "ElementIterator.h"
 #include "EventNames.h"
 #include "FrameSelection.h"
@@ -74,7 +73,7 @@ inline SVGSVGElement::SVGSVGElement(const QualifiedName& tagName, Document& docu
     , m_y(LengthModeHeight)
     , m_width(LengthModeWidth, ASCIILiteral("100%"))
     , m_height(LengthModeHeight, ASCIILiteral("100%"))
-    , m_timeContainer(SMILTimeContainer::create(*this))
+    , m_timeContainer(SMILTimeContainer::create(this))
 {
     ASSERT(hasTagName(SVGNames::svgTag));
     registerAnimatedPropertiesForSVGSVGElement();
@@ -169,7 +168,7 @@ Frame* SVGSVGElement::frameForCurrentScale() const
 {
     // The behavior of currentScale() is undefined when we're dealing with non-standalone SVG documents.
     // If the document is embedded, the scaling is handled by the host renderer.
-    if (!isConnected() || !isOutermostSVGSVGElement())
+    if (!inDocument() || !isOutermostSVGSVGElement())
         return nullptr;
     Frame* frame = document().frame();
     return frame && frame->isMainFrame() ? frame : nullptr;
@@ -216,19 +215,19 @@ void SVGSVGElement::parseAttribute(const QualifiedName& name, const AtomicString
         // For these events, the outermost <svg> element works like a <body> element does,
         // setting certain event handlers directly on the window object.
         if (name == HTMLNames::onunloadAttr) {
-            document().setWindowAttributeEventListener(eventNames().unloadEvent, name, value, mainThreadNormalWorld());
+            document().setWindowAttributeEventListener(eventNames().unloadEvent, name, value);
             return;
         }
         if (name == HTMLNames::onresizeAttr) {
-            document().setWindowAttributeEventListener(eventNames().resizeEvent, name, value, mainThreadNormalWorld());
+            document().setWindowAttributeEventListener(eventNames().resizeEvent, name, value);
             return;
         }
         if (name == HTMLNames::onscrollAttr) {
-            document().setWindowAttributeEventListener(eventNames().scrollEvent, name, value, mainThreadNormalWorld());
+            document().setWindowAttributeEventListener(eventNames().scrollEvent, name, value);
             return;
         }
         if (name == SVGNames::onzoomAttr) {
-            document().setWindowAttributeEventListener(eventNames().zoomEvent, name, value, mainThreadNormalWorld());
+            document().setWindowAttributeEventListener(eventNames().zoomEvent, name, value);
             return;
         }
     }
@@ -237,11 +236,11 @@ void SVGSVGElement::parseAttribute(const QualifiedName& name, const AtomicString
     // setting certain event handlers directly on the window object.
     // FIXME: Why different from the events above that work only on the outermost <svg> element?
     if (name == HTMLNames::onabortAttr) {
-        document().setWindowAttributeEventListener(eventNames().abortEvent, name, value, mainThreadNormalWorld());
+        document().setWindowAttributeEventListener(eventNames().abortEvent, name, value);
         return;
     }
     if (name == HTMLNames::onerrorAttr) {
-        document().setWindowAttributeEventListener(eventNames().errorEvent, name, value, mainThreadNormalWorld());
+        document().setWindowAttributeEventListener(eventNames().errorEvent, name, value);
         return;
     }
 
@@ -334,7 +333,6 @@ Ref<NodeList> SVGSVGElement::collectIntersectionOrEnclosureList(SVGRect& rect, S
 
 Ref<NodeList> SVGSVGElement::getIntersectionList(SVGRect& rect, SVGElement* referenceElement)
 {
-    document().updateLayoutIgnorePendingStylesheets();
     return collectIntersectionOrEnclosureList(rect, referenceElement, checkIntersection);
 }
 
@@ -468,10 +466,8 @@ RenderPtr<RenderElement> SVGSVGElement::createElementRenderer(RenderStyle&& styl
 
 Node::InsertionNotificationRequest SVGSVGElement::insertedInto(ContainerNode& rootParent)
 {
-    if (rootParent.isConnected()) {
+    if (rootParent.inDocument()) {
         document().accessSVGExtensions().addTimeContainer(this);
-        if (!document().accessSVGExtensions().areAnimationsPaused())
-            unpauseAnimations();
 
         // Animations are started at the end of document parsing and after firing the load event,
         // but if we miss that train (deferred programmatic element insertion for example) we need
@@ -484,10 +480,8 @@ Node::InsertionNotificationRequest SVGSVGElement::insertedInto(ContainerNode& ro
 
 void SVGSVGElement::removedFrom(ContainerNode& rootParent)
 {
-    if (rootParent.isConnected()) {
+    if (rootParent.inDocument())
         document().accessSVGExtensions().removeTimeContainer(this);
-        pauseAnimations();
-    }
     SVGGraphicsElement::removedFrom(rootParent);
 }
 
@@ -506,11 +500,6 @@ void SVGSVGElement::unpauseAnimations()
 bool SVGSVGElement::animationsPaused() const
 {
     return m_timeContainer->isPaused();
-}
-
-bool SVGSVGElement::hasActiveAnimation() const
-{
-    return m_timeContainer->isActive();
 }
 
 float SVGSVGElement::getCurrentTime() const

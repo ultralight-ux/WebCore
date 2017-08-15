@@ -132,7 +132,6 @@ for my $file (sort @files) {
     my $UIString;
     my $key;
     my $comment;
-    my $mnemonic;
     
     my $string;
     my $stringLine;
@@ -189,9 +188,6 @@ handleString:
                         # FIXME: Validate UTF-8 here?
                         $key = $string;
                         $expected = ",";
-                    } elsif (($macro =~ /WEB_UI_STRING_WITH_MNEMONIC$/) and !defined $mnemonic) {
-                        $mnemonic = $string;
-                        $expected = ",";
                     } elsif (!defined $comment) {
                         # FIXME: Validate UTF-8 here?
                         $comment = $string;
@@ -244,13 +240,12 @@ handleString:
                     emitError($file, $., "found $token but expected $expected");
                     $expected = "";
                 }
-                if (($token =~ /(WEB_)?UI_STRING(_KEY)?(_INTERNAL)?$/) || ($token =~ /WEB_UI_NSSTRING$/) || ($token =~ /WEB_UI_STRING_WITH_MNEMONIC$/) || ($token =~ /WEB_UI_CFSTRING$/)) {
+                if (($token =~ /(WEB_)?UI_STRING(_KEY)?(_INTERNAL)?$/) || ($token =~ /WEB_UI_NSSTRING$/)) {
                     $expected = "(";
                     $macro = $token;
                     $UIString = undef;
                     $key = undef;
                     $comment = undef;
-                    $mnemonic = undef;
                     $macroLine = $.;
                 } elsif ($token eq "(" or $token eq "[") {
                     ++$nestingLevel if defined $nestingLevel;

@@ -34,23 +34,28 @@
 #if ENABLE(WEB_TIMING)
 
 #include "LoadTiming.h"
-#include "NetworkLoadMetrics.h"
+#include "NetworkLoadTiming.h"
 #include "PerformanceEntry.h"
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-class ResourceTiming;
+class Document;
+class URL;
+class NetworkLoadTiming;
+class ResourceRequest;
+class ResourceResponse;
 
 class PerformanceResourceTiming final : public PerformanceEntry {
 public:
-    static Ref<PerformanceResourceTiming> create(MonotonicTime timeOrigin, ResourceTiming&&);
+    static Ref<PerformanceResourceTiming> create(const AtomicString& initiatorType, const URL& originalURL, const ResourceResponse& response, LoadTiming loadTiming, Document* requestingDocument)
+    {
+        return adoptRef(*new PerformanceResourceTiming(initiatorType, originalURL, response, loadTiming, requestingDocument));
+    }
 
-    AtomicString initiatorType() const { return m_initiatorType; }
-    String nextHopProtocol() const;
+    AtomicString initiatorType() const;
 
-    double workerStart() const;
     double redirectStart() const;
     double redirectEnd() const;
     double fetchStart() const;
@@ -63,17 +68,19 @@ public:
     double responseStart() const;
     double responseEnd() const;
 
+    bool isResource() const override { return true; }
+
 private:
-    PerformanceResourceTiming(MonotonicTime timeOrigin, ResourceTiming&&);
+    PerformanceResourceTiming(const AtomicString& initatorType, const URL& originalURL, const ResourceResponse&, LoadTiming, Document*);
     ~PerformanceResourceTiming();
 
-    double networkLoadTimeToDOMHighResTimeStamp(Seconds) const;
+    double resourceTimeToDocumentMilliseconds(double deltaMilliseconds) const;
 
     AtomicString m_initiatorType;
-    MonotonicTime m_timeOrigin;
+    NetworkLoadTiming m_timing;
     LoadTiming m_loadTiming;
-    NetworkLoadMetrics m_networkLoadMetrics;
     bool m_shouldReportDetails;
+    RefPtr<Document> m_requestingDocument;
 };
 
 } // namespace WebCore

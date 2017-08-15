@@ -12,7 +12,6 @@ set(WTF_HEADERS
     BubbleSort.h
     BumpPointerAllocator.h
     ByteOrder.h
-    CPUTime.h
     ClockType.h
     CompilationThread.h
     Compiler.h
@@ -31,14 +30,12 @@ set(WTF_HEADERS
     DisallowCType.h
     DoublyLinkedList.h
     FastMalloc.h
-    FastTLS.h
     FeatureDefines.h
     FilePrintStream.h
     FlipBytes.h
     Forward.h
     FunctionDispatcher.h
     GetPtr.h
-    GlobalVersion.h
     GraphNodeWorklist.h
     GregorianDateTime.h
     HashCountedSet.h
@@ -58,23 +55,16 @@ set(WTF_HEADERS
     IteratorAdaptors.h
     IteratorRange.h
     ListHashSet.h
-    Liveness.h
     Lock.h
     LockAlgorithm.h
     LockedPrintStream.h
     Locker.h
-    LocklessBag.h
-    LoggingHashID.h
-    LoggingHashMap.h
-    LoggingHashSet.h
-    LoggingHashTraits.h
     MD5.h
     MainThread.h
     MallocPtr.h
     MathExtras.h
     MediaTime.h
     MemoryFootprint.h
-    MemoryPressureHandler.h
     MessageQueue.h
     MetaAllocator.h
     MetaAllocatorHandle.h
@@ -95,15 +85,13 @@ set(WTF_HEADERS
     ParallelJobsOpenMP.h
     ParallelVectorIterator.h
     ParkingLot.h
+    PassRefPtr.h
     Platform.h
-    PlatformRegisters.h
     PrintStream.h
     ProcessID.h
     RAMSize.h
-    RandomDevice.h
     RandomNumber.h
     RandomNumberSeed.h
-    Range.h
     RangeSet.h
     RawPointer.h
     RecursiveLockAdapter.h
@@ -122,25 +110,22 @@ set(WTF_HEADERS
     Seconds.h
     SegmentedVector.h
     SmallPtrSet.h
+    SplitTest.h
     StackBounds.h
     StackStats.h
-    StackTrace.h
     StaticConstructors.h
     StdLibExtras.h
     Stopwatch.h
     StringExtras.h
     StringPrintStream.h
-    SystemFree.h
     SystemTracing.h
-    ThreadHolder.cpp
-    ThreadMessage.h
+    ThreadIdentifierDataPthreads.h
     ThreadSafeRefCounted.h
     ThreadSpecific.h
     Threading.h
     ThreadingPrimitives.h
     TimeWithDynamicClockType.h
     TinyPtrSet.h
-    UUID.h
     UniqueRef.h
     VMTags.h
     ValueCheck.h
@@ -190,7 +175,6 @@ set(WTF_HEADERS
     text/icu/UTextProviderUTF16.h
 
     threads/BinarySemaphore.h
-    threads/Signals.h
 
     unicode/CharacterNames.h
     unicode/Collator.h
@@ -202,7 +186,6 @@ set(WTF_SOURCES
     Atomics.cpp
     AutomaticThread.cpp
     BitVector.cpp
-    CPUTime.cpp
     ClockType.cpp
     CompilationThread.cpp
     CrossThreadCopier.cpp
@@ -216,7 +199,6 @@ set(WTF_SOURCES
     FastMalloc.cpp
     FilePrintStream.cpp
     FunctionDispatcher.cpp
-    GlobalVersion.cpp
     GregorianDateTime.cpp
     HashTable.cpp
     Lock.cpp
@@ -224,7 +206,7 @@ set(WTF_SOURCES
     MD5.cpp
     MainThread.cpp
     MediaTime.cpp
-    MemoryPressureHandler.cpp
+    MemoryFootprint.cpp
     MetaAllocator.cpp
     MonotonicTime.cpp
     NumberOfCores.cpp
@@ -235,21 +217,18 @@ set(WTF_SOURCES
     ParkingLot.cpp
     PrintStream.cpp
     RAMSize.cpp
-    RandomDevice.cpp
     RandomNumber.cpp
     RefCountedLeakCounter.cpp
     RunLoop.cpp
     SHA1.cpp
     Seconds.cpp
     SixCharacterHash.cpp
+    SplitTest.cpp
     StackBounds.cpp
     StackStats.cpp
-    StackTrace.cpp
     StringPrintStream.cpp
-    ThreadMessage.cpp
     Threading.cpp
     TimeWithDynamicClockType.cpp
-    UUID.cpp
     WTFThreadData.cpp
     WallTime.cpp
     WordLock.cpp
@@ -264,10 +243,6 @@ set(WTF_SOURCES
     dtoa/fast-dtoa.cc
     dtoa/fixed-dtoa.cc
     dtoa/strtod.cc
-
-    persistence/Coders.cpp
-    persistence/Decoder.cpp
-    persistence/Encoder.cpp
 
     text/AtomicString.cpp
     text/AtomicStringImpl.cpp
@@ -288,7 +263,6 @@ set(WTF_SOURCES
     text/icu/UTextProviderUTF16.cpp
 
     threads/BinarySemaphore.cpp
-    threads/Signals.cpp
 
     unicode/UTF8.cpp
 )
@@ -296,19 +270,15 @@ set(WTF_SOURCES
 set(WTF_INCLUDE_DIRECTORIES
     "${BMALLOC_DIR}"
     "${WTF_DIR}"
-    "${CMAKE_BINARY_DIR}"
-    "${DERIVED_SOURCES_DIR}"
-    "${THIRDPARTY_DIR}"
-)
-
-set(WTF_PRIVATE_INCLUDE_DIRECTORIES
     "${WTF_DIR}/wtf"
     "${WTF_DIR}/wtf/dtoa"
-    "${WTF_DIR}/wtf/persistence"
     "${WTF_DIR}/wtf/text"
     "${WTF_DIR}/wtf/text/icu"
     "${WTF_DIR}/wtf/threads"
     "${WTF_DIR}/wtf/unicode"
+    "${THIRDPARTY_DIR}"
+    "${CMAKE_BINARY_DIR}"
+    "${DERIVED_SOURCES_DIR}"
 )
 
 set(WTF_LIBRARIES
@@ -343,14 +313,16 @@ list(APPEND WTF_LIBRARIES
 if (WIN32)
     list(APPEND WTF_SOURCES
         OSAllocatorWin.cpp
-        ThreadHolderWin.cpp
         ThreadSpecificWin.cpp
         ThreadingWin.cpp
     )
 else ()
+    list(APPEND WTF_HEADERS
+        ThreadIdentifierDataPthreads.h
+    )
     list(APPEND WTF_SOURCES
         OSAllocatorPosix.cpp
-        ThreadHolderPthreads.cpp
+        ThreadIdentifierDataPthreads.cpp
         ThreadingPthreads.cpp
     )
 endif ()

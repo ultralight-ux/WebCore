@@ -50,8 +50,7 @@ namespace WebCore {
 DOMWindow* domWindowFromExecState(JSC::ExecState* scriptState)
 {
     JSC::JSGlobalObject* globalObject = scriptState->lexicalGlobalObject();
-    JSC::VM& vm = globalObject->vm();
-    if (!globalObject->inherits(vm, JSDOMWindowBase::info()))
+    if (!globalObject->inherits(JSDOMWindowBase::info()))
         return nullptr;
     return &JSC::jsCast<JSDOMWindowBase*>(globalObject)->wrapped();
 }
@@ -66,8 +65,7 @@ Frame* frameFromExecState(JSC::ExecState* scriptState)
 ScriptExecutionContext* scriptExecutionContextFromExecState(JSC::ExecState* scriptState)
 {
     JSC::JSGlobalObject* globalObject = scriptState->lexicalGlobalObject();
-    JSC::VM& vm = globalObject->vm();
-    if (!globalObject->inherits(vm, JSDOMGlobalObject::info()))
+    if (!globalObject->inherits(JSDOMGlobalObject::info()))
         return nullptr;
     return JSC::jsCast<JSDOMGlobalObject*>(globalObject)->scriptExecutionContext();
 }

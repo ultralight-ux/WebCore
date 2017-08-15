@@ -55,7 +55,7 @@ namespace Inspector {""")
 
     TypeConversionsHeaderStandard = (
     """template<typename ObjCEnumType>
-std::optional<ObjCEnumType> fromProtocolString(const String& value);""")
+ObjCEnumType fromProtocolString(const String& value);""")
 
     BackendDispatcherHeaderPrelude = (
     """${includes}
@@ -82,7 +82,8 @@ namespace Inspector {""")
 """)
 
     ImplementationPrelude = (
-    """#import ${primaryInclude}
+    """#import "config.h"
+#import ${primaryInclude}
 
 ${secondaryIncludes}
 

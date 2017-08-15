@@ -24,6 +24,8 @@
 #include "InlineTextBox.h"
 
 #include "BreakLines.h"
+#include "Chrome.h"
+#include "ChromeClient.h"
 #include "DashArray.h"
 #include "Document.h"
 #include "DocumentMarkerController.h"
@@ -474,11 +476,10 @@ void InlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
 
     bool paintSelectedTextOnly = false;
     bool paintSelectedTextSeparately = false;
-    bool paintNonSelectedTextOnly = false;
     const ShadowData* selectionShadow = nullptr;
     
     // Text with custom underlines does not have selection background painted, so selection paint style is not appropriate for it.
-    TextPaintStyle selectionPaintStyle = haveSelection && !useCustomUnderlines ? computeTextSelectionPaintStyle(textPaintStyle, renderer(), lineStyle, paintInfo, paintSelectedTextOnly, paintSelectedTextSeparately, paintNonSelectedTextOnly, selectionShadow) : textPaintStyle;
+    TextPaintStyle selectionPaintStyle = haveSelection && !useCustomUnderlines ? computeTextSelectionPaintStyle(textPaintStyle, renderer(), lineStyle, paintInfo, paintSelectedTextOnly, paintSelectedTextSeparately, selectionShadow) : textPaintStyle;
 
     // Set our font.
     const FontCascade& font = fontToUse(lineStyle, renderer());
@@ -496,12 +497,14 @@ void InlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
             paintSelection(context, boxOrigin, lineStyle, font, selectionPaintStyle.fillColor);
     }
 
-    // FIXME: Right now, InlineTextBoxes never call addRelevantUnpaintedObject() even though they might
-    // legitimately be unpainted if they are waiting on a slow-loading web font. We should fix that, and
-    // when we do, we will have to account for the fact the InlineTextBoxes do not always have unique
-    // renderers and Page currently relies on each unpainted object having a unique renderer.
-    if (paintInfo.phase == PaintPhaseForeground)
-        renderer().page().addRelevantRepaintedObject(&renderer(), IntRect(boxOrigin.x(), boxOrigin.y(), logicalWidth(), logicalHeight()));
+    if (Page* page = renderer().frame().page()) {
+        // FIXME: Right now, InlineTextBoxes never call addRelevantUnpaintedObject() even though they might
+        // legitimately be unpainted if they are waiting on a slow-loading web font. We should fix that, and
+        // when we do, we will have to account for the fact the InlineTextBoxes do not always have unique
+        // renderers and Page currently relies on each unpainted object having a unique renderer.
+        if (paintInfo.phase == PaintPhaseForeground)
+            page->addRelevantRepaintedObject(&renderer(), IntRect(boxOrigin.x(), boxOrigin.y(), logicalWidth(), logicalHeight()));
+    }
 
     // 2. Now paint the foreground, including text and decorations like underline/overline (in quirks mode only).
     String alternateStringToRender;
@@ -552,55 +555,12 @@ void InlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
     textPainter.addTextShadow(textShadow, selectionShadow);
     textPainter.addEmphasis(emphasisMark, emphasisMarkOffset, combinedText);
 
-    auto draggedContentRanges = renderer().draggedContentRangesBetweenOffsets(m_start, m_start + m_len);
-    if (!draggedContentRanges.isEmpty() && !paintSelectedTextOnly && !paintNonSelectedTextOnly) {
-        // FIXME: Painting with text effects ranges currently only works if we're not also painting the selection.
-        // In the future, we may want to support this capability, but in the meantime, this isn't required by anything.
-        unsigned currentEnd = 0;
-        for (size_t index = 0; index < draggedContentRanges.size(); ++index) {
-            unsigned previousEnd = index ? std::min(draggedContentRanges[index - 1].second, length) : 0;
-            unsigned currentStart = draggedContentRanges[index].first - m_start;
-            currentEnd = std::min(draggedContentRanges[index].second - m_start, length);
-
-            if (previousEnd < currentStart)
-                textPainter.paintTextInRange(textRun, boxRect, textOrigin, previousEnd, currentStart);
-
-            if (currentStart < currentEnd) {
-                context.save();
-                context.setAlpha(0.25);
-                textPainter.paintTextInRange(textRun, boxRect, textOrigin, currentStart, currentEnd);
-                context.restore();
-            }
-        }
-        if (currentEnd < length)
-            textPainter.paintTextInRange(textRun, boxRect, textOrigin, currentEnd, length);
-    } else
-        textPainter.paintText(textRun, length, boxRect, textOrigin, selectionStart, selectionEnd, paintSelectedTextOnly, paintSelectedTextSeparately, paintNonSelectedTextOnly);
+    textPainter.paintText(textRun, length, boxRect, textOrigin, selectionStart, selectionEnd, paintSelectedTextOnly, paintSelectedTextSeparately);
 
     // Paint decorations
     TextDecoration textDecorations = lineStyle.textDecorationsInEffect();
-    if (textDecorations != TextDecorationNone && paintInfo.phase != PaintPhaseSelection) {
-        FloatRect textDecorationSelectionClipOutRect;
-        if ((paintInfo.paintBehavior & PaintBehaviorExcludeSelection) && selectionStart < selectionEnd && selectionEnd <= length) {
-            textDecorationSelectionClipOutRect = logicalOverflowRect();
-            textDecorationSelectionClipOutRect.moveBy(localPaintOffset);
-            float logicalWidthBeforeRange;
-            float logicalWidthAfterRange;
-            float logicalSelectionWidth = font.widthOfTextRange(textRun, selectionStart, selectionEnd, nullptr, &logicalWidthBeforeRange, &logicalWidthAfterRange);
-            // FIXME: Do we need to handle vertical bottom to top text?
-            if (!isHorizontal()) {
-                textDecorationSelectionClipOutRect.move(0, logicalWidthBeforeRange);
-                textDecorationSelectionClipOutRect.setHeight(logicalSelectionWidth);
-            } else if (direction() == RTL) {
-                textDecorationSelectionClipOutRect.move(logicalWidthAfterRange, 0);
-                textDecorationSelectionClipOutRect.setWidth(logicalSelectionWidth);
-            } else {
-                textDecorationSelectionClipOutRect.move(logicalWidthBeforeRange, 0);
-                textDecorationSelectionClipOutRect.setWidth(logicalSelectionWidth);
-            }
-        }
-        paintDecoration(context, font, combinedText, textRun, textOrigin, boxRect, textDecorations, textPaintStyle, textShadow, textDecorationSelectionClipOutRect);
-    }
+    if (textDecorations != TextDecorationNone && paintInfo.phase != PaintPhaseSelection)
+        paintDecoration(context, font, combinedText, textRun, textOrigin, boxRect, textDecorations, textPaintStyle, textShadow);
 
     if (paintInfo.phase == PaintPhaseForeground) {
         paintDocumentMarkers(context, boxOrigin, lineStyle, font, false);
@@ -739,7 +699,7 @@ static inline void mirrorRTLSegment(float logicalWidth, TextDirection direction,
 }
 
 void InlineTextBox::paintDecoration(GraphicsContext& context, const FontCascade& font, RenderCombineText* combinedText, const TextRun& textRun, const FloatPoint& textOrigin,
-    const FloatRect& boxRect, TextDecoration decoration, TextPaintStyle textPaintStyle, const ShadowData* shadow, const FloatRect& clipOutRect)
+    const FloatRect& boxRect, TextDecoration decoration, TextPaintStyle textPaintStyle, const ShadowData* shadow)
 {
     if (m_truncation == cFullTruncation)
         return;
@@ -765,16 +725,7 @@ void InlineTextBox::paintDecoration(GraphicsContext& context, const FontCascade&
 
     FloatPoint localOrigin = boxRect.location();
     localOrigin.move(start, 0);
-
-    if (!clipOutRect.isEmpty()) {
-        context.save();
-        context.clipOut(clipOutRect);
-    }
-
     decorationPainter.paintTextDecoration(textRun, textOrigin, localOrigin);
-
-    if (!clipOutRect.isEmpty())
-        context.restore();
 
     if (combinedText)
         context.concatCTM(rotation(boxRect, Counterclockwise));
@@ -869,7 +820,7 @@ void InlineTextBox::paintTextMatchMarker(GraphicsContext& context, const FloatPo
     if (!renderer().frame().editor().markedTextMatchesAreHighlighted())
         return;
 
-    Color color = marker.isActiveMatch() ? renderer().theme().platformActiveTextSearchHighlightColor() : renderer().theme().platformInactiveTextSearchHighlightColor();
+    Color color = marker.activeMatch() ? renderer().theme().platformActiveTextSearchHighlightColor() : renderer().theme().platformInactiveTextSearchHighlightColor();
     GraphicsContextStateSaver stateSaver(context);
     updateGraphicsContext(context, TextPaintStyle(color)); // Don't draw text at all!
 

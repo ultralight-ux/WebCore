@@ -119,7 +119,8 @@ bool parseManifest(const URL& manifestURL, const char* data, int length, Manifes
             if (!url.isValid())
                 continue;
 
-            url.removeFragmentIdentifier();
+            if (url.hasFragmentIdentifier())
+                url.removeFragmentIdentifier();
             
             if (!equalIgnoringASCIICase(url.protocol(), manifestURL.protocol()))
                 continue;
@@ -149,7 +150,8 @@ bool parseManifest(const URL& manifestURL, const char* data, int length, Manifes
             URL namespaceURL(manifestURL, line.substring(0, p - upconvertedLineCharacters));
             if (!namespaceURL.isValid())
                 continue;
-            namespaceURL.removeFragmentIdentifier();
+            if (namespaceURL.hasFragmentIdentifier())
+                namespaceURL.removeFragmentIdentifier();
 
             if (!protocolHostAndPortAreEqual(manifestURL, namespaceURL))
                 continue;
@@ -166,7 +168,8 @@ bool parseManifest(const URL& manifestURL, const char* data, int length, Manifes
             URL fallbackURL(manifestURL, String(fallbackStart, p - fallbackStart));
             if (!fallbackURL.isValid())
                 continue;
-            fallbackURL.removeFragmentIdentifier();
+            if (fallbackURL.hasFragmentIdentifier())
+                fallbackURL.removeFragmentIdentifier();
 
             if (!protocolHostAndPortAreEqual(manifestURL, fallbackURL))
                 continue;

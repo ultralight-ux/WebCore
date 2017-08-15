@@ -56,7 +56,6 @@ public:
 
     WEBCORE_EXPORT Element* getElementById(const AtomicString&) const;
     WEBCORE_EXPORT Element* getElementById(const String&) const;
-    Element* getElementById(StringView) const;
     const Vector<Element*>* getAllElementsById(const AtomicString&) const;
     bool hasElementWithId(const AtomicStringImpl&) const;
     bool containsMultipleElementsWithId(const AtomicString& id) const;
@@ -88,7 +87,7 @@ public:
     void removeLabel(const AtomicStringImpl& forAttributeValue, HTMLLabelElement&);
     HTMLLabelElement* labelElementForId(const AtomicString& forAttributeValue);
 
-    WEBCORE_EXPORT Element* elementFromPoint(double x, double y);
+    WEBCORE_EXPORT Element* elementFromPoint(int x, int y);
 
     // Find first anchor with the given name.
     // First searches for an element with the given ID, but if that fails, then looks

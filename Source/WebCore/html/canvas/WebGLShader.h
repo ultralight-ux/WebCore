@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,8 +31,9 @@ namespace WebCore {
 
 class WebGLShader final : public WebGLSharedObject {
 public:
-    static Ref<WebGLShader> create(WebGLRenderingContextBase&, GC3Denum);
     virtual ~WebGLShader();
+
+    static Ref<WebGLShader> create(WebGLRenderingContextBase&, GC3Denum);
 
     GC3Denum getType() const { return m_type; }
     const String& getSource() const { return m_source; }
@@ -45,7 +46,9 @@ public:
 private:
     WebGLShader(WebGLRenderingContextBase&, GC3Denum);
 
-    void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) final;
+    void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
+
+    bool isShader() const override { return true; }
 
     GC3Denum m_type;
     String m_source;

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,11 +28,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef RTCIceCandidateDescriptor_h
+#define RTCIceCandidateDescriptor_h
 
 #if ENABLE(WEB_RTC)
 
-#include <wtf/Ref.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -41,7 +41,7 @@ namespace WebCore {
 
 class RTCIceCandidateDescriptor : public RefCounted<RTCIceCandidateDescriptor> {
 public:
-    static Ref<RTCIceCandidateDescriptor> create(const String& candidate, const String& sdpMid, unsigned short sdpMLineIndex);
+    static PassRefPtr<RTCIceCandidateDescriptor> create(const String& candidate, const String& sdpMid, unsigned short sdpMLineIndex);
     virtual ~RTCIceCandidateDescriptor();
 
     const String& candidate() const { return m_candidate; }
@@ -59,3 +59,5 @@ private:
 } // namespace WebCore
 
 #endif // ENABLE(WEB_RTC)
+
+#endif // RTCIceCandidateDescriptor_h

@@ -45,15 +45,9 @@ public:
 
     ALWAYS_INLINE static JSFixedArray* createFromArray(ExecState* exec, VM& vm, JSArray* array)
     {
-        auto throwScope = DECLARE_THROW_SCOPE(vm);
-
         IndexingType indexingType = array->indexingType() & IndexingShapeMask;
         unsigned length = array->length();
-        JSFixedArray* result = JSFixedArray::tryCreate(vm, vm.fixedArrayStructure.get(), length);
-        if (UNLIKELY(!result)) {
-            throwOutOfMemoryError(exec, throwScope);
-            return nullptr;
-        }
+        JSFixedArray* result = JSFixedArray::create(vm, vm.fixedArrayStructure.get(), length);
 
         if (!length)
             return result;
@@ -76,6 +70,8 @@ public:
             return result;
         }
 
+
+        auto throwScope = DECLARE_THROW_SCOPE(vm);
         for (unsigned i = 0; i < length; i++) {
             JSValue value = array->getDirectIndex(exec, i);
             if (!value) {
@@ -115,21 +111,12 @@ public:
         return WTF::roundUpToMultipleOf<sizeof(WriteBarrier<Unknown>)>(sizeof(JSFixedArray));
     }
 
-    void copyToArguments(ExecState*, VirtualRegister firstElementDest, unsigned offset, unsigned length);
-
 private:
     unsigned m_size;
 
-    ALWAYS_INLINE static JSFixedArray* tryCreate(VM& vm, Structure* structure, unsigned size)
+    ALWAYS_INLINE static JSFixedArray* create(VM& vm, Structure* structure, unsigned size)
     {
-        Checked<size_t, RecordOverflow> checkedAllocationSize = allocationSize(size);
-        if (UNLIKELY(checkedAllocationSize.hasOverflowed()))
-            return nullptr;
-
-        void* buffer = tryAllocateCell<JSFixedArray>(vm.heap, checkedAllocationSize.unsafeGet());
-        if (UNLIKELY(!buffer))
-            return nullptr;
-        JSFixedArray* result = new (NotNull, buffer) JSFixedArray(vm, structure, size);
+        JSFixedArray* result = new (NotNull, allocateCell<JSFixedArray>(vm.heap, allocationSize(size))) JSFixedArray(vm, structure, size);
         result->finishCreation(vm);
         return result;
     }
@@ -144,9 +131,9 @@ private:
     }
 
 
-    static Checked<size_t, RecordOverflow> allocationSize(Checked<size_t, RecordOverflow> numItems)
+    static size_t allocationSize(Checked<size_t> numItems)
     {
-        return offsetOfData() + numItems * sizeof(WriteBarrier<Unknown>);
+        return (offsetOfData() + numItems * sizeof(WriteBarrier<Unknown>)).unsafeGet();
     }
 };
 

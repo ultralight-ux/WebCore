@@ -38,12 +38,12 @@ namespace JSC { namespace FTL {
 
 template<typename ResultType, typename... ArgumentTypes>
 RefPtr<LazySlowPath::Generator> createLazyCallGenerator(
-    VM& vm, FunctionPtr function, ResultType result, ArgumentTypes... arguments)
+    FunctionPtr function, ResultType result, ArgumentTypes... arguments)
 {
     return LazySlowPath::createGenerator(
-        [=, &vm] (CCallHelpers& jit, LazySlowPath::GenerationParams& params) {
+        [=] (CCallHelpers& jit, LazySlowPath::GenerationParams& params) {
             callOperation(
-                vm, params.lazySlowPath->usedRegisters(), jit, params.lazySlowPath->callSiteIndex(),
+                params.lazySlowPath->usedRegisters(), jit, params.lazySlowPath->callSiteIndex(),
                 params.exceptionJumps, function, result, arguments...);
             params.doneJumps.append(jit.jump());
         });

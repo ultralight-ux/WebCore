@@ -102,7 +102,7 @@ public:
 #endif
 
 private:
-    void appendAPIBacktrace(ScriptCallStack&);
+    void appendAPIBacktrace(ScriptCallStack* callStack);
 
     JSC::JSGlobalObject& m_globalObject;
     std::unique_ptr<InjectedScriptManager> m_injectedScriptManager;

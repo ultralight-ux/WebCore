@@ -222,7 +222,7 @@ public:
     bool needsSectionRecalc() const { return m_needsSectionRecalc; }
     void setNeedsSectionRecalc()
     {
-        if (renderTreeBeingDestroyed())
+        if (documentBeingDestroyed())
             return;
         m_needsSectionRecalc = true;
         setNeedsLayout();
@@ -314,7 +314,7 @@ private:
 
     void addOverflowFromChildren() final;
 
-    void adjustBorderBoxRectForPainting(LayoutRect&) override;
+    void subtractCaptionRect(LayoutRect&) const;
 
     void recalcCollapsedBorders();
     void recalcSections() const;

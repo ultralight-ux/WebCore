@@ -34,9 +34,10 @@ function initializeRTCPeerConnection(configuration)
 {
     "use strict";
 
-    if (configuration == null)
-        configuration = {};
-    else if (!@isObject(configuration))
+    if (arguments.length < 1)
+        @throwTypeError("Not enough arguments");
+
+    if (!@isObject(configuration))
         @throwTypeError("RTCPeerConnection argument must be a valid dictionary");
 
     // FIXME: Handle errors in a better way than catching and re-throwing (http://webkit.org/b/158936)
@@ -47,6 +48,7 @@ function initializeRTCPeerConnection(configuration)
             : "Error creating RTCPeerConnection";
         @throwTypeError(message);
     }
+
     this.@operations = [];
     this.@localStreams = [];
 
@@ -58,7 +60,7 @@ function getLocalStreams()
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        throw @makeThisTypeError("RTCPeerConnection", "getLocalStreams");
+        @throwTypeError("Function should be called on an RTCPeerConnection");
 
     return this.@localStreams.slice();
 }
@@ -68,7 +70,7 @@ function getStreamById(streamIdArg)
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        throw @makeThisTypeError("RTCPeerConnection", "getStreamById");
+        @throwTypeError("Function should be called on an RTCPeerConnection");
 
     if (arguments.length < 1)
         @throwTypeError("Not enough arguments");
@@ -85,7 +87,7 @@ function addStream(stream)
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        throw @makeThisTypeError("RTCPeerConnection", "addStream");
+        @throwTypeError("Function should be called on an RTCPeerConnection");
 
     if (arguments.length < 1)
         @throwTypeError("Not enough arguments");
@@ -105,7 +107,7 @@ function removeStream(stream)
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        throw @makeThisTypeError("RTCPeerConnection", "removeStream");
+        @throwTypeError("Function should be called on an RTCPeerConnection");
 
     if (arguments.length < 1)
         @throwTypeError("Not enough arguments");
@@ -132,7 +134,7 @@ function createOffer()
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        return @Promise.@reject(@makeThisTypeError("RTCPeerConnection", "createOffer"));
+        return @Promise.@reject(new @TypeError("Function should be called on an RTCPeerConnection"));
 
     const peerConnection = this;
 
@@ -156,7 +158,7 @@ function createAnswer()
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        return @Promise.@reject(@makeThisTypeError("RTCPeerConnection", "createAnswer"));
+        return @Promise.@reject(new @TypeError("Function should be called on an RTCPeerConnection"));
 
     const peerConnection = this;
 
@@ -180,16 +182,14 @@ function setLocalDescription()
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        return @Promise.@reject(@makeThisTypeError("RTCPeerConnection", "setLocalDescription"));
+        return @Promise.@reject(new @TypeError("Function should be called on an RTCPeerConnection"));
 
     const peerConnection = this;
 
-    // FIXME 169644: According the spec, we should throw when receiving a RTCSessionDescription.
     const objectInfo = {
         "constructor": @RTCSessionDescription,
         "argName": "description",
-        "argType": "RTCSessionDescription",
-        "maybeDictionary": "true"
+        "argType": "RTCSessionDescription"
     };
     return @objectAndCallbacksOverload(arguments, "setLocalDescription", objectInfo, function (description) {
         // Promise mode
@@ -211,16 +211,14 @@ function setRemoteDescription()
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        return @Promise.@reject(@makeThisTypeError("RTCPeerConnection", "setRemoteDescription"));
+        return @Promise.@reject(new @TypeError("Function should be called on an RTCPeerConnection"));
 
     const peerConnection = this;
 
-    // FIXME: According the spec, we should only expect RTCSessionDescriptionInit.
     const objectInfo = {
         "constructor": @RTCSessionDescription,
         "argName": "description",
-        "argType": "RTCSessionDescription",
-        "maybeDictionary": "true"
+        "argType": "RTCSessionDescription"
     };
     return @objectAndCallbacksOverload(arguments, "setRemoteDescription", objectInfo, function (description) {
         // Promise mode
@@ -237,24 +235,19 @@ function setRemoteDescription()
     });
 }
 
-function addIceCandidate(candidate)
+function addIceCandidate()
 {
     "use strict";
 
     if (!@isRTCPeerConnection(this))
-        return @Promise.@reject(@makeThisTypeError("RTCPeerConnection", "addIceCandidate"));
-
-    if (arguments.length < 1)
-        return @Promise.@reject(new @TypeError("Not enough arguments"));
+        return @Promise.@reject(new @TypeError("Function should be called on an RTCPeerConnection"));
 
     const peerConnection = this;
 
     const objectInfo = {
         "constructor": @RTCIceCandidate,
         "argName": "candidate",
-        "argType": "RTCIceCandidate",
-        "maybeDictionary": "true",
-        "defaultsToNull" : "true"
+        "argType": "RTCIceCandidate"
     };
     return @objectAndCallbacksOverload(arguments, "addIceCandidate", objectInfo, function (candidate) {
         // Promise mode
@@ -266,6 +259,32 @@ function addIceCandidate(candidate)
         @enqueueOperation(peerConnection, function () {
             return peerConnection.@queuedAddIceCandidate(candidate).@then(successCallback, errorCallback);
         });
+
+        return @Promise.@resolve(@undefined);
+    });
+}
+
+function getStats()
+{
+    "use strict";
+
+    if (!@isRTCPeerConnection(this))
+        return @Promise.@reject(new @TypeError("Function should be called on an RTCPeerConnection"));
+
+    const peerConnection = this;
+
+    const objectInfo = {
+        "constructor": @MediaStreamTrack,
+        "argName": "selector",
+        "argType": "MediaStreamTrack",
+        "defaultsToNull": true
+    };
+    return @objectAndCallbacksOverload(arguments, "getStats", objectInfo, function (selector) {
+        // Promise mode
+        return peerConnection.@privateGetStats(selector);
+    }, function (selector, successCallback, errorCallback) {
+        // Legacy callbacks mode
+        peerConnection.@privateGetStats(selector).@then(successCallback, errorCallback);
 
         return @Promise.@resolve(@undefined);
     });

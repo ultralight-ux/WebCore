@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,7 +35,6 @@
 #include "B3FrequentedBlock.h"
 #include "B3Procedure.h"
 #include "B3SwitchValue.h"
-#include "B3Width.h"
 #include "FTLAbbreviatedTypes.h"
 #include "FTLAbstractHeapRepository.h"
 #include "FTLCommonValues.h"
@@ -183,7 +182,9 @@ public:
     LValue doubleFloor(LValue);
     LValue doubleTrunc(LValue);
 
-    LValue doubleUnary(DFG::Arith::UnaryType, LValue);
+    LValue doubleSin(LValue);
+    LValue doubleCos(LValue);
+    LValue doubleTan(LValue);
 
     LValue doublePow(LValue base, LValue exponent);
     LValue doublePowi(LValue base, LValue exponent);
@@ -192,6 +193,7 @@ public:
 
     LValue doubleLog(LValue);
 
+    static bool hasSensibleDoubleToInt();
     LValue doubleToInt(LValue);
     LValue doubleToUInt(LValue);
 
@@ -208,7 +210,7 @@ public:
     LValue fround(LValue);
 
     LValue load(TypedPointer, LType);
-    LValue store(LValue, TypedPointer);
+    void store(LValue, TypedPointer);
     B3::FenceValue* fence(const AbstractHeap* read, const AbstractHeap* write);
 
     LValue load8SignExt32(TypedPointer);
@@ -220,32 +222,32 @@ public:
     LValue loadPtr(TypedPointer pointer) { return load(pointer, B3::pointerType()); }
     LValue loadFloat(TypedPointer pointer) { return load(pointer, B3::Float); }
     LValue loadDouble(TypedPointer pointer) { return load(pointer, B3::Double); }
-    LValue store32As8(LValue, TypedPointer);
-    LValue store32As16(LValue, TypedPointer);
-    LValue store32(LValue value, TypedPointer pointer)
+    void store32As8(LValue, TypedPointer);
+    void store32As16(LValue, TypedPointer);
+    void store32(LValue value, TypedPointer pointer)
     {
         ASSERT(value->type() == B3::Int32);
-        return store(value, pointer);
+        store(value, pointer);
     }
-    LValue store64(LValue value, TypedPointer pointer)
+    void store64(LValue value, TypedPointer pointer)
     {
         ASSERT(value->type() == B3::Int64);
-        return store(value, pointer);
+        store(value, pointer);
     }
-    LValue storePtr(LValue value, TypedPointer pointer)
+    void storePtr(LValue value, TypedPointer pointer)
     {
         ASSERT(value->type() == B3::pointerType());
-        return store(value, pointer);
+        store(value, pointer);
     }
-    LValue storeFloat(LValue value, TypedPointer pointer)
+    void storeFloat(LValue value, TypedPointer pointer)
     {
         ASSERT(value->type() == B3::Float);
-        return store(value, pointer);
+        store(value, pointer);
     }
-    LValue storeDouble(LValue value, TypedPointer pointer)
+    void storeDouble(LValue value, TypedPointer pointer)
     {
         ASSERT(value->type() == B3::Double);
-        return store(value, pointer);
+        store(value, pointer);
     }
 
     enum LoadType {
@@ -272,7 +274,7 @@ public:
         StoreDouble
     };
 
-    LValue store(LValue, TypedPointer, StoreType);
+    void store(LValue, TypedPointer, StoreType);
 
     LValue addPtr(LValue value, ptrdiff_t immediate = 0)
     {
@@ -368,16 +370,6 @@ public:
     LValue testNonZeroPtr(LValue value, LValue mask) { return notNull(bitAnd(value, mask)); }
 
     LValue select(LValue value, LValue taken, LValue notTaken);
-    
-    // These are relaxed atomics by default. Use AbstractHeapRepository::decorateFencedAccess() with a
-    // non-null heap to make them seq_cst fenced.
-    LValue atomicXchgAdd(LValue operand, TypedPointer pointer, B3::Width);
-    LValue atomicXchgAnd(LValue operand, TypedPointer pointer, B3::Width);
-    LValue atomicXchgOr(LValue operand, TypedPointer pointer, B3::Width);
-    LValue atomicXchgSub(LValue operand, TypedPointer pointer, B3::Width);
-    LValue atomicXchgXor(LValue operand, TypedPointer pointer, B3::Width);
-    LValue atomicXchg(LValue operand, TypedPointer pointer, B3::Width);
-    LValue atomicStrongCAS(LValue expected, LValue newValue, TypedPointer pointer, B3::Width);
 
     template<typename VectorType>
     LValue call(LType type, LValue function, const VectorType& vector)

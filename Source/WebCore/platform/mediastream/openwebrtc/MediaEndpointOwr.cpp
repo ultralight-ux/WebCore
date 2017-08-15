@@ -39,8 +39,7 @@
 #include "OpenWebRTCUtilities.h"
 #include "PeerConnectionStates.h"
 #include "RTCDataChannelHandler.h"
-#include "RealtimeAudioSourceOwr.h"
-#include "RealtimeVideoSourceOwr.h"
+#include "RealtimeMediaSourceOwr.h"
 #include <owr/owr.h>
 #include <owr/owr_audio_payload.h>
 #include <owr/owr_crypto_utils.h>
@@ -351,21 +350,15 @@ Ref<RealtimeMediaSource> MediaEndpointOwr::createMutedRemoteSource(const String&
 {
     String name;
     String id("not used");
-    RefPtr<RealtimeMediaSourceOwr> source;
 
     switch (type) {
-    case RealtimeMediaSource::Type::Audio:
-        name = "remote audio";
-        source = adoptRef(new RealtimeAudioSourceOwr(nullptr, id, type, name));
-        break;
-    case RealtimeMediaSource::Type::Video:
-        name = "remote video";
-        source = adoptRef(new RealtimeVideoSourceOwr(nullptr, id, type, name));
-        break;
-    case RealtimeMediaSource::Type::None:
+    case RealtimeMediaSource::Audio: name = "remote audio"; break;
+    case RealtimeMediaSource::Video: name = "remote video"; break;
+    case RealtimeMediaSource::None:
         ASSERT_NOT_REACHED();
     }
 
+    RefPtr<RealtimeMediaSourceOwr> source = adoptRef(new RealtimeMediaSourceOwr(nullptr, id, type, name));
     m_mutedRemoteSources.set(mid, source);
 
     return *source;
@@ -445,19 +438,19 @@ void MediaEndpointOwr::processIceTransportStateChange(OwrSession* session)
     if (owrIceState == OWR_ICE_STATE_READY && !transceiver.gotEndOfRemoteCandidates())
         return;
 
-    RTCIceTransportState transportState;
+    MediaEndpoint::IceTransportState transportState;
     switch (owrIceState) {
     case OWR_ICE_STATE_CONNECTING:
-        transportState = RTCIceTransportState::Checking;
+        transportState = MediaEndpoint::IceTransportState::Checking;
         break;
     case OWR_ICE_STATE_CONNECTED:
-        transportState = RTCIceTransportState::Connected;
+        transportState = MediaEndpoint::IceTransportState::Connected;
         break;
     case OWR_ICE_STATE_READY:
-        transportState = RTCIceTransportState::Completed;
+        transportState = MediaEndpoint::IceTransportState::Completed;
         break;
     case OWR_ICE_STATE_FAILED:
-        transportState = RTCIceTransportState::Failed;
+        transportState = MediaEndpoint::IceTransportState::Failed;
         break;
     default:
         return;
@@ -485,7 +478,7 @@ void MediaEndpointOwr::unmuteRemoteSource(const String& mid, OwrMediaSource* rea
         return;
     }
 
-    if (remoteSource->isProducingData())
+    if (!remoteSource->stopped())
         remoteSource->swapOutShallowSource(*realSource);
 }
 
@@ -520,7 +513,7 @@ void MediaEndpointOwr::prepareMediaSession(OwrMediaSession* mediaSession, PeerMe
 
         auto* rtxPayload = findRtxPayload(mediaDescription->payloads, payload.type);
 
-        ASSERT_WITH_MESSAGE(codecTypes.find(payload.encodingName.convertToASCIIUppercase()) != notFound, "Unable to find codec: %s", payload.encodingName.utf8().data());
+        ASSERT(codecTypes.find(payload.encodingName) != notFound);
         OwrCodecType codecType = static_cast<OwrCodecType>(codecTypes.find(payload.encodingName.convertToASCIIUppercase()));
 
         OwrPayload* receivePayload;

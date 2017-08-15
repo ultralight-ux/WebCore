@@ -26,7 +26,7 @@
 #include "config.h"
 #include "GlobalContextWithFinalizerTest.h"
 
-#include "JavaScript.h"
+#include "JavaScriptCore.h"
 
 static bool failed = true;
 

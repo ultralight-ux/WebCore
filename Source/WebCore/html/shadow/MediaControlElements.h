@@ -453,8 +453,7 @@ public:
 private:
     void updateTimerFired();
     void updateActiveCuesFontSize();
-    void updateTextStrokeStyle();
-    
+
     explicit MediaControlTextTrackContainerElement(Document&);
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) override;

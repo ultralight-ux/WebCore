@@ -28,6 +28,7 @@
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
+#include "EventNames.h"
 #include <runtime/Uint8Array.h>
 
 namespace WebCore {

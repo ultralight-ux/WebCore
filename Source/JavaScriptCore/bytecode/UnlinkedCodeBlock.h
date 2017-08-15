@@ -104,7 +104,7 @@ struct UnlinkedInstruction {
     union {
         OpcodeID opcode;
         int32_t operand;
-        unsigned unsignedValue;
+        unsigned index;
     } u;
 };
 
@@ -206,7 +206,6 @@ public:
         m_constantsSourceCodeRepresentation.append(SourceCodeRepresentation::Other);
         return result;
     }
-
     unsigned registerIndexForLinkTimeConstant(LinkTimeConstant type)
     {
         unsigned index = static_cast<unsigned>(type);
@@ -216,7 +215,6 @@ public:
     const Vector<WriteBarrier<Unknown>>& constantRegisters() { return m_constantRegisters; }
     const WriteBarrier<Unknown>& constantRegister(int index) const { return m_constantRegisters[index - FirstConstantRegisterIndex]; }
     ALWAYS_INLINE bool isConstantRegisterIndex(int index) const { return index >= FirstConstantRegisterIndex; }
-    ALWAYS_INLINE JSValue getConstant(int index) const { return m_constantRegisters[index - FirstConstantRegisterIndex].get(); }
     const Vector<SourceCodeRepresentation>& constantsSourceCodeRepresentation() { return m_constantsSourceCodeRepresentation; }
 
     // Jumps
@@ -381,8 +379,6 @@ public:
 
     TriState didOptimize() const { return m_didOptimize; }
     void setDidOptimize(TriState didOptimize) { m_didOptimize = didOptimize; }
-
-    void dump(PrintStream&) const;
 
 protected:
     UnlinkedCodeBlock(VM*, Structure*, CodeType, const ExecutableInfo&, DebuggerMode);

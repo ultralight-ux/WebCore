@@ -36,11 +36,10 @@ class TemplateRegistryKeyTable {
     WTF_MAKE_NONCOPYABLE(TemplateRegistryKeyTable);
 public:
     using StringVector = Vector<String, 4>;
-    using OptionalStringVector = Vector<std::optional<String>, 4>;
 
     TemplateRegistryKeyTable() = default;
 
-    Ref<TemplateRegistryKey> createKey(StringVector&& rawStrings, OptionalStringVector&& cookedStrings);
+    Ref<TemplateRegistryKey> createKey(const StringVector& rawStrings, const StringVector& cookedStrings);
 
     void unregister(TemplateRegistryKey&);
 

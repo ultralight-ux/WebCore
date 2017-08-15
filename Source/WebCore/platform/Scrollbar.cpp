@@ -183,7 +183,7 @@ static bool thumbUnderMouse(Scrollbar* scrollbar)
     return scrollbar->pressedPos() >= thumbPos && scrollbar->pressedPos() < thumbPos + thumbLength;
 }
 
-void Scrollbar::autoscrollPressedPart(Seconds delay)
+void Scrollbar::autoscrollPressedPart(double delay)
 {
     // Don't do anything for the thumb or if nothing was pressed.
     if (m_pressedPart == ThumbPart || m_pressedPart == NoPart)
@@ -201,7 +201,7 @@ void Scrollbar::autoscrollPressedPart(Seconds delay)
         startTimerIfNeeded(delay);
 }
 
-void Scrollbar::startTimerIfNeeded(Seconds delay)
+void Scrollbar::startTimerIfNeeded(double delay)
 {
     // Don't do anything for the thumb.
     if (m_pressedPart == ThumbPart)

@@ -510,6 +510,14 @@ JPEGImageDecoder::~JPEGImageDecoder()
 {
 }
 
+bool JPEGImageDecoder::isSizeAvailable()
+{
+    if (!ImageDecoder::isSizeAvailable())
+         decode(true);
+
+    return ImageDecoder::isSizeAvailable();
+}
+
 bool JPEGImageDecoder::setSize(const IntSize& size)
 {
     if (!ImageDecoder::setSize(size))
@@ -529,7 +537,7 @@ ImageFrame* JPEGImageDecoder::frameBufferAtIndex(size_t index)
 
     ImageFrame& frame = m_frameBufferCache[0];
     if (!frame.isComplete())
-        decode(false, isAllDataReceived());
+        decode(false);
     return &frame;
 }
 
@@ -605,10 +613,10 @@ bool JPEGImageDecoder::outputScanlines()
 
     // Initialize the framebuffer if needed.
     ImageFrame& buffer = m_frameBufferCache[0];
-    if (buffer.isInvalid()) {
+    if (buffer.isEmpty()) {
         if (!buffer.initialize(scaledSize(), m_premultiplyAlpha))
             return setFailed();
-        buffer.setDecodingStatus(ImageFrame::DecodingStatus::Partial);
+        buffer.setDecoding(ImageFrame::Decoding::Partial);
         // The buffer is transparent outside the decoded area while the image is
         // loading. The completed image will be marked fully opaque in jpegComplete().
         buffer.setHasAlpha(true);
@@ -652,10 +660,10 @@ void JPEGImageDecoder::jpegComplete()
     // empty.
     ImageFrame& buffer = m_frameBufferCache[0];
     buffer.setHasAlpha(false);
-    buffer.setDecodingStatus(ImageFrame::DecodingStatus::Complete);
+    buffer.setDecoding(ImageFrame::Decoding::Complete);
 }
 
-void JPEGImageDecoder::decode(bool onlySize, bool allDataReceived)
+void JPEGImageDecoder::decode(bool onlySize)
 {
     if (failed())
         return;
@@ -665,7 +673,7 @@ void JPEGImageDecoder::decode(bool onlySize, bool allDataReceived)
 
     // If we couldn't decode the image but we've received all the data, decoding
     // has failed.
-    if (!m_reader->decode(*m_data, onlySize) && allDataReceived)
+    if (!m_reader->decode(*m_data, onlySize) && isAllDataReceived())
         setFailed();
     // If we're done decoding the image, we don't need the JPEGImageReader
     // anymore.  (If we failed, |m_reader| has already been cleared.)

@@ -61,14 +61,14 @@ inline ArrayBuffer* JSArrayBufferView::existingBufferInButterfly()
     return butterfly()->indexingHeader()->arrayBuffer();
 }
 
-inline RefPtr<ArrayBufferView> JSArrayBufferView::possiblySharedImpl()
+inline PassRefPtr<ArrayBufferView> JSArrayBufferView::possiblySharedImpl()
 {
     return methodTable()->getTypedArrayImpl(this);
 }
 
-inline RefPtr<ArrayBufferView> JSArrayBufferView::unsharedImpl()
+inline PassRefPtr<ArrayBufferView> JSArrayBufferView::unsharedImpl()
 {
-    RefPtr<ArrayBufferView> result = possiblySharedImpl();
+    PassRefPtr<ArrayBufferView> result = possiblySharedImpl();
     RELEASE_ASSERT(!result->isShared());
     return result;
 }
@@ -89,9 +89,9 @@ inline unsigned JSArrayBufferView::byteOffset()
     return result;
 }
 
-inline RefPtr<ArrayBufferView> JSArrayBufferView::toWrapped(VM& vm, JSValue value)
+inline RefPtr<ArrayBufferView> JSArrayBufferView::toWrapped(JSValue value)
 {
-    if (JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(vm, value)) {
+    if (JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(value)) {
         if (!view->isShared())
             return view->unsharedImpl();
     }

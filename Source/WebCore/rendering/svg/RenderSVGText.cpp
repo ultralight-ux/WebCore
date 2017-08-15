@@ -161,7 +161,7 @@ inline bool RenderSVGText::shouldHandleSubtreeMutations() const
 void RenderSVGText::subtreeChildWasAdded(RenderObject* child)
 {
     ASSERT(child);
-    if (!shouldHandleSubtreeMutations() || renderTreeBeingDestroyed())
+    if (!shouldHandleSubtreeMutations() || documentBeingDestroyed())
         return;
 
     // The positioning elements cache doesn't include the new 'child' yet. Clear the
@@ -249,7 +249,7 @@ void RenderSVGText::subtreeChildWillBeRemoved(RenderObject* child, Vector<SVGTex
     bool stopAfterNext = false;
     SVGTextLayoutAttributes* previous = nullptr;
     SVGTextLayoutAttributes* next = nullptr;
-    if (!renderTreeBeingDestroyed())
+    if (!documentBeingDestroyed())
         findPreviousAndNextAttributes(*this, &text, stopAfterNext, previous, next);
 
     if (previous)
@@ -263,7 +263,7 @@ void RenderSVGText::subtreeChildWillBeRemoved(RenderObject* child, Vector<SVGTex
 
 void RenderSVGText::subtreeChildWasRemoved(const Vector<SVGTextLayoutAttributes*, 2>& affectedAttributes)
 {
-    if (!shouldHandleSubtreeMutations() || renderTreeBeingDestroyed()) {
+    if (!shouldHandleSubtreeMutations() || documentBeingDestroyed()) {
         ASSERT(affectedAttributes.isEmpty());
         return;
     }
@@ -278,7 +278,7 @@ void RenderSVGText::subtreeChildWasRemoved(const Vector<SVGTextLayoutAttributes*
 void RenderSVGText::subtreeStyleDidChange(RenderSVGInlineText* text)
 {
     ASSERT(text);
-    if (!shouldHandleSubtreeMutations() || renderTreeBeingDestroyed())
+    if (!shouldHandleSubtreeMutations() || documentBeingDestroyed())
         return;
 
     checkLayoutAttributesConsistency(this, m_layoutAttributes);
@@ -502,7 +502,7 @@ FloatRect RenderSVGText::strokeBoundingBox() const
         return strokeBoundaries;
 
     SVGLengthContext lengthContext(&textElement());
-    strokeBoundaries.inflate(lengthContext.valueForLength(style().strokeWidth()));
+    strokeBoundaries.inflate(lengthContext.valueForLength(svgStyle.strokeWidth()));
     return strokeBoundaries;
 }
 

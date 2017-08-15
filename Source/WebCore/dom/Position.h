@@ -30,6 +30,7 @@
 #include "TextAffinity.h"
 #include "TextFlags.h"
 #include <wtf/Assertions.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
@@ -61,18 +62,35 @@ public:
     };
 
     Position()
-        : m_anchorType(PositionIsOffsetInAnchor)
+        : m_offset(0)
+        , m_anchorType(PositionIsOffsetInAnchor)
         , m_isLegacyEditingPosition(false)
     {
     }
 
+    // For creating legacy editing positions: (Anchor type will be determined from editingIgnoresContent(node))
+    class LegacyEditingOffset {
+    public:
+        unsigned value() const { return m_offset; }
+
+    private:
+        explicit LegacyEditingOffset(unsigned offset)
+            : m_offset(offset)
+        { }
+
+        friend Position createLegacyEditingPosition(PassRefPtr<Node>, unsigned offset);
+
+        unsigned m_offset;
+    };
+    WEBCORE_EXPORT Position(PassRefPtr<Node> anchorNode, LegacyEditingOffset);
+
     // For creating before/after positions:
-    WEBCORE_EXPORT Position(Node* anchorNode, AnchorType);
-    Position(Text* textNode, unsigned offset);
+    WEBCORE_EXPORT Position(PassRefPtr<Node> anchorNode, AnchorType);
+    Position(PassRefPtr<Text> textNode, unsigned offset);
 
     // For creating offset positions:
     // FIXME: This constructor should eventually go away. See bug 63040.
-    WEBCORE_EXPORT Position(Node* anchorNode, int offset, AnchorType);
+    WEBCORE_EXPORT Position(PassRefPtr<Node> anchorNode, int offset, AnchorType);
 
     AnchorType anchorType() const { return static_cast<AnchorType>(m_anchorType); }
 
@@ -121,12 +139,12 @@ public:
 
     // These should only be used for PositionIsOffsetInAnchor positions, unless
     // the position is a legacy editing position.
-    void moveToPosition(Node* anchorNode, int offset);
+    void moveToPosition(PassRefPtr<Node> anchorNode, int offset);
     void moveToOffset(int offset);
 
     bool isNull() const { return !m_anchorNode; }
     bool isNotNull() const { return m_anchorNode; }
-    bool isOrphan() const { return m_anchorNode && !m_anchorNode->isConnected(); }
+    bool isOrphan() const { return m_anchorNode && !m_anchorNode->inDocument(); }
 
     Element* element() const;
 
@@ -194,13 +212,7 @@ public:
     // This is a tentative enhancement of operator== to account for different position types.
     // FIXME: Combine this function with operator==
     bool equals(const Position&) const;
-
 private:
-    // For creating legacy editing positions: (Anchor type will be determined from editingIgnoresContent(node))
-    enum class LegacyEditingPositionFlag { On };
-    WEBCORE_EXPORT Position(Node* anchorNode, unsigned offset, LegacyEditingPositionFlag);
-    friend Position createLegacyEditingPosition(Node*, unsigned offset);
-
     WEBCORE_EXPORT int offsetForPositionAfterAnchor() const;
     
     Position previousCharacterPosition(EAffinity) const;
@@ -212,14 +224,14 @@ private:
     // m_offset can be the offset inside m_anchorNode, or if editingIgnoresContent(m_anchorNode)
     // returns true, then other places in editing will treat m_offset == 0 as "before the anchor"
     // and m_offset > 0 as "after the anchor node".  See parentAnchoredEquivalent for more info.
-    int m_offset { 0 };
+    int m_offset;
     unsigned m_anchorType : 3;
     bool m_isLegacyEditingPosition : 1;
 };
 
-inline Position createLegacyEditingPosition(Node* node, unsigned offset)
+inline Position createLegacyEditingPosition(PassRefPtr<Node> node, unsigned offset)
 {
-    return { node, offset, Position::LegacyEditingPositionFlag::On };
+    return Position(node, Position::LegacyEditingOffset(offset));
 }
 
 inline bool operator==(const Position& a, const Position& b)
@@ -257,6 +269,10 @@ inline bool operator<=(const Position& a, const Position& b)
 {
     return !a.isNull() && !b.isNull() && (a == b || a < b);
 }
+
+// We define position creation functions to make callsites more readable.
+// These are inline to prevent ref-churn when returning a Position object.
+// If we ever add a PassPosition we can make these non-inline.
 
 inline Position positionInParentBeforeNode(const Node* node)
 {

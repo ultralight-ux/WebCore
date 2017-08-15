@@ -42,19 +42,17 @@ namespace WebCore {
 
 namespace {
 
-static unsigned copyFromSharedBuffer(char* buffer, unsigned bufferLength, const SharedBuffer& sharedBuffer)
+unsigned copyFromSharedBuffer(char* buffer, unsigned bufferLength, const SharedBuffer& sharedBuffer, unsigned offset)
 {
     unsigned bytesExtracted = 0;
-    for (const auto& segment : sharedBuffer) {
-        if (bytesExtracted + segment->size() <= bufferLength) {
-            memcpy(buffer + bytesExtracted, segment->data(), segment->size());
-            bytesExtracted += segment->size();
-        } else {
-            ASSERT(bufferLength - bytesExtracted < segment->size());
-            memcpy(buffer + bytesExtracted, segment->data(), bufferLength - bytesExtracted);
-            bytesExtracted = bufferLength;
+    const char* moreData;
+    while (unsigned moreDataLength = sharedBuffer.getSomeData(moreData, offset)) {
+        unsigned bytesToCopy = min(bufferLength - bytesExtracted, moreDataLength);
+        memcpy(buffer + bytesExtracted, moreData, bytesToCopy);
+        bytesExtracted += bytesToCopy;
+        if (bytesExtracted == bufferLength)
             break;
-        }
+        offset += bytesToCopy;
     }
     return bytesExtracted;
 }
@@ -98,33 +96,33 @@ bool matchesCURSignature(char* contents)
 
 }
 
-RefPtr<ImageDecoder> ImageDecoder::create(const SharedBuffer& data, const URL&, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
+RefPtr<ImageDecoder> ImageDecoder::create(const SharedBuffer& data, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
 {
     static const unsigned lengthOfLongestSignature = 14; // To wit: "RIFF????WEBPVP"
     char contents[lengthOfLongestSignature];
-    unsigned length = copyFromSharedBuffer(contents, lengthOfLongestSignature, data);
+    unsigned length = copyFromSharedBuffer(contents, lengthOfLongestSignature, data, 0);
     if (length < lengthOfLongestSignature)
         return nullptr;
 
     if (matchesGIFSignature(contents))
-        return GIFImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+        return adoptRef(*new GIFImageDecoder(alphaOption, gammaAndColorProfileOption));
 
     if (matchesPNGSignature(contents))
-        return PNGImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+        return adoptRef(*new PNGImageDecoder(alphaOption, gammaAndColorProfileOption));
 
     if (matchesICOSignature(contents) || matchesCURSignature(contents))
-        return ICOImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+        return adoptRef(*new ICOImageDecoder(alphaOption, gammaAndColorProfileOption));
 
     if (matchesJPEGSignature(contents))
-        return JPEGImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+        return adoptRef(*new JPEGImageDecoder(alphaOption, gammaAndColorProfileOption));
 
 #if USE(WEBP)
     if (matchesWebPSignature(contents))
-        return WEBPImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+        return adoptRef(*new WEBPImageDecoder(alphaOption, gammaAndColorProfileOption));
 #endif
 
     if (matchesBMPSignature(contents))
-        return BMPImageDecoder::create(alphaOption, gammaAndColorProfileOption);
+        return adoptRef(*new BMPImageDecoder(alphaOption, gammaAndColorProfileOption));
 
     return nullptr;
 }
@@ -172,6 +170,7 @@ template <MatchType type> int getScaledValue(const Vector<int>& scaledValues, in
 
 bool ImageDecoder::frameIsCompleteAtIndex(size_t index)
 {
+    LockHolder locker(m_lock);
     ImageFrame* buffer = frameBufferAtIndex(index);
     return buffer && buffer->isComplete();
 }
@@ -195,8 +194,9 @@ unsigned ImageDecoder::frameBytesAtIndex(size_t index) const
 
 float ImageDecoder::frameDurationAtIndex(size_t index)
 {
+    LockHolder locker(m_lock);
     ImageFrame* buffer = frameBufferAtIndex(index);
-    if (!buffer || buffer->isInvalid())
+    if (!buffer || buffer->isEmpty())
         return 0;
     
     // Many annoying ads specify a 0 duration to make an image flash as quickly as possible.
@@ -209,14 +209,15 @@ float ImageDecoder::frameDurationAtIndex(size_t index)
     return duration;
 }
 
-NativeImagePtr ImageDecoder::createFrameImageAtIndex(size_t index, SubsamplingLevel, const DecodingOptions&)
+NativeImagePtr ImageDecoder::createFrameImageAtIndex(size_t index, SubsamplingLevel, DecodingMode)
 {
     // Zero-height images can cause problems for some ports. If we have an empty image dimension, just bail.
     if (size().isEmpty())
         return nullptr;
 
+    LockHolder locker(m_lock);
     ImageFrame* buffer = frameBufferAtIndex(index);
-    if (!buffer || buffer->isInvalid() || !buffer->hasBackingStore())
+    if (!buffer || buffer->isEmpty() || !buffer->hasBackingStore())
         return nullptr;
 
     // Return the buffer contents as a native image. For some ports, the data

@@ -25,9 +25,7 @@
 
 #pragma once
 
-#include "CalleeBits.h"
 #include "VMEntryRecord.h"
-#include "WasmIndexOrName.h"
 #include <functional>
 #include <wtf/Indenter.h>
 #include <wtf/text/WTFString.h>
@@ -64,7 +62,7 @@ public:
         size_t argumentCountIncludingThis() const { return m_argumentCountIncludingThis; }
         bool callerIsVMEntryFrame() const { return m_callerIsVMEntryFrame; }
         CallFrame* callerFrame() const { return m_callerFrame; }
-        CalleeBits callee() const { return m_callee; }
+        JSCell* callee() const { return m_callee; }
         CodeBlock* codeBlock() const { return m_codeBlock; }
         unsigned bytecodeOffset() const { return m_bytecodeOffset; }
         InlineCallFrame* inlineCallFrame() const {
@@ -78,11 +76,6 @@ public:
         bool isNativeFrame() const { return !codeBlock() && !isWasmFrame(); }
         bool isInlinedFrame() const { return !!inlineCallFrame(); }
         bool isWasmFrame() const;
-        Wasm::IndexOrName const wasmFunctionIndexOrName()
-        {
-            ASSERT(isWasmFrame());
-            return m_wasmFunctionIndexOrName;
-        }
 
         JS_EXPORT_PRIVATE String functionName() const;
         JS_EXPORT_PRIVATE String sourceURL() const;
@@ -117,12 +110,11 @@ public:
         VMEntryFrame* m_VMEntryFrame;
         VMEntryFrame* m_CallerVMEntryFrame;
         CallFrame* m_callerFrame;
-        CalleeBits m_callee;
+        JSCell* m_callee;
         CodeBlock* m_codeBlock;
         size_t m_index;
         size_t m_argumentCountIncludingThis;
         unsigned m_bytecodeOffset;
-        Wasm::IndexOrName m_wasmFunctionIndexOrName;
         bool m_callerIsVMEntryFrame : 1;
         bool m_isWasmFrame : 1;
 
@@ -138,9 +130,9 @@ public:
     //     Status operator()(StackVisitor&) const;
 
     template <typename Functor>
-    static void visit(CallFrame* startFrame, VM* vm, const Functor& functor)
+    static void visit(CallFrame* startFrame, const Functor& functor)
     {
-        StackVisitor visitor(startFrame, vm);
+        StackVisitor visitor(startFrame);
         while (visitor->callFrame()) {
             Status status = functor(visitor);
             if (status != Continue)
@@ -154,7 +146,7 @@ public:
     void unwindToMachineCodeBlockFrame();
 
 private:
-    JS_EXPORT_PRIVATE StackVisitor(CallFrame* startFrame, VM*);
+    JS_EXPORT_PRIVATE StackVisitor(CallFrame* startFrame);
 
     JS_EXPORT_PRIVATE void gotoNextFrame();
 

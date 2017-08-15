@@ -36,7 +36,6 @@ class IconButton extends Button
 
         this._image = null;
         this._iconName = "";
-        this._iconLayoutTraits = LayoutTraits.Unknown;
 
         if (!!iconName)
             this.iconName = iconName;
@@ -54,8 +53,17 @@ class IconButton extends Button
         if (this._iconName === iconName)
             return;
 
-        this._loadImage(iconName);
-        this.element.setAttribute("aria-label", iconName.label);
+        if (this._image)
+            this._image.removeEventListener("load", this);
+
+        this._image = iconService.imageForIconNameAndLayoutTraits(iconName, this.layoutTraits);
+
+        this._iconName = iconName;
+
+        if (this._image.complete)
+            this._updateImage();
+        else
+            this._image.addEventListener("load", this);
     }
 
     get on()
@@ -67,22 +75,13 @@ class IconButton extends Button
         this.element.classList.toggle("on", flag);
     }
 
-    layoutTraitsDidChange()
-    {
-        if (this._iconLayoutTraits !== this.layoutTraits)
-            this._loadImage(this._iconName);
-    }
-
     // Protected
 
     handleEvent(event)
     {
-        if (event.target === this._image) {
-            if (event.type === "load")
-                this._imageDidLoad();
-            else if (event.type === "error")
-                console.error(`IconButton failed to load, iconName = ${this._iconName.name}, layoutTraits = ${this._iconLayoutTraits}, src = ${this._image.src}`);
-        } else
+        if (event.type === "load" && event.target === this._image)
+            this._imageDidLoad();
+        else
             super.handleEvent(event);
     }
 
@@ -96,25 +95,6 @@ class IconButton extends Button
 
     // Private
 
-    _loadImage(iconName)
-    {
-        if (this._image)
-            this._image.removeEventListener("load", this);
-
-        this._iconLayoutTraits = this.layoutTraits;
-
-        this._image = iconService.imageForIconNameAndLayoutTraits(iconName.name, this._iconLayoutTraits);
-
-        this._iconName = iconName;
-
-        if (this._image.complete)
-            this._updateImage();
-        else {
-            this._image.addEventListener("load", this);
-            this._image.addEventListener("error", this);
-        }
-    }
-
     _imageDidLoad()
     {
         this._image.removeEventListener("load", this);
@@ -123,19 +103,10 @@ class IconButton extends Button
 
     _updateImage()
     {
+        this.width = this._image.width / window.devicePixelRatio;
+        this.height = this._image.height / window.devicePixelRatio;
+
         this.needsLayout = true;
-
-        const width = this._image.width / window.devicePixelRatio;
-        const height = this._image.height / window.devicePixelRatio;
-
-        if (this.width === width && this.height === height)
-            return;
-
-        this.width = width;
-        this.height = height;
-
-        if (this.layoutDelegate)
-            this.layoutDelegate.needsLayout = true;
     }
 
 }

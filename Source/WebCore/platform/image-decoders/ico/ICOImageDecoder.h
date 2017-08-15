@@ -33,19 +33,19 @@
 #include "BMPImageReader.h"
 
 namespace WebCore {
+
+    class PNGImageDecoder;
+
     // This class decodes the ICO and CUR image formats.
     class ICOImageDecoder final : public ImageDecoder {
     public:
-        static Ref<ImageDecoder> create(AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
-        {
-            return adoptRef(*new ICOImageDecoder(alphaOption, gammaAndColorProfileOption));
-        }
-
+        ICOImageDecoder(AlphaOption, GammaAndColorProfileOption);
         virtual ~ICOImageDecoder();
 
         // ImageDecoder
-        String filenameExtension() const override { return ASCIILiteral("ico"); }
+        String filenameExtension() const override { return "ico"; }
         void setData(SharedBuffer&, bool allDataReceived) override;
+        bool isSizeAvailable() override;
         IntSize size() override;
         IntSize frameSizeAtIndex(size_t, SubsamplingLevel) override;
         bool setSize(const IntSize&) override;
@@ -76,9 +76,6 @@ namespace WebCore {
             uint32_t m_imageOffset;
         };
 
-        ICOImageDecoder(AlphaOption, GammaAndColorProfileOption);
-        void tryDecodeSize(bool allDataReceived) override { decode(0, true, allDataReceived); }
-
         // Returns true if |a| is a preferable icon entry to |b|.
         // Larger sizes, or greater bitdepths at the same size, are preferable.
         static bool compareEntries(const IconDirectoryEntry& a, const IconDirectoryEntry& b);
@@ -99,7 +96,7 @@ namespace WebCore {
         // Decodes the entry at |index|.  If |onlySize| is true, stops decoding
         // after calculating the image size.  If decoding fails but there is no
         // more data coming, sets the "decode failure" flag.
-        void decode(size_t index, bool onlySize, bool allDataReceived);
+        void decode(size_t index, bool onlySize);
 
         // Decodes the directory and directory entries at the beginning of the
         // data, and initializes members.  Returns true if all decoding
@@ -144,7 +141,7 @@ namespace WebCore {
         // The image decoders for the various frames.
         typedef Vector<std::unique_ptr<BMPImageReader>> BMPReaders;
         BMPReaders m_bmpReaders;
-        typedef Vector<RefPtr<ImageDecoder>> PNGDecoders;
+        typedef Vector<std::unique_ptr<PNGImageDecoder>> PNGDecoders;
         PNGDecoders m_pngDecoders;
 
         // Valid only while a BMPImageReader is decoding, this holds the size

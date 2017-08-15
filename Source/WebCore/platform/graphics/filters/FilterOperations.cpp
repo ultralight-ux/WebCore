@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,33 +35,49 @@ namespace WebCore {
 
 static inline IntSize outsetSizeForBlur(float stdDeviation)
 {
-    auto kernelSize = FEGaussianBlur::calculateUnscaledKernelSize(FloatPoint(stdDeviation, stdDeviation));
+    IntSize kernelSize = FEGaussianBlur::calculateUnscaledKernelSize(FloatPoint(stdDeviation, stdDeviation));
 
+    IntSize outset;
     // We take the half kernel size and multiply it with three, because we run box blur three times.
-    return {
-        3 * kernelSize.width() / 2,
-        3 * kernelSize.height() / 2
-    };
+    outset.setWidth(3 * kernelSize.width() * 0.5f);
+    outset.setHeight(3 * kernelSize.height() * 0.5f);
+
+    return outset;
 }
 
-bool FilterOperations::operator==(const FilterOperations& other) const
+FilterOperations::FilterOperations()
 {
-    size_t size = m_operations.size();
-    if (size != other.m_operations.size())
+}
+
+FilterOperations& FilterOperations::operator=(const FilterOperations& other)
+{
+    m_operations = other.m_operations;
+    return *this;
+}
+
+bool FilterOperations::operator==(const FilterOperations& o) const
+{
+    if (m_operations.size() != o.m_operations.size())
         return false;
-    for (size_t i = 0; i < size; i++) {
-        if (*m_operations[i] != *other.m_operations[i])
+
+    unsigned s = m_operations.size();
+    for (unsigned i = 0; i < s; i++) {
+        if (*m_operations[i] != *o.m_operations[i])
             return false;
     }
+
     return true;
 }
 
 bool FilterOperations::operationsMatch(const FilterOperations& other) const
 {
-    size_t size = operations().size();
-    if (size != other.operations().size())
+    size_t numOperations = operations().size();
+    // If the sizes of the function lists don't match, the lists don't match
+    if (numOperations != other.operations().size())
         return false;
-    for (size_t i = 0; i < size; ++i) {
+
+    // If the types of each function are not the same, the lists don't match
+    for (size_t i = 0; i < numOperations; ++i) {
         if (!operations()[i]->isSameType(*other.operations()[i]))
             return false;
     }
@@ -70,8 +86,8 @@ bool FilterOperations::operationsMatch(const FilterOperations& other) const
 
 bool FilterOperations::hasReferenceFilter() const
 {
-    for (auto& operation : m_operations) {
-        if (operation->type() == FilterOperation::REFERENCE)
+    for (size_t i = 0; i < m_operations.size(); ++i) {
+        if (m_operations.at(i)->type() == FilterOperation::REFERENCE)
             return true;
     }
     return false;
@@ -79,9 +95,9 @@ bool FilterOperations::hasReferenceFilter() const
 
 bool FilterOperations::hasOutsets() const
 {
-    for (auto& operation : m_operations) {
-        auto type = operation->type();
-        if (type == FilterOperation::BLUR || type == FilterOperation::DROP_SHADOW)
+    for (size_t i = 0; i < m_operations.size(); ++i) {
+        FilterOperation::OperationType operationType = m_operations.at(i).get()->type();
+        if (operationType == FilterOperation::BLUR || operationType == FilterOperation::DROP_SHADOW)
             return true;
     }
     return false;
@@ -90,10 +106,11 @@ bool FilterOperations::hasOutsets() const
 FilterOutsets FilterOperations::outsets() const
 {
     FilterOutsets totalOutsets;
-    for (auto& operation : m_operations) {
-        switch (operation->type()) {
+    for (size_t i = 0; i < m_operations.size(); ++i) {
+        const FilterOperation& filterOperation = *m_operations.at(i);
+        switch (filterOperation.type()) {
         case FilterOperation::BLUR: {
-            auto& blurOperation = downcast<BlurFilterOperation>(*operation);
+            const BlurFilterOperation& blurOperation = downcast<BlurFilterOperation>(filterOperation);
             float stdDeviation = floatValueForLength(blurOperation.stdDeviation(), 0);
             IntSize outsetSize = outsetSizeForBlur(stdDeviation);
             FilterOutsets outsets(outsetSize.height(), outsetSize.width(), outsetSize.height(), outsetSize.width());
@@ -101,14 +118,14 @@ FilterOutsets FilterOperations::outsets() const
             break;
         }
         case FilterOperation::DROP_SHADOW: {
-            auto& dropShadowOperation = downcast<DropShadowFilterOperation>(*operation);
+            const DropShadowFilterOperation& dropShadowOperation = downcast<DropShadowFilterOperation>(filterOperation);
             IntSize outsetSize = outsetSizeForBlur(dropShadowOperation.stdDeviation());
-            FilterOutsets outsets {
+            FilterOutsets outsets(
                 std::max(0, outsetSize.height() - dropShadowOperation.y()),
                 std::max(0, outsetSize.width() + dropShadowOperation.x()),
                 std::max(0, outsetSize.height() + dropShadowOperation.y()),
                 std::max(0, outsetSize.width() - dropShadowOperation.x())
-            };
+            );
             totalOutsets += outsets;
             break;
         }
@@ -121,19 +138,17 @@ FilterOutsets FilterOperations::outsets() const
 
 bool FilterOperations::hasFilterThatAffectsOpacity() const
 {
-    for (auto& operation : m_operations) {
-        if (operation->affectsOpacity())
+    for (size_t i = 0; i < m_operations.size(); ++i)
+        if (m_operations[i]->affectsOpacity())
             return true;
-    }
     return false;
 }
 
 bool FilterOperations::hasFilterThatMovesPixels() const
 {
-    for (auto& operation : m_operations) {
-        if (operation->movesPixels())
+    for (size_t i = 0; i < m_operations.size(); ++i)
+        if (m_operations[i]->movesPixels())
             return true;
-    }
     return false;
 }
 
@@ -149,7 +164,7 @@ bool FilterOperations::hasFilterThatShouldBeRestrictedBySecurityOrigin() const
 TextStream& operator<<(TextStream& ts, const FilterOperations& filters)
 {
     for (size_t i = 0; i < filters.size(); ++i) {
-        auto filter = filters.at(i);
+        const auto filter = filters.at(i);
         if (filter)
             ts << *filter;
         else

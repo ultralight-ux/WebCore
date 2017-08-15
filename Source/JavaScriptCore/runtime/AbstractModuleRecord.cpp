@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -53,13 +53,13 @@ void AbstractModuleRecord::destroy(JSCell* cell)
 void AbstractModuleRecord::finishCreation(ExecState* exec, VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     putDirect(vm, Identifier::fromString(&vm, ASCIILiteral("registryEntry")), jsUndefined());
     putDirect(vm, Identifier::fromString(&vm, ASCIILiteral("evaluated")), jsBoolean(false));
 
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSMap* map = JSMap::create(exec, vm, globalObject()->mapStructure());
-    scope.releaseAssertNoException();
+    RELEASE_ASSERT(!scope.exception());
     m_dependenciesMap.set(vm, this, map);
     putDirect(vm, Identifier::fromString(&vm, ASCIILiteral("dependenciesMap")), m_dependenciesMap.get());
 }
@@ -697,10 +697,9 @@ JSModuleNamespaceObject* AbstractModuleRecord::getModuleNamespace(ExecState* exe
     IdentifierSet exportedNames;
     getExportedNames(exec, this, exportedNames);
 
-    Vector<std::pair<Identifier, Resolution>> resolutions;
+    IdentifierSet unambiguousNames;
     for (auto& name : exportedNames) {
-        Identifier ident = Identifier::fromUid(exec, name.get());
-        const Resolution resolution = resolveExport(exec, ident);
+        const AbstractModuleRecord::Resolution resolution = resolveExport(exec, Identifier::fromUid(exec, name.get()));
         switch (resolution.type) {
         case Resolution::Type::NotFound:
             throwSyntaxError(exec, scope, makeString("Exported binding name '", String(name.get()), "' is not found."));
@@ -714,12 +713,12 @@ JSModuleNamespaceObject* AbstractModuleRecord::getModuleNamespace(ExecState* exe
             break;
 
         case Resolution::Type::Resolved:
-            resolutions.append({ WTFMove(ident), resolution });
+            unambiguousNames.add(name);
             break;
         }
     }
 
-    m_moduleNamespaceObject.set(vm, this, JSModuleNamespaceObject::create(exec, globalObject, globalObject->moduleNamespaceObjectStructure(), this, WTFMove(resolutions)));
+    m_moduleNamespaceObject.set(vm, this, JSModuleNamespaceObject::create(exec, globalObject, globalObject->moduleNamespaceObjectStructure(), this, unambiguousNames));
     return m_moduleNamespaceObject.get();
 }
 

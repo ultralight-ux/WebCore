@@ -64,9 +64,9 @@ public:
     bool canRender(const RenderElement* renderer, float multiplier) { return !errorOccurred() && !imageSizeForRenderer(renderer, multiplier).isEmpty(); }
 
     void setContainerSizeForRenderer(const CachedImageClient*, const LayoutSize&, float);
-    bool usesImageContainerSize() const { return m_image && m_image->usesContainerSize(); }
-    bool imageHasRelativeWidth() const { return m_image && m_image->hasRelativeWidth(); }
-    bool imageHasRelativeHeight() const { return m_image && m_image->hasRelativeHeight(); }
+    bool usesImageContainerSize() const;
+    bool imageHasRelativeWidth() const;
+    bool imageHasRelativeHeight() const;
 
     void addDataBuffer(SharedBuffer&) override;
     void finishLoading(SharedBuffer*) override;
@@ -107,7 +107,6 @@ private:
     void allClientsRemoved() override;
     void destroyDecodedData() override;
 
-    EncodedDataStatus setImageDataBuffer(SharedBuffer*, bool allDataReceived);
     void addData(const char* data, unsigned length) override;
     void error(CachedResource::Status) override;
     void responseReceived(const ResourceResponse&) override;
@@ -127,22 +126,32 @@ private:
         explicit CachedImageObserver(CachedImage&);
 
         // ImageObserver API
-        URL sourceUrl() const override { return !m_cachedImages.isEmpty() ? m_cachedImages[0]->url() : URL(); }
-        void decodedSizeChanged(const Image&, long long delta) final;
-        void didDraw(const Image&) final;
+        bool allowSubsampling() const final { return m_allowSubsampling; }
+        bool allowLargeImageAsyncDecoding() const override { return m_allowLargeImageAsyncDecoding; }
+        bool allowAnimatedImageAsyncDecoding() const override { return m_allowAnimatedImageAsyncDecoding; }
+        bool showDebugBackground() const final { return m_showDebugBackground; }
+        void decodedSizeChanged(const Image*, long long delta) final;
+        void didDraw(const Image*) final;
 
-        bool canDestroyDecodedData(const Image&) final;
-        void imageFrameAvailable(const Image&, ImageAnimatingState, const IntRect* changeRect = nullptr) final;
-        void changedInRect(const Image&, const IntRect*) final;
+        void animationAdvanced(const Image*) final;
+        void changedInRect(const Image*, const IntRect*) final;
 
         Vector<CachedImage*> m_cachedImages;
+        // The default value of m_allowSubsampling should be the same as defaultImageSubsamplingEnabled in Settings.cpp
+#if PLATFORM(IOS)
+        bool m_allowSubsampling { true };
+#else
+        bool m_allowSubsampling { false };
+#endif
+        bool m_allowLargeImageAsyncDecoding { true };
+        bool m_allowAnimatedImageAsyncDecoding { true };
+        bool m_showDebugBackground { false };
     };
 
-    void decodedSizeChanged(const Image&, long long delta);
-    void didDraw(const Image&);
-    bool canDestroyDecodedData(const Image&);
-    void imageFrameAvailable(const Image&, ImageAnimatingState, const IntRect* changeRect = nullptr);
-    void changedInRect(const Image&, const IntRect*);
+    void decodedSizeChanged(const Image*, long long delta);
+    void didDraw(const Image*);
+    void animationAdvanced(const Image*);
+    void changedInRect(const Image*, const IntRect*);
 
     void addIncrementalDataBuffer(SharedBuffer&);
 

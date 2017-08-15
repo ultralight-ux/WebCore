@@ -38,7 +38,6 @@ class TemplateRegistryKey : public RefCounted<TemplateRegistryKey> {
 public:
     friend class TemplateRegistryKeyTable;
     typedef Vector<String, 4> StringVector;
-    typedef Vector<std::optional<String>, 4> OptionalStringVector;
 
     enum DeletedValueTag { DeletedValue };
     TemplateRegistryKey(DeletedValueTag);
@@ -52,7 +51,7 @@ public:
     unsigned hash() const { return m_hash; }
 
     const StringVector& rawStrings() const { return m_rawStrings; }
-    const OptionalStringVector& cookedStrings() const { return m_cookedStrings; }
+    const StringVector& cookedStrings() const { return m_cookedStrings; }
 
     bool operator==(const TemplateRegistryKey& other) const { return m_hash == other.m_hash && m_rawStrings == other.m_rawStrings; }
     bool operator!=(const TemplateRegistryKey& other) const { return m_hash != other.m_hash || m_rawStrings != other.m_rawStrings; }
@@ -67,22 +66,22 @@ public:
     ~TemplateRegistryKey();
 
 private:
-    static Ref<TemplateRegistryKey> create(StringVector&& rawStrings, OptionalStringVector&& cookedStrings)
+    static Ref<TemplateRegistryKey> create(const StringVector& rawStrings, const StringVector& cookedStrings)
     {
-        return adoptRef(*new TemplateRegistryKey(WTFMove(rawStrings), WTFMove(cookedStrings)));
+        return adoptRef(*new TemplateRegistryKey(rawStrings, cookedStrings));
     }
 
-    TemplateRegistryKey(StringVector&& rawStrings, OptionalStringVector&& cookedStrings);
+    TemplateRegistryKey(const StringVector& rawStrings, const StringVector& cookedStrings);
 
     TemplateRegistryKeyTable* m_table { nullptr };
     StringVector m_rawStrings;
-    OptionalStringVector m_cookedStrings;
+    StringVector m_cookedStrings;
     unsigned m_hash { 0 };
 };
 
-inline TemplateRegistryKey::TemplateRegistryKey(StringVector&& rawStrings, OptionalStringVector&& cookedStrings)
-    : m_rawStrings(WTFMove(rawStrings))
-    , m_cookedStrings(WTFMove(cookedStrings))
+inline TemplateRegistryKey::TemplateRegistryKey(const StringVector& rawStrings, const StringVector& cookedStrings)
+    : m_rawStrings(rawStrings)
+    , m_cookedStrings(cookedStrings)
     , m_hash(calculateHash(rawStrings))
 {
 }

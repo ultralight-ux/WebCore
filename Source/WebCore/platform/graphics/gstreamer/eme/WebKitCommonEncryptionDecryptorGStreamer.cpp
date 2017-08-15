@@ -23,7 +23,7 @@
 #include "config.h"
 #include "WebKitCommonEncryptionDecryptorGStreamer.h"
 
-#if (ENABLE(LEGACY_ENCRYPTED_MEDIA) || ENABLE(ENCRYPTED_MEDIA)) && USE(GSTREAMER)
+#if ENABLE(LEGACY_ENCRYPTED_MEDIA) && USE(GSTREAMER)
 
 #include "GRefPtrGStreamer.h"
 #include <wtf/Condition.h>
@@ -292,19 +292,30 @@ static gboolean webkitMediaCommonEncryptionDecryptSinkEventHandler(GstBaseTransf
 
     switch (GST_EVENT_TYPE(event)) {
     case GST_EVENT_PROTECTION: {
-        const char* systemId = nullptr;
+        const char* systemId;
+        const char* origin;
+        GstBuffer* initDataBuffer;
 
-        gst_event_parse_protection(event, &systemId, nullptr, nullptr);
-        GST_TRACE_OBJECT(self, "received protection event for %s", systemId);
+        GST_DEBUG_OBJECT(self, "received protection event");
+        gst_event_parse_protection(event, &systemId, &initDataBuffer, &origin);
+        GST_DEBUG_OBJECT(self, "systemId: %s", systemId);
 
-        if (!g_strcmp0(systemId, klass->protectionSystemId)) {
-            GST_DEBUG_OBJECT(self, "sending protection event to the pipeline");
-            gst_element_post_message(GST_ELEMENT(self),
-                gst_message_new_element(GST_OBJECT(self),
-                    gst_structure_new("drm-key-needed", "event", GST_TYPE_EVENT, event, nullptr)));
+        if (!g_str_equal(systemId, klass->protectionSystemId)) {
+            gst_event_unref(event);
+            result = TRUE;
+            break;
         }
 
-        gst_event_unref(event);
+        // Keep the event ref around so that the parsed event data
+        // remains valid until the drm-key-need message has been sent.
+        priv->protectionEvent = adoptGRef(event);
+        RunLoop::main().dispatch([self, initDataBuffer] {
+            WebKitMediaCommonEncryptionDecryptClass* klass = WEBKIT_MEDIA_CENC_DECRYPT_GET_CLASS(self);
+            if (klass) {
+                klass->requestDecryptionKey(self, initDataBuffer);
+                self->priv->protectionEvent = nullptr;
+            }});
+
         result = TRUE;
         break;
     }
@@ -359,4 +370,5 @@ static void webKitMediaCommonEncryptionDecryptDefaultReleaseCipher(WebKitMediaCo
 {
 }
 
-#endif // (ENABLE(LEGACY_ENCRYPTED_MEDIA) || ENABLE(ENCRYPTED_MEDIA)) && USE(GSTREAMER)
+
+#endif // ENABLE(LEGACY_ENCRYPTED_MEDIA) && USE(GSTREAMER)

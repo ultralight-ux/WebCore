@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,9 +24,10 @@
  */
 
 #include "config.h"
-#include "RTCDataChannelHandlerMock.h"
 
 #if ENABLE(WEB_RTC)
+
+#include "RTCDataChannelHandlerMock.h"
 
 #include "RTCDataChannelHandlerClient.h"
 #include "RTCNotifiersMock.h"
@@ -40,12 +40,14 @@ RTCDataChannelHandlerMock::RTCDataChannelHandlerMock(const String& label, const 
 {
 }
 
-void RTCDataChannelHandlerMock::setClient(RTCDataChannelHandlerClient& client)
+void RTCDataChannelHandlerMock::setClient(RTCDataChannelHandlerClient* client)
 {
-    ASSERT(!m_client);
-    m_client = &client;
-    auto notifier = adoptRef(*new DataChannelStateNotifier(m_client, RTCDataChannelState::Open));
-    m_timerEvents.append(adoptRef(new TimerEvent(this, WTFMove(notifier))));
+    if (!client)
+        return;
+
+    m_client = client;
+    RefPtr<DataChannelStateNotifier> notifier = adoptRef(new DataChannelStateNotifier(m_client, RTCDataChannelHandlerClient::ReadyStateOpen));
+    m_timerEvents.append(adoptRef(new TimerEvent(this, notifier)));
 }
 
 bool RTCDataChannelHandlerMock::sendStringData(const String& string)
@@ -62,8 +64,8 @@ bool RTCDataChannelHandlerMock::sendRawData(const char* data, size_t size)
 
 void RTCDataChannelHandlerMock::close()
 {
-    auto notifier = adoptRef(*new DataChannelStateNotifier(m_client, RTCDataChannelState::Closed));
-    m_timerEvents.append(adoptRef(new TimerEvent(this, WTFMove(notifier))));
+    RefPtr<DataChannelStateNotifier> notifier = adoptRef(new DataChannelStateNotifier(m_client, RTCDataChannelHandlerClient::ReadyStateClosed));
+    m_timerEvents.append(adoptRef(new TimerEvent(this, notifier)));
 }
 
 } // namespace WebCore

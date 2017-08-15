@@ -629,8 +629,6 @@ IndexingType toIndexingShape(Array::Type type)
         return DoubleShape;
     case Array::Contiguous:
         return ContiguousShape;
-    case Array::Undecided:
-        return UndecidedShape;
     case Array::ArrayStorage:
         return ArrayStorageShape;
     case Array::SlowPutArrayStorage:

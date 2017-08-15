@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,7 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
+#ifndef MockTracks_h
+#define MockTracks_h
 
 #if ENABLE(MEDIA_SOURCE)
 
@@ -36,7 +37,7 @@ namespace WebCore {
 
 class MockAudioTrackPrivate : public AudioTrackPrivate {
 public:
-    static Ref<MockAudioTrackPrivate> create(const MockTrackBox& box) { return adoptRef(*new MockAudioTrackPrivate(box)); }
+    static RefPtr<MockAudioTrackPrivate> create(const MockTrackBox& box) { return adoptRef(new MockAudioTrackPrivate(box)); }
     virtual ~MockAudioTrackPrivate() { }
 
     virtual AtomicString id() const { return m_id; }
@@ -44,7 +45,7 @@ public:
 protected:
     MockAudioTrackPrivate(const MockTrackBox& box)
         : m_box(box)
-        , m_id(AtomicString::number(box.trackID()))
+        , m_id(String::format("%d", box.trackID()))
     {
     }
     MockTrackBox m_box;
@@ -62,7 +63,7 @@ protected:
     MockTextTrackPrivate(const MockTrackBox& box)
         : InbandTextTrackPrivate(InbandTextTrackPrivate::Generic)
         , m_box(box)
-        , m_id(AtomicString::number(box.trackID()))
+        , m_id(String::format("%d", box.trackID()))
     {
     }
     MockTrackBox m_box;
@@ -80,7 +81,7 @@ public:
 protected:
     MockVideoTrackPrivate(const MockTrackBox& box)
         : m_box(box)
-        , m_id(AtomicString::number(box.trackID()))
+        , m_id(String::format("%d", box.trackID()))
     {
     }
     MockTrackBox m_box;
@@ -88,5 +89,7 @@ protected:
 };
 
 }
+
+#endif
 
 #endif

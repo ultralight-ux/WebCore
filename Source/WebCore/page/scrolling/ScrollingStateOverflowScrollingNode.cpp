@@ -68,14 +68,16 @@ void ScrollingStateOverflowScrollingNode::setScrolledContentsLayer(const LayerRe
     setPropertyChanged(ScrolledContentsLayer);
 }
 
-void ScrollingStateOverflowScrollingNode::dumpProperties(TextStream& ts, ScrollingStateTreeAsTextBehavior behavior) const
+void ScrollingStateOverflowScrollingNode::dumpProperties(TextStream& ts, int indent, ScrollingStateTreeAsTextBehavior behavior) const
 {
-    ts << "Overflow scrolling node";
+    ts << "(" << "Overflow scrolling node" << "\n";
     
-    ScrollingStateScrollingNode::dumpProperties(ts, behavior);
+    ScrollingStateScrollingNode::dumpProperties(ts, indent, behavior);
     
-    if ((behavior & ScrollingStateTreeAsTextBehaviorIncludeLayerIDs) && m_scrolledContentsLayer.layerID())
-        ts.dumpProperty("scrolled contents layer", m_scrolledContentsLayer.layerID());
+    if ((behavior & ScrollingStateTreeAsTextBehaviorIncludeLayerIDs) && m_scrolledContentsLayer.layerID()) {
+        writeIndent(ts, indent + 1);
+        ts << "(scrolled contents layer " << m_scrolledContentsLayer.layerID() << ")\n";
+    }
 }
 
 } // namespace WebCore

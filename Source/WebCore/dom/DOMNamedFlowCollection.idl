@@ -28,14 +28,13 @@
  */
 
 [
+    NoInterfaceObject,
     Conditional=CSS_REGIONS,
-    ImplementationLacksVTable,
     InterfaceName=WebKitNamedFlowCollection,
     JSGenerateToJSObject,
-    LegacyUnenumerableNamedProperties,
-    NoInterfaceObject
+    ImplementationLacksVTable,
 ] interface DOMNamedFlowCollection {
     readonly attribute unsigned long length;
-    getter WebKitNamedFlow? item(unsigned long index);
-    getter WebKitNamedFlow? namedItem(DOMString name);
+    getter WebKitNamedFlow item(unsigned long index);
+    getter WebKitNamedFlow namedItem(DOMString name);
 };

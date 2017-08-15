@@ -441,7 +441,7 @@ public:
             return;
         }
 
-        NodeSet toEscape;
+        HashSet<Node*> toEscape;
 
         for (auto& allocationEntry : other.m_allocations)
             m_allocations.add(allocationEntry.key, allocationEntry.value);
@@ -458,14 +458,14 @@ public:
                 continue;
 
             if (allocationEntry.value.kind() != allocationIter->value.kind()) {
-                toEscape.addVoid(allocationEntry.key);
+                toEscape.add(allocationEntry.key);
                 for (const auto& fieldEntry : allocationIter->value.fields())
-                    toEscape.addVoid(fieldEntry.value);
+                    toEscape.add(fieldEntry.value);
             } else {
                 mergePointerSets(
                     allocationEntry.value.fields(), allocationIter->value.fields(),
                     [&] (Node* identifier) {
-                        toEscape.addVoid(identifier);
+                        toEscape.add(identifier);
                     },
                     [&] (PromotedLocationDescriptor field) {
                         allocationEntry.value.remove(field);
@@ -476,7 +476,7 @@ public:
 
         mergePointerSets(m_pointers, other.m_pointers,
             [&] (Node* identifier) {
-                toEscape.addVoid(identifier);
+                toEscape.add(identifier);
             },
             [&] (Node* field) {
                 m_pointers.remove(field);
@@ -499,7 +499,7 @@ public:
         assertIsValid();
     }
 
-    void pruneByLiveness(const NodeSet& live)
+    void pruneByLiveness(const HashSet<Node*>& live)
     {
         Vector<Node*> toRemove;
         for (const auto& entry : m_pointers) {
@@ -655,9 +655,9 @@ private:
 
     void prune()
     {
-        NodeSet reachable;
+        HashSet<Node*> reachable;
         for (const auto& entry : m_pointers)
-            reachable.addVoid(entry.value);
+            reachable.add(entry.value);
 
         // Repeatedly mark as reachable allocations in fields of other
         // reachable allocations
@@ -1154,17 +1154,17 @@ private:
 
             // The sink candidates are initially the unescaped
             // allocations dying at tail of blocks
-            NodeSet allocations;
+            HashSet<Node*> allocations;
             for (const auto& entry : m_heap.allocations()) {
                 if (!entry.value.isEscapedAllocation())
-                    allocations.addVoid(entry.key);
+                    allocations.add(entry.key);
             }
 
             m_heap.pruneByLiveness(m_combinedLiveness.liveAtTail[block]);
 
             for (Node* identifier : allocations) {
                 if (!m_heap.isAllocation(identifier))
-                    m_sinkCandidates.addVoid(identifier);
+                    m_sinkCandidates.add(identifier);
             }
         }
 
@@ -1310,28 +1310,28 @@ private:
 
 
         // Compute dependencies between materializations
-        HashMap<Node*, NodeSet> dependencies;
-        HashMap<Node*, NodeSet> reverseDependencies;
-        HashMap<Node*, NodeSet> forMaterialization;
+        HashMap<Node*, HashSet<Node*>> dependencies;
+        HashMap<Node*, HashSet<Node*>> reverseDependencies;
+        HashMap<Node*, HashSet<Node*>> forMaterialization;
         for (const auto& entry : escapees) {
-            auto& myDependencies = dependencies.add(entry.key, NodeSet()).iterator->value;
-            auto& myDependenciesForMaterialization = forMaterialization.add(entry.key, NodeSet()).iterator->value;
-            reverseDependencies.add(entry.key, NodeSet());
+            auto& myDependencies = dependencies.add(entry.key, HashSet<Node*>()).iterator->value;
+            auto& myDependenciesForMaterialization = forMaterialization.add(entry.key, HashSet<Node*>()).iterator->value;
+            reverseDependencies.add(entry.key, HashSet<Node*>());
             for (const auto& field : entry.value.fields()) {
                 if (escapees.contains(field.value) && field.value != entry.key) {
-                    myDependencies.addVoid(field.value);
-                    reverseDependencies.add(field.value, NodeSet()).iterator->value.addVoid(entry.key);
+                    myDependencies.add(field.value);
+                    reverseDependencies.add(field.value, HashSet<Node*>()).iterator->value.add(entry.key);
                     if (field.key.neededForMaterialization())
-                        myDependenciesForMaterialization.addVoid(field.value);
+                        myDependenciesForMaterialization.add(field.value);
                 }
             }
         }
 
         // Helper function to update the materialized set and the
         // dependencies
-        NodeSet materialized;
+        HashSet<Node*> materialized;
         auto materialize = [&] (Node* identifier) {
-            materialized.addVoid(identifier);
+            materialized.add(identifier);
             for (Node* dep : dependencies.get(identifier))
                 reverseDependencies.find(dep)->value.remove(identifier);
             for (Node* rdep : reverseDependencies.get(identifier)) {
@@ -1423,15 +1423,15 @@ private:
 
         materialized.clear();
 
-        NodeSet escaped;
+        HashSet<Node*> escaped;
         for (const Allocation& allocation : toMaterialize)
-            escaped.addVoid(allocation.identifier());
+            escaped.add(allocation.identifier());
         for (const Allocation& allocation : toMaterialize) {
             for (const auto& field : allocation.fields()) {
                 if (escaped.contains(field.value) && !materialized.contains(field.value))
                     toRecover.append(PromotedHeapLocation(allocation.identifier(), field.key));
             }
-            materialized.addVoid(allocation.identifier());
+            materialized.add(allocation.identifier());
         }
 
         Vector<Node*>& materializations = m_materializationSiteToMaterializations.add(
@@ -1517,10 +1517,10 @@ private:
                         // If the location is not on a sink candidate,
                         // we only sink it if it is read
                         if (m_sinkCandidates.contains(location.base()))
-                            locations.addVoid(location);
+                            locations.add(location);
                     },
                     [&] (PromotedHeapLocation location) -> Node* {
-                        locations.addVoid(location);
+                        locations.add(location);
                         return nullptr;
                     });
             }
@@ -1611,7 +1611,7 @@ private:
                     }
 
                     SSACalculator::Variable* variable = m_nodeToVariable.get(identifier);
-                    hintsForPhi[variable->index()].addVoid(location);
+                    hintsForPhi[variable->index()].add(location);
                 }
 
                 if (m_sinkCandidates.contains(node))
@@ -2250,7 +2250,7 @@ private:
 
     SSACalculator m_pointerSSA;
     SSACalculator m_allocationSSA;
-    NodeSet m_sinkCandidates;
+    HashSet<Node*> m_sinkCandidates;
     HashMap<PromotedHeapLocation, SSACalculator::Variable*> m_locationToVariable;
     HashMap<Node*, SSACalculator::Variable*> m_nodeToVariable;
     HashMap<PromotedHeapLocation, Node*> m_localMapping;

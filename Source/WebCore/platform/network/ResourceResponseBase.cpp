@@ -30,7 +30,6 @@
 #include "CacheValidation.h"
 #include "HTTPHeaderNames.h"
 #include "HTTPParsers.h"
-#include "MIMETypeRegistry.h"
 #include "ParsedContentRange.h"
 #include "ResourceResponse.h"
 #include <wtf/CurrentTime.h>
@@ -39,16 +38,6 @@
 #include <wtf/text/StringView.h>
 
 namespace WebCore {
-
-#if ENABLE(NOSNIFF)
-bool isScriptAllowedByNosniff(const ResourceResponse& response)
-{
-    if (parseContentTypeOptionsHeader(response.httpHeaderField(HTTPHeaderName::XContentTypeOptions)) != ContentTypeOptionsNosniff)
-        return true;
-    String mimeType = extractMIMETypeFromMediaType(response.httpHeaderField(HTTPHeaderName::ContentType));
-    return MIMETypeRegistry::isSupportedJavaScriptMIMEType(mimeType);
-}
-#endif
 
 ResourceResponseBase::ResourceResponseBase()
     : m_isNull(true)
@@ -82,7 +71,7 @@ ResourceResponseBase::CrossThreadData ResourceResponseBase::crossThreadData() co
     data.httpVersion = httpVersion().isolatedCopy();
 
     data.httpHeaderFields = httpHeaderFields().isolatedCopy();
-    data.networkLoadMetrics = m_networkLoadMetrics.isolatedCopy();
+    data.networkLoadTiming = m_networkLoadTiming.isolatedCopy();
     data.type = m_type;
     data.isRedirected = m_isRedirected;
 
@@ -103,7 +92,7 @@ ResourceResponse ResourceResponseBase::fromCrossThreadData(CrossThreadData&& dat
     response.setHTTPVersion(data.httpVersion);
 
     response.m_httpHeaderFields = WTFMove(data.httpHeaderFields);
-    response.m_networkLoadMetrics = data.networkLoadMetrics;
+    response.m_networkLoadTiming = data.networkLoadTiming;
     response.m_type = data.type;
     response.m_isRedirected = data.isRedirected;
 
@@ -242,7 +231,7 @@ String ResourceResponseBase::sanitizeSuggestedFilename(const String& suggestedFi
 
     ResourceResponse response(URL(ParsedURLString, "http://example.com/"), String(), -1, String());
     response.setHTTPStatusCode(200);
-    String escapedSuggestedFilename = String(suggestedFilename).replace('\\', "\\\\").replace('"', "\\\"");
+    String escapedSuggestedFilename = String(suggestedFilename).replace('\"', "\\\"");
     String value = makeString("attachment; filename=\"", escapedSuggestedFilename, '"');
     response.setHTTPHeaderField(HTTPHeaderName::ContentDisposition, value);
     return response.suggestedFilename();
@@ -449,13 +438,6 @@ bool ResourceResponseBase::cacheControlContainsMustRevalidate() const
         parseCacheControlDirectives();
     return m_cacheControlDirectives.mustRevalidate;
 }
-    
-bool ResourceResponseBase::cacheControlContainsImmutable() const
-{
-    if (!m_haveParsedCacheControlHeader)
-        parseCacheControlDirectives();
-    return m_cacheControlDirectives.immutable;
-}
 
 bool ResourceResponseBase::hasCacheValidatorFields() const
 {
@@ -569,26 +551,16 @@ bool ResourceResponseBase::isAttachment() const
     return equalLettersIgnoringASCIICase(value.left(value.find(';')).stripWhiteSpace(), "attachment");
 }
 
-bool ResourceResponseBase::isAttachmentWithFilename() const
-{
-    lazyInit(AllFields);
-
-    String contentDisposition = m_httpHeaderFields.get(HTTPHeaderName::ContentDisposition);
-    if (contentDisposition.isNull())
-        return false;
-
-    if (!equalLettersIgnoringASCIICase(contentDisposition.left(contentDisposition.find(';')).stripWhiteSpace(), "attachment"))
-        return false;
-
-    String filename = filenameFromHTTPContentDisposition(contentDisposition);
-    return !filename.isNull();
-}
-
 ResourceResponseBase::Source ResourceResponseBase::source() const
 {
     lazyInit(AllFields);
 
     return m_source;
+}
+
+void ResourceResponseBase::setSource(Source source)
+{
+    m_source = source;
 }
 
 void ResourceResponseBase::lazyInit(InitLevel initLevel) const
@@ -616,7 +588,7 @@ bool ResourceResponseBase::compare(const ResourceResponse& a, const ResourceResp
         return false;
     if (a.httpHeaderFields() != b.httpHeaderFields())
         return false;
-    if (a.deprecatedNetworkLoadMetrics() != b.deprecatedNetworkLoadMetrics())
+    if (a.networkLoadTiming() != b.networkLoadTiming())
         return false;
     return ResourceResponse::platformCompare(a, b);
 }

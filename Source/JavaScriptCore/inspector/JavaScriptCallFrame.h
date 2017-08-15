@@ -29,6 +29,7 @@
 #include "debugger/DebuggerCallFrame.h"
 #include "interpreter/CallFrame.h"
 #include <wtf/Forward.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/TextPosition.h>
 
@@ -36,9 +37,9 @@ namespace Inspector {
 
 class JavaScriptCallFrame : public RefCounted<JavaScriptCallFrame> {
 public:
-    static Ref<JavaScriptCallFrame> create(Ref<JSC::DebuggerCallFrame>&& debuggerCallFrame)
+    static Ref<JavaScriptCallFrame> create(PassRefPtr<JSC::DebuggerCallFrame> debuggerCallFrame)
     {
-        return adoptRef(*new JavaScriptCallFrame(WTFMove(debuggerCallFrame)));
+        return adoptRef(*new JavaScriptCallFrame(debuggerCallFrame));
     }
 
     JavaScriptCallFrame* caller();
@@ -57,9 +58,9 @@ public:
     JSC::JSValue evaluateWithScopeExtension(const String& script, JSC::JSObject* scopeExtension, NakedPtr<JSC::Exception>& exception) const { return m_debuggerCallFrame->evaluateWithScopeExtension(script, scopeExtension, exception); }
 
 private:
-    JavaScriptCallFrame(Ref<JSC::DebuggerCallFrame>&&);
+    JavaScriptCallFrame(PassRefPtr<JSC::DebuggerCallFrame>);
 
-    Ref<JSC::DebuggerCallFrame> m_debuggerCallFrame;
+    RefPtr<JSC::DebuggerCallFrame> m_debuggerCallFrame;
     RefPtr<JavaScriptCallFrame> m_caller;
 };
 

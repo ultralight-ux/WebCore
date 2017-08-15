@@ -102,7 +102,7 @@ private:
     RefPtr<MediaPlaybackTarget> m_playbackTarget;
     std::unique_ptr<WebCore::MediaPlaybackTargetPickerMock> m_pickerOverride;
     ConfigurationTasks m_taskFlags { NoTask };
-    Seconds m_currentWatchdogInterval;
+    double m_currentWatchdogInterval { 0 };
     bool m_externalOutputDeviceAvailable { false };
     bool m_targetChanged { false };
     bool m_mockPickerEnabled { false };

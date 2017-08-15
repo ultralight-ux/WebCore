@@ -67,8 +67,6 @@ JS_EXPORT JSValueRef JSObjectGetPrivateProperty(JSContextRef ctx, JSObjectRef ob
  */
 JS_EXPORT bool JSObjectDeletePrivateProperty(JSContextRef ctx, JSObjectRef object, JSStringRef propertyName);
 
-JS_EXPORT JSObjectRef JSObjectGetProxyTarget(JSObjectRef);
-
 #ifdef __cplusplus
 }
 #endif

@@ -30,6 +30,8 @@
 
 #pragma once
 
+#if ENABLE(CSS_GRID_LAYOUT)
+
 #include "GridPosition.h"
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
@@ -43,8 +45,8 @@ public:
 
     bool operator==(const StyleGridItemData& o) const
     {
-        return gridColumnStart == o.gridColumnStart && gridColumnEnd == o.gridColumnEnd
-            && gridRowStart == o.gridRowStart && gridRowEnd == o.gridRowEnd;
+        return m_gridColumnStart == o.m_gridColumnStart && m_gridColumnEnd == o.m_gridColumnEnd
+            && m_gridRowStart == o.m_gridRowStart && m_gridRowEnd == o.m_gridRowEnd;
     }
 
     bool operator!=(const StyleGridItemData& o) const
@@ -52,10 +54,10 @@ public:
         return !(*this == o);
     }
 
-    GridPosition gridColumnStart;
-    GridPosition gridColumnEnd;
-    GridPosition gridRowStart;
-    GridPosition gridRowEnd;
+    GridPosition m_gridColumnStart;
+    GridPosition m_gridColumnEnd;
+    GridPosition m_gridRowStart;
+    GridPosition m_gridRowEnd;
 
 private:
     StyleGridItemData();
@@ -63,3 +65,5 @@ private:
 };
 
 } // namespace WebCore
+
+#endif // ENABLE(CSS_GRID_LAYOUT)

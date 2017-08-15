@@ -27,16 +27,23 @@
 
 #if ENABLE(WEB_TIMING)
 
-#include <wtf/MonotonicTime.h>
-
 namespace WebCore {
 
 struct DocumentTiming {
-    MonotonicTime domLoading;
-    MonotonicTime domInteractive;
-    MonotonicTime domContentLoadedEventStart;
-    MonotonicTime domContentLoadedEventEnd;
-    MonotonicTime domComplete;
+    DocumentTiming()
+        : domLoading(0.0)
+        , domInteractive(0.0)
+        , domContentLoadedEventStart(0.0)
+        , domContentLoadedEventEnd(0.0)
+        , domComplete(0.0)
+    {
+    }
+
+    double domLoading;
+    double domInteractive;
+    double domContentLoadedEventStart;
+    double domContentLoadedEventEnd;
+    double domComplete;
 };
 
 } // namespace WebCore

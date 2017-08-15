@@ -34,37 +34,39 @@
 #include "DatabaseContext.h"
 #include "Document.h"
 #include "ErrorEvent.h"
-#include "JSDOMExceptionHandling.h"
-#include "JSDOMWindow.h"
 #include "MessagePort.h"
 #include "NoEventDispatchAssertion.h"
 #include "PublicURLManager.h"
-#include "RejectedPromiseTracker.h"
 #include "ResourceRequest.h"
 #include "ScriptState.h"
 #include "Settings.h"
 #include "WorkerGlobalScope.h"
 #include "WorkerThread.h"
-#include <heap/StrongInlines.h>
 #include <inspector/ScriptCallStack.h>
 #include <runtime/Exception.h>
-#include <runtime/JSPromise.h>
 #include <wtf/MainThread.h>
 #include <wtf/Ref.h>
+
+// FIXME: This is a layering violation.
+#include "JSDOMWindow.h"
+
+#if PLATFORM(IOS)
+#include "Document.h"
+#endif
 
 using namespace Inspector;
 
 namespace WebCore {
 
 struct ScriptExecutionContext::PendingException {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_NONCOPYABLE(PendingException); WTF_MAKE_FAST_ALLOCATED;
 public:
-    PendingException(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, RefPtr<ScriptCallStack>&& callStack)
+    PendingException(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, PassRefPtr<ScriptCallStack> callStack)
         : m_errorMessage(errorMessage)
         , m_lineNumber(lineNumber)
         , m_columnNumber(columnNumber)
         , m_sourceURL(sourceURL)
-        , m_callStack(WTFMove(callStack))
+        , m_callStack(callStack)
     {
     }
     String m_errorMessage;
@@ -75,6 +77,19 @@ public:
 };
 
 ScriptExecutionContext::ScriptExecutionContext()
+    : m_circularSequentialID(0)
+    , m_inDispatchErrorEvent(false)
+    , m_activeDOMObjectsAreSuspended(false)
+    , m_reasonForSuspendingActiveDOMObjects(static_cast<ActiveDOMObject::ReasonForSuspension>(-1))
+    , m_activeDOMObjectsAreStopped(false)
+    , m_activeDOMObjectAdditionForbidden(false)
+    , m_timerNestingLevel(0)
+#if !ASSERT_DISABLED
+    , m_inScriptExecutionContextDestructor(false)
+#endif
+#if !ASSERT_DISABLED || ENABLE(SECURITY_ASSERTIONS)
+    , m_activeDOMObjectRemovalForbidden(false)
+#endif
 {
 }
 
@@ -342,7 +357,7 @@ void ScriptExecutionContext::willDestroyDestructionObserver(ContextDestructionOb
     m_destructionObservers.remove(&observer);
 }
 
-bool ScriptExecutionContext::sanitizeScriptError(String& errorMessage, int& lineNumber, int& columnNumber, String& sourceURL, JSC::Strong<JSC::Unknown>& error, CachedScript* cachedScript)
+bool ScriptExecutionContext::sanitizeScriptError(String& errorMessage, int& lineNumber, int& columnNumber, String& sourceURL, Deprecated::ScriptValue& error, CachedScript* cachedScript)
 {
     ASSERT(securityOrigin());
     if (cachedScript) {
@@ -353,11 +368,11 @@ bool ScriptExecutionContext::sanitizeScriptError(String& errorMessage, int& line
     } else if (securityOrigin()->canRequest(completeURL(sourceURL)))
         return false;
 
-    errorMessage = ASCIILiteral { "Script error." };
-    sourceURL = { };
+    errorMessage = "Script error.";
+    sourceURL = String();
     lineNumber = 0;
     columnNumber = 0;
-    error = { };
+    error = Deprecated::ScriptValue();
     return true;
 }
 
@@ -366,7 +381,7 @@ void ScriptExecutionContext::reportException(const String& errorMessage, int lin
     if (m_inDispatchErrorEvent) {
         if (!m_pendingExceptions)
             m_pendingExceptions = std::make_unique<Vector<std::unique_ptr<PendingException>>>();
-        m_pendingExceptions->append(std::make_unique<PendingException>(errorMessage, lineNumber, columnNumber, sourceURL, WTFMove(callStack)));
+        m_pendingExceptions->append(std::make_unique<PendingException>(errorMessage, lineNumber, columnNumber, sourceURL, callStack.copyRef()));
         return;
     }
 
@@ -377,32 +392,9 @@ void ScriptExecutionContext::reportException(const String& errorMessage, int lin
     if (!m_pendingExceptions)
         return;
 
-    auto pendingExceptions = WTFMove(m_pendingExceptions);
+    std::unique_ptr<Vector<std::unique_ptr<PendingException>>> pendingExceptions = WTFMove(m_pendingExceptions);
     for (auto& exception : *pendingExceptions)
-        logExceptionToConsole(exception->m_errorMessage, exception->m_sourceURL, exception->m_lineNumber, exception->m_columnNumber, WTFMove(exception->m_callStack));
-}
-
-void ScriptExecutionContext::reportUnhandledPromiseRejection(JSC::ExecState& state, JSC::JSPromise& promise, RefPtr<Inspector::ScriptCallStack>&& callStack)
-{
-    JSC::VM& vm = state.vm();
-    auto scope = DECLARE_CATCH_SCOPE(vm);
-
-    int lineNumber = 0;
-    int columnNumber = 0;
-    String sourceURL;
-
-    JSC::JSValue result = promise.result(vm);
-    String resultMessage = retrieveErrorMessage(state, vm, result, scope);
-    String errorMessage = makeString("Unhandled Promise Rejection: ", resultMessage);
-    if (callStack) {
-        if (const ScriptCallFrame* callFrame = callStack->firstNonNativeCallFrame()) {
-            lineNumber = callFrame->lineNumber();
-            columnNumber = callFrame->columnNumber();
-            sourceURL = callFrame->sourceURL();
-        }
-    }
-
-    logExceptionToConsole(errorMessage, sourceURL, lineNumber, columnNumber, WTFMove(callStack));
+        logExceptionToConsole(exception->m_errorMessage, exception->m_sourceURL, exception->m_lineNumber, exception->m_columnNumber, exception->m_callStack.copyRef());
 }
 
 void ScriptExecutionContext::addConsoleMessage(MessageSource source, MessageLevel level, const String& message, const String& sourceURL, unsigned lineNumber, unsigned columnNumber, JSC::ExecState* state, unsigned long requestIdentifier)
@@ -418,7 +410,8 @@ bool ScriptExecutionContext::dispatchErrorEvent(const String& errorMessage, int 
 
 #if PLATFORM(IOS)
     if (target->toDOMWindow() && is<Document>(*this)) {
-        if (!downcast<Document>(*this).settings().shouldDispatchJavaScriptWindowOnErrorEvents())
+        Settings* settings = downcast<Document>(*this).settings();
+        if (settings && !settings->shouldDispatchJavaScriptWindowOnErrorEvents())
             return false;
     }
 #endif
@@ -427,7 +420,7 @@ bool ScriptExecutionContext::dispatchErrorEvent(const String& errorMessage, int 
     int line = lineNumber;
     int column = columnNumber;
     String sourceName = sourceURL;
-    JSC::Strong<JSC::Unknown> error = exception && exception->value() ? JSC::Strong<JSC::Unknown>(vm(), exception->value()) : JSC::Strong<JSC::Unknown>();
+    Deprecated::ScriptValue error = exception && exception->value() ? Deprecated::ScriptValue(vm(), exception->value()) : Deprecated::ScriptValue();
     sanitizeScriptError(message, line, column, sourceName, error, cachedScript);
 
     ASSERT(!m_inDispatchErrorEvent);
@@ -453,15 +446,15 @@ PublicURLManager& ScriptExecutionContext::publicURLManager()
     return *m_publicURLManager;
 }
 
-void ScriptExecutionContext::adjustMinimumDOMTimerInterval(Seconds oldMinimumTimerInterval)
+void ScriptExecutionContext::adjustMinimumTimerInterval(std::chrono::milliseconds oldMinimumTimerInterval)
 {
-    if (minimumDOMTimerInterval() != oldMinimumTimerInterval) {
+    if (minimumTimerInterval() != oldMinimumTimerInterval) {
         for (auto& timer : m_timeouts.values())
             timer->updateTimerIntervalIfNecessary();
     }
 }
 
-Seconds ScriptExecutionContext::minimumDOMTimerInterval() const
+std::chrono::milliseconds ScriptExecutionContext::minimumTimerInterval() const
 {
     // The default implementation returns the DOMTimer's default
     // minimum timer interval. FIXME: to make it work with dedicated
@@ -477,7 +470,7 @@ void ScriptExecutionContext::didChangeTimerAlignmentInterval()
         timer->didChangeAlignmentInterval();
 }
 
-Seconds ScriptExecutionContext::domTimerAlignmentInterval(bool) const
+std::chrono::milliseconds ScriptExecutionContext::timerAlignmentInterval(bool) const
 {
     return DOMTimer::defaultAlignmentInterval();
 }
@@ -488,16 +481,6 @@ JSC::VM& ScriptExecutionContext::vm()
         return commonVM();
 
     return downcast<WorkerGlobalScope>(*this).script()->vm();
-}
-
-RejectedPromiseTracker& ScriptExecutionContext::ensureRejectedPromiseTrackerSlow()
-{
-    // ScriptExecutionContext::vm() in Worker is only available after WorkerGlobalScope initialization is done.
-    // When initializing ScriptExecutionContext, vm() is not ready.
-
-    ASSERT(!m_rejectedPromiseTracker);
-    m_rejectedPromiseTracker = std::make_unique<RejectedPromiseTracker>(*this, vm());
-    return *m_rejectedPromiseTracker.get();
 }
 
 void ScriptExecutionContext::setDatabaseContext(DatabaseContext* databaseContext)

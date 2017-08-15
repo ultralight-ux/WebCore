@@ -29,7 +29,6 @@
 #include "CSSImageValue.h"
 #include "CachedImage.h"
 #include "RenderElement.h"
-#include "RenderView.h"
 
 namespace WebCore {
 
@@ -99,7 +98,7 @@ CachedImage* StyleCachedImage::cachedImage() const
 
 Ref<CSSValue> StyleCachedImage::cssValue() const
 {
-    return m_cssValue.copyRef();
+    return const_cast<CSSValue&>(m_cssValue.get());
 }
 
 bool StyleCachedImage::canRender(const RenderElement* renderer, float multiplier) const
@@ -187,7 +186,6 @@ void StyleCachedImage::removeClient(RenderElement* renderer)
     if (!m_cachedImage)
         return;
     ASSERT(renderer);
-
     m_cachedImage->removeClient(*renderer);
 }
 

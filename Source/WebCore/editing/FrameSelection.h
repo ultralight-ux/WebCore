@@ -97,7 +97,7 @@ public:
     void paintDragCaret(Frame*, GraphicsContext&, const LayoutPoint&, const LayoutRect& clipRect) const;
 
     bool isContentEditable() const { return m_position.rootEditableElement(); }
-    WEBCORE_EXPORT bool isContentRichlyEditable() const;
+    bool isContentRichlyEditable() const;
 
     bool hasCaret() const { return m_position.isNotNull(); }
     const VisiblePosition& caretPosition() { return m_position; }
@@ -145,7 +145,7 @@ public:
 
     const VisibleSelection& selection() const { return m_selection; }
     WEBCORE_EXPORT void setSelection(const VisibleSelection&, SetSelectionOptions = defaultSetSelectionOptions(), AXTextStateChangeIntent = AXTextStateChangeIntent(), CursorAlignOnScroll = AlignCursorOnScrollIfNeeded, TextGranularity = CharacterGranularity);
-    WEBCORE_EXPORT bool setSelectedRange(Range*, EAffinity, bool closeTyping, EUserTriggered = NotUserTriggered);
+    WEBCORE_EXPORT bool setSelectedRange(Range*, EAffinity, bool closeTyping);
     WEBCORE_EXPORT void selectAll();
     WEBCORE_EXPORT void clear();
     void prepareForDestruction();
@@ -153,7 +153,7 @@ public:
     void updateAppearanceAfterLayout();
     void setNeedsSelectionUpdate();
 
-    bool contains(const LayoutPoint&) const;
+    bool contains(const LayoutPoint&);
 
     WEBCORE_EXPORT bool modify(EAlteration, SelectionDirection, TextGranularity, EUserTriggered = NotUserTriggered);
     enum VerticalDirection { DirectionUp, DirectionDown };
@@ -215,9 +215,9 @@ public:
 #if PLATFORM(IOS)
 public:
     WEBCORE_EXPORT void expandSelectionToElementContainingCaretSelection();
-    WEBCORE_EXPORT RefPtr<Range> elementRangeContainingCaretSelection() const;
+    WEBCORE_EXPORT PassRefPtr<Range> elementRangeContainingCaretSelection() const;
     WEBCORE_EXPORT void expandSelectionToWordContainingCaretSelection();
-    WEBCORE_EXPORT RefPtr<Range> wordRangeContainingCaretSelection();
+    WEBCORE_EXPORT PassRefPtr<Range> wordRangeContainingCaretSelection();
     WEBCORE_EXPORT void expandSelectionToStartOfWordContainingCaretSelection();
     WEBCORE_EXPORT UChar characterInRelationToCaretSelection(int amount) const;
     WEBCORE_EXPORT UChar characterBeforeCaretSelection() const;
@@ -227,8 +227,8 @@ public:
     WEBCORE_EXPORT bool selectionAtDocumentStart() const;
     WEBCORE_EXPORT bool selectionAtSentenceStart() const;
     WEBCORE_EXPORT bool selectionAtWordStart() const;
-    WEBCORE_EXPORT RefPtr<Range> rangeByMovingCurrentSelection(int amount) const;
-    WEBCORE_EXPORT RefPtr<Range> rangeByExtendingCurrentSelection(int amount) const;
+    WEBCORE_EXPORT PassRefPtr<Range> rangeByMovingCurrentSelection(int amount) const;
+    WEBCORE_EXPORT PassRefPtr<Range> rangeByExtendingCurrentSelection(int amount) const;
     WEBCORE_EXPORT void selectRangeOnElement(unsigned location, unsigned length, Node&);
     WEBCORE_EXPORT void clearCurrentSelection();
     void setCaretBlinks(bool caretBlinks = true);
@@ -243,7 +243,7 @@ public:
     }
 private:
     bool actualSelectionAtSentenceStart(const VisibleSelection&) const;
-    RefPtr<Range> rangeByAlteringCurrentSelection(EAlteration, int amount) const;
+    PassRefPtr<Range> rangeByAlteringCurrentSelection(EAlteration, int amount) const;
 public:
 #endif
 
@@ -253,8 +253,8 @@ public:
     void setSelectionByMouseIfDifferent(const VisibleSelection&, TextGranularity, EndPointsAdjustmentMode = DoNotAdjsutEndpoints);
 
     EditingStyle* typingStyle() const;
-    WEBCORE_EXPORT RefPtr<MutableStyleProperties> copyTypingStyle() const;
-    void setTypingStyle(RefPtr<EditingStyle>&& style) { m_typingStyle = WTFMove(style); }
+    WEBCORE_EXPORT PassRefPtr<MutableStyleProperties> copyTypingStyle() const;
+    void setTypingStyle(PassRefPtr<EditingStyle>);
     void clearTypingStyle();
 
     WEBCORE_EXPORT FloatRect selectionBounds(bool clipToVisibleContent = true) const;
@@ -364,7 +364,12 @@ inline void FrameSelection::clearTypingStyle()
     m_typingStyle = nullptr;
 }
 
-#if !(PLATFORM(COCOA) || PLATFORM(GTK))
+inline void FrameSelection::setTypingStyle(PassRefPtr<EditingStyle> style)
+{
+    m_typingStyle = style;
+}
+
+#if !(PLATFORM(COCOA) || PLATFORM(GTK) || PLATFORM(EFL))
 #if HAVE(ACCESSIBILITY)
 inline void FrameSelection::notifyAccessibilityForSelectionChange(const AXTextStateChangeIntent&)
 {

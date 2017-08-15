@@ -36,8 +36,8 @@
 
 namespace WebCore {
 
-class CSSAnimationControllerPrivate;
-class CSSAnimationController;
+class AnimationControllerPrivate;
+class AnimationController;
 class RenderElement;
 class RenderStyle;
 
@@ -46,7 +46,7 @@ class RenderStyle;
 class CompositeAnimation : public RefCounted<CompositeAnimation> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static Ref<CompositeAnimation> create(CSSAnimationControllerPrivate& animationController)
+    static Ref<CompositeAnimation> create(AnimationControllerPrivate& animationController)
     {
         return adoptRef(*new CompositeAnimation(animationController));
     };
@@ -59,9 +59,9 @@ public:
     std::unique_ptr<RenderStyle> getAnimatedStyle() const;
     bool computeExtentOfTransformAnimation(LayoutRect&) const;
 
-    std::optional<Seconds> timeToNextService() const;
+    double timeToNextService() const;
     
-    CSSAnimationControllerPrivate& animationController() const { return m_animationController; }
+    AnimationControllerPrivate& animationController() const { return m_animationController; }
 
     void suspendAnimations();
     void resumeAnimations();
@@ -71,7 +71,7 @@ public:
 
     bool isAnimatingProperty(CSSPropertyID, bool acceleratedOnly, AnimationBase::RunningState) const;
 
-    KeyframeAnimation* animationForProperty(CSSPropertyID) const;
+    PassRefPtr<KeyframeAnimation> getAnimationForProperty(CSSPropertyID) const;
 
     void overrideImplicitAnimations(CSSPropertyID);
     void resumeOverriddenImplicitAnimations(CSSPropertyID);
@@ -85,7 +85,7 @@ public:
 #endif
 
 private:
-    CompositeAnimation(CSSAnimationControllerPrivate&);
+    CompositeAnimation(AnimationControllerPrivate&);
 
     void updateTransitions(RenderElement*, const RenderStyle* currentStyle, const RenderStyle* targetStyle);
     void updateKeyframeAnimations(RenderElement*, const RenderStyle* currentStyle, const RenderStyle* targetStyle);
@@ -93,7 +93,7 @@ private:
     typedef HashMap<int, RefPtr<ImplicitAnimation>> CSSPropertyTransitionsMap;
     typedef HashMap<AtomicStringImpl*, RefPtr<KeyframeAnimation>> AnimationNameMap;
 
-    CSSAnimationControllerPrivate& m_animationController;
+    AnimationControllerPrivate& m_animationController;
     CSSPropertyTransitionsMap m_transitions;
     AnimationNameMap m_keyframeAnimations;
     Vector<AtomicStringImpl*> m_keyframeAnimationOrderMap;

@@ -24,6 +24,7 @@
 #include "ClipboardEvent.h"
 
 #include "DataTransfer.h"
+#include "EventNames.h"
 
 namespace WebCore {
 

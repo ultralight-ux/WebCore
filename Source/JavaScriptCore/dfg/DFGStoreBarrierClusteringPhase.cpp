@@ -130,12 +130,12 @@ private:
                 [&] (const ChildAndOrigin& a, const ChildAndOrigin& b) -> bool {
                     return a.child < b.child;
                 });
-            removeRepeatedElements(
-                m_neededBarriers, 
+            auto end = std::unique(
+                m_neededBarriers.begin(), m_neededBarriers.end(),
                 [&] (const ChildAndOrigin& a, const ChildAndOrigin& b) -> bool{
                     return a.child == b.child;
                 });
-            for (auto iter = m_neededBarriers.begin(); iter != m_neededBarriers.end(); ++iter) {
+            for (auto iter = m_neededBarriers.begin(); iter != end; ++iter) {
                 Node* child = iter->child;
                 CodeOrigin semanticOrigin = iter->semanticOrigin;
                 

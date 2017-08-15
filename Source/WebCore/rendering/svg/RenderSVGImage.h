@@ -51,8 +51,6 @@ public:
     void paintForeground(PaintInfo&);
 
 private:
-    void willBeDestroyed() override;
-
     void element() const = delete;
 
     const char* renderName() const override { return "RenderSVGImage"; }

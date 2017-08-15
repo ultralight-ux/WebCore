@@ -27,7 +27,6 @@
 
 #if ENABLE(B3_JIT)
 
-#include "B3Common.h"
 #include "B3Compilation.h"
 
 namespace JSC {
@@ -46,7 +45,7 @@ class Procedure;
 // Then you keep the Compilation object alive for as long as you want to be able to run the code.
 // If this API feels too high-level, you can use B3::generate() directly.
 
-JS_EXPORT_PRIVATE Compilation compile(Procedure&);
+JS_EXPORT_PRIVATE Compilation compile(VM&, Procedure&, unsigned optLevel = 1);
 
 } } // namespace JSC::B3
 

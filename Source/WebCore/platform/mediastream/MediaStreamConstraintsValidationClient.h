@@ -23,7 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef MediaStreamConstraintsValidationClient_h
+#define MediaStreamConstraintsValidationClient_h
 
 #if ENABLE(MEDIA_STREAM)
 
@@ -31,6 +32,8 @@
 #include <wtf/RefCounted.h>
 
 namespace WebCore {
+
+class MediaConstraints;
 
 class MediaStreamConstraintsValidationClient : public RefCounted<MediaStreamConstraintsValidationClient> {
 public:
@@ -43,3 +46,5 @@ public:
 } // namespace WebCore
 
 #endif // ENABLE(MEDIA_STREAM)
+
+#endif // MediaStreamConstraintsValidationClient_h

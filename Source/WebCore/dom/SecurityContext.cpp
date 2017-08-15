@@ -37,6 +37,8 @@
 namespace WebCore {
 
 SecurityContext::SecurityContext()
+    : m_haveInitializedSecurityOrigin(false)
+    , m_sandboxFlags(SandboxNone)
 {
 }
 
@@ -71,7 +73,7 @@ bool SecurityContext::isSecureTransitionTo(const URL& url) const
     if (!haveInitializedSecurityOrigin())
         return true;
 
-    return securityOriginPolicy()->origin().canAccess(SecurityOrigin::create(url).get());
+    return securityOriginPolicy()->origin().canAccess(SecurityOrigin::create(url).ptr());
 }
 
 void SecurityContext::enforceSandboxFlags(SandboxFlags mask)

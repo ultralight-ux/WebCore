@@ -32,6 +32,8 @@
 #include "config.h"
 #include "CSSGridTemplateAreasValue.h"
 
+#if ENABLE(CSS_GRID_LAYOUT)
+
 #include "GridArea.h"
 #include <wtf/text/StringBuilder.h>
 
@@ -89,3 +91,5 @@ bool CSSGridTemplateAreasValue::equals(const CSSGridTemplateAreasValue& other) c
 }
 
 } // namespace WebCore
+
+#endif /* ENABLE(CSS_GRID_LAYOUT) */

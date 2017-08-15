@@ -53,7 +53,7 @@ public:
     bool collectionCanTraverseBackward() const { return traversalType != CollectionTraversalType::CustomForwardOnly; }
     void willValidateIndexCache() const { document().registerCollection(const_cast<CachedHTMLCollection<HTMLCollectionClass, traversalType>&>(*this)); }
 
-    void invalidateCacheForDocument(Document&) override;
+    void invalidateCache(Document&) override;
 
     bool elementMatches(Element&) const;
 
@@ -78,9 +78,9 @@ CachedHTMLCollection<HTMLCollectionClass, traversalType>::~CachedHTMLCollection(
 }
 
 template <typename HTMLCollectionClass, CollectionTraversalType traversalType>
-void CachedHTMLCollection<HTMLCollectionClass, traversalType>::invalidateCacheForDocument(Document& document)
+void CachedHTMLCollection<HTMLCollectionClass, traversalType>::invalidateCache(Document& document)
 {
-    HTMLCollection::invalidateCacheForDocument(document);
+    HTMLCollection::invalidateCache(document);
     if (m_indexCache.hasValidCache(collection())) {
         document.unregisterCollection(*this);
         m_indexCache.invalidate(collection());
@@ -97,22 +97,15 @@ bool CachedHTMLCollection<HTMLCollectionClass, traversalType>::elementMatches(El
 
 static inline bool nameShouldBeVisibleInDocumentAll(HTMLElement& element)
 {
-    // https://html.spec.whatwg.org/multipage/infrastructure.html#all-named-elements
-    return element.hasTagName(HTMLNames::aTag)
-        || element.hasTagName(HTMLNames::appletTag)
-        || element.hasTagName(HTMLNames::buttonTag)
+    // The document.all collection returns only certain types of elements by name,
+    // although it returns any type of element by id.
+    return element.hasTagName(HTMLNames::appletTag)
         || element.hasTagName(HTMLNames::embedTag)
         || element.hasTagName(HTMLNames::formTag)
-        || element.hasTagName(HTMLNames::frameTag)
-        || element.hasTagName(HTMLNames::framesetTag)
-        || element.hasTagName(HTMLNames::iframeTag)
         || element.hasTagName(HTMLNames::imgTag)
         || element.hasTagName(HTMLNames::inputTag)
-        || element.hasTagName(HTMLNames::mapTag)
-        || element.hasTagName(HTMLNames::metaTag)
         || element.hasTagName(HTMLNames::objectTag)
-        || element.hasTagName(HTMLNames::selectTag)
-        || element.hasTagName(HTMLNames::textareaTag);
+        || element.hasTagName(HTMLNames::selectTag);
 }
 
 static inline bool nameShouldBeVisibleInDocumentAll(Element& element)

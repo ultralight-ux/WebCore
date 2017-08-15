@@ -44,6 +44,7 @@ class SQLiteTransaction;
 class SQLStatement;
 class SQLTransaction;
 class SQLTransactionWrapper;
+class SQLValue;
 
 class SQLTransactionBackend : public SQLTransactionStateMachine<SQLTransactionBackend> {
 public:

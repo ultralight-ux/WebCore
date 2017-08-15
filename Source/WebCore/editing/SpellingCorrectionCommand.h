@@ -32,12 +32,12 @@ namespace WebCore {
 
 class SpellingCorrectionCommand : public CompositeEditCommand {
 public:
-    static Ref<SpellingCorrectionCommand> create(Range& rangeToBeCorrected, const String& correction)
+    static Ref<SpellingCorrectionCommand> create(PassRefPtr<Range> rangeToBeCorrected, const String& correction)
     {
         return adoptRef(*new SpellingCorrectionCommand(rangeToBeCorrected, correction));
     }
 private:
-    SpellingCorrectionCommand(Range& rangeToBeCorrected, const String& correction);
+    SpellingCorrectionCommand(PassRefPtr<Range> rangeToBeCorrected, const String& correction);
     bool willApplyCommand() final;
     void doApply() override;
     bool shouldRetainAutocorrectionIndicator() const override;
@@ -46,7 +46,7 @@ private:
     Vector<RefPtr<StaticRange>> targetRanges() const final;
     RefPtr<DataTransfer> inputEventDataTransfer() const final;
 
-    Ref<Range> m_rangeToBeCorrected;
+    RefPtr<Range> m_rangeToBeCorrected;
     VisibleSelection m_selectionToBeCorrected;
     RefPtr<DocumentFragment> m_correctionFragment;
     String m_corrected;

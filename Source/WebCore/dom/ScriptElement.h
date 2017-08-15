@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2008 Nikolas Zimmermann <zimmermann@kde.org>
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -27,17 +26,19 @@
 #include "LoadableScript.h"
 #include "LoadableScriptClient.h"
 #include "Timer.h"
+#include "URL.h"
 #include <wtf/text/TextPosition.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class CachedScript;
 class ContainerNode;
 class Element;
-class LoadableModuleScript;
 class PendingScript;
+class ScriptElement;
 class ScriptSourceCode;
-class URL;
+class CachedModuleScript;
 
 class ScriptElement {
 public:
@@ -52,7 +53,7 @@ public:
     String scriptCharset() const { return m_characterEncoding; }
     WEBCORE_EXPORT String scriptContent() const;
     void executeClassicScript(const ScriptSourceCode&);
-    void executeModuleScript(LoadableModuleScript&);
+    void executeModuleScript(CachedModuleScript&);
 
     void executePendingScript(PendingScript&);
 
@@ -67,12 +68,11 @@ public:
     bool willExecuteInOrder() const { return m_willExecuteInOrder; }
     LoadableScript* loadableScript() { return m_loadableScript.get(); }
 
+    CachedResourceHandle<CachedScript> requestScriptWithCacheForModuleScript(const URL&);
+
     // https://html.spec.whatwg.org/multipage/scripting.html#concept-script-type
     enum class ScriptType { Classic, Module };
     ScriptType scriptType() const { return m_isModuleScript ? ScriptType::Module : ScriptType::Classic; }
-
-    void ref();
-    void deref();
 
 protected:
     ScriptElement(Element&, bool createdByParser, bool isEvaluated);
@@ -96,6 +96,8 @@ private:
     bool ignoresLoadRequest() const;
     bool isScriptForEventSupported() const;
 
+    CachedResourceHandle<CachedScript> requestScriptWithCache(const URL&, const String& nonceAttribute, const String& crossoriginAttribute);
+
     bool requestClassicScript(const String& sourceURL);
     bool requestModuleScript(const TextPosition& scriptStartPosition);
 
@@ -105,10 +107,9 @@ private:
     virtual String languageAttributeValue() const = 0;
     virtual String forAttributeValue() const = 0;
     virtual String eventAttributeValue() const = 0;
-    virtual bool hasAsyncAttribute() const = 0;
-    virtual bool hasDeferAttribute() const = 0;
+    virtual bool asyncAttributeValue() const = 0;
+    virtual bool deferAttributeValue() const = 0;
     virtual bool hasSourceAttribute() const = 0;
-    virtual bool hasNoModuleAttribute() const = 0;
 
     Element& m_element;
     WTF::OrdinalNumber m_startLineNumber;
@@ -127,8 +128,7 @@ private:
     RefPtr<LoadableScript> m_loadableScript;
 };
 
-// FIXME: replace with is/downcast<ScriptElement>.
-bool isScriptElement(Element&);
-ScriptElement& downcastScriptElement(Element&);
+// FIXME: replace with downcast<ScriptElement>.
+ScriptElement* toScriptElementIfPossible(Element*);
 
 }

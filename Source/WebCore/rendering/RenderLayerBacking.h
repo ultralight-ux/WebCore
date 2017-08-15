@@ -35,7 +35,6 @@
 namespace WebCore {
 
 class KeyframeList;
-class PaintedContentsInfo;
 class RenderLayerCompositor;
 class TiledBacking;
 class TransformationMatrix;
@@ -189,7 +188,6 @@ public:
     void setTiledBackingHasMargins(bool hasExtendedBackgroundOnLeftAndRight, bool hasExtendedBackgroundOnTopAndBottom);
     
     void updateDebugIndicators(bool showBorder, bool showRepaintCounter);
-    bool paintsSubpixelAntialiasedText() const { return m_paintsSubpixelAntialiasedText; }
 
     // GraphicsLayerClient interface
     void tiledBackingUsageChanged(const GraphicsLayer*, bool /*usingTiledBacking*/) override;
@@ -253,8 +251,6 @@ public:
     WEBCORE_EXPORT String replayDisplayListAsText(DisplayList::AsTextFlags) const;
 
 private:
-    friend class PaintedContentsInfo;
-
     FloatRect backgroundBoxForSimpleContainerPainting() const;
 
     void createPrimaryGraphicsLayer();
@@ -281,7 +277,7 @@ private:
     bool requiresVerticalScrollbarLayer() const;
     bool requiresScrollCornerLayer() const;
     bool updateScrollingLayers(bool scrollingLayers);
-
+    void updateDrawsContent(bool isSimpleContainer);
     void updateChildClippingStrategy(bool needsDescendantsClippingLayer);
 
     void updateMaskingLayerGeometry();
@@ -310,31 +306,28 @@ private:
 
     // Return the opacity value that this layer should use for compositing.
     float compositingOpacity(float rendererOpacity) const;
-    Color rendererBackgroundColor() const;
-
+    
     bool isMainFrameRenderViewLayer() const;
     
-    bool paintsBoxDecorations() const;
-    bool paintsContent(RenderLayer::PaintedContentRequest&) const;
-
-    void updateDrawsContent(PaintedContentsInfo&);
+    bool paintsNonDirectCompositedBoxDecoration() const;
+    bool paintsChildren() const;
 
     // Returns true if this compositing layer has no visible content.
-    bool isSimpleContainerCompositingLayer(PaintedContentsInfo&) const;
+    bool isSimpleContainerCompositingLayer() const;
     // Returns true if this layer has content that needs to be rendered by painting into the backing store.
-    bool containsPaintedContent(PaintedContentsInfo&) const;
+    bool containsPaintedContent(bool isSimpleContainer) const;
     // Returns true if the RenderLayer just contains an image that we can composite directly.
     bool isDirectlyCompositedImage() const;
-    void updateImageContents(PaintedContentsInfo&);
+    void updateImageContents();
 
-    void updateDirectlyCompositedBoxDecorations(PaintedContentsInfo&, bool& didUpdateContentsRect);
-    void updateDirectlyCompositedBackgroundColor(PaintedContentsInfo&, bool& didUpdateContentsRect);
-    void updateDirectlyCompositedBackgroundImage(PaintedContentsInfo&, bool& didUpdateContentsRect);
+    Color rendererBackgroundColor() const;
+    void updateDirectlyCompositedBackgroundColor(bool isSimpleContainer, bool& didUpdateContentsRect);
+    void updateDirectlyCompositedBackgroundImage(bool isSimpleContainer, bool& didUpdateContentsRect);
+    void updateDirectlyCompositedContents(bool isSimpleContainer, bool& didUpdateContentsRect);
 
     void resetContentsRect();
 
-    bool isPaintDestinationForDescendantLayers(RenderLayer::PaintedContentRequest&) const;
-    bool hasVisibleNonCompositedDescendants() const;
+    bool isPaintDestinationForDescendantLayers() const;
 
     bool shouldClipCompositedBounds() const;
 
@@ -387,7 +380,6 @@ private:
     bool m_canCompositeBackdropFilters { false };
 #endif
     bool m_backgroundLayerPaintsFixedRootBackground { false };
-    bool m_paintsSubpixelAntialiasedText { false }; // This is for logging only.
 };
 
 enum CanvasCompositingStrategy {

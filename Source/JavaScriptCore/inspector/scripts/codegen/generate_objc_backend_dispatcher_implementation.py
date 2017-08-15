@@ -39,15 +39,15 @@ from objc_generator_templates import ObjCGeneratorTemplates as ObjCTemplates
 log = logging.getLogger('global')
 
 
-class ObjCBackendDispatcherImplementationGenerator(ObjCGenerator):
-    def __init__(self, *args, **kwargs):
-        ObjCGenerator.__init__(self, *args, **kwargs)
+class ObjCConfigurationImplementationGenerator(ObjCGenerator):
+    def __init__(self, model, input_filepath):
+        ObjCGenerator.__init__(self, model, input_filepath)
 
     def output_filename(self):
         return '%sBackendDispatchers.mm' % self.protocol_name()
 
     def domains_to_generate(self):
-        return filter(self.should_generate_commands_for_domain, Generator.domains_to_generate(self))
+        return filter(ObjCGenerator.should_generate_domain_command_handler_filter(self.model()), Generator.domains_to_generate(self))
 
     def generate_output(self):
         secondary_headers = [
@@ -70,13 +70,11 @@ class ObjCBackendDispatcherImplementationGenerator(ObjCGenerator):
         return '\n\n'.join(sections)
 
     def _generate_handler_implementation_for_domain(self, domain):
-        commands = self.commands_for_domain(domain)
-
-        if not commands:
+        if not domain.commands:
             return ''
 
         command_declarations = []
-        for command in commands:
+        for command in domain.commands:
             command_declarations.append(self._generate_handler_implementation_for_command(domain, command))
 
         return '\n'.join(command_declarations)
@@ -168,19 +166,10 @@ class ObjCBackendDispatcherImplementationGenerator(ObjCGenerator):
             in_param_name = 'in_%s' % parameter.parameter_name
             objc_in_param_name = 'o_%s' % in_param_name
             objc_type = self.objc_type_for_param(domain, command.command_name, parameter, False)
-            if isinstance(parameter.type, EnumType):
-                objc_type = 'std::optional<%s>' % objc_type
             param_expression = in_param_expression(in_param_name, parameter)
             import_expression = self.objc_protocol_import_expression_for_parameter(param_expression, domain, command.command_name, parameter)
             if not parameter.is_optional:
                 lines.append('    %s = %s;' % (join_type_and_name(objc_type, objc_in_param_name), import_expression))
-
-                if isinstance(parameter.type, EnumType):
-                    lines.append('    if (!%s) {' % objc_in_param_name)
-                    lines.append('        backendDispatcher()->reportProtocolError(BackendDispatcher::InvalidParams, String::format("Parameter \'%%s\' of method \'%%s\' cannot be processed", "%s", "%s.%s"));' % (parameter.parameter_name, domain.domain_name, command.command_name))
-                    lines.append('        return;')
-                    lines.append('    }')
-
             else:
                 lines.append('    %s;' % join_type_and_name(objc_type, objc_in_param_name))
                 lines.append('    if (%s)' % in_param_name)
@@ -196,15 +185,10 @@ class ObjCBackendDispatcherImplementationGenerator(ObjCGenerator):
         pairs.append('successCallback:successCallback')
         for parameter in command.call_parameters:
             in_param_name = 'in_%s' % parameter.parameter_name
-            objc_in_param_expression = 'o_%s' % in_param_name
+            objc_in_param_name = 'o_%s' % in_param_name
             if not parameter.is_optional:
-                # FIXME: we don't handle optional enum values in commands here because it isn't used anywhere yet.
-                # We'd need to change the delegate's signature to take std::optional for optional enum values.
-                if isinstance(parameter.type, EnumType):
-                    objc_in_param_expression = '%s.value()' % objc_in_param_expression
-
-                pairs.append('%s:%s' % (parameter.parameter_name, objc_in_param_expression))
+                pairs.append('%s:%s' % (parameter.parameter_name, objc_in_param_name))
             else:
-                optional_expression = '(%s ? &%s : nil)' % (in_param_name, objc_in_param_expression)
+                optional_expression = '(%s ? &%s : nil)' % (in_param_name, objc_in_param_name)
                 pairs.append('%s:%s' % (parameter.parameter_name, optional_expression))
         return '    [m_delegate %s%s];' % (command.command_name, ' '.join(pairs))

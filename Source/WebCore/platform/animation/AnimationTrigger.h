@@ -23,24 +23,29 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef AnimationTrigger_h
+#define AnimationTrigger_h
 
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
 
 #include "Length.h"
-#include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
+#include <wtf/RefPtr.h>
 #include <wtf/TypeCasts.h>
 
 namespace WebCore {
 
 class AnimationTrigger : public RefCounted<AnimationTrigger> {
 public:
-    virtual Ref<AnimationTrigger> clone() const = 0;
+
+    virtual PassRefPtr<AnimationTrigger> clone() const = 0;
+
+    enum class AnimationTriggerType {
+        AutoAnimationTriggerType, ScrollAnimationTriggerType
+    };
 
     virtual ~AnimationTrigger() { }
 
-    enum class AnimationTriggerType { AutoAnimationTriggerType, ScrollAnimationTriggerType };
     AnimationTriggerType type() const { return m_type; }
 
     bool isAutoAnimationTrigger() const { return m_type == AnimationTriggerType::AutoAnimationTriggerType; }
@@ -57,14 +62,16 @@ protected:
     AnimationTriggerType m_type;
 };
 
-class AutoAnimationTrigger final : public AnimationTrigger {
+class AutoAnimationTrigger : public AnimationTrigger {
 public:
-    static Ref<AutoAnimationTrigger> create()
+    static PassRefPtr<AutoAnimationTrigger> create()
     {
-        return adoptRef(*new AutoAnimationTrigger);
+        return adoptRef(new AutoAnimationTrigger);
     }
 
-    bool operator==(const AnimationTrigger& other) final
+    virtual ~AutoAnimationTrigger() { }
+
+    bool operator==(const AnimationTrigger& other) override
     {
         return other.isAutoAnimationTrigger();
     }
@@ -75,20 +82,22 @@ private:
     {
     }
 
-    Ref<AnimationTrigger> clone() const final
+    PassRefPtr<AnimationTrigger> clone() const override
     {
-        return adoptRef(*new AutoAnimationTrigger);
+        return adoptRef(new AutoAnimationTrigger);
     }
 };
 
-class ScrollAnimationTrigger final : public AnimationTrigger {
+class ScrollAnimationTrigger : public AnimationTrigger {
 public:
-    static Ref<ScrollAnimationTrigger> create(Length startValue, Length endValue)
+    static PassRefPtr<ScrollAnimationTrigger> create(Length startValue, Length endValue)
     {
-        return adoptRef(*new ScrollAnimationTrigger(startValue, endValue));
+        return adoptRef(new ScrollAnimationTrigger(startValue, endValue));
     }
 
-    bool operator==(const AnimationTrigger& other) final
+    virtual ~ScrollAnimationTrigger() { }
+
+    bool operator==(const AnimationTrigger& other) override
     {
         if (!other.isScrollAnimationTrigger())
             return false;
@@ -124,9 +133,9 @@ private:
             m_endValue = endValue;
     }
 
-    Ref<AnimationTrigger> clone() const final
+    PassRefPtr<AnimationTrigger> clone() const override
     {
-        return adoptRef(*new ScrollAnimationTrigger(m_startValue, m_endValue));
+        return adoptRef(new ScrollAnimationTrigger(m_startValue, m_endValue));
     }
 
     Length m_startValue;
@@ -145,3 +154,5 @@ SPECIALIZE_TYPE_TRAITS_ANIMATION_TRIGGER(AutoAnimationTrigger, isAutoAnimationTr
 SPECIALIZE_TYPE_TRAITS_ANIMATION_TRIGGER(ScrollAnimationTrigger, isScrollAnimationTrigger);
 
 #endif
+
+#endif // AnimationTrigger_h

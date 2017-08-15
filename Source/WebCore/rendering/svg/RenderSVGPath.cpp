@@ -76,7 +76,7 @@ static void useStrokeStyleToFill(GraphicsContext& context)
 
 void RenderSVGPath::strokeShape(GraphicsContext& context) const
 {
-    if (!style().hasVisibleStroke())
+    if (!style().svgStyle().hasVisibleStroke())
         return;
 
     RenderSVGShape::strokeShape(context);
@@ -105,14 +105,15 @@ bool RenderSVGPath::shapeDependentStrokeContains(const FloatPoint& point)
     if (RenderSVGShape::shapeDependentStrokeContains(point))
         return true;
 
+    const SVGRenderStyle& svgStyle = style().svgStyle();
     for (size_t i = 0; i < m_zeroLengthLinecapLocations.size(); ++i) {
-        ASSERT(style().svgStyle().hasStroke());
+        ASSERT(svgStyle.hasStroke());
         float strokeWidth = this->strokeWidth();
-        if (style().capStyle() == SquareCap) {
+        if (svgStyle.capStyle() == SquareCap) {
             if (zeroLengthSubpathRect(m_zeroLengthLinecapLocations[i], strokeWidth).contains(point))
                 return true;
         } else {
-            ASSERT(style().capStyle() == RoundCap);
+            ASSERT(svgStyle.capStyle() == RoundCap);
             FloatPoint radiusVector(point.x() - m_zeroLengthLinecapLocations[i].x(), point.y() -  m_zeroLengthLinecapLocations[i].y());
             if (radiusVector.lengthSquared() < strokeWidth * strokeWidth * .25f)
                 return true;
@@ -125,7 +126,7 @@ bool RenderSVGPath::shouldStrokeZeroLengthSubpath() const
 {
     // Spec(11.4): Any zero length subpath shall not be stroked if the "stroke-linecap" property has a value of butt
     // but shall be stroked if the "stroke-linecap" property has a value of round or square
-    return style().svgStyle().hasStroke() && style().capStyle() != ButtCap;
+    return style().svgStyle().hasStroke() && style().svgStyle().capStyle() != ButtCap;
 }
 
 Path* RenderSVGPath::zeroLengthLinecapPath(const FloatPoint& linecapPosition) const
@@ -133,7 +134,7 @@ Path* RenderSVGPath::zeroLengthLinecapPath(const FloatPoint& linecapPosition) co
     static NeverDestroyed<Path> tempPath;
 
     tempPath.get().clear();
-    if (style().capStyle() == SquareCap)
+    if (style().svgStyle().capStyle() == SquareCap)
         tempPath.get().addRect(zeroLengthSubpathRect(linecapPosition, this->strokeWidth()));
     else
         tempPath.get().addEllipse(zeroLengthSubpathRect(linecapPosition, this->strokeWidth()));

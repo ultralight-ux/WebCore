@@ -232,12 +232,12 @@ public:
     
     void validateReferences(const TrackedReferences&) const;
 
-    bool isValidValueForPresence(VM& vm, JSValue value) const
+    bool isValidValueForPresence(JSValue value) const
     {
-        return condition().isValidValueForPresence(vm, value);
+        return condition().isValidValueForPresence(value);
     }
 
-    ObjectPropertyCondition attemptToMakeEquivalenceWithoutBarrier(VM&) const;
+    ObjectPropertyCondition attemptToMakeEquivalenceWithoutBarrier() const;
 
 private:
     JSObject* m_object;

@@ -74,7 +74,7 @@ static void callOnFileThread(Function<void ()>&& function)
 
     static std::once_flag createFileThreadOnce;
     std::call_once(createFileThreadOnce, [] {
-        Thread::create("WebCore: AsyncFileStream", [] {
+        createThread("WebCore: AsyncFileStream", [] {
             for (;;) {
                 AutodrainedPool pool;
 
@@ -156,6 +156,16 @@ void AsyncFileStream::openForRead(const String& path, long long offset, long lon
     });
 }
 
+void AsyncFileStream::openForWrite(const String& path)
+{
+    perform([path = path.isolatedCopy()](FileStream& stream) -> std::function<void(FileStreamClient&)> {
+        bool success = stream.openForWrite(path);
+        return [success](FileStreamClient& client) {
+            client.didOpen(success);
+        };
+    });
+}
+
 void AsyncFileStream::close()
 {
     auto& internals = *m_internals;
@@ -170,6 +180,26 @@ void AsyncFileStream::read(char* buffer, int length)
         int bytesRead = stream.read(buffer, length);
         return [bytesRead](FileStreamClient& client) {
             client.didRead(bytesRead);
+        };
+    });
+}
+
+void AsyncFileStream::write(const URL& blobURL, long long position, int length)
+{
+    perform([blobURL = blobURL.isolatedCopy(), position, length](FileStream& stream) -> std::function<void(FileStreamClient&)> {
+        int bytesWritten = stream.write(blobURL, position, length);
+        return [bytesWritten](FileStreamClient& client) {
+            client.didWrite(bytesWritten);
+        };
+    });
+}
+
+void AsyncFileStream::truncate(long long position)
+{
+    perform([position](FileStream& stream) -> std::function<void(FileStreamClient&)> {
+        bool success = stream.truncate(position);
+        return [success](FileStreamClient& client) {
+            client.didTruncate(success);
         };
     });
 }

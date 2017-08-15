@@ -29,9 +29,11 @@
 
 #include "CCallHelpers.h"
 #include "FTLSlowPathCallKey.h"
-#include "FTLState.h"
+#include "JITOperations.h"
 
 namespace JSC { namespace FTL {
+
+class State;
 
 class SlowPathCall {
 public:
@@ -59,7 +61,7 @@ public:
 
     // NOTE: The call that this returns is already going to be linked by the JIT using addLinkTask(),
     // so there is no need for you to link it yourself.
-    SlowPathCall makeCall(VM&, void* callTarget);
+    SlowPathCall makeCall(void* callTarget);
 
 private:
     SlowPathCallKey keyWithTarget(void* callTarget) const;
@@ -77,23 +79,23 @@ private:
 
 template<typename... ArgumentTypes>
 SlowPathCall callOperation(
-    VM& vm, const RegisterSet& usedRegisters, CCallHelpers& jit, CCallHelpers::JumpList* exceptionTarget,
+    const RegisterSet& usedRegisters, CCallHelpers& jit, CCallHelpers::JumpList* exceptionTarget,
     FunctionPtr function, GPRReg resultGPR, ArgumentTypes... arguments)
 {
     SlowPathCall call;
     {
         SlowPathCallContext context(usedRegisters, jit, sizeof...(ArgumentTypes) + 1, resultGPR);
         jit.setupArgumentsWithExecState(arguments...);
-        call = context.makeCall(vm, function.value());
+        call = context.makeCall(function.value());
     }
     if (exceptionTarget)
-        exceptionTarget->append(jit.emitExceptionCheck(vm));
+        exceptionTarget->append(jit.emitExceptionCheck());
     return call;
 }
 
 template<typename... ArgumentTypes>
 SlowPathCall callOperation(
-    VM& vm, const RegisterSet& usedRegisters, CCallHelpers& jit, CallSiteIndex callSiteIndex,
+    const RegisterSet& usedRegisters, CCallHelpers& jit, CallSiteIndex callSiteIndex,
     CCallHelpers::JumpList* exceptionTarget, FunctionPtr function, GPRReg resultGPR,
     ArgumentTypes... arguments)
 {
@@ -102,7 +104,7 @@ SlowPathCall callOperation(
             CCallHelpers::TrustedImm32(callSiteIndex.bits()),
             CCallHelpers::tagFor(CallFrameSlot::argumentCount));
     }
-    return callOperation(vm, usedRegisters, jit, exceptionTarget, function, resultGPR, arguments...);
+    return callOperation(usedRegisters, jit, exceptionTarget, function, resultGPR, arguments...);
 }
 
 CallSiteIndex callSiteIndexForCodeOrigin(State&, CodeOrigin);
@@ -113,7 +115,7 @@ SlowPathCall callOperation(
     CCallHelpers::JumpList* exceptionTarget, FunctionPtr function, GPRReg result, ArgumentTypes... arguments)
 {
     return callOperation(
-        state.vm(), usedRegisters, jit, callSiteIndexForCodeOrigin(state, codeOrigin), exceptionTarget, function,
+        usedRegisters, jit, callSiteIndexForCodeOrigin(state, codeOrigin), exceptionTarget, function,
         result, arguments...);
 }
 

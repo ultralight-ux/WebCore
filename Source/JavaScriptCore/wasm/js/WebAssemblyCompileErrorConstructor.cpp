@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,21 +44,21 @@ const ClassInfo WebAssemblyCompileErrorConstructor::s_info = { "Function", &Base
  @end
  */
 
-static EncodedJSValue JSC_HOST_CALL constructJSWebAssemblyCompileError(ExecState* exec)
+static EncodedJSValue JSC_HOST_CALL constructJSWebAssemblyCompileError(ExecState* state)
 {
-    auto& vm = exec->vm();
+    auto& vm = state->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    JSValue message = exec->argument(0);
-    auto* structure = InternalFunction::createSubclassStructure(exec, exec->newTarget(), asInternalFunction(exec->jsCallee())->globalObject()->WebAssemblyCompileErrorStructure());
-    RETURN_IF_EXCEPTION(scope, encodedJSValue());
-    return JSValue::encode(JSWebAssemblyCompileError::create(exec, vm, structure, message));
+    JSValue message = state->argument(0);
+    auto* structure = InternalFunction::createSubclassStructure(state, state->newTarget(), asInternalFunction(state->jsCallee())->globalObject()->WebAssemblyCompileErrorStructure());
+    RETURN_IF_EXCEPTION(scope, { });
+    return JSValue::encode(JSWebAssemblyCompileError::create(state, structure, message, false));
 }
 
-static EncodedJSValue JSC_HOST_CALL callJSWebAssemblyCompileError(ExecState* exec)
+static EncodedJSValue JSC_HOST_CALL callJSWebAssemblyCompileError(ExecState* state)
 {
-    JSValue message = exec->argument(0);
-    Structure* errorStructure = asInternalFunction(exec->jsCallee())->globalObject()->WebAssemblyCompileErrorStructure();
-    return JSValue::encode(ErrorInstance::create(exec, errorStructure, message, nullptr, TypeNothing, false));
+    VM& vm = state->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(state, scope, "WebAssembly.CompileError"));
 }
 
 WebAssemblyCompileErrorConstructor* WebAssemblyCompileErrorConstructor::create(VM& vm, Structure* structure, WebAssemblyCompileErrorPrototype* thisPrototype)

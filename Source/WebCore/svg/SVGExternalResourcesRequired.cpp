@@ -47,7 +47,7 @@ bool SVGExternalResourcesRequired::handleAttributeChange(SVGElement* targetEleme
     ASSERT(targetElement);
     if (!isKnownAttribute(attrName))
         return false;
-    if (!targetElement->isConnected())
+    if (!targetElement->inDocument())
         return true;
 
     // Handle dynamic updates of the 'externalResourcesRequired' attribute. Only possible case: changing from 'true' to 'false'

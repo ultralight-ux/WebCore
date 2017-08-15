@@ -122,12 +122,12 @@ protected:
         ConstructionContext(Structure*, uint32_t length, void* vector);
         
         JS_EXPORT_PRIVATE ConstructionContext(
-            VM&, Structure*, RefPtr<ArrayBuffer>&&,
+            VM&, Structure*, PassRefPtr<ArrayBuffer>,
             unsigned byteOffset, unsigned length);
         
         enum DataViewTag { DataView };
         ConstructionContext(
-            Structure*, RefPtr<ArrayBuffer>&&,
+            Structure*, PassRefPtr<ArrayBuffer>,
             unsigned byteOffset, unsigned length, DataViewTag);
         
         bool operator!() const { return !m_structure; }
@@ -162,12 +162,12 @@ public:
     ArrayBuffer* possiblySharedBuffer();
     JSArrayBuffer* unsharedJSBuffer(ExecState* exec);
     JSArrayBuffer* possiblySharedJSBuffer(ExecState* exec);
-    RefPtr<ArrayBufferView> unsharedImpl();
-    RefPtr<ArrayBufferView> possiblySharedImpl();
+    PassRefPtr<ArrayBufferView> unsharedImpl();
+    PassRefPtr<ArrayBufferView> possiblySharedImpl();
     bool isNeutered() { return hasArrayBuffer() && !vector(); }
     void neuter();
     
-    void* vector() const { return m_vector.get(); }
+    void* vector() { return m_vector.get(); }
     
     unsigned byteOffset();
     unsigned length() const { return m_length; }
@@ -178,7 +178,7 @@ public:
     static ptrdiff_t offsetOfLength() { return OBJECT_OFFSETOF(JSArrayBufferView, m_length); }
     static ptrdiff_t offsetOfMode() { return OBJECT_OFFSETOF(JSArrayBufferView, m_mode); }
     
-    static RefPtr<ArrayBufferView> toWrapped(VM&, JSValue);
+    static RefPtr<ArrayBufferView> toWrapped(JSValue);
 
 private:
     static void finalize(JSCell*);

@@ -85,30 +85,4 @@ JSValue JSPromise::result(VM& vm) const
     return getDirect(vm, vm.propertyNames->builtinNames().promiseResultPrivateName());
 }
 
-bool JSPromise::isHandled(VM& vm) const
-{
-    JSValue value = getDirect(vm, vm.propertyNames->builtinNames().promiseIsHandledPrivateName());
-    ASSERT(value.isBoolean());
-    return value.asBoolean();
-}
-
-JSPromise* JSPromise::resolve(JSGlobalObject& globalObject, JSValue value)
-{
-    auto* exec = globalObject.globalExec();
-    auto& vm = exec->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    auto* promiseResolveFunction = globalObject.promiseResolveFunction();
-    CallData callData;
-    auto callType = JSC::getCallData(promiseResolveFunction, callData);
-    ASSERT(callType != CallType::None);
-
-    MarkedArgumentBuffer arguments;
-    arguments.append(value);
-    auto result = call(exec, promiseResolveFunction, callType, callData, globalObject.promiseConstructor(), arguments);
-    RETURN_IF_EXCEPTION(scope, nullptr);
-    ASSERT(result.inherits(vm, JSPromise::info()));
-    return jsCast<JSPromise*>(result);
-}
-
 } // namespace JSC

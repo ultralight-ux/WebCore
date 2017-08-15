@@ -35,7 +35,6 @@
 #include <wtf/Lock.h>
 #include <wtf/Stopwatch.h>
 #include <wtf/Vector.h>
-#include <wtf/WeakRandom.h>
 
 namespace JSC {
 
@@ -47,29 +46,26 @@ class SamplingProfiler : public ThreadSafeRefCounted<SamplingProfiler> {
 public:
 
     struct UnprocessedStackFrame {
-        UnprocessedStackFrame(CodeBlock* codeBlock, CalleeBits callee, CallSiteIndex callSiteIndex)
+        UnprocessedStackFrame(CodeBlock* codeBlock, EncodedJSValue callee, CallSiteIndex callSiteIndex)
             : unverifiedCallee(callee)
             , verifiedCodeBlock(codeBlock)
             , callSiteIndex(callSiteIndex)
         { }
+        UnprocessedStackFrame()
+        {
+            unverifiedCallee = JSValue::encode(JSValue());
+            verifiedCodeBlock = nullptr;
+        }
 
-        UnprocessedStackFrame(void* pc)
-            : cCodePC(pc)
-        { }
-
-        UnprocessedStackFrame() = default;
-
-        void* cCodePC { nullptr };
-        CalleeBits unverifiedCallee;
-        CodeBlock* verifiedCodeBlock { nullptr };
+        EncodedJSValue unverifiedCallee;
+        CodeBlock* verifiedCodeBlock;
         CallSiteIndex callSiteIndex;
     };
 
     enum class FrameType { 
         Executable,
         Host,
-        C,
-        Unknown
+        Unknown 
     };
 
     struct StackFrame {
@@ -82,48 +78,29 @@ public:
         { }
 
         FrameType frameType { FrameType::Unknown };
-        void* cCodePC { nullptr };
         ExecutableBase* executable { nullptr };
         JSObject* callee { nullptr };
+        // These attempt to be expression-level line and column number.
+        unsigned lineNumber { std::numeric_limits<unsigned>::max() };
+        unsigned columnNumber { std::numeric_limits<unsigned>::max() };
+        unsigned bytecodeIndex { std::numeric_limits<unsigned>::max() };
+        CodeBlockHash codeBlockHash;
+        JITCode::JITType jitType { JITCode::None };
 
-        struct CodeLocation {
-            bool hasCodeBlockHash() const
-            {
-                return codeBlockHash.isSet();
-            }
-
-            bool hasBytecodeIndex() const
-            {
-                return bytecodeIndex != std::numeric_limits<unsigned>::max();
-            }
-
-            bool hasExpressionInfo() const
-            {
-                return lineNumber != std::numeric_limits<unsigned>::max()
-                    && columnNumber != std::numeric_limits<unsigned>::max();
-            }
-
-            // These attempt to be expression-level line and column number.
-            unsigned lineNumber { std::numeric_limits<unsigned>::max() };
-            unsigned columnNumber { std::numeric_limits<unsigned>::max() };
-            unsigned bytecodeIndex { std::numeric_limits<unsigned>::max() };
-            CodeBlockHash codeBlockHash;
-            JITCode::JITType jitType { JITCode::None };
-        };
-
-        CodeLocation semanticLocation;
-        std::optional<std::pair<CodeLocation, Strong<CodeBlock>>> machineLocation; // This is non-null if we were inlined. It represents the machine frame we were inlined into.
-
-        bool hasExpressionInfo() const { return semanticLocation.hasExpressionInfo(); }
-        unsigned lineNumber() const
+        bool hasExpressionInfo() const
         {
-            ASSERT(hasExpressionInfo());
-            return semanticLocation.lineNumber;
+            return lineNumber != std::numeric_limits<unsigned>::max()
+                && columnNumber != std::numeric_limits<unsigned>::max();
         }
-        unsigned columnNumber() const
+
+        bool hasBytecodeIndex() const
         {
-            ASSERT(hasExpressionInfo());
-            return semanticLocation.columnNumber;
+            return bytecodeIndex != std::numeric_limits<unsigned>::max();
+        }
+
+        bool hasCodeBlockHash() const
+        {
+            return codeBlockHash.isSet();
         }
 
         // These are function-level data.
@@ -164,15 +141,15 @@ public:
     Lock& getLock() { return m_lock; }
     void setTimingInterval(std::chrono::microseconds interval) { m_timingInterval = interval; }
     JS_EXPORT_PRIVATE void start();
-    void start(const AbstractLocker&);
-    Vector<StackTrace> releaseStackTraces(const AbstractLocker&);
+    void start(const LockHolder&);
+    Vector<StackTrace> releaseStackTraces(const LockHolder&);
     JS_EXPORT_PRIVATE String stackTracesAsJSON();
     JS_EXPORT_PRIVATE void noticeCurrentThreadAsJSCExecutionThread();
-    void noticeCurrentThreadAsJSCExecutionThread(const AbstractLocker&);
+    void noticeCurrentThreadAsJSCExecutionThread(const LockHolder&);
     void processUnverifiedStackTraces(); // You should call this only after acquiring the lock.
-    void setStopWatch(const AbstractLocker&, Ref<Stopwatch>&& stopwatch) { m_stopwatch = WTFMove(stopwatch); }
-    void pause(const AbstractLocker&);
-    void clearData(const AbstractLocker&);
+    void setStopWatch(const LockHolder&, Ref<Stopwatch>&& stopwatch) { m_stopwatch = WTFMove(stopwatch); }
+    void pause(const LockHolder&);
+    void clearData(const LockHolder&);
 
     // Used for debugging in the JSC shell/DRT.
     void registerForReportAtExit();
@@ -183,20 +160,19 @@ public:
     JS_EXPORT_PRIVATE void reportTopBytecodes(PrintStream&);
 
 private:
-    void createThreadIfNecessary(const AbstractLocker&);
+    void createThreadIfNecessary(const LockHolder&);
     void timerLoop();
-    void takeSample(const AbstractLocker&, std::chrono::microseconds& stackTraceProcessingTime);
+    void takeSample(const LockHolder&, std::chrono::microseconds& stackTraceProcessingTime);
 
     VM& m_vm;
-    WeakRandom m_weakRandom;
     RefPtr<Stopwatch> m_stopwatch;
     Vector<StackTrace> m_stackTraces;
     Vector<UnprocessedStackTrace> m_unprocessedStackTraces;
     std::chrono::microseconds m_timingInterval;
     double m_lastTime;
     Lock m_lock;
-    RefPtr<Thread> m_thread;
-    MachineThreads::MachineThread* m_jscExecutionThread;
+    ThreadIdentifier m_threadIdentifier;
+    MachineThreads::Thread* m_jscExecutionThread;
     bool m_isPaused;
     bool m_isShutDown;
     bool m_needsReportAtExit { false };

@@ -27,7 +27,6 @@
     GenerateIsReachable=ImplFrame,
 ] interface History {
     readonly attribute unsigned long length;
-    [SetterMayThrowException, GetterMayThrowException] attribute ScrollRestoration scrollRestoration;
     [CachedAttribute, Custom] readonly attribute SerializedScriptValue state;
 
     [CallWith=Document, ForwardDeclareInHeader] void back();
@@ -37,5 +36,3 @@
     [Custom, MayThrowException] void pushState(any data, DOMString title, optional USVString? url = null);
     [Custom, MayThrowException] void replaceState(any data, DOMString title, optional USVString? url = null);
 };
-
-enum ScrollRestoration { "auto", "manual" };

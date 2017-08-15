@@ -42,12 +42,12 @@ public:
         return !(*this == o);
     }
 
-    float flexGrow;
-    float flexShrink;
-    Length flexBasis;
+    float m_flexGrow;
+    float m_flexShrink;
+    Length m_flexBasis;
 
-    unsigned flexDirection : 2; // EFlexDirection
-    unsigned flexWrap : 2; // EFlexWrap
+    unsigned m_flexDirection : 2; // EFlexDirection
+    unsigned m_flexWrap : 2; // EFlexWrap
 
 private:
     StyleFlexibleBoxData();

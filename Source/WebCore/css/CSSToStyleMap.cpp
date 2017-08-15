@@ -188,11 +188,12 @@ void CSSToStyleMap::mapFillRepeatY(CSSPropertyID propertyID, FillLayer& layer, c
 static inline bool convertToLengthSize(const CSSPrimitiveValue& primitiveValue, CSSToLengthConversionData conversionData, LengthSize& size)
 {
     if (auto* pair = primitiveValue.pairValue()) {
-        size.width = pair->first()->convertToLength<AnyConversion>(conversionData);
-        size.height = pair->second()->convertToLength<AnyConversion>(conversionData);
+        size.setWidth(pair->first()->convertToLength<AnyConversion>(conversionData));
+        size.setHeight(pair->second()->convertToLength<AnyConversion>(conversionData));
     } else
-        size.width = primitiveValue.convertToLength<AnyConversion>(conversionData);
-    return !size.width.isUndefined() && !size.height.isUndefined();
+        size.setWidth(primitiveValue.convertToLength<AnyConversion>(conversionData));
+
+    return !size.width().isUndefined() && !size.height().isUndefined();
 }
 
 void CSSToStyleMap::mapFillSize(CSSPropertyID propertyID, FillLayer& layer, const CSSValue& value)
@@ -443,21 +444,13 @@ void CSSToStyleMap::mapAnimationProperty(Animation& animation, const CSSValue& v
     if (primitiveValue.valueID() == CSSValueAll) {
         animation.setAnimationMode(Animation::AnimateAll);
         animation.setProperty(CSSPropertyInvalid);
-        return;
-    }
-    if (primitiveValue.valueID() == CSSValueNone) {
+    } else if (primitiveValue.valueID() == CSSValueNone) {
         animation.setAnimationMode(Animation::AnimateNone);
         animation.setProperty(CSSPropertyInvalid);
-        return;
+    } else if (primitiveValue.propertyID() != CSSPropertyInvalid) {
+        animation.setAnimationMode(Animation::AnimateSingleProperty);
+        animation.setProperty(primitiveValue.propertyID());
     }
-    if (primitiveValue.propertyID() == CSSPropertyInvalid) {
-        animation.setAnimationMode(Animation::AnimateUnknownProperty);
-        animation.setProperty(CSSPropertyInvalid);
-        animation.setUnknownProperty(primitiveValue.stringValue());
-        return;
-    }
-    animation.setAnimationMode(Animation::AnimateSingleProperty);
-    animation.setProperty(primitiveValue.propertyID());
 }
 
 void CSSToStyleMap::mapAnimationTimingFunction(Animation& animation, const CSSValue& value)

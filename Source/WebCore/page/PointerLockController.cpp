@@ -36,6 +36,7 @@
 #include "PlatformMouseEvent.h"
 #include "RuntimeEnabledFeatures.h"
 #include "ScriptController.h"
+#include "Settings.h"
 #include "VoidCallback.h"
 
 
@@ -48,7 +49,7 @@ PointerLockController::PointerLockController(Page& page)
 
 void PointerLockController::requestPointerLock(Element* target)
 {
-    if (!target || !target->isConnected() || m_documentOfRemovedElementWhileWaitingForUnlock) {
+    if (!target || !target->inDocument() || m_documentOfRemovedElementWhileWaitingForUnlock) {
         enqueueEvent(eventNames().pointerlockerrorEvent, target);
         return;
     }
@@ -140,11 +141,6 @@ Element* PointerLockController::element() const
 
 void PointerLockController::didAcquirePointerLock()
 {
-    if (!m_lockPending)
-        return;
-    
-    ASSERT(m_element);
-    
     enqueueEvent(eventNames().pointerlockchangeEvent, m_element.get());
     m_lockPending = false;
     m_forceCursorVisibleUponUnlock = false;

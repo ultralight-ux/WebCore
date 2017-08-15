@@ -73,8 +73,6 @@ class Identifier;
     macro(ModuleSatisfy) \
     macro(ModuleLink) \
     macro(ModuleReady) \
-    macro(promiseRejectionReject) \
-    macro(promiseRejectionHandle) \
     macro(promiseStatePending) \
     macro(promiseStateFulfilled) \
     macro(promiseStateRejected) \

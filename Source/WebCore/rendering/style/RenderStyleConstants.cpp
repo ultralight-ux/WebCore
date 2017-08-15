@@ -101,6 +101,4 @@ bool alwaysPageBreak(BreakBetween between)
     return between >= PageBreakBetween;
 }
 
-const float defaultMiterLimit = 4;
-
 } // namespace WebCore

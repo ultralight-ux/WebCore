@@ -32,10 +32,12 @@
 
 namespace WebCore {
 
-FELighting::FELighting(Filter& filter, LightingType lightingType, const Color& lightingColor, float surfaceScale, float diffuseConstant, float specularConstant, float specularExponent, float kernelUnitLengthX, float kernelUnitLengthY, Ref<LightSource>&& lightSource)
+FELighting::FELighting(Filter& filter, LightingType lightingType, const Color& lightingColor, float surfaceScale,
+    float diffuseConstant, float specularConstant, float specularExponent,
+    float kernelUnitLengthX, float kernelUnitLengthY, PassRefPtr<LightSource> lightSource)
     : FilterEffect(filter)
     , m_lightingType(lightingType)
-    , m_lightSource(WTFMove(lightSource))
+    , m_lightSource(lightSource)
     , m_lightingColor(lightingColor)
     , m_surfaceScale(surfaceScale)
     , m_diffuseConstant(diffuseConstant)
@@ -291,6 +293,9 @@ bool FELighting::drawLighting(Uint8ClampedArray* pixels, int width, int height)
 {
     LightSource::PaintingData paintingData;
     LightingData data;
+
+    if (!m_lightSource)
+        return false;
 
     // FIXME: do something if width or height (or both) is 1 pixel.
     // The W3 spec does not define this case. Now the filter just returns.

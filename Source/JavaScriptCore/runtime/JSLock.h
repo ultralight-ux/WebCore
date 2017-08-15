@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2005, 2008, 2009, 2014, 2016 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,6 +21,7 @@
 #pragma once
 
 #include <mutex>
+#include <thread>
 #include <wtf/Assertions.h>
 #include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
@@ -92,13 +93,15 @@ public:
 
     VM* vm() { return m_vm; }
 
-    std::optional<RefPtr<Thread>> ownerThread() const
+    bool hasExclusiveThread() const { return m_hasExclusiveThread; }
+    std::thread::id exclusiveThread() const
     {
-        if (m_hasOwnerThread)
-            return m_ownerThread;
-        return std::nullopt;
+        ASSERT(m_hasExclusiveThread);
+        return m_ownerThreadID;
     }
-    bool currentThreadIsHoldingLock() { return m_hasOwnerThread && m_ownerThread->id() == currentThread(); }
+    std::thread::id ownerThread() const { return m_ownerThreadID; }
+    JS_EXPORT_PRIVATE void setExclusiveThread(std::thread::id);
+    JS_EXPORT_PRIVATE bool currentThreadIsHoldingLock();
 
     void willDestroyVM(VM*);
 
@@ -130,14 +133,10 @@ private:
     void grabAllLocks(DropAllLocks*, unsigned lockCount);
 
     Lock m_lock;
-    // We cannot make m_ownerThread an optional (instead of pairing it with an explicit
-    // m_hasOwnerThread) because currentThreadIsHoldingLock() may be called from a
-    // different thread, and an optional is vulnerable to races.
-    // See https://bugs.webkit.org/show_bug.cgi?id=169042#c6
-    bool m_hasOwnerThread { false };
-    RefPtr<Thread> m_ownerThread;
+    std::thread::id m_ownerThreadID;
     intptr_t m_lockCount;
     unsigned m_lockDropDepth;
+    bool m_hasExclusiveThread;
     bool m_shouldReleaseHeapAccess;
     VM* m_vm;
     AtomicStringTable* m_entryAtomicStringTable; 

@@ -33,6 +33,7 @@
 
 #if ENABLE(WEB_RTC)
 
+#include "EventNames.h"
 #include "MediaStream.h"
 #include "MediaStreamTrack.h"
 #include "RTCRtpTransceiver.h"

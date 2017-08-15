@@ -191,7 +191,7 @@ bool SVGTests::handleAttributeChange(SVGElement* targetElement, const QualifiedN
     ASSERT(targetElement);
     if (!isKnownAttribute(attributeName))
         return false;
-    if (!targetElement->isConnected())
+    if (!targetElement->inDocument())
         return true;
     targetElement->invalidateStyleAndRenderersForSubtree();
     return true;

@@ -56,7 +56,7 @@ class NetworkStateNotifier {
     WTF_MAKE_NONCOPYABLE(NetworkStateNotifier); WTF_MAKE_FAST_ALLOCATED;
 public:
     NetworkStateNotifier();
-#if PLATFORM(IOS)
+#if PLATFORM(EFL) || PLATFORM(IOS)
     ~NetworkStateNotifier();
 #endif
     void addNetworkStateChangeListener(std::function<void (bool isOnLine)>);
@@ -88,6 +88,13 @@ private:
     HANDLE m_waitHandle;
     OVERLAPPED m_overlapped;
 
+#elif PLATFORM(EFL)
+    void networkInterfaceChanged();
+    static Eina_Bool readSocketCallback(void* userData, Ecore_Fd_Handler*);
+
+    int m_netlinkSocket;
+    Ecore_Fd_Handler* m_fdHandler;
+
 #elif PLATFORM(IOS)
     void registerObserverIfNecessary() const;
     friend void setOnLine(const NetworkStateNotifier*, bool);
@@ -98,7 +105,7 @@ private:
 #endif
 };
 
-#if !PLATFORM(COCOA) && !PLATFORM(WIN)
+#if !PLATFORM(COCOA) && !PLATFORM(WIN) && !PLATFORM(EFL)
 
 inline NetworkStateNotifier::NetworkStateNotifier()
     : m_isOnLine(true)

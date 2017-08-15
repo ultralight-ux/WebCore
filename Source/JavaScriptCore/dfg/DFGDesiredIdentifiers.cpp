@@ -87,7 +87,8 @@ UniquedStringImpl* DesiredIdentifiers::at(unsigned index) const
 
 void DesiredIdentifiers::reallyAdd(VM& vm, CommonData* commonData)
 {
-    for (auto rep : m_addedIdentifiers) {
+    for (unsigned i = 0; i < m_addedIdentifiers.size(); ++i) {
+        auto rep = m_addedIdentifiers[i];
         ASSERT(rep->hasAtLeastOneRef());
         commonData->dfgIdentifiers.append(Identifier::fromUid(&vm, rep));
     }

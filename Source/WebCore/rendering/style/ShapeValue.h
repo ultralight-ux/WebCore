@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2012 Adobe Systems Incorporated. All rights reserved.
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,38 +30,49 @@
 #pragma once
 
 #include "BasicShapes.h"
+#include "CSSValueKeywords.h"
 #include "StyleImage.h"
+#include <wtf/PassRefPtr.h>
 
 namespace WebCore {
 
 class ShapeValue : public RefCounted<ShapeValue> {
 public:
-    static Ref<ShapeValue> create(Ref<BasicShape>&& shape, CSSBoxType cssBox)
+    enum class Type {
+        // The None value is defined by a null ShapeValue*
+        Shape,
+        Box,
+        Image
+    };
+
+    static Ref<ShapeValue> createShapeValue(PassRefPtr<BasicShape> shape, CSSBoxType cssBox)
     {
-        return adoptRef(*new ShapeValue(WTFMove(shape), cssBox));
+        return adoptRef(*new ShapeValue(shape, cssBox));
     }
 
-    static Ref<ShapeValue> create(CSSBoxType boxShape)
+    static Ref<ShapeValue> createBoxShapeValue(CSSBoxType boxShape)
     {
         return adoptRef(*new ShapeValue(boxShape));
     }
 
-    static Ref<ShapeValue> create(Ref<StyleImage>&& image)
+    static Ref<ShapeValue> createImageValue(PassRefPtr<StyleImage> image)
     {
-        return adoptRef(*new ShapeValue(WTFMove(image)));
+        return adoptRef(*new ShapeValue(image));
     }
 
-    enum class Type { Shape, Box, Image };
     Type type() const { return m_type; }
     BasicShape* shape() const { return m_shape.get(); }
     CSSBoxType cssBox() const { return m_cssBox; }
+
     StyleImage* image() const { return m_image.get(); }
+
     bool isImageValid() const;
 
-    void setImage(Ref<StyleImage>&& image)
+    void setImage(PassRefPtr<StyleImage> image)
     {
-        ASSERT(m_type == Type::Image);
-        m_image = WTFMove(image);
+        ASSERT(type() == Type::Image);
+        if (m_image != image)
+            m_image = image;
     }
 
     bool operator==(const ShapeValue&) const;
@@ -72,20 +82,23 @@ public:
     }
 
 private:
-    ShapeValue(Ref<BasicShape>&& shape, CSSBoxType cssBox)
+    ShapeValue(PassRefPtr<BasicShape> shape, CSSBoxType cssBox)
         : m_type(Type::Shape)
-        , m_shape(WTFMove(shape))
+        , m_shape(shape)
         , m_cssBox(cssBox)
     {
     }
-
-    explicit ShapeValue(Ref<StyleImage>&& image)
+    ShapeValue(Type type)
+        : m_type(type)
+    {
+    }
+    ShapeValue(PassRefPtr<StyleImage> image)
         : m_type(Type::Image)
-        , m_image(WTFMove(image))
+        , m_image(image)
     {
     }
 
-    explicit ShapeValue(CSSBoxType cssBox)
+    ShapeValue(CSSBoxType cssBox)
         : m_type(Type::Box)
         , m_cssBox(cssBox)
     {

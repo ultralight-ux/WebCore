@@ -37,24 +37,25 @@
 
 namespace WebCore {
 
-inline MutationObserverInterestGroup::MutationObserverInterestGroup(HashMap<MutationObserver*, MutationRecordDeliveryOptions>&& observers, MutationRecordDeliveryOptions oldValueFlag)
-    : m_observers(WTFMove(observers))
-    , m_oldValueFlag(oldValueFlag)
-{
-    ASSERT(!m_observers.isEmpty());
-}
-
 std::unique_ptr<MutationObserverInterestGroup> MutationObserverInterestGroup::createIfNeeded(Node& target, MutationObserver::MutationType type, MutationRecordDeliveryOptions oldValueFlag, const QualifiedName* attributeName)
 {
     ASSERT((type == MutationObserver::Attributes && attributeName) || !attributeName);
-    auto observers = target.registeredMutationObservers(type, attributeName);
+    HashMap<MutationObserver*, MutationRecordDeliveryOptions> observers;
+    target.getRegisteredMutationObserversOfType(observers, type, attributeName);
     if (observers.isEmpty())
         return nullptr;
 
-    return std::make_unique<MutationObserverInterestGroup>(WTFMove(observers), oldValueFlag);
+    return std::make_unique<MutationObserverInterestGroup>(observers, oldValueFlag);
 }
 
-bool MutationObserverInterestGroup::isOldValueRequested() const
+MutationObserverInterestGroup::MutationObserverInterestGroup(HashMap<MutationObserver*, MutationRecordDeliveryOptions>& observers, MutationRecordDeliveryOptions oldValueFlag)
+    : m_oldValueFlag(oldValueFlag)
+{
+    ASSERT(!observers.isEmpty());
+    m_observers.swap(observers);
+}
+
+bool MutationObserverInterestGroup::isOldValueRequested()
 {
     for (auto options : m_observers.values()) {
         if (hasOldValue(options))

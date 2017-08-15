@@ -29,7 +29,6 @@
 #include "RenderLayerCompositor.h"
 #include "RenderView.h"
 #include "Settings.h"
-#include "StyleScrollSnapPoints.h"
 
 namespace WebCore {
 
@@ -50,17 +49,10 @@ RenderLayerModelObject::RenderLayerModelObject(Document& document, RenderStyle&&
 
 RenderLayerModelObject::~RenderLayerModelObject()
 {
-    // Do not add any code here. Add it to willBeDestroyed() instead.
-}
-
-void RenderLayerModelObject::willBeDestroyed()
-{
     if (isPositioned()) {
         if (style().hasViewportConstrainedPosition())
             view().frameView().removeViewportConstrainedObject(this);
     }
-
-    RenderElement::willBeDestroyed();
 
     // Our layer should have been destroyed and cleared by now
     ASSERT(!hasLayer());
@@ -137,7 +129,10 @@ void RenderLayerModelObject::styleWillChange(StyleDifference diff, const RenderS
 #if ENABLE(CSS_SCROLL_SNAP)
 static bool scrollSnapContainerRequiresUpdateForStyleUpdate(const RenderStyle& oldStyle, const RenderStyle& newStyle)
 {
-    return oldStyle.scrollSnapPort() != newStyle.scrollSnapPort();
+    return !(oldStyle.scrollSnapType() == newStyle.scrollSnapType()
+        && oldStyle.scrollSnapPointsX() == newStyle.scrollSnapPointsX()
+        && oldStyle.scrollSnapPointsY() == newStyle.scrollSnapPointsY()
+        && oldStyle.scrollSnapDestination() == newStyle.scrollSnapDestination());
 }
 #endif
 
@@ -203,11 +198,11 @@ void RenderLayerModelObject::styleDidChange(StyleDifference diff, const RenderSt
             frameView.updateScrollingCoordinatorScrollSnapProperties();
         }
     }
-    if (oldStyle && oldStyle->scrollSnapArea() != newStyle.scrollSnapArea()) {
+    if (oldStyle && oldStyle->scrollSnapCoordinates() != newStyle.scrollSnapCoordinates()) {
         const RenderBox* scrollSnapBox = enclosingBox().findEnclosingScrollableContainer();
         if (scrollSnapBox && scrollSnapBox->layer()) {
             const RenderStyle& style = scrollSnapBox->style();
-            if (style.scrollSnapType().strictness != ScrollSnapStrictness::None) {
+            if (style.scrollSnapType() != ScrollSnapType::None) {
                 scrollSnapBox->layer()->updateSnapOffsets();
                 scrollSnapBox->layer()->updateScrollSnapState();
                 if (scrollSnapBox->isBody() || scrollSnapBox->isDocumentElementRenderer())
@@ -224,11 +219,11 @@ bool RenderLayerModelObject::shouldPlaceBlockDirectionScrollbarOnLeft() const
 #if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200)
     return false;
 #else
-    switch (settings().userInterfaceDirectionPolicy()) {
+    switch (frame().settings().userInterfaceDirectionPolicy()) {
     case UserInterfaceDirectionPolicy::Content:
         return style().shouldPlaceBlockDirectionScrollbarOnLeft();
     case UserInterfaceDirectionPolicy::System:
-        return settings().systemLayoutDirection() == RTL;
+        return frame().settings().systemLayoutDirection() == RTL;
     }
     ASSERT_NOT_REACHED();
     return style().shouldPlaceBlockDirectionScrollbarOnLeft();

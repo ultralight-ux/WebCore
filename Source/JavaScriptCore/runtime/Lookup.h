@@ -28,7 +28,6 @@
 #include "Identifier.h"
 #include "IdentifierInlines.h"
 #include "Intrinsic.h"
-#include "JSFunction.h"
 #include "JSGlobalObject.h"
 #include "LazyProperty.h"
 #include "PropertySlot.h"
@@ -270,7 +269,7 @@ inline bool putEntry(ExecState* exec, const HashTableValue* entry, JSObject* bas
         if (!(entry->attributes() & ReadOnly)) {
             // If this is a function or lazy property put then we just do the put because
             // logically the object already had the property, so this is just a replace.
-            if (JSObject* thisObject = jsDynamicCast<JSObject*>(vm, thisValue))
+            if (JSObject* thisObject = jsDynamicCast<JSObject*>(thisValue))
                 thisObject->putDirect(vm, propertyName, value);
             return true;
         }
@@ -386,11 +385,6 @@ inline void reifyStaticProperties(VM& vm, const HashTableValue (&values)[numberO
         auto key = Identifier::fromString(&vm, reinterpret_cast<const LChar*>(value.m_key), strlen(value.m_key));
         reifyStaticProperty(vm, key, value, thisObj);
     }
-}
-
-template<NativeFunction nativeFunction, int length> EncodedJSValue nonCachingStaticFunctionGetter(ExecState* state, EncodedJSValue, PropertyName propertyName)
-{
-    return JSValue::encode(JSFunction::create(state->vm(), state->lexicalGlobalObject(), length, propertyName.publicName(), nativeFunction));
 }
 
 } // namespace JSC

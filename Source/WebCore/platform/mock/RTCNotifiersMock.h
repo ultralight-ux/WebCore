@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,13 +23,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef RTCNotifiersMock_h
+#define RTCNotifiersMock_h
 
 #if ENABLE(WEB_RTC)
 
 #include "RTCDataChannelHandlerClient.h"
 #include "RTCPeerConnectionHandlerClient.h"
 #include "TimerEventBasedMock.h"
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -42,7 +43,7 @@ class RTCVoidRequest;
 
 class SessionRequestNotifier : public MockNotifier {
 public:
-    SessionRequestNotifier(RefPtr<RTCSessionDescriptionRequest>&&, RefPtr<RTCSessionDescriptionDescriptor>&&, const String& = emptyString());
+    SessionRequestNotifier(PassRefPtr<RTCSessionDescriptionRequest>, PassRefPtr<RTCSessionDescriptionDescriptor>, const String& = emptyString());
 
     void fire() override;
 
@@ -54,7 +55,7 @@ private:
 
 class VoidRequestNotifier : public MockNotifier {
 public:
-    VoidRequestNotifier(RefPtr<RTCVoidRequest>&&, bool, const String& = emptyString());
+    VoidRequestNotifier(PassRefPtr<RTCVoidRequest>, bool, const String& = emptyString());
 
     void fire() override;
 
@@ -66,25 +67,25 @@ private:
 
 class IceConnectionNotifier : public MockNotifier {
 public:
-    IceConnectionNotifier(RTCPeerConnectionHandlerClient*, RTCIceConnectionState, RTCIceGatheringState);
+    IceConnectionNotifier(RTCPeerConnectionHandlerClient*, RTCPeerConnectionHandlerClient::IceConnectionState, RTCPeerConnectionHandlerClient::IceGatheringState);
 
     void fire() override;
 
 private:
     RTCPeerConnectionHandlerClient* m_client;
-    RTCIceConnectionState m_connectionState;
-    RTCIceGatheringState m_gatheringState;
+    RTCPeerConnectionHandlerClient::IceConnectionState m_connectionState;
+    RTCPeerConnectionHandlerClient::IceGatheringState m_gatheringState;
 };
 
 class SignalingStateNotifier : public MockNotifier {
 public:
-    SignalingStateNotifier(RTCPeerConnectionHandlerClient*, RTCSignalingState);
+    SignalingStateNotifier(RTCPeerConnectionHandlerClient*, RTCPeerConnectionHandlerClient::SignalingState);
 
     void fire() override;
 
 private:
     RTCPeerConnectionHandlerClient* m_client;
-    RTCSignalingState m_signalingState;
+    RTCPeerConnectionHandlerClient::SignalingState m_signalingState;
 };
 
 class RemoteDataChannelNotifier : public MockNotifier {
@@ -99,15 +100,17 @@ private:
 
 class DataChannelStateNotifier : public MockNotifier {
 public:
-    DataChannelStateNotifier(RTCDataChannelHandlerClient*, RTCDataChannelState);
+    DataChannelStateNotifier(RTCDataChannelHandlerClient*, RTCDataChannelHandlerClient::ReadyState);
 
     void fire() override;
 
 private:
     RTCDataChannelHandlerClient* m_client;
-    RTCDataChannelState m_state;
+    RTCDataChannelHandlerClient::ReadyState m_state;
 };
 
 } // namespace WebCore
 
 #endif // ENABLE(WEB_RTC)
+
+#endif // RTCNotifiersMock_h

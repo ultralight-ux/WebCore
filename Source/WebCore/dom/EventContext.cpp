@@ -91,7 +91,6 @@ bool MouseOrFocusEventContext::isMouseOrFocusEventContext() const
 }
 
 #if ENABLE(TOUCH_EVENTS)
-
 TouchEventContext::TouchEventContext(Node* node, EventTarget* currentTarget, EventTarget* target)
     : EventContext(node, currentTarget, target)
     , m_touches(TouchList::create())
@@ -125,14 +124,12 @@ bool TouchEventContext::isTouchEventContext() const
 }
 
 #if !ASSERT_DISABLED
-
 void TouchEventContext::checkReachability(TouchList* touchList) const
 {
     size_t length = touchList->length();
     for (size_t i = 0; i < length; ++i)
         ASSERT(!isUnreachableNode(touchList->item(i)->target()->toNode()));
 }
-
 #endif
 
 #endif // ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)

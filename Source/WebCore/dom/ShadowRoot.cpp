@@ -71,7 +71,7 @@ ShadowRoot::ShadowRoot(Document& document, std::unique_ptr<SlotAssignment>&& slo
 
 ShadowRoot::~ShadowRoot()
 {
-    if (isConnected())
+    if (inDocument())
         document().didRemoveInDocumentShadowRoot(*this);
 
     // We cannot let ContainerNode destructor call willBeDeletedFrom()
@@ -88,9 +88,9 @@ ShadowRoot::~ShadowRoot()
 
 Node::InsertionNotificationRequest ShadowRoot::insertedInto(ContainerNode& insertionPoint)
 {
-    bool wasInDocument = isConnected();
+    bool wasInDocument = inDocument();
     DocumentFragment::insertedInto(insertionPoint);
-    if (insertionPoint.isConnected() && !wasInDocument)
+    if (insertionPoint.inDocument() && !wasInDocument)
         document().didInsertInDocumentShadowRoot(*this);
     return InsertionDone;
 }
@@ -98,7 +98,7 @@ Node::InsertionNotificationRequest ShadowRoot::insertedInto(ContainerNode& inser
 void ShadowRoot::removedFrom(ContainerNode& insertionPoint)
 {
     DocumentFragment::removedFrom(insertionPoint);
-    if (insertionPoint.isConnected() && !isConnected())
+    if (insertionPoint.inDocument() && !inDocument())
         document().didRemoveInDocumentShadowRoot(*this);
 }
 

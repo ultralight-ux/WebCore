@@ -47,6 +47,8 @@
     JSC::Strong<JSC::JSObject> m_exception;
 }
 
+@synthesize exceptionHandler;
+
 - (JSGlobalContextRef)JSGlobalContextRef
 {
     return m_context;
@@ -82,7 +84,7 @@
     [m_wrapperMap release];
     JSGlobalContextRelease(m_context);
     [m_virtualMachine release];
-    [_exceptionHandler release];
+    [self.exceptionHandler release];
     [super dealloc];
 }
 

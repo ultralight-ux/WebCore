@@ -43,6 +43,7 @@
 namespace JSC {
 
 class CodeBlock;
+class VM;
 
 // LinkBuffer:
 //
@@ -78,10 +79,11 @@ class LinkBuffer {
 #endif
 
 public:
-    LinkBuffer(MacroAssembler& macroAssembler, void* ownerUID, JITCompilationEffort effort = JITCompilationMustSucceed)
+    LinkBuffer(VM& vm, MacroAssembler& macroAssembler, void* ownerUID, JITCompilationEffort effort = JITCompilationMustSucceed)
         : m_size(0)
         , m_didAllocate(false)
         , m_code(0)
+        , m_vm(&vm)
 #ifndef NDEBUG
         , m_completed(false)
 #endif
@@ -93,6 +95,7 @@ public:
         : m_size(size)
         , m_didAllocate(false)
         , m_code(code)
+        , m_vm(0)
 #ifndef NDEBUG
         , m_completed(false)
 #endif
@@ -250,6 +253,8 @@ public:
     bool wasAlreadyDisassembled() const { return m_alreadyDisassembled; }
     void didAlreadyDisassemble() { m_alreadyDisassembled = true; }
 
+    VM& vm() { return *m_vm; }
+
 private:
 #if ENABLE(BRANCH_COMPACTION)
     int executableOffsetFor(int location)
@@ -300,6 +305,7 @@ private:
 #endif
     bool m_didAllocate;
     void* m_code;
+    VM* m_vm;
 #ifndef NDEBUG
     bool m_completed;
 #endif

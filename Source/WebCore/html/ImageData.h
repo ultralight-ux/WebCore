@@ -34,7 +34,7 @@
 
 namespace WebCore {
 
-class WEBCORE_EXPORT ImageData : public RefCounted<ImageData> {
+class ImageData : public RefCounted<ImageData> {
 public:
     static ExceptionOr<Ref<ImageData>> create(unsigned sw, unsigned sh);
     static RefPtr<ImageData> create(const IntSize&);

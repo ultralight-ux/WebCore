@@ -35,13 +35,14 @@
 namespace WebCore {
 
 ScrollingThread::ScrollingThread()
+    : m_threadIdentifier(0)
 {
 }
 
 bool ScrollingThread::isCurrentThread()
 {
-    RefPtr<Thread> thread = ScrollingThread::singleton().m_thread;
-    return thread && thread->id() == currentThread();
+    auto threadIdentifier = ScrollingThread::singleton().m_threadIdentifier;
+    return threadIdentifier && currentThread() == threadIdentifier;
 }
 
 void ScrollingThread::dispatch(Function<void ()>&& function)
@@ -73,14 +74,14 @@ ScrollingThread& ScrollingThread::singleton()
 
 void ScrollingThread::createThreadIfNeeded()
 {
-    if (m_thread)
+    if (m_threadIdentifier)
         return;
 
     // Wait for the thread to initialize the run loop.
     {
         std::unique_lock<Lock> lock(m_initializeRunLoopMutex);
 
-        m_thread = Thread::create(threadCallback, this, "WebCore: Scrolling");
+        m_threadIdentifier = createThread(threadCallback, this, "WebCore: Scrolling");
         
 #if PLATFORM(COCOA)
         m_initializeRunLoopConditionVariable.wait(lock, [this]{ return m_threadRunLoop; });
@@ -90,7 +91,7 @@ void ScrollingThread::createThreadIfNeeded()
 
 void ScrollingThread::threadCallback(void* scrollingThread)
 {
-    WTF::Thread::setCurrentThreadIsUserInteractive();
+    WTF::setCurrentThreadIsUserInteractive();
     static_cast<ScrollingThread*>(scrollingThread)->threadBody();
 }
 

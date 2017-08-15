@@ -42,7 +42,7 @@ Ref<SVGTitleElement> SVGTitleElement::create(const QualifiedName& tagName, Docum
 Node::InsertionNotificationRequest SVGTitleElement::insertedInto(ContainerNode& rootParent)
 {
     SVGElement::insertedInto(rootParent);
-    if (!rootParent.isConnected())
+    if (!rootParent.inDocument())
         return InsertionDone;
 
     if (firstChild() && document().isSVGDocument())
@@ -53,7 +53,7 @@ Node::InsertionNotificationRequest SVGTitleElement::insertedInto(ContainerNode& 
 void SVGTitleElement::removedFrom(ContainerNode& rootParent)
 {
     SVGElement::removedFrom(rootParent);
-    if (rootParent.isConnected() && document().isSVGDocument())
+    if (rootParent.inDocument() && document().isSVGDocument())
         document().titleElementRemoved(*this);
 }
 

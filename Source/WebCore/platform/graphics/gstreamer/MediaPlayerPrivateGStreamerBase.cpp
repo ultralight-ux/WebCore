@@ -38,8 +38,6 @@
 #include "VideoSinkGStreamer.h"
 #include "WebKitWebSourceGStreamer.h"
 #include <wtf/glib/GMutexLocker.h>
-#include <wtf/glib/GUniquePtr.h>
-#include <wtf/text/AtomicString.h>
 #include <wtf/text/CString.h>
 #include <wtf/MathExtras.h>
 
@@ -59,9 +57,7 @@
 #endif
 
 #if USE(EGL)
-#if !PLATFORM(WPE)
 #include "GLContextEGL.h"
-#endif
 #include <gst/gl/egl/gstgldisplay_egl.h>
 #endif
 
@@ -71,8 +67,6 @@
 
 #if PLATFORM(WAYLAND)
 #include "PlatformDisplayWayland.h"
-#elif PLATFORM(WPE)
-#include "PlatformDisplayWPE.h"
 #endif
 
 // gstglapi.h may include eglplatform.h and it includes X.h, which
@@ -96,14 +90,12 @@
 #include <cairo-gl.h>
 #endif
 
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA) || ENABLE(ENCRYPTED_MEDIA)
-#include "SharedBuffer.h"
-#include "WebKitClearKeyDecryptorGStreamer.h"
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
+#include "UUID.h"
+#include "WebKitClearKeyDecryptorGStreamer.h"
 #include <runtime/JSCInlines.h>
 #include <runtime/TypedArrayInlines.h>
 #include <runtime/Uint8Array.h>
-#endif
 #endif
 
 GST_DEBUG_CATEGORY(webkit_media_player_debug);
@@ -113,13 +105,9 @@ using namespace std;
 
 namespace WebCore {
 
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
-static AtomicString keySystemIdToUuid(const AtomicString&);
-#endif
-
 void registerWebKitGStreamerElements()
 {
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA) || ENABLE(ENCRYPTED_MEDIA)
+#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
     if (!webkitGstCheckVersion(1, 6, 1))
         return;
 
@@ -204,16 +192,13 @@ private:
 
 MediaPlayerPrivateGStreamerBase::MediaPlayerPrivateGStreamerBase(MediaPlayer* player)
     : m_player(player)
-    , m_fpsSink(nullptr)
+    , m_fpsSink(0)
     , m_readyState(MediaPlayer::HaveNothing)
     , m_networkState(MediaPlayer::Empty)
 #if USE(GSTREAMER_GL) || USE(COORDINATED_GRAPHICS_THREADED)
     , m_drawTimer(RunLoop::main(), this, &MediaPlayerPrivateGStreamerBase::repaint)
 #endif
     , m_usingFallbackVideoSink(false)
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
-    , m_cdmSession(nullptr)
-#endif
 {
     g_mutex_init(&m_sampleMutex);
 #if USE(COORDINATED_GRAPHICS_THREADED)
@@ -223,18 +208,7 @@ MediaPlayerPrivateGStreamerBase::MediaPlayerPrivateGStreamerBase(MediaPlayer* pl
 
 MediaPlayerPrivateGStreamerBase::~MediaPlayerPrivateGStreamerBase()
 {
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
-    m_protectionCondition.notifyOne();
-#endif
     m_notifier.cancelPendingNotifications();
-
-#if USE(GSTREAMER_GL) || USE(COORDINATED_GRAPHICS_THREADED)
-    m_drawTimer.stop();
-    {
-        LockHolder locker(m_drawMutex);
-        m_drawCondition.notifyOne();
-    }
-#endif
 
     if (m_videoSink) {
         g_signal_handlers_disconnect_matched(m_videoSink.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
@@ -257,13 +231,6 @@ MediaPlayerPrivateGStreamerBase::~MediaPlayerPrivateGStreamerBase()
     if (client())
         client()->platformLayerWillBeDestroyed();
 #endif
-
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
-    m_cdmSession = nullptr;
-#endif
-
-    if (m_pipeline)
-        gst_element_set_state(m_pipeline.get(), GST_STATE_NULL);
 }
 
 void MediaPlayerPrivateGStreamerBase::setPipeline(GstElement* pipeline)
@@ -271,66 +238,31 @@ void MediaPlayerPrivateGStreamerBase::setPipeline(GstElement* pipeline)
     m_pipeline = pipeline;
 }
 
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
-static std::pair<Vector<GRefPtr<GstEvent>>, Vector<String>> extractEventsAndSystemsFromMessage(GstMessage* message)
-{
-    const GstStructure* structure = gst_message_get_structure(message);
-
-    const GValue* streamEncryptionAllowedSystemsValue = gst_structure_get_value(structure, "stream-encryption-systems");
-    ASSERT(streamEncryptionAllowedSystemsValue && G_VALUE_HOLDS(streamEncryptionAllowedSystemsValue, G_TYPE_STRV));
-    const char** streamEncryptionAllowedSystems = reinterpret_cast<const char**>(g_value_get_boxed(streamEncryptionAllowedSystemsValue));
-    ASSERT(streamEncryptionAllowedSystems);
-    Vector<String> streamEncryptionAllowedSystemsVector;
-    unsigned i;
-    for (i = 0; streamEncryptionAllowedSystems[i]; ++i)
-        streamEncryptionAllowedSystemsVector.append(streamEncryptionAllowedSystems[i]);
-
-    const GValue* streamEncryptionEventsList = gst_structure_get_value(structure, "stream-encryption-events");
-    ASSERT(streamEncryptionEventsList && GST_VALUE_HOLDS_LIST(streamEncryptionEventsList));
-    unsigned streamEncryptionEventsListSize = gst_value_list_get_size(streamEncryptionEventsList);
-    Vector<GRefPtr<GstEvent>> streamEncryptionEventsVector;
-    for (i = 0; i < streamEncryptionEventsListSize; ++i)
-        streamEncryptionEventsVector.append(GRefPtr<GstEvent>(static_cast<GstEvent*>(g_value_get_boxed(gst_value_list_get_value(streamEncryptionEventsList, i)))));
-
-    return std::make_pair(streamEncryptionEventsVector, streamEncryptionAllowedSystemsVector);
-}
-#endif
-
 bool MediaPlayerPrivateGStreamerBase::handleSyncMessage(GstMessage* message)
 {
     UNUSED_PARAM(message);
+#if USE(GSTREAMER_GL)
     if (GST_MESSAGE_TYPE(message) != GST_MESSAGE_NEED_CONTEXT)
         return false;
 
     const gchar* contextType;
     gst_message_parse_context_type(message, &contextType);
 
-#if USE(GSTREAMER_GL)
     GRefPtr<GstContext> elementContext = adoptGRef(requestGLContext(contextType, this));
-    if (elementContext) {
-        gst_element_set_context(GST_ELEMENT(message->src), elementContext.get());
-        return true;
-    }
+    if (!elementContext)
+        return false;
+
+    gst_element_set_context(GST_ELEMENT(message->src), elementContext.get());
+    return true;
+#else
+    UNUSED_PARAM(message);
 #endif // USE(GSTREAMER_GL)
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
-    if (!g_strcmp0(contextType, "drm-preferred-decryption-system-id")) {
-        if (isMainThread()) {
-            GST_ERROR("can't handle drm-preferred-decryption-system-id need context message in the main thread");
-            ASSERT_NOT_REACHED();
-            return false;
-        }
-        GST_DEBUG("handling drm-preferred-decryption-system-id need context message");
-        std::pair<Vector<GRefPtr<GstEvent>>, Vector<String>> streamEncryptionInformation = extractEventsAndSystemsFromMessage(message);
-        GST_TRACE("found %" G_GSIZE_FORMAT " protection events", streamEncryptionInformation.first.size());
-        Vector<uint8_t> concatenatedInitDataChunks;
-        unsigned concatenatedInitDataChunksNumber = 0;
-        String eventKeySystemIdString;
-        for (auto& event : streamEncryptionInformation.first) {
-            GST_TRACE("handling protection event %u", GST_EVENT_SEQNUM(event.get()));
-            const char* eventKeySystemId = nullptr;
-            GstBuffer* data = nullptr;
-            gst_event_parse_protection(event.get(), &eventKeySystemId, &data, nullptr);
+    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ELEMENT) {
+        const GstStructure* structure = gst_message_get_structure(message);
+        if (gst_structure_has_name(structure, "drm-key-needed")) {
+            GST_DEBUG("handling drm-key-needed message");
 
             // Here we receive the DRM init data from the pipeline: we will emit
             // the needkey event with that data and the browser might create a
@@ -339,55 +271,21 @@ bool MediaPlayerPrivateGStreamerBase::handleSyncMessage(GstMessage* message)
             // DRM challenge to the browser and wait for an update. If on the
             // contrary no session was created we won't wait and let the pipeline
             // error out by itself.
+            GRefPtr<GstBuffer> data;
+            GUniqueOutPtr<gchar> keySystemId;
+            gboolean valid = gst_structure_get(structure, "data", GST_TYPE_BUFFER, &data.outPtr(),
+                "key-system-id", G_TYPE_STRING, &keySystemId.outPtr(), nullptr);
             GstMapInfo mapInfo;
-            if (!gst_buffer_map(data, &mapInfo, GST_MAP_READ)) {
-                GST_WARNING("cannot map %s protection data", eventKeySystemId);
-                break;
-            }
+            if (UNLIKELY(!valid || !gst_buffer_map(data.get(), &mapInfo, GST_MAP_READ)))
+                return false;
 
-            GST_TRACE("appending init data for %s of size %" G_GSIZE_FORMAT, eventKeySystemId, mapInfo.size);
-            GST_MEMDUMP("init data", reinterpret_cast<const unsigned char *>(mapInfo.data), mapInfo.size);
-            concatenatedInitDataChunks.append(mapInfo.data, mapInfo.size);
-            ++concatenatedInitDataChunksNumber;
-            eventKeySystemIdString = eventKeySystemId;
-            if (streamEncryptionInformation.second.contains(eventKeySystemId)) {
-                GST_TRACE("considering init data handled for %s", eventKeySystemId);
-                m_handledProtectionEvents.add(GST_EVENT_SEQNUM(event.get()));
-            }
-            gst_buffer_unmap(data, &mapInfo);
-        }
-
-        if (!concatenatedInitDataChunksNumber)
-            return false;
-
-        if (concatenatedInitDataChunksNumber > 1)
-            eventKeySystemIdString = emptyString();
-
-        RunLoop::main().dispatch([this, eventKeySystemIdString, initData = WTFMove(concatenatedInitDataChunks)] {
-            GST_DEBUG("scheduling keyNeeded event for %s with concatenated init datas size of %" G_GSIZE_FORMAT, eventKeySystemIdString.utf8().data(), initData.size());
-            GST_MEMDUMP("init datas", initData.data(), initData.size());
-
+            GST_DEBUG("scheduling keyNeeded event");
             // FIXME: Provide a somehow valid sessionId.
-            RefPtr<Uint8Array> initDataArray = Uint8Array::create(initData.data(), initData.size());
-            needKey(initDataArray);
-        });
-
-        GST_INFO("waiting for a key request to arrive");
-        LockHolder lock(m_protectionMutex);
-        m_protectionCondition.waitFor(m_protectionMutex, Seconds(4), [this] {
-            return !this->m_lastGenerateKeyRequestKeySystemUuid.isEmpty();
-        });
-        if (!m_lastGenerateKeyRequestKeySystemUuid.isEmpty()) {
-            GST_INFO("got a key request, continuing with %s on %s", m_lastGenerateKeyRequestKeySystemUuid.utf8().data(), GST_MESSAGE_SRC_NAME(message));
-
-            GRefPtr<GstContext> context = adoptGRef(gst_context_new("drm-preferred-decryption-system-id", FALSE));
-            GstStructure* contextStructure = gst_context_writable_structure(context.get());
-            gst_structure_set(contextStructure, "decryption-system-id", G_TYPE_STRING, m_lastGenerateKeyRequestKeySystemUuid.utf8().data(), nullptr);
-            gst_element_set_context(GST_ELEMENT(GST_MESSAGE_SRC(message)), context.get());
-        } else
-            GST_WARNING("did not get a proper key request");
-
-        return true;
+            RefPtr<Uint8Array> initData = Uint8Array::create(reinterpret_cast<const unsigned char *>(mapInfo.data), mapInfo.size);
+            needKey(initData);
+            gst_buffer_unmap(data.get(), &mapInfo);
+            return true;
+        }
     }
 #endif // ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
@@ -440,11 +338,6 @@ bool MediaPlayerPrivateGStreamerBase::ensureGstGLContext()
 #if PLATFORM(WAYLAND)
         if (is<PlatformDisplayWayland>(sharedDisplay))
             m_glDisplay = GST_GL_DISPLAY(gst_gl_display_egl_new_with_egl_display(downcast<PlatformDisplayWayland>(sharedDisplay).eglDisplay()));
-#endif
-
-#if PLATFORM(WPE)
-        ASSERT(is<PlatformDisplayWPE>(sharedDisplay));
-        m_glDisplay = GST_GL_DISPLAY(gst_gl_display_egl_new_with_egl_display(downcast<PlatformDisplayWPE>(sharedDisplay).eglDisplay()));
 #endif
 
         ASSERT(m_glDisplay);
@@ -505,7 +398,7 @@ FloatSize MediaPlayerPrivateGStreamerBase::naturalSize() const
 
 #if USE(TEXTURE_MAPPER_GL)
     // When using accelerated compositing, if the video is tagged as rotated 90 or 270 degrees, swap width and height.
-    if (m_renderingCanBeAccelerated) {
+    if (m_player->client().mediaPlayerRenderingCanBeAccelerated(m_player)) {
         if (m_videoSourceOrientation.usesWidthAsHeight())
             originalSize = originalSize.transposedSize();
     }
@@ -603,7 +496,7 @@ void MediaPlayerPrivateGStreamerBase::setMuted(bool muted)
     if (!m_volumeElement)
         return;
 
-    g_object_set(m_volumeElement.get(), "mute", muted, nullptr);
+    g_object_set(m_volumeElement.get(), "mute", muted, NULL);
 }
 
 bool MediaPlayerPrivateGStreamerBase::muted() const
@@ -612,7 +505,7 @@ bool MediaPlayerPrivateGStreamerBase::muted() const
         return false;
 
     bool muted;
-    g_object_get(m_volumeElement.get(), "mute", &muted, nullptr);
+    g_object_get(m_volumeElement.get(), "mute", &muted, NULL);
     return muted;
 }
 
@@ -622,7 +515,7 @@ void MediaPlayerPrivateGStreamerBase::notifyPlayerOfMute()
         return;
 
     gboolean muted;
-    g_object_get(m_volumeElement.get(), "mute", &muted, nullptr);
+    g_object_get(m_volumeElement.get(), "mute", &muted, NULL);
     m_player->muteChanged(static_cast<bool>(muted));
 }
 
@@ -632,12 +525,7 @@ void MediaPlayerPrivateGStreamerBase::muteChangedCallback(MediaPlayerPrivateGStr
     player->m_notifier.notify(MainThreadNotification::MuteChanged, [player] { player->notifyPlayerOfMute(); });
 }
 
-void MediaPlayerPrivateGStreamerBase::acceleratedRenderingStateChanged()
-{
-    m_renderingCanBeAccelerated = m_player && m_player->client().mediaPlayerAcceleratedCompositingEnabled() && m_player->client().mediaPlayerRenderingCanBeAccelerated(m_player);
-}
-
-#if USE(TEXTURE_MAPPER_GL)
+#if USE(TEXTURE_MAPPER_GL) && !USE(COORDINATED_GRAPHICS_MULTIPROCESS)
 void MediaPlayerPrivateGStreamerBase::updateTexture(BitmapTextureGL& texture, GstVideoInfo& videoInfo)
 {
     GstBuffer* buffer = gst_sample_get_buffer(m_sample.get());
@@ -693,16 +581,8 @@ void MediaPlayerPrivateGStreamerBase::pushTextureToCompositor()
 
     LockHolder holder(m_platformLayerProxy->lock());
 
-    if (!m_platformLayerProxy->isActive()) {
-        // Consume the buffer (so it gets eventually unreffed) but keep the rest of the info.
-        const GstStructure* info = gst_sample_get_info(m_sample.get());
-        GstStructure* infoCopy = nullptr;
-        if (info)
-            infoCopy = gst_structure_copy(info);
-        m_sample = adoptGRef(gst_sample_new(nullptr, gst_sample_get_caps(m_sample.get()),
-            gst_sample_get_segment(m_sample.get()), infoCopy));
+    if (!m_platformLayerProxy->isActive())
         return;
-    }
 
 #if USE(GSTREAMER_GL)
     std::unique_ptr<GstVideoFrameHolder> frameHolder = std::make_unique<GstVideoFrameHolder>(m_sample.get(), texMapFlagFromOrientation(m_videoSourceOrientation));
@@ -723,7 +603,7 @@ void MediaPlayerPrivateGStreamerBase::pushTextureToCompositor()
         if (UNLIKELY(!m_context3D))
             m_context3D = GraphicsContext3D::create(GraphicsContext3DAttributes(), nullptr, GraphicsContext3D::RenderToCurrentGLContext);
 
-        auto texture = BitmapTextureGL::create(*m_context3D);
+        RefPtr<BitmapTexture> texture = adoptRef(new BitmapTextureGL(m_context3D));
         texture->reset(size, GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? BitmapTexture::SupportsAlpha : BitmapTexture::NoFlag);
         buffer = std::make_unique<TextureMapperPlatformLayerBuffer>(WTFMove(texture));
     }
@@ -740,10 +620,9 @@ void MediaPlayerPrivateGStreamerBase::repaint()
     ASSERT(isMainThread());
 
 #if USE(TEXTURE_MAPPER_GL) && !USE(COORDINATED_GRAPHICS)
-    if (m_renderingCanBeAccelerated && client()) {
+    if (supportsAcceleratedRendering() && m_player->client().mediaPlayerRenderingCanBeAccelerated(m_player) && client()) {
         client()->setPlatformLayerNeedsDisplay();
 #if USE(GSTREAMER_GL)
-        LockHolder lock(m_drawMutex);
         m_drawCondition.notifyOne();
 #endif
         return;
@@ -753,7 +632,6 @@ void MediaPlayerPrivateGStreamerBase::repaint()
     m_player->repaint();
 
 #if USE(GSTREAMER_GL) || USE(COORDINATED_GRAPHICS_THREADED)
-    LockHolder lock(m_drawMutex);
     m_drawCondition.notifyOne();
 #endif
 }
@@ -773,9 +651,9 @@ void MediaPlayerPrivateGStreamerBase::triggerRepaint(GstSample* sample)
     }
 
 #if USE(COORDINATED_GRAPHICS_THREADED)
-    if (!m_renderingCanBeAccelerated) {
+    if (!m_player->client().mediaPlayerAcceleratedCompositingEnabled()) {
         LockHolder locker(m_drawMutex);
-        m_drawTimer.startOneShot(0_s);
+        m_drawTimer.startOneShot(0);
         m_drawCondition.wait(m_drawMutex);
         return;
     }
@@ -797,7 +675,7 @@ void MediaPlayerPrivateGStreamerBase::triggerRepaint(GstSample* sample)
         ASSERT(!isMainThread());
 
         LockHolder locker(m_drawMutex);
-        m_drawTimer.startOneShot(0_s);
+        m_drawTimer.startOneShot(0);
         m_drawCondition.wait(m_drawMutex);
     }
 #else
@@ -845,14 +723,14 @@ void MediaPlayerPrivateGStreamerBase::paint(GraphicsContext& context, const Floa
         return;
 
     ImagePaintingOptions paintingOptions(CompositeCopy);
-    if (m_renderingCanBeAccelerated)
+    if (m_player->client().mediaPlayerRenderingCanBeAccelerated(m_player))
         paintingOptions.m_orientationDescription.setImageOrientationEnum(m_videoSourceOrientation);
 
     RefPtr<ImageGStreamer> gstImage = ImageGStreamer::createImage(m_sample.get());
     if (!gstImage)
         return;
 
-    if (Image* image = reinterpret_cast<Image*>(gstImage->image()))
+    if (Image* image = reinterpret_cast<Image*>(gstImage->image().get()))
         context.drawImage(*image, rect, gstImage->rect(), paintingOptions);
 }
 
@@ -1137,10 +1015,8 @@ GstElement* MediaPlayerPrivateGStreamerBase::createVideoSinkGL()
 
 GstElement* MediaPlayerPrivateGStreamerBase::createVideoSink()
 {
-    acceleratedRenderingStateChanged();
-
 #if USE(GSTREAMER_GL)
-    if (m_renderingCanBeAccelerated)
+    if (m_player->client().mediaPlayerRenderingCanBeAccelerated(m_player))
         m_videoSink = createVideoSinkGL();
 #endif
 
@@ -1187,12 +1063,12 @@ void MediaPlayerPrivateGStreamerBase::setStreamVolumeElement(GstStreamVolume* vo
     // https://bugs.webkit.org/show_bug.cgi?id=118974 for more information.
     if (!m_player->platformVolumeConfigurationRequired()) {
         GST_DEBUG("Setting stream volume to %f", m_player->volume());
-        g_object_set(m_volumeElement.get(), "volume", m_player->volume(), nullptr);
+        g_object_set(m_volumeElement.get(), "volume", m_player->volume(), NULL);
     } else
         GST_DEBUG("Not setting stream volume, trusting system one");
 
     GST_DEBUG("Setting stream muted %d",  m_player->muted());
-    g_object_set(m_volumeElement.get(), "mute", m_player->muted(), nullptr);
+    g_object_set(m_volumeElement.get(), "mute", m_player->muted(), NULL);
 
     g_signal_connect_swapped(m_volumeElement.get(), "notify::volume", G_CALLBACK(volumeChangedCallback), this);
     g_signal_connect_swapped(m_volumeElement.get(), "notify::mute", G_CALLBACK(muteChangedCallback), this);
@@ -1202,7 +1078,7 @@ unsigned MediaPlayerPrivateGStreamerBase::decodedFrameCount() const
 {
     guint64 decodedFrames = 0;
     if (m_fpsSink)
-        g_object_get(m_fpsSink.get(), "frames-rendered", &decodedFrames, nullptr);
+        g_object_get(m_fpsSink.get(), "frames-rendered", &decodedFrames, NULL);
     return static_cast<unsigned>(decodedFrames);
 }
 
@@ -1210,7 +1086,7 @@ unsigned MediaPlayerPrivateGStreamerBase::droppedFrameCount() const
 {
     guint64 framesDropped = 0;
     if (m_fpsSink)
-        g_object_get(m_fpsSink.get(), "frames-dropped", &framesDropped, nullptr);
+        g_object_get(m_fpsSink.get(), "frames-dropped", &framesDropped, NULL);
     return static_cast<unsigned>(framesDropped);
 }
 
@@ -1253,46 +1129,6 @@ void MediaPlayerPrivateGStreamerBase::setCDMSession(CDMSession* session)
 
 void MediaPlayerPrivateGStreamerBase::keyAdded()
 {
-}
-
-void MediaPlayerPrivateGStreamerBase::handleProtectionEvent(GstEvent* event)
-{
-    if (m_handledProtectionEvents.contains(GST_EVENT_SEQNUM(event))) {
-        GST_DEBUG("event %u already handled", GST_EVENT_SEQNUM(event));
-        m_handledProtectionEvents.remove(GST_EVENT_SEQNUM(event));
-        return;
-    }
-
-    const gchar* eventKeySystemId = nullptr;
-    GstBuffer* data = nullptr;
-    gst_event_parse_protection(event, &eventKeySystemId, &data, nullptr);
-
-    GstMapInfo mapInfo;
-    if (!gst_buffer_map(data, &mapInfo, GST_MAP_READ)) {
-        GST_WARNING("cannot map %s protection data", eventKeySystemId);
-        return;
-    }
-
-    GST_DEBUG("scheduling keyNeeded event for %s with init data size of %" G_GSIZE_FORMAT, eventKeySystemId, mapInfo.size);
-    GST_MEMDUMP("init datas", mapInfo.data, mapInfo.size);
-    RefPtr<Uint8Array> initDataArray = Uint8Array::create(mapInfo.data, mapInfo.size);
-    needKey(initDataArray);
-    gst_buffer_unmap(data, &mapInfo);
-}
-
-void MediaPlayerPrivateGStreamerBase::receivedGenerateKeyRequest(const String& keySystem)
-{
-    GST_DEBUG("received generate key request for %s", keySystem.utf8().data());
-    m_lastGenerateKeyRequestKeySystemUuid = keySystemIdToUuid(keySystem);
-    m_protectionCondition.notifyOne();
-}
-
-static AtomicString keySystemIdToUuid(const AtomicString& id)
-{
-    if (equalIgnoringASCIICase(id, CLEAR_KEY_PROTECTION_SYSTEM_ID))
-        return AtomicString(CLEAR_KEY_PROTECTION_SYSTEM_UUID);
-
-    return { };
 }
 
 std::unique_ptr<CDMSession> MediaPlayerPrivateGStreamerBase::createSession(const String& keySystem, CDMSessionClient*)

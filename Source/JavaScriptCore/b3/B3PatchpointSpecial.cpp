@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -56,16 +56,16 @@ void PatchpointSpecial::forEachArg(Inst& inst, const ScopedLambda<Inst::EachArgC
         else
             role = Arg::Def;
         
-        callback(inst.args[argIndex++], role, inst.origin->resultBank(), inst.origin->resultWidth());
+        callback(inst.args[argIndex++], role, inst.origin->airType(), inst.origin->airWidth());
     }
 
-    forEachArgImpl(0, argIndex, inst, SameAsRep, std::nullopt, callback, std::nullopt);
+    forEachArgImpl(0, argIndex, inst, SameAsRep, std::nullopt, callback);
     argIndex += inst.origin->numChildren();
 
     for (unsigned i = patchpoint->numGPScratchRegisters; i--;)
-        callback(inst.args[argIndex++], Arg::Scratch, GP, conservativeWidth(GP));
+        callback(inst.args[argIndex++], Arg::Scratch, Arg::GP, Arg::conservativeWidth(Arg::GP));
     for (unsigned i = patchpoint->numFPScratchRegisters; i--;)
-        callback(inst.args[argIndex++], Arg::Scratch, FP, conservativeWidth(FP));
+        callback(inst.args[argIndex++], Arg::Scratch, Arg::FP, Arg::conservativeWidth(Arg::FP));
 }
 
 bool PatchpointSpecial::isValid(Inst& inst)
@@ -128,11 +128,6 @@ bool PatchpointSpecial::admitsStack(Inst& inst, unsigned argIndex)
     }
 
     return admitsStackImpl(0, 2, inst, argIndex);
-}
-
-bool PatchpointSpecial::admitsExtendedOffsetAddr(Inst& inst, unsigned argIndex)
-{
-    return admitsStack(inst, argIndex);
 }
 
 CCallHelpers::Jump PatchpointSpecial::generate(

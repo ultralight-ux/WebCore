@@ -23,73 +23,48 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-const MinimumScrubberWidthDefault = 168;
-const MinimumScrubberWidthCompact = 124;
+const MinimumScrubberWidth = 168;
 const ElapsedTimeLabelLeftMargin = -2;
-const ElapsedTimeLabelWidth = 40;
+const ElapsedTimeLabelWidth = 45;
 const RemainingTimeLabelWidth = 49;
-const AdditionalTimeLabelWidthOverAnHour = 22;
-const ScrubberMargin = 5;
+const RemainingTimeLabelLeftMargin = 5;
 
 class TimeControl extends LayoutItem
 {
 
-    constructor(layoutDelegate)
+    constructor()
     {
         super({
-            element: `<div class="time-control"></div>`,
-            layoutDelegate
+            element: `<div class="time-control">`
         });
 
-        this._useSixDigitsForTimeLabels = false;
-
-        this.elapsedTimeLabel = new TimeLabel(this);
-        this.scrubber = new Scrubber(layoutDelegate);
-        this.remainingTimeLabel = new TimeLabel(this);
+        this.elapsedTimeLabel = new TimeLabel;
+        this.scrubber = new Scrubber;
+        this.remainingTimeLabel = new TimeLabel;
 
         this.children = [this.elapsedTimeLabel, this.scrubber, this.remainingTimeLabel];
     }
 
     // Public
 
-    get useSixDigitsForTimeLabels()
+    get width()
     {
-        return this._useSixDigitsForTimeLabels;
+        return super.width;
     }
 
-    set useSixDigitsForTimeLabels(flag)
+    set width(width)
     {
-        if (this._useSixDigitsForTimeLabels === flag)
-            return;
+        super.width = width;
 
-        this._useSixDigitsForTimeLabels = flag;
-        this.layout();
+        this.elapsedTimeLabel.x = ElapsedTimeLabelLeftMargin;
+        this.scrubber.x = this.elapsedTimeLabel.x + ElapsedTimeLabelWidth;
+        this.scrubber.width = this._width - ElapsedTimeLabelWidth - RemainingTimeLabelWidth;
+        this.remainingTimeLabel.x = this.scrubber.x + this.scrubber.width + RemainingTimeLabelLeftMargin;
     }
 
     get isSufficientlyWide()
     {
-        return this.scrubber.width >= ((this.layoutTraits & LayoutTraits.Compact) ? MinimumScrubberWidthCompact : MinimumScrubberWidthDefault);
+        return this.scrubber.width >= MinimumScrubberWidth;
     }
 
-    // Protected
-
-    layout()
-    {
-        super.layout();
-
-        const extraWidth = this._useSixDigitsForTimeLabels ? AdditionalTimeLabelWidthOverAnHour : 0;
-        const elapsedTimeLabelWidth = ElapsedTimeLabelWidth + extraWidth;
-        const remainingTimeLabelWidth = RemainingTimeLabelWidth + extraWidth;
-
-        this.elapsedTimeLabel.x = ElapsedTimeLabelLeftMargin;
-        this.elapsedTimeLabel.width = elapsedTimeLabelWidth;
-        this.scrubber.x = this.elapsedTimeLabel.x + elapsedTimeLabelWidth + ScrubberMargin;
-        this.scrubber.width = this.width - elapsedTimeLabelWidth - ScrubberMargin - remainingTimeLabelWidth;
-        this.remainingTimeLabel.x = this.scrubber.x + this.scrubber.width + ScrubberMargin;
-    }
-
-    updateScrubberLabel()
-    {
-        this.scrubber.inputAccessibleLabel = this.elapsedTimeLabel.value;
-    }
 }

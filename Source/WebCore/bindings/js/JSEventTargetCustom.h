@@ -27,8 +27,6 @@
 
 #include "DOMWindow.h"
 #include "JSDOMBinding.h"
-#include "JSDOMBindingCaller.h"
-#include "JSDOMBindingSecurity.h"
 
 namespace WebCore {
 
@@ -50,7 +48,7 @@ private:
     JSC::JSObject& m_wrapper;
 };
 
-std::unique_ptr<JSEventTargetWrapper> jsEventTargetCast(JSC::VM&, JSC::JSValue thisValue);
+std::unique_ptr<JSEventTargetWrapper> jsEventTargetCast(JSC::JSValue thisValue);
 
 template<> struct BindingCaller<JSEventTarget> {
     using OperationCallerFunction = JSC::EncodedJSValue(JSC::ExecState*, JSEventTargetWrapper*, JSC::ThrowScope&);
@@ -59,10 +57,9 @@ template<> struct BindingCaller<JSEventTarget> {
     static JSC::EncodedJSValue callOperation(JSC::ExecState* state, const char* operationName)
     {
         ASSERT(state);
-        JSC::VM& vm = state->vm();
-        auto throwScope = DECLARE_THROW_SCOPE(vm);
+        auto throwScope = DECLARE_THROW_SCOPE(state->vm());
 
-        auto thisObject = jsEventTargetCast(vm, state->thisValue().toThis(state, JSC::NotStrictMode));
+        auto thisObject = jsEventTargetCast(state->thisValue().toThis(state, JSC::NotStrictMode));
         if (UNLIKELY(!thisObject))
             return throwThisTypeError(*state, throwScope, "EventTarget", operationName);
 

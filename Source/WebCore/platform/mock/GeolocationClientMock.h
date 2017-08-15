@@ -35,6 +35,7 @@
 #include "GeolocationClient.h"
 #include "Timer.h"
 #include <wtf/HashSet.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -53,7 +54,7 @@ public:
     void reset();
     void setController(GeolocationController*);
 
-    void setPosition(RefPtr<GeolocationPosition>&&);
+    void setPosition(PassRefPtr<GeolocationPosition>);
     void setPositionUnavailableError(const String& errorMessage);
     void setPermission(bool allowed);
     int numberOfPendingPermissionRequests() const;

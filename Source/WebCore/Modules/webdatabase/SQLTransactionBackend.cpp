@@ -42,6 +42,7 @@
 #include "SQLStatementErrorCallback.h"
 #include "SQLTransaction.h"
 #include "SQLTransactionCoordinator.h"
+#include "SQLValue.h"
 #include "SQLiteTransaction.h"
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/WTFString.h>

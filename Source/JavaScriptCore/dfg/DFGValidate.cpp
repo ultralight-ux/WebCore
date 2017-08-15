@@ -638,7 +638,8 @@ private:
 
             bool didSeeExitOK = false;
             
-            for (auto* node : *block) {
+            for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
+                Node* node = block->at(nodeIndex);
                 didSeeExitOK |= node->origin.exitOK;
                 switch (node->op()) {
                 case Phi:

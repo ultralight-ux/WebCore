@@ -51,46 +51,59 @@ RenderBox* OrderIterator::first()
 RenderBox* OrderIterator::next()
 {
     do {
-        if (!m_currentChild) {
-            if (m_orderValuesIterator == m_orderValues.end())
-                return nullptr;
-            
-            if (!m_isReset) {
-                ++m_orderValuesIterator;
-                if (m_orderValuesIterator == m_orderValues.end())
-                    return nullptr;
-            } else
-                m_isReset = false;
-            m_currentChild = m_containerBox.firstChildBox();
-        } else {
+        if (m_currentChild) {
             m_currentChild = m_currentChild->nextSiblingBox();
+            continue;
         }
-    } while (!m_currentChild || m_currentChild->style().order() != *m_orderValuesIterator);
-    
+
+        if (m_orderIndex)
+            ++m_orderIndex.value();
+        else
+            m_orderIndex = 0;
+
+        if (m_orderIndex.value() >= m_orderValues.size())
+            return nullptr;
+
+        m_currentChild = m_containerBox.firstChildBox();
+    } while (!m_currentChild || m_currentChild->style().order() != m_orderValues[m_orderIndex.value()]);
+
     return m_currentChild;
 }
 
 void OrderIterator::reset()
 {
     m_currentChild = nullptr;
-    m_orderValuesIterator = m_orderValues.begin();
-    m_isReset = true;
+    m_orderIndex = std::nullopt;
 }
 
-bool OrderIterator::shouldSkipChild(const RenderObject& child) const
+OrderIteratorPopulator::OrderIteratorPopulator(OrderIterator& iterator)
+    : m_iterator(iterator)
 {
-    return child.isOutOfFlowPositioned() || child.isExcludedFromNormalLayout();
+    // Note that we don't release the memory here, we only invalidate the size
+    // This avoids unneeded reallocation if the size ends up not changing.
+    m_iterator.m_orderValues.shrink(0);
 }
 
 OrderIteratorPopulator::~OrderIteratorPopulator()
 {
     m_iterator.reset();
+
+    if (m_iterator.m_orderValues.size() > 1)
+        removeDuplicatedOrderValues();
 }
 
-bool OrderIteratorPopulator::collectChild(const RenderBox& child)
+void OrderIteratorPopulator::removeDuplicatedOrderValues()
 {
-    m_iterator.m_orderValues.insert(child.style().order());
-    return !m_iterator.shouldSkipChild(child);
+    auto& orderValues = m_iterator.m_orderValues;
+
+    std::sort(orderValues.begin(), orderValues.end());
+    auto nextElement = std::unique(orderValues.begin(), orderValues.end());
+    orderValues.shrinkCapacity(nextElement - orderValues.begin());
+}
+
+void OrderIteratorPopulator::collectChild(const RenderBox& child)
+{
+    m_iterator.m_orderValues.append(child.style().order());
 }
 
 

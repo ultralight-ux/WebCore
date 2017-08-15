@@ -35,29 +35,29 @@ namespace WebCore {
 
 PageURLRecord::PageURLRecord(const String& pageURL)
     : m_pageURL(pageURL)
+    , m_retainCount(0)
 {
 }
 
 PageURLRecord::~PageURLRecord()
 {
-    if (m_iconRecord)
-        m_iconRecord->m_retainingPageURLs.remove(m_pageURL);
+    setIconRecord(nullptr);
 }
 
-void PageURLRecord::setIconRecord(RefPtr<IconRecord>&& icon)
+void PageURLRecord::setIconRecord(PassRefPtr<IconRecord> icon)
 {
     if (m_iconRecord)
         m_iconRecord->m_retainingPageURLs.remove(m_pageURL);
-
-    m_iconRecord = WTFMove(icon);
-
+        
+    m_iconRecord = icon;
+    
     if (m_iconRecord)
         m_iconRecord->m_retainingPageURLs.add(m_pageURL);
 }
     
 PageURLSnapshot PageURLRecord::snapshot(bool forDeletion) const 
 {
-    return { m_pageURL, (m_iconRecord && !forDeletion) ? m_iconRecord->iconURL() : String() };
+    return PageURLSnapshot(m_pageURL, (m_iconRecord && !forDeletion) ? m_iconRecord->iconURL() : String());
 }
 
 } // namespace WebCore

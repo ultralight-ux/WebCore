@@ -24,6 +24,7 @@
  */
 
 video::-webkit-media-text-track-container {
+    bottom: 50px;
     overflow: hidden;
     padding-bottom: 5px;
     z-index: 0;
@@ -39,17 +40,9 @@ video::-webkit-media-text-track-container {
     pointer-events: none;
     -webkit-user-select: none;
 
-    flex: 1 1 auto;
+    -webkit-flex: 1 1 auto;
 
     -webkit-line-box-contain: block inline-box replaced;
-}
-
-video::-webkit-media-text-track-container.visible-controls-bar {
-    height: calc(100% - var(--inline-controls-bar-height));
-}
-
-video::-webkit-media-text-track-container.visible-controls-bar.compact-controls-bar {
-    height: calc(100% - var(--inline-compact-controls-bar-height));
 }
 
 video::cue {
@@ -60,7 +53,7 @@ video::-webkit-media-text-track-display {
     position: absolute;
     overflow: hidden;
     white-space: pre-wrap;
-    box-sizing: border-box;
+    -webkit-box-sizing: border-box;
     font: 22px sans-serif;
 }
 

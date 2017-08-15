@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Apple Inc. All rights reserved.
  * Copyright (C) 2010 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -100,8 +100,11 @@ FileInputType::~FileInputType()
     if (m_fileChooser)
         m_fileChooser->invalidate();
 
+#if !PLATFORM(IOS)
+    // FIXME: Is this correct? Why don't we do this on iOS?
     if (m_fileIconLoader)
         m_fileIconLoader->invalidate();
+#endif
 }
 
 Vector<FileChooserFileInfo> FileInputType::filesFromFormControlState(const FormControlState& state)
@@ -188,7 +191,7 @@ void FileInputType::handleDOMActivateEvent(Event& event)
     if (!ScriptController::processingUserGesture())
         return;
 
-    if (auto* chrome = this->chrome()) {
+    if (Chrome* chrome = this->chrome()) {
         FileChooserSettings settings;
         HTMLInputElement& input = element();
         settings.allowsMultipleFiles = input.hasAttributeWithoutSynchronization(multipleAttr);
@@ -198,8 +201,9 @@ void FileInputType::handleDOMActivateEvent(Event& event)
 #if ENABLE(MEDIA_CAPTURE)
         settings.mediaCaptureType = input.mediaCaptureType();
 #endif
+
         applyFileChooserSettings(settings);
-        chrome->runOpenPanel(*input.document().frame(), *m_fileChooser);
+        chrome->runOpenPanel(input.document().frame(), m_fileChooser);
     }
 
     event.setDefaultHandled();
@@ -217,7 +221,7 @@ bool FileInputType::canSetStringValue() const
 
 FileList* FileInputType::files()
 {
-    return m_fileList.ptr();
+    return m_fileList.get();
 }
 
 bool FileInputType::canSetValue(const String& value)
@@ -254,12 +258,12 @@ void FileInputType::setValue(const String&, bool, TextFieldEventBehavior)
     element().invalidateStyleForSubtree();
 }
 
-Ref<FileList> FileInputType::createFileList(const Vector<FileChooserFileInfo>& files)
+PassRefPtr<FileList> FileInputType::createFileList(const Vector<FileChooserFileInfo>& files) const
 {
     Vector<RefPtr<File>> fileObjects;
-    fileObjects.reserveInitialCapacity(files.size());
-    for (auto& info : files)
-        fileObjects.uncheckedAppend(File::createWithName(info.path, info.displayName));
+    for (const FileChooserFileInfo& info : files)
+        fileObjects.append(File::createWithName(info.path, info.displayName));
+
     return FileList::create(WTFMove(fileObjects));
 }
 
@@ -300,24 +304,25 @@ void FileInputType::multipleAttributeChanged()
 
 void FileInputType::requestIcon(const Vector<String>& paths)
 {
+#if PLATFORM(IOS)
+    UNUSED_PARAM(paths);
+#else
     if (!paths.size()) {
-        iconLoaded(nullptr);
+        updateRendering(nullptr);
         return;
     }
 
-    auto* chrome = this->chrome();
-    if (!chrome) {
-        iconLoaded(nullptr);
+    Chrome* chrome = this->chrome();
+    if (!chrome)
         return;
-    }
 
     if (m_fileIconLoader)
         m_fileIconLoader->invalidate();
 
-    FileIconLoaderClient& client = *this;
-    m_fileIconLoader = std::make_unique<FileIconLoader>(client);
+    m_fileIconLoader = std::make_unique<FileIconLoader>(static_cast<FileIconLoaderClient&>(*this));
 
-    chrome->loadIconForFiles(paths, *m_fileIconLoader);
+    chrome->loadIconForFiles(paths, m_fileIconLoader.get());
+#endif
 }
 
 void FileInputType::applyFileChooserSettings(const FileChooserSettings& settings)
@@ -328,25 +333,18 @@ void FileInputType::applyFileChooserSettings(const FileChooserSettings& settings
     m_fileChooser = FileChooser::create(this, settings);
 }
 
-void FileInputType::setFiles(RefPtr<FileList>&& files)
-{
-    setFiles(WTFMove(files), RequestIcon::Yes);
-}
-
-void FileInputType::setFiles(RefPtr<FileList>&& files, RequestIcon shouldRequestIcon)
+void FileInputType::setFiles(PassRefPtr<FileList> files)
 {
     if (!files)
         return;
 
     Ref<HTMLInputElement> input(element());
 
-    unsigned length = files->length();
-
     bool pathsChanged = false;
-    if (length != m_fileList->length())
+    if (files->length() != m_fileList->length())
         pathsChanged = true;
     else {
-        for (unsigned i = 0; i < length; ++i) {
+        for (unsigned i = 0; i < files->length(); ++i) {
             if (files->item(i)->path() != m_fileList->item(i)->path()) {
                 pathsChanged = true;
                 break;
@@ -354,18 +352,15 @@ void FileInputType::setFiles(RefPtr<FileList>&& files, RequestIcon shouldRequest
         }
     }
 
-    m_fileList = files.releaseNonNull();
+    m_fileList = files;
 
     input->setFormControlValueMatchesRenderer(true);
     input->updateValidity();
 
-    if (shouldRequestIcon == RequestIcon::Yes) {
-        Vector<String> paths;
-        paths.reserveInitialCapacity(length);
-        for (unsigned i = 0; i < length; ++i)
-            paths.uncheckedAppend(m_fileList->item(i)->path());
-        requestIcon(paths);
-    }
+    Vector<String> paths;
+    for (unsigned i = 0; i < m_fileList->length(); ++i)
+        paths.append(m_fileList->item(i)->path());
+    requestIcon(paths);
 
     if (input->renderer())
         input->renderer()->repaint();
@@ -378,28 +373,31 @@ void FileInputType::setFiles(RefPtr<FileList>&& files, RequestIcon shouldRequest
     input->setChangedSinceLastFormControlChangeEvent(false);
 }
 
+#if PLATFORM(IOS)
 void FileInputType::filesChosen(const Vector<FileChooserFileInfo>& paths, const String& displayString, Icon* icon)
 {
-    if (!displayString.isEmpty())
-        m_displayString = displayString;
-
-    setFiles(createFileList(paths), icon ? RequestIcon::No : RequestIcon::Yes);
-
-    if (icon)
-        iconLoaded(icon);
+    m_displayString = displayString;
+    filesChosen(paths);
+    updateRendering(icon);
 }
 
 String FileInputType::displayString() const
 {
     return m_displayString;
 }
+#endif
 
-void FileInputType::iconLoaded(RefPtr<Icon>&& icon)
+void FileInputType::filesChosen(const Vector<FileChooserFileInfo>& files)
+{
+    setFiles(createFileList(files));
+}
+
+void FileInputType::updateRendering(PassRefPtr<Icon> icon)
 {
     if (m_icon == icon)
         return;
 
-    m_icon = WTFMove(icon);
+    m_icon = icon;
     if (element().renderer())
         element().renderer()->repaint();
 }
@@ -436,7 +434,8 @@ Icon* FileInputType::icon() const
 
 String FileInputType::defaultToolTip() const
 {
-    unsigned listSize = m_fileList->length();
+    FileList* fileList = m_fileList.get();
+    unsigned listSize = fileList->length();
     if (!listSize) {
         if (element().multiple())
             return fileButtonNoFilesSelectedLabel();
@@ -444,8 +443,8 @@ String FileInputType::defaultToolTip() const
     }
 
     StringBuilder names;
-    for (unsigned i = 0; i < listSize; ++i) {
-        names.append(m_fileList->item(i)->name());
+    for (size_t i = 0; i < listSize; ++i) {
+        names.append(fileList->item(i)->name());
         if (i != listSize - 1)
             names.append('\n');
     }

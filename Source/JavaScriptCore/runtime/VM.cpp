@@ -38,6 +38,7 @@
 #include "CommonIdentifiers.h"
 #include "CommonSlowPaths.h"
 #include "CustomGetterSetter.h"
+#include "DFGLongLivedState.h"
 #include "DFGWorklist.h"
 #include "Disassembler.h"
 #include "ErrorInstance.h"
@@ -70,8 +71,6 @@
 #include "JSMap.h"
 #include "JSPromiseDeferred.h"
 #include "JSPropertyNameEnumerator.h"
-#include "JSScriptFetcher.h"
-#include "JSSourceCode.h"
 #include "JSTemplateRegistryKey.h"
 #include "JSWebAssembly.h"
 #include "JSWithScope.h"
@@ -84,7 +83,6 @@
 #include "Parser.h"
 #include "ProfilerDatabase.h"
 #include "ProgramCodeBlock.h"
-#include "PromiseDeferredTimer.h"
 #include "PropertyMapHashTable.h"
 #include "RegExpCache.h"
 #include "RegExpObject.h"
@@ -103,7 +101,6 @@
 #include "UnlinkedCodeBlock.h"
 #include "VMEntryScope.h"
 #include "VMInspector.h"
-#include "WasmWorklist.h"
 #include "Watchdog.h"
 #include "WeakGCMapInlines.h"
 #include "WeakMapData.h"
@@ -164,21 +161,20 @@ static bool enableAssembler(ExecutableAllocator& executableAllocator)
 
 VM::VM(VMType vmType, HeapType heapType)
     : m_apiLock(adoptRef(new JSLock(this)))
+#if ENABLE(ASSEMBLER)
+    , executableAllocator(*this)
+#endif
     , heap(this, heapType)
     , auxiliarySpace("Auxiliary", heap, AllocatorAttributes(DoesNotNeedDestruction, HeapCell::Auxiliary))
     , cellSpace("JSCell", heap, AllocatorAttributes(DoesNotNeedDestruction, HeapCell::JSCell))
     , destructibleCellSpace("Destructible JSCell", heap, AllocatorAttributes(NeedsDestruction, HeapCell::JSCell))
     , stringSpace("JSString", heap)
     , destructibleObjectSpace("JSDestructibleObject", heap)
-    , segmentedVariableObjectSpace("JSSegmentedVariableObjectSpace", heap)
-#if ENABLE(WEBASSEMBLY)
-    , webAssemblyCodeBlockSpace("JSWebAssemblyCodeBlockSpace", heap)
-#endif
     , vmType(vmType)
     , clientData(0)
     , topVMEntryFrame(nullptr)
     , topCallFrame(CallFrame::noCaller())
-    , promiseDeferredTimer(std::make_unique<PromiseDeferredTimer>(*this))
+    , topJSWebAssemblyInstance(nullptr)
     , m_atomicStringTable(vmType == Default ? wtfThreadData().atomicStringTable() : new AtomicStringTable)
     , propertyNames(nullptr)
     , emptyList(new ArgList)
@@ -197,7 +193,7 @@ VM::VM(VMType vmType, HeapType heapType)
     , m_rtTraceList(new RTTraceList())
 #endif
 #if ENABLE(ASSEMBLER)
-    , m_canUseAssembler(enableAssembler(ExecutableAllocator::singleton()))
+    , m_canUseAssembler(enableAssembler(executableAllocator))
 #endif
 #if ENABLE(JIT)
     , m_canUseJIT(m_canUseAssembler && Options::useJIT())
@@ -239,16 +235,15 @@ VM::VM(VMType vmType, HeapType heapType)
     programExecutableStructure.set(*this, ProgramExecutable::createStructure(*this, 0, jsNull()));
     functionExecutableStructure.set(*this, FunctionExecutable::createStructure(*this, 0, jsNull()));
 #if ENABLE(WEBASSEMBLY)
+    webAssemblyCalleeStructure.set(*this, JSWebAssemblyCallee::createStructure(*this, 0, jsNull()));
     webAssemblyToJSCalleeStructure.set(*this, WebAssemblyToJSCallee::createStructure(*this, 0, jsNull()));
-    webAssemblyCodeBlockStructure.set(*this, JSWebAssemblyCodeBlock::createStructure(*this, 0, jsNull()));
+    webAssemblyToJSCallee.set(*this, WebAssemblyToJSCallee::create(*this, webAssemblyToJSCalleeStructure.get()));
 #endif
     moduleProgramExecutableStructure.set(*this, ModuleProgramExecutable::createStructure(*this, 0, jsNull()));
     regExpStructure.set(*this, RegExp::createStructure(*this, 0, jsNull()));
     symbolStructure.set(*this, Symbol::createStructure(*this, 0, jsNull()));
     symbolTableStructure.set(*this, SymbolTable::createStructure(*this, 0, jsNull()));
     fixedArrayStructure.set(*this, JSFixedArray::createStructure(*this, 0, jsNull()));
-    sourceCodeStructure.set(*this, JSSourceCode::createStructure(*this, 0, jsNull()));
-    scriptFetcherStructure.set(*this, JSScriptFetcher::createStructure(*this, 0, jsNull()));
     structureChainStructure.set(*this, StructureChain::createStructure(*this, 0, jsNull()));
     sparseArrayValueMapStructure.set(*this, SparseArrayValueMap::createStructure(*this, 0, jsNull()));
     templateRegistryKeyStructure.set(*this, JSTemplateRegistryKey::createStructure(*this, 0, jsNull()));
@@ -284,6 +279,7 @@ VM::VM(VMType vmType, HeapType heapType)
 
 #if ENABLE(JIT)
     jitStubs = std::make_unique<JITThunks>();
+    allCalleeSaveRegisterOffsets = std::make_unique<RegisterAtOffsetList>(RegisterSet::vmCalleeSaveRegisters(), RegisterAtOffsetList::ZeroBased);
 #endif
     arityCheckData = std::make_unique<CommonSlowPaths::ArityCheckData>();
 
@@ -314,6 +310,11 @@ VM::VM(VMType vmType, HeapType heapType)
 
     callFrameForCatch = nullptr;
 
+#if ENABLE(DFG_JIT)
+    if (canUseJIT())
+        dfgState = std::make_unique<DFG::LongLivedState>();
+#endif
+    
     // Initialize this last, as a free way of asserting that VM initialization itself
     // won't use this.
     m_typedArrayController = adoptRef(new SimpleTypedArrayController());
@@ -350,14 +351,6 @@ VM::VM(VMType vmType, HeapType heapType)
 
 VM::~VM()
 {
-    promiseDeferredTimer->stopRunningTasks();
-#if ENABLE(WEBASSEMBLY)
-    if (Wasm::existingWorklistOrNull())
-        Wasm::ensureWorklist().stopAllPlansForVM(*this);
-#endif
-    if (UNLIKELY(m_watchdog))
-        m_watchdog->willDestroyVM(this);
-    m_traps.willDestroyVM();
     VMInspector::instance().remove(this);
 
     // Never GC, ever again.
@@ -391,7 +384,7 @@ VM::~VM()
     // Clear this first to ensure that nobody tries to remove themselves from it.
     m_perBytecodeProfiler = nullptr;
 
-    ASSERT(currentThreadIsHoldingAPILock());
+    ASSERT(m_apiLock->currentThreadIsHoldingLock());
     m_apiLock->willDestroyVM(this);
     heap.lastChanceToFinalize();
 
@@ -460,8 +453,19 @@ VM*& VM::sharedInstanceInternal()
 
 Watchdog& VM::ensureWatchdog()
 {
-    if (!m_watchdog)
-        m_watchdog = adoptRef(new Watchdog(this));
+    if (!m_watchdog) {
+        m_watchdog = adoptRef(new Watchdog());
+        
+        // The LLINT peeks into the Watchdog object directly. In order to do that,
+        // the LLINT assumes that the internal shape of a std::unique_ptr is the
+        // same as a plain C++ pointer, and loads the address of Watchdog from it.
+        RELEASE_ASSERT(*reinterpret_cast<Watchdog**>(&m_watchdog) == m_watchdog.get());
+
+        // And if we've previously compiled any functions, we need to revert
+        // them because they don't have the needed polling checks for the watchdog
+        // yet.
+        deleteAllCode(PreventCollectionAndDeleteAllCode);
+    }
     return *m_watchdog;
 }
 
@@ -540,8 +544,8 @@ NativeExecutable* VM::getHostFunction(NativeFunction function, Intrinsic intrins
     UNUSED_PARAM(intrinsic);
 #endif // ENABLE(JIT)
     return NativeExecutable::create(*this,
-        adoptRef(*new NativeJITCode(MacroAssemblerCodeRef::createLLIntCodeRef(llint_native_call_trampoline), JITCode::HostCallThunk)), function,
-        adoptRef(*new NativeJITCode(MacroAssemblerCodeRef::createLLIntCodeRef(llint_native_construct_trampoline), JITCode::HostCallThunk)), constructor,
+        adoptRef(new NativeJITCode(MacroAssemblerCodeRef::createLLIntCodeRef(llint_native_call_trampoline), JITCode::HostCallThunk)), function,
+        adoptRef(new NativeJITCode(MacroAssemblerCodeRef::createLLIntCodeRef(llint_native_construct_trampoline), JITCode::HostCallThunk)), constructor,
         NoIntrinsic, signature, name);
 }
 
@@ -601,27 +605,20 @@ void VM::clearSourceProviderCaches()
 void VM::throwException(ExecState* exec, Exception* exception)
 {
     if (Options::breakOnThrow()) {
-        CodeBlock* codeBlock = exec->codeBlock();
-        dataLog("Throwing exception in call frame ", RawPointer(exec), " for code block ", codeBlock, "\n");
+        dataLog("In call frame ", RawPointer(exec), " for code block ", *exec->codeBlock(), "\n");
         CRASH();
     }
 
     ASSERT(exec == topCallFrame || exec == exec->lexicalGlobalObject()->globalExec() || exec == exec->vmEntryGlobalObject()->globalExec());
 
-    interpreter->notifyDebuggerOfExceptionToBeThrown(*this, exec, exception);
+    interpreter->notifyDebuggerOfExceptionToBeThrown(exec, exception);
 
     setException(exception);
-
-#if ENABLE(EXCEPTION_SCOPE_VERIFICATION)
-    m_nativeStackTraceOfLastThrow = std::unique_ptr<StackTrace>(StackTrace::captureStackTrace(Options::unexpectedExceptionStackTraceLimit()));
-    m_throwingThread = currentThread();
-#endif
 }
 
 JSValue VM::throwException(ExecState* exec, JSValue thrownValue)
 {
-    VM& vm = *this;
-    Exception* exception = jsDynamicCast<Exception*>(vm, thrownValue);
+    Exception* exception = jsDynamicCast<Exception*>(thrownValue);
     if (!exception)
         exception = Exception::create(*this, thrownValue);
 
@@ -712,7 +709,8 @@ inline void VM::updateStackLimits()
 #if ENABLE(DFG_JIT)
 void VM::gatherConservativeRoots(ConservativeRoots& conservativeRoots)
 {
-    for (auto* scratchBuffer : scratchBuffers) {
+    for (size_t i = 0; i < scratchBuffers.size(); i++) {
+        ScratchBuffer* scratchBuffer = scratchBuffers[i];
         if (scratchBuffer->activeLength()) {
             void* bufferStart = scratchBuffer->dataBuffer();
             conservativeRoots.add(bufferStart, static_cast<void*>(static_cast<char*>(bufferStart) + scratchBuffer->activeLength()));
@@ -860,9 +858,9 @@ void VM::dumpTypeProfilerData()
     typeProfiler()->dumpTypeProfilerData(*this);
 }
 
-void VM::queueMicrotask(JSGlobalObject& globalObject, Ref<Microtask>&& task)
+void VM::queueMicrotask(JSGlobalObject* globalObject, PassRefPtr<Microtask> task)
 {
-    m_microtaskQueue.append(std::make_unique<QueuedTask>(*this, &globalObject, WTFMove(task)));
+    m_microtaskQueue.append(std::make_unique<QueuedTask>(*this, globalObject, task));
 }
 
 void VM::drainMicrotasks()
@@ -934,19 +932,5 @@ void VM::verifyExceptionCheckNeedIsSatisfied(unsigned recursionDepth, ExceptionE
     }
 }
 #endif
-
-#if ENABLE(JIT)
-RegisterAtOffsetList* VM::getAllCalleeSaveRegisterOffsets()
-{
-    static RegisterAtOffsetList* result;
-
-    static std::once_flag calleeSavesFlag;
-    std::call_once(calleeSavesFlag, [] () {
-        result = new RegisterAtOffsetList(RegisterSet::vmCalleeSaveRegisters(), RegisterAtOffsetList::ZeroBased);
-    });
-
-    return result;
-}
-#endif // ENABLE(JIT)
 
 } // namespace JSC

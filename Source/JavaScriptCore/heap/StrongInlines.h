@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "JSCJSValueInlines.h"
 #include "VM.h"
 
 namespace JSC {

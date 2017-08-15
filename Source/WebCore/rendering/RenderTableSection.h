@@ -184,8 +184,6 @@ private:
 
     void ensureRows(unsigned);
 
-    void relayoutCellIfFlexed(RenderTableCell&, int rowIndex, int rowHeight);
-    
     void distributeExtraLogicalHeightToPercentRows(LayoutUnit& extraLogicalHeight, int totalPercent);
     void distributeExtraLogicalHeightToAutoRows(LayoutUnit& extraLogicalHeight, unsigned autoRowsCount);
     void distributeRemainingExtraLogicalHeight(LayoutUnit& extraLogicalHeight);

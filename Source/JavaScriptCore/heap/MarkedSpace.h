@@ -178,10 +178,6 @@ private:
     void* allocateSlow(Subspace&, GCDeferralContext*, size_t);
     void* tryAllocateSlow(Subspace&, GCDeferralContext*, size_t);
 
-    // Use this version when calling from within the GC where we know that the allocators
-    // have already been stopped.
-    template<typename Functor> void forEachLiveCell(const Functor&);
-
     static void initializeSizeClassForStepSize();
     
     void initializeSubspace(Subspace&);
@@ -216,8 +212,6 @@ private:
     MarkedAllocator* m_firstAllocator { nullptr };
     MarkedAllocator* m_lastAllocator { nullptr };
     MarkedAllocator* m_allocatorForEmptyAllocation { nullptr };
-
-    friend class HeapVerifier;
 };
 
 template <typename Functor> inline void MarkedSpace::forEachBlock(const Functor& functor)

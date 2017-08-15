@@ -20,7 +20,6 @@ find_library(COREAUDIO_LIBRARY CoreAudio)
 find_library(DISKARBITRATION_LIBRARY DiskArbitration)
 find_library(IOKIT_LIBRARY IOKit)
 find_library(IOSURFACE_LIBRARY IOSurface)
-find_library(METAL_LIBRARY Metal)
 find_library(OPENGL_LIBRARY OpenGL)
 find_library(QUARTZ_LIBRARY Quartz)
 find_library(QUARTZCORE_LIBRARY QuartzCore)
@@ -41,7 +40,6 @@ list(APPEND WebCore_LIBRARIES
     ${DISKARBITRATION_LIBRARY}
     ${IOKIT_LIBRARY}
     ${IOSURFACE_LIBRARY}
-    ${METAL_LIBRARY}
     ${OPENGL_LIBRARY}
     ${QUARTZ_LIBRARY}
     ${QUARTZCORE_LIBRARY}
@@ -69,7 +67,7 @@ if (NOT LOOKUP_FRAMEWORK-NOTFOUND)
 endif ()
 
 list(APPEND WebCore_INCLUDE_DIRECTORIES
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore"
+    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore"
     "${THIRDPARTY_DIR}/ANGLE"
     "${THIRDPARTY_DIR}/ANGLE/include/KHR"
     "${WEBCORE_DIR}/accessibility/mac"
@@ -109,8 +107,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/cocoa"
     "${WEBCORE_DIR}/platform/graphics/cg"
     "${WEBCORE_DIR}/platform/graphics/cv"
-    "${WEBCORE_DIR}/platform/graphics/gpu"
-    "${WEBCORE_DIR}/platform/graphics/egl"
     "${WEBCORE_DIR}/platform/graphics/opentype"
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/graphics/mac"
@@ -118,7 +114,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/mediastream/mac"
     "${WEBCORE_DIR}/platform/network/cocoa"
     "${WEBCORE_DIR}/platform/network/cf"
-    "${WEBCORE_DIR}/platform/network/ios"
     "${WEBCORE_DIR}/platform/network/mac"
     "${WEBCORE_DIR}/platform/text/cf"
     "${WEBCORE_DIR}/platform/text/mac"
@@ -158,6 +153,8 @@ list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
+    Modules/indieui/UIRequestEvent.cpp
+
     Modules/plugins/QuickTimePluginReplacement.mm
     Modules/plugins/YouTubePluginReplacement.cpp
 
@@ -183,15 +180,8 @@ list(APPEND WebCore_SOURCES
     crypto/WebKitSubtleCrypto.cpp
 
     crypto/algorithms/CryptoAlgorithmAES_CBC.cpp
-    crypto/algorithms/CryptoAlgorithmAES_CFB.cpp
-    crypto/algorithms/CryptoAlgorithmAES_CTR.cpp
-    crypto/algorithms/CryptoAlgorithmAES_GCM.cpp
     crypto/algorithms/CryptoAlgorithmAES_KW.cpp
-    crypto/algorithms/CryptoAlgorithmECDH.cpp
-    crypto/algorithms/CryptoAlgorithmECDSA.cpp
-    crypto/algorithms/CryptoAlgorithmHKDF.cpp
     crypto/algorithms/CryptoAlgorithmHMAC.cpp
-    crypto/algorithms/CryptoAlgorithmPBKDF2.cpp
     crypto/algorithms/CryptoAlgorithmRSAES_PKCS1_v1_5.cpp
     crypto/algorithms/CryptoAlgorithmRSASSA_PKCS1_v1_5.cpp
     crypto/algorithms/CryptoAlgorithmRSA_OAEP.cpp
@@ -204,28 +194,17 @@ list(APPEND WebCore_SOURCES
     crypto/keys/CryptoKeyAES.cpp
     crypto/keys/CryptoKeyDataOctetSequence.cpp
     crypto/keys/CryptoKeyDataRSAComponents.cpp
-    crypto/keys/CryptoKeyEC.cpp
     crypto/keys/CryptoKeyHMAC.cpp
     crypto/keys/CryptoKeyRSA.cpp
-    crypto/keys/CryptoKeyRaw.cpp
     crypto/keys/CryptoKeySerializationRaw.cpp
 
-    crypto/mac/CommonCryptoDERUtilities.cpp
     crypto/mac/CryptoAlgorithmAES_CBCMac.cpp
-    crypto/mac/CryptoAlgorithmAES_CFBMac.cpp
-    crypto/mac/CryptoAlgorithmAES_CTRMac.cpp
-    crypto/mac/CryptoAlgorithmAES_GCMMac.cpp
     crypto/mac/CryptoAlgorithmAES_KWMac.cpp
-    crypto/mac/CryptoAlgorithmECDHMac.cpp
-    crypto/mac/CryptoAlgorithmECDSAMac.cpp
-    crypto/mac/CryptoAlgorithmHKDFMac.cpp
     crypto/mac/CryptoAlgorithmHMACMac.cpp
-    crypto/mac/CryptoAlgorithmPBKDF2Mac.cpp
     crypto/mac/CryptoAlgorithmRSAES_PKCS1_v1_5Mac.cpp
     crypto/mac/CryptoAlgorithmRSASSA_PKCS1_v1_5Mac.cpp
     crypto/mac/CryptoAlgorithmRSA_OAEPMac.cpp
     crypto/mac/CryptoAlgorithmRegistryMac.cpp
-    crypto/mac/CryptoKeyECMac.cpp
     crypto/mac/CryptoKeyMac.cpp
     crypto/mac/CryptoKeyRSAMac.cpp
     crypto/mac/SerializedCryptoKeyWrapMac.mm
@@ -247,7 +226,7 @@ list(APPEND WebCore_SOURCES
     editing/mac/TextAlternativeWithRange.mm
     editing/mac/TextUndoInsertionMarkupMac.mm
 
-    fileapi/FileCocoa.mm
+    fileapi/FileMac.mm
 
     html/HTMLSlotElement.cpp
 
@@ -268,6 +247,7 @@ list(APPEND WebCore_SOURCES
     loader/cocoa/SubresourceLoaderCocoa.mm
 
     loader/cf/ResourceLoaderCFNet.cpp
+    loader/cf/SubresourceLoaderCF.cpp
 
     loader/mac/DocumentLoaderMac.cpp
     loader/mac/LoaderNSURLExtras.mm
@@ -306,15 +286,14 @@ list(APPEND WebCore_SOURCES
     page/scrolling/mac/ScrollingTreeMac.cpp
     page/scrolling/mac/ScrollingTreeStickyNode.mm
 
-    platform/CPUMonitor.cpp
     platform/LocalizedStrings.cpp
+    platform/RuntimeApplicationChecks.mm
     platform/ScrollableArea.cpp
+    platform/VNodeTracker.cpp
 
     platform/audio/AudioSession.cpp
 
     platform/audio/cocoa/MediaSessionManagerCocoa.cpp
-
-    platform/audio/mac/CAAudioStreamDescription.cpp
 
     platform/audio/mac/AudioBusMac.mm
     platform/audio/mac/AudioDestinationMac.cpp
@@ -339,22 +318,23 @@ list(APPEND WebCore_SOURCES
     platform/cocoa/ContentFilterUnblockHandlerCocoa.mm
     platform/cocoa/CoreVideoSoftLink.cpp
     platform/cocoa/DisplaySleepDisablerCocoa.cpp
-    platform/cocoa/FileSystemCocoa.mm
     platform/cocoa/KeyEventCocoa.mm
     platform/cocoa/LocalizedStringsCocoa.mm
     platform/cocoa/MIMETypeRegistryCocoa.mm
     platform/cocoa/MachSendRight.cpp
+    platform/cocoa/MemoryPressureHandlerCocoa.mm
     platform/cocoa/NetworkExtensionContentFilter.mm
     platform/cocoa/ParentalControlsContentFilter.mm
-    platform/cocoa/RuntimeApplicationChecksCocoa.mm
     platform/cocoa/ScrollController.mm
     platform/cocoa/ScrollSnapAnimatorState.mm
     platform/cocoa/SearchPopupMenuCocoa.mm
-    platform/cocoa/SharedBufferCocoa.mm
     platform/cocoa/SystemVersion.mm
     platform/cocoa/TelephoneNumberDetectorCocoa.cpp
     platform/cocoa/ThemeCocoa.mm
+    platform/cocoa/VNodeTrackerCocoa.cpp
     platform/cocoa/WebCoreNSErrorExtras.mm
+
+    platform/crypto/commoncrypto/CryptoDigestCommonCrypto.cpp
 
     platform/gamepad/mac/HIDGamepad.cpp
     platform/gamepad/mac/HIDGamepadProvider.cpp
@@ -429,29 +409,7 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cg/PatternCG.cpp
     platform/graphics/cg/SubimageCacheWithTimer.cpp
     platform/graphics/cg/TransformationMatrixCG.cpp
-    platform/graphics/cg/UTIRegistry.cpp
 
-    platform/graphics/cocoa/GPUBufferMetal.mm
-    platform/graphics/cocoa/GPUCommandBufferMetal.mm
-    platform/graphics/cocoa/GPUCommandQueueMetal.mm
-    platform/graphics/cocoa/GPUComputeCommandEncoderMetal.mm
-    platform/graphics/cocoa/GPUComputePipelineStateMetal.mm
-    platform/graphics/cocoa/GPUDepthStencilDescriptorMetal.mm
-    platform/graphics/cocoa/GPUDepthStencilStateMetal.mm
-    platform/graphics/cocoa/GPUDeviceMetal.mm
-    platform/graphics/cocoa/GPUDrawableMetal.mm
-    platform/graphics/cocoa/GPUFunctionMetal.mm
-    platform/graphics/cocoa/GPULibraryMetal.mm
-    platform/graphics/cocoa/GPURenderCommandEncoderMetal.mm
-    platform/graphics/cocoa/GPURenderPassAttachmentDescriptorMetal.mm
-    platform/graphics/cocoa/GPURenderPassColorAttachmentDescriptorMetal.mm
-    platform/graphics/cocoa/GPURenderPassDepthAttachmentDescriptorMetal.mm
-    platform/graphics/cocoa/GPURenderPassDescriptorMetal.mm
-    platform/graphics/cocoa/GPURenderPipelineColorAttachmentDescriptorMetal.mm
-    platform/graphics/cocoa/GPURenderPipelineDescriptorMetal.mm
-    platform/graphics/cocoa/GPURenderPipelineStateMetal.mm
-    platform/graphics/cocoa/GPUTextureDescriptorMetal.mm
-    platform/graphics/cocoa/GPUTextureMetal.mm
     platform/graphics/cocoa/FontCacheCoreText.cpp
     platform/graphics/cocoa/FontCascadeCocoa.mm
     platform/graphics/cocoa/FontCocoa.mm
@@ -460,16 +418,13 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cocoa/IOSurfacePoolCocoa.mm
     platform/graphics/cocoa/WebActionDisablingCALayerDelegate.mm
     platform/graphics/cocoa/WebCoreCALayerExtras.mm
-    platform/graphics/cocoa/WebGPULayer.mm
 
     platform/graphics/cv/PixelBufferConformerCV.cpp
     platform/graphics/cv/TextureCacheCV.mm
     platform/graphics/cv/VideoTextureCopierCV.cpp
 
-    platform/graphics/gpu/Texture.cpp
-    platform/graphics/gpu/TilingData.cpp
-
     platform/graphics/mac/ColorMac.mm
+    platform/graphics/mac/ComplexTextController.cpp
     platform/graphics/mac/ComplexTextControllerCoreText.mm
     platform/graphics/mac/DisplayRefreshMonitorMac.cpp
     platform/graphics/mac/FloatPointMac.mm
@@ -514,7 +469,6 @@ list(APPEND WebCore_SOURCES
     platform/mac/MediaRemoteSoftLink.cpp
     platform/mac/NSScrollerImpDetails.mm
     platform/mac/PasteboardMac.mm
-    platform/mac/PasteboardWriter.mm
     platform/mac/PlatformClockCA.cpp
     platform/mac/PlatformClockCM.mm
     platform/mac/PlatformEventFactoryMac.mm
@@ -530,8 +484,8 @@ list(APPEND WebCore_SOURCES
     platform/mac/ScrollViewMac.mm
     platform/mac/ScrollbarThemeMac.mm
     platform/mac/SerializedPlatformRepresentationMac.mm
+    platform/mac/SharedBufferMac.mm
     platform/mac/SoundMac.mm
-    platform/mac/StringUtilities.mm
     platform/mac/SuddenTermination.mm
     platform/mac/SystemSleepListenerMac.mm
     platform/mac/ThemeMac.mm
@@ -571,10 +525,8 @@ list(APPEND WebCore_SOURCES
     platform/network/cf/SynchronousLoaderClientCFNet.cpp
     platform/network/cf/SynchronousResourceHandleCFURLConnectionDelegate.cpp
 
-    platform/network/cocoa/CookieCocoa.mm
     platform/network/cocoa/CredentialCocoa.mm
-    platform/network/cocoa/NetworkLoadMetrics.mm
-    platform/network/cocoa/NetworkStorageSessionCocoa.mm
+    platform/network/cocoa/NetworkLoadTiming.mm
     platform/network/cocoa/ProtectionSpaceCocoa.mm
     platform/network/cocoa/ResourceRequestCocoa.mm
     platform/network/cocoa/ResourceResponseCocoa.mm
@@ -645,6 +597,7 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     Modules/indexeddb/shared
     Modules/indexeddb/server
 
+    bindings/generic
     bindings/js
 
     bridge/objc
@@ -701,8 +654,6 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     platform/graphics/transforms
 
     platform/graphics/ca/cocoa
-
-    platform/mediastream/libwebrtc
 
     platform/network/cf
     platform/network/cocoa
@@ -800,9 +751,6 @@ list(APPEND WebCoreTestSupport_SOURCES
     testing/Internals.mm
     testing/MockContentFilter.cpp
     testing/MockContentFilterSettings.cpp
-    testing/MockPreviewLoaderClient.cpp
-
-    testing/cocoa/WebArchiveDumpSupport.mm
 )
 
 set(CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS} "-compatibility_version 1 -current_version ${WEBKIT_MAC_VERSION}")

@@ -28,8 +28,5 @@
     JSCustomMarkFunction,
     JSGenerateToJSObject,
     DoNotCheckConstants,
-    ExportMacro=WEBCORE_EXPORT,
-] interface WebGLRenderingContext {
+] interface WebGLRenderingContext : WebGLRenderingContextBase {
 };
-
-WebGLRenderingContext implements WebGLRenderingContextBase;

@@ -23,7 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
+#ifndef Scrollbar_h
+#define Scrollbar_h
 
 #include "ScrollTypes.h"
 #include "Timer.h"
@@ -143,9 +144,9 @@ protected:
     virtual void updateThumbProportion();
 
     void autoscrollTimerFired();
-    void startTimerIfNeeded(Seconds delay);
+    void startTimerIfNeeded(double delay);
     void stopTimerIfNeeded();
-    void autoscrollPressedPart(Seconds delay);
+    void autoscrollPressedPart(double delay);
     ScrollDirection pressedPartScrollDirection();
     ScrollGranularity pressedPartScrollGranularity();
 
@@ -191,3 +192,4 @@ private:
 
 SPECIALIZE_TYPE_TRAITS_WIDGET(Scrollbar, isScrollbar())
 
+#endif // Scrollbar_h

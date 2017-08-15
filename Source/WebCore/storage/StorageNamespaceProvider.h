@@ -45,8 +45,6 @@ public:
     WEBCORE_EXPORT virtual ~StorageNamespaceProvider();
 
     virtual RefPtr<StorageNamespace> createSessionStorageNamespace(Page&, unsigned quota) = 0;
-    virtual RefPtr<StorageNamespace> createEphemeralLocalStorageNamespace(Page&, unsigned quota) = 0;
-
     RefPtr<StorageArea> localStorageArea(Document&);
 
     void addPage(Page&);

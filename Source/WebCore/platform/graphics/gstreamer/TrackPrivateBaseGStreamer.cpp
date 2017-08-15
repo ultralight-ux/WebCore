@@ -89,7 +89,7 @@ void TrackPrivateBaseGStreamer::tagsChanged()
 {
     GRefPtr<GstTagList> tags;
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(m_pad.get()), "tags"))
-        g_object_get(m_pad.get(), "tags", &tags.outPtr(), nullptr);
+        g_object_get(m_pad.get(), "tags", &tags.outPtr(), NULL);
     else
         tags = adoptGRef(gst_tag_list_new_empty());
 
@@ -108,7 +108,7 @@ void TrackPrivateBaseGStreamer::notifyTrackOfActiveChanged()
 
     gboolean active = false;
     if (m_pad && g_object_class_find_property(G_OBJECT_GET_CLASS(m_pad.get()), "active"))
-        g_object_get(m_pad.get(), "active", &active, nullptr);
+        g_object_get(m_pad.get(), "active", &active, NULL);
 
     setActive(active);
 }
@@ -157,7 +157,7 @@ void TrackPrivateBaseGStreamer::notifyTrackOfTagsChanged()
         return;
 
     if (getTag(tags.get(), GST_TAG_TITLE, m_label))
-        client->labelChanged(m_label);
+        client->labelChanged(m_owner, m_label);
 
     AtomicString language;
     if (!getLanguageCode(tags.get(), language))
@@ -167,7 +167,7 @@ void TrackPrivateBaseGStreamer::notifyTrackOfTagsChanged()
         return;
 
     m_language = language;
-    client->languageChanged(m_language);
+    client->languageChanged(m_owner, m_language);
 }
 
 } // namespace WebCore

@@ -28,10 +28,8 @@
 
 #if ENABLE(USER_MESSAGE_HANDLERS)
 
-#include "JSDOMConvertInterface.h"
-#include "JSDOMConvertStrings.h"
+#include "JSDOMBinding.h"
 #include "JSUserMessageHandler.h"
-#include <runtime/JSCInlines.h>
 
 using namespace JSC;
 
@@ -39,8 +37,8 @@ namespace WebCore {
 
 bool JSUserMessageHandlersNamespace::getOwnPropertySlotDelegate(ExecState* exec, PropertyName propertyName, PropertySlot& slot)
 {
-    if (auto* handler = wrapped().handler(propertyNameToAtomicString(propertyName), globalObject()->world())) {
-        slot.setValue(this, ReadOnly | DontDelete | DontEnum, toJS<IDLInterface<UserMessageHandler>>(*exec, *globalObject(), *handler));
+    if (UserMessageHandler* handler = wrapped().handler(propertyNameToAtomicString(propertyName), globalObject()->world())) {
+        slot.setValue(this, ReadOnly | DontDelete | DontEnum, toJS(exec, globalObject(), *handler));
         return true;
     }
     return false;

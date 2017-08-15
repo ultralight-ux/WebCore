@@ -31,21 +31,21 @@
 namespace WebCore {
 
 StyleFlexibleBoxData::StyleFlexibleBoxData()
-    : flexGrow(RenderStyle::initialFlexGrow())
-    , flexShrink(RenderStyle::initialFlexShrink())
-    , flexBasis(RenderStyle::initialFlexBasis())
-    , flexDirection(RenderStyle::initialFlexDirection())
-    , flexWrap(RenderStyle::initialFlexWrap())
+    : m_flexGrow(RenderStyle::initialFlexGrow())
+    , m_flexShrink(RenderStyle::initialFlexShrink())
+    , m_flexBasis(RenderStyle::initialFlexBasis())
+    , m_flexDirection(RenderStyle::initialFlexDirection())
+    , m_flexWrap(RenderStyle::initialFlexWrap())
 {
 }
 
-inline StyleFlexibleBoxData::StyleFlexibleBoxData(const StyleFlexibleBoxData& other)
+inline StyleFlexibleBoxData::StyleFlexibleBoxData(const StyleFlexibleBoxData& o)
     : RefCounted<StyleFlexibleBoxData>()
-    , flexGrow(other.flexGrow)
-    , flexShrink(other.flexShrink)
-    , flexBasis(other.flexBasis)
-    , flexDirection(other.flexDirection)
-    , flexWrap(other.flexWrap)
+    , m_flexGrow(o.m_flexGrow)
+    , m_flexShrink(o.m_flexShrink)
+    , m_flexBasis(o.m_flexBasis)
+    , m_flexDirection(o.m_flexDirection)
+    , m_flexWrap(o.m_flexWrap)
 {
 }
 
@@ -54,10 +54,10 @@ Ref<StyleFlexibleBoxData> StyleFlexibleBoxData::copy() const
     return adoptRef(*new StyleFlexibleBoxData(*this));
 }
 
-bool StyleFlexibleBoxData::operator==(const StyleFlexibleBoxData& other) const
+bool StyleFlexibleBoxData::operator==(const StyleFlexibleBoxData& o) const
 {
-    return flexGrow == other.flexGrow && flexShrink == other.flexShrink && flexBasis == other.flexBasis
-        && flexDirection == other.flexDirection && flexWrap == other.flexWrap;
+    return m_flexGrow == o.m_flexGrow && m_flexShrink == o.m_flexShrink && m_flexBasis == o.m_flexBasis
+        && m_flexDirection == o.m_flexDirection && m_flexWrap == o.m_flexWrap;
 }
 
 }

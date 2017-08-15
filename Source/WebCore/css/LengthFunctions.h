@@ -1,6 +1,6 @@
 /*
     Copyright (C) 1999 Lars Knoll (knoll@kde.org)
-    Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+    Copyright (C) 2006, 2008 Apple Inc. All rights reserved.
     Copyright (C) 2011 Rik Cabanier (cabanier@adobe.com)
     Copyright (C) 2011 Adobe Systems Incorporated. All rights reserved.
     Copyright (C) 2012 Motorola Mobility, Inc. All rights reserved.
@@ -29,9 +29,8 @@
 namespace WebCore {
 
 class FloatSize;
-class LayoutSize;
+class LayoutUnit;
 class RenderView;
-
 struct Length;
 struct LengthSize;
 
@@ -39,7 +38,6 @@ int minimumIntValueForLength(const Length&, LayoutUnit maximumValue);
 int intValueForLength(const Length&, LayoutUnit maximumValue);
 LayoutUnit minimumValueForLength(const Length&, LayoutUnit maximumValue);
 WEBCORE_EXPORT LayoutUnit valueForLength(const Length&, LayoutUnit maximumValue);
-LayoutSize sizeForLengthSize(const LengthSize&, const LayoutSize& maximumValue);
 float floatValueForLength(const Length&, LayoutUnit maximumValue);
 WEBCORE_EXPORT float floatValueForLength(const Length&, float maximumValue);
 FloatSize floatSizeForLengthSize(const LengthSize&, const FloatSize&);

@@ -53,7 +53,7 @@ public:
 
     JSObject* checkSyntax(ExecState*);
 
-    Ref<JITCode> generatedJITCode()
+    PassRefPtr<JITCode> generatedJITCode()
     {
         return generatedJITCodeForCall();
     }

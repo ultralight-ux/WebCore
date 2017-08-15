@@ -169,8 +169,8 @@ public:
     WEBCORE_EXPORT void setNeedsAdobeFrameReloadingQuirk(bool);
     bool needsAcrobatFrameReloadingQuirk() const { return m_needsAdobeFrameReloadingQuirk; }
 
-    WEBCORE_EXPORT void setMinimumDOMTimerInterval(Seconds); // Initialized to DOMTimer::defaultMinimumInterval().
-    Seconds minimumDOMTimerInterval() const { return m_minimumDOMTimerInterval; }
+    WEBCORE_EXPORT void setMinimumDOMTimerInterval(std::chrono::milliseconds); // Initialized to DOMTimer::defaultMinimumInterval().
+    std::chrono::milliseconds minimumDOMTimerInterval() const { return m_minimumDOMTimerInterval; }
 
     WEBCORE_EXPORT void setLayoutInterval(Seconds);
     Seconds layoutInterval() const { return m_layoutInterval; }
@@ -256,8 +256,8 @@ public:
     WEBCORE_EXPORT static void setShouldRespectPriorityInCSSAttributeSetters(bool);
     static bool shouldRespectPriorityInCSSAttributeSetters();
 
-    void setTimeWithoutMouseMovementBeforeHidingControls(Seconds time) { m_timeWithoutMouseMovementBeforeHidingControls = time; }
-    Seconds timeWithoutMouseMovementBeforeHidingControls() const { return m_timeWithoutMouseMovementBeforeHidingControls; }
+    void setTimeWithoutMouseMovementBeforeHidingControls(double time) { m_timeWithoutMouseMovementBeforeHidingControls = time; }
+    double timeWithoutMouseMovementBeforeHidingControls() const { return m_timeWithoutMouseMovementBeforeHidingControls; }
 
     bool hiddenPageCSSAnimationSuspensionEnabled() const { return m_hiddenPageCSSAnimationSuspensionEnabled; }
     WEBCORE_EXPORT void setHiddenPageCSSAnimationSuspensionEnabled(bool);
@@ -310,9 +310,6 @@ public:
 
     bool mediaCaptureRequiresSecureConnection() const;
     WEBCORE_EXPORT static void setMediaCaptureRequiresSecureConnection(bool);
-
-    static bool useAVFoundationAudioCapture();
-    WEBCORE_EXPORT static void setUseAVFoundationAudioCapture(bool);
 #endif
 
 #if ENABLE(APPLE_PAY)
@@ -341,7 +338,7 @@ private:
     const std::unique_ptr<FontGenericFamilies> m_fontGenericFamilies;
     SecurityOrigin::StorageBlockingPolicy m_storageBlockingPolicy;
     Seconds m_layoutInterval;
-    Seconds m_minimumDOMTimerInterval;
+    std::chrono::milliseconds m_minimumDOMTimerInterval;
 
     SETTINGS_MEMBER_VARIABLES
 
@@ -364,7 +361,7 @@ private:
 #endif
     bool m_scrollingPerformanceLoggingEnabled : 1;
 
-    Seconds m_timeWithoutMouseMovementBeforeHidingControls;
+    double m_timeWithoutMouseMovementBeforeHidingControls;
 
     Timer m_setImageLoadingSettingsTimer;
     void imageLoadingSettingsTimerFired();
@@ -418,7 +415,6 @@ private:
     String m_mediaDeviceIdentifierStorageDirectory;
     static bool gMockCaptureDevicesEnabled;
     static bool gMediaCaptureRequiresSecureConnection;
-    static bool gUseAVFoundationAudioCapture;
 #endif
 
 #if ENABLE(APPLE_PAY)

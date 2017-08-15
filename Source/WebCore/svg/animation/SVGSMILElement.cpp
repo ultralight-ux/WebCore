@@ -34,6 +34,7 @@
 #include "EventSender.h"
 #include "FloatConversion.h"
 #include "FrameView.h"
+#include "HTMLNames.h"
 #include "SMILTimeContainer.h"
 #include "SVGDocumentExtensions.h"
 #include "SVGNames.h"
@@ -169,7 +170,7 @@ void SVGSMILElement::buildPendingResource()
 {
     clearResourceReferences();
 
-    if (!isConnected()) {
+    if (!inDocument()) {
         // Reset the target element if we are no longer in the document.
         setTargetElement(nullptr);
         return;
@@ -184,7 +185,7 @@ void SVGSMILElement::buildPendingResource()
         target = SVGURIReference::targetElementFromIRIString(href, document(), &id);
     SVGElement* svgTarget = is<SVGElement>(target) ? downcast<SVGElement>(target) : nullptr;
 
-    if (svgTarget && !svgTarget->isConnected())
+    if (svgTarget && !svgTarget->inDocument())
         svgTarget = nullptr;
 
     if (svgTarget != targetElement())
@@ -255,7 +256,7 @@ void SVGSMILElement::reset()
 Node::InsertionNotificationRequest SVGSMILElement::insertedInto(ContainerNode& rootParent)
 {
     SVGElement::insertedInto(rootParent);
-    if (!rootParent.isConnected())
+    if (!rootParent.inDocument())
         return InsertionDone;
 
     // Verify we are not in <use> instance tree.
@@ -290,7 +291,7 @@ void SVGSMILElement::finishedInsertingSubtree()
 
 void SVGSMILElement::removedFrom(ContainerNode& rootParent)
 {
-    if (rootParent.isConnected()) {
+    if (rootParent.inDocument()) {
         clearResourceReferences();
         disconnectConditions();
         setTargetElement(nullptr);
@@ -481,7 +482,7 @@ void SVGSMILElement::parseAttribute(const QualifiedName& name, const AtomicStrin
             parseBeginOrEnd(attributeWithoutSynchronization(SVGNames::endAttr), End);
         }
         parseBeginOrEnd(value.string(), Begin);
-        if (isConnected())
+        if (inDocument())
             connectConditions();
     } else if (name == SVGNames::endAttr) {
         if (!m_conditions.isEmpty()) {
@@ -490,7 +491,7 @@ void SVGSMILElement::parseAttribute(const QualifiedName& name, const AtomicStrin
             parseBeginOrEnd(attributeWithoutSynchronization(SVGNames::beginAttr), Begin);
         }
         parseBeginOrEnd(value.string(), End);
-        if (isConnected())
+        if (inDocument())
             connectConditions();
     } else if (name == SVGNames::onendAttr)
         setAttributeEventListener(eventNames().endEventEvent, name, value);
@@ -522,7 +523,7 @@ void SVGSMILElement::svgAttributeChanged(const QualifiedName& attrName)
     else if (attrName.matches(XLinkNames::hrefAttr)) {
         InstanceInvalidationGuard guard(*this);
         buildPendingResource();
-    } else if (isConnected()) {
+    } else if (inDocument()) {
         if (attrName == SVGNames::beginAttr)
             beginListChanged(elapsed());
         else if (attrName == SVGNames::endAttr)
@@ -1036,7 +1037,6 @@ float SVGSMILElement::calculateAnimationPercentAndRepeat(SMILTime elapsed, unsig
     
 SMILTime SVGSMILElement::calculateNextProgressTime(SMILTime elapsed) const
 {
-    ASSERT(m_timeContainer);
     if (m_activeState == Active) {
         // If duration is indefinite the value does not actually change over time. Same is true for <set>.
         SMILTime simpleDuration = this->simpleDuration();
@@ -1048,7 +1048,7 @@ SMILTime SVGSMILElement::calculateNextProgressTime(SMILTime elapsed) const
                 return repeatingDurationEnd;
             return m_intervalEnd;
         } 
-        return elapsed + m_timeContainer->animationFrameDelay();
+        return elapsed + SMILAnimationFrameDelay;
     }
     return m_intervalBegin >= elapsed ? m_intervalBegin : SMILTime::unresolved();
 }

@@ -225,8 +225,8 @@ namespace WTF {
         void checkValidity(const const_iterator&) const { }
 #endif
 
-        PointerType m_position { nullptr };
-        PointerType m_endPosition { nullptr };
+        PointerType m_position;
+        PointerType m_endPosition;
 
 #if CHECK_HASHTABLE_ITERATORS
     public:

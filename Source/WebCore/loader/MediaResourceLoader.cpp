@@ -34,18 +34,15 @@
 #include "CachedResourceRequest.h"
 #include "CrossOriginAccessControl.h"
 #include "Document.h"
-#include "HTMLMediaElement.h"
 #include "SecurityOrigin.h"
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-MediaResourceLoader::MediaResourceLoader(Document& document, HTMLMediaElement& mediaElement, const String& crossOriginMode)
+MediaResourceLoader::MediaResourceLoader(Document& document, const String& crossOriginMode)
     : ContextDestructionObserver(&document)
     , m_document(&document)
-    , m_mediaElement(mediaElement.createWeakPtr())
     , m_crossOriginMode(crossOriginMode)
-    , m_weakFactory(this)
 {
 }
 
@@ -58,7 +55,6 @@ void MediaResourceLoader::contextDestroyed()
 {
     ContextDestructionObserver::contextDestroyed();
     m_document = nullptr;
-    m_mediaElement = nullptr;
 }
 
 RefPtr<PlatformMediaResource> MediaResourceLoader::requestResource(ResourceRequest&& request, LoadOptions options)
@@ -79,8 +75,6 @@ RefPtr<PlatformMediaResource> MediaResourceLoader::requestResource(ResourceReque
     // FIXME: Skip Content Security Policy check if the element that initiated this request is in a user-agent shadow tree. See <https://bugs.webkit.org/show_bug.cgi?id=155505>.
     CachedResourceRequest cacheRequest(WTFMove(request), ResourceLoaderOptions(SendCallbacks, DoNotSniffContent, bufferingPolicy, AllowStoredCredentials, ClientCredentialPolicy::MayAskClientForCredentials, FetchOptions::Credentials::Include, DoSecurityCheck, FetchOptions::Mode::NoCors, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck, DefersLoadingPolicy::AllowDefersLoading, cachingPolicy));
     cacheRequest.setAsPotentiallyCrossOrigin(m_crossOriginMode, *m_document);
-    if (m_mediaElement)
-        cacheRequest.setInitiator(*m_mediaElement.get());
 
     CachedResourceHandle<CachedRawResource> resource = m_document->cachedResourceLoader().requestMedia(WTFMove(cacheRequest));
     if (!resource)
@@ -96,14 +90,6 @@ void MediaResourceLoader::removeResource(MediaResource& mediaResource)
 {
     ASSERT(m_resources.contains(&mediaResource));
     m_resources.remove(&mediaResource);
-}
-
-void MediaResourceLoader::addResponseForTesting(const ResourceResponse& response)
-{
-    const auto maximumResponsesForTesting = 5;
-    if (m_responsesForTesting.size() > maximumResponsesForTesting)
-        return;
-    m_responsesForTesting.append(response);
 }
 
 Ref<MediaResource> MediaResource::create(MediaResourceLoader& loader, CachedResourceHandle<CachedRawResource> resource)
@@ -161,8 +147,6 @@ void MediaResource::responseReceived(CachedResource& resource, const ResourceRes
     m_didPassAccessControlCheck = m_resource->options().mode == FetchOptions::Mode::Cors;
     if (m_client)
         m_client->responseReceived(*this, response);
-
-    m_loader->addResponseForTesting(response);
 }
 
 bool MediaResource::shouldCacheResponse(CachedResource& resource, const ResourceResponse& response)

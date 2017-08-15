@@ -159,29 +159,12 @@ JSObject* createIteratorResultObject(ExecState* exec, JSValue value, bool done)
     return resultObject;
 }
 
-bool hasIteratorMethod(ExecState& state, JSValue value)
-{
-    auto& vm = state.vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    if (!value.isObject())
-        return false;
-
-    JSObject* object = asObject(value);
-    CallData callData;
-    CallType callType;
-    JSValue applyMethod = object->getMethod(&state, callData, callType, vm.propertyNames->iteratorSymbol, ASCIILiteral("Symbol.iterator property should be callable"));
-    RETURN_IF_EXCEPTION(scope, false);
-
-    return !applyMethod.isUndefined();
-}
-
 JSValue iteratorForIterable(ExecState* state, JSValue iterable)
 {
     VM& vm = state->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     
-    JSValue iteratorFunction = iterable.get(state, vm.propertyNames->iteratorSymbol);
+    JSValue iteratorFunction = iterable.get(state, state->propertyNames().iteratorSymbol);
     RETURN_IF_EXCEPTION(scope, JSValue());
     
     CallData iteratorFunctionCallData;

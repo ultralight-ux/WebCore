@@ -42,10 +42,6 @@
 #include "PlatformDisplayWin.h"
 #endif
 
-#if PLATFORM(WPE)
-#include "PlatformDisplayWPE.h"
-#endif
-
 #if PLATFORM(GTK)
 #include <gdk/gdk.h>
 #endif
@@ -56,6 +52,10 @@
 
 #if PLATFORM(GTK) && PLATFORM(WAYLAND) && !defined(GTK_API_VERSION_2)
 #include <gdk/gdkwayland.h>
+#endif
+
+#if PLATFORM(EFL) && defined(HAVE_ECORE_X)
+#include <Ecore_X.h>
 #endif
 
 #if USE(EGL)
@@ -82,6 +82,8 @@ std::unique_ptr<PlatformDisplay> PlatformDisplay::createPlatformDisplay()
         return std::make_unique<PlatformDisplayWayland>(gdk_wayland_display_get_wl_display(display));
 #endif
 #endif
+#elif PLATFORM(EFL) && defined(HAVE_ECORE_X)
+    return std::make_unique<PlatformDisplayX11>(static_cast<Display*>(ecore_x_display_get()));
 #elif PLATFORM(WIN)
     return std::make_unique<PlatformDisplayWin>();
 #endif
@@ -102,10 +104,6 @@ std::unique_ptr<PlatformDisplay> PlatformDisplay::createPlatformDisplay()
 #endif
 #if PLATFORM(X11)
     return std::make_unique<PlatformDisplayX11>(nullptr);
-#endif
-
-#if PLATFORM(WPE)
-    return std::make_unique<PlatformDisplayWPE>();
 #endif
 
     ASSERT_NOT_REACHED();
@@ -156,7 +154,7 @@ PlatformDisplay::~PlatformDisplay()
 #endif
 }
 
-#if USE(EGL) || USE(GLX)
+#if !PLATFORM(EFL) && (USE(EGL) || USE(GLX))
 GLContext* PlatformDisplay::sharingGLContext()
 {
     if (!m_sharingGLContext)
@@ -192,6 +190,12 @@ void PlatformDisplay::initializeEGLDisplay()
     m_eglDisplayInitialized = true;
 
     if (m_eglDisplay == EGL_NO_DISPLAY) {
+        // EGL is optionally soft linked on Windows.
+#if PLATFORM(WIN)
+        auto eglGetDisplay = eglGetDisplayPtr();
+        if (!eglGetDisplay)
+            return;
+#endif
         m_eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if (m_eglDisplay == EGL_NO_DISPLAY)
             return;
@@ -209,7 +213,6 @@ void PlatformDisplay::initializeEGLDisplay()
 
     eglDisplays().add(this);
 
-#if !PLATFORM(WIN)
     static bool eglAtexitHandlerInitialized = false;
     if (!eglAtexitHandlerInitialized) {
         // EGL registers atexit handlers to cleanup its global display list.
@@ -221,9 +224,13 @@ void PlatformDisplay::initializeEGLDisplay()
         // EGL atexit handlers and the PlatformDisplay destructor.
         // See https://bugs.webkit.org/show_bug.cgi?id=157973.
         eglAtexitHandlerInitialized = true;
-        std::atexit(shutDownEglDisplays);
+        std::atexit([] {
+            while (!eglDisplays().isEmpty()) {
+                auto* display = eglDisplays().takeAny();
+                display->terminateEGLDisplay();
+            }
+        });
     }
-#endif
 }
 
 void PlatformDisplay::terminateEGLDisplay()
@@ -235,15 +242,6 @@ void PlatformDisplay::terminateEGLDisplay()
     eglTerminate(m_eglDisplay);
     m_eglDisplay = EGL_NO_DISPLAY;
 }
-
-void PlatformDisplay::shutDownEglDisplays()
-{
-    while (!eglDisplays().isEmpty()) {
-        auto* display = eglDisplays().takeAny();
-        display->terminateEGLDisplay();
-    }
-}
-
 #endif // USE(EGL)
 
 } // namespace WebCore

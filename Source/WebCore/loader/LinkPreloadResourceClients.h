@@ -61,10 +61,8 @@ protected:
 
     void clearResource(CachedResourceClient& client)
     {
-        if (m_resource) {
-            m_resource->cancelLoad();
+        if (m_resource)
             m_resource->removeClient(client);
-        }
         m_resource = nullptr;
     }
 
@@ -88,7 +86,6 @@ public:
     void notifyFinished(CachedResource& resource) override { triggerEvents(resource); }
 
     void clear() override { clearResource(*this); }
-    bool shouldMarkAsReferenced() const override { return false; }
 
 private:
     LinkPreloadScriptResourceClient(LinkLoader& loader, CachedScript& resource)
@@ -115,7 +112,6 @@ public:
     }
 
     void clear() override { clearResource(*this); }
-    bool shouldMarkAsReferenced() const override { return false; }
 
 private:
     LinkPreloadStyleResourceClient(LinkLoader& loader, CachedCSSStyleSheet& resource)
@@ -137,7 +133,6 @@ public:
     void notifyFinished(CachedResource& resource) override { triggerEvents(resource); }
 
     void clear() override { clearResource(*this); }
-    bool shouldMarkAsReferenced() const override { return false; }
 
 private:
     LinkPreloadImageResourceClient(LinkLoader& loader, CachedImage& resource)
@@ -163,7 +158,6 @@ public:
     }
 
     void clear() override { clearResource(*this); }
-    bool shouldMarkAsReferenced() const override { return false; }
 
 private:
     LinkPreloadFontResourceClient(LinkLoader& loader, CachedFont& resource)
@@ -185,7 +179,6 @@ public:
     void notifyFinished(CachedResource& resource) override { triggerEvents(resource); }
 
     void clear() override { clearResource(*this); }
-    bool shouldMarkAsReferenced() const override { return false; }
 
 private:
     LinkPreloadRawResourceClient(LinkLoader& loader, CachedRawResource& resource)

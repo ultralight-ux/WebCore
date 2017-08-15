@@ -31,8 +31,7 @@
 #include "config.h"
 #include "ScriptGlobalObject.h"
 
-#include "JSDOMConvert.h"
-#include "JSDOMExceptionHandling.h"
+#include "JSDOMBinding.h"
 #include "JSInspectorFrontendHost.h"
 #include <runtime/IdentifierInlines.h>
 
@@ -46,7 +45,7 @@ bool ScriptGlobalObject::set(ExecState& scriptState, const char* name, Inspector
     JSLockHolder lock(vm);
     auto scope = DECLARE_CATCH_SCOPE(vm);
     auto& globalObject = *jsCast<JSDOMGlobalObject*>(scriptState.lexicalGlobalObject());
-    globalObject.putDirect(vm, Identifier::fromString(&vm, name), toJS<IDLInterface<InspectorFrontendHost>>(scriptState, globalObject, value));
+    globalObject.putDirect(vm, Identifier::fromString(&vm, name), toJS(&scriptState, &globalObject, value));
     if (UNLIKELY(scope.exception())) {
         reportException(&scriptState, scope.exception());
         return false;

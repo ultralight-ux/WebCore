@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google, Inc. All Rights Reserved.
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011, 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,7 +35,6 @@ namespace WebCore {
 
 class JSCustomElementInterface;
 class HTMLDocumentParser;
-class ScriptElement;
 
 struct CustomElementConstructionData {
     CustomElementConstructionData(Ref<JSCustomElementInterface>&&, const AtomicString& name, Vector<Attribute>&&);
@@ -63,7 +62,7 @@ public:
     bool hasParserBlockingScriptWork() const;
 
     // Must be called to take the parser-blocking script before calling the parser again.
-    RefPtr<ScriptElement> takeScriptToProcess(TextPosition& scriptStartPosition);
+    RefPtr<Element> takeScriptToProcess(TextPosition& scriptStartPosition);
 
     std::unique_ptr<CustomElementConstructionData> takeCustomElementConstructionData() { return WTFMove(m_customElementToConstruct); }
     void didCreateCustomOrCallbackElement(Ref<Element>&&, CustomElementConstructionData&);
@@ -207,7 +206,7 @@ private:
     // https://html.spec.whatwg.org/multipage/syntax.html#concept-pending-table-char-tokens
     StringBuilder m_pendingTableCharacters;
 
-    RefPtr<ScriptElement> m_scriptToProcess; // <script> tag which needs processing before resuming the parser.
+    RefPtr<Element> m_scriptToProcess; // <script> tag which needs processing before resuming the parser.
     TextPosition m_scriptToProcessStartPosition; // Starting line number of the script tag needing processing.
 
     std::unique_ptr<CustomElementConstructionData> m_customElementToConstruct;

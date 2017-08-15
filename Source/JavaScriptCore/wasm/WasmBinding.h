@@ -38,8 +38,7 @@ class CallLinkInfo;
 
 namespace Wasm {
 
-MacroAssemblerCodeRef wasmToWasm(unsigned importIndex);
-MacroAssemblerCodeRef wasmToJs(VM*, Bag<CallLinkInfo>& callLinkInfos, SignatureIndex, unsigned importIndex);
+WasmToJSStub importStubGenerator(VM*, Bag<CallLinkInfo>&, Signature*, unsigned);
 
 } } // namespace JSC::Wasm
 

@@ -83,36 +83,34 @@ void PaymentCoordinator::completeMerchantValidation(const PaymentMerchantSession
     m_client.completeMerchantValidation(paymentMerchantSession);
 }
 
-void PaymentCoordinator::completeShippingMethodSelection(std::optional<ShippingMethodUpdate>&& update)
+void PaymentCoordinator::completeShippingMethodSelection(PaymentAuthorizationStatus status, std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems)
 {
     ASSERT(m_activeSession);
 
-    m_client.completeShippingMethodSelection(WTFMove(update));
+    m_client.completeShippingMethodSelection(status, WTFMove(newTotalAndItems));
 }
 
-void PaymentCoordinator::completeShippingContactSelection(std::optional<ShippingContactUpdate>&& update)
+void PaymentCoordinator::completeShippingContactSelection(PaymentAuthorizationStatus status, const Vector<PaymentRequest::ShippingMethod>& newShippingMethods, std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems)
 {
     ASSERT(m_activeSession);
 
-    m_client.completeShippingContactSelection(WTFMove(update));
+    m_client.completeShippingContactSelection(status, newShippingMethods, WTFMove(newTotalAndItems));
 }
 
-void PaymentCoordinator::completePaymentMethodSelection(std::optional<PaymentMethodUpdate>&& update)
+void PaymentCoordinator::completePaymentMethodSelection(std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems)
 {
     ASSERT(m_activeSession);
 
-    m_client.completePaymentMethodSelection(WTFMove(update));
+    m_client.completePaymentMethodSelection(WTFMove(newTotalAndItems));
 }
 
-void PaymentCoordinator::completePaymentSession(std::optional<PaymentAuthorizationResult>&& result)
+void PaymentCoordinator::completePaymentSession(PaymentAuthorizationStatus status)
 {
     ASSERT(m_activeSession);
 
-    bool isFinalState = isFinalStateResult(result);
+    m_client.completePaymentSession(status);
 
-    m_client.completePaymentSession(WTFMove(result));
-
-    if (!isFinalState)
+    if (!isFinalStateStatus(status))
         return;
 
     m_activeSession = nullptr;
@@ -124,13 +122,6 @@ void PaymentCoordinator::abortPaymentSession()
 
     m_client.abortPaymentSession();
     m_activeSession = nullptr;
-}
-
-void PaymentCoordinator::cancelPaymentSession()
-{
-    ASSERT(m_activeSession);
-
-    m_client.cancelPaymentSession();
 }
 
 void PaymentCoordinator::validateMerchant(const URL& validationURL)
@@ -183,14 +174,14 @@ void PaymentCoordinator::didSelectShippingContact(const PaymentContact& shipping
     m_activeSession->didSelectShippingContact(shippingContact);
 }
 
-void PaymentCoordinator::didCancelPaymentSession()
+void PaymentCoordinator::didCancelPayment()
 {
     if (!m_activeSession) {
         // It's possible that the payment has been aborted already.
         return;
     }
 
-    m_activeSession->didCancelPaymentSession();
+    m_activeSession->didCancelPayment();
     m_activeSession = nullptr;
 }
 

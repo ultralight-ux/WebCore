@@ -25,30 +25,38 @@
 
 #pragma once
 
-#include "ExceptionOr.h"
 #include "XPathNSResolver.h"
 #include <heap/Strong.h>
 #include <heap/StrongInlines.h>
 #include <runtime/JSCInlines.h>
 #include <runtime/JSCJSValue.h>
+#include <wtf/Forward.h>
+#include <wtf/RefPtr.h>
+
+namespace JSC {
+    class ExecState;
+    class JSObject;
+}
 
 namespace WebCore {
 
-class JSDOMWindow;
+    class Frame;
+    class JSDOMWindow;
 
-class JSCustomXPathNSResolver final : public XPathNSResolver {
-public:
-    static ExceptionOr<Ref<JSCustomXPathNSResolver>> create(JSC::ExecState&, JSC::JSValue);
-    virtual ~JSCustomXPathNSResolver();
+    class JSCustomXPathNSResolver : public XPathNSResolver {
+    public:
+        static RefPtr<JSCustomXPathNSResolver> create(JSC::ExecState*, JSC::JSValue);
+        
+        virtual ~JSCustomXPathNSResolver();
 
-private:
-    JSCustomXPathNSResolver(JSC::VM&, JSC::JSObject*, JSDOMWindow*);
+        String lookupNamespaceURI(const String& prefix) override;
 
-    String lookupNamespaceURI(const String& prefix) final;
+    private:
+        JSCustomXPathNSResolver(JSC::ExecState*, JSC::JSObject*, JSDOMWindow*);
 
-    // JSCustomXPathNSResolvers are always temporary so using a Strong reference is safe here.
-    JSC::Strong<JSC::JSObject> m_customResolver;
-    JSC::Strong<JSDOMWindow> m_globalObject;
-};
+        // JSCustomXPathNSResolvers are always temporary so using a Strong reference is safe here.
+        JSC::Strong<JSC::JSObject> m_customResolver;
+        JSC::Strong<JSDOMWindow> m_globalObject;
+    };
 
 } // namespace WebCore

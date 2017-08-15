@@ -37,7 +37,6 @@ class CSSFontSelector;
 class Font;
 struct FontCustomPlatformData;
 class FontDescription;
-struct FontSelectionSpecifiedCapabilities;
 struct FontVariantSettings;
 class SVGFontFaceElement;
 class SharedBuffer;
@@ -66,10 +65,8 @@ public:
 
     const AtomicString& familyNameOrURI() const { return m_familyNameOrURI; }
 
-    void load(CSSFontSelector*);
-    RefPtr<Font> font(const FontDescription&, bool syntheticBold, bool syntheticItalic, const FontFeatureSettings&, const FontVariantSettings&, FontSelectionSpecifiedCapabilities);
-
-    bool requiresExternalResource() const { return m_font; }
+    void load(CSSFontSelector&);
+    RefPtr<Font> font(const FontDescription&, bool syntheticBold, bool syntheticItalic, const FontFeatureSettings&, const FontVariantSettings&);
 
 #if ENABLE(SVG_FONTS)
     bool isSVGFontFaceSource() const;

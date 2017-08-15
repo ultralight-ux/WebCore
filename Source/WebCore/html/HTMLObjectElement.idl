@@ -27,7 +27,7 @@
     [Reflect] attribute DOMString code;
     [Reflect] attribute DOMString align;
     [Reflect] attribute DOMString archive;
-    [Reflect] attribute [TreatNullAs=EmptyString] DOMString border;
+    [Reflect, TreatNullAs=EmptyString] attribute DOMString border;
     [Reflect, URL] attribute USVString codeBase;
     [Reflect] attribute DOMString codeType;
     [Reflect, URL] attribute USVString data;
@@ -45,7 +45,7 @@
     readonly attribute DOMString validationMessage;
     boolean checkValidity();
     [EnabledAtRuntime=InteractiveFormValidation] boolean reportValidity();
-    void setCustomValidity(DOMString error);
+    void setCustomValidity(DOMString? error);
 
     [CheckSecurityForNode] readonly attribute Document contentDocument;
 

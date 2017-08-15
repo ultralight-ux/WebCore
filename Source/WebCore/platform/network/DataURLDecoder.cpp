@@ -79,7 +79,7 @@ private:
         ref();
 
         auto scheduledPairs = m_decodeTask->scheduleContext.scheduledPairs;
-        m_timer.startOneShot(0_s);
+        m_timer.startOneShot(0);
         m_timer.schedule(scheduledPairs);
     }
 
@@ -155,7 +155,7 @@ static void decodeBase64(DecodeTask& task)
             return;
     }
     buffer.shrinkToFit();
-    task.result.data = SharedBuffer::create(WTFMove(buffer));
+    task.result.data = SharedBuffer::adoptVector(buffer);
 }
 
 static void decodeEscaped(DecodeTask& task)
@@ -165,7 +165,7 @@ static void decodeEscaped(DecodeTask& task)
     auto buffer = decodeURLEscapeSequencesAsData(task.encodedData, encoding);
 
     buffer.shrinkToFit();
-    task.result.data = SharedBuffer::create(WTFMove(buffer));
+    task.result.data = SharedBuffer::adoptVector(buffer);
 }
 
 void decode(const URL& url, const ScheduleContext& scheduleContext, DecodeCompletionHandler&& completionHandler)

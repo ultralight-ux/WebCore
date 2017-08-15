@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015, 2016 Ericsson AB. All rights reserved.
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,13 +51,12 @@ namespace WebCore {
 #define STRING_FUNCTION(name) \
     static const String& name##String() \
     { \
-        static NeverDestroyed<const String> name(MAKE_STATIC_STRING_IMPL(#name)); \
+        static NeverDestroyed<const String> name { ASCIILiteral(#name) }; \
         return name; \
     }
 
 STRING_FUNCTION(address)
 STRING_FUNCTION(apt)
-STRING_FUNCTION(bundlePolicy)
 STRING_FUNCTION(candidates)
 STRING_FUNCTION(ccmfir)
 STRING_FUNCTION(channels)
@@ -183,12 +182,13 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
 
     String stringValue;
     unsigned intValue;
+    unsigned long longValue;
     bool boolValue;
 
     RefPtr<InspectorObject> originatorObject = InspectorObject::create();
     if (object->getObject(originatorString(), originatorObject)) {
-        if (originatorObject->getString(sessionIdString(), stringValue))
-            configuration->setSessionId(stringValue.toInt64());
+        if (originatorObject->getInteger(sessionIdString(), longValue))
+            configuration->setSessionId(longValue);
         if (originatorObject->getInteger(sessionVersionString(), intValue))
             configuration->setSessionVersion(intValue);
     }
@@ -341,26 +341,12 @@ static std::optional<IceCandidate> iceCandidateFromJSON(const String& json)
     return createCandidate(*candidateObject);
 }
 
-static String getBundlePolicyName(const PeerConnectionStates::BundlePolicy bundlePolicy)
-{
-    switch (bundlePolicy) {
-    case PeerConnectionStates::BundlePolicy::MaxCompat:
-        return "max-compat";
-    case PeerConnectionStates::BundlePolicy::MaxBundle:
-        return "max-bundle";
-    case PeerConnectionStates::BundlePolicy::Balanced:
-    default:
-        return "balanced";
-    };
-}
-
 static String configurationToJSON(const MediaEndpointSessionConfiguration& configuration)
 {
     RefPtr<InspectorObject> object = InspectorObject::create();
-    object->setString(bundlePolicyString(), getBundlePolicyName(configuration.bundlePolicy()));
 
     RefPtr<InspectorObject> originatorObject = InspectorObject::create();
-    originatorObject->setString(sessionIdString(), String::number(configuration.sessionId()));
+    originatorObject->setDouble(sessionIdString(), configuration.sessionId());
     originatorObject->setInteger(sessionVersionString(), configuration.sessionVersion());
     object->setObject(originatorString(), originatorObject);
 

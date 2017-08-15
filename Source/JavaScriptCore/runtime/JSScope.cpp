@@ -52,6 +52,11 @@ static inline bool abstractAccess(ExecState* exec, JSScope* scope, const Identif
 {
     if (scope->isJSLexicalEnvironment()) {
         JSLexicalEnvironment* lexicalEnvironment = jsCast<JSLexicalEnvironment*>(scope);
+        if (ident == exec->propertyNames().arguments) {
+            // We know the property will be at this lexical environment scope, but we don't know how to cache it.
+            op = ResolveOp(Dynamic, 0, 0, 0, 0, 0);
+            return true;
+        }
 
         SymbolTable* symbolTable = lexicalEnvironment->symbolTable();
         {
@@ -211,8 +216,7 @@ static inline bool isUnscopable(ExecState* exec, JSScope* scope, JSObject* objec
     return blocked.toBoolean(exec);
 }
 
-template<typename ReturnPredicateFunctor, typename SkipPredicateFunctor>
-ALWAYS_INLINE JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const Identifier& ident, ReturnPredicateFunctor returnPredicate, SkipPredicateFunctor skipPredicate)
+JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const Identifier& ident)
 {
     VM& vm = exec->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
@@ -239,9 +243,6 @@ ALWAYS_INLINE JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const 
             return object;
         }
 
-        if (skipPredicate(scope))
-            continue;
-
         bool hasProperty = object->hasProperty(exec, ident);
         RETURN_IF_EXCEPTION(throwScope, nullptr);
         if (hasProperty) {
@@ -250,43 +251,7 @@ ALWAYS_INLINE JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const 
             if (!unscopable)
                 return object;
         }
-
-        if (returnPredicate(scope))
-            return object;
     }
-}
-
-JSValue JSScope::resolveScopeForHoistingFuncDeclInEval(ExecState* exec, JSScope* scope, const Identifier& ident)
-{
-    auto returnPredicate = [&] (JSScope* scope) -> bool {
-        return scope->isVarScope();
-    };
-    auto skipPredicate = [&] (JSScope* scope) -> bool {
-        return scope->isWithScope();
-    };
-    JSObject* object = resolve(exec, scope, ident, returnPredicate, skipPredicate);
-    
-    bool result = false;
-    if (JSScope* scope = jsDynamicCast<JSScope*>(exec->vm(), object)) {
-        if (SymbolTable* scopeSymbolTable = scope->symbolTable(exec->vm())) {
-            result = scope->isGlobalObject()
-                ? JSObject::isExtensible(object, exec)
-                : scopeSymbolTable->scopeType() == SymbolTable::ScopeType::VarScope;
-        }
-    }
-
-    return result ? JSValue(object) : jsUndefined();
-}
-
-JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const Identifier& ident)
-{
-    auto predicate1 = [&] (JSScope*) -> bool {
-        return false;
-    };
-    auto predicate2 = [&] (JSScope*) -> bool {
-        return false;
-    };
-    return resolve(exec, scope, ident, predicate1, predicate2);
 }
 
 ResolveOp JSScope::abstractResolve(ExecState* exec, size_t depthOffset, JSScope* scope, const Identifier& ident, GetOrPut getOrPut, ResolveType unlinkedType, InitializationMode initializationMode)
@@ -385,9 +350,9 @@ JSScope* JSScope::constantScopeForCodeBlock(ResolveType type, CodeBlock* codeBlo
     return nullptr;
 }
 
-SymbolTable* JSScope::symbolTable(VM& vm)
+SymbolTable* JSScope::symbolTable()
 {
-    if (JSSymbolTableObject* symbolTableObject = jsDynamicCast<JSSymbolTableObject*>(vm, this))
+    if (JSSymbolTableObject* symbolTableObject = jsDynamicCast<JSSymbolTableObject*>(this))
         return symbolTableObject->symbolTable();
 
     return nullptr;

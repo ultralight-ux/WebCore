@@ -40,24 +40,22 @@ class MHTMLParser;
 class Page;
 class SharedBuffer;
 
-class MHTMLArchive final : public Archive {
+class MHTMLArchive : public Archive {
 public:
+    Type type() const override { return MHTML; }
+
     static Ref<MHTMLArchive> create();
     static RefPtr<MHTMLArchive> create(const URL&, SharedBuffer&);
 
-    static Ref<SharedBuffer> generateMHTMLData(Page*);
+    static PassRefPtr<SharedBuffer> generateMHTMLData(Page*);
 
     virtual ~MHTMLArchive();
 
 private:
+    static PassRefPtr<SharedBuffer> generateMHTMLData(Page*, bool useBinaryEncoding);
+
     friend class MHTMLParser;
-
     MHTMLArchive();
-
-    bool shouldLoadFromArchiveOnly() const final { return true; }
-    bool shouldOverrideBaseURL() const final { return true; }
-    bool shouldUseMainResourceEncoding() const final { return false; }
-    bool shouldUseMainResourceURL() const final { return false; }
 };
 
 } // namespace WebCore

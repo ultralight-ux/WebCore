@@ -43,7 +43,7 @@ private:
         }
         
         T m_item;
-        Node* m_next { nullptr };
+        Node* m_next;
     };
     
 public:

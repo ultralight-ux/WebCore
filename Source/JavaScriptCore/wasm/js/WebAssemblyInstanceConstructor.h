@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,8 +32,6 @@
 
 namespace JSC {
 
-class JSWebAssemblyInstance;
-class JSWebAssemblyModule;
 class WebAssemblyInstancePrototype;
 
 class WebAssemblyInstanceConstructor : public InternalFunction {
@@ -45,8 +43,6 @@ public:
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
     DECLARE_INFO;
-
-    static JSWebAssemblyInstance* createInstance(ExecState*, JSWebAssemblyModule*, JSObject* importObject, Structure*);
 
 protected:
     void finishCreation(VM&, WebAssemblyInstancePrototype*);

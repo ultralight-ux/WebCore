@@ -33,7 +33,7 @@ namespace ContentExtensions {
 
 typedef uint8_t DFABytecode;
 
-// Increment ContentExtensionStore::CurrentContentExtensionFileVersion
+// Increment UserContentExtensionStore::CurrentContentExtensionFileVersion
 // when making any non-backwards-compatible changes to the bytecode.
 // FIXME: Changes here should not require changes in WebKit2.  Move all versioning to WebCore.
 enum class DFABytecodeInstruction : uint8_t {
@@ -62,13 +62,13 @@ enum class DFABytecodeInstruction : uint8_t {
     // AppendAction has one argument:
     // The action to append (4 bytes).
     AppendAction = 0x6,
-    AppendActionWithIfCondition = 0x7,
+    AppendActionWithIfDomain = 0x7,
     
     // TestFlagsAndAppendAction has two arguments:
     // The flags to check before appending (2 bytes).
     // The action to append (4 bytes).
     TestFlagsAndAppendAction = 0x8,
-    TestFlagsAndAppendActionWithIfCondition = 0x9,
+    TestFlagsAndAppendActionWithIfDomain = 0x9,
 
     // Terminate has no arguments.
     Terminate = 0xA,
@@ -118,10 +118,10 @@ static inline size_t instructionSizeWithArguments(DFABytecodeInstruction instruc
     case DFABytecodeInstruction::Jump:
         RELEASE_ASSERT_NOT_REACHED(); // Variable instruction size.
     case DFABytecodeInstruction::AppendAction:
-    case DFABytecodeInstruction::AppendActionWithIfCondition:
+    case DFABytecodeInstruction::AppendActionWithIfDomain:
         return sizeof(DFABytecodeInstruction) + sizeof(uint32_t);
     case DFABytecodeInstruction::TestFlagsAndAppendAction:
-    case DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition:
+    case DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain:
         return sizeof(DFABytecodeInstruction) + sizeof(uint16_t) + sizeof(uint32_t);
     case DFABytecodeInstruction::Terminate:
         return sizeof(DFABytecodeInstruction);

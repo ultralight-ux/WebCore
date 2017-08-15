@@ -31,14 +31,14 @@
 
 #pragma once
 
-#include <set>
 #include <wtf/Noncopyable.h>
+#include <wtf/Optional.h>
+#include <wtf/Vector.h>
 
 namespace WebCore {
 
 class RenderBox;
-class RenderObject;
-    
+
 class OrderIterator {
 public:
     friend class OrderIteratorPopulator;
@@ -49,32 +49,26 @@ public:
     RenderBox* first();
     RenderBox* next();
 
-    bool shouldSkipChild(const RenderObject&) const;
-
 private:
     void reset();
 
     RenderBox& m_containerBox;
     RenderBox* m_currentChild;
 
-    typedef std::set<int> OrderValues;
-    OrderValues m_orderValues;
-    OrderValues::const_iterator m_orderValuesIterator;
-    bool m_isReset { false };
+    Vector<int, 1> m_orderValues;
+    std::optional<size_t> m_orderIndex;
 };
 
 class OrderIteratorPopulator {
 public:
-    explicit OrderIteratorPopulator(OrderIterator& iterator)
-        : m_iterator(iterator)
-    {
-        m_iterator.m_orderValues.clear();
-    }
+    OrderIteratorPopulator(OrderIterator&);
     ~OrderIteratorPopulator();
 
-    bool collectChild(const RenderBox&);
+    void collectChild(const RenderBox&);
 
 private:
+    void removeDuplicatedOrderValues();
+
     OrderIterator& m_iterator;
 };
 

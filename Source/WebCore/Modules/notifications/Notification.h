@@ -31,13 +31,12 @@
 
 #pragma once
 
-#if ENABLE(NOTIFICATIONS)
+#if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
 
 #include "ActiveDOMObject.h"
 #include "EventTarget.h"
 #include "ExceptionOr.h"
-#include "NotificationDirection.h"
-#include "NotificationPermission.h"
+#include "NotificationClient.h"
 #include "Timer.h"
 #include "URL.h"
 #include "WritingMode.h"
@@ -45,14 +44,18 @@
 namespace WebCore {
 
 class Document;
+class NotificationCenter;
 class NotificationPermissionCallback;
 
 class Notification final : public RefCounted<Notification>, public ActiveDOMObject, public EventTargetWithInlineData {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    using Permission = NotificationPermission;
-    using Direction = NotificationDirection;
+#if ENABLE(LEGACY_NOTIFICATIONS)
+    static ExceptionOr<Ref<Notification>> create(const String& title, const String& body, const String& iconURL, ScriptExecutionContext&, NotificationCenter&);
+#endif
 
+#if ENABLE(NOTIFICATIONS)
+    enum class Direction { Auto, Ltr, Rtl };
     struct Options {
         Direction dir;
         String lang;
@@ -61,20 +64,28 @@ public:
         String icon;
     };
     static Ref<Notification> create(Document&, const String& title, const Options&);
+#endif
     
     virtual ~Notification();
 
     void show();
     void close();
 
+    const URL& iconURL() const { return m_icon; }
     const String& title() const { return m_title; }
-    Direction dir() const { return m_direction; }
     const String& body() const { return m_body; }
     const String& lang() const { return m_lang; }
-    const String& tag() const { return m_tag; }
-    const URL& icon() const { return m_icon; }
 
-    TextDirection direction() const { return m_direction == Direction::Rtl ? RTL : LTR; }
+    const String& dir() const { return m_direction; }
+    void setDir(const String& dir) { m_direction = dir; }
+
+    const String& replaceId() const { return m_tag; }
+    void setReplaceId(const String& replaceId) { m_tag = replaceId; }
+
+    const String& tag() const { return m_tag; }
+    void setTag(const String& tag) { m_tag = tag; }
+
+    TextDirection direction() const { return m_direction == "rtl" ? RTL : LTR; }
 
     WEBCORE_EXPORT void dispatchClickEvent();
     WEBCORE_EXPORT void dispatchCloseEvent();
@@ -83,8 +94,11 @@ public:
 
     WEBCORE_EXPORT void finalize();
 
-    static Permission permission(Document&);
+#if ENABLE(NOTIFICATIONS)
+    static String permission(Document&);
+    WEBCORE_EXPORT static String permissionString(NotificationClient::Permission);
     static void requestPermission(Document&, RefPtr<NotificationPermissionCallback>&&);
+#endif
 
     ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
 
@@ -92,31 +106,40 @@ public:
     using RefCounted::deref;
 
 private:
-    Notification(Document&, const String& title, const Options&);
+#if ENABLE(LEGACY_NOTIFICATIONS)
+    Notification(const String& title, const String& body, URL&& iconURL, ScriptExecutionContext&, NotificationCenter&);
+#endif
+
+#if ENABLE(NOTIFICATIONS)
+    Notification(Document&, const String& title);
+#endif
 
     EventTargetInterface eventTargetInterface() const final { return NotificationEventTargetInterfaceType; }
 
-    // ActiveDOMObject
+    void contextDestroyed() final;
     const char* activeDOMObjectName() const final;
     bool canSuspendForDocumentSuspension() const final;
-    void stop() final;
 
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
 
-    String m_title;
-    Direction m_direction;
-    String m_lang;
-    String m_body;
-    String m_tag;
     URL m_icon;
+    String m_title;
+    String m_body;
+    String m_direction;
+    String m_lang;
+    String m_tag;
 
     enum State { Idle, Showing, Closed };
     State m_state { Idle };
 
+    RefPtr<NotificationCenter> m_notificationCenter;
+
+#if ENABLE(NOTIFICATIONS)
     std::unique_ptr<Timer> m_taskTimer;
+#endif
 };
 
 } // namespace WebCore
 
-#endif // ENABLE(NOTIFICATIONS)
+#endif // ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)

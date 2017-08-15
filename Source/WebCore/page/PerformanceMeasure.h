@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(WEB_TIMING)
+#if ENABLE(USER_TIMING)
 
 #include "PerformanceEntry.h"
 #include <wtf/text/WTFString.h>
@@ -36,12 +36,10 @@ class PerformanceMeasure final : public PerformanceEntry {
 public:
     static Ref<PerformanceMeasure> create(const String& name, double startTime, double duration) { return adoptRef(*new PerformanceMeasure(name, startTime, duration)); }
 
-private:
-    PerformanceMeasure(const String& name, double startTime, double duration)
-        : PerformanceEntry(PerformanceEntry::Type::Measure, name, ASCIILiteral("measure"), startTime, duration)
-    {
-    }
+    bool isMeasure() const override { return true; }
 
+private:
+    PerformanceMeasure(const String& name, double startTime, double duration) : PerformanceEntry(name, "measure", startTime, duration) { }
     ~PerformanceMeasure() { }
 };
 
@@ -51,4 +49,4 @@ SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::PerformanceMeasure)
     static bool isType(const WebCore::PerformanceEntry& entry) { return entry.isMeasure(); }
 SPECIALIZE_TYPE_TRAITS_END()
 
-#endif // ENABLE(WEB_TIMING)
+#endif // ENABLE(USER_TIMING)

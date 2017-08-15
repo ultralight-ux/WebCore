@@ -27,7 +27,7 @@
 #pragma once
 
 #include "Glyph.h"
-#include <wtf/Ref.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 
@@ -43,9 +43,9 @@ class Font;
 
 class OpenTypeMathData : public RefCounted<OpenTypeMathData> {
 public:
-    static Ref<OpenTypeMathData> create(const FontPlatformData& font)
+    static PassRefPtr<OpenTypeMathData> create(const FontPlatformData& font)
     {
-        return adoptRef(*new OpenTypeMathData(font));
+        return adoptRef(new OpenTypeMathData(font));
     }
     ~OpenTypeMathData();
 

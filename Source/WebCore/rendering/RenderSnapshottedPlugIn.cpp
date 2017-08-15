@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,8 @@
 #include "RenderSnapshottedPlugIn.h"
 
 #include "CachedImage.h"
+#include "Chrome.h"
+#include "ChromeClient.h"
 #include "Cursor.h"
 #include "EventNames.h"
 #include "Filter.h"
@@ -41,7 +43,6 @@
 #include "PaintInfo.h"
 #include "Path.h"
 #include "PlatformMouseEvent.h"
-#include "RenderImageResource.h"
 #include "RenderIterator.h"
 #include "RenderView.h"
 #include <wtf/StackStats.h>
@@ -51,21 +52,15 @@ namespace WebCore {
 RenderSnapshottedPlugIn::RenderSnapshottedPlugIn(HTMLPlugInImageElement& element, RenderStyle&& style)
     : RenderEmbeddedObject(element, WTFMove(style))
     , m_snapshotResource(std::make_unique<RenderImageResource>())
+    , m_isPotentialMouseActivation(false)
 {
     m_snapshotResource->initialize(this);
 }
 
 RenderSnapshottedPlugIn::~RenderSnapshottedPlugIn()
 {
-    // Do not add any code here. Add it to willBeDestroyed() instead.
-}
-
-void RenderSnapshottedPlugIn::willBeDestroyed()
-{
     ASSERT(m_snapshotResource);
     m_snapshotResource->shutdown();
-
-    RenderEmbeddedObject::willBeDestroyed();
 }
 
 HTMLPlugInImageElement& RenderSnapshottedPlugIn::plugInImageElement() const
@@ -87,13 +82,13 @@ void RenderSnapshottedPlugIn::layout()
     view().frameView().addEmbeddedObjectToUpdate(*this);
 }
 
-void RenderSnapshottedPlugIn::updateSnapshot(Image* image)
+void RenderSnapshottedPlugIn::updateSnapshot(PassRefPtr<Image> image)
 {
     // Zero-size plugins will have no image.
     if (!image)
         return;
 
-    m_snapshotResource->setCachedImage(new CachedImage(image, page().sessionID()));
+    m_snapshotResource->setCachedImage(new CachedImage(image.get(), view().frameView().frame().page()->sessionID()));
     repaint();
 }
 
@@ -155,12 +150,12 @@ CursorDirective RenderSnapshottedPlugIn::getCursor(const LayoutPoint& point, Cur
     return RenderEmbeddedObject::getCursor(point, overrideCursor);
 }
 
-void RenderSnapshottedPlugIn::handleEvent(Event& event)
+void RenderSnapshottedPlugIn::handleEvent(Event* event)
 {
-    if (!is<MouseEvent>(event))
+    if (!is<MouseEvent>(*event))
         return;
 
-    auto& mouseEvent = downcast<MouseEvent>(event);
+    MouseEvent& mouseEvent = downcast<MouseEvent>(*event);
 
     // If we're a snapshotted plugin, we want to make sure we activate on
     // clicks even if the page is preventing our default behaviour. Otherwise

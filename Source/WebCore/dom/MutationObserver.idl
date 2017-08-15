@@ -34,8 +34,8 @@
     ImplementationLacksVTable,
 ] interface MutationObserver {
     [MayThrowException] void observe(Node target, optional MutationObserverInit options);
-    void disconnect();
     sequence<MutationRecord> takeRecords();
+    void disconnect();
 };
 
 dictionary MutationObserverInit {

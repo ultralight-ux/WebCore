@@ -222,6 +222,7 @@ RegisterSet RegisterSet::llintBaselineCalleeSaveRegisters()
     result.set(GPRInfo::regCS8);
     result.set(GPRInfo::regCS9);
 #elif CPU(MIPS)
+#elif CPU(SH4)
 #else
     UNREACHABLE_FOR_PLATFORM();
 #endif
@@ -257,6 +258,7 @@ RegisterSet RegisterSet::dfgCalleeSaveRegisters()
     result.set(GPRInfo::regCS8);
     result.set(GPRInfo::regCS9);
 #elif CPU(MIPS)
+#elif CPU(SH4)
 #else
     UNREACHABLE_FOR_PLATFORM();
 #endif

@@ -121,7 +121,7 @@ void CustomElementReactionQueue::enqueueElementUpgrade(Element& element)
 
 void CustomElementReactionQueue::enqueueElementUpgradeIfDefined(Element& element)
 {
-    ASSERT(element.isConnected());
+    ASSERT(element.inDocument());
     ASSERT(element.isCustomElementUpgradeCandidate());
     auto* window = element.document().domWindow();
     if (!window)
@@ -178,7 +178,7 @@ void CustomElementReactionQueue::enqueueAttributeChangedCallbackIfNeeded(Element
 void CustomElementReactionQueue::enqueuePostUpgradeReactions(Element& element)
 {
     ASSERT(element.isCustomElementUpgradeCandidate());
-    if (!element.hasAttributes() && !element.isConnected())
+    if (!element.hasAttributes() && !element.inDocument())
         return;
 
     auto* queue = element.reactionQueue();
@@ -191,7 +191,7 @@ void CustomElementReactionQueue::enqueuePostUpgradeReactions(Element& element)
         }
     }
 
-    if (element.isConnected() && queue->m_interface->hasConnectedCallback())
+    if (element.inDocument() && queue->m_interface->hasConnectedCallback())
         queue->m_items.append({CustomElementReactionQueueItem::Type::Connected});
 }
 

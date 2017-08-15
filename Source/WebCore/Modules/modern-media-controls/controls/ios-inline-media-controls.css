@@ -29,7 +29,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    height: var(--inline-controls-bar-height);
+    height: 50px;
 }
 
 .media-controls.ios.inline > .controls-bar:before {
@@ -41,12 +41,6 @@
     height: 100%;
     -webkit-appearance: media-controls-light-bar-background;
     will-change: transform;
-}
-
-:host(audio) .media-controls.ios.inline > .controls-bar:before,
-:host(.media-document.audio) .media-controls.ios.inline > .controls-bar:before {
-    -webkit-appearance: none;
-    background-color: rgb(212, 212, 212);
 }
 
 .media-controls.ios.inline .time-control {
@@ -83,6 +77,10 @@
     -webkit-mask-position-y: 10px;
 }
 
+.media-controls.ios.inline .scrubber.slider {
+    top: 23px;
+}
+
 .media-controls.ios.inline button.airplay {
     -webkit-mask-position-y: 13px;
 }
@@ -95,10 +93,9 @@
     -webkit-mask-position-y: 13px;
 }
 
-/* Labels */
+/* Time labels */
 
-.media-controls.ios.inline .time-label,
-.media-controls.ios.inline .status-label {
+.media-controls.ios.inline .time-label {
     top: 14.5px;
     color: black;
 }
@@ -106,18 +103,11 @@
 /* Scrubber */
 
 .media-controls.ios.inline .scrubber.slider {
-    top: 13px;
+    background-color: black;
 }
 
-.media-controls.ios.inline .scrubber.slider > div {
-    position: absolute;
-    top: 10px;
-    left: 2px;
-    right: 2px;
-    height: 3px;
-    border-radius: 1.5px;
-    background-color: rgba(0, 0, 0, 0.55);
-    mix-blend-mode: plus-darker;
+.media-controls.ios.inline .scrubber.slider > .fill {
+    background-color: white;
 }
 
 .media-controls.ios.inline .scrubber.slider > input::-webkit-slider-thumb {
@@ -130,5 +120,7 @@
     background-color: transparent;
     box-shadow: none;
     border: none;
-    -webkit-appearance: none !important;
 }
+
+
+

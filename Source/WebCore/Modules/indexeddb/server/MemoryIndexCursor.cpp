@@ -151,13 +151,13 @@ void MemoryIndexCursor::iterate(const IDBKeyData& key, const IDBKeyData& primary
         case IndexedDB::CursorDirection::Next:
             m_currentIterator = valueStore->find(m_currentKey, m_currentPrimaryKey);
             break;
-        case IndexedDB::CursorDirection::Nextunique:
+        case IndexedDB::CursorDirection::NextNoDuplicate:
             m_currentIterator = valueStore->find(m_currentKey, true);
             break;
         case IndexedDB::CursorDirection::Prev:
             m_currentIterator = valueStore->reverseFind(m_currentKey, m_currentPrimaryKey, m_info.duplicity());
             break;
-        case IndexedDB::CursorDirection::Prevunique:
+        case IndexedDB::CursorDirection::PrevNoDuplicate:
             m_currentIterator = valueStore->reverseFind(m_currentKey, m_info.duplicity(), true);
             break;
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,8 @@
 
 #if ENABLE(WEBGL2)
 
+#include "WebGLBuffer.h"
+#include "WebGLContextObject.h"
 #include "WebGLVertexArrayObjectBase.h"
 
 namespace WebCore {
@@ -35,11 +37,12 @@ class WebGL2RenderingContext;
 
 class WebGLVertexArrayObject final : public WebGLVertexArrayObjectBase {
 public:
-    static Ref<WebGLVertexArrayObject> create(WebGLRenderingContextBase&, Type);
+    static Ref<WebGLVertexArrayObject> create(WebGLRenderingContextBase&, VAOType);
     virtual ~WebGLVertexArrayObject();
 private:
-    WebGLVertexArrayObject(WebGLRenderingContextBase&, Type);
-    void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) final;
+    WebGLVertexArrayObject(WebGLRenderingContextBase&, VAOType);
+    bool isTransformFeedback() const { return true; }
+    void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
 };
 
 } // namespace WebCore

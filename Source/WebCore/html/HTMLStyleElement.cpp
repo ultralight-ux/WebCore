@@ -97,9 +97,9 @@ void HTMLStyleElement::finishParsingChildren()
 
 Node::InsertionNotificationRequest HTMLStyleElement::insertedInto(ContainerNode& insertionPoint)
 {
-    bool wasInDocument = isConnected();
+    bool wasInDocument = inDocument();
     auto result = HTMLElement::insertedInto(insertionPoint);
-    if (insertionPoint.isConnected() && !wasInDocument)
+    if (insertionPoint.inDocument() && !wasInDocument)
         m_styleSheetOwner.insertedIntoDocument(*this);
     return result;
 }
@@ -107,7 +107,7 @@ Node::InsertionNotificationRequest HTMLStyleElement::insertedInto(ContainerNode&
 void HTMLStyleElement::removedFrom(ContainerNode& insertionPoint)
 {
     HTMLElement::removedFrom(insertionPoint);
-    if (insertionPoint.isConnected() && !isConnected())
+    if (insertionPoint.inDocument() && !inDocument())
         m_styleSheetOwner.removedFromDocument(*this);
 }
 

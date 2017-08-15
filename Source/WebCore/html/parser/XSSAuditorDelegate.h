@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2013 Google, Inc. All Rights Reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,14 +27,13 @@
 
 #include "URL.h"
 #include <wtf/text/TextPosition.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class Document;
 class FormData;
 
-// FIXME: Should change into a struct.
-// FIXME: Should return by value instead of using a unique_ptr.
 class XSSInfo {
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -53,6 +51,7 @@ public:
 };
 
 class XSSAuditorDelegate {
+    WTF_MAKE_NONCOPYABLE(XSSAuditorDelegate);
 public:
     explicit XSSAuditorDelegate(Document&);
 
@@ -60,10 +59,10 @@ public:
     void setReportURL(const URL& url) { m_reportURL = url; }
 
 private:
-    Ref<FormData> generateViolationReport(const XSSInfo&);
+    PassRefPtr<FormData> generateViolationReport(const XSSInfo&);
 
     Document& m_document;
-    bool m_didSendNotifications { false };
+    bool m_didSendNotifications;
     URL m_reportURL;
 };
 

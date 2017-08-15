@@ -32,7 +32,6 @@
 
 #if ENABLE(MEDIA_SOURCE)
 
-#include "ContextDestructionObserver.h"
 #include "EventTarget.h"
 #include "GenericEventQueue.h"
 #include "ScriptWrappable.h"
@@ -43,7 +42,7 @@ namespace WebCore {
 
 class SourceBuffer;
 
-class SourceBufferList final : public RefCounted<SourceBufferList>, public EventTargetWithInlineData, public ContextDestructionObserver {
+class SourceBufferList final : public RefCounted<SourceBufferList>, public EventTargetWithInlineData {
 public:
     static Ref<SourceBufferList> create(ScriptExecutionContext* context)
     {
@@ -64,8 +63,8 @@ public:
     Vector<RefPtr<SourceBuffer>>::iterator end() { return m_list.end(); }
 
     // EventTarget interface
-    EventTargetInterface eventTargetInterface() const final { return SourceBufferListEventTargetInterfaceType; }
-    ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
+    EventTargetInterface eventTargetInterface() const override { return SourceBufferListEventTargetInterfaceType; }
+    ScriptExecutionContext* scriptExecutionContext() const override { return m_scriptExecutionContext; }
 
     using RefCounted<SourceBufferList>::ref;
     using RefCounted<SourceBufferList>::deref;
@@ -78,6 +77,7 @@ private:
     void refEventTarget() override { ref(); }
     void derefEventTarget() override { deref(); }
 
+    ScriptExecutionContext* m_scriptExecutionContext;
     GenericEventQueue m_asyncEventQueue;
 
     Vector<RefPtr<SourceBuffer>> m_list;

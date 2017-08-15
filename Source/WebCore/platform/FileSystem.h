@@ -64,6 +64,8 @@ namespace WebCore {
 // PlatformModule
 #if OS(WINDOWS)
 typedef HMODULE PlatformModule;
+#elif PLATFORM(EFL)
+typedef Eina_Module* PlatformModule;
 #elif USE(GLIB)
 typedef GModule* PlatformModule;
 #elif USE(CF)
@@ -96,7 +98,7 @@ typedef unsigned PlatformModuleVersion;
 #endif
 
 // PlatformFileHandle
-#if USE(GLIB) && !PLATFORM(WIN)
+#if USE(GLIB) && !PLATFORM(EFL) && !PLATFORM(WIN)
 typedef GFileIOStream* PlatformFileHandle;
 const PlatformFileHandle invalidPlatformFileHandle = 0;
 #elif OS(WINDOWS)
@@ -146,7 +148,7 @@ WEBCORE_EXPORT String directoryName(const String&);
 WEBCORE_EXPORT bool getVolumeFreeSpace(const String&, uint64_t&);
 WEBCORE_EXPORT std::optional<int32_t> getFileDeviceId(const CString&);
 
-WEBCORE_EXPORT void setMetadataURL(const String& path, const String& urlString);
+WEBCORE_EXPORT void setMetadataURL(String& URLString, const String& referrer, const String& path);
 
 bool canExcludeFromBackup(); // Returns true if any file can ever be excluded from backup.
 bool excludeFromBackup(const String&); // Returns true if successful.
@@ -190,7 +192,7 @@ bool unloadModule(PlatformModule);
 
 // Encode a string for use within a file name.
 WEBCORE_EXPORT String encodeForFileName(const String&);
-WEBCORE_EXPORT String decodeFromFilename(const String&);
+String decodeFromFilename(const String&);
 
 WEBCORE_EXPORT bool filesHaveSameVolume(const String&, const String&);
 
@@ -198,7 +200,7 @@ WEBCORE_EXPORT bool filesHaveSameVolume(const String&, const String&);
 RetainPtr<CFURLRef> pathAsURL(const String&);
 #endif
 
-#if PLATFORM(GTK) || PLATFORM(WPE)
+#if PLATFORM(GTK)
 String filenameForDisplay(const String&);
 CString applicationDirectoryPath();
 CString sharedResourcesPath();

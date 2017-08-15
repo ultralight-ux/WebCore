@@ -148,7 +148,7 @@ void ColorInputType::setValue(const String& value, bool valueChanged, TextFieldE
 
 void ColorInputType::handleDOMActivateEvent(Event& event)
 {
-    if (element().isDisabledFormControl() || !element().renderer())
+    if (element().isDisabledOrReadOnly() || !element().renderer())
         return;
 
     if (!ScriptController::processingUserGesture())
@@ -156,7 +156,7 @@ void ColorInputType::handleDOMActivateEvent(Event& event)
 
     if (Chrome* chrome = this->chrome()) {
         if (!m_chooser)
-            m_chooser = chrome->createColorChooser(*this, valueAsColor());
+            m_chooser = chrome->createColorChooser(this, valueAsColor());
         else
             m_chooser->reattachColorChooser(valueAsColor());
     }
@@ -186,7 +186,7 @@ bool ColorInputType::shouldResetOnDocumentActivation()
 
 void ColorInputType::didChooseColor(const Color& color)
 {
-    if (element().isDisabledFormControl() || color == valueAsColor())
+    if (element().isDisabledOrReadOnly() || color == valueAsColor())
         return;
     EventQueueScope scope;
     element().setValueFromRenderer(color.serialized());

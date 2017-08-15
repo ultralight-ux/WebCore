@@ -18,10 +18,13 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#pragma once
+#ifndef Filter_h
+#define Filter_h
 
+#include "FloatRect.h"
 #include "FloatSize.h"
 #include "ImageBuffer.h"
+#include <wtf/RefCounted.h>
 
 namespace WebCore {
 
@@ -29,6 +32,7 @@ class Filter : public RefCounted<Filter> {
 public:
     Filter(const AffineTransform& absoluteTransform, float filterScale = 1)
         : m_absoluteTransform(absoluteTransform)
+        , m_renderingMode(Unaccelerated)
         , m_filterScale(filterScale)
     { }
     virtual ~Filter() { }
@@ -56,18 +60,14 @@ public:
     virtual FloatRect sourceImageRect() const = 0;
     virtual FloatRect filterRegion() const = 0;
 
-protected:
-    explicit Filter(const FloatSize& filterResolution)
-        : m_filterResolution(filterResolution)
-    {
-    }
-
 private:
     std::unique_ptr<ImageBuffer> m_sourceImage;
     FloatSize m_filterResolution;
     AffineTransform m_absoluteTransform;
-    RenderingMode m_renderingMode { Unaccelerated };
-    float m_filterScale { 1 };
+    RenderingMode m_renderingMode;
+    float m_filterScale;
 };
 
 } // namespace WebCore
+
+#endif // Filter_h

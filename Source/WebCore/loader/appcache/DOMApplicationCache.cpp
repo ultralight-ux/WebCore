@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008, 2009 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,84 +29,111 @@
 #include "ApplicationCacheHost.h"
 #include "Document.h"
 #include "DocumentLoader.h"
+#include "Event.h"
+#include "EventListener.h"
+#include "EventNames.h"
 #include "ExceptionCode.h"
 #include "Frame.h"
+#include "FrameLoader.h"
 
 namespace WebCore {
 
-DOMApplicationCache::DOMApplicationCache(Frame& frame)
-    : DOMWindowProperty(&frame)
+DOMApplicationCache::DOMApplicationCache(Frame* frame)
+    : DOMWindowProperty(frame)
 {
-    if (auto* host = applicationCacheHost())
-        host->setDOMApplicationCache(this);
+    ApplicationCacheHost* cacheHost = applicationCacheHost();
+    if (cacheHost)
+        cacheHost->setDOMApplicationCache(this);
 }
 
 void DOMApplicationCache::disconnectFrameForDocumentSuspension()
 {
-    if (auto* host = applicationCacheHost())
-        host->setDOMApplicationCache(nullptr);
+    if (ApplicationCacheHost* cacheHost = applicationCacheHost())
+        cacheHost->setDOMApplicationCache(nullptr);
     DOMWindowProperty::disconnectFrameForDocumentSuspension();
 }
 
 void DOMApplicationCache::reconnectFrameFromDocumentSuspension(Frame* frame)
 {
     DOMWindowProperty::reconnectFrameFromDocumentSuspension(frame);
-    if (auto* host = applicationCacheHost())
-        host->setDOMApplicationCache(this);
+    if (ApplicationCacheHost* cacheHost = applicationCacheHost())
+        cacheHost->setDOMApplicationCache(this);
 }
 
 void DOMApplicationCache::willDestroyGlobalObjectInFrame()
 {
-    if (auto* host = applicationCacheHost())
-        host->setDOMApplicationCache(nullptr);
+    if (ApplicationCacheHost* cacheHost = applicationCacheHost())
+        cacheHost->setDOMApplicationCache(nullptr);
     DOMWindowProperty::willDestroyGlobalObjectInFrame();
 }
 
 ApplicationCacheHost* DOMApplicationCache::applicationCacheHost() const
 {
-    if (!m_frame)
+    if (!m_frame || !m_frame->loader().documentLoader())
         return nullptr;
-    auto* documentLoader = m_frame->loader().documentLoader();
-    if (!documentLoader)
-        return nullptr;
-    return &documentLoader->applicationCacheHost();
+    return m_frame->loader().documentLoader()->applicationCacheHost();
 }
 
 unsigned short DOMApplicationCache::status() const
 {
-    auto* host = applicationCacheHost();
-    if (!host)
+    ApplicationCacheHost* cacheHost = applicationCacheHost();
+    if (!cacheHost)
         return ApplicationCacheHost::UNCACHED;
-    return host->status();
+    return cacheHost->status();
 }
 
 ExceptionOr<void> DOMApplicationCache::update()
 {
-    auto* host = applicationCacheHost();
-    if (!host || !host->update())
+    auto* cacheHost = applicationCacheHost();
+    if (!cacheHost || !cacheHost->update())
         return Exception { INVALID_STATE_ERR };
     return { };
 }
 
 ExceptionOr<void> DOMApplicationCache::swapCache()
 {
-    auto* host = applicationCacheHost();
-    if (!host || !host->swapCache())
+    auto* cacheHost = applicationCacheHost();
+    if (!cacheHost || !cacheHost->swapCache())
         return Exception { INVALID_STATE_ERR };
     return { };
 }
 
 void DOMApplicationCache::abort()
 {
-    if (auto* host = applicationCacheHost())
-        host->abort();
+    ApplicationCacheHost* cacheHost = applicationCacheHost();
+    if (cacheHost)
+        cacheHost->abort();
 }
 
 ScriptExecutionContext* DOMApplicationCache::scriptExecutionContext() const
 {
-    if (!m_frame)
-        return nullptr;
-    return m_frame->document();
+    if (m_frame)
+        return m_frame->document();
+    return nullptr;
+}
+
+const AtomicString& DOMApplicationCache::toEventType(ApplicationCacheHost::EventID id)
+{
+    switch (id) {
+    case ApplicationCacheHost::CHECKING_EVENT:
+        return eventNames().checkingEvent;
+    case ApplicationCacheHost::ERROR_EVENT:
+        return eventNames().errorEvent;
+    case ApplicationCacheHost::NOUPDATE_EVENT:
+        return eventNames().noupdateEvent;
+    case ApplicationCacheHost::DOWNLOADING_EVENT:
+        return eventNames().downloadingEvent;
+    case ApplicationCacheHost::PROGRESS_EVENT:
+        return eventNames().progressEvent;
+    case ApplicationCacheHost::UPDATEREADY_EVENT:
+        return eventNames().updatereadyEvent;
+    case ApplicationCacheHost::CACHED_EVENT:
+        return eventNames().cachedEvent;
+    case ApplicationCacheHost::OBSOLETE_EVENT:            
+        return eventNames().obsoleteEvent;
+    }
+    ASSERT_NOT_REACHED();
+    return eventNames().errorEvent;
 }
 
 } // namespace WebCore

@@ -34,15 +34,15 @@
 namespace WebCore {
 
 class CachedScript;
+class Element;
 class PendingScriptClient;
-class ScriptElement;
 
 // A container for scripts which may be loaded and executed.
 // This can hold LoadableScript and non external inline script.
 class PendingScript final : public RefCounted<PendingScript>, public LoadableScriptClient {
 public:
-    static Ref<PendingScript> create(ScriptElement&, LoadableScript&);
-    static Ref<PendingScript> create(ScriptElement&, TextPosition scriptStartPosition);
+    static Ref<PendingScript> create(Element&, LoadableScript&);
+    static Ref<PendingScript> create(Element&, TextPosition scriptStartPosition);
 
     virtual ~PendingScript();
 
@@ -51,8 +51,8 @@ public:
 
     bool watchingForLoad() const { return needsLoading() && m_client; }
 
-    ScriptElement& element() { return m_element.get(); }
-    const ScriptElement& element() const { return m_element.get(); }
+    Element& element() { return m_element.get(); }
+    const Element& element() const { return m_element.get(); }
 
     LoadableScript* loadableScript() const;
     bool needsLoading() const { return loadableScript(); }
@@ -62,24 +62,19 @@ public:
 
     void notifyFinished(LoadableScript&) override;
 
-    void setClient(PendingScriptClient&);
+    void setClient(PendingScriptClient*);
     void clearClient();
 
 private:
-    PendingScript(ScriptElement&, LoadableScript&);
-    PendingScript(ScriptElement&, TextPosition startingPosition);
+    PendingScript(Element&, LoadableScript&);
+    PendingScript(Element&, TextPosition startingPosition);
 
     void notifyClientFinished();
 
-    Ref<ScriptElement> m_element;
+    Ref<Element> m_element;
     TextPosition m_startingPosition; // Only used for inline script tags.
     RefPtr<LoadableScript> m_loadableScript;
     PendingScriptClient* m_client { nullptr };
 };
-
-inline LoadableScript* PendingScript::loadableScript() const
-{
-    return m_loadableScript.get();
-}
 
 }

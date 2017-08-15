@@ -40,9 +40,9 @@ typedef struct _GstSample GstSample;
 
 class InbandTextTrackPrivateGStreamer : public InbandTextTrackPrivate, public TrackPrivateBaseGStreamer {
 public:
-    static Ref<InbandTextTrackPrivateGStreamer> create(gint index, GRefPtr<GstPad> pad)
+    static PassRefPtr<InbandTextTrackPrivateGStreamer> create(gint index, GRefPtr<GstPad> pad)
     {
-        return adoptRef(*new InbandTextTrackPrivateGStreamer(index, pad));
+        return adoptRef(new InbandTextTrackPrivateGStreamer(index, pad));
     }
 
     void disconnect() override;

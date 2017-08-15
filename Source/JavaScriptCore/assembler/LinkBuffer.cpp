@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +32,7 @@
 #include "JITCode.h"
 #include "JSCInlines.h"
 #include "Options.h"
+#include "VM.h"
 #include <wtf/CompilationThread.h>
 
 namespace JSC {
@@ -49,7 +50,7 @@ LinkBuffer::CodeRef LinkBuffer::finalizeCodeWithoutDisassembly()
     
     ASSERT(m_didAllocate);
     if (m_executableMemory)
-        return CodeRef(*m_executableMemory);
+        return CodeRef(m_executableMemory);
     
     return CodeRef::createSelfManagedCodeRef(MacroAssemblerCodePtr(m_code));
 }
@@ -195,9 +196,6 @@ void LinkBuffer::copyCompactAndLinkCode(MacroAssembler& macroAssembler, void* ow
 
 void LinkBuffer::linkCode(MacroAssembler& macroAssembler, void* ownerUID, JITCompilationEffort effort)
 {
-    // Ensure that the end of the last invalidation point does not extend beyond the end of the buffer.
-    macroAssembler.label();
-
 #if !ENABLE(BRANCH_COMPACTION)
 #if defined(ASSEMBLER_HAS_CONSTANT_POOL) && ASSEMBLER_HAS_CONSTANT_POOL
     macroAssembler.m_assembler.buffer().flushConstantPool(false);
@@ -236,12 +234,8 @@ void LinkBuffer::allocate(MacroAssembler& macroAssembler, void* ownerUID, JITCom
         return;
     }
     
-    while (initialSize % jitAllocationGranule) {
-        macroAssembler.breakpoint();
-        initialSize = macroAssembler.m_assembler.codeSize();
-    }
-    
-    m_executableMemory = ExecutableAllocator::singleton().allocate(initialSize, ownerUID, effort);
+    ASSERT(m_vm != nullptr);
+    m_executableMemory = m_vm->executableAllocator.allocate(*m_vm, initialSize, ownerUID, effort);
     if (!m_executableMemory)
         return;
     m_code = m_executableMemory->start();

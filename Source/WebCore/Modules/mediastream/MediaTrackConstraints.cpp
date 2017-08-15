@@ -27,7 +27,7 @@
 
 #if ENABLE(MEDIA_STREAM)
 
-#include "MediaConstraints.h"
+#include "MediaConstraintsImpl.h"
 
 namespace WebCore {
 
@@ -190,13 +190,9 @@ static Vector<MediaTrackConstraintSetMap> convertAdvancedToInternalForm(const st
     return convertAdvancedToInternalForm(optionalVector.value());
 }
 
-MediaConstraints createMediaConstraints(const MediaTrackConstraints& trackConstraints)
+Ref<MediaConstraintsImpl> createMediaConstraintsImpl(const MediaTrackConstraints& constraints)
 {
-    MediaConstraints constraints;
-    constraints.mandatoryConstraints = convertToInternalForm(ConstraintSetType::Mandatory, trackConstraints);
-    constraints.advancedConstraints = convertAdvancedToInternalForm(trackConstraints.advanced);
-    constraints.isValid = true;
-    return constraints;
+    return MediaConstraintsImpl::create(convertToInternalForm(ConstraintSetType::Mandatory, constraints), convertAdvancedToInternalForm(constraints.advanced), true);
 }
 
 }

@@ -85,7 +85,7 @@ const String& WebKitMediaKeySession::sessionId() const
 void WebKitMediaKeySession::generateKeyRequest(const String& mimeType, Ref<Uint8Array>&& initData)
 {
     m_pendingKeyRequests.append({ mimeType, WTFMove(initData) });
-    m_keyRequestTimer.startOneShot(0_s);
+    m_keyRequestTimer.startOneShot(0);
 }
 
 void WebKitMediaKeySession::keyRequestTimerFired()
@@ -142,7 +142,7 @@ ExceptionOr<void> WebKitMediaKeySession::update(Ref<Uint8Array>&& key)
 
     // 2. Schedule a task to handle the call, providing key.
     m_pendingKeys.append(WTFMove(key));
-    m_addKeyTimer.startOneShot(0_s);
+    m_addKeyTimer.startOneShot(0);
 
     return { };
 }
@@ -223,11 +223,19 @@ String WebKitMediaKeySession::mediaKeysStorageDirectory() const
     if (!document)
         return emptyString();
 
-    auto storageDirectory = document->settings().mediaKeysStorageDirectory();
+    auto* settings = document->settings();
+    if (!settings)
+        return emptyString();
+
+    auto storageDirectory = settings->mediaKeysStorageDirectory();
     if (storageDirectory.isEmpty())
         return emptyString();
 
-    return pathByAppendingComponent(storageDirectory, SecurityOriginData::fromSecurityOrigin(document->securityOrigin()).databaseIdentifier());
+    auto* origin = document->securityOrigin();
+    if (!origin)
+        return emptyString();
+
+    return pathByAppendingComponent(storageDirectory, SecurityOriginData::fromSecurityOrigin(*origin).databaseIdentifier());
 }
 
 bool WebKitMediaKeySession::hasPendingActivity() const

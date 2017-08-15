@@ -154,7 +154,7 @@ void RenderView::scheduleLazyRepaint(RenderBox& renderer)
     renderer.setRenderBoxNeedsLazyRepaint(true);
     m_renderersNeedingLazyRepaint.add(&renderer);
     if (!m_lazyRepaintTimer.isActive())
-        m_lazyRepaintTimer.startOneShot(0_s);
+        m_lazyRepaintTimer.startOneShot(0);
 }
 
 void RenderView::unscheduleLazyRepaint(RenderBox& renderer)
@@ -169,8 +169,11 @@ void RenderView::unscheduleLazyRepaint(RenderBox& renderer)
 
 void RenderView::lazyRepaintTimerFired()
 {
+    bool shouldRepaint = document().pageCacheState() == Document::NotInPageCache;
+
     for (auto& renderer : m_renderersNeedingLazyRepaint) {
-        renderer->repaint();
+        if (shouldRepaint)
+            renderer->repaint();
         renderer->setRenderBoxNeedsLazyRepaint(false);
     }
     m_renderersNeedingLazyRepaint.clear();
@@ -407,7 +410,7 @@ LayoutUnit RenderView::clientLogicalWidthForFixedPosition() const
         return isHorizontalWritingMode() ? frameView().customFixedPositionLayoutRect().width() : frameView().customFixedPositionLayoutRect().height();
 #endif
 
-    if (settings().visualViewportEnabled())
+    if (frameView().frame().settings().visualViewportEnabled())
         return isHorizontalWritingMode() ? frameView().layoutViewportRect().width() : frameView().layoutViewportRect().height();
 
     return clientLogicalWidth();
@@ -424,7 +427,7 @@ LayoutUnit RenderView::clientLogicalHeightForFixedPosition() const
         return isHorizontalWritingMode() ? frameView().customFixedPositionLayoutRect().height() : frameView().customFixedPositionLayoutRect().width();
 #endif
 
-    if (settings().visualViewportEnabled())
+    if (frameView().frame().settings().visualViewportEnabled())
         return isHorizontalWritingMode() ? frameView().layoutViewportRect().height() : frameView().layoutViewportRect().width();
 
     return clientLogicalHeight();
@@ -591,7 +594,7 @@ void RenderView::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint&)
         rootObscuresBackground = rendererObscuresBackground(*rootRenderer);
     }
 
-    bool backgroundShouldExtendBeyondPage = settings().backgroundShouldExtendBeyondPage();
+    bool backgroundShouldExtendBeyondPage = frameView().frame().settings().backgroundShouldExtendBeyondPage();
     compositor().setRootExtendedBackgroundColor(backgroundShouldExtendBeyondPage ? frameView().documentBackgroundColor() : Color());
 
     Page* page = document().page();
@@ -1233,18 +1236,6 @@ void RenderView::pushLayoutState(RenderObject& root)
     pushLayoutStateForCurrentFlowThread(root);
 }
 
-bool RenderView::pushLayoutStateForPaginationIfNeeded(RenderBlockFlow& layoutRoot)
-{
-    if (m_layoutState)
-        return false;
-    m_layoutState = std::make_unique<LayoutState>(layoutRoot);
-    m_layoutState->m_isPaginated = true;
-    // This is just a flag for known page height (see RenderBlockFlow::checkForPaginationLogicalHeightChange).
-    m_layoutState->m_pageLogicalHeight = 1;
-    pushLayoutStateForCurrentFlowThread(layoutRoot);
-    return true;
-}
-
 IntSize RenderView::viewportSizeForCSSViewportUnits() const
 {
     return frameView().viewportSizeForCSSViewportUnits();
@@ -1391,22 +1382,18 @@ void RenderView::updateVisibleViewportRect(const IntRect& visibleRect)
 {
     resumePausedImageAnimationsIfNeeded(visibleRect);
 
-    for (auto* renderer : m_visibleInViewportRenderers) {
-        auto state = visibleRect.intersects(enclosingIntRect(renderer->absoluteClippedOverflowRect())) ? VisibleInViewportState::Yes : VisibleInViewportState::No;
-        renderer->setVisibleInViewportState(state);
-    }
+    for (auto* renderer : m_visibleInViewportRenderers)
+        renderer->visibleInViewportStateChanged(visibleRect.intersects(enclosingIntRect(renderer->absoluteClippedOverflowRect())) ? RenderElement::VisibleInViewport : RenderElement::NotVisibleInViewport);
 }
 
-void RenderView::addRendererWithPausedImageAnimations(RenderElement& renderer, CachedImage& image)
+void RenderView::addRendererWithPausedImageAnimations(RenderElement& renderer)
 {
-    ASSERT(!renderer.hasPausedImageAnimations() || m_renderersWithPausedImageAnimation.contains(&renderer));
-
+    if (renderer.hasPausedImageAnimations()) {
+        ASSERT(m_renderersWithPausedImageAnimation.contains(&renderer));
+        return;
+    }
     renderer.setHasPausedImageAnimations(true);
-    auto& images = m_renderersWithPausedImageAnimation.ensure(&renderer, [] {
-        return Vector<CachedImage*>();
-    }).iterator->value;
-    if (!images.contains(&image))
-        images.append(&image);
+    m_renderersWithPausedImageAnimation.add(&renderer);
 }
 
 void RenderView::removeRendererWithPausedImageAnimations(RenderElement& renderer)
@@ -1418,35 +1405,15 @@ void RenderView::removeRendererWithPausedImageAnimations(RenderElement& renderer
     m_renderersWithPausedImageAnimation.remove(&renderer);
 }
 
-void RenderView::removeRendererWithPausedImageAnimations(RenderElement& renderer, CachedImage& image)
-{
-    ASSERT(renderer.hasPausedImageAnimations());
-
-    auto it = m_renderersWithPausedImageAnimation.find(&renderer);
-    ASSERT(it != m_renderersWithPausedImageAnimation.end());
-
-    auto& images = it->value;
-    if (!images.contains(&image))
-        return;
-
-    if (images.size() == 1)
-        removeRendererWithPausedImageAnimations(renderer);
-    else
-        images.removeFirst(&image);
-}
-
 void RenderView::resumePausedImageAnimationsIfNeeded(IntRect visibleRect)
 {
-    Vector<std::pair<RenderElement*, CachedImage*>, 10> toRemove;
-    for (auto& it : m_renderersWithPausedImageAnimation) {
-        auto* renderer = it.key;
-        for (auto* image : it.value) {
-            if (renderer->repaintForPausedImageAnimationsIfNeeded(visibleRect, *image))
-                toRemove.append(std::make_pair(renderer, image));
-        }
+    Vector<RenderElement*, 10> toRemove;
+    for (auto* renderer : m_renderersWithPausedImageAnimation) {
+        if (renderer->repaintForPausedImageAnimationsIfNeeded(visibleRect))
+            toRemove.append(renderer);
     }
-    for (auto& pair : toRemove)
-        removeRendererWithPausedImageAnimations(*pair.first, *pair.second);
+    for (auto& renderer : toRemove)
+        removeRendererWithPausedImageAnimations(*renderer);
 }
 
 RenderView::RepaintRegionAccumulator::RepaintRegionAccumulator(RenderView* view)
@@ -1476,7 +1443,7 @@ RenderView::RepaintRegionAccumulator::~RepaintRegionAccumulator()
 unsigned RenderView::pageNumberForBlockProgressionOffset(int offset) const
 {
     int columnNumber = 0;
-    const Pagination& pagination = page().pagination();
+    const Pagination& pagination = frameView().frame().page()->pagination();
     if (pagination.mode == Pagination::Unpaginated)
         return columnNumber;
     
@@ -1501,7 +1468,7 @@ unsigned RenderView::pageNumberForBlockProgressionOffset(int offset) const
 
 unsigned RenderView::pageCount() const
 {
-    const Pagination& pagination = page().pagination();
+    const Pagination& pagination = frameView().frame().page()->pagination();
     if (pagination.mode == Pagination::Unpaginated)
         return 0;
     
@@ -1512,14 +1479,14 @@ unsigned RenderView::pageCount() const
 }
 
 #if ENABLE(CSS_SCROLL_SNAP)
-void RenderView::registerBoxWithScrollSnapPositions(const RenderBox& box)
+void RenderView::registerBoxWithScrollSnapCoordinates(const RenderBox& box)
 {
-    m_boxesWithScrollSnapPositions.add(&box);
+    m_boxesWithScrollSnapCoordinates.add(&box);
 }
 
-void RenderView::unregisterBoxWithScrollSnapPositions(const RenderBox& box)
+void RenderView::unregisterBoxWithScrollSnapCoordinates(const RenderBox& box)
 {
-    m_boxesWithScrollSnapPositions.remove(&box);
+    m_boxesWithScrollSnapCoordinates.remove(&box);
 }
 #endif
 

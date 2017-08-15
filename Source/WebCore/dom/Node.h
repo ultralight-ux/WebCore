@@ -61,6 +61,7 @@ class RenderStyle;
 class SVGQualifiedName;
 class ShadowRoot;
 class TouchEvent;
+class UIRequestEvent;
 
 using NodeOrString = Variant<RefPtr<Node>, String>;
 
@@ -338,7 +339,7 @@ public:
     {
         return computeEditability(treatment, ShouldUpdateStyle::DoNotUpdate) != Editability::ReadOnly;
     }
-    // FIXME: Replace every use of this function by helpers in Editing.h
+    // FIXME: Replace every use of this function by helpers in htmlediting.h
     bool hasRichlyEditableStyle() const
     {
         return computeEditability(UserSelectAllIsAlwaysNonEditable, ShouldUpdateStyle::DoNotUpdate) == Editability::CanEditRichly;
@@ -372,14 +373,14 @@ public:
     static ptrdiff_t treeScopeMemoryOffset() { return OBJECT_OFFSETOF(Node, m_treeScope); }
 
     // Returns true if this node is associated with a document and is in its associated document's
-    // node tree, false otherwise (https://dom.spec.whatwg.org/#connected).
-    bool isConnected() const
+    // node tree, false otherwise.
+    bool inDocument() const 
     { 
-        return getFlag(IsConnectedFlag);
+        return getFlag(InDocumentFlag);
     }
     bool isInUserAgentShadowTree() const;
     bool isInShadowTree() const { return getFlag(IsInShadowTreeFlag); }
-    bool isInTreeScope() const { return getFlag(static_cast<NodeFlags>(IsConnectedFlag | IsInShadowTreeFlag)); }
+    bool isInTreeScope() const { return getFlag(static_cast<NodeFlags>(InDocumentFlag | IsInShadowTreeFlag)); }
 
     bool isDocumentTypeNode() const { return nodeType() == DOCUMENT_TYPE_NODE; }
     virtual bool childTypeAllowed(NodeType) const { return false; }
@@ -442,7 +443,7 @@ public:
     // dispatching.
     //
     // WebKit notifies this callback regardless if the subtree of the node is a document tree or a floating subtree.
-    // Implementation can determine the type of subtree by seeing insertionPoint->isConnected().
+    // Implementation can determine the type of subtree by seeing insertionPoint->inDocument().
     // For a performance reason, notifications are delivered only to ContainerNode subclasses if the insertionPoint is out of document.
     //
     // There is another callback named finishedInsertingSubtree(), which is called after all descendants are notified.
@@ -474,8 +475,7 @@ public:
     void showTreeForThisAcrossFrame() const;
 #endif // ENABLE(TREE_DEBUGGING)
 
-    void invalidateNodeListAndCollectionCachesInAncestors();
-    void invalidateNodeListAndCollectionCachesInAncestorsForAttribute(const QualifiedName& attrName);
+    void invalidateNodeListAndCollectionCachesInAncestors(const QualifiedName* attrName = nullptr, Element* attributeOwnerElement = nullptr);
     NodeListsNodeData* nodeLists();
     void clearNodeLists();
 
@@ -510,6 +510,10 @@ public:
 #if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
     bool dispatchTouchEvent(TouchEvent&);
 #endif
+#if ENABLE(INDIE_UI)
+    bool dispatchUIRequestEvent(UIRequestEvent&);
+#endif
+
     bool dispatchBeforeLoadEvent(const String& sourceURL);
 
     void dispatchInputEvent();
@@ -532,11 +536,11 @@ public:
     EventTargetData* eventTargetDataConcurrently() final;
     EventTargetData& ensureEventTargetData() final;
 
-    HashMap<MutationObserver*, MutationRecordDeliveryOptions> registeredMutationObservers(MutationObserver::MutationType, const QualifiedName* attributeName);
-    void registerMutationObserver(MutationObserver&, MutationObserverOptions, const HashSet<AtomicString>& attributeFilter);
-    void unregisterMutationObserver(MutationObserverRegistration&);
-    void registerTransientMutationObserver(MutationObserverRegistration&);
-    void unregisterTransientMutationObserver(MutationObserverRegistration&);
+    void getRegisteredMutationObserversOfType(HashMap<MutationObserver*, MutationRecordDeliveryOptions>&, MutationObserver::MutationType, const QualifiedName* attributeName);
+    void registerMutationObserver(MutationObserver*, MutationObserverOptions, const HashSet<AtomicString>& attributeFilter);
+    void unregisterMutationObserver(MutationObserverRegistration*);
+    void registerTransientMutationObserver(MutationObserverRegistration*);
+    void unregisterTransientMutationObserver(MutationObserverRegistration*);
     void notifyMutationObserversNodeWillDetach();
 
     WEBCORE_EXPORT void textRects(Vector<IntRect>&) const;
@@ -574,7 +578,7 @@ protected:
         IsHTMLFlag = 1 << 4,
         IsSVGFlag = 1 << 5,
         ChildNeedsStyleRecalcFlag = 1 << 7,
-        IsConnectedFlag = 1 << 8,
+        InDocumentFlag = 1 << 8,
         IsLinkFlag = 1 << 9,
         IsUserActionElement = 1 << 10,
         HasRareDataFlag = 1 << 11,
@@ -618,13 +622,13 @@ protected:
         CreateText = DefaultNodeFlags | IsTextFlag,
         CreateContainer = DefaultNodeFlags | IsContainerFlag, 
         CreateElement = CreateContainer | IsElementFlag, 
-        CreatePseudoElement =  CreateElement | IsConnectedFlag,
+        CreatePseudoElement =  CreateElement | InDocumentFlag,
         CreateShadowRoot = CreateContainer | IsDocumentFragmentFlag | IsInShadowTreeFlag,
         CreateDocumentFragment = CreateContainer | IsDocumentFragmentFlag,
         CreateStyledElement = CreateElement | IsStyledElementFlag, 
         CreateHTMLElement = CreateStyledElement | IsHTMLFlag,
         CreateSVGElement = CreateStyledElement | IsSVGFlag | HasCustomStyleResolveCallbacksFlag,
-        CreateDocument = CreateContainer | IsConnectedFlag,
+        CreateDocument = CreateContainer | InDocumentFlag,
         CreateEditingText = CreateText | IsEditingTextOrUndefinedCustomElementFlag,
         CreateMathMLElement = CreateStyledElement | IsMathMLFlag
     };
@@ -762,7 +766,7 @@ inline void* Node::opaqueRoot() const
 {
     // FIXME: Possible race?
     // https://bugs.webkit.org/show_bug.cgi?id=165713
-    if (isConnected())
+    if (inDocument())
         return &document();
     return opaqueRootSlow();
 }

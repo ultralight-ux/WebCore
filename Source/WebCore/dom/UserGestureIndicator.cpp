@@ -27,7 +27,6 @@
 #include "UserGestureIndicator.h"
 
 #include "Document.h"
-#include "ResourceLoadObserver.h"
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -55,11 +54,8 @@ UserGestureIndicator::UserGestureIndicator(std::optional<ProcessingUserGestureSt
     if (state)
         currentToken() = UserGestureToken::create(state.value());
 
-    if (document && currentToken()->processingUserGesture()) {
-        document->updateLastHandledUserGestureTimestamp(MonotonicTime::now());
-        ResourceLoadObserver::sharedObserver().logUserInteractionWithReducedTimeResolution(*document);
-        document->topDocument().setUserDidInteractWithPage(true);
-    }
+    if (document && currentToken()->processingUserGesture())
+        document->topDocument().updateLastHandledUserGestureTimestamp();
 }
 
 UserGestureIndicator::UserGestureIndicator(RefPtr<UserGestureToken> token)

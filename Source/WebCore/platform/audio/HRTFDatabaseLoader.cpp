@@ -45,17 +45,18 @@ static HashMap<double, HRTFDatabaseLoader*>& loaderMap()
     return loaderMap;
 }
 
-Ref<HRTFDatabaseLoader> HRTFDatabaseLoader::createAndLoadAsynchronouslyIfNecessary(float sampleRate)
+PassRefPtr<HRTFDatabaseLoader> HRTFDatabaseLoader::createAndLoadAsynchronouslyIfNecessary(float sampleRate)
 {
     ASSERT(isMainThread());
 
-    if (RefPtr<HRTFDatabaseLoader> loader = loaderMap().get(sampleRate)) {
+    RefPtr<HRTFDatabaseLoader> loader = loaderMap().get(sampleRate);
+    if (loader) {
         ASSERT(sampleRate == loader->databaseSampleRate());
-        return loader.releaseNonNull();
+        return loader;
     }
 
-    auto loader = adoptRef(*new HRTFDatabaseLoader(sampleRate));
-    loaderMap().add(sampleRate, loader.ptr());
+    loader = adoptRef(new HRTFDatabaseLoader(sampleRate));
+    loaderMap().add(sampleRate, loader.get());
 
     loader->loadAsynchronously();
 
@@ -63,7 +64,8 @@ Ref<HRTFDatabaseLoader> HRTFDatabaseLoader::createAndLoadAsynchronouslyIfNecessa
 }
 
 HRTFDatabaseLoader::HRTFDatabaseLoader(float sampleRate)
-    : m_databaseSampleRate(sampleRate)
+    : m_databaseLoaderThread(0)
+    , m_databaseSampleRate(sampleRate)
 {
     ASSERT(isMainThread());
 }
@@ -104,7 +106,7 @@ void HRTFDatabaseLoader::loadAsynchronously()
     
     if (!m_hrtfDatabase.get() && !m_databaseLoaderThread) {
         // Start the asynchronous database loading process.
-        m_databaseLoaderThread = Thread::create(databaseLoaderEntry, this, "HRTF database loader");
+        m_databaseLoaderThread = createThread(databaseLoaderEntry, this, "HRTF database loader");
     }
 }
 
@@ -119,8 +121,8 @@ void HRTFDatabaseLoader::waitForLoaderThreadCompletion()
     
     // waitForThreadCompletion() should not be called twice for the same thread.
     if (m_databaseLoaderThread)
-        m_databaseLoaderThread->waitForCompletion();
-    m_databaseLoaderThread = nullptr;
+        waitForThreadCompletion(m_databaseLoaderThread);
+    m_databaseLoaderThread = 0;
 }
 
 } // namespace WebCore

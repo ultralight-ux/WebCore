@@ -85,11 +85,12 @@ private:
 
         auto values = Inspector::Protocol::Array<InspectorValue>::create();
         for (auto& value : rowList.values()) {
-            auto inspectorValue = WTF::switchOn(value,
-                [] (const std::nullptr_t&) { return InspectorValue::null(); },
-                [] (const String& string) { return InspectorValue::create(string); },
-                [] (double number) { return InspectorValue::create(number); }
-            );
+            RefPtr<InspectorValue> inspectorValue;
+            switch (value.type()) {
+            case SQLValue::StringValue: inspectorValue = InspectorValue::create(value.string()); break;
+            case SQLValue::NumberValue: inspectorValue = InspectorValue::create(value.number()); break;
+            case SQLValue::NullValue: inspectorValue = InspectorValue::null(); break;
+            }
             values->addItem(WTFMove(inspectorValue));
         }
         m_requestCallback->sendSuccess(WTFMove(columnNames), WTFMove(values), nullptr);
@@ -136,9 +137,10 @@ private:
         if (!m_requestCallback->isActive())
             return true;
 
+        Vector<SQLValue> sqlValues;
         Ref<SQLStatementCallback> callback(StatementCallback::create(m_requestCallback.copyRef()));
         Ref<SQLStatementErrorCallback> errorCallback(StatementErrorCallback::create(m_requestCallback.copyRef()));
-        transaction->executeSql(m_sqlStatement, { }, WTFMove(callback), WTFMove(errorCallback));
+        transaction->executeSQL(m_sqlStatement, sqlValues, WTFMove(callback), WTFMove(errorCallback));
         return true;
     }
 

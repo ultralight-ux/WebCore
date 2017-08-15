@@ -49,11 +49,14 @@ Ref<MathMLStyle> MathMLStyle::create()
 
 const MathMLStyle* MathMLStyle::getMathMLStyle(RenderObject* renderer)
 {
-    // FIXME: Should we make RenderMathMLTable derive from RenderMathMLBlock in order to simplify this?
-    if (is<RenderMathMLTable>(renderer))
-        return &downcast<RenderMathMLTable>(*renderer).mathMLStyle();
-    if (is<RenderMathMLBlock>(renderer))
-        return &downcast<RenderMathMLBlock>(*renderer).mathMLStyle();
+    if (renderer) {
+        // FIXME: Should we make RenderMathMLTable derive from RenderMathMLBlock in order to simplify this?
+        if (is<RenderMathMLTable>(renderer))
+            return downcast<RenderMathMLTable>(renderer)->mathMLStyle();
+        if (is<RenderMathMLBlock>(renderer))
+            return downcast<RenderMathMLBlock>(renderer)->mathMLStyle();
+    }
+
     return nullptr;
 }
 
@@ -62,9 +65,9 @@ void MathMLStyle::resolveMathMLStyleTree(RenderObject* renderer)
     for (auto* child = renderer; child; child = child->nextInPreOrder(renderer)) {
         // FIXME: Should we make RenderMathMLTable derive from RenderMathMLBlock in order to simplify this?
         if (is<RenderMathMLTable>(child))
-            downcast<RenderMathMLTable>(*child).mathMLStyle().resolveMathMLStyle(child);
+            downcast<RenderMathMLTable>(child)->mathMLStyle()->resolveMathMLStyle(child);
         else if (is<RenderMathMLBlock>(child))
-            downcast<RenderMathMLBlock>(*child).mathMLStyle().resolveMathMLStyle(child);
+            downcast<RenderMathMLBlock>(child)->mathMLStyle()->resolveMathMLStyle(child);
     }
 }
 

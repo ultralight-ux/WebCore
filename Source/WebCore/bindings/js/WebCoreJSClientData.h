@@ -78,7 +78,7 @@ private:
     WebCoreBuiltinNames m_builtinNames;
     
     JSC::JSDestructibleObjectSubspace m_outputConstraintSpace;
-    JSC::JSSegmentedVariableObjectSubspace m_globalObjectOutputConstraintSpace;
+    JSC::Subspace m_globalObjectOutputConstraintSpace;
 };
 
 } // namespace WebCore

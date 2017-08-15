@@ -125,7 +125,7 @@ RefPtr<JSC::ArrayBuffer> FetchBodyConsumer::takeAsArrayBuffer()
     if (!m_buffer)
         return ArrayBuffer::tryCreate(nullptr, 0);
 
-    auto arrayBuffer = m_buffer->tryCreateArrayBuffer();
+    auto arrayBuffer = m_buffer->createArrayBuffer();
     m_buffer = nullptr;
     return arrayBuffer;
 }

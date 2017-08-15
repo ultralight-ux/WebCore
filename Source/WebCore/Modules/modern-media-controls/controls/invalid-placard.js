@@ -32,8 +32,6 @@ class InvalidPlacard extends Placard
             iconName: Icons.InvalidPlacard,
             layoutDelegate
         });
-
-        this.minDimensionToDisplayIcon = 50;
     }
 
 }

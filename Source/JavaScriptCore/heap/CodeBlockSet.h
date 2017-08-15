@@ -38,7 +38,6 @@ namespace JSC {
 class CodeBlock;
 class Heap;
 class JSCell;
-class VM;
 
 // CodeBlockSet tracks all CodeBlocks. Every CodeBlock starts out with one
 // reference coming in from GC. The GC is responsible for freeing CodeBlocks
@@ -51,7 +50,7 @@ public:
     CodeBlockSet();
     ~CodeBlockSet();
 
-    void lastChanceToFinalize(VM&);
+    void lastChanceToFinalize();
     
     // Add a CodeBlock. This is only called by CodeBlock constructors.
     void add(CodeBlock*);
@@ -62,31 +61,30 @@ public:
     // Mark a pointer that may be a CodeBlock that belongs to the set of DFG
     // blocks. This is defined in CodeBlock.h.
 private:
-    void mark(const AbstractLocker&, CodeBlock* candidateCodeBlock);
+    void mark(const LockHolder&, CodeBlock* candidateCodeBlock);
 public:
-    void mark(const AbstractLocker&, void* candidateCodeBlock);
+    void mark(const LockHolder&, void* candidateCodeBlock);
     
     // Delete all code blocks that are only referenced by this set (i.e. owned
     // by this set), and that have not been marked.
-    void deleteUnmarkedAndUnreferenced(VM&, CollectionScope);
+    void deleteUnmarkedAndUnreferenced(CollectionScope);
     
     void clearCurrentlyExecuting();
 
-    bool contains(const AbstractLocker&, void* candidateCodeBlock);
+    bool contains(const LockHolder&, void* candidateCodeBlock);
     Lock& getLock() { return m_lock; }
 
     // Visits each CodeBlock in the heap until the visitor function returns true
     // to indicate that it is done iterating, or until every CodeBlock has been
     // visited.
     template<typename Functor> void iterate(const Functor&);
-    template<typename Functor> void iterate(const AbstractLocker&, const Functor&);
     
     template<typename Functor> void iterateCurrentlyExecuting(const Functor&);
     
     void dump(PrintStream&) const;
 
 private:
-    void promoteYoungCodeBlocks(const AbstractLocker&);
+    void promoteYoungCodeBlocks(const LockHolder&);
 
     HashSet<CodeBlock*> m_oldCodeBlocks;
     HashSet<CodeBlock*> m_newCodeBlocks;

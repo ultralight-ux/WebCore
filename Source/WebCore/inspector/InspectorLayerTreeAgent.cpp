@@ -233,84 +233,84 @@ void InspectorLayerTreeAgent::reasonsForCompositingLayer(ErrorString& errorStrin
         return;
     }
 
-    OptionSet<CompositingReason> reasons = renderLayer->compositor().reasonsForCompositing(*renderLayer);
+    CompositingReasons reasonsBitmask = renderLayer->compositor().reasonsForCompositing(*renderLayer);
     auto compositingReasons = Inspector::Protocol::LayerTree::CompositingReasons::create().release();
 
-    if (reasons.contains(CompositingReason::Transform3D))
+    if (reasonsBitmask & CompositingReason3DTransform)
         compositingReasons->setTransform3D(true);
 
-    if (reasons.contains(CompositingReason::Video))
+    if (reasonsBitmask & CompositingReasonVideo)
         compositingReasons->setVideo(true);
-    else if (reasons.contains(CompositingReason::Canvas))
+    else if (reasonsBitmask & CompositingReasonCanvas)
         compositingReasons->setCanvas(true);
-    else if (reasons.contains(CompositingReason::Plugin))
+    else if (reasonsBitmask & CompositingReasonPlugin)
         compositingReasons->setPlugin(true);
-    else if (reasons.contains(CompositingReason::IFrame))
+    else if (reasonsBitmask & CompositingReasonIFrame)
         compositingReasons->setIFrame(true);
-
-    if (reasons.contains(CompositingReason::BackfaceVisibilityHidden))
+    
+    if (reasonsBitmask & CompositingReasonBackfaceVisibilityHidden)
         compositingReasons->setBackfaceVisibilityHidden(true);
 
-    if (reasons.contains(CompositingReason::ClipsCompositingDescendants))
+    if (reasonsBitmask & CompositingReasonClipsCompositingDescendants)
         compositingReasons->setClipsCompositingDescendants(true);
 
-    if (reasons.contains(CompositingReason::Animation))
+    if (reasonsBitmask & CompositingReasonAnimation)
         compositingReasons->setAnimation(true);
 
-    if (reasons.contains(CompositingReason::Filters))
+    if (reasonsBitmask & CompositingReasonFilters)
         compositingReasons->setFilters(true);
 
-    if (reasons.contains(CompositingReason::PositionFixed))
+    if (reasonsBitmask & CompositingReasonPositionFixed)
         compositingReasons->setPositionFixed(true);
 
-    if (reasons.contains(CompositingReason::PositionSticky))
+    if (reasonsBitmask & CompositingReasonPositionSticky)
         compositingReasons->setPositionSticky(true);
 
-    if (reasons.contains(CompositingReason::OverflowScrollingTouch))
+    if (reasonsBitmask & CompositingReasonOverflowScrollingTouch)
         compositingReasons->setOverflowScrollingTouch(true);
 
-    if (reasons.contains(CompositingReason::Stacking))
+    if (reasonsBitmask & CompositingReasonStacking)
         compositingReasons->setStacking(true);
 
-    if (reasons.contains(CompositingReason::Overlap))
+    if (reasonsBitmask & CompositingReasonOverlap)
         compositingReasons->setOverlap(true);
 
-    if (reasons.contains(CompositingReason::NegativeZIndexChildren))
+    if (reasonsBitmask & CompositingReasonNegativeZIndexChildren)
         compositingReasons->setNegativeZIndexChildren(true);
 
-    if (reasons.contains(CompositingReason::TransformWithCompositedDescendants))
+    if (reasonsBitmask & CompositingReasonTransformWithCompositedDescendants)
         compositingReasons->setTransformWithCompositedDescendants(true);
 
-    if (reasons.contains(CompositingReason::OpacityWithCompositedDescendants))
+    if (reasonsBitmask & CompositingReasonOpacityWithCompositedDescendants)
         compositingReasons->setOpacityWithCompositedDescendants(true);
 
-    if (reasons.contains(CompositingReason::MaskWithCompositedDescendants))
+    if (reasonsBitmask & CompositingReasonMaskWithCompositedDescendants)
         compositingReasons->setMaskWithCompositedDescendants(true);
 
-    if (reasons.contains(CompositingReason::ReflectionWithCompositedDescendants))
+    if (reasonsBitmask & CompositingReasonReflectionWithCompositedDescendants)
         compositingReasons->setReflectionWithCompositedDescendants(true);
 
-    if (reasons.contains(CompositingReason::FilterWithCompositedDescendants))
+    if (reasonsBitmask & CompositingReasonFilterWithCompositedDescendants)
         compositingReasons->setFilterWithCompositedDescendants(true);
 
-    if (reasons.contains(CompositingReason::BlendingWithCompositedDescendants))
+    if (reasonsBitmask & CompositingReasonBlendingWithCompositedDescendants)
         compositingReasons->setBlendingWithCompositedDescendants(true);
 
-    if (reasons.contains(CompositingReason::IsolatesCompositedBlendingDescendants))
+    if (reasonsBitmask & CompositingReasonIsolatesCompositedBlendingDescendants)
         compositingReasons->setIsolatesCompositedBlendingDescendants(true);
 
-    if (reasons.contains(CompositingReason::Perspective))
+    if (reasonsBitmask & CompositingReasonPerspective)
         compositingReasons->setPerspective(true);
 
-    if (reasons.contains(CompositingReason::Preserve3D))
+    if (reasonsBitmask & CompositingReasonPreserve3D)
         compositingReasons->setPreserve3D(true);
 
-    if (reasons.contains(CompositingReason::WillChange))
+    if (reasonsBitmask & CompositingReasonWillChange)
         compositingReasons->setWillChange(true);
 
-    if (reasons.contains(CompositingReason::Root))
+    if (reasonsBitmask & CompositingReasonRoot)
         compositingReasons->setRoot(true);
-
+    
     compositingReasonsResult = WTFMove(compositingReasons);
 }
 

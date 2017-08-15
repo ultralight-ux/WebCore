@@ -28,7 +28,6 @@
 #include "config.h"
 
 #if ENABLE(INDEXED_DATABASE)
-
 #include "IDBBindingUtilities.h"
 
 #include "IDBIndexInfo.h"
@@ -145,22 +144,18 @@ static const size_t maximumDepth = 2000;
 
 static RefPtr<IDBKey> createIDBKeyFromValue(ExecState& exec, JSValue value, Vector<JSArray*>& stack)
 {
-    VM& vm = exec.vm();
     if (value.isNumber() && !std::isnan(value.toNumber(&exec)))
         return IDBKey::createNumber(value.toNumber(&exec));
 
     if (value.isString())
         return IDBKey::createString(asString(value)->value(&exec));
 
-    if (value.inherits(vm, DateInstance::info())) {
-        auto dateValue = valueToDate(exec, value);
-        if (!std::isnan(dateValue))
-            return IDBKey::createDate(dateValue);
-    }
+    if (value.inherits(DateInstance::info()) && !std::isnan(valueToDate(&exec, value)))
+        return IDBKey::createDate(valueToDate(&exec, value));
 
     if (value.isObject()) {
         JSObject* object = asObject(value);
-        if (isJSArray(object) || object->inherits(vm, JSArray::info())) {
+        if (isJSArray(object) || object->inherits(JSArray::info())) {
             JSArray* array = asArray(object);
             size_t length = array->length();
 
@@ -186,10 +181,10 @@ static RefPtr<IDBKey> createIDBKeyFromValue(ExecState& exec, JSValue value, Vect
             return IDBKey::createArray(subkeys);
         }
 
-        if (auto* arrayBuffer = jsDynamicCast<JSArrayBuffer*>(vm, value))
+        if (auto* arrayBuffer = jsDynamicCast<JSArrayBuffer*>(value))
             return IDBKey::createBinary(*arrayBuffer);
 
-        if (auto* arrayBufferView = jsDynamicCast<JSArrayBufferView*>(vm, value))
+        if (auto* arrayBufferView = jsDynamicCast<JSArrayBufferView*>(value))
             return IDBKey::createBinary(*arrayBufferView);
     }
     return nullptr;
@@ -367,6 +362,12 @@ Ref<IDBKey> scriptValueToIDBKey(ExecState& exec, const JSValue& scriptValue)
     return createIDBKeyFromValue(exec, scriptValue);
 }
 
+JSC::JSValue idbKeyDataToScriptValue(JSC::ExecState& exec, const IDBKeyData& keyData)
+{
+    RefPtr<IDBKey> key = keyData.maybeCreateIDBKey();
+    return toJS(exec, *exec.lexicalGlobalObject(), key.get());
+}
+
 JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, const IDBKeyData& keyData)
 {
     ASSERT(state);
@@ -411,6 +412,19 @@ void generateIndexKeyForValue(ExecState& exec, const IDBIndexInfo& info, JSValue
         return;
 
     outKey = IndexKey(WTFMove(keyDatas));
+}
+
+JSValue toJS(ExecState& state, JSDOMGlobalObject& globalObject, const std::optional<IDBKeyPath>& keyPath)
+{
+    if (!keyPath)
+        return jsNull();
+
+    auto visitor = WTF::makeVisitor([&](const String& string) -> JSValue {
+        return toJS<IDLDOMString>(state, globalObject, string);
+    }, [&](const Vector<String>& vector) -> JSValue {
+        return toJS<IDLSequence<IDLDOMString>>(state, globalObject, vector);
+    });
+    return WTF::visit(visitor, keyPath.value());
 }
 
 } // namespace WebCore

@@ -8,10 +8,7 @@ list(APPEND WTF_SOURCES
     text/cf/StringImplCF.cpp
     text/cf/StringViewCF.cpp
 
-    win/CPUTimeWin.cpp
     win/MainThreadWin.cpp
-    win/MemoryFootprintWin.cpp
-    win/MemoryPressureHandlerWin.cpp
     win/RunLoopWin.cpp
     win/WorkQueueWin.cpp
 )

@@ -63,7 +63,6 @@ public:
     void startAnimation() final;
     void stopAnimation() final;
     void resetAnimation() final;
-    bool isAnimating() const final;
 
 #if USE(CAIRO)
     NativeImagePtr nativeImageForCurrentFrame(const GraphicsContext* = nullptr) final;
@@ -86,7 +85,7 @@ private:
     void computeIntrinsicDimensions(Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio) final;
 
     void reportApproximateMemoryCost() const;
-    EncodedDataStatus dataChanged(bool allDataReceived) final;
+    bool dataChanged(bool allDataReceived) final;
 
     // FIXME: SVGImages will be unable to prune because this function is not implemented yet.
     void destroyDecodedData(bool) final { }
@@ -97,7 +96,7 @@ private:
     void dump(TextStream&) const final;
 
     SVGImage(ImageObserver&, const URL&);
-    void draw(GraphicsContext&, const FloatRect& fromRect, const FloatRect& toRect, CompositeOperator, BlendMode, DecodingMode, ImageOrientationDescription) final;
+    void draw(GraphicsContext&, const FloatRect& fromRect, const FloatRect& toRect, CompositeOperator, BlendMode, ImageOrientationDescription) final;
     void drawForContainer(GraphicsContext&, const FloatSize, float, const FloatRect&, const FloatRect&, CompositeOperator, BlendMode);
     void drawPatternForContainer(GraphicsContext&, const FloatSize& containerSize, float zoom, const FloatRect& srcRect, const AffineTransform&, const FloatPoint& phase, const FloatSize& spacing,
         CompositeOperator, const FloatRect&, BlendMode);

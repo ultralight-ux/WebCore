@@ -39,15 +39,15 @@ class HTMLElement;
 // More accurately, this is ReplaceElementWithSpanPreservingChildrenAndAttributesCommand
 class ReplaceNodeWithSpanCommand : public SimpleEditCommand {
 public:
-    static Ref<ReplaceNodeWithSpanCommand> create(Ref<HTMLElement>&& element)
+    static Ref<ReplaceNodeWithSpanCommand> create(PassRefPtr<HTMLElement> element)
     {
-        return adoptRef(*new ReplaceNodeWithSpanCommand(WTFMove(element)));
+        return adoptRef(*new ReplaceNodeWithSpanCommand(element));
     }
 
     HTMLElement* spanElement() { return m_spanElement.get(); }
 
 private:
-    explicit ReplaceNodeWithSpanCommand(Ref<HTMLElement>&&);
+    explicit ReplaceNodeWithSpanCommand(PassRefPtr<HTMLElement>);
 
     void doApply() override;
     void doUnapply() override;
@@ -56,7 +56,7 @@ private:
     void getNodesInCommand(HashSet<Node*>&) override;
 #endif
 
-    Ref<HTMLElement> m_elementToReplace;
+    RefPtr<HTMLElement> m_elementToReplace;
     RefPtr<HTMLElement> m_spanElement;
 };
 

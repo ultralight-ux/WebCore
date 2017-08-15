@@ -32,8 +32,8 @@ namespace JSC {
 
 template<typename Adaptor>
 GenericTypedArrayView<Adaptor>::GenericTypedArrayView(
-    RefPtr<ArrayBuffer>&& buffer, unsigned byteOffset, unsigned length)
-    : ArrayBufferView(WTFMove(buffer), byteOffset)
+    PassRefPtr<ArrayBuffer> buffer, unsigned byteOffset, unsigned length)
+    : ArrayBufferView(buffer, byteOffset)
     , m_length(length)
 {
 }
@@ -58,10 +58,10 @@ RefPtr<GenericTypedArrayView<Adaptor>> GenericTypedArrayView<Adaptor>::create(
 
 template<typename Adaptor>
 RefPtr<GenericTypedArrayView<Adaptor>> GenericTypedArrayView<Adaptor>::create(
-    RefPtr<ArrayBuffer>&& buffer, unsigned byteOffset, unsigned length)
+    PassRefPtr<ArrayBuffer> passedBuffer, unsigned byteOffset, unsigned length)
 {
-    ASSERT(buffer);
-    if (!ArrayBufferView::verifySubRangeLength(*buffer, byteOffset, length, sizeof(typename Adaptor::Type))
+    RefPtr<ArrayBuffer> buffer = passedBuffer;
+    if (!verifySubRangeLength(buffer, byteOffset, length, sizeof(typename Adaptor::Type))
         || !verifyByteOffsetAlignment(byteOffset, sizeof(typename Adaptor::Type))) {
         return nullptr;
     }
@@ -94,8 +94,7 @@ GenericTypedArrayView<Adaptor>::subarray(int start, int end) const
     unsigned offset, length;
     calculateOffsetAndLength(start, end, this->length(), &offset, &length);
     ArrayBuffer* buffer = possiblySharedBuffer();
-    ASSERT(buffer);
-    clampOffsetAndNumElements<Adaptor::Type>(*buffer, byteOffset(), &offset, &length);
+    clampOffsetAndNumElements<Adaptor::Type>(buffer, byteOffset(), &offset, &length);
     return create(buffer, offset, length);
 }
 

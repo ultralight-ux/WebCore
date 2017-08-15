@@ -46,6 +46,7 @@
 #include "Weak.h"
 #include "WriteBarrierInlines.h"
 #include <wtf/CompilationThread.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/PrintStream.h>
 
 namespace WTF {
@@ -591,7 +592,7 @@ public:
         willStoreValueSlow(vm, propertyName, value, shouldOptimize, InferredTypeTable::OldProperty);
     }
 
-    Ref<StructureShape> toStructureShape(JSValue);
+    PassRefPtr<StructureShape> toStructureShape(JSValue);
     
     // Determines if the two structures match enough that this one could be used for allocations
     // of the other one.

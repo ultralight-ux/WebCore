@@ -60,7 +60,7 @@
 #include <wtf/RetainPtr.h>
 OBJC_CLASS CALayer;
 OBJC_CLASS WebGLLayer;
-#elif PLATFORM(GTK) || PLATFORM(WIN_CAIRO) || PLATFORM(WPE)
+#elif PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN_CAIRO)
 typedef unsigned int GLuint;
 #endif
 
@@ -100,9 +100,6 @@ class IntSize;
 class WebGLRenderingContextBase;
 #if USE(CAIRO)
 class PlatformContextCairo;
-#endif
-#if USE(TEXTURE_MAPPER)
-class TextureMapperGC3DPlatformLayer;
 #endif
 
 typedef WTF::HashMap<CString, uint64_t> ShaderNameHash;
@@ -1120,7 +1117,7 @@ public:
     GC3Dboolean isVertexArray(Platform3DObject);
     void bindVertexArray(Platform3DObject);
 
-#if PLATFORM(GTK) || USE(CAIRO)
+#if PLATFORM(GTK) || PLATFORM(EFL) || USE(CAIRO)
     void paintToCanvas(const unsigned char* imagePixels, int imageWidth, int imageHeight,
                        int canvasWidth, int canvasHeight, PlatformContextCairo* context);
 #elif USE(CG)
@@ -1299,6 +1296,9 @@ private:
     bool reshapeFBOs(const IntSize&);
     void resolveMultisamplingIfNecessary(const IntRect& = IntRect());
     void attachDepthAndStencilBufferIfNeeded(GLuint internalDepthStencilFormat, int width, int height);
+#if PLATFORM(EFL) && USE(GRAPHICS_SURFACE)
+    void createGraphicsSurfaces(const IntSize&);
+#endif
 
     int m_currentWidth, m_currentHeight;
 
@@ -1373,7 +1373,7 @@ private:
 
     std::unique_ptr<ShaderNameHash> nameHashMapForShaders;
 
-#if ((PLATFORM(GTK) || PLATFORM(WIN) || PLATFORM(WPE)) && USE(OPENGL_ES_2))
+#if ((PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN)) && USE(OPENGL_ES_2))
     friend class Extensions3DOpenGLES;
     std::unique_ptr<Extensions3DOpenGLES> m_extensions;
 #else
@@ -1394,9 +1394,9 @@ private:
     GC3Duint m_intermediateTexture;
 #endif
 
-    GC3Duint m_depthBuffer { 0 };
-    GC3Duint m_stencilBuffer { 0 };
-    GC3Duint m_depthStencilBuffer { 0 };
+    GC3Duint m_depthBuffer;
+    GC3Duint m_stencilBuffer;
+    GC3Duint m_depthStencilBuffer;
 
     bool m_layerComposited;
     GC3Duint m_internalColorFormat;
@@ -1423,19 +1423,13 @@ private:
     // Errors raised by synthesizeGLError().
     ListHashSet<GC3Denum> m_syntheticErrors;
 
-#if USE(TEXTURE_MAPPER)
-    friend class TextureMapperGC3DPlatformLayer;
-    std::unique_ptr<TextureMapperGC3DPlatformLayer> m_texmapLayer;
-#else
     friend class GraphicsContext3DPrivate;
     std::unique_ptr<GraphicsContext3DPrivate> m_private;
-#endif
 
     // FIXME: Layering violation.
     WebGLRenderingContextBase* m_webglContext;
 
     bool m_isForWebGL2 { false };
-    bool m_usingCoreProfile { false };
 
 #if USE(CAIRO)
     Platform3DObject m_vao { 0 };

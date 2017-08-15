@@ -23,9 +23,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-const ButtonMarginForThreeButtonsOrLess = 24;
-const ButtonMarginForFourButtons = 16;
-const ButtonMarginForFiveButtons = 12;
+const MarginForThreeButtonsOrLess = 24;
+const MarginForFourButtons = 16;
+const MarginForFiveButtons = 12;
 const FullscreenTimeControlWidth = 457;
 
 class MacOSFullscreenMediaControls extends MacOSMediaControls
@@ -40,97 +40,86 @@ class MacOSFullscreenMediaControls extends MacOSMediaControls
         this.element.classList.add("fullscreen");
 
         // Set up fullscreen-specific buttons.
-        this.volumeDownButton = new VolumeDownButton(this);
-        this.volumeUpButton = new VolumeUpButton(this);
         this.rewindButton = new RewindButton(this);
         this.forwardButton = new ForwardButton(this);
         this.fullscreenButton.isFullscreen = true;
 
         this.volumeSlider.width = 60;
 
-        this._leftContainer = new ButtonsContainer({
-            buttons: [this.volumeDownButton, this.volumeSlider, this.volumeUpButton],
-            cssClassName: "left",
-            leftMargin: 12,
-            rightMargin: 0,
-            buttonMargin: 6
-        });
-
         this._centerContainer = new ButtonsContainer({
             buttons: [this.rewindButton, this.playPauseButton, this.forwardButton],
             cssClassName: "center",
-            leftMargin: 27,
-            rightMargin: 27,
-            buttonMargin: 27
+            padding: 27,
+            margin: 27
         });
 
         this._rightContainer = new ButtonsContainer({
             buttons: [this.airplayButton, this.pipButton, this.tracksButton, this.fullscreenButton],
             cssClassName: "right",
-            leftMargin: 12,
-            rightMargin: 12
+            padding: 12
         });
 
-        this.controlsBar.children = [new BackgroundTint, this._leftContainer, this._centerContainer, this._rightContainer];
+        this.controlsBar.children = [this.volumeSlider, this._centerContainer, this._rightContainer, this.timeControl];
 
-        this.controlsBar.element.addEventListener("mousedown", this);
+        this.element.addEventListener("mousedown", this);
+    }
+
+    // Public
+
+    showTracksPanel()
+    {
+        super.showTracksPanel();
+
+        const tracksButtonBounds = this.tracksButton.element.getBoundingClientRect();
+        this.tracksPanel.rightX = window.innerWidth - tracksButtonBounds.right;
+        this.tracksPanel.bottomY = window.innerHeight - tracksButtonBounds.top + 1;
     }
 
     // Protected
 
     handleEvent(event)
     {
-        if (event.type === "mousedown" && event.currentTarget === this.controlsBar.element)
+        switch (event.type) {
+        case "mousedown":
             this._handleMousedown(event);
-        else if (event.type === "mousemove" && event.currentTarget === this.element)
+            break;
+        case "mousemove":
             this._handleMousemove(event);
-        else if (event.type === "mouseup" && event.currentTarget === this.element)
+            break;
+        case "mouseup":
             this._handleMouseup(event);
-        else
-            super.handleEvent(event);
+            break;
+        }
     }
 
     layout()
     {
         super.layout();
 
-        if (!this._rightContainer)
-            return;
-
         const numberOfEnabledButtons = this._rightContainer.buttons.filter(button => button.enabled).length;
 
-        let buttonMargin = ButtonMarginForFiveButtons;
+        let margin = MarginForFiveButtons;
         if (numberOfEnabledButtons === 4)
-            buttonMargin = ButtonMarginForFourButtons;
+            margin = MarginForFourButtons;
         else if (numberOfEnabledButtons <= 3)
-            buttonMargin = ButtonMarginForThreeButtonsOrLess;
+            margin = MarginForThreeButtonsOrLess;
 
-        this._rightContainer.buttonMargin = buttonMargin;
+        this._rightContainer.margin = margin;
 
-        this._leftContainer.layout();
         this._centerContainer.layout();
         this._rightContainer.layout();
 
-        if (this.statusLabel.enabled && this.statusLabel.parent !== this.controlsBar) {
-            this.timeControl.remove();
-            this.controlsBar.addChild(this.statusLabel);
-        } else if (!this.statusLabel.enabled && this.timeControl.parent !== this.controlsBar) {
-            this.statusLabel.remove();
-            this.controlsBar.addChild(this.timeControl);
-            this.timeControl.width = FullscreenTimeControlWidth;
-        }
+        this.timeControl.width = FullscreenTimeControlWidth;
     }
 
     // Private
 
     _handleMousedown(event)
     {
-        // We don't allow dragging when the interaction is initiated on an interactive element. 
-        if (event.target.localName === "button" || event.target.localName === "input")
+        if (event.target !== this.controlsBar.element)
             return;
 
         event.preventDefault();
-        event.stopPropagation();
 
         this._lastDragPoint = this._pointForEvent(event);
 
@@ -148,7 +137,7 @@ class MacOSFullscreenMediaControls extends MacOSMediaControls
             this.controlsBar.translation.x + currentDragPoint.x - this._lastDragPoint.x,
             this.controlsBar.translation.y + currentDragPoint.y - this._lastDragPoint.y
         );
-
+        
         this._lastDragPoint = currentDragPoint;
     }
 

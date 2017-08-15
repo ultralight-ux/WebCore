@@ -260,7 +260,7 @@ void SVGInlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
     const SVGRenderStyle& svgStyle = style.svgStyle();
 
     bool hasFill = svgStyle.hasFill();
-    bool hasVisibleStroke = style.hasVisibleStroke();
+    bool hasVisibleStroke = svgStyle.hasVisibleStroke();
 
     const RenderStyle* selectionStyle = &style;
     if (hasSelection && shouldPaintSelectionHighlight) {
@@ -271,7 +271,7 @@ void SVGInlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
             if (!hasFill)
                 hasFill = svgSelectionStyle.hasFill();
             if (!hasVisibleStroke)
-                hasVisibleStroke = selectionStyle->hasVisibleStroke();
+                hasVisibleStroke = svgSelectionStyle.hasVisibleStroke();
         } else
             selectionStyle = &style;
     }
@@ -299,24 +299,24 @@ void SVGInlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
         if (decorations & TextDecorationOverline)
             paintDecoration(paintInfo.context(), TextDecorationOverline, fragment);
 
-        auto paintOrder = RenderStyle::paintTypesForPaintOrder(style.paintOrder());
+        auto paintOrder = style.svgStyle().paintTypesForPaintOrder();
         for (unsigned i = 0; i < paintOrder.size(); ++i) {
             switch (paintOrder.at(i)) {
-            case PaintType::Fill:
+            case PaintTypeFill:
                 if (!hasFill)
                     continue;
                 m_paintingResourceMode = ApplyToFillMode | ApplyToTextMode;
                 ASSERT(selectionStyle);
                 paintText(paintInfo.context(), style, *selectionStyle, fragment, hasSelection, paintSelectedTextOnly);
                 break;
-            case PaintType::Stroke:
+            case PaintTypeStroke:
                 if (!hasVisibleStroke)
                     continue;
                 m_paintingResourceMode = ApplyToStrokeMode | ApplyToTextMode;
                 ASSERT(selectionStyle);
                 paintText(paintInfo.context(), style, *selectionStyle, fragment, hasSelection, paintSelectedTextOnly);
                 break;
-            case PaintType::Markers:
+            case PaintTypeMarkers:
                 continue;
             }
         }
@@ -489,7 +489,7 @@ void SVGInlineTextBox::paintDecoration(GraphicsContext& context, TextDecoration 
     const SVGRenderStyle& svgDecorationStyle = decorationStyle.svgStyle();
 
     bool hasDecorationFill = svgDecorationStyle.hasFill();
-    bool hasVisibleDecorationStroke = decorationStyle.hasVisibleStroke();
+    bool hasVisibleDecorationStroke = svgDecorationStyle.hasVisibleStroke();
 
     if (hasDecorationFill) {
         m_paintingResourceMode = ApplyToFillMode;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,6 @@
 #if ENABLE(DFG_JIT)
 
 #include "CodeBlock.h"
-#include "FTLForOSREntryJITCode.h"
 #include "JSCInlines.h"
 #include "TrackedReferences.h"
 
@@ -201,15 +200,6 @@ void JITCode::setOptimizationThresholdBasedOnCompilationResult(
         return;
     }
     RELEASE_ASSERT_NOT_REACHED();
-}
-
-void JITCode::setOSREntryBlock(VM& vm, const JSCell* owner, CodeBlock* osrEntryBlock)
-{
-    if (Options::verboseOSR()) {
-        dataLog(RawPointer(this), ": Setting OSR entry block to ", RawPointer(osrEntryBlock), "\n");
-        dataLog("OSR entries will go to ", osrEntryBlock->jitCode()->ftlForOSREntry()->addressForCall(ArityCheckNotRequired), "\n");
-    }
-    m_osrEntryBlock.set(vm, owner, osrEntryBlock);
 }
 #endif // ENABLE(FTL_JIT)
 

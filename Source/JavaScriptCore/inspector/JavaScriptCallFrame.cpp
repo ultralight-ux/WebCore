@@ -30,8 +30,8 @@ using namespace JSC;
 
 namespace Inspector {
 
-JavaScriptCallFrame::JavaScriptCallFrame(Ref<DebuggerCallFrame>&& debuggerCallFrame)
-    : m_debuggerCallFrame(WTFMove(debuggerCallFrame))
+JavaScriptCallFrame::JavaScriptCallFrame(PassRefPtr<DebuggerCallFrame> debuggerCallFrame)
+    : m_debuggerCallFrame(debuggerCallFrame)
 {
 }
 
@@ -44,7 +44,7 @@ JavaScriptCallFrame* JavaScriptCallFrame::caller()
     if (!debuggerCallerFrame)
         return nullptr;
 
-    m_caller = create(debuggerCallerFrame.releaseNonNull());
+    m_caller = create(debuggerCallerFrame);
     return m_caller.get();
 }
 

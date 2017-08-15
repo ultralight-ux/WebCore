@@ -33,7 +33,9 @@
 #include "DFGArgumentPosition.h"
 #include "DFGBasicBlock.h"
 #include "DFGFrozenValue.h"
+#include "DFGLongLivedState.h"
 #include "DFGNode.h"
+#include "DFGNodeAllocator.h"
 #include "DFGPlan.h"
 #include "DFGPropertyTypeKey.h"
 #include "DFGScannable.h"
@@ -124,7 +126,7 @@ enum AddSpeculationMode {
 // Nodes that are 'dead' remain in the vector with refCount 0.
 class Graph : public virtual Scannable {
 public:
-    Graph(VM&, Plan&);
+    Graph(VM&, Plan&, LongLivedState&);
     ~Graph();
     
     void changeChild(Edge& edge, Node* newNode)
@@ -184,20 +186,22 @@ public:
     template<typename... Params>
     Node* addNode(Params... params)
     {
-        return m_nodes.addNew(params...);
+        Node* node = new (m_allocator) Node(params...);
+        addNodeToMapByIndex(node);
+        return node;
     }
-
     template<typename... Params>
     Node* addNode(SpeculatedType type, Params... params)
     {
-        Node* node = m_nodes.addNew(params...);
+        Node* node = new (m_allocator) Node(params...);
         node->predict(type);
+        addNodeToMapByIndex(node);
         return node;
     }
 
     void deleteNode(Node*);
-    unsigned maxNodeCount() const { return m_nodes.size(); }
-    Node* nodeAt(unsigned index) const { return m_nodes[index]; }
+    unsigned maxNodeCount() const { return m_nodesByIndex.size(); }
+    Node* nodeAt(unsigned index) const { return m_nodesByIndex[index]; }
     void packNodeIndices();
 
     void dethread();
@@ -289,44 +293,8 @@ public:
         Node* left = add->child1().node();
         Node* right = add->child2().node();
 
-        if (hasExitSite(add, Int52Overflow))
-            return false;
-
-        if (Node::shouldSpeculateAnyInt(left, right))
-            return true;
-
-        auto shouldSpeculateAnyIntForAdd = [](Node* node) {
-            auto isAnyIntSpeculationForAdd = [](SpeculatedType value) {
-                return !!value && (value & (SpecAnyInt | SpecAnyIntAsDouble)) == value;
-            };
-
-            // When DoubleConstant node appears, it means that users explicitly write a constant in their code with double form instead of integer form (1.0 instead of 1).
-            // In that case, we should honor this decision: using it as integer is not appropriate.
-            if (node->op() == DoubleConstant)
-                return false;
-            return isAnyIntSpeculationForAdd(node->prediction());
-        };
-
-        // Allow AnyInt ArithAdd only when the one side of the binary operation should be speculated AnyInt. It is a bit conservative
-        // decision. This is because Double to Int52 conversion is not so cheap. Frequent back-and-forth conversions between Double and Int52
-        // rather hurt the performance. If the one side of the operation is already Int52, the cost for constructing ArithAdd becomes
-        // cheap since only one Double to Int52 conversion could be required.
-        // This recovers some regression in assorted tests while keeping kraken crypto improvements.
-        if (!left->shouldSpeculateAnyInt() && !right->shouldSpeculateAnyInt())
-            return false;
-
-        auto usesAsNumbers = [](Node* node) {
-            NodeFlags flags = node->flags() & NodeBytecodeBackPropMask;
-            if (!flags)
-                return false;
-            return (flags & (NodeBytecodeUsesAsNumber | NodeBytecodeNeedsNegZero | NodeBytecodeUsesAsInt | NodeBytecodeUsesAsArrayIndex)) == flags;
-        };
-
-        // Wrapping Int52 to Value is also not so cheap. Thus, we allow Int52 addition only when the node is used as number.
-        if (!usesAsNumbers(add))
-            return false;
-
-        return shouldSpeculateAnyIntForAdd(left) && shouldSpeculateAnyIntForAdd(right);
+        bool speculation = Node::shouldSpeculateAnyInt(left, right);
+        return speculation && !hasExitSite(add, Int52Overflow);
     }
     
     bool binaryArithShouldSpeculateInt32(Node* node, PredictionPass pass)
@@ -474,10 +442,10 @@ public:
     BasicBlock* block(BlockIndex blockIndex) const { return m_blocks[blockIndex].get(); }
     BasicBlock* lastBlock() const { return block(numBlocks() - 1); }
 
-    void appendBlock(Ref<BasicBlock>&& basicBlock)
+    void appendBlock(PassRefPtr<BasicBlock> basicBlock)
     {
         basicBlock->index = m_blocks.size();
-        m_blocks.append(WTFMove(basicBlock));
+        m_blocks.append(basicBlock);
     }
     
     void killBlock(BlockIndex blockIndex)
@@ -880,8 +848,6 @@ public:
     
     JSArrayBufferView* tryGetFoldableView(JSValue);
     JSArrayBufferView* tryGetFoldableView(JSValue, ArrayMode arrayMode);
-
-    bool canDoFastSpread(Node*, const AbstractValue&);
     
     void registerFrozenValues();
     
@@ -919,6 +885,8 @@ public:
     CodeBlock* m_codeBlock;
     CodeBlock* m_profiledBlock;
     
+    NodeAllocator& m_allocator;
+
     Vector< RefPtr<BasicBlock> , 8> m_blocks;
     Vector<Edge, 16> m_varArgChildren;
 
@@ -1014,6 +982,8 @@ public:
     RegisteredStructure symbolStructure;
 
 private:
+    void addNodeToMapByIndex(Node*);
+
     bool isStringPrototypeMethodSane(JSGlobalObject*, UniquedStringImpl*);
 
     void handleSuccessor(Vector<BasicBlock*, 16>& worklist, BasicBlock*, BasicBlock* successor);
@@ -1046,7 +1016,8 @@ private:
         return bytecodeCanTruncateInteger(add->arithNodeFlags()) ? SpeculateInt32AndTruncateConstants : DontSpeculateInt32;
     }
 
-    B3::SparseCollection<Node> m_nodes;
+    Vector<Node*, 0, UnsafeVectorOverflow> m_nodesByIndex;
+    Vector<unsigned, 0, UnsafeVectorOverflow> m_nodeIndexFreeList;
     SegmentedVector<RegisteredStructureSet, 16> m_structureSets;
 };
 

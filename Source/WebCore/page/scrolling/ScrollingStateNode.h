@@ -39,6 +39,15 @@ class GraphicsLayer;
 class ScrollingStateTree;
 class TextStream;
 
+enum ScrollingStateTreeAsTextBehaviorFlags {
+    ScrollingStateTreeAsTextBehaviorNormal                  = 0,
+    ScrollingStateTreeAsTextBehaviorIncludeLayerIDs         = 1 << 0,
+    ScrollingStateTreeAsTextBehaviorIncludeNodeIDs          = 1 << 1,
+    ScrollingStateTreeAsTextBehaviorIncludeLayerPositions   = 1 << 2,
+    ScrollingStateTreeAsTextBehaviorDebug                   = ScrollingStateTreeAsTextBehaviorIncludeLayerIDs | ScrollingStateTreeAsTextBehaviorIncludeNodeIDs | ScrollingStateTreeAsTextBehaviorIncludeLayerPositions
+};
+typedef unsigned ScrollingStateTreeAsTextBehavior;
+
 // Used to allow ScrollingStateNodes to refer to layers in various contexts:
 // a) Async scrolling, main thread: ScrollingStateNode holds onto a GraphicsLayer, and uses m_layerID
 //    to detect whether that GraphicsLayer's underlying PlatformLayer changed.
@@ -197,7 +206,7 @@ public:
     bool isOverflowScrollingNode() const { return m_nodeType == OverflowScrollingNode; }
 
     virtual Ref<ScrollingStateNode> clone(ScrollingStateTree& adoptiveTree) = 0;
-    Ref<ScrollingStateNode> cloneAndReset(ScrollingStateTree& adoptiveTree);
+    PassRefPtr<ScrollingStateNode> cloneAndReset(ScrollingStateTree& adoptiveTree);
     void cloneAndResetChildren(ScrollingStateNode&, ScrollingStateTree& adoptiveTree);
 
     enum {
@@ -229,17 +238,17 @@ public:
 
     Vector<RefPtr<ScrollingStateNode>>* children() const { return m_children.get(); }
 
-    void appendChild(Ref<ScrollingStateNode>&&);
+    void appendChild(PassRefPtr<ScrollingStateNode>);
 
-    String scrollingStateTreeAsText(ScrollingStateTreeAsTextBehavior = ScrollingStateTreeAsTextBehaviorNormal) const;
+    String scrollingStateTreeAsText() const;
 
 protected:
     ScrollingStateNode(const ScrollingStateNode&, ScrollingStateTree&);
 
-    virtual void dumpProperties(TextStream&, ScrollingStateTreeAsTextBehavior) const;
-    
 private:
-    void dump(TextStream&, ScrollingStateTreeAsTextBehavior) const;
+    void dump(TextStream&, int indent, ScrollingStateTreeAsTextBehavior) const;
+
+    virtual void dumpProperties(TextStream&, int indent, ScrollingStateTreeAsTextBehavior) const = 0;
 
     const ScrollingNodeType m_nodeType;
     ScrollingNodeID m_nodeID;

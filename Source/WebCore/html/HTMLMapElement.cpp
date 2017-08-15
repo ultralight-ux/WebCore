@@ -94,13 +94,13 @@ void HTMLMapElement::parseAttribute(const QualifiedName& name, const AtomicStrin
             if (document().isHTMLDocument())
                 return;
         }
-        if (isConnected())
+        if (inDocument())
             treeScope().removeImageMap(*this);
         String mapName = value;
         if (mapName[0] == '#')
             mapName = mapName.substring(1);
         m_name = mapName;
-        if (isConnected())
+        if (inDocument())
             treeScope().addImageMap(*this);
 
         return;
@@ -117,14 +117,14 @@ Ref<HTMLCollection> HTMLMapElement::areas()
 Node::InsertionNotificationRequest HTMLMapElement::insertedInto(ContainerNode& insertionPoint)
 {
     Node::InsertionNotificationRequest request = HTMLElement::insertedInto(insertionPoint);
-    if (insertionPoint.isConnected())
+    if (insertionPoint.inDocument())
         treeScope().addImageMap(*this);
     return request;
 }
 
 void HTMLMapElement::removedFrom(ContainerNode& insertionPoint)
 {
-    if (insertionPoint.isConnected())
+    if (insertionPoint.inDocument())
         treeScope().removeImageMap(*this);
     HTMLElement::removedFrom(insertionPoint);
 }

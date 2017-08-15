@@ -33,14 +33,14 @@
 
 #include "Event.h"
 #include "SerializedScriptValue.h"
-#include <heap/Strong.h>
+#include <bindings/ScriptValue.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class ErrorEvent final : public Event {
 public:
-    static Ref<ErrorEvent> create(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, JSC::Strong<JSC::Unknown> error)
+    static Ref<ErrorEvent> create(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, const Deprecated::ScriptValue& error)
     {
         return adoptRef(*new ErrorEvent(message, fileName, lineNumber, columnNumber, error));
     }
@@ -64,12 +64,13 @@ public:
     const String& filename() const { return m_fileName; }
     unsigned lineno() const { return m_lineNumber; }
     unsigned colno() const { return m_columnNumber; }
-    JSC::JSValue error(JSC::ExecState&, JSC::JSGlobalObject&);
+    const Deprecated::ScriptValue& error() const { return m_error; }
+    JSC::JSValue sanitizedErrorValue(JSC::ExecState&, JSC::JSGlobalObject&);
 
     EventInterface eventInterface() const override;
 
 private:
-    ErrorEvent(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, JSC::Strong<JSC::Unknown> error);
+    ErrorEvent(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, const Deprecated::ScriptValue& error);
     ErrorEvent(JSC::ExecState&, const AtomicString&, const Init&, IsTrusted);
 
     RefPtr<SerializedScriptValue> trySerializeError(JSC::ExecState&);
@@ -80,7 +81,7 @@ private:
     String m_fileName;
     unsigned m_lineNumber;
     unsigned m_columnNumber;
-    JSC::Strong<JSC::Unknown> m_error;
+    Deprecated::ScriptValue m_error;
     RefPtr<SerializedScriptValue> m_serializedDetail;
     bool m_triedToSerialize { false };
 };

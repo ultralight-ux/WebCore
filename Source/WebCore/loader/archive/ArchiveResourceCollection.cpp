@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,23 +29,31 @@
 #include "config.h"
 #include "ArchiveResourceCollection.h"
 
-#include "Archive.h"
-
 namespace WebCore {
 
-void ArchiveResourceCollection::addAllResources(Archive& archive)
+ArchiveResourceCollection::ArchiveResourceCollection()
 {
-    for (auto& subresource : archive.subresources())
-        m_subresources.set(subresource->url(), subresource.ptr());
+}
 
-    for (auto& subframeArchive : archive.subframeArchives()) {
+void ArchiveResourceCollection::addAllResources(Archive* archive)
+{
+    ASSERT(archive);
+    if (!archive)
+        return;
+
+    for (auto& subresource : archive->subresources())
+        m_subresources.set(subresource->url(), subresource.get());
+
+    for (auto& subframeArchive : archive->subframeArchives()) {
         ASSERT(subframeArchive->mainResource());
-        auto frameName = subframeArchive->mainResource()->frameName();
-        if (frameName.isNull()) {
-            // In the MHTML case, frames don't have a name, so we use the URL instead.
-            frameName = subframeArchive->mainResource()->url().string();
+
+        const String& frameName = subframeArchive->mainResource()->frameName();
+        if (!frameName.isNull())
+            m_subframes.set(frameName, subframeArchive.get());
+        else {
+            // In the MHTML case, frames don't have a name so we use the URL instead.
+            m_subframes.set(subframeArchive->mainResource()->url().string(), subframeArchive.get());
         }
-        m_subframes.set(frameName, subframeArchive.ptr());
     }
 }
 
@@ -53,19 +61,25 @@ void ArchiveResourceCollection::addAllResources(Archive& archive)
 // Can we change the design in a manner that will let us deprecate that API without reducing functionality of those apps?
 void ArchiveResourceCollection::addResource(Ref<ArchiveResource>&& resource)
 {
-    auto& url = resource->url();
+    const URL& url = resource->url();
     m_subresources.set(url, WTFMove(resource));
 }
 
 ArchiveResource* ArchiveResourceCollection::archiveResourceForURL(const URL& url)
 {
-    return m_subresources.get(url);
+    ArchiveResource* resource = m_subresources.get(url);
+    if (!resource)
+        return nullptr;
+        
+    return resource;
 }
 
-RefPtr<Archive> ArchiveResourceCollection::popSubframeArchive(const String& frameName, const URL& url)
+PassRefPtr<Archive> ArchiveResourceCollection::popSubframeArchive(const String& frameName, const URL& url)
 {
-    if (auto archive = m_subframes.take(frameName))
-        return archive;
+    auto archive = m_subframes.take(frameName);
+    if (archive)
+        return WTFMove(archive);
+
     return m_subframes.take(url.string());
 }
 

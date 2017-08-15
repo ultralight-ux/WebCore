@@ -35,41 +35,50 @@ public:
     static Ref<StyleCustomPropertyData> create() { return adoptRef(*new StyleCustomPropertyData); }
     Ref<StyleCustomPropertyData> copy() const { return adoptRef(*new StyleCustomPropertyData(*this)); }
     
-    bool operator==(const StyleCustomPropertyData& other) const
+    bool operator==(const StyleCustomPropertyData& o) const
     {
-        if (containsVariables != other.containsVariables)
+        if (m_containsVariables != o.m_containsVariables)
             return false;
-
-        if (values.size() != other.values.size())
+        
+        if (m_values.size() != o.m_values.size())
             return false;
-
-        for (auto& entry : values) {
-            auto otherEntry = other.values.find(entry.key);
-            if (otherEntry == other.values.end() || !entry.value->equals(*otherEntry->value))
+        
+        for (WTF::KeyValuePair<AtomicString, RefPtr<CSSCustomPropertyValue>> entry : m_values) {
+            RefPtr<CSSCustomPropertyValue> other = o.m_values.get(entry.key);
+            if (!other || !entry.value->equals(*other))
                 return false;
         }
-
         return true;
     }
 
-    bool operator!=(const StyleCustomPropertyData& other) const { return !(*this == other); }
+    bool operator!=(const StyleCustomPropertyData &o) const { return !(*this == o); }
     
-    void setCustomPropertyValue(const AtomicString& name, Ref<CSSCustomPropertyValue>&& value)
+    void setCustomPropertyValue(const AtomicString& name, const RefPtr<CSSCustomPropertyValue>& value)
     {
+        m_values.set(name, value);
         if (value->containsVariables())
-            containsVariables = true;
-        values.set(name, WTFMove(value));
+            m_containsVariables = true;
     }
 
-    CustomPropertyValueMap values;
-    bool containsVariables { false };
+    RefPtr<CSSCustomPropertyValue> getCustomPropertyValue(const AtomicString& name) const { return m_values.get(name); }
+    CustomPropertyValueMap& values() { return m_values; }
+    
+    bool hasCustomProperty(const AtomicString& name) const { return m_values.contains(name); }
+    
+    bool containsVariables() const { return m_containsVariables; }
+    void setContainsVariables(bool containsVariables) { m_containsVariables = containsVariables; }
+
+    CustomPropertyValueMap m_values;
+    bool m_containsVariables { false };
 
 private:
-    StyleCustomPropertyData() = default;
+    explicit StyleCustomPropertyData()
+        : RefCounted<StyleCustomPropertyData>()
+    { }
     StyleCustomPropertyData(const StyleCustomPropertyData& other)
         : RefCounted<StyleCustomPropertyData>()
-        , values(other.values)
-        , containsVariables(other.containsVariables)
+        , m_values(CustomPropertyValueMap(other.m_values))
+        , m_containsVariables(other.m_containsVariables)
     { }
 };
 

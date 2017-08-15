@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,16 +25,17 @@
 
 #pragma once
 
+#include "WebGLShader.h"
 #include "WebGLSharedObject.h"
+#include <wtf/Vector.h>
 
 namespace WebCore {
 
-class WebGLShader;
-
 class WebGLProgram final : public WebGLSharedObject {
 public:
-    static Ref<WebGLProgram> create(WebGLRenderingContextBase&);
     virtual ~WebGLProgram();
+
+    static Ref<WebGLProgram> create(WebGLRenderingContextBase&);
 
     unsigned numActiveAttribLocations();
     GC3Dint getActiveAttribLocation(GC3Duint index);
@@ -62,20 +63,23 @@ protected:
     void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
 
 private:
+    bool isProgram() const override { return true; }
+
     void cacheActiveAttribLocations(GraphicsContext3D*);
     void cacheInfoIfNeeded();
 
     Vector<GC3Dint> m_activeAttribLocations;
 
-    GC3Dint m_linkStatus { 0 };
+    GC3Dint m_linkStatus;
 
-    // This is used to track whether a WebGLUniformLocation belongs to this program or not.
-    unsigned m_linkCount { 0 };
+    // This is used to track whether a WebGLUniformLocation belongs to this
+    // program or not.
+    unsigned m_linkCount;
 
     RefPtr<WebGLShader> m_vertexShader;
     RefPtr<WebGLShader> m_fragmentShader;
 
-    bool m_infoValid { true };
+    bool m_infoValid;
 };
 
 } // namespace WebCore

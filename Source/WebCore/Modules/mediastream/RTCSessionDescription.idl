@@ -31,19 +31,8 @@
 
 [
     Conditional=WEB_RTC,
-    EnabledAtRuntime=PeerConnection,
-    ImplementedAs=RTCSdpType
-] enum RTCSdpType {
-    "offer",
-    "pranswer",
-    "answer",
-    "rollback"
-};
-
-[
-    Conditional=WEB_RTC,
     Constructor(RTCSessionDescriptionInit descriptionInitDict),
-    EnabledAtRuntime=PeerConnection,
+    EnabledAtRuntime=peerConnection,
     ImplementationLacksVTable,
     PrivateIdentifier,
     PublicIdentifier,
@@ -53,6 +42,8 @@
 
     serializer = {type, sdp};
 };
+
+enum RTCSdpType { "offer", "pranswer", "answer", "rollback" };
 
 dictionary RTCSessionDescriptionInit {
     required RTCSdpType type;

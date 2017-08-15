@@ -89,7 +89,7 @@ void SVGTRefTargetEventListener::attach(RefPtr<Element>&& target)
 {
     ASSERT(!isAttached());
     ASSERT(target.get());
-    ASSERT(target->isConnected());
+    ASSERT(target->inDocument());
 
     target->addEventListener(eventNames().DOMSubtreeModifiedEvent, *this, false);
     target->addEventListener(eventNames().DOMNodeRemovedFromDocumentEvent, *this, false);
@@ -164,7 +164,7 @@ void SVGTRefElement::detachTarget()
     if (container)
         container->setTextContent(emptyContent);
 
-    if (!isConnected())
+    if (!inDocument())
         return;
 
     // Mark the referenced ID as pending.
@@ -229,7 +229,7 @@ void SVGTRefElement::buildPendingResource()
     m_targetListener->detach();
 
     // If we're not yet in a document, this function will be called again from insertedInto().
-    if (!isConnected())
+    if (!inDocument())
         return;
 
     String id;
@@ -256,7 +256,7 @@ void SVGTRefElement::buildPendingResource()
 Node::InsertionNotificationRequest SVGTRefElement::insertedInto(ContainerNode& rootParent)
 {
     SVGElement::insertedInto(rootParent);
-    if (rootParent.isConnected())
+    if (rootParent.inDocument())
         return InsertionShouldCallFinishedInsertingSubtree;
     return InsertionDone;
 }
@@ -269,7 +269,7 @@ void SVGTRefElement::finishedInsertingSubtree()
 void SVGTRefElement::removedFrom(ContainerNode& rootParent)
 {
     SVGElement::removedFrom(rootParent);
-    if (rootParent.isConnected())
+    if (rootParent.inDocument())
         m_targetListener->detach();
 }
 

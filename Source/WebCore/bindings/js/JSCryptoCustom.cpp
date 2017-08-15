@@ -26,9 +26,8 @@
 #include "config.h"
 #include "JSCrypto.h"
 
-#include "JSDOMConvertBufferSource.h"
-#include "JSDOMExceptionHandling.h"
-#include <heap/HeapInlines.h>
+#include "ExceptionCode.h"
+#include "JSDOMBinding.h"
 #include <runtime/ArrayBufferView.h>
 #include <runtime/Error.h>
 #include <runtime/JSArrayBufferView.h>
@@ -46,7 +45,7 @@ JSValue JSCrypto::getRandomValues(ExecState& state)
         return throwException(&state, scope, createNotEnoughArgumentsError(&state));
 
     JSValue buffer = state.argument(0);
-    auto arrayBufferView = toUnsharedArrayBufferView(vm, buffer);
+    auto arrayBufferView = toUnsharedArrayBufferView(buffer);
     if (!arrayBufferView)
         return throwTypeError(&state, scope);
 

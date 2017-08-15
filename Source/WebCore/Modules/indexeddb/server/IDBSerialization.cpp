@@ -286,7 +286,7 @@ RefPtr<SharedBuffer> serializeIDBKeyData(const IDBKeyData& key)
     data.append(SIDBKeyVersion);
 
     encodeKey(data, key);
-    return SharedBuffer::create(WTFMove(data));
+    return SharedBuffer::adoptVector(data);
 }
 
 static bool decodeKey(const uint8_t*& data, const uint8_t* end, IDBKeyData& result)
@@ -356,7 +356,7 @@ static bool decodeKey(const uint8_t*& data, const uint8_t* end, IDBKeyData& resu
         dataVector.append(data, size);
         data += size;
 
-        result.setBinaryValue(ThreadSafeDataBuffer::create(WTFMove(dataVector)));
+        result.setBinaryValue(ThreadSafeDataBuffer::adoptVector(dataVector));
         return true;
     }
     case SIDBKeyType::Array: {

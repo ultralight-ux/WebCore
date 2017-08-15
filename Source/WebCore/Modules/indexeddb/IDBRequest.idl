@@ -30,20 +30,16 @@
 [
     ActiveDOMObject,
     Conditional=INDEXED_DATABASE,
+    EnabledAtRuntime=IndexedDB,
     GenerateIsReachable=Impl,
     SkipVTableValidation,
 ] interface IDBRequest : EventTarget {
-    [GetterMayThrowException] readonly attribute (IDBCursor or IDBDatabase or any)? result;
+    [CustomGetter] readonly attribute any result;
     [GetterMayThrowException] readonly attribute DOMError? error;
-    readonly attribute (IDBObjectStore or IDBIndex or IDBCursor)? source;
+    [CustomGetter] readonly attribute any source;
     readonly attribute IDBTransaction transaction;
-    readonly attribute IDBRequestReadyState readyState;
+    readonly attribute DOMString readyState;
 
     attribute EventHandler onsuccess;
     attribute EventHandler onerror;
-};
-
-enum IDBRequestReadyState {
-    "pending",
-    "done"
 };

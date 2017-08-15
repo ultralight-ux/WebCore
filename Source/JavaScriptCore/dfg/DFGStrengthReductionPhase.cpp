@@ -390,37 +390,6 @@ private:
             break;
         }
 
-        case ToString:
-        case CallStringConstructor: {
-            Edge& child1 = m_node->child1();
-            switch (child1.useKind()) {
-            case Int32Use:
-            case Int52RepUse:
-            case DoubleRepUse: {
-                if (child1->hasConstant()) {
-                    JSValue value = child1->constant()->value();
-                    if (value) {
-                        String result;
-                        if (value.isInt32())
-                            result = String::number(value.asInt32());
-                        else if (value.isNumber())
-                            result = String::numberToStringECMAScript(value.asNumber());
-
-                        if (!result.isNull()) {
-                            m_node->convertToLazyJSConstant(m_graph, LazyJSValue::newString(m_graph, result));
-                            m_changed = true;
-                        }
-                    }
-                }
-                break;
-            }
-
-            default:
-                break;
-            }
-            break;
-        }
-
         case GetArrayLength: {
             if (m_node->arrayMode().type() == Array::Generic
                 || m_node->arrayMode().type() == Array::String) {
@@ -435,7 +404,7 @@ private:
         }
 
         case GetGlobalObject: {
-            if (JSObject* object = m_node->child1()->dynamicCastConstant<JSObject*>(vm())) {
+            if (JSObject* object = m_node->child1()->dynamicCastConstant<JSObject*>()) {
                 m_graph.convertToConstant(m_node, object->globalObject());
                 m_changed = true;
                 break;
@@ -445,7 +414,7 @@ private:
 
         case RegExpExec:
         case RegExpTest: {
-            JSGlobalObject* globalObject = m_node->child1()->dynamicCastConstant<JSGlobalObject*>(vm());
+            JSGlobalObject* globalObject = m_node->child1()->dynamicCastConstant<JSGlobalObject*>();
             if (!globalObject) {
                 if (verbose)
                     dataLog("Giving up because no global object.\n");
@@ -460,7 +429,7 @@ private:
 
             Node* regExpObjectNode = m_node->child2().node();
             RegExp* regExp;
-            if (RegExpObject* regExpObject = regExpObjectNode->dynamicCastConstant<RegExpObject*>(vm()))
+            if (RegExpObject* regExpObject = regExpObjectNode->dynamicCastConstant<RegExpObject*>())
                 regExp = regExpObject->regExp();
             else if (regExpObjectNode->op() == NewRegexp)
                 regExp = regExpObjectNode->castOperand<RegExp*>();
@@ -701,7 +670,7 @@ private:
             
             Node* regExpObjectNode = m_node->child2().node();
             RegExp* regExp;
-            if (RegExpObject* regExpObject = regExpObjectNode->dynamicCastConstant<RegExpObject*>(vm()))
+            if (RegExpObject* regExpObject = regExpObjectNode->dynamicCastConstant<RegExpObject*>())
                 regExp = regExpObject->regExp();
             else if (regExpObjectNode->op() == NewRegexp)
                 regExp = regExpObjectNode->castOperand<RegExp*>();
@@ -798,7 +767,7 @@ private:
         case TailCall: {
             ExecutableBase* executable = nullptr;
             Edge callee = m_graph.varArgChild(m_node, 0);
-            if (JSFunction* function = callee->dynamicCastConstant<JSFunction*>(vm()))
+            if (JSFunction* function = callee->dynamicCastConstant<JSFunction*>())
                 executable = function->executable();
             else if (callee->isFunctionAllocation())
                 executable = callee->castOperand<FunctionExecutable*>();
@@ -806,7 +775,7 @@ private:
             if (!executable)
                 break;
             
-            if (FunctionExecutable* functionExecutable = jsDynamicCast<FunctionExecutable*>(vm(), executable)) {
+            if (FunctionExecutable* functionExecutable = jsDynamicCast<FunctionExecutable*>(executable)) {
                 // We need to update m_parameterSlots before we get to the backend, but we don't
                 // want to do too much of this.
                 unsigned numAllocatedArgs =

@@ -29,8 +29,6 @@
 #include "ActiveDOMObject.h"
 #include "Timer.h"
 
-#include <wtf/Seconds.h>
-
 namespace WebCore {
 
 class SuspendableTimer : private TimerBase, public ActiveDOMObject {
@@ -45,13 +43,17 @@ public:
     bool isActive() const { return TimerBase::isActive() || (m_suspended && m_savedIsActive); }
     bool isSuspended() const { return m_suspended; }
 
-    Seconds repeatInterval() const;
+    void startRepeating(double repeatInterval);
+    void startOneShot(double interval);
+    double repeatInterval() const;
+    void augmentFireInterval(double delta);
+    void augmentRepeatInterval(double delta);
 
-    void startRepeating(Seconds repeatInterval);
-    void startOneShot(Seconds interval);
-
-    void augmentFireInterval(Seconds delta);
-    void augmentRepeatInterval(Seconds delta);
+    void startRepeating(std::chrono::milliseconds repeatInterval) { startRepeating(msToSeconds(repeatInterval)); }
+    void startOneShot(std::chrono::milliseconds interval) { startOneShot(msToSeconds(interval)); }
+    std::chrono::milliseconds repeatIntervalMS() const { return secondsToMS(repeatInterval()); }
+    void augmentFireInterval(std::chrono::milliseconds delta) { augmentFireInterval(msToSeconds(delta)); }
+    void augmentRepeatInterval(std::chrono::milliseconds delta) { augmentRepeatInterval(msToSeconds(delta)); }
 
     using TimerBase::didChangeAlignmentInterval;
     using TimerBase::operator new;
@@ -69,11 +71,11 @@ private:
     void suspend(ReasonForSuspension) final;
     void resume() final;
 
-    Seconds m_savedNextFireInterval;
-    Seconds m_savedRepeatInterval;
+    bool m_suspended;
 
-    bool m_suspended { false };
-    bool m_savedIsActive { false };
+    double m_savedNextFireInterval;
+    double m_savedRepeatInterval;
+    bool m_savedIsActive;
 };
 
 } // namespace WebCore

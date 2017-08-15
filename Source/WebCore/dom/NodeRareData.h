@@ -195,8 +195,7 @@ public:
         m_cachedCollections.remove(namedCollectionKey(collection->type(), name));
     }
 
-    void invalidateCaches();
-    void invalidateCachesForAttribute(const QualifiedName& attrName);
+    void invalidateCaches(const QualifiedName* attrName = nullptr);
 
     void adoptTreeScope()
     {
@@ -211,15 +210,15 @@ public:
         }
 
         for (auto& cache : m_atomicNameCaches.values())
-            cache->invalidateCacheForDocument(oldDocument);
+            cache->invalidateCache(oldDocument);
 
         for (auto& list : m_tagCollectionNSCache.values()) {
             ASSERT(!list->isRootedAtDocument());
-            list->invalidateCacheForDocument(oldDocument);
+            list->invalidateCache(oldDocument);
         }
 
         for (auto& collection : m_cachedCollections.values())
-            collection->invalidateCacheForDocument(oldDocument);
+            collection->invalidateCache(oldDocument);
     }
 
 private:

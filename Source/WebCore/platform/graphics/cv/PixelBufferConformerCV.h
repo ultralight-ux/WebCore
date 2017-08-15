@@ -37,7 +37,6 @@ namespace WebCore {
 class PixelBufferConformerCV {
 public:
     PixelBufferConformerCV(CFDictionaryRef attributes);
-    RetainPtr<CVPixelBufferRef> convert(CVPixelBufferRef);
     RetainPtr<CGImageRef> createImageFromPixelBuffer(CVPixelBufferRef);
 
 private:

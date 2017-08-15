@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -28,16 +28,16 @@
 namespace WebCore {
 
 StyleBackgroundData::StyleBackgroundData()
-    : background(BackgroundFillLayer)
-    , color(RenderStyle::initialBackgroundColor())
+    : m_background(BackgroundFillLayer)
+    , m_color(RenderStyle::initialBackgroundColor())
 {
 }
 
-inline StyleBackgroundData::StyleBackgroundData(const StyleBackgroundData& other)
+inline StyleBackgroundData::StyleBackgroundData(const StyleBackgroundData& o)
     : RefCounted<StyleBackgroundData>()
-    , background(other.background)
-    , color(other.color)
-    , outline(other.outline)
+    , m_background(o.m_background)
+    , m_color(o.m_color)
+    , m_outline(o.m_outline)
 {
 }
 
@@ -46,18 +46,18 @@ Ref<StyleBackgroundData> StyleBackgroundData::copy() const
     return adoptRef(*new StyleBackgroundData(*this));
 }
 
-bool StyleBackgroundData::operator==(const StyleBackgroundData& other) const
+bool StyleBackgroundData::operator==(const StyleBackgroundData& o) const
 {
-    return background == other.background && color == other.color && outline == other.outline;
+    return m_background == o.m_background && m_color == o.m_color && m_outline == o.m_outline;
 }
 
 bool StyleBackgroundData::isEquivalentForPainting(const StyleBackgroundData& other) const
 {
-    if (background != other.background || color != other.color)
+    if (m_background != other.m_background || m_color != other.m_color)
         return false;
-    if (!outline.isVisible() && !other.outline.isVisible())
+    if (!m_outline.isVisible() && !other.m_outline.isVisible())
         return true;
-    return outline == other.outline;
+    return m_outline == other.m_outline;
 }
 
 } // namespace WebCore

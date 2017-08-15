@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2003-2017 Apple Inc. All Rights Reserved.
+ *  Copyright (C) 2003-2016 Apple Inc. All Rights Reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -20,7 +20,6 @@
 #include "config.h"
 #include "JSLazyEventListener.h"
 
-#include "CachedScriptFetcher.h"
 #include "ContentSecurityPolicy.h"
 #include "Frame.h"
 #include "JSNode.h"
@@ -113,7 +112,7 @@ JSObject* JSLazyEventListener::initializeJSFunction(ScriptExecutionContext* exec
 
     JSObject* jsFunction = constructFunctionSkippingEvalEnabledCheck(
         exec, exec->lexicalGlobalObject(), args, Identifier::fromString(exec, m_functionName),
-        SourceOrigin { m_sourceURL, CachedScriptFetcher::create(document.charset()) }, m_sourceURL, m_sourcePosition, overrideLineNumber);
+        m_sourceURL, m_sourcePosition, overrideLineNumber);
 
     if (UNLIKELY(scope.exception())) {
         reportCurrentException(exec);
@@ -139,8 +138,8 @@ JSObject* JSLazyEventListener::initializeJSFunction(ScriptExecutionContext* exec
 
 static const String& eventParameterName(bool isSVGEvent)
 {
-    static NeverDestroyed<const String> eventString(MAKE_STATIC_STRING_IMPL("event"));
-    static NeverDestroyed<const String> evtString(MAKE_STATIC_STRING_IMPL("evt"));
+    static NeverDestroyed<const String> eventString(ASCIILiteral("event"));
+    static NeverDestroyed<const String> evtString(ASCIILiteral("evt"));
     return isSVGEvent ? evtString : eventString;
 }
 

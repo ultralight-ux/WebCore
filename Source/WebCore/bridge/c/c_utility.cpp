@@ -70,8 +70,7 @@ static String convertUTF8ToUTF16WithLatin1Fallback(const NPUTF8* UTF8Chars, int 
 void convertValueToNPVariant(ExecState* exec, JSValue value, NPVariant* result)
 {
     JSLockHolder lock(exec);
-    VM& vm = exec->vm();
-    
+
     VOID_TO_NPVARIANT(*result);
 
     if (value.isString()) {
@@ -87,7 +86,7 @@ void convertValueToNPVariant(ExecState* exec, JSValue value, NPVariant* result)
         NULL_TO_NPVARIANT(*result);
     } else if (value.isObject()) {
         JSObject* object = asObject(value);
-        if (object->classInfo(vm) == CRuntimeObject::info()) {
+        if (object->classInfo() == CRuntimeObject::info()) {
             CRuntimeObject* runtimeObject = static_cast<CRuntimeObject*>(object);
             CInstance* instance = runtimeObject->getInternalCInstance();
             if (instance) {

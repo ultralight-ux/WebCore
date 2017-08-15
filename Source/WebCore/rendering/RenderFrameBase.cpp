@@ -56,7 +56,7 @@ void RenderFrameBase::layoutWithFlattening(bool hasFixedWidth, bool hasFixedHeig
 {
     view().protectRenderWidgetUntilLayoutIsDone(*this);
 
-    performLayoutWithFlattening(hasFixedWidth, hasFixedHeight);
+    peformLayoutWithFlattening(hasFixedWidth, hasFixedHeight);
 
     clearNeedsLayout();
 }
@@ -68,7 +68,7 @@ RenderView* RenderFrameBase::childRenderView() const
     return childView()->renderView();
 }
 
-void RenderFrameBase::performLayoutWithFlattening(bool hasFixedWidth, bool hasFixedHeight)
+void RenderFrameBase::peformLayoutWithFlattening(bool hasFixedWidth, bool hasFixedHeight)
 {
     if (!childRenderView())
         return;

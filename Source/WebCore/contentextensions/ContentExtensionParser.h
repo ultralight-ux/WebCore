@@ -28,7 +28,6 @@
 #if ENABLE(CONTENT_EXTENSIONS)
 
 #include <system_error>
-#include <wtf/Expected.h>
 #include <wtf/Forward.h>
 #include <wtf/Vector.h>
 
@@ -38,7 +37,7 @@ namespace ContentExtensions {
 
 class ContentExtensionRule;
 
-Expected<Vector<ContentExtensionRule>, std::error_code> parseRuleList(String&&);
+std::error_code parseRuleList(const String& rules, Vector<ContentExtensionRule>&);
 WEBCORE_EXPORT bool isValidCSSSelector(const String&);
 
 } // namespace ContentExtensions

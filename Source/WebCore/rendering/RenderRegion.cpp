@@ -35,6 +35,7 @@
 #include "HitTestResult.h"
 #include "IntRect.h"
 #include "LayoutRepainter.h"
+#include "PaintInfo.h"
 #include "Range.h"
 #include "RenderBoxRegionInfo.h"
 #include "RenderInline.h"
@@ -279,7 +280,7 @@ void RenderRegion::installFlowThread()
 
 void RenderRegion::attachRegion()
 {
-    if (renderTreeBeingDestroyed())
+    if (documentBeingDestroyed())
         return;
     
     // A region starts off invalid.

@@ -52,7 +52,7 @@ public:
     TreeResolver(Document&);
     ~TreeResolver();
 
-    std::unique_ptr<Update> resolve();
+    std::unique_ptr<Update> resolve(Change);
 
     static ElementUpdate createAnimatedElementUpdate(std::unique_ptr<RenderStyle>, Element&, Change parentChange);
 
@@ -76,11 +76,11 @@ private:
     struct Parent {
         Element* element;
         const RenderStyle& style;
-        Change change { NoChange };
+        Change change;
         bool didPushScope { false };
         bool elementNeedingStyleRecalcAffectsNextSiblingElementStyle { false };
 
-        Parent(Document&);
+        Parent(Document&, Change);
         Parent(Element&, const RenderStyle&, Change);
     };
 
@@ -102,13 +102,14 @@ private:
 
     Vector<Ref<Scope>, 4> m_scopeStack;
     Vector<Parent, 32> m_parentStack;
-    bool m_didSeePendingStylesheet { false };
 
     std::unique_ptr<Update> m_update;
 };
 
 void queuePostResolutionCallback(Function<void ()>&&);
 bool postResolutionCallbacksAreSuspended();
+
+bool isPlaceholderStyle(const RenderStyle&);
 
 class PostResolutionCallbackDisabler {
 public:

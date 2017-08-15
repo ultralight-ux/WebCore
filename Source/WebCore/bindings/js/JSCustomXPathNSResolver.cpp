@@ -28,12 +28,13 @@
 
 #include "CommonVM.h"
 #include "Document.h"
+#include "ExceptionCode.h"
 #include "Frame.h"
-#include "JSDOMExceptionHandling.h"
 #include "JSDOMWindowCustom.h"
 #include "JSMainThreadExecState.h"
 #include "Page.h"
 #include "PageConsoleClient.h"
+#include "SecurityOrigin.h"
 #include <runtime/JSLock.h>
 #include <wtf/Ref.h>
 
@@ -41,21 +42,23 @@ namespace WebCore {
 
 using namespace JSC;
 
-ExceptionOr<Ref<JSCustomXPathNSResolver>> JSCustomXPathNSResolver::create(ExecState& state, JSValue value)
+RefPtr<JSCustomXPathNSResolver> JSCustomXPathNSResolver::create(ExecState* exec, JSValue value)
 {
     if (value.isUndefinedOrNull())
-        return Exception { TypeError };
+        return nullptr;
 
-    auto* resolverObject = value.getObject();
-    if (!resolverObject)
-        return Exception { TYPE_MISMATCH_ERR };
+    JSObject* resolverObject = value.getObject();
+    if (!resolverObject) {
+        setDOMException(exec, TYPE_MISMATCH_ERR);
+        return nullptr;
+    }
 
-    return adoptRef(*new JSCustomXPathNSResolver(state.vm(), resolverObject, asJSDOMWindow(state.vmEntryGlobalObject())));
+    return adoptRef(*new JSCustomXPathNSResolver(exec, resolverObject, asJSDOMWindow(exec->vmEntryGlobalObject())));
 }
 
-JSCustomXPathNSResolver::JSCustomXPathNSResolver(VM& vm, JSObject* customResolver, JSDOMWindow* globalObject)
-    : m_customResolver(vm, customResolver)
-    , m_globalObject(vm, globalObject)
+JSCustomXPathNSResolver::JSCustomXPathNSResolver(ExecState* exec, JSObject* customResolver, JSDOMWindow* globalObject)
+    : m_customResolver(exec->vm(), customResolver)
+    , m_globalObject(exec->vm(), globalObject)
 {
 }
 

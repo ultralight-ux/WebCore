@@ -52,7 +52,6 @@ struct WindowFeatures {
 
     bool fullscreen { false };
     bool dialog { false };
-    bool noopener { false };
 
     Vector<String> additionalFeatures;
 };
@@ -60,7 +59,6 @@ struct WindowFeatures {
 WindowFeatures parseWindowFeatures(StringView windowFeaturesString);
 WindowFeatures parseDialogFeatures(const String& dialogFeaturesString, const FloatRect& screenAvailableRect);
 
-enum class FeatureMode { Window, Viewport };
-void processFeaturesString(StringView features, FeatureMode, std::function<void(StringView type, StringView value)> callback);
+void processFeaturesString(StringView features, std::function<void(StringView type, StringView value)> callback);
 
 } // namespace WebCore

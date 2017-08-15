@@ -37,8 +37,8 @@
 namespace WebCore {
 
 static const double frameRate = 60;
-static const Seconds tickTime = 1_s / frameRate;
-static const Seconds minimumTimerInterval { 1_ms };
+static const double tickTime = 1 / frameRate;
+static const double minimumTimerInterval = .001;
 
 ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollableArea& scrollableArea, const FloatPoint& position, std::function<void (FloatPoint&&)>&& notifyPositionChangedFunction)
     : ScrollAnimation(scrollableArea)
@@ -226,40 +226,40 @@ static inline double releaseArea(ScrollAnimationSmooth::Curve curve, double star
     return endValue - startValue;
 }
 
-static inline void getAnimationParametersForGranularity(ScrollGranularity granularity, Seconds& animationTime, Seconds& repeatMinimumSustainTime, Seconds& attackTime, Seconds& releaseTime, ScrollAnimationSmooth::Curve& coastTimeCurve, Seconds& maximumCoastTime)
+static inline void getAnimationParametersForGranularity(ScrollGranularity granularity, double& animationTime, double& repeatMinimumSustainTime, double& attackTime, double& releaseTime, ScrollAnimationSmooth::Curve& coastTimeCurve, double& maximumCoastTime)
 {
     switch (granularity) {
     case ScrollByDocument:
-        animationTime = tickTime * 10;
-        repeatMinimumSustainTime = tickTime * 10;
-        attackTime = tickTime * 10;
-        releaseTime = tickTime * 10;
+        animationTime = 20 * tickTime;
+        repeatMinimumSustainTime = 10 * tickTime;
+        attackTime = 10 * tickTime;
+        releaseTime = 10 * tickTime;
         coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
-        maximumCoastTime = 1_s;
+        maximumCoastTime = 1;
         break;
     case ScrollByLine:
-        animationTime = tickTime * 10;
-        repeatMinimumSustainTime = tickTime * 7;
-        attackTime = tickTime * 3;
-        releaseTime = tickTime * 3;
+        animationTime = 10 * tickTime;
+        repeatMinimumSustainTime = 7 * tickTime;
+        attackTime = 3 * tickTime;
+        releaseTime = 3 * tickTime;
         coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
-        maximumCoastTime = 1_s;
+        maximumCoastTime = 1;
         break;
     case ScrollByPage:
-        animationTime = tickTime * 15;
-        repeatMinimumSustainTime = tickTime * 10;
-        attackTime = tickTime * 5;
-        releaseTime = tickTime * 5;
+        animationTime = 15 * tickTime;
+        repeatMinimumSustainTime = 10 * tickTime;
+        attackTime = 5 * tickTime;
+        releaseTime = 5 * tickTime;
         coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
-        maximumCoastTime = 1_s;
+        maximumCoastTime = 1;
         break;
     case ScrollByPixel:
-        animationTime = tickTime * 11;
-        repeatMinimumSustainTime = tickTime * 2;
-        attackTime = tickTime * 3;
-        releaseTime = tickTime * 3;
+        animationTime = 11 * tickTime;
+        repeatMinimumSustainTime = 2 * tickTime;
+        attackTime = 3 * tickTime;
+        releaseTime = 3 * tickTime;
         coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
-        maximumCoastTime = 1250_ms;
+        maximumCoastTime = 1.25;
         break;
     default:
         ASSERT_NOT_REACHED();
@@ -270,7 +270,7 @@ bool ScrollAnimationSmooth::updatePerAxisData(PerAxisData& data, ScrollGranulari
 {
     if (!data.startTime || !delta || (delta < 0) != (data.desiredPosition - data.currentPosition < 0)) {
         data.desiredPosition = data.currentPosition;
-        data.startTime = { };
+        data.startTime = 0;
     }
     float newPosition = data.desiredPosition + delta;
 
@@ -279,7 +279,7 @@ bool ScrollAnimationSmooth::updatePerAxisData(PerAxisData& data, ScrollGranulari
     if (newPosition == data.desiredPosition)
         return false;
 
-    Seconds animationTime, repeatMinimumSustainTime, attackTime, releaseTime, maximumCoastTime;
+    double animationTime, repeatMinimumSustainTime, attackTime, releaseTime, maximumCoastTime;
     Curve coastTimeCurve;
     getAnimationParametersForGranularity(granularity, animationTime, repeatMinimumSustainTime, attackTime, releaseTime, coastTimeCurve, maximumCoastTime);
 
@@ -298,7 +298,7 @@ bool ScrollAnimationSmooth::updatePerAxisData(PerAxisData& data, ScrollGranulari
 
     if (!data.startTime) {
         // FIXME: This should be the time from the event that got us here.
-        data.startTime = MonotonicTime::now() - tickTime / 2.;
+        data.startTime = monotonicallyIncreasingTime() - tickTime / 2;
         data.startPosition = data.currentPosition;
         data.lastAnimationTime = data.startTime;
     }
@@ -306,10 +306,10 @@ bool ScrollAnimationSmooth::updatePerAxisData(PerAxisData& data, ScrollGranulari
 
     double remainingDelta = data.desiredPosition - data.currentPosition;
     double attackAreaLeft = 0;
-    Seconds deltaTime = data.lastAnimationTime - data.startTime;
-    Seconds attackTimeLeft = std::max(0_s, data.attackTime - deltaTime);
-    Seconds timeLeft = data.animationTime - deltaTime;
-    Seconds minTimeLeft = data.releaseTime + std::min(repeatMinimumSustainTime, data.animationTime - data.releaseTime - attackTimeLeft);
+    double deltaTime = data.lastAnimationTime - data.startTime;
+    double attackTimeLeft = std::max(0., data.attackTime - deltaTime);
+    double timeLeft = data.animationTime - deltaTime;
+    double minTimeLeft = data.releaseTime + std::min(repeatMinimumSustainTime, data.animationTime - data.releaseTime - attackTimeLeft);
     if (timeLeft < minTimeLeft) {
         data.animationTime = deltaTime + minTimeLeft;
         timeLeft = minTimeLeft;
@@ -321,14 +321,14 @@ bool ScrollAnimationSmooth::updatePerAxisData(PerAxisData& data, ScrollGranulari
         double minCoastDelta = data.visibleLength;
 
         if (fabs(remainingDelta) > minCoastDelta) {
-            double maxCoastDelta = maximumCoastTime.value() * targetMaxCoastVelocity;
+            double maxCoastDelta = maximumCoastTime * targetMaxCoastVelocity;
             double coastFactor = std::min(1., (fabs(remainingDelta) - minCoastDelta) / (maxCoastDelta - minCoastDelta));
 
             // We could play with the curve here - linear seems a little soft. Initial testing makes me want to feed into the sustain time more aggressively.
-            Seconds coastMinTimeLeft = std::min(maximumCoastTime, minTimeLeft + (maximumCoastTime - minTimeLeft) * coastCurve(coastTimeCurve, coastFactor));
+            double coastMinTimeLeft = std::min(maximumCoastTime, minTimeLeft + coastCurve(coastTimeCurve, coastFactor) * (maximumCoastTime - minTimeLeft));
 
-            if (Seconds additionalTime = std::max(0_s, coastMinTimeLeft - minTimeLeft)) {
-                Seconds additionalReleaseTime = std::min(additionalTime, additionalTime * (releaseTime / (releaseTime + repeatMinimumSustainTime)));
+            if (double additionalTime = std::max(0., coastMinTimeLeft - minTimeLeft)) {
+                double additionalReleaseTime = std::min(additionalTime, releaseTime / (releaseTime + repeatMinimumSustainTime) * additionalTime);
                 data.releaseTime = releaseTime + additionalReleaseTime;
                 data.animationTime = deltaTime + coastMinTimeLeft;
                 timeLeft = coastMinTimeLeft;
@@ -336,43 +336,43 @@ bool ScrollAnimationSmooth::updatePerAxisData(PerAxisData& data, ScrollGranulari
         }
     }
 
-    Seconds releaseTimeLeft = std::min(timeLeft, data.releaseTime);
-    Seconds sustainTimeLeft = std::max(0_s, timeLeft - releaseTimeLeft - attackTimeLeft);
+    double releaseTimeLeft = std::min(timeLeft, data.releaseTime);
+    double sustainTimeLeft = std::max(0., timeLeft - releaseTimeLeft - attackTimeLeft);
     if (attackTimeLeft) {
         double attackSpot = deltaTime / data.attackTime;
-        attackAreaLeft = attackArea(Curve::Cubic, attackSpot, 1) * data.attackTime.value();
+        attackAreaLeft = attackArea(Curve::Cubic, attackSpot, 1) * data.attackTime;
     }
 
     double releaseSpot = (data.releaseTime - releaseTimeLeft) / data.releaseTime;
-    double releaseAreaLeft = releaseArea(Curve::Cubic, releaseSpot, 1) * data.releaseTime.value();
+    double releaseAreaLeft = releaseArea(Curve::Cubic, releaseSpot, 1) * data.releaseTime;
 
-    data.desiredVelocity = remainingDelta / (attackAreaLeft + sustainTimeLeft.value() + releaseAreaLeft);
+    data.desiredVelocity = remainingDelta / (attackAreaLeft + sustainTimeLeft + releaseAreaLeft);
     data.releasePosition = data.desiredPosition - data.desiredVelocity * releaseAreaLeft;
     if (attackAreaLeft)
         data.attackPosition = data.startPosition + data.desiredVelocity * attackAreaLeft;
     else
-        data.attackPosition = data.releasePosition - (data.animationTime - data.releaseTime - data.attackTime).value() * data.desiredVelocity;
+        data.attackPosition = data.releasePosition - (data.animationTime - data.releaseTime - data.attackTime) * data.desiredVelocity;
 
     if (sustainTimeLeft) {
-        double roundOff = data.releasePosition - ((attackAreaLeft ? data.attackPosition : data.currentPosition) + data.desiredVelocity * sustainTimeLeft.value());
-        data.desiredVelocity += roundOff / sustainTimeLeft.value();
+        double roundOff = data.releasePosition - ((attackAreaLeft ? data.attackPosition : data.currentPosition) + data.desiredVelocity * sustainTimeLeft);
+        data.desiredVelocity += roundOff / sustainTimeLeft;
     }
 
     return true;
 }
 
-bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, MonotonicTime currentTime)
+bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, double currentTime)
 {
     if (!data.startTime)
         return false;
 
-    Seconds lastScrollInterval = currentTime - data.lastAnimationTime;
+    double lastScrollInterval = currentTime - data.lastAnimationTime;
     if (lastScrollInterval < minimumTimerInterval)
         return true;
 
     data.lastAnimationTime = currentTime;
 
-    Seconds deltaTime = currentTime - data.startTime;
+    double deltaTime = currentTime - data.startTime;
     double newPosition = data.currentPosition;
 
     if (deltaTime > data.animationTime) {
@@ -380,18 +380,18 @@ bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, MonotonicTime curre
         return false;
     }
     if (deltaTime < data.attackTime)
-        newPosition = attackCurve(Curve::Cubic, deltaTime.value(), data.attackTime.value(), data.startPosition, data.attackPosition);
+        newPosition = attackCurve(Curve::Cubic, deltaTime, data.attackTime, data.startPosition, data.attackPosition);
     else if (deltaTime < (data.animationTime - data.releaseTime))
-        newPosition = data.attackPosition + (deltaTime - data.attackTime).value() * data.desiredVelocity;
+        newPosition = data.attackPosition + (deltaTime - data.attackTime) * data.desiredVelocity;
     else {
         // release is based on targeting the exact final position.
-        Seconds releaseDeltaT = deltaTime - (data.animationTime - data.releaseTime);
-        newPosition = releaseCurve(Curve::Cubic, releaseDeltaT.value(), data.releaseTime.value(), data.releasePosition, data.desiredPosition);
+        double releaseDeltaT = deltaTime - (data.animationTime - data.releaseTime);
+        newPosition = releaseCurve(Curve::Cubic, releaseDeltaT, data.releaseTime, data.releasePosition, data.desiredPosition);
     }
 
     // Normalize velocity to a per second amount. Could be used to check for jank.
-    if (lastScrollInterval > 0_s)
-        data.currentVelocity = (newPosition - data.currentPosition) / lastScrollInterval.value();
+    if (lastScrollInterval > 0)
+        data.currentVelocity = (newPosition - data.currentPosition) / lastScrollInterval;
     data.currentPosition = newPosition;
 
     return true;
@@ -399,8 +399,8 @@ bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, MonotonicTime curre
 
 void ScrollAnimationSmooth::animationTimerFired()
 {
-    MonotonicTime currentTime = MonotonicTime::now();
-    Seconds deltaToNextFrame = 1_s * ceil((currentTime - m_startTime).value() * frameRate) / frameRate - (currentTime - m_startTime);
+    double currentTime = monotonicallyIncreasingTime();
+    double deltaToNextFrame = ceil((currentTime - m_startTime) * frameRate) / frameRate - (currentTime - m_startTime);
     currentTime += deltaToNextFrame;
 
     bool continueAnimation = false;
@@ -422,7 +422,7 @@ void ScrollAnimationSmooth::animationTimerFired()
 }
 
 #if USE(REQUEST_ANIMATION_FRAME_TIMER)
-void ScrollAnimationSmooth::startNextTimer(Seconds delay)
+void ScrollAnimationSmooth::startNextTimer(double delay)
 {
     m_animationTimer.startOneShot(delay);
 }

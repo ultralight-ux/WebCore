@@ -23,56 +23,26 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-const MinHeightToDisplayDescription = 100;
-const MinHeightToDisplayTitle = 40;
-
 class Placard extends LayoutItem
 {
 
-    constructor({ iconName = null, title = "", description = "", width = 400, height = 300, layoutDelegate = null } = {})
+    constructor({ iconName = null, title = "", description = "", layoutDelegate = null } = {})
     {
         super({
             element: `<div class="placard"></div>`,
             layoutDelegate
         });
 
-        this._container = this.addChild(new LayoutNode(`<div class="container"></div>`));
+        const container = this.addChild(new LayoutNode(`<div class="container"></div>`));
         
-        if (iconName) {
-            this._iconButton = new IconButton(this);
-            this._iconButton.iconName = iconName;
-        }
+        if (iconName)
+            container.addChild(new IconButton(this)).iconName = iconName;
 
         if (!!title)
-            this._titleNode = new LayoutNode(`<div class="title">${title}</div>`);
+            container.addChild(new LayoutNode(`<div class="title">${title}</div>`));
 
         if (!!description)
-            this._descriptionNode = new LayoutNode(`<div class="description">${description}</div>`);
-
-        this.minDimensionToDisplayIcon = 170;
-
-        this.width = width;
-        this.height = height;
-    }
-
-    // Protected
-
-    layout()
-    {
-        super.layout();
-
-        const children = [];
-
-        if (this._iconButton && this.width >= this.minDimensionToDisplayIcon && this.height >= this.minDimensionToDisplayIcon)
-            children.push(this._iconButton);
-
-        if (this._titleNode && this.height >= MinHeightToDisplayTitle)
-            children.push(this._titleNode);
-
-        if (this._descriptionNode && this.height >= MinHeightToDisplayDescription)
-            children.push(this._descriptionNode);
-
-        this._container.children = children;
+            container.addChild(new LayoutNode(`<div class="description">${description}</div>`));
     }
 
 }

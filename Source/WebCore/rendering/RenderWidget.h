@@ -44,13 +44,14 @@ public:
     }
 
     static bool isSuspended() { return s_widgetHierarchyUpdateSuspendCount; }
-    static void scheduleWidgetToMove(Widget& widget, FrameView* frame) { widgetNewParentMap().set(&widget, frame); }
+    static void scheduleWidgetToMove(Widget* widget, FrameView* frame) { widgetNewParentMap().set(widget, frame); }
 
 private:
-    using WidgetToParentMap = HashMap<RefPtr<Widget>, FrameView*>;
+    typedef HashMap<RefPtr<Widget>, FrameView*> WidgetToParentMap;
     static WidgetToParentMap& widgetNewParentMap();
 
     WEBCORE_EXPORT void moveWidgets();
+
     WEBCORE_EXPORT static unsigned s_widgetHierarchyUpdateSuspendCount;
 };
     
@@ -63,7 +64,7 @@ public:
     Widget* widget() const { return m_widget.get(); }
     WEBCORE_EXPORT void setWidget(RefPtr<Widget>&&);
 
-    static RenderWidget* find(const Widget&);
+    static RenderWidget* find(const Widget*);
 
     enum class ChildWidgetState { Valid, Destroyed };
     ChildWidgetState updateWidgetPosition() WARN_UNUSED_RETURN;
@@ -79,7 +80,6 @@ public:
 protected:
     RenderWidget(HTMLFrameOwnerElement&, RenderStyle&&);
 
-    void willBeDestroyed() override;
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) final;
     void layout() override;
     void paint(PaintInfo&, const LayoutPoint&) override;
@@ -95,6 +95,7 @@ private:
     bool needsPreferredWidthsRecalculation() const final;
     RenderBox* embeddedContentBox() const final;
 
+    void willBeDestroyed() final;
     void setSelectionState(SelectionState) final;
     void setOverlapTestResult(bool) final;
 

@@ -35,8 +35,6 @@ class Range;
 
 class StaticRange : public RefCounted<StaticRange> {
 public:
-    ~StaticRange();
-
     static Ref<StaticRange> createFromRange(const Range&);
     static Ref<StaticRange> create(Ref<Node>&& startContainer, unsigned startOffset, Ref<Node>&& endContainer, unsigned endOffset);
 

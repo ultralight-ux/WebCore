@@ -109,7 +109,6 @@ enum JSTokenType {
     CLOSEBRACKET,
     COMMA,
     QUESTION,
-    BACKQUOTE,
     INTEGER,
     DOUBLE,
     IDENT,

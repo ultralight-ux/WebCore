@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006, 2007, 2009, 2010 Apple Inc. All rights reserved.
  * Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,14 +33,23 @@
 #include "FrameDestructionObserver.h"
 #include "ScrollToOptions.h"
 #include "Supplementable.h"
+#include "URL.h"
+#include <functional>
+#include <memory>
+#include <wtf/Forward.h>
 #include <wtf/HashSet.h>
+#include <wtf/Optional.h>
 #include <wtf/WeakPtr.h>
+
+namespace Inspector {
+class ScriptCallStack;
+}
 
 namespace JSC {
 class ExecState;
 class JSObject;
 class JSValue;
-template<typename> class Strong;
+template<typename T> class Strong;
 }
 
 namespace WebCore {
@@ -52,15 +61,22 @@ class Crypto;
 class CustomElementRegistry;
 class DOMApplicationCache;
 class DOMSelection;
+class DOMURL;
 class DOMWindowProperty;
 class DOMWrapperWorld;
+class Database;
+class DatabaseCallback;
 class Document;
 class Element;
 class EventListener;
 class FloatRect;
+class Frame;
 class History;
+class IDBFactory;
 class Location;
 class MediaQueryList;
+class MessageEvent;
+class MessagePort;
 class Navigator;
 class Node;
 class NodeList;
@@ -71,6 +87,8 @@ class PostMessageTimer;
 class RequestAnimationFrameCallback;
 class ScheduledAction;
 class Screen;
+class SecurityOrigin;
+class SerializedScriptValue;
 class Storage;
 class StyleMedia;
 class WebKitNamespace;
@@ -89,7 +107,7 @@ class DOMWindow final
     , public Base64Utilities
     , public Supplementable<DOMWindow> {
 public:
-    static Ref<DOMWindow> create(Document& document) { return adoptRef(*new DOMWindow(document)); }
+    static Ref<DOMWindow> create(Document* document) { return adoptRef(*new DOMWindow(document)); }
     WEBCORE_EXPORT virtual ~DOMWindow();
 
     // In some rare cases, we'll reuse a DOMWindow for a new Document. For example,
@@ -99,10 +117,15 @@ public:
     // won't be blown away when the network load commits. To make that happen, we
     // "securely transition" the existing DOMWindow to the Document that results from
     // the network load. See also SecurityContext::isSecureTransitionTo.
-    void didSecureTransitionTo(Document&);
+    void didSecureTransitionTo(Document*);
 
-    void registerProperty(DOMWindowProperty&);
-    void unregisterProperty(DOMWindowProperty&);
+    EventTargetInterface eventTargetInterface() const override { return DOMWindowEventTargetInterfaceType; }
+    ScriptExecutionContext* scriptExecutionContext() const override { return ContextDestructionObserver::scriptExecutionContext(); }
+
+    DOMWindow* toDOMWindow() override;
+
+    void registerProperty(DOMWindowProperty*);
+    void unregisterProperty(DOMWindowProperty*);
 
     void resetUnlessSuspendedForDocumentSuspension();
     void suspendForDocumentSuspension();
@@ -115,11 +138,11 @@ public:
     WEBCORE_EXPORT static bool dispatchAllPendingBeforeUnloadEvents();
     WEBCORE_EXPORT static void dispatchAllPendingUnloadEvents();
 
-    static FloatRect adjustWindowRect(Page&, const FloatRect& pendingChanges);
+    static FloatRect adjustWindowRect(Page*, const FloatRect& pendingChanges);
 
     bool allowPopUp(); // Call on first window, not target window.
-    static bool allowPopUp(Frame& firstFrame);
-    static bool canShowModalDialog(const Frame&);
+    static bool allowPopUp(Frame* firstFrame);
+    static bool canShowModalDialog(const Frame*);
     WEBCORE_EXPORT void setCanShowModalDialogOverride(bool);
 
     Screen* screen() const;
@@ -149,7 +172,7 @@ public:
     void print();
     void stop();
 
-    WEBCORE_EXPORT RefPtr<DOMWindow> open(DOMWindow& activeWindow, DOMWindow& firstWindow, const String& urlString, const AtomicString& frameName, const String& windowFeaturesString);
+    WEBCORE_EXPORT RefPtr<DOMWindow> open(const String& urlString, const AtomicString& frameName, const String& windowFeaturesString, DOMWindow& activeWindow, DOMWindow& firstWindow);
 
     void showModalDialog(const String& urlString, const String& dialogFeaturesString, DOMWindow& activeWindow, DOMWindow& firstWindow, std::function<void(DOMWindow&)> prepareDialogFunction);
 
@@ -194,8 +217,6 @@ public:
     DOMWindow* parent() const;
     DOMWindow* top() const;
 
-    String origin() const;
-
     // DOM Level 2 AbstractView Interface
 
     WEBCORE_EXPORT Document* document() const;
@@ -207,6 +228,7 @@ public:
     // DOM Level 2 Style Interface
 
     WEBCORE_EXPORT Ref<CSSStyleDeclaration> getComputedStyle(Element&, const String& pseudoElt) const;
+    ExceptionOr<RefPtr<CSSStyleDeclaration>> getComputedStyle(Document&, const String& pseudoElt);
 
     // WebKit extensions
 
@@ -223,6 +245,7 @@ public:
 
     ExceptionOr<void> postMessage(JSC::ExecState&, DOMWindow& callerWindow, JSC::JSValue message, const String& targetOrigin, Vector<JSC::Strong<JSC::JSObject>>&&);
     void postMessageTimerFired(PostMessageTimer&);
+    void dispatchMessageEventWithOriginCheck(SecurityOrigin* intendedTargetOrigin, Event&, PassRefPtr<Inspector::ScriptCallStack>);
 
     void languagesChanged();
 
@@ -243,15 +266,18 @@ public:
     ExceptionOr<int> setInterval(std::unique_ptr<ScheduledAction>, int timeout);
     void clearInterval(int timeoutId);
 
-    int requestAnimationFrame(Ref<RequestAnimationFrameCallback>&&);
-    int webkitRequestAnimationFrame(Ref<RequestAnimationFrameCallback>&&);
+    // WebKit animation extensions
+#if ENABLE(REQUEST_ANIMATION_FRAME)
+    int requestAnimationFrame(PassRefPtr<RequestAnimationFrameCallback>);
+    int webkitRequestAnimationFrame(PassRefPtr<RequestAnimationFrameCallback>);
     void cancelAnimationFrame(int id);
+#endif
 
     // Events
     // EventTarget API
-    bool addEventListener(const AtomicString& eventType, Ref<EventListener>&&, const AddEventListenerOptions&) final;
-    bool removeEventListener(const AtomicString& eventType, EventListener&, const ListenerOptions&) final;
-    void removeAllEventListeners() final;
+    bool addEventListener(const AtomicString& eventType, Ref<EventListener>&&, const AddEventListenerOptions&) override;
+    bool removeEventListener(const AtomicString& eventType, EventListener&, const ListenerOptions&) override;
+    void removeAllEventListeners() override;
 
     using EventTarget::dispatchEvent;
     bool dispatchEvent(Event&, EventTarget*);
@@ -263,8 +289,8 @@ public:
 
     void finishedLoading();
 
-    using RefCounted::ref;
-    using RefCounted::deref;
+    using RefCounted<DOMWindow>::ref;
+    using RefCounted<DOMWindow>::deref;
 
     // HTML 5 key/value storage
     ExceptionOr<Storage*> sessionStorage() const;
@@ -279,7 +305,6 @@ public:
     CustomElementRegistry& ensureCustomElementRegistry();
 
     ExceptionOr<Ref<NodeList>> collectMatchingElementsInFlatTree(Node&, const String& selectors);
-    ExceptionOr<RefPtr<Element>> matchingElementInFlatTree(Node&, const String& selectors);
 
 #if ENABLE(ORIENTATION_EVENTS)
     // This is the interface orientation in degrees. Some examples are:
@@ -291,7 +316,6 @@ public:
 #if ENABLE(WEB_TIMING)
     Performance* performance() const;
 #endif
-
     double nowTimestamp() const;
 
 #if PLATFORM(IOS)
@@ -326,21 +350,16 @@ public:
     WeakPtr<DOMWindow> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
 
 private:
-    explicit DOMWindow(Document&);
-
-    EventTargetInterface eventTargetInterface() const final { return DOMWindowEventTargetInterfaceType; }
-    ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
-
-    DOMWindow* toDOMWindow() final;
+    explicit DOMWindow(Document*);
 
     Page* page();
     bool allowedToChangeWindowGeometry() const;
 
-    void frameDestroyed() final;
-    void willDetachPage() final;
+    void frameDestroyed() override;
+    void willDetachPage() override;
 
-    void refEventTarget() final { ref(); }
-    void derefEventTarget() final { deref(); }
+    void refEventTarget() override { ref(); }
+    void derefEventTarget() override { deref(); }
 
     static RefPtr<Frame> createWindow(const String& urlString, const AtomicString& frameName, const WindowFeatures&, DOMWindow& activeWindow, Frame& firstFrame, Frame& openerFrame, std::function<void(DOMWindow&)> prepareDialogFunction = nullptr);
     bool isInsecureScriptAccess(DOMWindow& activeWindow, const String& urlString);

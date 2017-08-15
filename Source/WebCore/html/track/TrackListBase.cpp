@@ -37,11 +37,11 @@
 using namespace WebCore;
 
 TrackListBase::TrackListBase(HTMLMediaElement* element, ScriptExecutionContext* context)
-    : ContextDestructionObserver(context)
+    : m_context(context)
     , m_element(element)
     , m_asyncEventQueue(*this)
 {
-    ASSERT(is<Document>(context));
+    ASSERT(context->isDocument());
 }
 
 TrackListBase::~TrackListBase()
@@ -158,11 +158,6 @@ void TrackListBase::scheduleChangeEvent()
     // selected, the user agent must queue a task to fire a simple event named
     // change at the VideoTrackList object.
     m_asyncEventQueue.enqueueEvent(Event::create(eventNames().changeEvent, false, false));
-}
-
-bool TrackListBase::isChangeEventScheduled() const
-{
-    return m_asyncEventQueue.hasPendingEventsOfType(eventNames().changeEvent);
 }
 
 bool TrackListBase::isAnyTrackEnabled() const

@@ -33,7 +33,6 @@
 #include "ImageOrientation.h"
 #include "ImageSource.h"
 #include "IntSize.h"
-#include "URL.h"
 
 #if USE(CG) || USE(APPKIT)
 #include <wtf/RetainPtr.h>
@@ -49,7 +48,6 @@ typedef struct HBITMAP__ *HBITMAP;
 
 namespace WebCore {
 
-class Settings;
 class Timer;
 
 class BitmapImage final : public Image {
@@ -66,18 +64,15 @@ public:
     WEBCORE_EXPORT static RefPtr<BitmapImage> create(HBITMAP);
 #endif
     virtual ~BitmapImage();
-
-    void updateFromSettings(const Settings&);
-
+    
     bool hasSingleSecurityOrigin() const override { return true; }
 
-    EncodedDataStatus dataChanged(bool allDataReceived) override;
+    bool dataChanged(bool allDataReceived) override;
     unsigned decodedSize() const { return m_source.decodedSize(); }
 
-    EncodedDataStatus encodedDataStatus() const { return m_source.encodedDataStatus(); }
+    bool isSizeAvailable() const { return m_source.isSizeAvailable(); }
     size_t frameCount() const { return m_source.frameCount(); }
     RepetitionCount repetitionCount() const { return m_source.repetitionCount(); }
-    String uti() const override { return m_source.uti(); }
     String filenameExtension() const override { return m_source.filenameExtension(); }
     std::optional<IntPoint> hotSpot() const override { return m_source.hotSpot(); }
 
@@ -85,14 +80,11 @@ public:
     FloatSize size() const override { return m_source.size(); }
     IntSize sizeRespectingOrientation() const { return m_source.sizeRespectingOrientation(); }
     Color singlePixelSolidColor() const override { return m_source.singlePixelSolidColor(); }
-    bool frameIsBeingDecodedAndIsCompatibleWithOptionsAtIndex(size_t index, const DecodingOptions& decodingOptions) const { return m_source.frameIsBeingDecodedAndIsCompatibleWithOptionsAtIndex(index, decodingOptions); }
-    ImageFrame::DecodingStatus frameDecodingStatusAtIndex(size_t index) const { return m_source.frameDecodingStatusAtIndex(index); }
-    bool frameIsCompleteAtIndex(size_t index) const { return frameDecodingStatusAtIndex(index) == ImageFrame::DecodingStatus::Complete; }
+
+    bool frameIsBeingDecodedAtIndex(size_t index) const { return m_source.frameIsBeingDecodedAtIndex(index); }
+    bool frameIsCompleteAtIndex(size_t index) const { return m_source.frameIsCompleteAtIndex(index); }
     bool frameHasAlphaAtIndex(size_t index) const { return m_source.frameHasAlphaAtIndex(index); }
-
-    bool frameHasFullSizeNativeImageAtIndex(size_t index, SubsamplingLevel subsamplingLevel) { return m_source.frameHasFullSizeNativeImageAtIndex(index, subsamplingLevel); }
-    bool frameHasDecodedNativeImageCompatibleWithOptionsAtIndex(size_t index, const std::optional<SubsamplingLevel>& subsamplingLevel, const DecodingOptions& decodingOptions) { return m_source.frameHasDecodedNativeImageCompatibleWithOptionsAtIndex(index, subsamplingLevel, decodingOptions); }
-
+    bool frameHasValidNativeImageAtIndex(size_t index, SubsamplingLevel subsamplingLevel) const { return m_source.frameHasValidNativeImageAtIndex(index, subsamplingLevel); }
     SubsamplingLevel frameSubsamplingLevelAtIndex(size_t index) const { return m_source.frameSubsamplingLevelAtIndex(index); }
 
     float frameDurationAtIndex(size_t index) const { return m_source.frameDurationAtIndex(index); }
@@ -102,11 +94,8 @@ public:
     bool currentFrameKnownToBeOpaque() const override { return !frameHasAlphaAtIndex(currentFrame()); }
     ImageOrientation orientationForCurrentFrame() const override { return frameOrientationAtIndex(currentFrame()); }
 
-    bool shouldUseAsyncDecodingForAnimatedImagesForTesting() const { return m_frameDecodingDurationForTesting > 0_s; }
-    void setFrameDecodingDurationForTesting(Seconds duration) { m_frameDecodingDurationForTesting = duration; }
-    bool shouldUseAsyncDecodingForLargeImages();
-    bool shouldUseAsyncDecodingForAnimatedImages();
-    void setClearDecoderAfterAsyncFrameRequestForTesting(bool value) { m_clearDecoderAfterAsyncFrameRequestForTesting = value; }
+    bool isAsyncDecodingForcedForTesting() const { return m_frameDecodingDurationForTesting > 0; }
+    void setFrameDecodingDurationForTesting(float duration) { m_frameDecodingDurationForTesting = duration; }
 
     // Accessors for native image formats.
 #if USE(APPKIT)
@@ -127,6 +116,10 @@ public:
     GdkPixbuf* getGdkPixbuf() override;
 #endif
 
+#if PLATFORM(EFL)
+    Evas_Object* getEvasObject(Evas*) override;
+#endif
+
     WEBCORE_EXPORT NativeImagePtr nativeImage(const GraphicsContext* = nullptr) override;
     NativeImagePtr nativeImageForCurrentFrame(const GraphicsContext* = nullptr) override;
 #if USE(CG)
@@ -138,8 +131,12 @@ protected:
     WEBCORE_EXPORT BitmapImage(NativeImagePtr&&, ImageObserver* = nullptr);
     WEBCORE_EXPORT BitmapImage(ImageObserver* = nullptr);
 
-    NativeImagePtr frameImageAtIndex(size_t index) { return m_source.frameImageAtIndex(index); }
-    NativeImagePtr frameImageAtIndexCacheIfNeeded(size_t, SubsamplingLevel = SubsamplingLevel::Default, const GraphicsContext* = nullptr);
+    NativeImagePtr frameImageAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default, const GraphicsContext* = nullptr);
+
+    bool allowSubsampling() const { return imageObserver() && imageObserver()->allowSubsampling(); }
+    bool allowLargeImageAsyncDecoding() const { return imageObserver() && imageObserver()->allowLargeImageAsyncDecoding(); }
+    bool allowAnimatedImageAsyncDecoding() const { return imageObserver() && imageObserver()->allowAnimatedImageAsyncDecoding(); }
+    bool showDebugBackground() const { return imageObserver() && imageObserver()->showDebugBackground(); }
 
     // Called to invalidate cached data. When |destroyAll| is true, we wipe out
     // the entire frame buffer cache and tell the image source to destroy
@@ -153,29 +150,28 @@ protected:
     // |destroyAll| along.
     void destroyDecodedDataIfNecessary(bool destroyAll = true);
 
-    void draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator, BlendMode, DecodingMode, ImageOrientationDescription) override;
+    void draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator, BlendMode, ImageOrientationDescription) override;
     void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator, BlendMode = BlendModeNormal) override;
 #if PLATFORM(WIN)
     void drawFrameMatchingSourceSize(GraphicsContext&, const FloatRect& dstRect, const IntSize& srcSize, CompositeOperator) override;
 #endif
 
     // Animation.
-    enum class StartAnimationStatus { CannotStart, IncompleteData, TimerActive, DecodingActive, Started };
+    enum class StartAnimationResult { CannotStart, IncompleteData, TimerActive, DecodingActive, Started };
     bool isAnimated() const override { return m_source.frameCount() > 1; }
     bool shouldAnimate();
     bool canAnimate();
     void startAnimation() override { internalStartAnimation(); }
-    StartAnimationStatus internalStartAnimation();
+    StartAnimationResult internalStartAnimation();
     void advanceAnimation();
     void internalAdvanceAnimation();
-    bool isAnimating() const final;
 
     // It may look unusual that there is no start animation call as public API. This is because
     // we start and stop animating lazily. Animation begins whenever someone draws the image. It will
     // automatically pause once all observers no longer want to render the image anywhere.
     void stopAnimation() override;
     void resetAnimation() override;
-    void imageFrameAvailableAtIndex(size_t) override;
+    void newFrameNativeImageAvailableAtIndex(size_t) override;
 
     // Handle platform-specific data
     void invalidatePlatformData();
@@ -190,40 +186,28 @@ protected:
 
 private:
     void clearTimer();
-    void startTimer(Seconds delay);
-    bool canDestroyDecodedData();
+    void startTimer(double delay);
     bool isBitmapImage() const override { return true; }
     void dump(TextStream&) const override;
 
     // Animated images over a certain size are considered large enough that we'll only hang on to one frame at a time.
-    static const unsigned LargeAnimationCutoff = 30 * 1014 * 1024;
+#if !PLATFORM(IOS)
+    static const unsigned LargeAnimationCutoff = 5242880;
+#else
+    static const unsigned LargeAnimationCutoff = 2097152;
+#endif
 
     mutable ImageSource m_source;
 
     size_t m_currentFrame { 0 }; // The index of the current frame of animation.
     SubsamplingLevel m_currentSubsamplingLevel { SubsamplingLevel::Default };
-    ImageFrame::DecodingStatus m_currentFrameDecodingStatus { ImageFrame::DecodingStatus::Invalid };
     std::unique_ptr<Timer> m_frameTimer;
     RepetitionCount m_repetitionsComplete { RepetitionCountNone }; // How many repetitions we've finished.
-    MonotonicTime m_desiredFrameStartTime; // The system time at which we hope to see the next call to startAnimation().
-
-    Seconds m_frameDecodingDurationForTesting;
-    MonotonicTime m_desiredFrameDecodeTimeForTesting;
-
+    double m_desiredFrameStartTime { 0 }; // The system time at which we hope to see the next call to startAnimation().
     bool m_animationFinished { false };
 
-    // The default value of m_allowSubsampling should be the same as defaultImageSubsamplingEnabled in Settings.cpp
-#if PLATFORM(IOS)
-    bool m_allowSubsampling { true };
-#else
-    bool m_allowSubsampling { false };
-#endif
-    bool m_allowLargeImageAsyncDecoding { false };
-    bool m_allowAnimatedImageAsyncDecoding { false };
-    bool m_showDebugBackground { false };
-
-    bool m_clearDecoderAfterAsyncFrameRequestForTesting { false };
-
+    float m_frameDecodingDurationForTesting { 0 };
+    double m_desiredFrameDecodeTimeForTesting { 0 };
 #if !LOG_DISABLED
     size_t m_lateFrameCount { 0 };
     size_t m_earlyFrameCount { 0 };

@@ -106,6 +106,9 @@ void FetchResponse::fetch(ScriptExecutionContext& context, FetchRequest& request
     }
     auto response = adoptRef(*new FetchResponse(context, FetchBody::loadingBody(), FetchHeaders::create(FetchHeaders::Guard::Immutable), { }));
 
+    // Setting pending activity until BodyLoader didFail or didSucceed callback is called.
+    response->setPendingActivity(response.ptr());
+
     response->m_bodyLoader.emplace(response.get(), WTFMove(promise));
     if (!response->m_bodyLoader->start(context, request))
         response->m_bodyLoader = std::nullopt;
@@ -128,10 +131,9 @@ void FetchResponse::BodyLoader::didSucceed()
         m_response.closeStream();
 #endif
 
-    if (m_loader->isStarted()) {
-        Ref<FetchResponse> protector(m_response);
+    if (m_loader->isStarted())
         m_response.m_bodyLoader = std::nullopt;
-    }
+    m_response.unsetPendingActivity(&m_response);
 }
 
 void FetchResponse::BodyLoader::didFail()
@@ -149,22 +151,16 @@ void FetchResponse::BodyLoader::didFail()
 #endif
 
     // Check whether didFail is called as part of FetchLoader::start.
-    if (m_loader->isStarted()) {
-        Ref<FetchResponse> protector(m_response);
+    if (m_loader->isStarted())
         m_response.m_bodyLoader = std::nullopt;
-    }
+
+    m_response.unsetPendingActivity(&m_response);
 }
 
 FetchResponse::BodyLoader::BodyLoader(FetchResponse& response, FetchPromise&& promise)
     : m_response(response)
     , m_promise(WTFMove(promise))
 {
-    m_response.setPendingActivity(&m_response);
-}
-
-FetchResponse::BodyLoader::~BodyLoader()
-{
-    m_response.unsetPendingActivity(&m_response);
 }
 
 void FetchResponse::BodyLoader::didReceiveResponse(const ResourceResponse& resourceResponse)
@@ -173,7 +169,6 @@ void FetchResponse::BodyLoader::didReceiveResponse(const ResourceResponse& resou
 
     m_response.m_response = resourceResponse;
     m_response.m_headers->filterAndFill(resourceResponse.httpHeaderFields(), FetchHeaders::Guard::Response);
-    m_response.updateContentType();
 
     std::exchange(m_promise, std::nullopt)->resolve(m_response);
 }
@@ -251,10 +246,7 @@ void FetchResponse::consume(unsigned type, Ref<DeferredPromise>&& wrapper)
 void FetchResponse::startConsumingStream(unsigned type)
 {
     m_isDisturbed = true;
-    auto consumerType = static_cast<FetchBodyConsumer::Type>(type);
-    m_consumer.setType(consumerType);
-    if (consumerType == FetchBodyConsumer::Type::Blob)
-        m_consumer.setContentType(Blob::normalizedContentType(extractMIMETypeFromMediaType(m_contentType)));
+    m_consumer.setType(static_cast<FetchBodyConsumer::Type>(type));
 }
 
 void FetchResponse::consumeChunk(Ref<JSC::Uint8Array>&& chunk)
@@ -282,7 +274,7 @@ void FetchResponse::consumeBodyAsStream()
 
     RefPtr<SharedBuffer> data = m_bodyLoader->startStreaming();
     if (data) {
-        if (!m_readableStreamSource->enqueue(data->tryCreateArrayBuffer())) {
+        if (!m_readableStreamSource->enqueue(data->createArrayBuffer())) {
             stop();
             return;
         }
@@ -349,7 +341,7 @@ void FetchResponse::stop()
     FetchBodyOwner::stop();
     if (m_bodyLoader) {
         m_bodyLoader->stop();
-        m_bodyLoader = std::nullopt;
+        ASSERT(!m_bodyLoader);
     }
 }
 

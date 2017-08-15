@@ -27,14 +27,13 @@
 #include "CodeProfiling.h"
 
 #include "CodeProfile.h"
-#include "MachineContext.h"
 #include <wtf/MetaAllocator.h>
 
 #if HAVE(SIGNAL_H)
 #include <signal.h>
 #endif
 
-#if HAVE(MACHINE_CONTEXT)
+#if OS(LINUX) || OS(DARWIN)
 #include <sys/time.h>
 #endif
 
@@ -49,7 +48,7 @@ WTF::MetaAllocatorTracker* CodeProfiling::s_tracker = 0;
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 #endif
 
-#if HAVE(MACHINE_CONTEXT)
+#if (OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK) && CPU(X86_64)) || (OS(LINUX) && CPU(X86))
 // Helper function to start & stop the timer.
 // Presently we're using the wall-clock timer, since this seems to give the best results.
 static void setProfileTimer(unsigned usec)
@@ -67,13 +66,19 @@ static void setProfileTimer(unsigned usec)
 #pragma clang diagnostic pop
 #endif
 
-#if HAVE(MACHINE_CONTEXT)
+#if OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK) && CPU(X86_64)
 static void profilingTimer(int, siginfo_t*, void* uap)
 {
     mcontext_t context = static_cast<ucontext_t*>(uap)->uc_mcontext;
-    CodeProfiling::sample(
-        MachineContext::instructionPointer(context),
-        reinterpret_cast<void**>(MachineContext::framePointer(context)));
+    CodeProfiling::sample(reinterpret_cast<void*>(context->__ss.__rip),
+                          reinterpret_cast<void**>(context->__ss.__rbp));
+}
+#elif OS(LINUX) && CPU(X86)
+static void profilingTimer(int, siginfo_t*, void* uap)
+{
+    mcontext_t context = static_cast<ucontext_t*>(uap)->uc_mcontext;
+    CodeProfiling::sample(reinterpret_cast<void*>(context.gregs[REG_EIP]),
+                          reinterpret_cast<void**>(context.gregs[REG_EBP]));
 }
 #endif
 
@@ -136,7 +141,7 @@ void CodeProfiling::begin(const SourceCode& source)
     if (alreadyProfiling)
         return;
 
-#if HAVE(MACHINE_CONTEXT)
+#if (OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK) && CPU(X86_64)) || (OS(LINUX) && CPU(X86))
     // Regsiter a signal handler & itimer.
     struct sigaction action;
     action.sa_sigaction = reinterpret_cast<void (*)(int, siginfo_t *, void *)>(profilingTimer);
@@ -160,7 +165,7 @@ void CodeProfiling::end()
     if (s_profileStack)
         return;
 
-#if HAVE(MACHINE_CONTEXT)
+#if (OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK) && CPU(X86_64)) || (OS(LINUX) && CPU(X86))
     // Stop profiling
     setProfileTimer(0);
 #endif

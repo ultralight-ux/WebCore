@@ -42,6 +42,7 @@
 #include "Logging.h"
 #include "MainFrame.h"
 #include "MemoryCache.h"
+#include "Page.h"
 #include "PlatformStrategies.h"
 #include "ResourceHandle.h"
 #include "SchemeRegistry.h"
@@ -70,8 +71,8 @@ ResourceLoadPriority CachedResource::defaultPriorityForResourceType(Type type)
     case CachedResource::MainResource:
         return ResourceLoadPriority::VeryHigh;
     case CachedResource::CSSStyleSheet:
-    case CachedResource::Script:
         return ResourceLoadPriority::High;
+    case CachedResource::Script:
 #if ENABLE(SVG_FONTS)
     case CachedResource::SVGFontResource:
 #endif
@@ -102,10 +103,10 @@ ResourceLoadPriority CachedResource::defaultPriorityForResourceType(Type type)
     return ResourceLoadPriority::Low;
 }
 
-static Seconds deadDecodedDataDeletionIntervalForResourceType(CachedResource::Type type)
+static std::chrono::milliseconds deadDecodedDataDeletionIntervalForResourceType(CachedResource::Type type)
 {
     if (type == CachedResource::Script)
-        return 0_s;
+        return std::chrono::milliseconds { 0 };
 
     return MemoryCache::singleton().deadDecodedDataDeletionInterval();
 }
@@ -121,8 +122,6 @@ CachedResource::CachedResource(CachedResourceRequest&& request, Type type, Sessi
     , m_responseTimestamp(std::chrono::system_clock::now())
     , m_fragmentIdentifierForRequest(request.releaseFragmentIdentifier())
     , m_origin(request.releaseOrigin())
-    , m_initiatorName(request.initiatorName())
-    , m_isLinkPreload(request.isLinkPreload())
     , m_type(type)
 {
     ASSERT(sessionID.isValid());
@@ -216,6 +215,16 @@ void CachedResource::load(CachedResourceLoader& cachedResourceLoader)
 
     m_loading = true;
 
+#if USE(QUICK_LOOK)
+    if (!m_resourceRequest.isNull() && m_resourceRequest.url().protocolIs(QLPreviewProtocol())) {
+        // When QuickLook is invoked to convert a document, it returns a unique URL in the
+        // NSURLReponse for the main document. To make safeQLURLForDocumentURLAndResourceURL()
+        // work, we need to use the QL URL not the original URL.
+        const URL& documentURL = frameLoader.documentLoader()->response().url();
+        m_resourceRequest.setURL(safeQLURLForDocumentURLAndResourceURL(documentURL, url()));
+    }
+#endif
+
     if (isCacheValidator()) {
         CachedResource* resourceToRevalidate = m_resourceToRevalidate;
         ASSERT(resourceToRevalidate->canUseCacheValidator());
@@ -223,8 +232,8 @@ void CachedResource::load(CachedResourceLoader& cachedResourceLoader)
         const String& lastModified = resourceToRevalidate->response().httpHeaderField(HTTPHeaderName::LastModified);
         const String& eTag = resourceToRevalidate->response().httpHeaderField(HTTPHeaderName::ETag);
         if (!lastModified.isEmpty() || !eTag.isEmpty()) {
-            ASSERT(cachedResourceLoader.cachePolicy(type(), url()) != CachePolicyReload);
-            if (cachedResourceLoader.cachePolicy(type(), url()) == CachePolicyRevalidate)
+            ASSERT(cachedResourceLoader.cachePolicy(type()) != CachePolicyReload);
+            if (cachedResourceLoader.cachePolicy(type()) == CachePolicyRevalidate)
                 m_resourceRequest.setHTTPHeaderField(HTTPHeaderName::CacheControl, "max-age=0");
             if (!lastModified.isEmpty())
                 m_resourceRequest.setHTTPHeaderField(HTTPHeaderName::IfModifiedSince, lastModified);
@@ -464,7 +473,7 @@ void CachedResource::didAddClient(CachedResourceClient& client)
 
 bool CachedResource::addClientToSet(CachedResourceClient& client)
 {
-    if (m_preloadResult == PreloadNotReferenced && client.shouldMarkAsReferenced()) {
+    if (m_preloadResult == PreloadNotReferenced) {
         if (isLoaded())
             m_preloadResult = PreloadReferencedWhileComplete;
         else if (m_requestedFromNetworkingLayer)
@@ -536,7 +545,7 @@ void CachedResource::destroyDecodedDataIfNeeded()
 {
     if (!m_decodedSize)
         return;
-    if (!MemoryCache::singleton().deadDecodedDataDeletionInterval())
+    if (!MemoryCache::singleton().deadDecodedDataDeletionInterval().count())
         return;
     m_decodedDataDeletionTimer.restart();
 }
@@ -750,14 +759,7 @@ CachedResource::RevalidationDecision CachedResource::makeRevalidationDecision(Ca
         return RevalidationDecision::No;
 
     case CachePolicyReload:
-        return RevalidationDecision::YesDueToCachePolicy;
-
     case CachePolicyRevalidate:
-        if (m_response.cacheControlContainsImmutable() && m_response.url().protocolIs("https")) {
-            if (isExpired())
-                return RevalidationDecision::YesDueToExpired;
-            return RevalidationDecision::No;
-        }
         return RevalidationDecision::YesDueToCachePolicy;
 
     case CachePolicyVerify:
@@ -820,7 +822,7 @@ inline CachedResource::Callback::Callback(CachedResource& resource, CachedResour
     , m_client(client)
     , m_timer(*this, &Callback::timerFired)
 {
-    m_timer.startOneShot(0_s);
+    m_timer.startOneShot(0);
 }
 
 inline void CachedResource::Callback::cancel()
@@ -850,9 +852,8 @@ void CachedResource::tryReplaceEncodedData(SharedBuffer& newBuffer)
     if (m_data->size() != newBuffer.size() || memcmp(m_data->data(), newBuffer.data(), m_data->size()))
         return;
 
-    m_data->clear();
-    m_data->append(newBuffer);
-    didReplaceSharedBufferContents();
+    if (m_data->tryReplaceContentsWithPlatformBuffer(newBuffer))
+        didReplaceSharedBufferContents();
 }
 
 #endif

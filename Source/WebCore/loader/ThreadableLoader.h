@@ -41,6 +41,7 @@ namespace WebCore {
     class ResourceRequest;
     class ResourceResponse;
     class ScriptExecutionContext;
+    class SecurityOrigin;
     class ThreadableLoaderClient;
 
     enum PreflightPolicy {
@@ -56,6 +57,11 @@ namespace WebCore {
         EnforceScriptSrcDirective,
     };
 
+    enum class OpaqueResponseBodyPolicy {
+        Receive,
+        DoNotReceive
+    };
+
     enum class ResponseFilteringPolicy {
         Enable,
         Disable,
@@ -63,15 +69,14 @@ namespace WebCore {
 
     struct ThreadableLoaderOptions : ResourceLoaderOptions {
         ThreadableLoaderOptions();
-        ThreadableLoaderOptions(const ResourceLoaderOptions&, PreflightPolicy, ContentSecurityPolicyEnforcement, String&& initiator, ResponseFilteringPolicy);
+        ThreadableLoaderOptions(const ResourceLoaderOptions&, PreflightPolicy, ContentSecurityPolicyEnforcement, String&& initiator, OpaqueResponseBodyPolicy, ResponseFilteringPolicy);
         ~ThreadableLoaderOptions();
-
-        ThreadableLoaderOptions isolatedCopy() const;
 
         PreflightPolicy preflightPolicy { ConsiderPreflight };
         ContentSecurityPolicyEnforcement contentSecurityPolicyEnforcement { ContentSecurityPolicyEnforcement::EnforceConnectSrcDirective };
         String initiator; // This cannot be an AtomicString, as isolatedCopy() wouldn't create an object that's safe for passing to another thread.
-        ResponseFilteringPolicy filteringPolicy { ResponseFilteringPolicy::Disable };
+        OpaqueResponseBodyPolicy opaqueResponse { OpaqueResponseBodyPolicy::Receive };
+        ResponseFilteringPolicy filteringPolicy { ResponseFilteringPolicy::Enable };
     };
 
     // Useful for doing loader operations from any thread (not threadsafe,

@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2013, 2014, 2016 Apple Inc. All rights reserved.
  *           (C) 2006 Alexey Proskuryakov (ap@nypop.com)
  * Copyright (C) 2007 Samuel Weinig (sam@webkit.org)
  * Copyright (C) 2010 Google Inc. All rights reserved.
@@ -56,9 +56,9 @@
 #include "PlatformMouseEvent.h"
 #include "RenderTextControlSingleLine.h"
 #include "RenderTheme.h"
+#include "RuntimeEnabledFeatures.h"
 #include "ScopedEventQueue.h"
 #include "SearchInputType.h"
-#include "Settings.h"
 #include "StyleResolver.h"
 #include <wtf/MathExtras.h>
 #include <wtf/Ref.h>
@@ -923,7 +923,7 @@ void HTMLInputElement::setChecked(bool nowChecked, TextFieldEventBehavior eventB
     // unchecked to match other browsers. DOM is not a useful standard for this
     // because it says only to fire change events at "lose focus" time, which is
     // definitely wrong in practice for these types of elements.
-    if (eventBehavior != DispatchNoEvent && isConnected() && m_inputType->shouldSendChangeEventAfterCheckedChanged()) {
+    if (eventBehavior != DispatchNoEvent && inDocument() && m_inputType->shouldSendChangeEventAfterCheckedChanged()) {
         setTextAsOfLastFormControlChangeEvent(String());
         dispatchFormControlChangeEvent();
     }
@@ -1184,9 +1184,10 @@ void HTMLInputElement::defaultEventHandler(Event& event)
         if (wasChangedSinceLastFormControlChangeEvent())
             dispatchFormControlChangeEvent();
 
+        RefPtr<HTMLFormElement> formForSubmission = m_inputType->formForSubmission();
         // Form may never have been present, or may have been destroyed by code responding to the change event.
-        if (auto* formElement = form())
-            formElement->submitImplicitly(event, canTriggerImplicitSubmission());
+        if (formForSubmission)
+            formForSubmission->submitImplicitly(event, canTriggerImplicitSubmission());
 
         event.setDefaultHandled();
         return;
@@ -1341,9 +1342,9 @@ FileList* HTMLInputElement::files()
     return m_inputType->files();
 }
 
-void HTMLInputElement::setFiles(RefPtr<FileList>&& files)
+void HTMLInputElement::setFiles(PassRefPtr<FileList> files)
 {
-    m_inputType->setFiles(WTFMove(files));
+    m_inputType->setFiles(files);
 }
 
 #if ENABLE(DRAG_SUPPORT)
@@ -1358,10 +1359,12 @@ Icon* HTMLInputElement::icon() const
     return m_inputType->icon();
 }
 
+#if PLATFORM(IOS)
 String HTMLInputElement::displayString() const
 {
     return m_inputType->displayString();
 }
+#endif
 
 bool HTMLInputElement::canReceiveDroppedFiles() const
 {
@@ -1507,16 +1510,16 @@ Node::InsertionNotificationRequest HTMLInputElement::insertedInto(ContainerNode&
 void HTMLInputElement::finishedInsertingSubtree()
 {
     HTMLTextFormControlElement::finishedInsertingSubtree();
-    if (isConnected() && !form())
+    if (inDocument() && !form())
         addToRadioButtonGroup();
 }
 
 void HTMLInputElement::removedFrom(ContainerNode& insertionPoint)
 {
-    if (insertionPoint.isConnected() && !form())
+    if (insertionPoint.inDocument() && !form())
         removeFromRadioButtonGroup();
     HTMLTextFormControlElement::removedFrom(insertionPoint);
-    ASSERT(!isConnected());
+    ASSERT(!inDocument());
 #if ENABLE(DATALIST_ELEMENT)
     resetListAttributeTargetObserver();
 #endif
@@ -1602,7 +1605,7 @@ HTMLDataListElement* HTMLInputElement::dataList() const
 
 void HTMLInputElement::resetListAttributeTargetObserver()
 {
-    if (isConnected())
+    if (inDocument())
         m_listAttributeTargetObserver = std::make_unique<ListAttributeTargetObserver>(attributeWithoutSynchronization(listAttr), this);
     else
         m_listAttributeTargetObserver = nullptr;
@@ -1771,7 +1774,7 @@ bool HTMLInputElement::isEmptyValue() const
 void HTMLInputElement::maxLengthAttributeChanged(const AtomicString& newValue)
 {
     unsigned oldEffectiveMaxLength = effectiveMaxLength();
-    internalSetMaxLength(parseHTMLNonNegativeInteger(newValue).valueOr(-1));
+    internalSetMaxLength(parseHTMLNonNegativeInteger(newValue).value_or(-1));
     if (oldEffectiveMaxLength != effectiveMaxLength())
         updateValueIfNeeded();
 
@@ -1783,7 +1786,7 @@ void HTMLInputElement::maxLengthAttributeChanged(const AtomicString& newValue)
 void HTMLInputElement::minLengthAttributeChanged(const AtomicString& newValue)
 {
     int oldMinLength = minLength();
-    internalSetMinLength(parseHTMLNonNegativeInteger(newValue).valueOr(-1));
+    internalSetMinLength(parseHTMLNonNegativeInteger(newValue).value_or(-1));
     if (oldMinLength != minLength())
         updateValueIfNeeded();
 
@@ -1866,9 +1869,9 @@ RadioButtonGroups* HTMLInputElement::radioButtonGroups() const
 {
     if (!isRadioButton())
         return nullptr;
-    if (auto* formElement = form())
+    if (HTMLFormElement* formElement = form())
         return &formElement->radioButtonGroups();
-    if (isConnected())
+    if (inDocument())
         return &document().formController().radioButtonGroups();
     return nullptr;
 }
@@ -1941,66 +1944,6 @@ bool HTMLInputElement::shouldTruncateText(const RenderStyle& style) const
     return document().focusedElement() != this && style.textOverflow() == TextOverflowEllipsis;
 }
 
-ExceptionOr<int> HTMLInputElement::selectionStartForBindings() const
-{
-    if (!canHaveSelection())
-        return Exception { TypeError };
-
-    return selectionStart();
-}
-
-ExceptionOr<void> HTMLInputElement::setSelectionStartForBindings(int start)
-{
-    if (!canHaveSelection())
-        return Exception { TypeError };
-
-    setSelectionStart(start);
-    return { };
-}
-
-ExceptionOr<int> HTMLInputElement::selectionEndForBindings() const
-{
-    if (!canHaveSelection())
-        return Exception { TypeError };
-
-    return selectionEnd();
-}
-
-ExceptionOr<void> HTMLInputElement::setSelectionEndForBindings(int end)
-{
-    if (!canHaveSelection())
-        return Exception { TypeError };
-
-    setSelectionEnd(end);
-    return { };
-}
-
-ExceptionOr<String> HTMLInputElement::selectionDirectionForBindings() const
-{
-    if (!canHaveSelection())
-        return Exception { TypeError };
-
-    return String { selectionDirection() };
-}
-
-ExceptionOr<void> HTMLInputElement::setSelectionDirectionForBindings(const String& direction)
-{
-    if (!canHaveSelection())
-        return Exception { TypeError };
-
-    setSelectionDirection(direction);
-    return { };
-}
-
-ExceptionOr<void> HTMLInputElement::setSelectionRangeForBindings(int start, int end, const String& direction)
-{
-    if (!canHaveSelection())
-        return Exception { TypeError };
-    
-    setSelectionRange(start, end, direction);
-    return { };
-}
-
 RenderStyle HTMLInputElement::createInnerTextStyle(const RenderStyle& style) const
 {
     auto textBlockStyle = RenderStyle::create();
@@ -2032,8 +1975,7 @@ bool HTMLInputElement::setupDateTimeChooserParameters(DateTimeChooserParameters&
     parameters.minimum = minimum();
     parameters.maximum = maximum();
     parameters.required = isRequired();
-
-    if (!document().settings().langAttributeAwareFormControlUIEnabled())
+    if (!RuntimeEnabledFeatures::sharedFeatures().langAttributeAwareFormControlUIEnabled())
         parameters.locale = defaultLanguage();
     else {
         AtomicString computedLocale = computeInheritedLanguage();

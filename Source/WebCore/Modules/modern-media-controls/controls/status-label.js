@@ -29,12 +29,11 @@ class StatusLabel extends LayoutItem
     constructor(layoutDelegate)
     {
         super({
-            element: `<div class="status-label"></div>`,
+            element: `<div class="status-label">`,
             layoutDelegate
         });
 
         this._text = "";
-        this._enabled = false;
     }
 
     // Public
@@ -51,22 +50,6 @@ class StatusLabel extends LayoutItem
 
         this._text = text;
         this.markDirtyProperty("text");
-
-        if (this.layoutDelegate)
-            this.layoutDelegate.needsLayout = true;
-    }
-
-    get enabled()
-    {
-        return this._enabled;
-    }
-
-    set enabled(enabled)
-    {
-        if (enabled === this._enabled)
-            return;
-
-        this._enabled = enabled;
 
         if (this.layoutDelegate)
             this.layoutDelegate.needsLayout = true;

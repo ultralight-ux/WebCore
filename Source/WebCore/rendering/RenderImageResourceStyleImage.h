@@ -42,7 +42,8 @@ private:
     void initialize(RenderElement*) override;
     void shutdown() override;
 
-    RefPtr<Image> image(const IntSize& = { }) const override;
+    bool hasImage() const override { return true; }
+    RefPtr<Image> image(int width = 0, int height = 0) const override;
     bool errorOccurred() const override { return m_styleImage->errorOccurred(); }
 
     void setContainerSizeForRenderer(const IntSize&) override;

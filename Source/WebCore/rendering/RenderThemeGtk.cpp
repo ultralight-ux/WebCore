@@ -66,10 +66,10 @@ Ref<RenderTheme> RenderThemeGtk::create()
     return adoptRef(*new RenderThemeGtk());
 }
 
-RenderTheme& RenderTheme::singleton()
+Ref<RenderTheme> RenderTheme::themeForPage(Page*)
 {
-    static NeverDestroyed<Ref<RenderTheme>> theme(RenderThemeGtk::create());
-    return theme.get();
+    static RenderTheme& rt = RenderThemeGtk::create().leakRef();
+    return rt;
 }
 
 static double getScreenDPI()
@@ -110,8 +110,8 @@ void RenderThemeGtk::updateCachedSystemFontDescription(CSSValueID, FontCascadeDe
 
     fontDescription.setSpecifiedSize(size);
     fontDescription.setIsAbsoluteSize(true);
-    fontDescription.setWeight(normalWeightValue());
-    fontDescription.setItalic(FontSelectionValue());
+    fontDescription.setWeight(FontWeightNormal);
+    fontDescription.setItalic(FontItalicOff);
     pango_font_description_free(pangoDescription);
 }
 
@@ -1802,7 +1802,7 @@ bool RenderThemeGtk::paintInnerSpinButton(const RenderObject& renderObject, cons
 }
 #endif // GTK_CHECK_VERSION(3, 20, 0)
 
-Seconds RenderThemeGtk::caretBlinkInterval() const
+double RenderThemeGtk::caretBlinkInterval() const
 {
     GtkSettings* settings = gtk_settings_get_default();
 
@@ -1812,9 +1812,9 @@ Seconds RenderThemeGtk::caretBlinkInterval() const
     g_object_get(settings, "gtk-cursor-blink", &shouldBlink, "gtk-cursor-blink-time", &time, nullptr);
 
     if (!shouldBlink)
-        return 0_s;
+        return 0;
 
-    return 500_us * time;
+    return time / 2000.;
 }
 
 enum StyleColorType { StyleColorBackground, StyleColorForeground };
@@ -2014,10 +2014,10 @@ bool RenderThemeGtk::paintMediaToggleClosedCaptionsButton(const RenderObject& re
 static FloatRoundedRect::Radii borderRadiiFromStyle(const RenderStyle& style)
 {
     return FloatRoundedRect::Radii(
-        IntSize(style.borderTopLeftRadius().width.intValue(), style.borderTopLeftRadius().height.intValue()),
-        IntSize(style.borderTopRightRadius().width.intValue(), style.borderTopRightRadius().height.intValue()),
-        IntSize(style.borderBottomLeftRadius().width.intValue(), style.borderBottomLeftRadius().height.intValue()),
-        IntSize(style.borderBottomRightRadius().width.intValue(), style.borderBottomRightRadius().height.intValue()));
+        IntSize(style.borderTopLeftRadius().width().intValue(), style.borderTopLeftRadius().height().intValue()),
+        IntSize(style.borderTopRightRadius().width().intValue(), style.borderTopRightRadius().height().intValue()),
+        IntSize(style.borderBottomLeftRadius().width().intValue(), style.borderBottomLeftRadius().height().intValue()),
+        IntSize(style.borderBottomRightRadius().width().intValue(), style.borderBottomRightRadius().height().intValue()));
 }
 
 bool RenderThemeGtk::paintMediaSliderTrack(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
@@ -2111,15 +2111,15 @@ void RenderThemeGtk::adjustProgressBarStyle(StyleResolver&, RenderStyle& style, 
 // These values have been copied from RenderThemeChromiumSkia.cpp
 static const int progressActivityBlocks = 5;
 static const int progressAnimationFrames = 10;
-static const Seconds progressAnimationInterval { 125_ms };
-Seconds RenderThemeGtk::animationRepeatIntervalForProgressBar(RenderProgress&) const
+static const double progressAnimationInterval = 0.125;
+double RenderThemeGtk::animationRepeatIntervalForProgressBar(RenderProgress&) const
 {
     return progressAnimationInterval;
 }
 
 double RenderThemeGtk::animationDurationForProgressBar(RenderProgress&) const
 {
-    return progressAnimationInterval.value() * progressAnimationFrames * 2; // "2" for back and forth;
+    return progressAnimationInterval * progressAnimationFrames * 2; // "2" for back and forth;
 }
 
 IntRect RenderThemeGtk::calculateProgressRect(const RenderObject& renderObject, const IntRect& fullBarRect)

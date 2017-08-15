@@ -32,6 +32,7 @@
 #include "Image.h"
 #include "ImageData.h"
 #include "IntRect.h"
+#include "Page.h"
 #include "RenderSVGResourceFilterPrimitive.h"
 #include "RenderView.h"
 #include "SVGFilterPrimitiveStandardAttributes.h"
@@ -185,7 +186,8 @@ bool RenderSVGResourceFilter::applyResource(RenderElement& renderer, const Rende
     effectiveTransform.scale(scale.width(), scale.height());
     effectiveTransform.multiply(filterData->shearFreeAbsoluteTransform);
 
-    RenderingMode renderingMode = renderer.settings().acceleratedFiltersEnabled() ? Accelerated : Unaccelerated;
+    RenderingMode renderingMode = renderer.frame().settings().acceleratedFiltersEnabled() ? Accelerated : Unaccelerated;
+
     auto sourceGraphic = SVGRenderingContext::createImageBuffer(filterData->drawingRegion, effectiveTransform, ColorSpaceLinearRGB, renderingMode);
     if (!sourceGraphic) {
         ASSERT(!m_filter.contains(&renderer));

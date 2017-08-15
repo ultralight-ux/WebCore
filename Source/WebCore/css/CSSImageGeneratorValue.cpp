@@ -39,23 +39,7 @@
 
 namespace WebCore {
 
-static const Seconds timeToKeepCachedGeneratedImages { 3_s };
-
-class CSSImageGeneratorValue::CachedGeneratedImage {
-    WTF_MAKE_FAST_ALLOCATED;
-public:
-    CachedGeneratedImage(CSSImageGeneratorValue&, FloatSize, GeneratedImage&);
-    GeneratedImage& image() const { return m_image; }
-    void puntEvictionTimer() { m_evictionTimer.restart(); }
-
-private:
-    void evictionTimerFired();
-
-    CSSImageGeneratorValue& m_owner;
-    const FloatSize m_size;
-    const Ref<GeneratedImage> m_image;
-    DeferrableOneShotTimer m_evictionTimer;
-};
+static const auto timeToKeepCachedGeneratedImages = std::chrono::seconds { 3 };
 
 CSSImageGeneratorValue::CSSImageGeneratorValue(ClassType classType)
     : CSSValue(classType)
@@ -66,17 +50,19 @@ CSSImageGeneratorValue::~CSSImageGeneratorValue()
 {
 }
 
-void CSSImageGeneratorValue::addClient(RenderElement& renderer)
+void CSSImageGeneratorValue::addClient(RenderElement* renderer)
 {
+    ASSERT(renderer);
     if (m_clients.isEmpty())
         ref();
-    m_clients.add(&renderer);
+    m_clients.add(renderer);
 }
 
-void CSSImageGeneratorValue::removeClient(RenderElement& renderer)
+void CSSImageGeneratorValue::removeClient(RenderElement* renderer)
 {
-    ASSERT(m_clients.contains(&renderer));
-    if (m_clients.remove(&renderer) && m_clients.isEmpty())
+    ASSERT(renderer);
+    ASSERT(m_clients.contains(renderer));
+    if (m_clients.remove(renderer) && m_clients.isEmpty())
         deref();
 }
 
@@ -85,15 +71,15 @@ GeneratedImage* CSSImageGeneratorValue::cachedImageForSize(FloatSize size)
     if (size.isEmpty())
         return nullptr;
 
-    auto* cachedGeneratedImage = m_images.get(size);
+    CachedGeneratedImage* cachedGeneratedImage = m_images.get(size);
     if (!cachedGeneratedImage)
         return nullptr;
 
     cachedGeneratedImage->puntEvictionTimer();
-    return &cachedGeneratedImage->image();
+    return cachedGeneratedImage->image();
 }
 
-void CSSImageGeneratorValue::saveCachedImageForSize(FloatSize size, GeneratedImage& image)
+void CSSImageGeneratorValue::saveCachedImageForSize(FloatSize size, PassRefPtr<GeneratedImage> image)
 {
     ASSERT(!m_images.contains(size));
     m_images.add(size, std::make_unique<CachedGeneratedImage>(*this, size, image));
@@ -105,7 +91,7 @@ void CSSImageGeneratorValue::evictCachedGeneratedImage(FloatSize size)
     m_images.remove(size);
 }
 
-inline CSSImageGeneratorValue::CachedGeneratedImage::CachedGeneratedImage(CSSImageGeneratorValue& owner, FloatSize size, GeneratedImage& image)
+CSSImageGeneratorValue::CachedGeneratedImage::CachedGeneratedImage(CSSImageGeneratorValue& owner, FloatSize size, PassRefPtr<GeneratedImage> image)
     : m_owner(owner)
     , m_size(size)
     , m_image(image)
@@ -120,17 +106,17 @@ void CSSImageGeneratorValue::CachedGeneratedImage::evictionTimerFired()
     m_owner.evictCachedGeneratedImage(m_size);
 }
 
-RefPtr<Image> CSSImageGeneratorValue::image(RenderElement& renderer, const FloatSize& size)
+RefPtr<Image> CSSImageGeneratorValue::image(RenderElement* renderer, const FloatSize& size)
 {
     switch (classType()) {
     case CanvasClass:
-        return downcast<CSSCanvasValue>(*this).image(&renderer, size);
+        return downcast<CSSCanvasValue>(*this).image(renderer, size);
     case NamedImageClass:
-        return downcast<CSSNamedImageValue>(*this).image(&renderer, size);
+        return downcast<CSSNamedImageValue>(*this).image(renderer, size);
     case CrossfadeClass:
         return downcast<CSSCrossfadeValue>(*this).image(renderer, size);
     case FilterImageClass:
-        return downcast<CSSFilterImageValue>(*this).image(&renderer, size);
+        return downcast<CSSFilterImageValue>(*this).image(renderer, size);
     case LinearGradientClass:
         return downcast<CSSLinearGradientValue>(*this).image(renderer, size);
     case RadialGradientClass:
@@ -162,15 +148,15 @@ bool CSSImageGeneratorValue::isFixedSize() const
     return false;
 }
 
-FloatSize CSSImageGeneratorValue::fixedSize(const RenderElement& renderer)
+FloatSize CSSImageGeneratorValue::fixedSize(const RenderElement* renderer)
 {
     switch (classType()) {
     case CanvasClass:
-        return downcast<CSSCanvasValue>(*this).fixedSize(&renderer);
+        return downcast<CSSCanvasValue>(*this).fixedSize(renderer);
     case CrossfadeClass:
         return downcast<CSSCrossfadeValue>(*this).fixedSize(renderer);
     case FilterImageClass:
-        return downcast<CSSFilterImageValue>(*this).fixedSize(&renderer);
+        return downcast<CSSFilterImageValue>(*this).fixedSize(renderer);
     case LinearGradientClass:
         return downcast<CSSLinearGradientValue>(*this).fixedSize(renderer);
     case RadialGradientClass:
@@ -202,7 +188,7 @@ bool CSSImageGeneratorValue::isPending() const
     return false;
 }
 
-bool CSSImageGeneratorValue::knownToBeOpaque(const RenderElement& renderer) const
+bool CSSImageGeneratorValue::knownToBeOpaque(const RenderElement* renderer) const
 {
     switch (classType()) {
     case CrossfadeClass:
@@ -212,11 +198,11 @@ bool CSSImageGeneratorValue::knownToBeOpaque(const RenderElement& renderer) cons
     case NamedImageClass:
         return false;
     case FilterImageClass:
-        return downcast<CSSFilterImageValue>(*this).knownToBeOpaque(&renderer);
+        return downcast<CSSFilterImageValue>(*this).knownToBeOpaque(renderer);
     case LinearGradientClass:
-        return downcast<CSSLinearGradientValue>(*this).knownToBeOpaque();
+        return downcast<CSSLinearGradientValue>(*this).knownToBeOpaque(renderer);
     case RadialGradientClass:
-        return downcast<CSSRadialGradientValue>(*this).knownToBeOpaque();
+        return downcast<CSSRadialGradientValue>(*this).knownToBeOpaque(renderer);
     default:
         ASSERT_NOT_REACHED();
     }
@@ -258,6 +244,7 @@ bool CSSImageGeneratorValue::subimageIsPending(const CSSValue& value)
         return false;
 
     ASSERT_NOT_REACHED();
+    
     return false;
 }
 
@@ -278,7 +265,7 @@ CachedImage* CSSImageGeneratorValue::cachedImageForCSSValue(CSSValue& value, Cac
         return nullptr;
 
     ASSERT_NOT_REACHED();
+    
     return nullptr;
 }
-
 } // namespace WebCore

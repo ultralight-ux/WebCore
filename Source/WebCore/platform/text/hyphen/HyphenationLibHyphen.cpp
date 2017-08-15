@@ -31,8 +31,6 @@
 
 #include "FileSystem.h"
 #include <hyphen.h>
-#include <limits>
-#include <stdlib.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/TinyLRUCache.h>
@@ -64,14 +62,8 @@ static String extractLocaleFromDictionaryFilePath(const String& filePath)
 
 static void scanDirectoryForDicionaries(const char* directoryPath, HashMap<AtomicString, Vector<String>>& availableLocales)
 {
-    for (auto& filePath : listDirectory(directoryPath, "hyph_*.dic")) {
+    for (const auto& filePath : listDirectory(directoryPath, "hyph_*.dic")) {
         String locale = extractLocaleFromDictionaryFilePath(filePath).convertToASCIILowercase();
-
-        char normalizedPath[PATH_MAX];
-        if (!realpath(fileSystemRepresentation(filePath).data(), normalizedPath))
-            continue;
-
-        filePath = stringFromFileSystemRepresentation(normalizedPath);
         availableLocales.add(locale, Vector<String>()).iterator->value.append(filePath);
 
         String localeReplacingUnderscores = String(locale);
@@ -184,9 +176,9 @@ template<>
 class TinyLRUCachePolicy<AtomicString, RefPtr<WebCore::HyphenationDictionary>>
 {
 public:
-    static TinyLRUCache<AtomicString, RefPtr<WebCore::HyphenationDictionary>, 32>& cache()
+    static TinyLRUCache<AtomicString, RefPtr<WebCore::HyphenationDictionary>>& cache()
     {
-        static NeverDestroyed<TinyLRUCache<AtomicString, RefPtr<WebCore::HyphenationDictionary>, 32>> cache;
+        static NeverDestroyed<TinyLRUCache<AtomicString, RefPtr<WebCore::HyphenationDictionary>>> cache;
         return cache;
     }
 
@@ -249,11 +241,7 @@ size_t lastHyphenLocation(StringView string, size_t beforeIndex, const AtomicStr
     char* hyphenArrayData = hyphenArray.data();
 
     String lowercaseLocaleIdentifier = AtomicString(localeIdentifier.string().convertToASCIILowercase());
-
-    // Web content may specify strings for locales which do not exist or that we do not have.
-    if (!availableLocales().contains(lowercaseLocaleIdentifier))
-        return 0;
-
+    ASSERT(availableLocales().contains(lowercaseLocaleIdentifier));
     for (const auto& dictionaryPath : availableLocales().get(lowercaseLocaleIdentifier)) {
         RefPtr<HyphenationDictionary> dictionary = WTF::TinyLRUCachePolicy<AtomicString, RefPtr<HyphenationDictionary>>::cache().get(AtomicString(dictionaryPath));
 

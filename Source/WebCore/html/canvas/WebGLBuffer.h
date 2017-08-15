@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,8 +37,9 @@ namespace WebCore {
 
 class WebGLBuffer final : public WebGLSharedObject {
 public:
-    static Ref<WebGLBuffer> create(WebGLRenderingContextBase&);
     virtual ~WebGLBuffer();
+
+    static Ref<WebGLBuffer> create(WebGLRenderingContextBase&);
 
     bool associateBufferData(GC3Dsizeiptr size);
     bool associateBufferData(JSC::ArrayBuffer*);
@@ -68,10 +69,12 @@ protected:
     void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
 
 private:
-    GC3Denum m_target { 0 };
+    bool isBuffer() const override { return true; }
+
+    GC3Denum m_target;
 
     RefPtr<JSC::ArrayBuffer> m_elementArrayBuffer;
-    GC3Dsizeiptr m_byteLength { 0 };
+    GC3Dsizeiptr m_byteLength;
 
     // Optimization for index validation. For each type of index
     // (i.e., UNSIGNED_SHORT), cache the maximum index in the
@@ -87,7 +90,7 @@ private:
     // OpenGL ES 2.0 only has two valid index types (UNSIGNED_BYTE
     // and UNSIGNED_SHORT) plus one extension (UNSIGNED_INT).
     MaxIndexCacheEntry m_maxIndexCache[4];
-    unsigned m_nextAvailableCacheEntry { 0 };
+    unsigned int m_nextAvailableCacheEntry;
 
     // Clears all of the cached max indices.
     void clearCachedMaxIndices();

@@ -53,8 +53,7 @@
 #include "GenericEventQueue.h"
 #include "HRTFDatabaseLoader.h"
 #include "HRTFPanner.h"
-#include "JSDOMPromiseDeferred.h"
-#include "Logging.h"
+#include "JSDOMPromise.h"
 #include "NetworkingContext.h"
 #include "OfflineAudioCompletionEvent.h"
 #include "OfflineAudioDestinationNode.h"
@@ -105,8 +104,6 @@ const int UndefinedThreadIdentifier = 0xffffffff;
 const unsigned MaxPeriodicWaveLength = 4096;
 
 namespace WebCore {
-
-#define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(document()->page() && document()->page()->isAlwaysOnLoggingAllowed(), Media, "%p - AudioContext::" fmt, this, ##__VA_ARGS__)
     
 bool AudioContext::isSampleRateRangeGood(float sampleRate)
 {
@@ -175,7 +172,7 @@ void AudioContext::constructCommon()
     m_listener = AudioListener::create();
 
 #if PLATFORM(IOS)
-    if (document()->settings().audioPlaybackRequiresUserGesture())
+    if (!document()->settings() || document()->settings()->audioPlaybackRequiresUserGesture())
         addBehaviorRestriction(RequireUserGestureForAudioStartRestriction);
     else
         m_restrictions = NoRestrictions;
@@ -218,7 +215,6 @@ void AudioContext::lazyInitialize()
 
         if (!isOfflineContext()) {
             document()->addAudioProducer(this);
-            document()->registerForVisibilityStateChangedCallbacks(this);
 
             // This starts the audio thread. The destination node's provideInput() method will now be called repeatedly to render audio.
             // Each time provideInput() is called, a portion of the audio stream is rendered. Let's call this time period a "render quantum".
@@ -263,7 +259,6 @@ void AudioContext::uninitialize()
 
     if (!isOfflineContext()) {
         document()->removeAudioProducer(this);
-        document()->unregisterForVisibilityStateChangedCallbacks(this);
 
         ASSERT(s_hardwareContextCount);
         --s_hardwareContextCount;
@@ -283,7 +278,7 @@ bool AudioContext::isInitialized() const
     return m_isInitialized;
 }
 
-void AudioContext::addReaction(State state, DOMPromiseDeferred<void>&& promise)
+void AudioContext::addReaction(State state, DOMPromise<void>&& promise)
 {
     size_t stateIndex = static_cast<size_t>(state);
     if (stateIndex >= m_stateReactions.size())
@@ -304,7 +299,7 @@ void AudioContext::setState(State state)
     if (stateIndex >= m_stateReactions.size())
         return;
 
-    Vector<DOMPromiseDeferred<void>> reactions;
+    Vector<DOMPromise<void>> reactions;
     m_stateReactions[stateIndex].swap(reactions);
 
     for (auto& promise : reactions)
@@ -366,30 +361,6 @@ String AudioContext::sourceApplicationIdentifier() const
             return networkingContext->sourceApplicationIdentifier();
     }
     return emptyString();
-}
-
-bool AudioContext::processingUserGestureForMedia() const
-{
-    return document() ? document()->processingUserGestureForMedia() : false;
-}
-
-void AudioContext::visibilityStateChanged()
-{
-    // Do not suspend if audio is audible.
-    if (mediaState() == MediaProducer::IsPlayingAudio)
-        return;
-
-    if (document()->hidden()) {
-        if (state() == State::Running) {
-            RELEASE_LOG_IF_ALLOWED("visibilityStateChanged() Suspending playback after going to the background");
-            m_mediaSession->beginInterruption(PlatformMediaSession::EnteringBackground);
-        }
-    } else {
-        if (state() == State::Interrupted) {
-            RELEASE_LOG_IF_ALLOWED("visibilityStateChanged() Resuming playback after entering foreground");
-            m_mediaSession->endInterruption(PlatformMediaSession::MayResumePlaying);
-        }
-    }
 }
 
 ExceptionOr<Ref<AudioBuffer>> AudioContext::createBuffer(unsigned numberOfChannels, size_t numberOfFrames, float sampleRate)
@@ -938,7 +909,7 @@ void AudioContext::nodeWillBeginPlayback()
 bool AudioContext::willBeginPlayback()
 {
     if (userGestureRequiredForAudioStart()) {
-        if (!processingUserGestureForMedia())
+        if (!ScriptController::processingUserGestureForMedia())
             return false;
         removeBehaviorRestriction(AudioContext::RequireUserGestureForAudioStartRestriction);
     }
@@ -958,7 +929,7 @@ bool AudioContext::willBeginPlayback()
 bool AudioContext::willPausePlayback()
 {
     if (userGestureRequiredForAudioStart()) {
-        if (!processingUserGestureForMedia())
+        if (!ScriptController::processingUserGestureForMedia())
             return false;
         removeBehaviorRestriction(AudioContext::RequireUserGestureForAudioStartRestriction);
     }
@@ -1045,7 +1016,7 @@ void AudioContext::decrementActiveSourceCount()
     --m_activeSourceCount;
 }
 
-void AudioContext::suspend(DOMPromiseDeferred<void>&& promise)
+void AudioContext::suspend(DOMPromise<void>&& promise)
 {
     if (isOfflineContext()) {
         promise.reject(INVALID_STATE_ERR);
@@ -1074,7 +1045,7 @@ void AudioContext::suspend(DOMPromiseDeferred<void>&& promise)
     });
 }
 
-void AudioContext::resume(DOMPromiseDeferred<void>&& promise)
+void AudioContext::resume(DOMPromise<void>&& promise)
 {
     if (isOfflineContext()) {
         promise.reject(INVALID_STATE_ERR);
@@ -1103,7 +1074,7 @@ void AudioContext::resume(DOMPromiseDeferred<void>&& promise)
     });
 }
 
-void AudioContext::close(DOMPromiseDeferred<void>&& promise)
+void AudioContext::close(DOMPromise<void>&& promise)
 {
     if (isOfflineContext()) {
         promise.reject(INVALID_STATE_ERR);

@@ -27,14 +27,19 @@
 
 namespace WebCore {
 
-FESpecularLighting::FESpecularLighting(Filter& filter, const Color& lightingColor, float surfaceScale, float specularConstant, float specularExponent, float kernelUnitLengthX, float kernelUnitLengthY, Ref<LightSource>&& lightSource)
-    : FELighting(filter, SpecularLighting, lightingColor, surfaceScale, 0, specularConstant, specularExponent, kernelUnitLengthX, kernelUnitLengthY, WTFMove(lightSource))
+FESpecularLighting::FESpecularLighting(Filter& filter, const Color& lightingColor, float surfaceScale,
+    float specularConstant, float specularExponent, float kernelUnitLengthX,
+    float kernelUnitLengthY, PassRefPtr<LightSource> lightSource)
+    : FELighting(filter, SpecularLighting, lightingColor, surfaceScale, 0, specularConstant, specularExponent, kernelUnitLengthX, kernelUnitLengthY, lightSource)
 {
 }
 
-Ref<FESpecularLighting> FESpecularLighting::create(Filter& filter, const Color& lightingColor, float surfaceScale, float specularConstant, float specularExponent, float kernelUnitLengthX, float kernelUnitLengthY, Ref<LightSource>&& lightSource)
+Ref<FESpecularLighting> FESpecularLighting::create(Filter& filter, const Color& lightingColor,
+    float surfaceScale, float specularConstant, float specularExponent,
+    float kernelUnitLengthX, float kernelUnitLengthY, PassRefPtr<LightSource> lightSource)
 {
-    return adoptRef(*new FESpecularLighting(filter, lightingColor, surfaceScale, specularConstant, specularExponent, kernelUnitLengthX, kernelUnitLengthY, WTFMove(lightSource)));
+    return adoptRef(*new FESpecularLighting(filter, lightingColor, surfaceScale, specularConstant, specularExponent,
+        kernelUnitLengthX, kernelUnitLengthY, lightSource));
 }
 
 FESpecularLighting::~FESpecularLighting()
@@ -119,9 +124,14 @@ bool FESpecularLighting::setKernelUnitLengthY(float kernelUnitLengthY)
     return true;
 }
 
-const LightSource& FESpecularLighting::lightSource() const
+const LightSource* FESpecularLighting::lightSource() const
 {
     return m_lightSource.get();
+}
+
+void FESpecularLighting::setLightSource(PassRefPtr<LightSource> lightSource)
+{
+    m_lightSource = lightSource;
 }
 
 void FESpecularLighting::dump()

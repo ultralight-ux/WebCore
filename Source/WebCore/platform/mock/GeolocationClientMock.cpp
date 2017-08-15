@@ -61,9 +61,9 @@ void GeolocationClientMock::setController(GeolocationController *controller)
     m_controller = controller;
 }
 
-void GeolocationClientMock::setPosition(RefPtr<GeolocationPosition>&& position)
+void GeolocationClientMock::setPosition(PassRefPtr<GeolocationPosition> position)
 {
-    m_lastPosition = WTFMove(position);
+    m_lastPosition = position;
     clearError();
     asyncUpdateController();
 }
@@ -106,7 +106,7 @@ void GeolocationClientMock::asyncUpdatePermission()
 {
     ASSERT(m_permissionState != PermissionStateUnset);
     if (!m_permissionTimer.isActive())
-        m_permissionTimer.startOneShot(0_s);
+        m_permissionTimer.startOneShot(0);
 }
 
 void GeolocationClientMock::permissionTimerFired()
@@ -165,7 +165,7 @@ void GeolocationClientMock::asyncUpdateController()
 {
     ASSERT(m_controller);
     if (m_isActive && !m_controllerTimer.isActive())
-        m_controllerTimer.startOneShot(0_s);
+        m_controllerTimer.startOneShot(0);
 }
 
 void GeolocationClientMock::controllerTimerFired()

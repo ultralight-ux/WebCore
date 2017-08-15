@@ -67,9 +67,9 @@ static EncodedJSValue JSC_HOST_CALL constructJSWebAssemblyMemory(ExecState* exec
     {
         Identifier initial = Identifier::fromString(&vm, "initial");
         JSValue minSizeValue = memoryDescriptor->get(exec, initial);
-        RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
+        RETURN_IF_EXCEPTION(throwScope, { });
         uint32_t size = toNonWrappingUint32(exec, minSizeValue);
-        RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
+        RETURN_IF_EXCEPTION(throwScope, { });
         if (!Wasm::PageCount::isValid(size))
             return JSValue::encode(throwException(exec, throwScope, createRangeError(exec, ASCIILiteral("WebAssembly.Memory 'initial' page count is too large"))));
         initialPageCount = Wasm::PageCount(size);
@@ -79,12 +79,12 @@ static EncodedJSValue JSC_HOST_CALL constructJSWebAssemblyMemory(ExecState* exec
     {
         Identifier maximum = Identifier::fromString(&vm, "maximum");
         bool hasProperty = memoryDescriptor->hasProperty(exec, maximum);
-        RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
+        RETURN_IF_EXCEPTION(throwScope, { });
         if (hasProperty) {
             JSValue maxSizeValue = memoryDescriptor->get(exec, maximum);
-            RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
+            RETURN_IF_EXCEPTION(throwScope, { });
             uint32_t size = toNonWrappingUint32(exec, maxSizeValue);
-            RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
+            RETURN_IF_EXCEPTION(throwScope, { });
             if (!Wasm::PageCount::isValid(size))
                 return JSValue::encode(throwException(exec, throwScope, createRangeError(exec, ASCIILiteral("WebAssembly.Memory 'maximum' page count is too large"))));
             maximumPageCount = Wasm::PageCount(size);
@@ -96,18 +96,18 @@ static EncodedJSValue JSC_HOST_CALL constructJSWebAssemblyMemory(ExecState* exec
         }
     }
 
-    RefPtr<Wasm::Memory> memory = Wasm::Memory::create(vm, initialPageCount, maximumPageCount);
-    if (!memory)
+    std::unique_ptr<Wasm::Memory> memory = std::make_unique<Wasm::Memory>(initialPageCount, maximumPageCount);
+    if (!memory->isValid())
         return JSValue::encode(throwException(exec, throwScope, createOutOfMemoryError(exec)));
 
-    return JSValue::encode(JSWebAssemblyMemory::create(vm, exec->lexicalGlobalObject()->WebAssemblyMemoryStructure(), adoptRef(*memory.leakRef())));
+    return JSValue::encode(JSWebAssemblyMemory::create(vm, exec->lexicalGlobalObject()->WebAssemblyMemoryStructure(), WTFMove(memory)));
 }
 
-static EncodedJSValue JSC_HOST_CALL callJSWebAssemblyMemory(ExecState* exec)
+static EncodedJSValue JSC_HOST_CALL callJSWebAssemblyMemory(ExecState* state)
 {
-    VM& vm = exec->vm();
+    VM& vm = state->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(exec, throwScope, "WebAssembly.Memory"));
+    return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(state, throwScope, "WebAssembly.Memory"));
 }
 
 WebAssemblyMemoryConstructor* WebAssemblyMemoryConstructor::create(VM& vm, Structure* structure, WebAssemblyMemoryPrototype* thisPrototype)

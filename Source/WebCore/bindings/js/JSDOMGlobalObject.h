@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008, 2012 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,14 +28,13 @@
 
 #include "PlatformExportMacros.h"
 #include "WebCoreJSBuiltinInternals.h"
-#include <heap/HeapInlines.h>
 #include <heap/LockDuringMarking.h>
 #include <runtime/JSGlobalObject.h>
 #include <runtime/StructureInlines.h>
 
 namespace WebCore {
 
-    class DOMGuardedObject;
+    class DeferredPromise;
     class Document;
     class Event;
     class DOMWrapperWorld;
@@ -43,7 +42,7 @@ namespace WebCore {
 
     typedef HashMap<const JSC::ClassInfo*, JSC::WriteBarrier<JSC::Structure>> JSDOMStructureMap;
     typedef HashMap<const JSC::ClassInfo*, JSC::WriteBarrier<JSC::JSObject>> JSDOMConstructorMap;
-    typedef HashSet<DOMGuardedObject*> DOMGuardedObjectSet;
+    typedef HashSet<DeferredPromise*> DeferredPromiseSet;
 
     class WEBCORE_EXPORT JSDOMGlobalObject : public JSC::JSGlobalObject {
         typedef JSC::JSGlobalObject Base;
@@ -57,11 +56,11 @@ namespace WebCore {
 
     public:
         Lock& gcLock() { return m_gcLock; }
-
+        
         JSDOMStructureMap& structures(const AbstractLocker&) { return m_structures; }
         JSDOMConstructorMap& constructors(const AbstractLocker&) { return m_constructors; }
 
-        DOMGuardedObjectSet& guardedObjects(const AbstractLocker&) { return m_guardedObjects; }
+        DeferredPromiseSet& deferredPromises(const AbstractLocker&) { return m_deferredPromises; }
 
         ScriptExecutionContext* scriptExecutionContext() const;
 
@@ -95,7 +94,7 @@ namespace WebCore {
     protected:
         JSDOMStructureMap m_structures;
         JSDOMConstructorMap m_constructors;
-        DOMGuardedObjectSet m_guardedObjects;
+        DeferredPromiseSet m_deferredPromises;
 
         Event* m_currentEvent;
         Ref<DOMWrapperWorld> m_world;

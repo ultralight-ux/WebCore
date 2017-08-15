@@ -59,7 +59,9 @@ public:
                 // Force usage of highest-numbered virtual registers.
                 scoreBoard.sortFree();
             }
-            for (auto* node : *block) {
+            for (size_t indexInBlock = 0; indexInBlock < block->size(); ++indexInBlock) {
+                Node* node = block->at(indexInBlock);
+        
                 if (!node->shouldGenerate())
                     continue;
                 

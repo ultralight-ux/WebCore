@@ -56,7 +56,6 @@
 #include "JSSet.h"
 #include "ObjectConstructor.h"
 #include "Operations.h"
-#include "ParseInt.h"
 #include "RegExpObject.h"
 #include "Repatch.h"
 #include "ScopedArguments.h"
@@ -173,14 +172,6 @@ static ALWAYS_INLINE void putWithThis(ExecState* exec, EncodedJSValue encodedBas
     JSValue putValue = JSValue::decode(encodedValue);
     PutPropertySlot slot(thisVal, strict);
     baseValue.putInline(exec, ident, putValue, slot);
-}
-
-static ALWAYS_INLINE EncodedJSValue parseIntResult(double input)
-{
-    int asInt = static_cast<int>(input);
-    if (static_cast<double>(asInt) == input)
-        return JSValue::encode(jsNumber(asInt));
-    return JSValue::encode(jsNumber(input));
 }
 
 extern "C" {
@@ -384,6 +375,18 @@ int32_t JIT_OPERATION operationArithClz32(ExecState* exec, EncodedJSValue encode
     return clz32(value);
 }
 
+double JIT_OPERATION operationArithCos(ExecState* exec, EncodedJSValue encodedOp1)
+{
+    VM* vm = &exec->vm();
+    NativeCallFrameTracer tracer(vm, exec);
+    auto scope = DECLARE_THROW_SCOPE(*vm);
+
+    JSValue op1 = JSValue::decode(encodedOp1);
+    double a = op1.toNumber(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    return cos(a);
+}
+
 double JIT_OPERATION operationArithFRound(ExecState* exec, EncodedJSValue encodedOp1)
 {
     VM* vm = &exec->vm();
@@ -396,19 +399,29 @@ double JIT_OPERATION operationArithFRound(ExecState* exec, EncodedJSValue encode
     return static_cast<float>(a);
 }
 
-#define DFG_ARITH_UNARY(capitalizedName, lowerName) \
-double JIT_OPERATION operationArith##capitalizedName(ExecState* exec, EncodedJSValue encodedOp1) \
-{ \
-    VM* vm = &exec->vm(); \
-    NativeCallFrameTracer tracer(vm, exec); \
-    auto scope = DECLARE_THROW_SCOPE(*vm); \
-    JSValue op1 = JSValue::decode(encodedOp1); \
-    double result = op1.toNumber(exec); \
-    RETURN_IF_EXCEPTION(scope, PNaN); \
-    return JSC::Math::lowerName(result); \
+double JIT_OPERATION operationArithLog(ExecState* exec, EncodedJSValue encodedOp1)
+{
+    VM* vm = &exec->vm();
+    NativeCallFrameTracer tracer(vm, exec);
+    auto scope = DECLARE_THROW_SCOPE(*vm);
+
+    JSValue op1 = JSValue::decode(encodedOp1);
+    double a = op1.toNumber(exec);
+    RETURN_IF_EXCEPTION(scope, PNaN);
+    return log(a);
 }
-    FOR_EACH_DFG_ARITH_UNARY_OP(DFG_ARITH_UNARY)
-#undef DFG_ARITH_UNARY
+
+double JIT_OPERATION operationArithSin(ExecState* exec, EncodedJSValue encodedOp1)
+{
+    VM* vm = &exec->vm();
+    NativeCallFrameTracer tracer(vm, exec);
+    auto scope = DECLARE_THROW_SCOPE(*vm);
+
+    JSValue op1 = JSValue::decode(encodedOp1);
+    double a = op1.toNumber(exec);
+    RETURN_IF_EXCEPTION(scope, PNaN);
+    return sin(a);
+}
 
 double JIT_OPERATION operationArithSqrt(ExecState* exec, EncodedJSValue encodedOp1)
 {
@@ -420,6 +433,18 @@ double JIT_OPERATION operationArithSqrt(ExecState* exec, EncodedJSValue encodedO
     double a = op1.toNumber(exec);
     RETURN_IF_EXCEPTION(scope, PNaN);
     return sqrt(a);
+}
+
+double JIT_OPERATION operationArithTan(ExecState* exec, EncodedJSValue encodedOp1)
+{
+    VM* vm = &exec->vm();
+    NativeCallFrameTracer tracer(vm, exec);
+    auto scope = DECLARE_THROW_SCOPE(*vm);
+
+    JSValue op1 = JSValue::decode(encodedOp1);
+    double a = op1.toNumber(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    return tan(a);
 }
 
 EncodedJSValue JIT_OPERATION operationArithRound(ExecState* exec, EncodedJSValue encodedArgument)
@@ -813,7 +838,7 @@ EncodedJSValue JIT_OPERATION operationRegExpExecGeneric(ExecState* exec, JSGloba
     JSValue base = JSValue::decode(encodedBase);
     JSValue argument = JSValue::decode(encodedArgument);
     
-    if (!base.inherits(vm, RegExpObject::info()))
+    if (!base.inherits(RegExpObject::info()))
         return throwVMTypeError(exec, scope);
 
     JSString* input = argument.toStringOrNull(exec);
@@ -822,52 +847,6 @@ EncodedJSValue JIT_OPERATION operationRegExpExecGeneric(ExecState* exec, JSGloba
         return JSValue::encode(jsUndefined());
     scope.release();
     return JSValue::encode(asRegExpObject(base)->exec(exec, globalObject, input));
-}
-
-EncodedJSValue JIT_OPERATION operationParseIntNoRadixGeneric(ExecState* exec, EncodedJSValue value)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-
-    return toStringView(exec, JSValue::decode(value), [&] (StringView view) {
-        // This version is as if radix was undefined. Hence, undefined.toNumber() === 0.
-        return parseIntResult(parseInt(view, 0));
-    });
-}
-
-EncodedJSValue JIT_OPERATION operationParseIntStringNoRadix(ExecState* exec, JSString* string)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    auto viewWithString = string->viewWithUnderlyingString(exec);
-    RETURN_IF_EXCEPTION(scope, { });
-
-    // This version is as if radix was undefined. Hence, undefined.toNumber() === 0.
-    return parseIntResult(parseInt(viewWithString.view, 0));
-}
-
-EncodedJSValue JIT_OPERATION operationParseIntString(ExecState* exec, JSString* string, int32_t radix)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    auto viewWithString = string->viewWithUnderlyingString(exec);
-    RETURN_IF_EXCEPTION(scope, { });
-
-    return parseIntResult(parseInt(viewWithString.view, radix));
-}
-
-EncodedJSValue JIT_OPERATION operationParseIntGeneric(ExecState* exec, EncodedJSValue value, int32_t radix)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-
-    return toStringView(exec, JSValue::decode(value), [&] (StringView view) {
-        return parseIntResult(parseInt(view, radix));
-    });
 }
         
 size_t JIT_OPERATION operationRegExpTestString(ExecState* exec, JSGlobalObject* globalObject, RegExpObject* regExpObject, JSString* input)
@@ -906,7 +885,7 @@ size_t JIT_OPERATION operationRegExpTestGeneric(ExecState* exec, JSGlobalObject*
     JSValue base = JSValue::decode(encodedBase);
     JSValue argument = JSValue::decode(encodedArgument);
 
-    if (!base.inherits(vm, RegExpObject::info())) {
+    if (!base.inherits(RegExpObject::info())) {
         throwTypeError(exec, scope);
         return false;
     }
@@ -1404,7 +1383,7 @@ JSCell* JIT_OPERATION operationCreateClonedArgumentsDuringExit(ExecState* exec, 
         exec->registers() + (inlineCallFrame ? inlineCallFrame->stackOffset : 0) +
         CallFrame::argumentOffset(0);
     for (unsigned i = length; i--;)
-        result->putDirectIndex(exec, i, arguments[i].jsValue());
+        result->initializeIndex(vm, i, arguments[i].jsValue());
 
     
     return result;
@@ -1427,7 +1406,7 @@ size_t JIT_OPERATION operationObjectIsObject(ExecState* exec, JSGlobalObject* gl
     VM& vm = exec->vm();
     NativeCallFrameTracer tracer(&vm, exec);
 
-    ASSERT(jsDynamicCast<JSObject*>(vm, object));
+    ASSERT(jsDynamicCast<JSObject*>(object));
     
     if (object->structure(vm)->masqueradesAsUndefined(globalObject))
         return false;
@@ -1447,7 +1426,7 @@ size_t JIT_OPERATION operationObjectIsFunction(ExecState* exec, JSGlobalObject* 
     VM& vm = exec->vm();
     NativeCallFrameTracer tracer(&vm, exec);
 
-    ASSERT(jsDynamicCast<JSObject*>(vm, object));
+    ASSERT(jsDynamicCast<JSObject*>(object));
     
     if (object->structure(vm)->masqueradesAsUndefined(globalObject))
         return false;
@@ -1467,7 +1446,7 @@ JSCell* JIT_OPERATION operationTypeOfObject(ExecState* exec, JSGlobalObject* glo
     VM& vm = exec->vm();
     NativeCallFrameTracer tracer(&vm, exec);
 
-    ASSERT(jsDynamicCast<JSObject*>(vm, object));
+    ASSERT(jsDynamicCast<JSObject*>(object));
     
     if (object->structure(vm)->masqueradesAsUndefined(globalObject))
         return vm.smallStrings.undefinedString();
@@ -1487,7 +1466,7 @@ int32_t JIT_OPERATION operationTypeOfObjectAsTypeofType(ExecState* exec, JSGloba
     VM& vm = exec->vm();
     NativeCallFrameTracer tracer(&vm, exec);
 
-    ASSERT(jsDynamicCast<JSObject*>(vm, object));
+    ASSERT(jsDynamicCast<JSObject*>(object));
     
     if (object->structure(vm)->masqueradesAsUndefined(globalObject))
         return static_cast<int32_t>(TypeofType::Undefined);
@@ -1610,75 +1589,6 @@ JSString* JIT_OPERATION operationToLowerCase(ExecState* exec, JSString* string, 
     return jsString(exec, lowercasedString);
 }
 
-char* JIT_OPERATION operationInt32ToString(ExecState* exec, int32_t value, int32_t radix)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    if (radix < 2 || radix > 36) {
-        throwVMError(exec, scope, createRangeError(exec, ASCIILiteral("toString() radix argument must be between 2 and 36")));
-        return nullptr;
-    }
-
-    return reinterpret_cast<char*>(int32ToString(vm, value, radix));
-}
-
-char* JIT_OPERATION operationInt52ToString(ExecState* exec, int64_t value, int32_t radix)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    if (radix < 2 || radix > 36) {
-        throwVMError(exec, scope, createRangeError(exec, ASCIILiteral("toString() radix argument must be between 2 and 36")));
-        return nullptr;
-    }
-
-    return reinterpret_cast<char*>(int52ToString(vm, value, radix));
-}
-
-char* JIT_OPERATION operationDoubleToString(ExecState* exec, double value, int32_t radix)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    if (radix < 2 || radix > 36) {
-        throwVMError(exec, scope, createRangeError(exec, ASCIILiteral("toString() radix argument must be between 2 and 36")));
-        return nullptr;
-    }
-
-    return reinterpret_cast<char*>(numberToString(vm, value, radix));
-}
-
-char* JIT_OPERATION operationInt32ToStringWithValidRadix(ExecState* exec, int32_t value, int32_t radix)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-
-    return reinterpret_cast<char*>(int32ToString(vm, value, radix));
-}
-
-char* JIT_OPERATION operationInt52ToStringWithValidRadix(ExecState* exec, int64_t value, int32_t radix)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-
-    return reinterpret_cast<char*>(int52ToString(vm, value, radix));
-}
-
-char* JIT_OPERATION operationDoubleToStringWithValidRadix(ExecState* exec, double value, int32_t radix)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-
-    return reinterpret_cast<char*>(numberToString(vm, value, radix));
-}
-
 JSString* JIT_OPERATION operationSingleCharacterString(ExecState* exec, int32_t character)
 {
     VM& vm = exec->vm();
@@ -1750,9 +1660,9 @@ JSCell* JIT_OPERATION operationStrCat2(ExecState* exec, EncodedJSValue a, Encode
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     JSString* str1 = JSValue::decode(a).toString(exec);
-    scope.assertNoException(); // Impossible, since we must have been given primitives.
+    ASSERT(!scope.exception()); // Impossible, since we must have been given primitives.
     JSString* str2 = JSValue::decode(b).toString(exec);
-    scope.assertNoException();
+    ASSERT(!scope.exception());
 
     scope.release();
     return jsString(exec, str1, str2);
@@ -1765,11 +1675,11 @@ JSCell* JIT_OPERATION operationStrCat3(ExecState* exec, EncodedJSValue a, Encode
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     JSString* str1 = JSValue::decode(a).toString(exec);
-    scope.assertNoException(); // Impossible, since we must have been given primitives.
+    ASSERT(!scope.exception()); // Impossible, since we must have been given primitives.
     JSString* str2 = JSValue::decode(b).toString(exec);
-    scope.assertNoException();
+    ASSERT(!scope.exception());
     JSString* str3 = JSValue::decode(c).toString(exec);
-    scope.assertNoException();
+    ASSERT(!scope.exception());
 
     scope.release();
     return jsString(exec, str1, str2, str3);
@@ -2036,7 +1946,7 @@ JSCell* JIT_OPERATION operationNewArrayWithSpreadSlow(ExecState* exec, void* buf
     Checked<unsigned, RecordOverflow> checkedLength = 0;
     for (unsigned i = 0; i < numItems; i++) {
         JSValue value = JSValue::decode(values[i]);
-        if (JSFixedArray* array = jsDynamicCast<JSFixedArray*>(vm, value))
+        if (JSFixedArray* array = jsDynamicCast<JSFixedArray*>(value))
             checkedLength += array->size();
         else
             ++checkedLength;
@@ -2051,7 +1961,7 @@ JSCell* JIT_OPERATION operationNewArrayWithSpreadSlow(ExecState* exec, void* buf
     JSGlobalObject* globalObject = exec->lexicalGlobalObject();
     Structure* structure = globalObject->arrayStructureForIndexingTypeDuringAllocation(ArrayWithContiguous);
 
-    JSArray* result = JSArray::tryCreate(vm, structure, length);
+    JSArray* result = JSArray::tryCreateUninitialized(vm, structure, length);
     if (UNLIKELY(!result)) {
         throwOutOfMemoryError(exec, scope);
         return nullptr;
@@ -2061,15 +1971,15 @@ JSCell* JIT_OPERATION operationNewArrayWithSpreadSlow(ExecState* exec, void* buf
     unsigned index = 0;
     for (unsigned i = 0; i < numItems; i++) {
         JSValue value = JSValue::decode(values[i]);
-        if (JSFixedArray* array = jsDynamicCast<JSFixedArray*>(vm, value)) {
+        if (JSFixedArray* array = jsDynamicCast<JSFixedArray*>(value)) {
             // We are spreading.
             for (unsigned i = 0; i < array->size(); i++) {
-                result->putDirectIndex(exec, index, array->get(i));
+                result->initializeIndex(vm, index, array->get(i));
                 ++index;
             }
         } else {
             // We are not spreading.
-            result->putDirectIndex(exec, index, value);
+            result->initializeIndex(vm, index, value);
             ++index;
         }
     }
@@ -2172,15 +2082,6 @@ void JIT_OPERATION debugOperationPrintSpeculationFailure(ExecState* exec, void* 
     dataLog("\n");
 }
 
-EncodedJSValue JIT_OPERATION operationResolveScopeForHoistingFuncDeclInEval(ExecState* exec, JSScope* scope, UniquedStringImpl* impl)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-        
-    JSValue resolvedScope = JSScope::resolveScopeForHoistingFuncDeclInEval(exec, scope, Identifier::fromUid(exec, impl));
-    return JSValue::encode(resolvedScope);
-}
-    
 JSCell* JIT_OPERATION operationResolveScope(ExecState* exec, JSScope* scope, UniquedStringImpl* impl)
 {
     VM& vm = exec->vm();
@@ -2360,14 +2261,6 @@ static bool shouldTriggerFTLCompile(CodeBlock* codeBlock, JITCode* jitCode)
 
 static void triggerFTLReplacementCompile(VM* vm, CodeBlock* codeBlock, JITCode* jitCode)
 {
-    if (codeBlock->codeType() == GlobalCode) {
-        // Global code runs once, so we don't want to do anything. We don't want to defer indefinitely,
-        // since this may have been spuriously called from tier-up initiated in a loop, and that loop may
-        // later want to run faster code. Deferring for warm-up seems safest.
-        jitCode->optimizeAfterWarmUp(codeBlock);
-        return;
-    }
-    
     Worklist::State worklistState;
     if (Worklist* worklist = existingGlobalFTLWorklistOrNull()) {
         worklistState = worklist->completeAllReadyPlansForVM(
@@ -2517,8 +2410,6 @@ static char* tierUpCommon(ExecState* exec, unsigned originBytecodeIndex, unsigne
     if (canOSRFromHere) {
         unsigned streamIndex = jitCode->bytecodeIndexToStreamIndex.get(originBytecodeIndex);
         if (CodeBlock* entryBlock = jitCode->osrEntryBlock()) {
-            if (Options::verboseOSR())
-                dataLog("OSR entry: From ", RawPointer(jitCode), " got entry block ", RawPointer(entryBlock), "\n");
             if (void* address = FTL::prepareOSREntry(exec, codeBlock, entryBlock, originBytecodeIndex, streamIndex)) {
                 CODEBLOCK_LOG_EVENT(entryBlock, "osrEntry", ("at bc#", originBytecodeIndex));
                 return static_cast<char*>(address);
@@ -2637,8 +2528,6 @@ static char* tierUpCommon(ExecState* exec, unsigned originBytecodeIndex, unsigne
     // It's possible that the for-entry compile already succeeded. In that case OSR
     // entry will succeed unless we ran out of stack. It's not clear what we should do.
     // We signal to try again after a while if that happens.
-    if (Options::verboseOSR())
-        dataLog("Immediate OSR entry: From ", RawPointer(jitCode), " got entry block ", RawPointer(jitCode->osrEntryBlock()), "\n");
     void* address = FTL::prepareOSREntry(
         exec, codeBlock, jitCode->osrEntryBlock(), originBytecodeIndex, streamIndex);
     return static_cast<char*>(address);

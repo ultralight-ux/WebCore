@@ -65,7 +65,6 @@ void SVGFontFaceElement::parseAttribute(const QualifiedName& name, const AtomicS
 {    
     CSSPropertyID propId = cssPropertyIdForSVGAttributeName(name);
     if (propId > 0) {
-        // FIXME: Parse using the @font-face descriptor grammars, not the property grammars.
         m_fontFaceRule->mutableProperties().setProperty(propId, value, false);
         rebuildFontFace();
         return;
@@ -228,7 +227,7 @@ SVGFontElement* SVGFontFaceElement::associatedFontElement() const
 
 void SVGFontFaceElement::rebuildFontFace()
 {
-    if (!isConnected()) {
+    if (!inDocument()) {
         ASSERT(!m_fontElement);
         return;
     }
@@ -274,7 +273,7 @@ void SVGFontFaceElement::rebuildFontFace()
 Node::InsertionNotificationRequest SVGFontFaceElement::insertedInto(ContainerNode& rootParent)
 {
     SVGElement::insertedInto(rootParent);
-    if (!rootParent.isConnected()) {
+    if (!rootParent.inDocument()) {
         ASSERT(!m_fontElement);
         return InsertionDone;
     }
@@ -288,7 +287,7 @@ void SVGFontFaceElement::removedFrom(ContainerNode& rootParent)
 {
     SVGElement::removedFrom(rootParent);
 
-    if (rootParent.isConnected()) {
+    if (rootParent.inDocument()) {
         m_fontElement = nullptr;
         document().accessSVGExtensions().unregisterSVGFontFaceElement(this);
         m_fontFaceRule->mutableProperties().clear();

@@ -55,7 +55,7 @@ RealtimeMediaSourceOwr(OwrMediaSource* mediaSource, const String& id, RealtimeMe
     , m_mediaSource(mediaSource)
     {
         if (!mediaSource)
-            notifyMutedChange(true);
+            m_muted = true;
     }
 
 RealtimeMediaSourceOwr(const String& id, RealtimeMediaSource::Type type, const String& name)
@@ -72,21 +72,14 @@ RealtimeMediaSourceOwr(const String& id, RealtimeMediaSource::Type type, const S
         setMuted(false);
     }
 
-    const RealtimeMediaSourceCapabilities& capabilities() const override { return m_capabilities; }
-    const RealtimeMediaSourceSettings& settings() const override;
+    RefPtr<RealtimeMediaSourceCapabilities> capabilities() const override { return m_capabilities; }
+    const RealtimeMediaSourceSettings& settings() const override { return m_currentSettings; }
 
     OwrMediaSource* mediaSource() const { return m_mediaSource; }
 
-protected:
-    virtual void initializeSettings() { };
-    virtual void initializeSupportedConstraints(RealtimeMediaSourceSupportedConstraints&) { };
-    RealtimeMediaSourceSupportedConstraints& supportedConstraints();
-
-    RealtimeMediaSourceSettings m_currentSettings;
-
 private:
-    RealtimeMediaSourceSupportedConstraints m_supportedConstraints;
-    RealtimeMediaSourceCapabilities m_capabilities;
+    RefPtr<RealtimeMediaSourceCapabilities> m_capabilities;
+    RealtimeMediaSourceSettings m_currentSettings;
     OwrMediaSource* m_mediaSource;
 };
 

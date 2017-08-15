@@ -47,7 +47,7 @@ void CodeBlockSet::add(CodeBlock* codeBlock)
     ASSERT_UNUSED(isNewEntry, isNewEntry);
 }
 
-void CodeBlockSet::promoteYoungCodeBlocks(const AbstractLocker&)
+void CodeBlockSet::promoteYoungCodeBlocks(const LockHolder&)
 {
     ASSERT(m_lock.isLocked());
     m_oldCodeBlocks.add(m_newCodeBlocks.begin(), m_newCodeBlocks.end());
@@ -61,17 +61,17 @@ void CodeBlockSet::clearMarksForFullCollection()
         codeBlock->clearVisitWeaklyHasBeenCalled();
 }
 
-void CodeBlockSet::lastChanceToFinalize(VM& vm)
+void CodeBlockSet::lastChanceToFinalize()
 {
     LockHolder locker(&m_lock);
     for (CodeBlock* codeBlock : m_newCodeBlocks)
-        codeBlock->structure(vm)->classInfo()->methodTable.destroy(codeBlock);
+        codeBlock->structure()->classInfo()->methodTable.destroy(codeBlock);
 
     for (CodeBlock* codeBlock : m_oldCodeBlocks)
-        codeBlock->structure(vm)->classInfo()->methodTable.destroy(codeBlock);
+        codeBlock->structure()->classInfo()->methodTable.destroy(codeBlock);
 }
 
-void CodeBlockSet::deleteUnmarkedAndUnreferenced(VM& vm, CollectionScope scope)
+void CodeBlockSet::deleteUnmarkedAndUnreferenced(CollectionScope scope)
 {
     LockHolder locker(&m_lock);
     Vector<CodeBlock*> unmarked;
@@ -83,7 +83,7 @@ void CodeBlockSet::deleteUnmarkedAndUnreferenced(VM& vm, CollectionScope scope)
             unmarked.append(codeBlock);
         }
         for (CodeBlock* codeBlock : unmarked) {
-            codeBlock->structure(vm)->classInfo()->methodTable.destroy(codeBlock);
+            codeBlock->structure()->classInfo()->methodTable.destroy(codeBlock);
             set.remove(codeBlock);
         }
         unmarked.resize(0);
@@ -103,7 +103,7 @@ void CodeBlockSet::deleteUnmarkedAndUnreferenced(VM& vm, CollectionScope scope)
     promoteYoungCodeBlocks(locker);
 }
 
-bool CodeBlockSet::contains(const AbstractLocker&, void* candidateCodeBlock)
+bool CodeBlockSet::contains(const LockHolder&, void* candidateCodeBlock)
 {
     RELEASE_ASSERT(m_lock.isLocked());
     CodeBlock* codeBlock = static_cast<CodeBlock*>(candidateCodeBlock);

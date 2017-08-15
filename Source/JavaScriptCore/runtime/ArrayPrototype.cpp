@@ -81,7 +81,7 @@ ArrayPrototype::ArrayPrototype(VM& vm, Structure* structure)
 void ArrayPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     vm.prototypeMap.addPrototype(this);
 
     putDirectWithoutTransition(vm, vm.propertyNames->toString, globalObject->arrayProtoToStringFunction(), DontEnum);
@@ -713,7 +713,7 @@ EncodedJSValue JSC_HOST_CALL arrayProtoFuncJoin(ExecState* exec)
         return JSValue::encode(slowJoin(*exec, thisObject, jsSeparator, length64));
     }
 
-    auto viewWithString = jsSeparator->viewWithUnderlyingString(exec);
+    auto viewWithString = jsSeparator->viewWithUnderlyingString(*exec);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
     scope.release();
@@ -931,8 +931,6 @@ EncodedJSValue JSC_HOST_CALL arrayProtoFuncSlice(ExecState* exec)
     RETURN_IF_EXCEPTION(scope, { });
     unsigned end = argumentClampedIndexFromStartOrEnd(exec, 1, length, length);
     RETURN_IF_EXCEPTION(scope, { });
-    if (end < begin)
-        end = begin;
 
     std::pair<SpeciesConstructResult, JSObject*> speciesResult = speciesConstructArray(exec, thisObj, end - begin);
     // We can only get an exception if we call some user function.
@@ -1304,8 +1302,7 @@ EncodedJSValue JSC_HOST_CALL arrayProtoPrivateFuncConcatMemcpy(ExecState* exec)
         return JSValue::encode(jsNull());
 
     ASSERT(!lexicalGlobalObject->isHavingABadTime());
-    ObjectInitializationScope initializationScope(vm);
-    JSArray* result = JSArray::tryCreateUninitializedRestricted(initializationScope, resultStructure, resultSize);
+    JSArray* result = JSArray::tryCreateUninitialized(vm, resultStructure, resultSize);
     if (UNLIKELY(!result)) {
         throwOutOfMemoryError(exec, scope);
         return encodedJSValue();
@@ -1395,7 +1392,7 @@ void ArrayPrototype::tryInitializeSpeciesWatchpoint(ExecState* exec)
 
     PropertySlot constructorSlot(this, PropertySlot::InternalMethodType::VMInquiry);
     this->getOwnPropertySlot(this, exec, vm.propertyNames->constructor, constructorSlot);
-    scope.assertNoException();
+    ASSERT_UNUSED(scope, !scope.exception());
     if (constructorSlot.slotBase() != this
         || !constructorSlot.isCacheableValue()
         || constructorSlot.getValue(exec, vm.propertyNames->constructor) != arrayConstructor) {
@@ -1409,7 +1406,7 @@ void ArrayPrototype::tryInitializeSpeciesWatchpoint(ExecState* exec)
 
     PropertySlot speciesSlot(arrayConstructor, PropertySlot::InternalMethodType::VMInquiry);
     arrayConstructor->getOwnPropertySlot(arrayConstructor, exec, vm.propertyNames->speciesSymbol, speciesSlot);
-    scope.assertNoException();
+    ASSERT_UNUSED(scope, !scope.exception());
     if (speciesSlot.slotBase() != arrayConstructor
         || !speciesSlot.isCacheableGetter()
         || speciesSlot.getterSetter() != globalObject->speciesGetterSetter()) {

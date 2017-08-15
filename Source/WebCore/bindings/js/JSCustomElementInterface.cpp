@@ -48,7 +48,7 @@ JSCustomElementInterface::JSCustomElementInterface(const QualifiedName& name, JS
     : ActiveDOMCallback(globalObject->scriptExecutionContext())
     , m_name(name)
     , m_constructor(constructor)
-    , m_isolatedWorld(globalObject->world())
+    , m_isolatedWorld(&globalObject->world())
 {
 }
 
@@ -132,7 +132,7 @@ static RefPtr<Element> constructCustomElementSynchronously(Document& document, V
     RETURN_IF_EXCEPTION(scope, nullptr);
 
     ASSERT(!newElement.isEmpty());
-    HTMLElement* wrappedElement = JSHTMLElement::toWrapped(vm, newElement);
+    HTMLElement* wrappedElement = JSHTMLElement::toWrapped(newElement);
     if (!wrappedElement) {
         throwTypeError(&state, scope, ASCIILiteral("The result of constructing a custom element must be a HTMLElement"));
         return nullptr;
@@ -182,7 +182,7 @@ void JSCustomElementInterface::upgradeElement(Element& element)
     if (!context)
         return;
     ASSERT(context->isDocument());
-    JSDOMGlobalObject* globalObject = toJSDOMGlobalObject(context, m_isolatedWorld);
+    JSDOMGlobalObject* globalObject = toJSDOMGlobalObject(context, *m_isolatedWorld);
     ExecState* state = globalObject->globalExec();
     RETURN_IF_EXCEPTION(scope, void());
 
@@ -210,7 +210,7 @@ void JSCustomElementInterface::upgradeElement(Element& element)
         return;
     }
 
-    Element* wrappedElement = JSElement::toWrapped(vm, returnedElement);
+    Element* wrappedElement = JSElement::toWrapped(returnedElement);
     if (!wrappedElement || wrappedElement != &element) {
         element.setIsFailedCustomElement(*this);
         reportException(state, createDOMException(state, INVALID_STATE_ERR, "Custom element constructor failed to upgrade an element"));
@@ -233,7 +233,7 @@ void JSCustomElementInterface::invokeCallback(Element& element, JSObject* callba
 
     ASSERT(context);
     ASSERT(context->isDocument());
-    JSDOMGlobalObject* globalObject = toJSDOMGlobalObject(context, m_isolatedWorld);
+    JSDOMGlobalObject* globalObject = toJSDOMGlobalObject(context, *m_isolatedWorld);
     ExecState* state = globalObject->globalExec();
 
     JSObject* jsElement = asObject(toJS(state, globalObject, element));

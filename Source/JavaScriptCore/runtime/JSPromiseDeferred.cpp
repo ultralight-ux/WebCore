@@ -33,7 +33,6 @@
 #include "JSObjectInlines.h"
 #include "JSPromise.h"
 #include "JSPromiseConstructor.h"
-#include "PromiseDeferredTimer.h"
 
 namespace JSC {
 
@@ -61,7 +60,7 @@ JSPromiseDeferred* JSPromiseDeferred::create(ExecState* exec, JSGlobalObject* gl
     RETURN_IF_EXCEPTION(scope, nullptr);
 
     JSValue promise = deferred.get(exec, vm.propertyNames->builtinNames().promisePrivateName());
-    ASSERT(promise.inherits(vm, JSPromise::info()));
+    ASSERT(promise.inherits(JSPromise::info()));
     JSValue resolve = deferred.get(exec, vm.propertyNames->builtinNames().resolvePrivateName());
     JSValue reject = deferred.get(exec, vm.propertyNames->builtinNames().rejectPrivateName());
 
@@ -100,20 +99,11 @@ static inline void callFunction(ExecState* exec, JSValue function, JSValue value
 void JSPromiseDeferred::resolve(ExecState* exec, JSValue value)
 {
     callFunction(exec, m_resolve.get(), value);
-    bool wasPending = exec->vm().promiseDeferredTimer->cancelPendingPromise(this);
-    ASSERT_UNUSED(wasPending, wasPending == m_promiseIsAsyncPending);
 }
 
 void JSPromiseDeferred::reject(ExecState* exec, JSValue reason)
 {
     callFunction(exec, m_reject.get(), reason);
-    bool wasPending = exec->vm().promiseDeferredTimer->cancelPendingPromise(this);
-    ASSERT_UNUSED(wasPending, wasPending == m_promiseIsAsyncPending);
-}
-
-void JSPromiseDeferred::reject(ExecState* exec, Exception* reason)
-{
-    reject(exec, reason->value());
 }
 
 void JSPromiseDeferred::finishCreation(VM& vm, JSObject* promise, JSValue resolve, JSValue reject)

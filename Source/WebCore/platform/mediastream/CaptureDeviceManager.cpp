@@ -23,19 +23,20 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "CaptureDeviceManager.h"
+#import "config.h"
+#import "CaptureDeviceManager.h"
 
 #if ENABLE(MEDIA_STREAM)
 
-#include "Logging.h"
-#include "MediaConstraints.h"
-#include "RealtimeMediaSource.h"
-#include "RealtimeMediaSourceCenter.h"
-#include "RealtimeMediaSourceSettings.h"
-#include <wtf/MainThread.h>
-#include <wtf/NeverDestroyed.h>
-#include <wtf/text/StringHash.h>
+#import "Logging.h"
+#import "MediaConstraints.h"
+#import "RealtimeMediaSource.h"
+#import "RealtimeMediaSourceCenter.h"
+#import "RealtimeMediaSourceSettings.h"
+#import "UUID.h"
+#import <wtf/MainThread.h>
+#import <wtf/NeverDestroyed.h>
+#import <wtf/text/StringHash.h>
 
 using namespace WebCore;
 
@@ -43,88 +44,77 @@ CaptureDeviceManager::~CaptureDeviceManager()
 {
 }
 
-Vector<CaptureDevice> CaptureDeviceManager::getAudioSourcesInfo()
+Vector<CaptureDevice> CaptureDeviceManager::getSourcesInfo()
 {
     Vector<CaptureDevice> sourcesInfo;
-    for (auto& captureDevice : captureDevices()) {
-        if (!captureDevice.enabled() || captureDevice.type() != CaptureDevice::DeviceType::Audio)
+    for (auto captureDevice : captureDeviceList()) {
+        if (!captureDevice.m_enabled || captureDevice.m_sourceType == RealtimeMediaSource::None)
             continue;
 
-        sourcesInfo.append(captureDevice);
+        CaptureDevice::SourceKind kind = captureDevice.m_sourceType == RealtimeMediaSource::Video ? CaptureDevice::SourceKind::Video : CaptureDevice::SourceKind::Audio;
+        sourcesInfo.append(CaptureDevice(captureDevice.m_persistentDeviceID, kind, captureDevice.m_localizedName, captureDevice.m_groupID));
     }
     LOG(Media, "CaptureDeviceManager::getSourcesInfo(%p), found %zu active devices", this, sourcesInfo.size());
     return sourcesInfo;
 }
 
-Vector<CaptureDevice> CaptureDeviceManager::getVideoSourcesInfo()
+bool CaptureDeviceManager::captureDeviceFromDeviceID(const String& captureDeviceID, CaptureDeviceInfo& foundDevice)
 {
-    Vector<CaptureDevice> sourcesInfo;
-    for (auto& captureDevice : captureDevices()) {
-        if (!captureDevice.enabled() || captureDevice.type() != CaptureDevice::DeviceType::Video)
-            continue;
-
-        sourcesInfo.append(captureDevice);
-    }
-    LOG(Media, "CaptureDeviceManager::getSourcesInfo(%p), found %zu active devices", this, sourcesInfo.size());
-    return sourcesInfo;
-}
-
-std::optional<CaptureDevice> CaptureDeviceManager::captureDeviceFromPersistentID(const String& captureDeviceID)
-{
-    for (auto& device : captureDevices()) {
-        if (device.persistentId() == captureDeviceID)
-            return device;
-    }
-
-    return std::nullopt;
-}
-
-std::optional<CaptureDevice> CaptureDeviceManager::deviceWithUID(const String& deviceUID, RealtimeMediaSource::Type type)
-{
-    for (auto& captureDevice : captureDevices()) {
-        CaptureDevice::DeviceType deviceType;
-
-        switch (type) {
-        case RealtimeMediaSource::Type::None:
-            continue;
-        case RealtimeMediaSource::Type::Audio:
-            deviceType = CaptureDevice::DeviceType::Audio;
-            break;
-        case RealtimeMediaSource::Type::Video:
-            deviceType = CaptureDevice::DeviceType::Video;
-            break;
+    for (auto& device : captureDeviceList()) {
+        if (device.m_persistentDeviceID == captureDeviceID) {
+            foundDevice = device;
+            return true;
         }
-
-        if (captureDevice.persistentId() != deviceUID || captureDevice.type() != deviceType)
-            continue;
-
-        if (!captureDevice.enabled())
-            continue;
-
-        return captureDevice;
     }
 
-    return std::nullopt;
+    return false;
 }
 
-static CaptureDeviceManager::ObserverToken nextObserverToken()
+Vector<String> CaptureDeviceManager::bestSourcesForTypeAndConstraints(RealtimeMediaSource::Type type, const MediaConstraints& constraints, String& invalidConstraint)
 {
-    static CaptureDeviceManager::ObserverToken nextToken = 0;
-    return ++nextToken;
+    Vector<RefPtr<RealtimeMediaSource>> bestSources;
+
+    struct {
+        bool operator()(RefPtr<RealtimeMediaSource> a, RefPtr<RealtimeMediaSource> b)
+        {
+            return a->fitnessScore() < b->fitnessScore();
+        }
+    } sortBasedOnFitnessScore;
+
+    for (auto& captureDevice : captureDeviceList()) {
+        if (!captureDevice.m_enabled)
+            continue;
+
+        if (RefPtr<RealtimeMediaSource> captureSource = sourceWithUID(captureDevice.m_persistentDeviceID, type, &constraints, invalidConstraint))
+            bestSources.append(captureSource.leakRef());
+    }
+
+    Vector<String> sourceUIDs;
+    if (bestSources.isEmpty())
+        return sourceUIDs;
+
+    sourceUIDs.reserveInitialCapacity(bestSources.size());
+    std::sort(bestSources.begin(), bestSources.end(), sortBasedOnFitnessScore);
+    for (auto& device : bestSources)
+        sourceUIDs.uncheckedAppend(device->persistentID());
+
+    return sourceUIDs;
 }
 
-CaptureDeviceManager::ObserverToken CaptureDeviceManager::addCaptureDeviceChangedObserver(CaptureDeviceChangedCallback observer)
+RefPtr<RealtimeMediaSource> CaptureDeviceManager::sourceWithUID(const String& deviceUID, RealtimeMediaSource::Type type, const MediaConstraints* constraints, String& invalidConstraint)
 {
-    auto token = nextObserverToken();
-    m_observers.set(token, WTFMove(observer));
-    return token;
-}
+    for (auto& captureDevice : captureDeviceList()) {
+        if (captureDevice.m_persistentDeviceID != deviceUID || captureDevice.m_sourceType != type)
+            continue;
 
-void CaptureDeviceManager::removeCaptureDeviceChangedObserver(ObserverToken token)
-{
-    ASSERT(m_observers.contains(token));
-    m_observers.remove(token);
-}
+        if (!captureDevice.m_enabled)
+            continue;
 
+        if (auto mediaSource = createMediaSourceForCaptureDeviceWithConstraints(captureDevice, constraints, invalidConstraint))
+            return mediaSource;
+    }
+
+    return nullptr;
+}
 
 #endif // ENABLE(MEDIA_STREAM)

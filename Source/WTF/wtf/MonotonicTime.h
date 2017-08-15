@@ -46,46 +46,42 @@ public:
     static const ClockType clockType = ClockType::Monotonic;
     
     // This is the epoch. So, x.secondsSinceEpoch() should be the same as x - MonotonicTime().
-    constexpr MonotonicTime() { }
+    MonotonicTime() { }
     
     // Call this if you know for sure that the double represents time according to
     // WTF::monotonicallyIncreasingTime(). It must be in seconds and it must be from the same time
     // source.
-    static constexpr MonotonicTime fromRawSeconds(double value)
+    static MonotonicTime fromRawSeconds(double value)
     {
-        return MonotonicTime(value);
+        MonotonicTime result;
+        result.m_value = value;
+        return result;
     }
     
     WTF_EXPORT_PRIVATE static MonotonicTime now();
     
-    static constexpr MonotonicTime infinity() { return fromRawSeconds(std::numeric_limits<double>::infinity()); }
-    static constexpr MonotonicTime nan() { return fromRawSeconds(std::numeric_limits<double>::quiet_NaN()); }
+    static MonotonicTime infinity() { return fromRawSeconds(std::numeric_limits<double>::infinity()); }
 
-    constexpr Seconds secondsSinceEpoch() const { return Seconds(m_value); }
+    Seconds secondsSinceEpoch() const { return Seconds(m_value); }
     
     MonotonicTime approximateMonotonicTime() const { return *this; }
     WTF_EXPORT_PRIVATE WallTime approximateWallTime() const;
     
-    explicit constexpr operator bool() const { return !!m_value; }
+    explicit operator bool() const { return !!m_value; }
     
-    constexpr MonotonicTime operator+(Seconds other) const
+    MonotonicTime operator+(Seconds other) const
     {
         return fromRawSeconds(m_value + other.value());
     }
     
-    constexpr MonotonicTime operator-(Seconds other) const
+    MonotonicTime operator-(Seconds other) const
     {
         return fromRawSeconds(m_value - other.value());
-    }
-
-    Seconds operator%(Seconds other) const
-    {
-        return Seconds { fmod(m_value, other.value()) };
     }
     
     // Time is a scalar and scalars can be negated as this could arise from algebraic
     // transformations. So, we allow it.
-    constexpr MonotonicTime operator-() const
+    MonotonicTime operator-() const
     {
         return fromRawSeconds(-m_value);
     }
@@ -100,37 +96,37 @@ public:
         return *this = *this - other;
     }
     
-    constexpr Seconds operator-(MonotonicTime other) const
+    Seconds operator-(MonotonicTime other) const
     {
         return Seconds(m_value - other.m_value);
     }
     
-    constexpr bool operator==(MonotonicTime other) const
+    bool operator==(MonotonicTime other) const
     {
         return m_value == other.m_value;
     }
     
-    constexpr bool operator!=(MonotonicTime other) const
+    bool operator!=(MonotonicTime other) const
     {
         return m_value != other.m_value;
     }
     
-    constexpr bool operator<(MonotonicTime other) const
+    bool operator<(MonotonicTime other) const
     {
         return m_value < other.m_value;
     }
     
-    constexpr bool operator>(MonotonicTime other) const
+    bool operator>(MonotonicTime other) const
     {
         return m_value > other.m_value;
     }
     
-    constexpr bool operator<=(MonotonicTime other) const
+    bool operator<=(MonotonicTime other) const
     {
         return m_value <= other.m_value;
     }
     
-    constexpr bool operator>=(MonotonicTime other) const
+    bool operator>=(MonotonicTime other) const
     {
         return m_value >= other.m_value;
     }
@@ -138,34 +134,10 @@ public:
     WTF_EXPORT_PRIVATE void dump(PrintStream&) const;
 
 private:
-    constexpr MonotonicTime(double rawValue)
-        : m_value(rawValue)
-    {
-    }
-
     double m_value { 0 };
 };
 
 } // namespace WTF
-
-namespace std {
-
-inline bool isnan(WTF::MonotonicTime time)
-{
-    return std::isnan(time.secondsSinceEpoch().value());
-}
-
-inline bool isinf(WTF::MonotonicTime time)
-{
-    return std::isinf(time.secondsSinceEpoch().value());
-}
-
-inline bool isfinite(WTF::MonotonicTime time)
-{
-    return std::isfinite(time.secondsSinceEpoch().value());
-}
-
-} // namespace std
 
 using WTF::MonotonicTime;
 

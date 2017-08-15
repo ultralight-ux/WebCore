@@ -23,7 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
+#ifndef SandboxSPI_h
+#define SandboxSPI_h
 
 #if OS(DARWIN)
 
@@ -44,10 +45,11 @@ WTF_EXTERN_C_BEGIN
 
 extern const enum sandbox_filter_type SANDBOX_CHECK_NO_REPORT;
 int sandbox_check(pid_t, const char *operation, enum sandbox_filter_type, ...);
-int sandbox_check_by_audit_token(audit_token_t, const char *operation, enum sandbox_filter_type, ...);
 int sandbox_container_path_for_pid(pid_t, char *buffer, size_t bufsize);
 int sandbox_init_with_parameters(const char *profile, uint64_t flags, const char *const parameters[], char **errorbuf);
 
 WTF_EXTERN_C_END
 
 #endif // OS(DARWIN)
+
+#endif // SandboxSPI_h

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,21 +23,29 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
-
-#if ENABLE(VIDEO_TRACK)
+#ifndef VideoTrackPrivate_h
+#define VideoTrackPrivate_h
 
 #include "TrackPrivateBase.h"
 
+#if ENABLE(VIDEO_TRACK)
+
 namespace WebCore {
+
+class VideoTrackPrivate;
 
 class VideoTrackPrivateClient : public TrackPrivateBaseClient {
 public:
-    virtual void selectedChanged(bool) = 0;
+    virtual void selectedChanged(VideoTrackPrivate*, bool) = 0;
 };
 
 class VideoTrackPrivate : public TrackPrivateBase {
 public:
+    static PassRefPtr<VideoTrackPrivate> create()
+    {
+        return adoptRef(new VideoTrackPrivate());
+    }
+
     void setClient(VideoTrackPrivateClient* client) { m_client = client; }
     VideoTrackPrivateClient* client() const override { return m_client; }
 
@@ -47,21 +55,26 @@ public:
             return;
         m_selected = selected;
         if (m_client)
-            m_client->selectedChanged(m_selected);
-    }
+            m_client->selectedChanged(this, m_selected);
+    };
     virtual bool selected() const { return m_selected; }
 
     enum Kind { Alternative, Captions, Main, Sign, Subtitles, Commentary, None };
     virtual Kind kind() const { return None; }
 
 protected:
-    VideoTrackPrivate() = default;
+    VideoTrackPrivate()
+        : m_client(0)
+        , m_selected(false)
+    {
+    }
 
 private:
-    VideoTrackPrivateClient* m_client { nullptr };
-    bool m_selected { false };
+    VideoTrackPrivateClient* m_client;
+    bool m_selected;
 };
 
 } // namespace WebCore
 
+#endif
 #endif

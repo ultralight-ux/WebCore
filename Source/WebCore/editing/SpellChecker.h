@@ -44,12 +44,12 @@ class SpellChecker;
 
 class SpellCheckRequest : public TextCheckingRequest {
 public:
-    static RefPtr<SpellCheckRequest> create(TextCheckingTypeMask, TextCheckingProcessType, Ref<Range>&& checkingRange, Ref<Range>&& paragraphRange);
+    static RefPtr<SpellCheckRequest> create(TextCheckingTypeMask, TextCheckingProcessType, PassRefPtr<Range> checkingRange, PassRefPtr<Range> paragraphRange);
     virtual ~SpellCheckRequest();
 
-    Range& checkingRange() const { return m_checkingRange.get(); }
-    Range& paragraphRange() const { return m_paragraphRange.get(); }
-    Element* rootEditableElement() const { return m_rootEditableElement.get(); }
+    PassRefPtr<Range> checkingRange() const { return m_checkingRange; }
+    PassRefPtr<Range> paragraphRange() const { return m_paragraphRange; }
+    PassRefPtr<Element> rootEditableElement() const { return m_rootEditableElement; }
 
     void setCheckerAndSequence(SpellChecker*, int sequence);
     void requesterDestroyed();
@@ -60,11 +60,11 @@ public:
     void didCancel() override;
 
 private:
-    SpellCheckRequest(Ref<Range>&& checkingRange, Ref<Range>&& paragraphRange, const String&, TextCheckingTypeMask, TextCheckingProcessType);
+    SpellCheckRequest(PassRefPtr<Range> checkingRange, PassRefPtr<Range> paragraphRange, const String&, TextCheckingTypeMask, TextCheckingProcessType);
 
     SpellChecker* m_checker { nullptr };
-    Ref<Range> m_checkingRange;
-    Ref<Range> m_paragraphRange;
+    RefPtr<Range> m_checkingRange;
+    RefPtr<Range> m_paragraphRange;
     RefPtr<Element> m_rootEditableElement;
     TextCheckingRequestData m_requestData;
 };
@@ -78,9 +78,9 @@ public:
     ~SpellChecker();
 
     bool isAsynchronousEnabled() const;
-    bool isCheckable(Range&) const;
+    bool isCheckable(Range*) const;
 
-    void requestCheckingFor(Ref<SpellCheckRequest>&&);
+    void requestCheckingFor(PassRefPtr<SpellCheckRequest>);
 
     int lastRequestSequence() const
     {
@@ -93,13 +93,13 @@ public:
     }
 
 private:
-    typedef Deque<Ref<SpellCheckRequest>> RequestQueue;
+    typedef Deque<RefPtr<SpellCheckRequest>> RequestQueue;
 
-    bool canCheckAsynchronously(Range&) const;
+    bool canCheckAsynchronously(Range*) const;
     TextCheckerClient* client() const;
     void timerFiredToProcessQueuedRequest();
-    void invokeRequest(Ref<SpellCheckRequest>&&);
-    void enqueueRequest(Ref<SpellCheckRequest>&&);
+    void invokeRequest(PassRefPtr<SpellCheckRequest>);
+    void enqueueRequest(PassRefPtr<SpellCheckRequest>);
     void didCheckSucceed(int sequence, const Vector<TextCheckingResult>&);
     void didCheckCancel(int sequence);
     void didCheck(int sequence, const Vector<TextCheckingResult>&);

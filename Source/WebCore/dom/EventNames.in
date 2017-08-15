@@ -26,7 +26,6 @@ OverflowEvent
 PageTransitionEvent
 PopStateEvent
 ProgressEvent
-PromiseRejectionEvent
 TextEvent
 TransitionEvent
 UIEvent
@@ -44,9 +43,9 @@ AudioProcessingEvent conditional=WEB_AUDIO
 OfflineAudioCompletionEvent conditional=WEB_AUDIO
 MediaStreamEvent conditional=WEB_RTC
 MediaStreamTrackEvent conditional=MEDIA_STREAM
-RTCPeerConnectionIceEvent conditional=WEB_RTC
+RTCIceCandidateEvent conditional=WEB_RTC
 RTCDataChannelEvent conditional=WEB_RTC
-RTCDTMFToneChangeEvent conditional=WEB_RTC_DTMF
+RTCDTMFToneChangeEvent conditional=WEB_RTC
 RTCTrackEvent conditional=WEB_RTC
 SpeechSynthesisEvent conditional=SPEECH_SYNTHESIS
 WebGLContextEvent conditional=WEBGL
@@ -55,7 +54,7 @@ SVGEvents interfaceName=Event
 SVGZoomEvent
 SVGZoomEvents interfaceName=SVGZoomEvent
 IDBVersionChangeEvent conditional=INDEXED_DATABASE
-TouchEvent conditional=TOUCH_EVENTS
+TouchEvent conditional=TOUCH_EVENTS, runtimeConditional=touchEnabled
 DeviceMotionEvent conditional=DEVICE_ORIENTATION
 DeviceOrientationEvent conditional=DEVICE_ORIENTATION
 DeviceProximityEvent conditional=PROXIMITY_EVENTS
@@ -66,6 +65,7 @@ TrackEvent conditional=VIDEO_TRACK
 AutocompleteErrorEvent conditional=REQUEST_AUTOCOMPLETE
 CSSFontFaceLoadEvent conditional=FONT_LOAD_EVENTS
 SecurityPolicyViolationEvent
+UIRequestEvent conditional=INDIE_UI
 GestureEvent conditional=IOS_GESTURE_EVENTS|MAC_GESTURE_EVENTS
 WebKitPlaybackTargetAvailabilityEvent conditional=WIRELESS_PLAYBACK_TARGET
 GamepadEvent conditional=GAMEPAD

@@ -258,21 +258,23 @@ bool EventPath::hasEventListeners(const AtomicString& eventType) const
 Vector<EventTarget*> EventPath::computePathUnclosedToTarget(const EventTarget& target) const
 {
     Vector<EventTarget*> path;
-    auto* targetNode = const_cast<EventTarget&>(target).toNode();
+    const Node* targetNode = const_cast<EventTarget&>(target).toNode();
     if (!targetNode) {
-        auto* domWindow = const_cast<EventTarget&>(target).toDOMWindow();
+        const DOMWindow* domWindow = const_cast<EventTarget&>(target).toDOMWindow();
         if (!domWindow)
             return path;
         targetNode = domWindow->document();
         ASSERT(targetNode);
     }
+
     for (auto& context : m_path) {
-        if (auto* nodeInPath = context->currentTarget()->toNode()) {
+        if (Node* nodeInPath = context->currentTarget()->toNode()) {
             if (!targetNode->isClosedShadowHidden(*nodeInPath))
                 path.append(context->currentTarget());
         } else
             path.append(context->currentTarget());
     }
+
     return path;
 }
 
@@ -290,7 +292,7 @@ RelatedNodeRetargeter::RelatedNodeRetargeter(Node& relatedNode, Node& target)
 {
     auto& targetTreeScope = target.treeScope();
     TreeScope* currentTreeScope = &m_relatedNode.treeScope();
-    if (LIKELY(currentTreeScope == &targetTreeScope && target.isConnected() && m_relatedNode.isConnected()))
+    if (LIKELY(currentTreeScope == &targetTreeScope && target.inDocument() && m_relatedNode.inDocument()))
         return;
 
     if (&currentTreeScope->documentScope() != &targetTreeScope.documentScope()) {
@@ -298,7 +300,7 @@ RelatedNodeRetargeter::RelatedNodeRetargeter(Node& relatedNode, Node& target)
         m_retargetedRelatedNode = nullptr;
         return;
     }
-    if (relatedNode.isConnected() != target.isConnected()) {
+    if (relatedNode.inDocument() != target.inDocument()) {
         m_hasDifferentTreeRoot = true;
         m_retargetedRelatedNode = moveOutOfAllShadowRoots(relatedNode);
         return;
@@ -323,7 +325,7 @@ RelatedNodeRetargeter::RelatedNodeRetargeter(Node& relatedNode, Node& target)
     }
 
     bool lowestCommonAncestorIsDocumentScope = i + 1 == m_ancestorTreeScopes.size();
-    if (lowestCommonAncestorIsDocumentScope && !relatedNode.isConnected() && !target.isConnected()) {
+    if (lowestCommonAncestorIsDocumentScope && !relatedNode.inDocument() && !target.inDocument()) {
         Node& relatedNodeAncestorInDocumentScope = i ? *downcast<ShadowRoot>(m_ancestorTreeScopes[i - 1]->rootNode()).shadowHost() : relatedNode;
         Node& targetAncestorInDocumentScope = j ? *downcast<ShadowRoot>(targetTreeScopeAncestors[j - 1]->rootNode()).shadowHost() : target;
         if (&targetAncestorInDocumentScope.rootNode() != &relatedNodeAncestorInDocumentScope.rootNode()) {

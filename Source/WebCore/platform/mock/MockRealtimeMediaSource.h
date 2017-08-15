@@ -53,37 +53,41 @@ class MockRealtimeMediaSource : public BaseRealtimeMediaSourceClass {
 public:
     virtual ~MockRealtimeMediaSource() { }
 
-    static Vector<CaptureDevice>& audioDevices();
-    static Vector<CaptureDevice>& videoDevices();
+    static const AtomicString& mockAudioSourcePersistentID();
+    static const AtomicString& mockAudioSourceName();
+
+    static const AtomicString& mockVideoSourcePersistentID();
+    static const AtomicString& mockVideoSourceName();
+
+    static CaptureDevice audioDeviceInfo();
+    static CaptureDevice videoDeviceInfo();
 
 protected:
     MockRealtimeMediaSource(const String& id, Type, const String& name);
 
     virtual void updateSettings(RealtimeMediaSourceSettings&) = 0;
     virtual void initializeCapabilities(RealtimeMediaSourceCapabilities&) = 0;
-#if !USE(OPENWEBRTC)
     virtual void initializeSupportedConstraints(RealtimeMediaSourceSupportedConstraints&) = 0;
-#endif
 
-    const RealtimeMediaSourceCapabilities& capabilities() const override;
+    void startProducingData() override;
+    void stopProducingData() override;
+
+    RefPtr<RealtimeMediaSourceCapabilities> capabilities() const override;
     const RealtimeMediaSourceSettings& settings() const override;
 
+    MediaConstraints& constraints() { return *m_constraints.get(); }
     RealtimeMediaSourceSupportedConstraints& supportedConstraints();
-
-    unsigned deviceIndex() { return m_deviceIndex; }
 
 private:
     void initializeCapabilities();
-#if USE(OPENWEBRTC)
-    void initializeSettings() final;
-#else
     void initializeSettings();
-#endif
+    bool isProducingData() const override { return m_isProducingData; }
 
     RealtimeMediaSourceSettings m_currentSettings;
     RealtimeMediaSourceSupportedConstraints m_supportedConstraints;
-    std::unique_ptr<RealtimeMediaSourceCapabilities> m_capabilities;
-    unsigned m_deviceIndex { 0 };
+    RefPtr<RealtimeMediaSourceCapabilities> m_capabilities;
+    RefPtr<MediaConstraints> m_constraints;
+    bool m_isProducingData { false };
 };
 
 } // namespace WebCore

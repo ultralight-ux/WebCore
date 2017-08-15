@@ -70,7 +70,7 @@ static FunctionWhitelist& ensureGlobalDFGWhitelist()
 static CompilationResult compileImpl(
     VM& vm, CodeBlock* codeBlock, CodeBlock* profiledDFGCodeBlock, CompilationMode mode,
     unsigned osrEntryBytecodeIndex, const Operands<JSValue>& mustHandleValues,
-    Ref<DeferredCompilationCallback>&& callback)
+    PassRefPtr<DeferredCompilationCallback> callback)
 {
     if (!Options::bytecodeRangeToDFGCompile().isInRange(codeBlock->instructionCount())
         || !ensureGlobalDFGWhitelist().contains(codeBlock))
@@ -96,25 +96,25 @@ static CompilationResult compileImpl(
     if (vm.typeProfiler())
         vm.typeProfilerLog()->processLogEntries(ASCIILiteral("Preparing for DFG compilation."));
     
-    Ref<Plan> plan = adoptRef(
-        *new Plan(codeBlock, profiledDFGCodeBlock, mode, osrEntryBytecodeIndex, mustHandleValues));
+    RefPtr<Plan> plan = adoptRef(
+        new Plan(codeBlock, profiledDFGCodeBlock, mode, osrEntryBytecodeIndex, mustHandleValues));
     
-    plan->callback = WTFMove(callback);
+    plan->callback = callback;
     if (Options::useConcurrentJIT()) {
         Worklist& worklist = ensureGlobalWorklistFor(mode);
         if (logCompilationChanges(mode))
             dataLog("Deferring DFG compilation of ", *codeBlock, " with queue length ", worklist.queueLength(), ".\n");
-        worklist.enqueue(WTFMove(plan));
+        worklist.enqueue(plan);
         return CompilationDeferred;
     }
     
-    plan->compileInThread(nullptr);
+    plan->compileInThread(*vm.dfgState, 0);
     return plan->finalizeWithoutNotifyingCallback();
 }
 #else // ENABLE(DFG_JIT)
 static CompilationResult compileImpl(
     VM&, CodeBlock*, CodeBlock*, CompilationMode, unsigned, const Operands<JSValue>&,
-    Ref<DeferredCompilationCallback>&&)
+    PassRefPtr<DeferredCompilationCallback>)
 {
     return CompilationFailed;
 }
@@ -123,11 +123,12 @@ static CompilationResult compileImpl(
 CompilationResult compile(
     VM& vm, CodeBlock* codeBlock, CodeBlock* profiledDFGCodeBlock, CompilationMode mode,
     unsigned osrEntryBytecodeIndex, const Operands<JSValue>& mustHandleValues,
-    Ref<DeferredCompilationCallback>&& callback)
+    PassRefPtr<DeferredCompilationCallback> passedCallback)
 {
+    RefPtr<DeferredCompilationCallback> callback = passedCallback;
     CompilationResult result = compileImpl(
         vm, codeBlock, profiledDFGCodeBlock, mode, osrEntryBytecodeIndex, mustHandleValues,
-        callback.copyRef());
+        callback);
     if (result != CompilationDeferred)
         callback->compilationDidComplete(codeBlock, profiledDFGCodeBlock, result);
     return result;

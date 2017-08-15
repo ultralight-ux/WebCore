@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 Cable Television Labs Inc.  All rights reserved.
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,33 +33,35 @@
 #include "HTMLMediaElement.h"
 #include "InbandTextTrackPrivate.h"
 #include "Logging.h"
+#include <runtime/ArrayBuffer.h>
 
 namespace WebCore {
 
-inline InbandDataTextTrack::InbandDataTextTrack(ScriptExecutionContext& context, TextTrackClient& client, InbandTextTrackPrivate& trackPrivate)
-    : InbandTextTrack(context, client, trackPrivate)
+Ref<InbandDataTextTrack> InbandDataTextTrack::create(ScriptExecutionContext* context, TextTrackClient* client, RefPtr<InbandTextTrackPrivate>&& trackPrivate)
 {
+    return adoptRef(*new InbandDataTextTrack(context, client, WTFMove(trackPrivate)));
 }
 
-Ref<InbandDataTextTrack> InbandDataTextTrack::create(ScriptExecutionContext& context, TextTrackClient& client, InbandTextTrackPrivate& trackPrivate)
+InbandDataTextTrack::InbandDataTextTrack(ScriptExecutionContext* context, TextTrackClient* client, RefPtr<InbandTextTrackPrivate>&& trackPrivate)
+    : InbandTextTrack(context, client, trackPrivate)
 {
-    return adoptRef(*new InbandDataTextTrack(context, client, trackPrivate));
 }
 
 InbandDataTextTrack::~InbandDataTextTrack()
 {
 }
 
-void InbandDataTextTrack::addDataCue(const MediaTime& start, const MediaTime& end, const void* data, unsigned length)
+void InbandDataTextTrack::addDataCue(InbandTextTrackPrivate*, const MediaTime& start, const MediaTime& end, const void* data, unsigned length)
 {
     addCue(DataCue::create(*scriptExecutionContext(), start, end, data, length));
 }
 
 #if ENABLE(DATACUE_VALUE)
 
-void InbandDataTextTrack::addDataCue(const MediaTime& start, const MediaTime& end, Ref<SerializedPlatformRepresentation>&& platformValue, const String& type)
+void InbandDataTextTrack::addDataCue(InbandTextTrackPrivate*, const MediaTime& start, const MediaTime& end, PassRefPtr<SerializedPlatformRepresentation> prpPlatformValue, const String& type)
 {
-    if (m_incompleteCueMap.contains(platformValue.ptr()))
+    RefPtr<SerializedPlatformRepresentation> platformValue = prpPlatformValue;
+    if (m_incompleteCueMap.find(platformValue.get()) != m_incompleteCueMap.end())
         return;
 
     auto cue = DataCue::create(*scriptExecutionContext(), start, end, platformValue.copyRef(), type);
@@ -76,19 +78,25 @@ void InbandDataTextTrack::addDataCue(const MediaTime& start, const MediaTime& en
     addCue(WTFMove(cue));
 }
 
-void InbandDataTextTrack::updateDataCue(const MediaTime& start, const MediaTime& inEnd, SerializedPlatformRepresentation& platformValue)
+void InbandDataTextTrack::updateDataCue(InbandTextTrackPrivate*, const MediaTime& start, const MediaTime& inEnd, PassRefPtr<SerializedPlatformRepresentation> prpPlatformValue)
 {
-    RefPtr<DataCue> cue = m_incompleteCueMap.get(&platformValue);
+    MediaTime end = inEnd;
+
+    RefPtr<SerializedPlatformRepresentation> platformValue = prpPlatformValue;
+    auto iter = m_incompleteCueMap.find(platformValue.get());
+    if (iter == m_incompleteCueMap.end())
+        return;
+
+    RefPtr<DataCue> cue = iter->value;
     if (!cue)
         return;
 
     cue->willChange();
 
-    MediaTime end = inEnd;
     if (end.isPositiveInfinite() && mediaElement())
         end = mediaElement()->durationMediaTime();
     else
-        m_incompleteCueMap.remove(&platformValue);
+        m_incompleteCueMap.remove(platformValue.get());
 
     LOG(Media, "InbandDataTextTrack::updateDataCue: was start=%s, end=%s, will be start=%s, end=%s\n", toString(cue->startTime()).utf8().data(), toString(cue->endTime()).utf8().data(), toString(start).utf8().data(), toString(end).utf8().data());
 
@@ -98,9 +106,14 @@ void InbandDataTextTrack::updateDataCue(const MediaTime& start, const MediaTime&
     cue->didChange();
 }
 
-void InbandDataTextTrack::removeDataCue(const MediaTime&, const MediaTime&, SerializedPlatformRepresentation& platformValue)
+void InbandDataTextTrack::removeDataCue(InbandTextTrackPrivate*, const MediaTime&, const MediaTime&, PassRefPtr<SerializedPlatformRepresentation> prpPlatformValue)
 {
-    if (auto cue = m_incompleteCueMap.take(&platformValue)) {
+    RefPtr<SerializedPlatformRepresentation> platformValue = prpPlatformValue;
+    auto iter = m_incompleteCueMap.find(platformValue.get());
+    if (iter == m_incompleteCueMap.end())
+        return;
+
+    if (auto cue = m_incompleteCueMap.take(platformValue.get())) {
         LOG(Media, "InbandDataTextTrack::removeDataCue removing cue: start=%s, end=%s\n", toString(cue->startTime()).utf8().data(), toString(cue->endTime()).utf8().data());
         InbandTextTrack::removeCue(*cue);
     }

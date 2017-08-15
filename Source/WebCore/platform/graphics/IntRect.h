@@ -181,6 +181,9 @@ public:
     IntRect(const D2D1_RECT_U&);
     operator D2D1_RECT_F() const;
     operator D2D1_RECT_U() const;
+#elif PLATFORM(EFL)
+    explicit IntRect(const Eina_Rectangle&);
+    operator Eina_Rectangle() const;
 #endif
 
 #if USE(CAIRO)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -94,6 +94,9 @@ inline CapabilityLevel canCompile(Node* node)
     case ArithMin:
     case ArithMax:
     case ArithAbs:
+    case ArithSin:
+    case ArithCos:
+    case ArithTan:
     case ArithPow:
     case ArithRandom:
     case ArithRound:
@@ -101,9 +104,9 @@ inline CapabilityLevel canCompile(Node* node)
     case ArithCeil:
     case ArithTrunc:
     case ArithSqrt:
+    case ArithLog:
     case ArithFRound:
     case ArithNegate:
-    case ArithUnary:
     case UInt32ToNumber:
     case Jump:
     case ForceOSRExit:
@@ -131,7 +134,7 @@ inline CapabilityLevel canCompile(Node* node)
     case CheckBadCell:
     case CheckNotEmpty:
     case CheckStringIdent:
-    case CheckTraps:
+    case CheckWatchdogTimer:
     case StringCharCodeAt:
     case StringFromCharCode:
     case AllocatePropertyStorage:
@@ -264,7 +267,6 @@ inline CapabilityLevel canCompile(Node* node)
     case LogShadowChickenPrologue:
     case LogShadowChickenTail:
     case ResolveScope:
-    case ResolveScopeForHoistingFuncDeclInEval:
     case GetDynamicVar:
     case PutDynamicVar:
     case CompareEq:
@@ -277,22 +279,10 @@ inline CapabilityLevel canCompile(Node* node)
     case DefineDataProperty:
     case DefineAccessorProperty:
     case ToLowerCase:
-    case NumberToStringWithRadix:
     case CheckDOM:
     case CallDOM:
     case CallDOMGetter:
     case ArraySlice:
-    case ParseInt:
-    case AtomicsAdd:
-    case AtomicsAnd:
-    case AtomicsCompareExchange:
-    case AtomicsExchange:
-    case AtomicsLoad:
-    case AtomicsOr:
-    case AtomicsStore:
-    case AtomicsSub:
-    case AtomicsXor:
-    case AtomicsIsLockFree:
         // These are OK.
         break;
 
@@ -301,16 +291,6 @@ inline CapabilityLevel canCompile(Node* node)
         // for capabilities before optimization. It would be a deep error to remove this
         // case because it would prevent us from catching bugs where the FTL backend
         // pipeline failed to optimize out an Identity.
-        break;
-    case Arrayify:
-        switch (node->arrayMode().type()) {
-        case Array::Int32:
-        case Array::Double:
-        case Array::Contiguous:
-            break;
-        default:
-            return CannotCompile;
-        }
         break;
     case CheckArray:
         switch (node->arrayMode().type()) {
@@ -417,6 +397,12 @@ CapabilityLevel canCompile(Graph& graph)
         return CannotCompile;
     }
     
+    if (graph.m_codeBlock->codeType() != FunctionCode) {
+        if (verboseCapabilities())
+            dataLog("FTL rejecting ", *graph.m_codeBlock, " because it doesn't belong to a function.\n");
+        return CannotCompile;
+    }
+
     if (UNLIKELY(graph.m_codeBlock->ownerScriptExecutable()->neverFTLOptimize())) {
         if (verboseCapabilities())
             dataLog("FTL rejecting ", *graph.m_codeBlock, " because it is marked as never FTL compile.\n");

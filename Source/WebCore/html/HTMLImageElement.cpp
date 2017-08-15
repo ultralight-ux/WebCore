@@ -26,6 +26,7 @@
 #include "CSSPropertyNames.h"
 #include "CSSValueKeywords.h"
 #include "CachedImage.h"
+#include "EventNames.h"
 #include "FrameView.h"
 #include "HTMLDocument.h"
 #include "HTMLFormElement.h"
@@ -37,6 +38,7 @@
 #include "MediaList.h"
 #include "MediaQueryEvaluator.h"
 #include "NodeTraversal.h"
+#include "Page.h"
 #include "RenderImage.h"
 #include "RenderView.h"
 #include "Settings.h"
@@ -204,12 +206,12 @@ void HTMLImageElement::parseAttribute(const QualifiedName& name, const AtomicStr
     } else if (name == srcAttr || name == srcsetAttr || name == sizesAttr)
         selectImageSource();
     else if (name == usemapAttr) {
-        if (isConnected() && !m_parsedUsemap.isNull())
+        if (inDocument() && !m_parsedUsemap.isNull())
             document().removeImageElementByUsemap(*m_parsedUsemap.impl(), *this);
 
         m_parsedUsemap = parseHTMLHashNameReference(value);
 
-        if (isConnected() && !m_parsedUsemap.isNull())
+        if (inDocument() && !m_parsedUsemap.isNull())
             document().addImageElementByUsemap(*m_parsedUsemap.impl(), *this);
     } else if (name == compositeAttr) {
         // FIXME: images don't support blend modes in their compositing attribute.
@@ -224,7 +226,7 @@ void HTMLImageElement::parseAttribute(const QualifiedName& name, const AtomicStr
     } else {
         if (name == nameAttr) {
             bool willHaveName = !value.isNull();
-            if (m_hadNameBeforeAttributeChanged != willHaveName && isConnected() && !isInShadowTree() && is<HTMLDocument>(document())) {
+            if (m_hadNameBeforeAttributeChanged != willHaveName && inDocument() && !isInShadowTree() && is<HTMLDocument>(document())) {
                 HTMLDocument& document = downcast<HTMLDocument>(this->document());
                 const AtomicString& id = getIdAttribute();
                 if (!id.isEmpty() && id != getNameAttribute()) {
@@ -281,7 +283,7 @@ void HTMLImageElement::didAttachRenderers()
 
     auto& renderImage = downcast<RenderImage>(*renderer());
     RenderImageResource& renderImageResource = renderImage.imageResource();
-    if (renderImageResource.cachedImage())
+    if (renderImageResource.hasImage())
         return;
     renderImageResource.setCachedImage(m_imageLoader.image());
 
@@ -313,7 +315,7 @@ Node::InsertionNotificationRequest HTMLImageElement::insertedInto(ContainerNode&
     // in callbacks back to this node.
     Node::InsertionNotificationRequest insertNotificationRequest = HTMLElement::insertedInto(insertionPoint);
 
-    if (insertionPoint.isConnected() && !m_parsedUsemap.isNull())
+    if (insertionPoint.inDocument() && !m_parsedUsemap.isNull())
         document().addImageElementByUsemap(*m_parsedUsemap.impl(), *this);
 
     if (is<HTMLPictureElement>(parentNode())) {
@@ -323,7 +325,7 @@ Node::InsertionNotificationRequest HTMLImageElement::insertedInto(ContainerNode&
 
     // If we have been inserted from a renderer-less document,
     // our loader may have not fetched the image, so do it now.
-    if (insertionPoint.isConnected() && !m_imageLoader.image())
+    if (insertionPoint.inDocument() && !m_imageLoader.image())
         m_imageLoader.updateFromElement();
 
     return insertNotificationRequest;
@@ -334,7 +336,7 @@ void HTMLImageElement::removedFrom(ContainerNode& insertionPoint)
     if (m_form)
         m_form->removeImgElement(this);
 
-    if (insertionPoint.isConnected() && !m_parsedUsemap.isNull())
+    if (insertionPoint.inDocument() && !m_parsedUsemap.isNull())
         document().removeImageElementByUsemap(*m_parsedUsemap.impl(), *this);
     
     if (is<HTMLPictureElement>(parentNode()))
@@ -371,9 +373,9 @@ unsigned HTMLImageElement::width(bool ignorePendingStylesheets)
 {
     if (!renderer()) {
         // check the attribute first for an explicit pixel value
-        auto optionalWidth = parseHTMLNonNegativeInteger(attributeWithoutSynchronization(widthAttr));
-        if (optionalWidth)
-            return optionalWidth.value();
+        std::optional<unsigned> width = parseHTMLNonNegativeInteger(attributeWithoutSynchronization(widthAttr));
+        if (width)
+            return width.value();
 
         // if the image is available, use its width
         if (m_imageLoader.image())
@@ -396,9 +398,9 @@ unsigned HTMLImageElement::height(bool ignorePendingStylesheets)
 {
     if (!renderer()) {
         // check the attribute first for an explicit pixel value
-        auto optionalHeight = parseHTMLNonNegativeInteger(attributeWithoutSynchronization(heightAttr));
-        if (optionalHeight)
-            return optionalHeight.value();
+        std::optional<unsigned> height = parseHTMLNonNegativeInteger(attributeWithoutSynchronization(heightAttr));
+        if (height)
+            return height.value();
 
         // if the image is available, use its height
         if (m_imageLoader.image())
@@ -582,7 +584,8 @@ void HTMLImageElement::updateImageControls()
     if (isInShadowTree())
         return;
 
-    if (!document().settings().imageControlsEnabled())
+    Settings* settings = document().settings();
+    if (!settings || !settings->imageControlsEnabled())
         return;
 
     bool hasControls = hasImageControls();

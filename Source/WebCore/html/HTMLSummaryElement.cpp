@@ -21,6 +21,7 @@
 #include "config.h"
 #include "HTMLSummaryElement.h"
 
+#if ENABLE(DETAILS_ELEMENT)
 #include "DetailsMarkerControl.h"
 #include "EventNames.h"
 #include "HTMLDetailsElement.h"
@@ -158,3 +159,5 @@ bool HTMLSummaryElement::willRespondToMouseClickEvents()
 }
 
 }
+
+#endif

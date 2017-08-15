@@ -97,9 +97,7 @@ void CachedRawResource::finishLoading(SharedBuffer* data)
         notifyClientsDataWasReceived(incrementalData, incrementalDataLength);
     }
 
-#if USE(QUICK_LOOK)
     m_allowEncodedDataReplacement = !m_loader->isQuickLookResource();
-#endif
 
     CachedResource::finishLoading(data);
     if (dataBufferingPolicy == BufferData && this->dataBufferingPolicy() == DoNotBufferData) {
@@ -202,13 +200,6 @@ void CachedRawResource::didSendData(unsigned long long bytesSent, unsigned long 
     CachedResourceClientWalker<CachedRawResourceClient> w(m_clients);
     while (CachedRawResourceClient* c = w.next())
         c->dataSent(*this, bytesSent, totalBytesToBeSent);
-}
-
-void CachedRawResource::finishedTimingForWorkerLoad(ResourceTiming&& resourceTiming)
-{
-    CachedResourceClientWalker<CachedRawResourceClient> w(m_clients);
-    while (CachedRawResourceClient* c = w.next())
-        c->finishedTimingForWorkerLoad(*this, resourceTiming);
 }
 
 void CachedRawResource::switchClientsToRevalidatedResource()

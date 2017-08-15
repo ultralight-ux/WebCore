@@ -43,15 +43,12 @@ namespace WebCore {
     // This class decodes the JPEG image format.
     class JPEGImageDecoder final : public ImageDecoder {
     public:
-        static Ref<ImageDecoder> create(AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
-        {
-            return adoptRef(*new JPEGImageDecoder(alphaOption, gammaAndColorProfileOption));
-        }
-
+        JPEGImageDecoder(AlphaOption, GammaAndColorProfileOption);
         virtual ~JPEGImageDecoder();
 
         // ImageDecoder
-        String filenameExtension() const override { return ASCIILiteral("jpg"); }
+        String filenameExtension() const override { return "jpg"; }
+        bool isSizeAvailable() override;
         bool setSize(const IntSize&) override;
         ImageFrame* frameBufferAtIndex(size_t index) override;
         // CAUTION: setFailed() deletes |m_reader|.  Be careful to avoid
@@ -61,7 +58,7 @@ namespace WebCore {
 
         bool willDownSample()
         {
-            ASSERT(ImageDecoder::encodedDataStatus() >= EncodedDataStatus::SizeAvailable);
+            ASSERT(ImageDecoder::isSizeAvailable());
             return m_scaled;
         }
 
@@ -71,13 +68,10 @@ namespace WebCore {
         void setOrientation(ImageOrientation orientation) { m_orientation = orientation; }
 
     private:
-        JPEGImageDecoder(AlphaOption, GammaAndColorProfileOption);
-        void tryDecodeSize(bool allDataReceived) override { decode(true, allDataReceived); }
-
         // Decodes the image.  If |onlySize| is true, stops decoding after
         // calculating the image size.  If decoding fails but there is no more
         // data coming, sets the "decode failure" flag.
-        void decode(bool onlySize, bool allDataReceived);
+        void decode(bool onlySize);
 
         template <J_COLOR_SPACE colorSpace>
         bool outputScanlines(ImageFrame& buffer);

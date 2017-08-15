@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,15 +25,12 @@
 
 #pragma once
 
+#if ENABLE(MASM_PROBE)
+
 #include "MacroAssembler.h"
-#include "Printer.h"
 
 namespace JSC {
 
-#if ENABLE(ASSEMBLER)
-
-#if ENABLE(MASM_PROBE)
-    
 // What is MacroAssembler::print()?
 // ===============================
 // The MacroAsssembler::print() makes it easy to add print logging
@@ -55,21 +52,19 @@ namespace JSC {
 //      jit.print("Hello world\n"); // Emits code to print the string.
 //
 //      CodeBlock* cb = ...;
-//      jit.print(cb, "\n");             // Emits code to print the codeBlock value.
-//      jit.print(RawPointer(cb), "\n"); // Emits code to print the pointer value.
+//      jit.print(cb, "\n");        // Emits code to print the pointer value.
 //
 //      RegisterID regID = ...;
 //      jit.print(regID, "\n");     // Emits code to print the register value (not the id).
 //
 //      // Emits code to print all registers. Unlike other items, this prints
 //      // multiple lines as follows:
-//      //     cpu {
-//      //         eax: 0x123456789
-//      //         ebx: 0x000000abc
-//      //         ...
-//      //     }
-//      unsigned indentation = 4;
-//      jit.print(AllRegisters(indentation));
+//      //      cpu {
+//      //          eax: 0x123456789
+//      //          ebx: 0x000000abc
+//      //          ...
+//      //      }
+//      jit.print(AllRegisters());
 //
 //      jit.print(MemWord<uint8_t>(regID), "\n");   // Emits code to print a byte pointed to by the register.
 //      jit.print(MemWord<uint32_t>(regID), "\n");  // Emits code to print a 32-bit word pointed to by the register.
@@ -84,19 +79,15 @@ namespace JSC {
 //      // to print all the items.
 //      jit.print("cb:", cb, " regID:", regID, " cpu:\n", AllRegisters());
 //
-//   The type of values that can be printed is determine by the availability of a
-//   specialized Printer template, or a setPrinter() function for the value type.
+//   The type of values that can be printed is encapsulated in the PrintArg struct below.
 //
 //   Note: print() does not automatically insert a '\n' at the end of the line.
 //   If you want a '\n', you'll have to add it explicitly (as in the examples above).
 
 
-struct AllRegisters {
-    explicit AllRegisters(unsigned charsToIndent = 0)
-        : charsToIndent(charsToIndent)
-    { }
-    unsigned charsToIndent;
-};
+// This is a marker type only used with MacroAssemblerPrinter::print().
+// See MacroAssemblerPrinter::print() below for details.
+struct AllRegisters { };
 struct PCRegister { };
 
 struct Memory {
@@ -114,7 +105,7 @@ struct Memory {
         GenericDump,
     };
 
-    explicit Memory(RegisterID& reg, size_t bytes, DumpStyle style = GenericDump)
+    Memory(RegisterID& reg, size_t bytes, DumpStyle style = GenericDump)
         : addressType(AddressType::Address)
         , dumpStyle(style)
         , numBytes(bytes)
@@ -122,7 +113,7 @@ struct Memory {
         u.address = Address(reg, 0);
     }
 
-    explicit Memory(const Address& address, size_t bytes, DumpStyle style = GenericDump)
+    Memory(const Address& address, size_t bytes, DumpStyle style = GenericDump)
         : addressType(AddressType::Address)
         , dumpStyle(style)
         , numBytes(bytes)
@@ -130,7 +121,7 @@ struct Memory {
         u.address = address;
     }
 
-    explicit Memory(const AbsoluteAddress& address, size_t bytes, DumpStyle style = GenericDump)
+    Memory(const AbsoluteAddress& address, size_t bytes, DumpStyle style = GenericDump)
         : addressType(AddressType::AbsoluteAddress)
         , dumpStyle(style)
         , numBytes(bytes)
@@ -151,104 +142,161 @@ struct Memory {
 
 template <typename IntType>
 struct MemWord : public Memory {
-    explicit MemWord(RegisterID& reg)
+    MemWord(RegisterID& reg)
         : Memory(reg, sizeof(IntType), Memory::SingleWordDump)
     { }
 
-    explicit MemWord(const Address& address)
+    MemWord(const Address& address)
         : Memory(address, sizeof(IntType), Memory::SingleWordDump)
     { }
 
-    explicit MemWord(const AbsoluteAddress& address)
+    MemWord(const AbsoluteAddress& address)
         : Memory(address, sizeof(IntType), Memory::SingleWordDump)
     { }
 };
 
-namespace Printer {
 
-// Add some specialized printers.
+class MacroAssemblerPrinter {
+    using CPUState = MacroAssembler::CPUState;
+    using ProbeContext = MacroAssembler::ProbeContext;
+    using RegisterID = MacroAssembler::RegisterID;
+    using FPRegisterID = MacroAssembler::FPRegisterID;
+    
+public:
+    template<typename... Arguments>
+    static void print(MacroAssembler* masm, Arguments... args)
+    {
+        auto argsList = std::make_unique<PrintArgsList>();
+        appendPrintArg(argsList.get(), args...);
+        masm->probe(printCallback, argsList.release(), 0);
+    }
+    
+private:
+    struct PrintArg {
 
-void printAllRegisters(PrintStream&, Context&);
-void printPCRegister(PrintStream&, Context&);
-void printRegisterID(PrintStream&, Context&);
-void printFPRegisterID(PrintStream&, Context&);
-void printAddress(PrintStream&, Context&);
-void printMemory(PrintStream&, Context&);
+        enum class Type {
+            AllRegisters,
+            PCRegister,
+            RegisterID,
+            FPRegisterID,
+            Memory,
+            ConstCharPtr,
+            ConstVoidPtr,
+            IntptrValue,
+            UintptrValue,
+        };
+        
+        PrintArg(AllRegisters&)
+            : type(Type::AllRegisters)
+        {
+        }
+        
+        PrintArg(PCRegister&)
+            : type(Type::PCRegister)
+        {
+        }
+        
+        PrintArg(RegisterID regID)
+            : type(Type::RegisterID)
+        {
+            u.gpRegisterID = regID;
+        }
+        
+        PrintArg(FPRegisterID regID)
+            : type(Type::FPRegisterID)
+        {
+            u.fpRegisterID = regID;
+        }
 
-template<>
-struct Printer<AllRegisters> : public PrintRecord {
-    Printer(AllRegisters allRegisters)
-        : PrintRecord(static_cast<uintptr_t>(allRegisters.charsToIndent), printAllRegisters)
-    { }
+        PrintArg(const Memory& memory)
+            : type(Type::Memory)
+        {
+            u.memory = memory;
+        }
+
+        PrintArg(const char* ptr)
+            : type(Type::ConstCharPtr)
+        {
+            u.constCharPtr = ptr;
+        }
+        
+        PrintArg(const void* ptr)
+            : type(Type::ConstVoidPtr)
+        {
+            u.constVoidPtr = ptr;
+        }
+        
+        PrintArg(int value)
+            : type(Type::IntptrValue)
+        {
+            u.intptrValue = value;
+        }
+        
+        PrintArg(unsigned value)
+            : type(Type::UintptrValue)
+        {
+            u.intptrValue = value;
+        }
+        
+        PrintArg(intptr_t value)
+            : type(Type::IntptrValue)
+        {
+            u.intptrValue = value;
+        }
+        
+        PrintArg(uintptr_t value)
+            : type(Type::UintptrValue)
+        {
+            u.uintptrValue = value;
+        }
+        
+        Type type;
+        union Value {
+            Value() { }
+
+            RegisterID gpRegisterID;
+            FPRegisterID fpRegisterID;
+            Memory memory;
+            const char* constCharPtr;
+            const void* constVoidPtr;
+            intptr_t intptrValue;
+            uintptr_t uintptrValue;
+        } u;
+    };
+
+    typedef Vector<PrintArg> PrintArgsList;
+    
+    template<typename FirstArg, typename... Arguments>
+    static void appendPrintArg(PrintArgsList* argsList, FirstArg& firstArg, Arguments... otherArgs)
+    {
+        argsList->append(PrintArg(firstArg));
+        appendPrintArg(argsList, otherArgs...);
+    }
+    
+    static void appendPrintArg(PrintArgsList*) { }
+
+private:
+    static void printCallback(ProbeContext*);
 };
-
-template<>
-struct Printer<PCRegister> : public PrintRecord {
-    Printer(PCRegister&)
-        : PrintRecord(printPCRegister)
-    { }
-};
-
-template<>
-struct Printer<MacroAssembler::RegisterID> : public PrintRecord {
-    Printer(MacroAssembler::RegisterID id)
-        : PrintRecord(static_cast<uintptr_t>(id), printRegisterID)
-    { }
-};
-
-template<>
-struct Printer<MacroAssembler::FPRegisterID> : public PrintRecord {
-    Printer(MacroAssembler::FPRegisterID id)
-        : PrintRecord(static_cast<uintptr_t>(id), printFPRegisterID)
-    { }
-};
-
-template<>
-struct Printer<MacroAssembler::Address> : public PrintRecord {
-    Printer(MacroAssembler::Address address)
-        : PrintRecord(Data(&address, sizeof(address)), printAddress)
-    { }
-};
-
-template<>
-struct Printer<Memory> : public PrintRecord {
-    Printer(Memory memory)
-        : PrintRecord(Data(&memory, sizeof(memory)), printMemory)
-    { }
-};
-
-template<typename IntType>
-struct Printer<MemWord<IntType>> : public Printer<Memory> {
-    Printer(MemWord<IntType> word)
-        : Printer<Memory>(word)
-    { }
-};
-
-void printCallback(ProbeContext*);
-
-} // namespace Printer
 
 template<typename... Arguments>
-inline void MacroAssembler::print(Arguments&&... arguments)
+void MacroAssembler::print(Arguments... args)
 {
-    auto printRecordList = Printer::makePrintRecordList(std::forward<Arguments>(arguments)...);
-    probe(Printer::printCallback, printRecordList);
+    MacroAssemblerPrinter::print(this, args...);
 }
 
-inline void MacroAssembler::print(Printer::PrintRecordList* printRecordList)
-{
-    probe(Printer::printCallback, printRecordList);
-}
 
-#else // ENABLE(MASM_PROBE)
+// These printers will print a block of information. That block may be
+// indented with the specified indentation.
+void printCPU(MacroAssembler::CPUState&, int indentation = 0);
+void printCPURegisters(MacroAssembler::CPUState&, int indentation = 0);
 
-template<typename... Arguments>
-inline void MacroAssembler::print(Arguments&&...) { }
-
-inline void MacroAssembler::print(Printer::PrintRecordList*) { }
-
-#endif // ENABLE(MASM_PROBE)
-
-#endif // ENABLE(ASSEMBLER)
+// These printers will print the specified information in line in the
+// print stream. Hence, no indentation will be applied.
+void printRegister(MacroAssembler::CPUState&, MacroAssembler::RegisterID);
+void printRegister(MacroAssembler::CPUState&, MacroAssembler::FPRegisterID);
+void printMemory(MacroAssembler::CPUState&, const Memory&);
 
 } // namespace JSC
+
+#endif // ENABLE(MASM_PROBE)

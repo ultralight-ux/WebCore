@@ -40,11 +40,9 @@
 #include "RenderNamedFlowThread.h"
 #include "StyleResolver.h"
 #include "StyleTreeResolver.h"
-#include <wtf/SystemTracing.h>
 
 #if PLATFORM(IOS)
 #include "WKContentObservation.h"
-#include "WKContentObservationInternal.h"
 #endif
 
 namespace WebCore {
@@ -113,8 +111,6 @@ void RenderTreeUpdater::commit(std::unique_ptr<const Style::Update> styleUpdate)
 
     if (!m_document.shouldCreateRenderers() || !m_document.renderView())
         return;
-    
-    TraceScope scope(RenderTreeBuildStart, RenderTreeBuildEnd);
 
     Style::PostResolutionCallbackDisabler callbackDisabler(m_document);
 
@@ -259,13 +255,8 @@ void RenderTreeUpdater::updateElementRenderer(Element& element, const Style::Ele
 
     bool shouldTearDownRenderers = update.change == Style::Detach
         && (element.renderer() || element.isNamedFlowContentElement() || element.hasDisplayContents());
-    if (shouldTearDownRenderers) {
-        if (!element.renderer()) {
-            // We may be tearing down a descendant renderer cached in renderTreePosition.
-            renderTreePosition().invalidateNextSibling();
-        }
+    if (shouldTearDownRenderers)
         tearDownRenderers(element, TeardownType::KeepHoverAndActive);
-    }
 
     bool hasDisplayContents = update.style->display() == CONTENTS;
     if (hasDisplayContents != element.hasDisplayContents()) {
@@ -293,7 +284,7 @@ void RenderTreeUpdater::updateElementRenderer(Element& element, const Style::Ele
     }
 
     if (update.change == Style::NoChange) {
-        if (pseudoStyleCacheIsInvalid(&renderer, update.style.get())) {
+        if (pseudoStyleCacheIsInvalid(&renderer, update.style.get()) || (parent().styleChange == Style::Force && renderer.requiresForcedStyleRecalcPropagation())) {
             renderer.setStyle(RenderStyle::clone(*update.style), StyleDifferenceEqual);
             return;
         }
@@ -388,7 +379,7 @@ static bool textRendererIsNeeded(const Text& textNode, const RenderTreePosition&
     if (!textNode.containsOnlyWhitespace())
         return true;
     // This text node has nothing but white space. We may still need a renderer in some cases.
-    if (parentRenderer.isTable() || parentRenderer.isTableRow() || parentRenderer.isTableSection() || parentRenderer.isRenderTableCol() || parentRenderer.isFrameSet() || (parentRenderer.isFlexibleBox() && !parentRenderer.isRenderButton()))
+    if (parentRenderer.isTable() || parentRenderer.isTableRow() || parentRenderer.isTableSection() || parentRenderer.isRenderTableCol() || parentRenderer.isFrameSet())
         return false;
     if (parentRenderer.style().preserveNewline()) // pre/pre-wrap/pre-line always make renderers.
         return true;

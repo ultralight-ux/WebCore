@@ -23,16 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-
-typedef (
-#if defined(ENABLE_MEDIA_STREAM) && ENABLE_MEDIA_STREAM
-    MediaStream or
-#endif
-#if defined(ENABLE_MEDIA_SOURCE) && ENABLE_MEDIA_SOURCE
-    MediaSource or
-#endif
-    Blob) MediaProvider;
-
 [
     ActiveDOMObject,
     Conditional=VIDEO,
@@ -45,7 +35,6 @@ typedef (
 
     // network state
     [Reflect, URL] attribute USVString src;
-    attribute MediaProvider? srcObject;
     [URL] readonly attribute USVString currentSrc;
     attribute DOMString? crossOrigin;
 
@@ -116,7 +105,7 @@ typedef (
 
     [Reflect] attribute DOMString mediaGroup;
 
-    [ImplementedAs=controllerForBindings] attribute MediaController? controller;
+    [CustomSetter] attribute MediaController controller;
 
     [Conditional=MEDIA_SOURCE] VideoPlaybackQuality getVideoPlaybackQuality();
 

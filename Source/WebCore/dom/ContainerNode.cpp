@@ -26,6 +26,8 @@
 #include "AXObjectCache.h"
 #include "AllDescendantsCollection.h"
 #include "ChildListMutationScope.h"
+#include "Chrome.h"
+#include "ChromeClient.h"
 #include "ClassCollection.h"
 #include "CommonVM.h"
 #include "ContainerNodeAlgorithms.h"
@@ -56,10 +58,10 @@
 #include "SVGDocumentExtensions.h"
 #include "SVGElement.h"
 #include "SVGNames.h"
-#include "SVGUseElement.h"
 #include "SelectorQuery.h"
 #include "TemplateContentDocumentFragment.h"
 #include <algorithm>
+#include <wtf/CurrentTime.h>
 #include <wtf/Variant.h>
 
 namespace WebCore {
@@ -69,9 +71,8 @@ static void dispatchChildRemovalEvents(Node&);
 
 ChildNodesLazySnapshot* ChildNodesLazySnapshot::latestSnapshot;
 
-#if !ASSERT_DISABLED
+#ifndef NDEBUG
 unsigned NoEventDispatchAssertion::s_count = 0;
-unsigned NoEventDispatchAssertion::DisableAssertionsInScope::s_existingCount = 0;
 NoEventDispatchAssertion::EventAllowedScope* NoEventDispatchAssertion::EventAllowedScope::s_currentScope = nullptr;
 #endif
 
@@ -145,6 +146,8 @@ void ContainerNode::takeAllChildrenFrom(ContainerNode* oldParent)
         ChildChange change = { AllChildrenRemoved, nullptr, nullptr, ChildChangeSourceParser };
         childrenChanged(change);
     }
+
+    document().notifyRemovePendingSheetIfNeeded();
 
     // FIXME: assert that we don't dispatch events here since this container node is still disconnected.
     for (auto& child : children) {
@@ -341,27 +344,23 @@ void ContainerNode::appendChildCommon(Node& child)
     m_lastChild = &child;
 }
 
-inline auto ContainerNode::changeForChildInsertion(Node& child, ChildChangeSource source, ReplacedAllChildren replacedAllChildren) -> ChildChange
-{
-    if (replacedAllChildren == ReplacedAllChildren::Yes)
-        return { AllChildrenReplaced, nullptr, nullptr, source };
-
-    return {
-        child.isElementNode() ? ElementInserted : child.isTextNode() ? TextInserted : NonContentsChildInserted,
-        ElementTraversal::previousSibling(child),
-        ElementTraversal::nextSibling(child),
-        source
-    };
-}
-
-void ContainerNode::notifyChildInserted(Node& child, const ChildChange& change)
+void ContainerNode::notifyChildInserted(Node& child, ChildChangeSource source)
 {
     ChildListMutationScope(*this).childAdded(child);
 
     NodeVector postInsertionNotificationTargets;
     notifyChildNodeInserted(*this, child, postInsertionNotificationTargets);
 
+    ChildChange change;
+    change.type = child.isElementNode() ? ElementInserted : child.isTextNode() ? TextInserted : NonContentsChildInserted;
+    change.previousSiblingElement = ElementTraversal::previousSibling(child);
+    change.nextSiblingElement = ElementTraversal::nextSibling(child);
+    change.source = source;
+
     childrenChanged(change);
+
+    // Some call sites may have deleted child nodes. Calling it earlier results in bugs like webkit.org/b/168069.
+    document().notifyRemovePendingSheetIfNeeded();
 
     for (auto& target : postInsertionNotificationTargets)
         target->finishedInsertingSubtree();
@@ -397,7 +396,7 @@ void ContainerNode::parserInsertBefore(Node& newChild, Node& nextChild)
 
     newChild.updateAncestorConnectedSubframeCountForInsertion();
 
-    notifyChildInserted(newChild, changeForChildInsertion(newChild, ChildChangeSourceParser));
+    notifyChildInserted(newChild, ChildChangeSourceParser);
 }
 
 ExceptionOr<void> ContainerNode::replaceChild(Node& newChild, Node& oldChild)
@@ -550,7 +549,13 @@ ExceptionOr<void> ContainerNode::removeChild(Node& oldChild)
         notifyChildRemoved(child, prev, next, ChildChangeSourceAPI);
     }
 
-    rebuildSVGExtensionsElementsIfNecessary();
+    if (document().svgExtensions()) {
+        Element* shadowHost = this->shadowHost();
+        if (!shadowHost || !shadowHost->hasTagName(SVGNames::useTag))
+            document().accessSVGExtensions().rebuildElements();
+    }
+
+    document().notifyRemovePendingSheetIfNeeded();
     dispatchSubtreeModifiedEvent();
 
     return { };
@@ -614,68 +619,7 @@ void ContainerNode::parserRemoveChild(Node& oldChild)
 
         notifyChildRemoved(oldChild, prev, next, ChildChangeSourceParser);
     }
-}
-
-// https://dom.spec.whatwg.org/#concept-node-replace-all
-void ContainerNode::replaceAllChildren(std::nullptr_t)
-{
-    ChildListMutationScope mutation(*this);
-    removeChildren();
-}
-
-// https://dom.spec.whatwg.org/#concept-node-replace-all
-void ContainerNode::replaceAllChildren(Ref<Node>&& node)
-{
-    // This function assumes the input node is not a DocumentFragment and is parentless to decrease complexity.
-    ASSERT(!is<DocumentFragment>(node));
-    ASSERT(!node->parentNode());
-
-    if (!hasChildNodes()) {
-        // appendChildWithoutPreInsertionValidityCheck() can only throw when node has a parent and we already asserted it doesn't.
-        auto result = appendChildWithoutPreInsertionValidityCheck(node);
-        ASSERT_UNUSED(result, !result.hasException());
-        return;
-    }
-
-    Ref<ContainerNode> protectedThis(*this);
-    ChildListMutationScope mutation(*this);
-
-    // If node is not null, adopt node into parent's node document.
-    treeScope().adoptIfNeeded(node);
-
-    // Remove all parent's children, in tree order.
-    willRemoveChildren(*this);
-
-    {
-        WidgetHierarchyUpdatesSuspensionScope suspendWidgetHierarchyUpdates;
-        {
-            NoEventDispatchAssertion assertNoEventDispatch;
-
-            document().nodeChildrenWillBeRemoved(*this);
-
-            while (RefPtr<Node> child = m_firstChild) {
-                removeBetween(nullptr, child->nextSibling(), *child);
-                notifyChildNodeRemoved(*this, *child);
-            }
-
-            // If node is not null, insert node into parent before null.
-            ASSERT(!ensurePreInsertionValidity(node, nullptr).hasException());
-            InspectorInstrumentation::willInsertDOMNode(document(), *this);
-
-            appendChildCommon(node);
-        }
-
-        updateTreeAfterInsertion(node, ReplacedAllChildren::Yes);
-    }
-
-    rebuildSVGExtensionsElementsIfNecessary();
-    dispatchSubtreeModifiedEvent();
-}
-
-inline void ContainerNode::rebuildSVGExtensionsElementsIfNecessary()
-{
-    if (document().svgExtensions() && !is<SVGUseElement>(shadowHost()))
-        document().accessSVGExtensions().rebuildElements();
+    document().notifyRemovePendingSheetIfNeeded();
 }
 
 // this differs from other remove functions because it forcibly removes all the children,
@@ -707,7 +651,13 @@ void ContainerNode::removeChildren()
         childrenChanged(change);
     }
 
-    rebuildSVGExtensionsElementsIfNecessary();
+    if (document().svgExtensions()) {
+        Element* shadowHost = this->shadowHost();
+        if (!shadowHost || !shadowHost->hasTagName(SVGNames::useTag))
+            document().accessSVGExtensions().rebuildElements();
+    }
+
+    document().notifyRemovePendingSheetIfNeeded();
     dispatchSubtreeModifiedEvent();
 }
 
@@ -785,7 +735,7 @@ void ContainerNode::parserAppendChild(Node& newChild)
 
     newChild.updateAncestorConnectedSubframeCountForInsertion();
 
-    notifyChildInserted(newChild, changeForChildInsertion(newChild, ChildChangeSourceParser));
+    notifyChildInserted(newChild, ChildChangeSourceParser);
 }
 
 void ContainerNode::childrenChanged(const ChildChange& change)
@@ -836,7 +786,7 @@ static void dispatchChildInsertionEvents(Node& child)
         c->dispatchScopedEvent(MutationEvent::create(eventNames().DOMNodeInsertedEvent, true, c->parentNode()));
 
     // dispatch the DOMNodeInsertedIntoDocument event to all descendants
-    if (c->isConnected() && document->hasListenerType(Document::DOMNODEINSERTEDINTODOCUMENT_LISTENER)) {
+    if (c->inDocument() && document->hasListenerType(Document::DOMNODEINSERTEDINTODOCUMENT_LISTENER)) {
         for (; c; c = NodeTraversal::next(*c, &child))
             c->dispatchScopedEvent(MutationEvent::create(eventNames().DOMNodeInsertedIntoDocumentEvent, false));
     }
@@ -862,17 +812,17 @@ static void dispatchChildRemovalEvents(Node& child)
         c->dispatchScopedEvent(MutationEvent::create(eventNames().DOMNodeRemovedEvent, true, c->parentNode()));
 
     // dispatch the DOMNodeRemovedFromDocument event to all descendants
-    if (c->isConnected() && document->hasListenerType(Document::DOMNODEREMOVEDFROMDOCUMENT_LISTENER)) {
+    if (c->inDocument() && document->hasListenerType(Document::DOMNODEREMOVEDFROMDOCUMENT_LISTENER)) {
         for (; c; c = NodeTraversal::next(*c, &child))
             c->dispatchScopedEvent(MutationEvent::create(eventNames().DOMNodeRemovedFromDocumentEvent, false));
     }
 }
 
-void ContainerNode::updateTreeAfterInsertion(Node& child, ReplacedAllChildren replacedAllChildren)
+void ContainerNode::updateTreeAfterInsertion(Node& child)
 {
     ASSERT(child.refCount());
 
-    notifyChildInserted(child, changeForChildInsertion(child, ChildChangeSourceAPI, replacedAllChildren));
+    notifyChildInserted(child, ChildChangeSourceAPI);
 
     dispatchChildInsertionEvents(child);
 }

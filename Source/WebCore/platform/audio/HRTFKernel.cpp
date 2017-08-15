@@ -114,11 +114,11 @@ std::unique_ptr<AudioChannel> HRTFKernel::createImpulseResponse()
 }
 
 // Interpolates two kernels with x: 0 -> 1 and returns the result.
-RefPtr<HRTFKernel> HRTFKernel::createInterpolatedKernel(HRTFKernel* kernel1, HRTFKernel* kernel2, float x)
+PassRefPtr<HRTFKernel> HRTFKernel::createInterpolatedKernel(HRTFKernel* kernel1, HRTFKernel* kernel2, float x)
 {
     ASSERT(kernel1 && kernel2);
     if (!kernel1 || !kernel2)
-        return nullptr;
+        return 0;
  
     ASSERT(x >= 0.0 && x < 1.0);
     x = std::min(1.0f, std::max(0.0f, x));
@@ -127,7 +127,7 @@ RefPtr<HRTFKernel> HRTFKernel::createInterpolatedKernel(HRTFKernel* kernel1, HRT
     float sampleRate2 = kernel2->sampleRate();
     ASSERT(sampleRate1 == sampleRate2);
     if (sampleRate1 != sampleRate2)
-        return nullptr;
+        return 0;
     
     float frameDelay = (1 - x) * kernel1->frameDelay() + x * kernel2->frameDelay();
     

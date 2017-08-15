@@ -100,14 +100,11 @@ public:
                     Override::constant(block->successorBlock(1), 0));
                 break;
             case Switch: {
-                SwitchValue* switchValue = branch->as<SwitchValue>();
-
                 HashMap<BasicBlock*, unsigned> targetUses;
-                for (const SwitchCase& switchCase : switchValue->cases(block))
+                for (const SwitchCase& switchCase : branch->as<SwitchValue>()->cases(block))
                     targetUses.add(switchCase.targetBlock(), 0).iterator->value++;
-                targetUses.add(switchValue->fallThrough(block), 0).iterator->value++;
 
-                for (const SwitchCase& switchCase : switchValue->cases(block)) {
+                for (const SwitchCase& switchCase : branch->as<SwitchValue>()->cases(block)) {
                     if (targetUses.find(switchCase.targetBlock())->value != 1)
                         continue;
 

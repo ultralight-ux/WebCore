@@ -23,14 +23,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
+#ifndef SQLiteStatement_h
+#define SQLiteStatement_h
 
-#include "SQLValue.h"
 #include "SQLiteDatabase.h"
 
 struct sqlite3_stmt;
 
 namespace WebCore {
+
+class SQLValue;
 
 class SQLiteStatement {
     WTF_MAKE_NONCOPYABLE(SQLiteStatement); WTF_MAKE_FAST_ALLOCATED;
@@ -102,3 +104,5 @@ private:
 };
 
 } // namespace WebCore
+
+#endif // SQLiteStatement_h

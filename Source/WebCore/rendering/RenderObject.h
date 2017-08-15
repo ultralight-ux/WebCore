@@ -30,7 +30,6 @@
 #include "FloatQuad.h"
 #include "Frame.h"
 #include "LayoutRect.h"
-#include "Page.h"
 #include "PaintPhase.h"
 #include "RenderObjectEnums.h"
 #include "RenderStyle.h"
@@ -41,7 +40,7 @@
 namespace WebCore {
 
 class AffineTransform;
-class CSSAnimationController;
+class AnimationController;
 class Color;
 class Cursor;
 class Document;
@@ -224,9 +223,11 @@ public:
     virtual bool isCounter() const { return false; }
     virtual bool isQuote() const { return false; }
 
+#if ENABLE(DETAILS_ELEMENT)
     virtual bool isDetailsMarker() const { return false; }
+#endif
     virtual bool isEmbeddedObject() const { return false; }
-    bool isFieldset() const;
+    virtual bool isFieldset() const { return false; }
     virtual bool isFileUploadControl() const { return false; }
     virtual bool isFrame() const { return false; }
     virtual bool isFrameSet() const { return false; }
@@ -278,7 +279,9 @@ public:
     virtual bool isRenderFullScreen() const { return false; }
     virtual bool isRenderFullScreenPlaceholder() const { return false; }
 #endif
+#if ENABLE(CSS_GRID_LAYOUT)
     virtual bool isRenderGrid() const { return false; }
+#endif
     virtual bool isRenderNamedFlowThread() const { return false; }
     bool isInFlowRenderFlowThread() const { return isRenderFlowThread() && !isOutOfFlowPositioned(); }
     bool isOutOfFlowRenderFlowThread() const { return isRenderFlowThread() && isOutOfFlowPositioned(); }
@@ -323,6 +326,8 @@ public:
 
     FlowThreadState flowThreadState() const { return m_bitfields.flowThreadState(); }
     void setFlowThreadState(FlowThreadState state) { m_bitfields.setFlowThreadState(state); }
+
+    virtual bool requiresForcedStyleRecalcPropagation() const { return false; }
 
 #if ENABLE(MATHML)
     virtual bool isRenderMathMLBlock() const { return false; }
@@ -447,10 +452,14 @@ public:
     bool hasReflection() const { return m_bitfields.hasRareData() && rareData().hasReflection(); }
     bool isRenderFlowThread() const { return m_bitfields.hasRareData() && rareData().isRenderFlowThread(); }
     bool hasOutlineAutoAncestor() const { return m_bitfields.hasRareData() && rareData().hasOutlineAutoAncestor(); }
+    bool isRegisteredForVisibleInViewportCallback() { return m_bitfields.hasRareData() && rareData().isRegisteredForVisibleInViewportCallback(); }
 
-    bool isExcludedFromNormalLayout() const { return m_bitfields.isExcludedFromNormalLayout(); }
-    void setIsExcludedFromNormalLayout(bool excluded) { m_bitfields.setIsExcludedFromNormalLayout(excluded); }
-    bool isExcludedAndPlacedInBorder() const { return isExcludedFromNormalLayout() && isLegend(); }
+    enum VisibleInViewportState {
+        VisibilityUnknown,
+        VisibleInViewport,
+        NotVisibleInViewport,
+    };
+    VisibleInViewportState visibleInViewportState() { return m_bitfields.hasRareData() ? rareData().visibleInViewportState() : VisibilityUnknown; }
 
     bool hasLayer() const { return m_bitfields.hasLayer(); }
 
@@ -509,8 +518,6 @@ public:
 
     Document& document() const { return m_node.document(); }
     Frame& frame() const;
-    Page& page() const;
-    Settings& settings() const { return page().settings(); }
 
     // Returns the object containing this one. Can be different from parent for positioned elements.
     // If repaintContainer and repaintContainerSkipped are not null, on return *repaintContainerSkipped
@@ -560,6 +567,8 @@ public:
     void setHasReflection(bool = true);
     void setIsRenderFlowThread(bool = true);
     void setHasOutlineAutoAncestor(bool = true);
+    void setIsRegisteredForVisibleInViewportCallback(bool);
+    void setVisibleInViewportState(VisibleInViewportState);
 
     // Hook so that RenderTextControl can return the line height of its inner renderer.
     // For other renderers, the value is the same as lineHeight(false).
@@ -580,7 +589,6 @@ public:
     virtual void updateHitTestResult(HitTestResult&, const LayoutPoint&);
     virtual bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction);
 
-    virtual Position positionForPoint(const LayoutPoint&);
     virtual VisiblePosition positionForPoint(const LayoutPoint&, const RenderRegion*);
     VisiblePosition createVisiblePosition(int offset, EAffinity) const;
     VisiblePosition createVisiblePosition(const Position&) const;
@@ -730,8 +738,9 @@ public:
      */
     virtual LayoutRect localCaretRect(InlineBox*, unsigned caretOffset, LayoutUnit* extraWidthToEndOfLine = nullptr);
 
-    // When performing a global document tear-down, or when going into the page cache, the renderer of the document is cleared.
-    bool renderTreeBeingDestroyed() const;
+    // When performing a global document tear-down, the renderer of the document is cleared.  We use this
+    // as a hook to detect the case of document destruction and don't waste time doing unnecessary work.
+    bool documentBeingDestroyed() const;
 
     void destroyAndCleanupAnonymousWrappers();
     void destroy();
@@ -764,7 +773,7 @@ public:
     
     void removeFromParent();
 
-    CSSAnimationController& animation() const;
+    AnimationController& animation() const;
 
     // Map points and quads through elements, potentially via 3d transforms. You should never need to call these directly; use
     // localToAbsolute/absoluteToLocal methods instead.
@@ -895,7 +904,6 @@ private:
             , m_hasTransformRelatedProperty(false)
             , m_everHadLayout(false)
             , m_childrenInline(false)
-            , m_isExcludedFromNormalLayout(false)
             , m_positionedState(IsStaticallyPositioned)
             , m_selectionState(SelectionNone)
             , m_flowThreadState(NotInsideFlowThread)
@@ -931,8 +939,6 @@ private:
 
         // from RenderBlock
         ADD_BOOLEAN_BITFIELD(childrenInline, ChildrenInline);
-        
-        ADD_BOOLEAN_BITFIELD(isExcludedFromNormalLayout, IsExcludedFromNormalLayout);
 
     private:
         unsigned m_positionedState : 2; // PositionedState
@@ -973,6 +979,8 @@ private:
             , m_hasReflection(false)
             , m_isRenderFlowThread(false)
             , m_hasOutlineAutoAncestor(false)
+            , m_isRegisteredForVisibleInViewportCallback(false)
+            , m_visibleInViewportState(VisibilityUnknown)
         {
         }
         ADD_BOOLEAN_BITFIELD(isDragging, IsDragging);
@@ -981,6 +989,8 @@ private:
         ADD_BOOLEAN_BITFIELD(hasOutlineAutoAncestor, HasOutlineAutoAncestor);
 
         // From RenderElement
+        ADD_BOOLEAN_BITFIELD(isRegisteredForVisibleInViewportCallback, IsRegisteredForVisibleInViewportCallback);
+        ADD_ENUM_BITFIELD(visibleInViewportState, VisibleInViewportState, VisibleInViewportState, 2);
         std::unique_ptr<RenderStyle> cachedFirstLineStyle;
     };
     
@@ -1000,20 +1010,12 @@ inline Frame& RenderObject::frame() const
     return *document().frame();
 }
 
-inline Page& RenderObject::page() const
-{
-    // The render tree will always be torn down before Frame is disconnected from Page,
-    // so it's safe to assume Frame::page() is non-null as long as there are live RenderObjects.
-    ASSERT(frame().page());
-    return *frame().page();
-}
-
-inline CSSAnimationController& RenderObject::animation() const
+inline AnimationController& RenderObject::animation() const
 {
     return frame().animation();
 }
 
-inline bool RenderObject::renderTreeBeingDestroyed() const
+inline bool RenderObject::documentBeingDestroyed() const
 {
     return document().renderTreeBeingDestroyed();
 }

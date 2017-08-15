@@ -28,12 +28,11 @@
 #if ENABLE(WEBASSEMBLY)
 
 #include "AbstractModuleRecord.h"
-#include "WasmModuleInformation.h"
+#include "WasmFormat.h"
 
 namespace JSC {
 
 class JSWebAssemblyInstance;
-class JSWebAssemblyModule;
 class WebAssemblyFunction;
 
 // Based on the WebAssembly.Instance specification
@@ -48,7 +47,7 @@ public:
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
     static WebAssemblyModuleRecord* create(ExecState*, VM&, Structure*, const Identifier&, const Wasm::ModuleInformation&);
 
-    void link(ExecState*, JSWebAssemblyModule*, JSWebAssemblyInstance*);
+    void link(ExecState*, JSWebAssemblyInstance*);
     JS_EXPORT_PRIVATE JSValue evaluate(ExecState*);
 
 private:
@@ -60,7 +59,7 @@ private:
     static void visitChildren(JSCell*, SlotVisitor&);
 
     WriteBarrier<JSWebAssemblyInstance> m_instance;
-    WriteBarrier<JSObject> m_startFunction;
+    WriteBarrier<WebAssemblyFunction> m_startFunction;
 };
 
 } // namespace JSC

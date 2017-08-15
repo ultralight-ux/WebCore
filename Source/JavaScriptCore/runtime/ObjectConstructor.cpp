@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2008, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -95,10 +95,11 @@ ObjectConstructor::ObjectConstructor(VM& vm, Structure* structure)
 
 void ObjectConstructor::finishCreation(VM& vm, JSGlobalObject* globalObject, ObjectPrototype* objectPrototype)
 {
-    Base::finishCreation(vm, objectPrototype->classInfo(vm)->className);
-
+    Base::finishCreation(vm, objectPrototype->classInfo()->className);
+    // ECMA 15.2.3.1
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, objectPrototype, DontEnum | DontDelete | ReadOnly);
-    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum);
+    // no. of arguments for constructor
+    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum | DontDelete);
 
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->builtinNames().createPrivateName(), objectConstructorCreate, DontEnum, 2);
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->builtinNames().definePropertyPrivateName(), objectConstructorDefineProperty, DontEnum, 3);
@@ -234,7 +235,7 @@ JSValue objectConstructorGetOwnPropertyDescriptors(ExecState* exec, JSObject* ob
 
         PutPropertySlot slot(descriptors);
         descriptors->putOwnDataPropertyMayBeIndex(exec, propertyName, fromDescriptor, slot);
-        scope.assertNoException();
+        ASSERT(!scope.exception());
     }
 
     return descriptors;
@@ -418,7 +419,7 @@ EncodedJSValue JSC_HOST_CALL objectConstructorDefineProperty(ExecState* exec)
     if (!success)
         return JSValue::encode(jsNull());
     ASSERT((descriptor.attributes() & Accessor) || (!descriptor.isAccessorDescriptor()));
-    scope.assertNoException();
+    ASSERT(!scope.exception());
     obj->methodTable(vm)->defineOwnProperty(obj, exec, propertyName, descriptor, true);
     scope.release();
     return JSValue::encode(obj);
@@ -545,57 +546,7 @@ bool setIntegrityLevel(ExecState* exec, VM& vm, JSObject* object)
     }
     return true;
 }
-
-template<IntegrityLevel level>
-bool testIntegrityLevel(ExecState* exec, VM& vm, JSObject* object)
-{
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    // 1. Assert: Type(O) is Object.
-    // 2. Assert: level is either "sealed" or "frozen".
-
-    // 3. Let status be ?IsExtensible(O).
-    bool status = object->isExtensible(exec);
-    RETURN_IF_EXCEPTION(scope, { });
-
-    // 4. If status is true, return false.
-    if (status)
-        return false;
-
-    // 6. Let keys be ? O.[[OwnPropertyKeys]]().
-    PropertyNameArray keys(exec, PropertyNameMode::StringsAndSymbols);
-    object->methodTable(vm)->getOwnPropertyNames(object, exec, keys, EnumerationMode(DontEnumPropertiesMode::Include));
-    RETURN_IF_EXCEPTION(scope, { });
-
-    // 7. For each element k of keys, do
-    PropertyNameArray::const_iterator end = keys.end();
-    for (PropertyNameArray::const_iterator iter = keys.begin(); iter != end; ++iter) {
-        Identifier propertyName = *iter;
-        if (vm.propertyNames->isPrivateName(propertyName))
-            continue;
-
-        // a. Let currentDesc be ? O.[[GetOwnProperty]](k)
-        PropertyDescriptor desc;
-        bool didGetDescriptor = object->getOwnPropertyDescriptor(exec, propertyName, desc);
-        RETURN_IF_EXCEPTION(scope, { });
-
-        // b. If currentDesc is not undefined, then
-        if (!didGetDescriptor)
-            continue;
-
-        // i. If currentDesc.[[Configurable]] is true, return false.
-        if (desc.configurable())
-            return false;
-
-        // ii. If level is "frozen" and IsDataDescriptor(currentDesc) is true, then
-        // 1. If currentDesc.[[Writable]] is true, return false.
-        if (level == IntegrityLevel::Frozen && desc.isDataDescriptor() && desc.writable())
-            return false;
-    }
-
-    return true;
-}
-
+    
 EncodedJSValue JSC_HOST_CALL objectConstructorSeal(ExecState* exec)
 {
     VM& vm = exec->vm();
@@ -607,7 +558,7 @@ EncodedJSValue JSC_HOST_CALL objectConstructorSeal(ExecState* exec)
         return JSValue::encode(obj);
     JSObject* object = asObject(obj);
 
-    if (isJSFinalObject(object) && !hasIndexedProperties(object->indexingType())) {
+    if (isJSFinalObject(object)) {
         object->seal(vm);
         return JSValue::encode(obj);
     }
@@ -666,6 +617,7 @@ EncodedJSValue JSC_HOST_CALL objectConstructorPreventExtensions(ExecState* exec)
 EncodedJSValue JSC_HOST_CALL objectConstructorIsSealed(ExecState* exec)
 {
     VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
 
     // 1. If Type(O) is not Object, return true.
     JSValue obj = exec->argument(0);
@@ -673,17 +625,38 @@ EncodedJSValue JSC_HOST_CALL objectConstructorIsSealed(ExecState* exec)
         return JSValue::encode(jsBoolean(true));
     JSObject* object = asObject(obj);
 
-    // Quick check for final objects.
-    if (isJSFinalObject(object) && !hasIndexedProperties(object->indexingType()))
+    if (isJSFinalObject(object))
         return JSValue::encode(jsBoolean(object->isSealed(vm)));
 
-    // 2. Return ? TestIntegrityLevel(O, "sealed").
-    return JSValue::encode(jsBoolean(testIntegrityLevel<IntegrityLevel::Sealed>(exec, vm, object)));
+    // 2. For each named own property name P of O,
+    PropertyNameArray properties(exec, PropertyNameMode::StringsAndSymbols);
+    object->methodTable(vm)->getOwnPropertyNames(object, exec, properties, EnumerationMode(DontEnumPropertiesMode::Include));
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    PropertyNameArray::const_iterator end = properties.end();
+    for (PropertyNameArray::const_iterator iter = properties.begin(); iter != end; ++iter) {
+        Identifier propertyName = *iter;
+        if (vm.propertyNames->isPrivateName(propertyName))
+            continue;
+        // a. Let desc be the result of calling the [[GetOwnProperty]] internal method of O with P.
+        PropertyDescriptor desc;
+        if (!object->getOwnPropertyDescriptor(exec, propertyName, desc))
+            continue;
+        // b. If desc.[[Configurable]] is true, then return false.
+        if (desc.configurable())
+            return JSValue::encode(jsBoolean(false));
+    }
+
+    // 3. If the [[Extensible]] internal property of O is false, then return true.
+    // 4. Otherwise, return false.
+    bool isExtensible = object->isExtensible(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    return JSValue::encode(jsBoolean(!isExtensible));
 }
 
 EncodedJSValue JSC_HOST_CALL objectConstructorIsFrozen(ExecState* exec)
 {
     VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
 
     // 1. If Type(O) is not Object, return true.
     JSValue obj = exec->argument(0);
@@ -691,12 +664,33 @@ EncodedJSValue JSC_HOST_CALL objectConstructorIsFrozen(ExecState* exec)
         return JSValue::encode(jsBoolean(true));
     JSObject* object = asObject(obj);
 
-    // Quick check for final objects.
-    if (isJSFinalObject(object) && !hasIndexedProperties(object->indexingType()))
+    if (isJSFinalObject(object))
         return JSValue::encode(jsBoolean(object->isFrozen(vm)));
 
-    // 2. Return ? TestIntegrityLevel(O, "frozen").
-    return JSValue::encode(jsBoolean(testIntegrityLevel<IntegrityLevel::Frozen>(exec, vm, object)));
+    // 2. For each named own property name P of O,
+    PropertyNameArray properties(exec, PropertyNameMode::StringsAndSymbols);
+    object->methodTable(vm)->getOwnPropertyNames(object, exec, properties, EnumerationMode(DontEnumPropertiesMode::Include));
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    PropertyNameArray::const_iterator end = properties.end();
+    for (PropertyNameArray::const_iterator iter = properties.begin(); iter != end; ++iter) {
+        Identifier propertyName = *iter;
+        if (vm.propertyNames->isPrivateName(propertyName))
+            continue;
+        // a. Let desc be the result of calling the [[GetOwnProperty]] internal method of O with P.
+        PropertyDescriptor desc;
+        if (!object->getOwnPropertyDescriptor(exec, propertyName, desc))
+            continue;
+        // b. If IsDataDescriptor(desc) is true then
+        // i. If desc.[[Writable]] is true, return false. c. If desc.[[Configurable]] is true, then return false.
+        if ((desc.isDataDescriptor() && desc.writable()) || desc.configurable())
+            return JSValue::encode(jsBoolean(false));
+    }
+
+    // 3. If the [[Extensible]] internal property of O is false, then return true.
+    // 4. Otherwise, return false.
+    bool isExtensible = object->isExtensible(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    return JSValue::encode(jsBoolean(!isExtensible));
 }
 
 EncodedJSValue JSC_HOST_CALL objectConstructorIsExtensible(ExecState* exec)
@@ -729,26 +723,13 @@ JSArray* ownPropertyKeys(ExecState* exec, JSObject* object, PropertyNameMode pro
     JSArray* keys = constructEmptyArray(exec, 0);
     RETURN_IF_EXCEPTION(scope, nullptr);
 
-    // https://tc39.github.io/ecma262/#sec-enumerableownproperties
-    // If {object} is a Proxy, an explicit and observable [[GetOwnProperty]] op is required to filter out non-enumerable properties.
-    // In other cases, filtering has already been performed.
-    const bool mustFilterProperty = dontEnumPropertiesMode == DontEnumPropertiesMode::Exclude && object->type() == ProxyObjectType;
-    auto filterPropertyIfNeeded = [exec, object, mustFilterProperty](const Identifier& identifier) {
-        if (!mustFilterProperty)
-            return true;
-        PropertyDescriptor descriptor;
-        PropertyName name(identifier);
-        return object->getOwnPropertyDescriptor(exec, name, descriptor) && descriptor.enumerable();
-    };
-
     switch (propertyNameMode) {
     case PropertyNameMode::Strings: {
         size_t numProperties = properties.size();
         for (size_t i = 0; i < numProperties; i++) {
             const auto& identifier = properties[i];
             ASSERT(!identifier.isSymbol());
-            if (filterPropertyIfNeeded(identifier))
-                keys->push(exec, jsOwnedString(exec, identifier.string()));
+            keys->push(exec, jsOwnedString(exec, identifier.string()));
             RETURN_IF_EXCEPTION(scope, nullptr);
         }
         break;
@@ -760,8 +741,7 @@ JSArray* ownPropertyKeys(ExecState* exec, JSObject* object, PropertyNameMode pro
             const auto& identifier = properties[i];
             ASSERT(identifier.isSymbol());
             if (!vm.propertyNames->isPrivateName(identifier)) {
-                if (filterPropertyIfNeeded(identifier))
-                    keys->push(exec, Symbol::create(vm, static_cast<SymbolImpl&>(*identifier.impl())));
+                keys->push(exec, Symbol::create(vm, static_cast<SymbolImpl&>(*identifier.impl())));
                 RETURN_IF_EXCEPTION(scope, nullptr);
             }
         }
@@ -777,16 +757,14 @@ JSArray* ownPropertyKeys(ExecState* exec, JSObject* object, PropertyNameMode pro
                 if (!vm.propertyNames->isPrivateName(identifier))
                     propertySymbols.append(identifier);
             } else {
-                if (filterPropertyIfNeeded(identifier))
-                    keys->push(exec, jsOwnedString(exec, identifier.string()));
+                keys->push(exec, jsOwnedString(exec, identifier.string()));
                 RETURN_IF_EXCEPTION(scope, nullptr);
             }
         }
 
         // To ensure the order defined in the spec (9.1.12), we append symbols at the last elements of keys.
         for (const auto& identifier : propertySymbols) {
-            if (filterPropertyIfNeeded(identifier))
-                keys->push(exec, Symbol::create(vm, static_cast<SymbolImpl&>(*identifier.impl())));
+            keys->push(exec, Symbol::create(vm, static_cast<SymbolImpl&>(*identifier.impl())));
             RETURN_IF_EXCEPTION(scope, nullptr);
         }
 

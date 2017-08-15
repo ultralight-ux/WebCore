@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 2007 Eric Seidel <eric@webkit.org>
- *  Copyright (C) 2007-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2007-2009, 2014-2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -23,7 +23,6 @@
 
 #include "ArrayAllocationProfile.h"
 #include "ArrayBufferSharingMode.h"
-#include "ExceptionHelpers.h"
 #include "InternalFunction.h"
 #include "JSArray.h"
 #include "JSArrayBufferPrototype.h"
@@ -45,6 +44,7 @@
 #include <JavaScriptCore/JSBase.h>
 #include <array>
 #include <wtf/HashSet.h>
+#include <wtf/PassRefPtr.h>
 
 struct OpaqueJSClass;
 struct OpaqueJSClassContextData;
@@ -140,7 +140,6 @@ struct HashTable;
 #define FOR_EACH_WEBASSEMBLY_CONSTRUCTOR_TYPE(macro) \
     macro(WebAssemblyCompileError, webAssemblyCompileError, WebAssemblyCompileError, WebAssemblyCompileError, CompileError, error) \
     macro(WebAssemblyInstance,     webAssemblyInstance,     WebAssemblyInstance,     WebAssemblyInstance,     Instance,     object) \
-    macro(WebAssemblyLinkError,    webAssemblyLinkError,    WebAssemblyLinkError,    WebAssemblyLinkError,    LinkError,    error) \
     macro(WebAssemblyMemory,       webAssemblyMemory,       WebAssemblyMemory,       WebAssemblyMemory,       Memory,       object) \
     macro(WebAssemblyModule,       webAssemblyModule,       WebAssemblyModule,       WebAssemblyModule,       Module,       object) \
     macro(WebAssemblyRuntimeError, webAssemblyRuntimeError, WebAssemblyRuntimeError, WebAssemblyRuntimeError, RuntimeError, error) \
@@ -162,10 +161,11 @@ FOR_EACH_WEBASSEMBLY_CONSTRUCTOR_TYPE(DECLARE_SIMPLE_BUILTIN_TYPE)
 
 #undef DECLARE_SIMPLE_BUILTIN_TYPE
 
-enum class JSPromiseRejectionOperation : unsigned {
-    Reject, // When a promise is rejected without any handlers.
-    Handle, // When a handler is added to a rejected promise for the first time.
-};
+class JSInternalPromise;
+class InternalPromisePrototype;
+class InternalPromiseConstructor;
+
+typedef Vector<ExecState*, 16> ExecStateStack;
 
 struct GlobalObjectMethodTable {
     typedef bool (*SupportsRichSourceInfoFunctionPtr)(const JSGlobalObject*);
@@ -177,14 +177,11 @@ struct GlobalObjectMethodTable {
     typedef RuntimeFlags (*JavaScriptRuntimeFlagsFunctionPtr)(const JSGlobalObject*);
     JavaScriptRuntimeFlagsFunctionPtr javaScriptRuntimeFlags;
 
-    typedef void (*QueueTaskToEventLoopFunctionPtr)(JSGlobalObject&, Ref<Microtask>&&);
+    typedef void (*QueueTaskToEventLoopFunctionPtr)(const JSGlobalObject*, Ref<Microtask>&&);
     QueueTaskToEventLoopFunctionPtr queueTaskToEventLoop;
 
     typedef bool (*ShouldInterruptScriptBeforeTimeoutPtr)(const JSGlobalObject*);
     ShouldInterruptScriptBeforeTimeoutPtr shouldInterruptScriptBeforeTimeout;
-
-    typedef JSInternalPromise* (*ModuleLoaderImportModulePtr)(JSGlobalObject*, ExecState*, JSModuleLoader*, JSString*, const SourceOrigin&);
-    ModuleLoaderImportModulePtr moduleLoaderImportModule;
 
     typedef JSInternalPromise* (*ModuleLoaderResolvePtr)(JSGlobalObject*, ExecState*, JSModuleLoader*, JSValue, JSValue, JSValue);
     ModuleLoaderResolvePtr moduleLoaderResolve;
@@ -197,9 +194,6 @@ struct GlobalObjectMethodTable {
 
     typedef JSValue (*ModuleLoaderEvaluatePtr)(JSGlobalObject*, ExecState*, JSModuleLoader*, JSValue, JSValue, JSValue);
     ModuleLoaderEvaluatePtr moduleLoaderEvaluate;
-
-    typedef void (*PromiseRejectionTrackerPtr)(JSGlobalObject*, ExecState*, JSPromise*, JSPromiseRejectionOperation);
-    PromiseRejectionTrackerPtr promiseRejectionTracker;
 
     typedef String (*DefaultLanguageFunctionPtr)();
     DefaultLanguageFunctionPtr defaultLanguage;
@@ -255,7 +249,6 @@ public:
     WriteBarrier<NullSetterFunction> m_nullSetterFunction;
 
     WriteBarrier<JSFunction> m_parseIntFunction;
-    WriteBarrier<JSFunction> m_parseFloatFunction;
 
     WriteBarrier<JSFunction> m_evalFunction;
     WriteBarrier<JSFunction> m_callFunction;
@@ -265,8 +258,6 @@ public:
     LazyProperty<JSGlobalObject, JSFunction> m_arrayProtoValuesFunction;
     LazyProperty<JSGlobalObject, JSFunction> m_initializePromiseFunction;
     LazyProperty<JSGlobalObject, JSFunction> m_iteratorProtocolFunction;
-    LazyProperty<JSGlobalObject, JSFunction> m_promiseResolveFunction;
-    WriteBarrier<JSFunction> m_objectProtoValueOfFunction;
     WriteBarrier<JSFunction> m_newPromiseCapabilityFunction;
     WriteBarrier<JSFunction> m_functionProtoHasInstanceSymbolFunction;
     LazyProperty<JSGlobalObject, GetterSetter> m_throwTypeErrorGetterSetter;
@@ -350,7 +341,6 @@ public:
     WriteBarrier<Structure> m_webAssemblyStructure;
     WriteBarrier<Structure> m_webAssemblyModuleRecordStructure;
     WriteBarrier<Structure> m_webAssemblyFunctionStructure;
-    WriteBarrier<Structure> m_webAssemblyWrapperFunctionStructure;
     FOR_EACH_WEBASSEMBLY_CONSTRUCTOR_TYPE(DEFINE_STORAGE_FOR_SIMPLE_TYPE)
 #endif // ENABLE(WEBASSEMBLY)
 
@@ -385,7 +375,7 @@ public:
     VM& m_vm;
 
 #if ENABLE(WEB_REPLAY)
-    Ref<InputCursor> m_inputCursor;
+    RefPtr<InputCursor> m_inputCursor;
 #endif
 
 #if ENABLE(REMOTE_INSPECTOR)
@@ -416,7 +406,7 @@ public:
     std::unique_ptr<ArrayIteratorAdaptiveWatchpoint> m_arrayPrototypeSymbolIteratorWatchpoint;
     std::unique_ptr<ArrayIteratorAdaptiveWatchpoint> m_arrayIteratorPrototypeNext;
 
-    bool isArrayPrototypeIteratorProtocolFastAndNonObservable();
+    bool isArrayIteratorProtocolFastAndNonObservable();
 
     TemplateRegistry m_templateRegistry;
 
@@ -437,9 +427,15 @@ public:
         
 public:
     typedef JSSegmentedVariableObject Base;
-    static const unsigned StructureFlags = Base::StructureFlags | HasStaticPropertyTable | OverridesGetOwnPropertySlot | OverridesGetPropertyNames | OverridesToThis | IsImmutablePrototypeExoticObject;
+    static const unsigned StructureFlags = Base::StructureFlags | HasStaticPropertyTable | OverridesGetOwnPropertySlot | OverridesGetPropertyNames | OverridesToThis;
 
-    JS_EXPORT_PRIVATE static JSGlobalObject* create(VM&, Structure*);
+    static JSGlobalObject* create(VM& vm, Structure* structure)
+    {
+        JSGlobalObject* globalObject = new (NotNull, allocateCell<JSGlobalObject>(vm.heap)) JSGlobalObject(vm, structure);
+        globalObject->finishCreation(vm);
+        vm.heap.addFinalizer(globalObject, destroy);
+        return globalObject;
+    }
 
     DECLARE_EXPORT_INFO;
 
@@ -450,15 +446,31 @@ public:
 protected:
     JS_EXPORT_PRIVATE explicit JSGlobalObject(VM&, Structure*, const GlobalObjectMethodTable* = 0);
 
-    JS_EXPORT_PRIVATE void finishCreation(VM&);
+    void finishCreation(VM& vm)
+    {
+        Base::finishCreation(vm);
+        structure()->setGlobalObject(vm, this);
+        m_runtimeFlags = m_globalObjectMethodTable->javaScriptRuntimeFlags(this);
+        init(vm);
+        setGlobalThis(vm, JSProxy::create(vm, JSProxy::createStructure(vm, this, getPrototypeDirect(), PureForwardingProxyType), this));
+    }
 
-    JS_EXPORT_PRIVATE void finishCreation(VM&, JSObject*);
+    void finishCreation(VM& vm, JSObject* thisValue)
+    {
+        Base::finishCreation(vm);
+        structure()->setGlobalObject(vm, this);
+        m_runtimeFlags = m_globalObjectMethodTable->javaScriptRuntimeFlags(this);
+        init(vm);
+        setGlobalThis(vm, thisValue);
+    }
 
     void addGlobalVar(const Identifier&);
 
 public:
     JS_EXPORT_PRIVATE ~JSGlobalObject();
     JS_EXPORT_PRIVATE static void destroy(JSCell*);
+    // We don't need a destructor because we use a finalizer instead.
+    static const bool needsDestruction = false;
 
     JS_EXPORT_PRIVATE static void visitChildren(JSCell*, SlotVisitor&);
 
@@ -506,7 +518,6 @@ public:
     NullSetterFunction* nullSetterFunction() const { return m_nullSetterFunction.get(); }
 
     JSFunction* parseIntFunction() const { return m_parseIntFunction.get(); }
-    JSFunction* parseFloatFunction() const { return m_parseFloatFunction.get(); }
 
     JSFunction* evalFunction() const { return m_evalFunction.get(); }
     JSFunction* callFunction() const { return m_callFunction.get(); }
@@ -516,8 +527,6 @@ public:
     JSFunction* arrayProtoValuesFunction() const { return m_arrayProtoValuesFunction.get(this); }
     JSFunction* initializePromiseFunction() const { return m_initializePromiseFunction.get(this); }
     JSFunction* iteratorProtocolFunction() const { return m_iteratorProtocolFunction.get(this); }
-    JSFunction* promiseResolveFunction() const { return m_promiseResolveFunction.get(this); }
-    JSFunction* objectProtoValueOfFunction() const { return m_objectProtoValueOfFunction.get(); }
     JSFunction* newPromiseCapabilityFunction() const { return m_newPromiseCapabilityFunction.get(); }
     JSFunction* functionProtoHasInstanceSymbolFunction() const { return m_functionProtoHasInstanceSymbolFunction.get(); }
     JSObject* regExpProtoExecFunction() const { return m_regExpProtoExec.get(); }
@@ -620,15 +629,14 @@ public:
 #if ENABLE(WEBASSEMBLY)
     Structure* webAssemblyModuleRecordStructure() const { return m_webAssemblyModuleRecordStructure.get(); }
     Structure* webAssemblyFunctionStructure() const { return m_webAssemblyFunctionStructure.get(); }
-    Structure* webAssemblyWrapperFunctionStructure() const { return m_webAssemblyWrapperFunctionStructure.get(); }
 #endif // ENABLE(WEBASSEMBLY)
 
     JS_EXPORT_PRIVATE void setRemoteDebuggingEnabled(bool);
     JS_EXPORT_PRIVATE bool remoteDebuggingEnabled() const;
 
 #if ENABLE(WEB_REPLAY)
-    JS_EXPORT_PRIVATE void setInputCursor(Ref<InputCursor>&&);
-    InputCursor& inputCursor() const { return m_inputCursor.get(); }
+    JS_EXPORT_PRIVATE void setInputCursor(PassRefPtr<InputCursor>);
+    InputCursor& inputCursor() const { return *m_inputCursor; }
 #endif
 
 #if ENABLE(REMOTE_INSPECTOR)
@@ -877,12 +885,7 @@ inline JSArray* constructEmptyArray(ExecState* exec, ArrayAllocationProfile* pro
         structure = globalObject->arrayStructureForProfileDuringAllocation(exec, profile, newTarget);
     RETURN_IF_EXCEPTION(scope, nullptr);
 
-    JSArray* result = JSArray::tryCreate(vm, structure, initialLength);
-    if (UNLIKELY(!result)) {
-        throwOutOfMemoryError(exec, scope);
-        return nullptr;
-    }
-    return ArrayAllocationProfile::updateLastAllocationFor(profile, result);
+    return ArrayAllocationProfile::updateLastAllocationFor(profile, JSArray::create(exec->vm(), structure, initialLength));
 }
 
 inline JSArray* constructEmptyArray(ExecState* exec, ArrayAllocationProfile* profile, unsigned initialLength = 0, JSValue newTarget = JSValue())

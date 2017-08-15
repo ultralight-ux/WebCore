@@ -80,7 +80,7 @@ public:
 
         m_messages.append(message);
         if (!m_timer.isActive())
-            m_timer.startOneShot(0_s);
+            m_timer.startOneShot(0);
     }
 
     void reset()
@@ -102,7 +102,7 @@ public:
             m_inspectedPageController->dispatchMessageFromFrontend(m_messages.takeFirst());
 
         if (!m_messages.isEmpty() && m_inspectedPageController)
-            m_timer.startOneShot(0_s);
+            m_timer.startOneShot(0);
     }
 
 private:
@@ -167,11 +167,6 @@ void InspectorFrontendClientLocal::frontendLoaded()
     for (auto& evaluate : m_evaluateOnLoad)
         evaluateOnLoad(evaluate);
     m_evaluateOnLoad.clear();
-}
-
-UserInterfaceLayoutDirection InspectorFrontendClientLocal::userInterfaceLayoutDirection() const
-{
-    return m_frontendPage->userInterfaceLayoutDirection();
 }
 
 void InspectorFrontendClientLocal::requestSetDockSide(DockSide dockSide)
@@ -260,9 +255,6 @@ void InspectorFrontendClientLocal::setAttachedWindow(DockSide dockSide)
         break;
     case DockSide::Right:
         side = "right";
-        break;
-    case DockSide::Left:
-        side = "left";
         break;
     case DockSide::Bottom:
         side = "bottom";

@@ -30,10 +30,8 @@
 #include "ActiveDOMObject.h"
 #include "DOMWrapperWorld.h"
 #include "ExceptionOr.h"
-#include "IDBCursorDirection.h"
 #include "IDBCursorInfo.h"
 #include <heap/Strong.h>
-#include <wtf/Variant.h>
 
 namespace WebCore {
 
@@ -46,16 +44,23 @@ class IDBCursor : public ScriptWrappable, public RefCounted<IDBCursor>, public A
 public:
     static Ref<IDBCursor> create(IDBTransaction&, IDBObjectStore&, const IDBCursorInfo&);
     static Ref<IDBCursor> create(IDBTransaction&, IDBIndex&, const IDBCursorInfo&);
+
+    static const AtomicString& directionNext();
+    static const AtomicString& directionNextUnique();
+    static const AtomicString& directionPrev();
+    static const AtomicString& directionPrevUnique();
+
+    static std::optional<IndexedDB::CursorDirection> stringToDirection(const String& modeString);
+    static const AtomicString& directionToString(IndexedDB::CursorDirection mode);
     
     virtual ~IDBCursor();
 
-    using Source = Variant<RefPtr<IDBObjectStore>, RefPtr<IDBIndex>>;
-
-    const Source& source() const;
-    IDBCursorDirection direction() const;
+    const String& direction() const;
     JSC::JSValue key() const;
     JSC::JSValue primaryKey() const;
     JSC::JSValue value() const;
+    IDBObjectStore* objectStore() const { return m_objectStore.get(); }
+    IDBIndex* index() const { return m_index.get(); }
 
     ExceptionOr<Ref<IDBRequest>> update(JSC::ExecState&, JSC::JSValue);
     ExceptionOr<void> advance(unsigned);
@@ -98,7 +103,8 @@ private:
     unsigned m_outstandingRequestCount { 1 };
 
     IDBCursorInfo m_info;
-    Source m_source;
+    RefPtr<IDBObjectStore> m_objectStore;
+    RefPtr<IDBIndex> m_index;
     IDBRequest* m_request { nullptr };
 
     bool m_gotValue { false };
@@ -110,17 +116,6 @@ private:
     JSC::Strong<JSC::Unknown> m_currentPrimaryKey;
     JSC::Strong<JSC::Unknown> m_currentValue;
 };
-
-
-inline const IDBCursor::Source& IDBCursor::source() const
-{
-    return m_source;
-}
-
-inline IDBCursorDirection IDBCursor::direction() const
-{
-    return m_info.cursorDirection();
-}
 
 inline JSC::JSValue IDBCursor::key() const
 {

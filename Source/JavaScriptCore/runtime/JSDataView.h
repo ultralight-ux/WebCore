@@ -40,7 +40,7 @@ protected:
     
 public:
     JS_EXPORT_PRIVATE static JSDataView* create(
-        ExecState*, Structure*, RefPtr<ArrayBuffer>&&, unsigned byteOffset,
+        ExecState*, Structure*, PassRefPtr<ArrayBuffer>, unsigned byteOffset,
         unsigned byteLength);
     
     // Dummy methods, which don't actually work; these are just in place to
@@ -57,8 +57,8 @@ public:
         return m_buffer;
     }
     
-    RefPtr<DataView> possiblySharedTypedImpl();
-    RefPtr<DataView> unsharedTypedImpl();
+    PassRefPtr<DataView> possiblySharedTypedImpl();
+    PassRefPtr<DataView> unsharedTypedImpl();
     
     static const TypedArrayType TypedArrayStorageType = TypeDataView;
 
@@ -71,7 +71,7 @@ protected:
     static void getOwnNonIndexPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
 
     static ArrayBuffer* slowDownAndWasteMemory(JSArrayBufferView*);
-    static RefPtr<ArrayBufferView> getTypedArrayImpl(JSArrayBufferView*);
+    static PassRefPtr<ArrayBufferView> getTypedArrayImpl(JSArrayBufferView*);
     
 public:
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue prototype);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2003, 2006, 2008 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -30,6 +30,7 @@
 #include "HitTestResult.h"
 #include "InlineTextBox.h"
 #include "LogicalSelectionOffsetCaches.h"
+#include "Page.h"
 #include "PaintInfo.h"
 #include "RenderFlowThread.h"
 #include "RenderInline.h"
@@ -49,7 +50,7 @@ struct SameSizeAsRootInlineBox : public InlineFlowBox {
 COMPILE_ASSERT(sizeof(RootInlineBox) == sizeof(SameSizeAsRootInlineBox), RootInlineBox_should_stay_small);
 
 typedef WTF::HashMap<const RootInlineBox*, std::unique_ptr<EllipsisBox>> EllipsisBoxMap;
-static EllipsisBoxMap* gEllipsisBoxMap;
+static EllipsisBoxMap* gEllipsisBoxMap = 0;
 
 static ContainingRegionMap& containingRegionMap(RenderBlockFlow& block)
 {
@@ -207,10 +208,10 @@ void RootInlineBox::adjustPosition(float dx, float dy)
 void RootInlineBox::childRemoved(InlineBox* box)
 {
     if (&box->renderer() == m_lineBreakObj)
-        setLineBreakInfo(nullptr, 0, BidiStatus());
+        setLineBreakInfo(0, 0, BidiStatus());
 
     for (RootInlineBox* prev = prevRootBox(); prev && prev->lineBreakObj() == &box->renderer(); prev = prev->prevRootBox()) {
-        prev->setLineBreakInfo(nullptr, 0, BidiStatus());
+        prev->setLineBreakInfo(0, 0, BidiStatus());
         prev->markDirty();
     }
 }
@@ -565,20 +566,22 @@ RenderObject::SelectionState RootInlineBox::selectionState()
 
 InlineBox* RootInlineBox::firstSelectedBox()
 {
-    for (auto* box = firstLeafChild(); box; box = box->nextLeafChild()) {
+    for (InlineBox* box = firstLeafChild(); box; box = box->nextLeafChild()) {
         if (box->selectionState() != RenderObject::SelectionNone)
             return box;
     }
-    return nullptr;
+
+    return 0;
 }
 
 InlineBox* RootInlineBox::lastSelectedBox()
 {
-    for (auto* box = lastLeafChild(); box; box = box->prevLeafChild()) {
+    for (InlineBox* box = lastLeafChild(); box; box = box->prevLeafChild()) {
         if (box->selectionState() != RenderObject::SelectionNone)
             return box;
     }
-    return nullptr;
+
+    return 0;
 }
 
 LayoutUnit RootInlineBox::selectionTop() const
@@ -802,7 +805,7 @@ InlineBox* RootInlineBox::closestLeafChildForLogicalLeftPosition(int leftPositio
         // Return it.
         return lastLeaf;
 
-    InlineBox* closestLeaf = nullptr;
+    InlineBox* closestLeaf = 0;
     for (InlineBox* leaf = firstLeaf; leaf; leaf = leaf->nextLeafChildIgnoringLineBreak()) {
         if (!leaf->renderer().isListMarker() && (!onlyEditableLeaves || isEditableLeaf(leaf))) {
             closestLeaf = leaf;
@@ -818,13 +821,13 @@ InlineBox* RootInlineBox::closestLeafChildForLogicalLeftPosition(int leftPositio
 
 BidiStatus RootInlineBox::lineBreakBidiStatus() const
 { 
-    return { static_cast<UCharDirection>(m_lineBreakBidiStatusEor), static_cast<UCharDirection>(m_lineBreakBidiStatusLastStrong), static_cast<UCharDirection>(m_lineBreakBidiStatusLast), m_lineBreakContext.copyRef() };
+    return BidiStatus(static_cast<UCharDirection>(m_lineBreakBidiStatusEor), static_cast<UCharDirection>(m_lineBreakBidiStatusLastStrong), static_cast<UCharDirection>(m_lineBreakBidiStatusLast), m_lineBreakContext);
 }
 
-void RootInlineBox::setLineBreakInfo(RenderObject* object, unsigned breakPosition, const BidiStatus& status)
+void RootInlineBox::setLineBreakInfo(RenderObject* obj, unsigned breakPos, const BidiStatus& status)
 {
-    m_lineBreakObj = object;
-    m_lineBreakPos = breakPosition;
+    m_lineBreakObj = obj;
+    m_lineBreakPos = breakPos;
     m_lineBreakBidiStatusEor = status.eor;
     m_lineBreakBidiStatusLastStrong = status.lastStrong;
     m_lineBreakBidiStatusLast = status.last;
@@ -834,7 +837,7 @@ void RootInlineBox::setLineBreakInfo(RenderObject* object, unsigned breakPositio
 EllipsisBox* RootInlineBox::ellipsisBox() const
 {
     if (!hasEllipsisBox())
-        return nullptr;
+        return 0;
     return gEllipsisBoxMap->get(this);
 }
 
@@ -933,8 +936,8 @@ void RootInlineBox::ascentAndDescentForBox(InlineBox& box, GlyphOverflowAndFallb
     const RenderStyle& boxLineStyle = box.lineStyle();
     if (usedFonts && !usedFonts->isEmpty() && (includeFont || (boxLineStyle.lineHeight().isNegative() && includeLeading))) {
         usedFonts->append(&boxLineStyle.fontCascade().primaryFont());
-        for (auto& font : *usedFonts) {
-            auto& fontMetrics = font->fontMetrics();
+        for (size_t i = 0; i < usedFonts->size(); ++i) {
+            const FontMetrics& fontMetrics = usedFonts->at(i)->fontMetrics();
             int usedFontAscent = fontMetrics.ascent(baselineType());
             int usedFontDescent = fontMetrics.descent(baselineType());
             int halfLeading = (fontMetrics.lineSpacing() - fontMetrics.height()) / 2;
@@ -986,7 +989,8 @@ void RootInlineBox::ascentAndDescentForBox(InlineBox& box, GlyphOverflowAndFallb
     }
     
     if (includeInitialLetterForBox(box)) {
-        bool canUseGlyphs = glyphOverflow && glyphOverflow->computeBounds;
+        // FIXME: Can't use glyph bounds in vertical writing mode because they are garbage.
+        bool canUseGlyphs = isHorizontal() && glyphOverflow && glyphOverflow->computeBounds;
         int letterAscent = baselineType() == AlphabeticBaseline ? boxLineStyle.fontMetrics().capHeight() : (canUseGlyphs ? glyphOverflow->top : boxLineStyle.fontMetrics().ascent(baselineType()));
         int letterDescent = canUseGlyphs ? glyphOverflow->bottom : (box.isRootInlineBox() ? 0 : boxLineStyle.fontMetrics().descent(baselineType()));
         setAscentAndDescent(ascent, descent, letterAscent, letterDescent, ascentDescentSet);
@@ -1103,8 +1107,9 @@ bool RootInlineBox::includeFontForBox(InlineBox& box) const
     if (!box.behavesLikeText() && is<InlineFlowBox>(box) && !downcast<InlineFlowBox>(box).hasTextChildren())
         return false;
 
+    // For now map "glyphs" to "font" in vertical text mode until the bounds returned by glyphs aren't garbage.
     LineBoxContain lineBoxContain = renderer().style().lineBoxContain();
-    return (lineBoxContain & LineBoxContainFont);
+    return (lineBoxContain & LineBoxContainFont) || (!isHorizontal() && (lineBoxContain & LineBoxContainGlyphs));
 }
 
 bool RootInlineBox::includeGlyphsForBox(InlineBox& box) const
@@ -1115,8 +1120,9 @@ bool RootInlineBox::includeGlyphsForBox(InlineBox& box) const
     if (!box.behavesLikeText() && is<InlineFlowBox>(box) && !downcast<InlineFlowBox>(box).hasTextChildren())
         return false;
 
+    // FIXME: We can't fit to glyphs yet for vertical text, since the bounds returned are garbage.
     LineBoxContain lineBoxContain = renderer().style().lineBoxContain();
-    return (lineBoxContain & LineBoxContainGlyphs);
+    return isHorizontal() && (lineBoxContain & LineBoxContainGlyphs);
 }
 
 bool RootInlineBox::includeInitialLetterForBox(InlineBox& box) const
@@ -1143,8 +1149,9 @@ bool RootInlineBox::includeMarginForBox(InlineBox& box) const
 
 bool RootInlineBox::fitsToGlyphs() const
 {
+    // FIXME: We can't fit to glyphs yet for vertical text, since the bounds returned are garbage.
     LineBoxContain lineBoxContain = renderer().style().lineBoxContain();
-    return ((lineBoxContain & LineBoxContainGlyphs) || (lineBoxContain & LineBoxContainInitialLetter));
+    return isHorizontal() && ((lineBoxContain & LineBoxContainGlyphs) || (lineBoxContain & LineBoxContainInitialLetter));
 }
 
 bool RootInlineBox::includesRootLineBoxFontOrLeading() const

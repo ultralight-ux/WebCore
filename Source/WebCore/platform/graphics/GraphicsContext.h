@@ -188,28 +188,25 @@ struct GraphicsContextState {
 };
 
 struct ImagePaintingOptions {
-    ImagePaintingOptions(CompositeOperator compositeOperator = CompositeSourceOver, BlendMode blendMode = BlendModeNormal, DecodingMode decodingMode = DecodingMode::Synchronous, ImageOrientationDescription orientationDescription = ImageOrientationDescription(), InterpolationQuality interpolationQuality = InterpolationDefault)
+    ImagePaintingOptions(CompositeOperator compositeOperator = CompositeSourceOver, BlendMode blendMode = BlendModeNormal, ImageOrientationDescription orientationDescription = ImageOrientationDescription(), InterpolationQuality interpolationQuality = InterpolationDefault)
         : m_compositeOperator(compositeOperator)
         , m_blendMode(blendMode)
-        , m_decodingMode(decodingMode)
         , m_orientationDescription(orientationDescription)
         , m_interpolationQuality(interpolationQuality)
     {
     }
 
-    ImagePaintingOptions(ImageOrientationDescription orientationDescription, InterpolationQuality interpolationQuality = InterpolationDefault, CompositeOperator compositeOperator = CompositeSourceOver, BlendMode blendMode = BlendModeNormal, DecodingMode decodingMode = DecodingMode::Synchronous)
+    ImagePaintingOptions(ImageOrientationDescription orientationDescription, InterpolationQuality interpolationQuality = InterpolationDefault, CompositeOperator compositeOperator = CompositeSourceOver, BlendMode blendMode = BlendModeNormal)
         : m_compositeOperator(compositeOperator)
         , m_blendMode(blendMode)
-        , m_decodingMode(decodingMode)
         , m_orientationDescription(orientationDescription)
         , m_interpolationQuality(interpolationQuality)
     {
     }
 
-    ImagePaintingOptions(InterpolationQuality interpolationQuality, ImageOrientationDescription orientationDescription = ImageOrientationDescription(), CompositeOperator compositeOperator = CompositeSourceOver, BlendMode blendMode = BlendModeNormal, DecodingMode decodingMode = DecodingMode::Synchronous)
+    ImagePaintingOptions(InterpolationQuality interpolationQuality, ImageOrientationDescription orientationDescription = ImageOrientationDescription(), CompositeOperator compositeOperator = CompositeSourceOver, BlendMode blendMode = BlendModeNormal)
         : m_compositeOperator(compositeOperator)
         , m_blendMode(blendMode)
-        , m_decodingMode(decodingMode)
         , m_orientationDescription(orientationDescription)
         , m_interpolationQuality(interpolationQuality)
     {
@@ -219,7 +216,6 @@ struct ImagePaintingOptions {
 
     CompositeOperator m_compositeOperator;
     BlendMode m_blendMode;
-    DecodingMode m_decodingMode;
     ImageOrientationDescription m_orientationDescription;
     InterpolationQuality m_interpolationQuality;
 };
@@ -499,7 +495,6 @@ public:
     WEBCORE_EXPORT void applyDeviceScaleFactor(float);
     void platformApplyDeviceScaleFactor(float);
     FloatSize scaleFactor() const;
-    FloatSize scaleFactorForDrawing(const FloatRect& destRect, const FloatRect& srcRect) const;
 
 #if OS(WINDOWS)
     HDC getWindowsContext(const IntRect&, bool supportAlphaBlend, bool mayCreateBitmap); // The passed in rect is used to create a bitmap for compositing inside transparency layers.
@@ -507,6 +502,7 @@ public:
     HDC hdc() const;
 #if PLATFORM(WIN)
 #if USE(WINGDI)
+    void setBitmap(PassRefPtr<SharedBitmap>);
     const AffineTransform& affineTransform() const;
     AffineTransform& affineTransform();
     void resetAffineTransform();

@@ -43,6 +43,9 @@ namespace WebCore {
 // CurlDownloadManager -------------------------------------------------------------------
 
 CurlDownloadManager::CurlDownloadManager()
+: m_threadId(0)
+, m_curlMultiHandle(0)
+, m_runThread(false)
 {
     curl_global_init(CURL_GLOBAL_ALL);
     m_curlMultiHandle = curl_multi_init();
@@ -91,10 +94,10 @@ int CurlDownloadManager::getPendingDownloadCount() const
 void CurlDownloadManager::startThreadIfNeeded()
 {
     if (!runThread()) {
-        if (m_thread)
-            m_thread->waitForCompletion();
+        if (m_threadId)
+            waitForThreadCompletion(m_threadId);
         setRunThread(true);
-        m_thread = Thread::create(downloadThread, this, "downloadThread");
+        m_threadId = createThread(downloadThread, this, "downloadThread");
     }
 }
 
@@ -102,9 +105,9 @@ void CurlDownloadManager::stopThread()
 {
     setRunThread(false);
 
-    if (m_thread) {
-        m_thread->waitForCompletion();
-        m_thread = nullptr;
+    if (m_threadId) {
+        waitForThreadCompletion(m_threadId);
+        m_threadId = 0;
     }
 }
 
@@ -230,7 +233,15 @@ void CurlDownloadManager::downloadThread(void* data)
 
 CurlDownloadManager CurlDownload::m_downloadManager;
 
-CurlDownload::CurlDownload() = default;
+CurlDownload::CurlDownload()
+    : m_curlHandle(nullptr)
+    , m_customHeaders(nullptr)
+    , m_url(nullptr)
+    , m_tempHandle(invalidPlatformFileHandle)
+    , m_deletesFileUponFailure(false)
+    , m_listener(nullptr)
+{
+}
 
 CurlDownload::~CurlDownload()
 {

@@ -27,24 +27,17 @@
 #include "JSXPathNSResolver.h"
 
 #include "JSCustomXPathNSResolver.h"
-#include "JSDOMExceptionHandling.h"
 
 using namespace JSC;
 
 namespace WebCore {
 
-RefPtr<XPathNSResolver> JSXPathNSResolver::toWrapped(VM& vm, ExecState& state, JSValue value)
+RefPtr<XPathNSResolver> JSXPathNSResolver::toWrapped(ExecState& state, JSValue value)
 {
-    if (value.inherits(vm, JSXPathNSResolver::info()))
+    if (value.inherits(JSXPathNSResolver::info()))
         return &jsCast<JSXPathNSResolver*>(asObject(value))->wrapped();
 
-    auto result = JSCustomXPathNSResolver::create(state, value);
-    if (UNLIKELY(result.hasException())) {
-        auto scope = DECLARE_THROW_SCOPE(vm);
-        propagateException(state, scope, result.releaseException());
-        return nullptr;
-    }
-    return result.releaseReturnValue();
+    return JSCustomXPathNSResolver::create(&state, value);
 }
 
 } // namespace WebCore

@@ -80,8 +80,10 @@ void RenderHTMLCanvas::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& pa
     if (clip)
         paintInfo.context().clip(snappedIntRect(contentBoxRect));
 
-    if (paintInfo.phase == PaintPhaseForeground)
-        page().addRelevantRepaintedObject(this, intersection(replacedContentRect, contentBoxRect));
+    if (Page* page = frame().page()) {
+        if (paintInfo.phase == PaintPhaseForeground)
+            page->addRelevantRepaintedObject(this, intersection(replacedContentRect, contentBoxRect));
+    }
 
     InterpolationQualityMaintainer interpolationMaintainer(context, ImageQualityController::interpolationQualityFromStyle(style()));
     canvasElement().paint(context, replacedContentRect);

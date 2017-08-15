@@ -46,14 +46,14 @@ public:
     typedef MapType::const_reverse_iterator const_reverse_iterator;
     typedef std::pair<iterator, iterator> iterator_range;
 
-    iterator begin() { return m_samples.begin(); }
-    const_iterator begin() const { return m_samples.begin(); }
-    iterator end() { return m_samples.end(); }
-    const_iterator end() const { return m_samples.end(); }
-    reverse_iterator rbegin() { return m_samples.rbegin(); }
-    const_reverse_iterator rbegin() const { return m_samples.rbegin(); }
-    reverse_iterator rend() { return m_samples.rend(); }
-    const_reverse_iterator rend() const { return m_samples.rend(); }
+    WEBCORE_EXPORT iterator begin() { return m_samples.begin(); }
+    WEBCORE_EXPORT const_iterator begin() const { return m_samples.begin(); }
+    WEBCORE_EXPORT iterator end() { return m_samples.end(); }
+    WEBCORE_EXPORT const_iterator end() const { return m_samples.end(); }
+    WEBCORE_EXPORT reverse_iterator rbegin() { return m_samples.rbegin(); }
+    WEBCORE_EXPORT const_reverse_iterator rbegin() const { return m_samples.rbegin(); }
+    WEBCORE_EXPORT reverse_iterator rend() { return m_samples.rend(); }
+    WEBCORE_EXPORT const_reverse_iterator rend() const { return m_samples.rend(); }
 
     WEBCORE_EXPORT iterator findSampleWithPresentationTime(const MediaTime&);
     WEBCORE_EXPORT iterator findSampleContainingPresentationTime(const MediaTime&);
@@ -79,14 +79,14 @@ public:
     typedef MapType::const_reverse_iterator const_reverse_iterator;
     typedef std::pair<reverse_iterator, reverse_iterator> reverse_iterator_range;
 
-    iterator begin() { return m_samples.begin(); }
-    const_iterator begin() const { return m_samples.begin(); }
-    iterator end() { return m_samples.end(); }
-    const_iterator end() const { return m_samples.end(); }
-    reverse_iterator rbegin() { return m_samples.rbegin(); }
-    const_reverse_iterator rbegin() const { return m_samples.rbegin(); }
-    reverse_iterator rend() { return m_samples.rend(); }
-    const_reverse_iterator rend() const { return m_samples.rend(); }
+    WEBCORE_EXPORT iterator begin() { return m_samples.begin(); }
+    WEBCORE_EXPORT const_iterator begin() const { return m_samples.begin(); }
+    WEBCORE_EXPORT iterator end() { return m_samples.end(); }
+    WEBCORE_EXPORT const_iterator end() const { return m_samples.end(); }
+    WEBCORE_EXPORT reverse_iterator rbegin() { return m_samples.rbegin(); }
+    WEBCORE_EXPORT const_reverse_iterator rbegin() const { return m_samples.rbegin(); }
+    WEBCORE_EXPORT reverse_iterator rend() { return m_samples.rend(); }
+    WEBCORE_EXPORT const_reverse_iterator rend() const { return m_samples.rend(); }
 
     WEBCORE_EXPORT iterator findSampleWithDecodeKey(const KeyType&);
     WEBCORE_EXPORT reverse_iterator reverseFindSampleWithDecodeKey(const KeyType&);
@@ -103,29 +103,32 @@ private:
 
 class SampleMap {
 public:
-    SampleMap() = default;
+    WEBCORE_EXPORT SampleMap()
+        : m_totalSize(0)
+    {
+    }
 
     WEBCORE_EXPORT bool empty() const;
     WEBCORE_EXPORT void clear();
     WEBCORE_EXPORT void addSample(MediaSample&);
     WEBCORE_EXPORT void removeSample(MediaSample*);
-    size_t sizeInBytes() const { return m_totalSize; }
+    WEBCORE_EXPORT size_t sizeInBytes() const { return m_totalSize; }
 
     template<typename I>
     void addRange(I begin, I end);
 
-    DecodeOrderSampleMap& decodeOrder() { return m_decodeOrder; }
-    const DecodeOrderSampleMap& decodeOrder() const { return m_decodeOrder; }
-    PresentationOrderSampleMap& presentationOrder() { return m_decodeOrder.m_presentationOrder; }
-    const PresentationOrderSampleMap& presentationOrder() const { return m_decodeOrder.m_presentationOrder; }
+    WEBCORE_EXPORT DecodeOrderSampleMap& decodeOrder() { return m_decodeOrder; }
+    WEBCORE_EXPORT const DecodeOrderSampleMap& decodeOrder() const { return m_decodeOrder; }
+    WEBCORE_EXPORT PresentationOrderSampleMap& presentationOrder() { return m_decodeOrder.m_presentationOrder; }
+    WEBCORE_EXPORT const PresentationOrderSampleMap& presentationOrder() const { return m_decodeOrder.m_presentationOrder; }
 
 private:
     DecodeOrderSampleMap m_decodeOrder;
-    size_t m_totalSize { 0 };
+    size_t m_totalSize;
 };
 
 template<typename I>
-inline void SampleMap::addRange(I begin, I end)
+void SampleMap::addRange(I begin, I end)
 {
     for (I iter = begin; iter != end; ++iter)
         addSample(*iter->second);

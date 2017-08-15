@@ -156,7 +156,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveResponse
         
         ResourceResponse resourceResponse(cfResponse);
 #if ENABLE(WEB_TIMING)
-        ResourceHandle::getConnectionTimingData(connection, resourceResponse.deprecatedNetworkLoadMetrics());
+        ResourceHandle::getConnectionTimingData(connection, resourceResponse.networkLoadTiming());
 #else
         UNUSED_PARAM(connection);
 #endif
@@ -177,7 +177,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveData(CFD
         if (protectedThis->hasHandle() && m_handle->client()) {
             LOG(Network, "CFNet - ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveData(handle=%p) (%s)", m_handle, m_handle->firstRequest().url().string().utf8().data());
 
-            m_handle->client()->didReceiveBuffer(m_handle, SharedBuffer::create(data), originalLength);
+            m_handle->client()->didReceiveBuffer(m_handle, SharedBuffer::wrapCFData(data), originalLength);
         }
 
         CFRelease(data);
@@ -195,7 +195,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFinishLoading()
 
         LOG(Network, "CFNet - ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFinishLoading(handle=%p) (%s)", m_handle, m_handle->firstRequest().url().string().utf8().data());
 
-        m_handle->client()->didFinishLoading(m_handle);
+        m_handle->client()->didFinishLoading(m_handle, 0);
     });
 }
 
@@ -302,6 +302,24 @@ Boolean ResourceHandleCFURLConnectionDelegateWithOperationQueue::canRespondToPro
     return m_boolResult;
 }
 #endif // USE(PROTECTION_SPACE_AUTH_CALLBACK)
+
+#if USE(NETWORK_CFDATA_ARRAY_CALLBACK)
+void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveDataArray(CFArrayRef dataArray)
+{
+    // FIXME: The block implicitly copies protector object, which is wasteful. We should just call ref(),
+    // capture "this" by pointer value, and use a C++ lambda to prevent other unintentional capturing.
+    RefPtr<ResourceHandleCFURLConnectionDelegateWithOperationQueue> protectedThis(this);
+    CFRetain(dataArray);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (protectedThis->hasHandle() && m_handle->client()) {
+            LOG(Network, "CFNet - ResourceHandleCFURLConnectionDelegateWithOperationQueue::didSendBodyData(handle=%p) (%s)", m_handle, m_handle->firstRequest().url().string().utf8().data());
+
+            m_handle->client()->didReceiveBuffer(m_handle, SharedBuffer::wrapCFDataArray(dataArray), -1);
+        }
+        CFRelease(dataArray);
+    });
+}
+#endif // USE(NETWORK_CFDATA_ARRAY_CALLBACK)
 
 void ResourceHandleCFURLConnectionDelegateWithOperationQueue::continueWillSendRequest(CFURLRequestRef request)
 {

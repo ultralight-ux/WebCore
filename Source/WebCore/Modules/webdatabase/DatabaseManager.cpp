@@ -114,55 +114,50 @@ static inline void logOpenDatabaseError(ScriptExecutionContext&, const String&)
 
 static void logOpenDatabaseError(ScriptExecutionContext& context, const String& name)
 {
-    LOG(StorageAPI, "Database %s for origin %s not allowed to be established", name.utf8().data(), context.securityOrigin()->toString().utf8().data());
+    LOG(StorageAPI, "Database %s for origin %s not allowed to be established", name.utf8().data(),
+        context.securityOrigin()->toString().utf8().data());
 }
 
 #endif
 
 ExceptionOr<Ref<Database>> DatabaseManager::openDatabaseBackend(ScriptExecutionContext& context, const String& name, const String& expectedVersion, const String& displayName, unsigned estimatedSize, bool setVersionInNewDatabase)
 {
-    auto backend = tryToOpenDatabaseBackend(context, name, expectedVersion, displayName, estimatedSize, setVersionInNewDatabase, FirstTryToOpenDatabase);
+    auto databaseContext = this->databaseContext(context);
+
+    auto backend = tryToOpenDatabaseBackend(databaseContext, name, expectedVersion, displayName, estimatedSize, setVersionInNewDatabase, FirstTryToOpenDatabase);
 
     if (backend.hasException()) {
-        if (backend.exception().code() == QUOTA_EXCEEDED_ERR) {
+        auto exception = backend.releaseException();
+        if (exception.code() != QUOTA_EXCEEDED_ERR)
+            backend = WTFMove(exception); // FIXME: Bad to have to move exception out and back in.
+        else {
             // Notify the client that we've exceeded the database quota.
             // The client may want to increase the quota, and we'll give it
             // one more try after if that is the case.
             {
                 // FIXME: What guarantees context.securityOrigin() is non-null?
                 ProposedDatabase proposedDatabase { *this, *context.securityOrigin(), name, displayName, estimatedSize };
-                this->databaseContext(context)->databaseExceededQuota(name, proposedDatabase.details());
+                databaseContext->databaseExceededQuota(name, proposedDatabase.details());
             }
-            backend = tryToOpenDatabaseBackend(context, name, expectedVersion, displayName, estimatedSize, setVersionInNewDatabase, RetryOpenDatabase);
+            backend = tryToOpenDatabaseBackend(databaseContext, name, expectedVersion, displayName, estimatedSize, setVersionInNewDatabase, RetryOpenDatabase);
         }
     }
 
     if (backend.hasException()) {
-        if (backend.exception().code() == INVALID_STATE_ERR)
-            logErrorMessage(context, backend.exception().message());
+        auto exception = backend.releaseException();
+        if (exception.code() == INVALID_STATE_ERR)
+            logErrorMessage(context, exception.message());
         else
             logOpenDatabaseError(context, name);
+        backend = WTFMove(exception); // FIXME: Bad to have to move exception out and back in.
     }
 
     return backend;
 }
 
-ExceptionOr<Ref<Database>> DatabaseManager::tryToOpenDatabaseBackend(ScriptExecutionContext& scriptContext, const String& name, const String& expectedVersion, const String& displayName, unsigned estimatedSize, bool setVersionInNewDatabase,
+ExceptionOr<Ref<Database>> DatabaseManager::tryToOpenDatabaseBackend(DatabaseContext& backendContext, const String& name, const String& expectedVersion, const String& displayName, unsigned estimatedSize, bool setVersionInNewDatabase,
     OpenAttempt attempt)
 {
-    if (is<Document>(&scriptContext)) {
-        auto* page = downcast<Document>(scriptContext).page();
-        if (!page || page->usesEphemeralSession())
-            return Exception { SECURITY_ERR };
-    }
-
-    if (scriptContext.isWorkerGlobalScope()) {
-        ASSERT_NOT_REACHED();
-        return Exception { SECURITY_ERR };
-    }
-
-    auto backendContext = this->databaseContext(scriptContext);
-
     ExceptionOr<void> preflightResult;
     switch (attempt) {
     case FirstTryToOpenDatabase:
@@ -182,7 +177,7 @@ ExceptionOr<Ref<Database>> DatabaseManager::tryToOpenDatabaseBackend(ScriptExecu
         return openResult.releaseException();
 
     // FIXME: What guarantees backendContext.securityOrigin() is non-null?
-    DatabaseTracker::singleton().setDatabaseDetails(backendContext->securityOrigin(), name, displayName, estimatedSize);
+    DatabaseTracker::singleton().setDatabaseDetails(backendContext.securityOrigin(), name, displayName, estimatedSize);
     return WTFMove(database);
 }
 

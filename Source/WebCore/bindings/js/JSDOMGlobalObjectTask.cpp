@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,7 +27,6 @@
 #include "JSDOMGlobalObjectTask.h"
 
 #include "ActiveDOMCallback.h"
-#include "JSDOMGlobalObject.h"
 #include "JSMainThreadExecState.h"
 #include <heap/StrongInlines.h>
 #include <runtime/Microtask.h>
@@ -39,7 +38,7 @@ namespace WebCore {
 
 class JSGlobalObjectCallback final : public RefCounted<JSGlobalObjectCallback>, private ActiveDOMCallback {
 public:
-    static Ref<JSGlobalObjectCallback> create(JSDOMGlobalObject& globalObject, Ref<Microtask>&& task)
+    static Ref<JSGlobalObjectCallback> create(JSDOMGlobalObject* globalObject, Ref<Microtask>&& task)
     {
         return adoptRef(*new JSGlobalObjectCallback(globalObject, WTFMove(task)));
     }
@@ -67,14 +66,14 @@ public:
             JSMainThreadExecState::runTask(exec, m_task);
         else
             m_task->run(exec);
-        scope.assertNoException();
+        ASSERT_UNUSED(scope, !scope.exception());
     }
 
 private:
-    JSGlobalObjectCallback(JSDOMGlobalObject& globalObject, Ref<Microtask>&& task)
-        : ActiveDOMCallback { globalObject.scriptExecutionContext() }
-        , m_globalObject { globalObject.vm(), &globalObject }
-        , m_task { WTFMove(task) }
+    JSGlobalObjectCallback(JSDOMGlobalObject* globalObject, Ref<Microtask>&& task)
+        : ActiveDOMCallback(globalObject->scriptExecutionContext())
+        , m_globalObject(globalObject->vm(), globalObject)
+        , m_task(WTFMove(task))
     {
     }
 
@@ -82,7 +81,7 @@ private:
     Ref<Microtask> m_task;
 };
 
-JSGlobalObjectTask::JSGlobalObjectTask(JSDOMGlobalObject& globalObject, Ref<Microtask>&& task)
+JSGlobalObjectTask::JSGlobalObjectTask(JSDOMGlobalObject* globalObject, Ref<Microtask>&& task)
     : ScriptExecutionContext::Task({ })
 {
     RefPtr<JSGlobalObjectCallback> callback = JSGlobalObjectCallback::create(globalObject, WTFMove(task));

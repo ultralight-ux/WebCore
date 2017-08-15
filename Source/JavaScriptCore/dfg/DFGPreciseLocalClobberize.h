@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -121,68 +121,37 @@ private:
                 m_read(VirtualRegister(inlineCallFrame->stackOffset + CallFrameSlot::argumentCount));
         };
 
-        auto readPhantomSpreadNode = [&] (Node* spread) {
-            ASSERT(spread->op() == PhantomSpread);
-            ASSERT(spread->child1()->op() == PhantomCreateRest);
-            InlineCallFrame* inlineCallFrame = spread->child1()->origin.semantic.inlineCallFrame;
-            unsigned numberOfArgumentsToSkip = spread->child1()->numberOfArgumentsToSkip();
-            readFrame(inlineCallFrame, numberOfArgumentsToSkip);
-        };
-
         auto readNewArrayWithSpreadNode = [&] (Node* arrayWithSpread) {
             ASSERT(arrayWithSpread->op() == NewArrayWithSpread || arrayWithSpread->op() == PhantomNewArrayWithSpread);
             BitVector* bitVector = arrayWithSpread->bitVector();
             for (unsigned i = 0; i < arrayWithSpread->numChildren(); i++) {
                 if (bitVector->get(i)) {
                     Node* child = m_graph.varArgChild(arrayWithSpread, i).node();
-                    if (child->op() == PhantomSpread)
-                        readPhantomSpreadNode(child);
+                    if (child->op() == PhantomSpread) {
+                        ASSERT(child->child1()->op() == PhantomCreateRest);
+                        InlineCallFrame* inlineCallFrame = child->child1()->origin.semantic.inlineCallFrame;
+                        unsigned numberOfArgumentsToSkip = child->child1()->numberOfArgumentsToSkip();
+                        readFrame(inlineCallFrame, numberOfArgumentsToSkip);
+                    }
                 }
             }
         };
 
+        bool isForwardingNode = false;
         switch (m_node->op()) {
         case ForwardVarargs:
         case CallForwardVarargs:
         case ConstructForwardVarargs:
         case TailCallForwardVarargs:
         case TailCallForwardVarargsInlinedCaller:
+            isForwardingNode = true;
+            FALLTHROUGH;
         case GetMyArgumentByVal:
-        case GetMyArgumentByValOutOfBounds:
-        case CreateDirectArguments:
-        case CreateScopedArguments:
-        case CreateClonedArguments:
-        case PhantomDirectArguments:
-        case PhantomClonedArguments:
-        case GetRestLength:
-        case CreateRest: {
-            bool isForwardingNode = false;
-            bool isPhantomNode = false;
-            switch (m_node->op()) {
-            case ForwardVarargs:
-            case CallForwardVarargs:
-            case ConstructForwardVarargs:
-            case TailCallForwardVarargs:
-            case TailCallForwardVarargsInlinedCaller:
-                isForwardingNode = true;
-                break;
-            case PhantomDirectArguments:
-            case PhantomClonedArguments:
-                isPhantomNode = true;
-                break;
-            default:
-                break;
-            }
-            
-            if (isPhantomNode && isFTL(m_graph.m_plan.mode))
-                break;
-            
-            if (isForwardingNode && m_node->hasArgumentsChild() && m_node->argumentsChild()
-                && (m_node->argumentsChild()->op() == PhantomNewArrayWithSpread || m_node->argumentsChild()->op() == PhantomSpread)) {
-                if (m_node->argumentsChild()->op() == PhantomNewArrayWithSpread)
-                    readNewArrayWithSpreadNode(m_node->argumentsChild().node());
-                else
-                    readPhantomSpreadNode(m_node->argumentsChild().node());
+        case GetMyArgumentByValOutOfBounds: {
+
+            if (isForwardingNode && m_node->hasArgumentsChild() && m_node->argumentsChild() && m_node->argumentsChild()->op() == PhantomNewArrayWithSpread) {
+                Node* arrayWithSpread = m_node->argumentsChild().node();
+                readNewArrayWithSpreadNode(arrayWithSpread);
             } else {
                 InlineCallFrame* inlineCallFrame;
                 if (m_node->hasArgumentsChild() && m_node->argumentsChild())
@@ -225,13 +194,12 @@ private:
             m_read(VirtualRegister(inlineCallFrame->stackOffset + CallFrameSlot::argumentCount));
             break;
         }
+
             
         default: {
-            // All of the outermost arguments, except this, are read in sloppy mode.
-            if (!m_graph.m_codeBlock->isStrictMode()) {
-                for (unsigned i = m_graph.m_codeBlock->numParameters(); i-- > 1;)
-                    m_read(virtualRegisterForArgument(i));
-            }
+            // All of the outermost arguments, except this, are definitely read.
+            for (unsigned i = m_graph.m_codeBlock->numParameters(); i-- > 1;)
+                m_read(virtualRegisterForArgument(i));
         
             // The stack header is read.
             for (unsigned i = 0; i < CallFrameSlot::thisArgument; ++i)
@@ -239,10 +207,8 @@ private:
         
             // Read all of the inline arguments and call frame headers that we didn't already capture.
             for (InlineCallFrame* inlineCallFrame = m_node->origin.semantic.inlineCallFrame; inlineCallFrame; inlineCallFrame = inlineCallFrame->getCallerInlineFrameSkippingTailCalls()) {
-                if (!inlineCallFrame->isStrictMode()) {
-                    for (unsigned i = inlineCallFrame->arguments.size(); i-- > 1;)
-                        m_read(VirtualRegister(inlineCallFrame->stackOffset + virtualRegisterForArgument(i).offset()));
-                }
+                for (unsigned i = inlineCallFrame->arguments.size(); i-- > 1;)
+                    m_read(VirtualRegister(inlineCallFrame->stackOffset + virtualRegisterForArgument(i).offset()));
                 if (inlineCallFrame->isClosureCall)
                     m_read(VirtualRegister(inlineCallFrame->stackOffset + CallFrameSlot::callee));
                 if (inlineCallFrame->isVarargs())

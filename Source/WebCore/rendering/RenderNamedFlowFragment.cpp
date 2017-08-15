@@ -499,7 +499,7 @@ void RenderNamedFlowFragment::attachRegion()
 {
     RenderRegion::attachRegion();
 
-    if (renderTreeBeingDestroyed() || !isValid())
+    if (documentBeingDestroyed() || !isValid())
         return;
 
     updateRegionFlags();

@@ -34,11 +34,12 @@
 #include <stdint.h>
 #include <wtf/Function.h>
 #include <wtf/Optional.h>
-#include <wtf/Threading.h>
 
 namespace WTF {
 
 class PrintStream;
+
+typedef uint32_t ThreadIdentifier;
 
 // Must be called from the main thread.
 WTF_EXPORT_PRIVATE void initializeMainThread();
@@ -85,7 +86,7 @@ void initializeMainThreadPlatform();
 void scheduleDispatchFunctionsOnMainThread();
 void dispatchFunctionsFromMainThread();
 
-#if OS(DARWIN) && !USE(GLIB)
+#if OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK)
 #if !USE(WEB_THREAD)
 // This version of initializeMainThread sets up the main thread as corresponding
 // to the process's main thread, and not necessarily the thread that calls this

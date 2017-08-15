@@ -38,6 +38,7 @@
 #include "Page.h"
 #include "RenderImage.h"
 #include "RenderSVGImage.h"
+#include "SecurityOrigin.h"
 #include <wtf/NeverDestroyed.h>
 
 #if ENABLE(VIDEO)
@@ -177,7 +178,7 @@ void ImageLoader::updateFromElement()
         options.sameOriginDataURLFlag = SameOriginDataURLFlag::Set;
 
         CachedResourceRequest request(ResourceRequest(document.completeURL(sourceURI(attr))), options);
-        request.setInitiator(element());
+        request.setInitiator(&element());
 
         request.setAsPotentiallyCrossOrigin(element().attributeWithoutSynchronization(HTMLNames::crossoriginAttr), document);
 
@@ -287,7 +288,7 @@ void ImageLoader::notifyFinished(CachedResource& resource)
         m_hasPendingErrorEvent = true;
         errorEventSender().dispatchEventSoon(*this);
 
-        static NeverDestroyed<String> consoleMessage(MAKE_STATIC_STRING_IMPL("Cross-origin image load denied by Cross-Origin Resource Sharing policy."));
+        static NeverDestroyed<String> consoleMessage(ASCIILiteral("Cross-origin image load denied by Cross-Origin Resource Sharing policy."));
         element().document().addConsoleMessage(MessageSource::Security, MessageLevel::Error, consoleMessage);
 
         ASSERT(!m_hasPendingLoadEvent);
@@ -364,7 +365,7 @@ void ImageLoader::updatedHasPendingEvent()
             m_protectedElement = &element();
     } else {
         ASSERT(!m_derefElementTimer.isActive());
-        m_derefElementTimer.startOneShot(0_s);
+        m_derefElementTimer.startOneShot(0);
     }   
 }
 
@@ -396,10 +397,10 @@ void ImageLoader::dispatchPendingBeforeLoadEvent()
     m_hasPendingBeforeLoadEvent = false;
     Ref<Document> originalDocument = element().document();
     if (element().dispatchBeforeLoadEvent(m_image->url())) {
-        bool didEventListenerDisconnectThisElement = !element().isConnected() || &element().document() != originalDocument.ptr();
+        bool didEventListenerDisconnectThisElement = !element().inDocument() || &element().document() != originalDocument.ptr();
         if (didEventListenerDisconnectThisElement)
             return;
-        
+
         updateRenderer();
         return;
     }

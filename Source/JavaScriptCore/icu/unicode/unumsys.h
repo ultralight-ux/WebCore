@@ -1,6 +1,6 @@
 /*
 *****************************************************************************************
-* Copyright (C) 2013-2014, International Business Machines
+* Copyright (C) 2013, International Business Machines
 * Corporation and others. All Rights Reserved.
 *****************************************************************************************
 */
@@ -34,12 +34,14 @@
  * numbers locale keyword.
  */
 
+#ifndef U_HIDE_DRAFT_API
+
 /**
  * Opaque UNumberingSystem object for use in C programs.
- * @stable ICU 52
+ * @draft ICU 52
  */
 struct UNumberingSystem;
-typedef struct UNumberingSystem UNumberingSystem;  /**< C typedef for struct UNumberingSystem. @stable ICU 52 */
+typedef struct UNumberingSystem UNumberingSystem;  /**< C typedef for struct UNumberingSystem. @draft ICU 52 */
 
 /**
  * Opens a UNumberingSystem object using the default numbering system for the specified
@@ -50,9 +52,9 @@ typedef struct UNumberingSystem UNumberingSystem;  /**< C typedef for struct UNu
  *                  specifies a numbering system unknown to ICU.
  * @return          A UNumberingSystem for the specified locale, or NULL if an error
  *                  occurred.
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE UNumberingSystem * U_EXPORT2
+U_DRAFT UNumberingSystem * U_EXPORT2
 unumsys_open(const char *locale, UErrorCode *status);
 
 /**
@@ -71,17 +73,17 @@ unumsys_open(const char *locale, UErrorCode *status);
  *                  is unknown to ICU.
  * @return          A UNumberingSystem for the specified name, or NULL if an error
  *                  occurred.
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE UNumberingSystem * U_EXPORT2
+U_DRAFT UNumberingSystem * U_EXPORT2
 unumsys_openByName(const char *name, UErrorCode *status);
 
 /**
  * Close a UNumberingSystem object. Once closed it may no longer be used.
  * @param unumsys   The UNumberingSystem object to close.
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE void U_EXPORT2
+U_DRAFT void U_EXPORT2
 unumsys_close(UNumberingSystem *unumsys);
 
 #if U_SHOW_CPLUSPLUS_API
@@ -93,7 +95,7 @@ U_NAMESPACE_BEGIN
  * For most methods see the LocalPointerBase base class.
  * @see LocalPointerBase
  * @see LocalPointer
- * @stable ICU 52
+ * @draft ICU 52
  */
 U_DEFINE_LOCAL_OPEN_POINTER(LocalUNumberingSystemPointer, UNumberingSystem, unumsys_close);
 
@@ -106,9 +108,9 @@ U_NAMESPACE_END
  * @param status    A pointer to a UErrorCode to receive any errors.
  * @return          A pointer to a UEnumeration that must be closed with uenum_close(),
  *                  or NULL if an error occurred.
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE UEnumeration * U_EXPORT2
+U_DRAFT UEnumeration * U_EXPORT2
 unumsys_openAvailableNames(UErrorCode *status);
 
 /**
@@ -118,9 +120,9 @@ unumsys_openAvailableNames(UErrorCode *status);
  * @return          A pointer to the name of the specified UNumberingSystem object, or
  *                  NULL if the name is not one of the ICU predefined names. The pointer
  *                  is only valid for the lifetime of the UNumberingSystem object.
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE const char * U_EXPORT2
+U_DRAFT const char * U_EXPORT2
 unumsys_getName(const UNumberingSystem *unumsys);
 
 /**
@@ -129,9 +131,9 @@ unumsys_getName(const UNumberingSystem *unumsys);
  * @param unumsys   The UNumberingSystem whose algorithmic status is desired.
  * @return          TRUE if the specified UNumberingSystem object is for an algorithmic
  *                  system.
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE UBool U_EXPORT2
+U_DRAFT UBool U_EXPORT2
 unumsys_isAlgorithmic(const UNumberingSystem *unumsys);
 
 /**
@@ -140,9 +142,9 @@ unumsys_isAlgorithmic(const UNumberingSystem *unumsys);
  * hexadecimal. The radix is less well-defined for non-positional algorithmic systems.
  * @param unumsys   The UNumberingSystem whose radix is desired.
  * @return          The radix of the specified UNumberingSystem object.
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE int32_t U_EXPORT2
+U_DRAFT int32_t U_EXPORT2
 unumsys_getRadix(const UNumberingSystem *unumsys);
 
 /**
@@ -159,11 +161,13 @@ unumsys_getRadix(const UNumberingSystem *unumsys);
  * @param status    A pointer to a UErrorCode to receive any errors.
  * @return          The total buffer size needed; if greater than resultLength, the
  *                  output was truncated.
- * @stable ICU 52
+ * @draft ICU 52
  */
-U_STABLE int32_t U_EXPORT2
+U_DRAFT int32_t U_EXPORT2
 unumsys_getDescription(const UNumberingSystem *unumsys, UChar *result,
                        int32_t resultLength, UErrorCode *status);
+
+#endif  /* U_HIDE_DRAFT_API */
 
 #endif /* #if !UCONFIG_NO_FORMATTING */
 

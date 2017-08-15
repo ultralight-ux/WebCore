@@ -28,6 +28,7 @@
 #include "BasicShapes.h"
 #include "Frame.h"
 #include "FrameView.h"
+#include "Page.h"
 #include "RenderLayer.h"
 #include "RenderSVGImage.h"
 #include "RenderSVGResourceClipper.h"

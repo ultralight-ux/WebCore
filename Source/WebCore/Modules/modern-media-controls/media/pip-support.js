@@ -41,11 +41,6 @@ class PiPSupport extends MediaControllerSupport
         return ["loadedmetadata", "error", "webkitpresentationmodechanged", "webkitcurrentplaybacktargetiswirelesschanged"];
     }
 
-    get tracksToMonitor()
-    {
-        return [this.mediaController.media.videoTracks];
-    }
-
     buttonWasPressed(control)
     {
         const media = this.mediaController.media;
@@ -55,10 +50,7 @@ class PiPSupport extends MediaControllerSupport
     syncControl()
     {
         const media = this.mediaController.media;
-        if (media.webkitSupportsPresentationMode)
-            this.control.enabled = !this.mediaController.isAudio && media.webkitSupportsPresentationMode(PiPMode) && !media.webkitCurrentPlaybackTargetIsWireless;
-        else
-            this.control.enabled = false;
+        this.control.enabled = media instanceof HTMLVideoElement && media.webkitSupportsPresentationMode && media.webkitSupportsPresentationMode(PiPMode) && !media.webkitCurrentPlaybackTargetIsWireless;
     }
 
 }

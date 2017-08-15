@@ -33,7 +33,6 @@
 #include "NavigationAction.h"
 #include "ResourceRequest.h"
 #include <functional>
-#include <wtf/Function.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -41,15 +40,19 @@ namespace WebCore {
 
 class FormState;
 
-using ContentPolicyDecisionFunction = Function<void(PolicyAction)>;
-using NavigationPolicyDecisionFunction = Function<void(const ResourceRequest&, FormState*, bool shouldContinue)>;
-using NewWindowPolicyDecisionFunction = Function<void(const ResourceRequest&, FormState*, const String& frameName, const NavigationAction&, bool shouldContinue)>;
+typedef std::function<void (const ResourceRequest&, PassRefPtr<FormState>, bool shouldContinue)> NavigationPolicyDecisionFunction;
+typedef std::function<void (const ResourceRequest&, PassRefPtr<FormState>, const String& frameName, const NavigationAction&, bool shouldContinue)> NewWindowPolicyDecisionFunction;
+typedef std::function<void (PolicyAction)> ContentPolicyDecisionFunction;
 
 class PolicyCallback {
 public:
-    void set(const ResourceRequest&, FormState*, NavigationPolicyDecisionFunction&&);
-    void set(const ResourceRequest&, FormState*, const String& frameName, const NavigationAction&, NewWindowPolicyDecisionFunction&&);
-    void set(ContentPolicyDecisionFunction&&);
+    PolicyCallback();
+    ~PolicyCallback();
+
+    void clear();
+    void set(const ResourceRequest&, PassRefPtr<FormState>, NavigationPolicyDecisionFunction);
+    void set(const ResourceRequest&, PassRefPtr<FormState>, const String& frameName, const NavigationAction&, NewWindowPolicyDecisionFunction);
+    void set(ContentPolicyDecisionFunction);
 
     const ResourceRequest& request() const { return m_request; }
     void clearRequest();

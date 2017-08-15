@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,7 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
+#ifndef GraphicsLayer_h
+#define GraphicsLayer_h
 
 #include "Animation.h"
 #include "Color.h"
@@ -79,15 +80,11 @@ protected:
 
     AnimationValue(const AnimationValue& other)
         : m_keyTime(other.m_keyTime)
-        , m_timingFunction(other.m_timingFunction ? RefPtr<TimingFunction> { other.m_timingFunction->clone() } : nullptr)
+        , m_timingFunction(other.m_timingFunction ? other.m_timingFunction->clone() : nullptr)
     {
     }
 
-    AnimationValue(AnimationValue&&) = default;
-
 private:
-    void operator=(const AnimationValue&) = delete;
-
     double m_keyTime;
     RefPtr<TimingFunction> m_timingFunction;
 };
@@ -105,6 +102,12 @@ public:
     std::unique_ptr<AnimationValue> clone() const override
     {
         return std::make_unique<FloatAnimationValue>(*this);
+    }
+
+    FloatAnimationValue(const FloatAnimationValue& other)
+        : AnimationValue(other)
+        , m_value(other.m_value)
+    {
     }
 
     float value() const { return m_value; }
@@ -131,12 +134,9 @@ public:
     TransformAnimationValue(const TransformAnimationValue& other)
         : AnimationValue(other)
     {
-        m_value.operations().reserveInitialCapacity(other.m_value.operations().size());
-        for (auto& operation : other.m_value.operations())
-            m_value.operations().uncheckedAppend(operation->clone());
+        for (size_t i = 0; i < other.m_value.operations().size(); ++i)
+            m_value.operations().append(other.m_value.operations()[i]->clone());
     }
-
-    TransformAnimationValue(TransformAnimationValue&&) = default;
 
     const TransformOperations& value() const { return m_value; }
 
@@ -162,12 +162,9 @@ public:
     FilterAnimationValue(const FilterAnimationValue& other)
         : AnimationValue(other)
     {
-        m_value.operations().reserveInitialCapacity(other.m_value.operations().size());
-        for (auto& operation : other.m_value.operations())
-            m_value.operations().uncheckedAppend(operation->clone());
+        for (size_t i = 0; i < other.m_value.operations().size(); ++i)
+            m_value.operations().append(other.m_value.operations()[i]->clone());
     }
-
-    FilterAnimationValue(FilterAnimationValue&&) = default;
 
     const FilterOperations& value() const { return m_value; }
 
@@ -188,12 +185,13 @@ public:
     KeyframeValueList(const KeyframeValueList& other)
         : m_property(other.property())
     {
-        m_values.reserveInitialCapacity(other.m_values.size());
-        for (auto& value : other.m_values)
-            m_values.uncheckedAppend(value->clone());
+        for (size_t i = 0; i < other.m_values.size(); ++i)
+            m_values.append(other.m_values[i]->clone());
     }
 
-    KeyframeValueList(KeyframeValueList&&) = default;
+    ~KeyframeValueList()
+    {
+    }
 
     KeyframeValueList& operator=(const KeyframeValueList& other)
     {
@@ -201,8 +199,6 @@ public:
         swap(copy);
         return *this;
     }
-
-    KeyframeValueList& operator=(KeyframeValueList&&) = default;
 
     void swap(KeyframeValueList& other)
     {
@@ -214,10 +210,10 @@ public:
 
     size_t size() const { return m_values.size(); }
     const AnimationValue& at(size_t i) const { return *m_values.at(i); }
-
+    
     // Insert, sorted by keyTime.
     WEBCORE_EXPORT void insert(std::unique_ptr<const AnimationValue>);
-
+    
 protected:
     Vector<std::unique_ptr<const AnimationValue>> m_values;
     AnimatedPropertyID m_property;
@@ -229,6 +225,7 @@ protected:
 class GraphicsLayer {
     WTF_MAKE_NONCOPYABLE(GraphicsLayer); WTF_MAKE_FAST_ALLOCATED;
 public:
+
     enum class Type {
         Normal,
         PageTiledBacking,
@@ -244,7 +241,7 @@ public:
 
     virtual void initialize(Type) { }
 
-    using PlatformLayerID = uint64_t;
+    typedef uint64_t PlatformLayerID;
     virtual PlatformLayerID primaryLayerID() const { return 0; }
 
     GraphicsLayerClient& client() const { return m_client; }
@@ -314,7 +311,7 @@ public:
 
     // approximatePosition, if set, overrides position() and is used during coverage rect computation.
     FloatPoint approximatePosition() const { return m_approximatePosition ? m_approximatePosition.value() : m_position; }
-    virtual void setApproximatePosition(const FloatPoint& p) { m_approximatePosition = p; }
+    void setApproximatePosition(std::optional<FloatPoint> p) { m_approximatePosition = p; }
 
     // For platforms that move underlying platform layers on a different thread for scrolling; just update the GraphicsLayer state.
     virtual void syncPosition(const FloatPoint& p) { m_position = p; }
@@ -373,9 +370,6 @@ public:
     // opaque means that we know the layer contents have no alpha
     bool contentsOpaque() const { return m_contentsOpaque; }
     virtual void setContentsOpaque(bool b) { m_contentsOpaque = b; }
-
-    bool supportsSubpixelAntialiasedText() const { return m_supportsSubpixelAntialiasedText; }
-    virtual void setSupportsSubpixelAntialiasedText(bool b) { m_supportsSubpixelAntialiasedText = b; }
 
     bool backfaceVisibility() const { return m_backfaceVisibility; }
     virtual void setBackfaceVisibility(bool b) { m_backfaceVisibility = b; }
@@ -444,7 +438,7 @@ public:
     static String animationNameForTransition(AnimatedPropertyID);
     
     // Return true if the animation is handled by the compositing system. If this returns
-    // false, the animation will be run by CSSAnimationController.
+    // false, the animation will be run by AnimationController.
     // These methods handle both transitions and keyframe animations.
     virtual bool addAnimation(const KeyframeValueList&, const FloatSize& /*boxSize*/, const Animation*, const String& /*animationName*/, double /*timeOffset*/)  { return false; }
     virtual void pauseAnimation(const String& /*animationName*/, double /*timeOffset*/) { }
@@ -554,7 +548,6 @@ public:
     static bool supportsBackgroundColorContent();
     static bool supportsLayerType(Type);
     static bool supportsContentsTiling();
-    static bool supportsSubpixelAntialiasedLayerText();
 
     void updateDebugIndicators();
 
@@ -635,7 +628,6 @@ protected:
     const Type m_type;
 
     bool m_contentsOpaque : 1;
-    bool m_supportsSubpixelAntialiasedText : 1;
     bool m_preserves3D: 1;
     bool m_backfaceVisibility : 1;
     bool m_masksToBounds : 1;
@@ -693,3 +685,5 @@ SPECIALIZE_TYPE_TRAITS_END()
 // Outside the WebCore namespace for ease of invocation from the debugger.
 void showGraphicsLayerTree(const WebCore::GraphicsLayer* layer);
 #endif
+
+#endif // GraphicsLayer_h

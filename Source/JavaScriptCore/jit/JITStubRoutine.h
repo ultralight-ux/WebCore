@@ -33,7 +33,6 @@
 namespace JSC {
 
 class JITStubRoutineSet;
-class VM;
 
 // This is a base-class for JIT stub routines, and also the class you want
 // to instantiate directly if you have a routine that does not need any
@@ -71,8 +70,11 @@ public:
     // the churn.
     const MacroAssemblerCodeRef& code() const { return m_code; }
     
-    static MacroAssemblerCodePtr asCodePtr(Ref<JITStubRoutine>&& stubRoutine)
+    static MacroAssemblerCodePtr asCodePtr(PassRefPtr<JITStubRoutine> stubRoutine)
     {
+        if (!stubRoutine)
+            return MacroAssemblerCodePtr();
+        
         MacroAssemblerCodePtr result = stubRoutine->code().code();
         ASSERT(!!result);
         return result;
@@ -98,15 +100,29 @@ public:
     
     static bool canPerformRangeFilter()
     {
+#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
         return true;
+#else
+        return false;
+#endif
     }
     static uintptr_t filteringStartAddress()
     {
+#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
         return startOfFixedExecutableMemoryPool;
+#else
+        UNREACHABLE_FOR_PLATFORM();
+        return 0;
+#endif
     }
     static size_t filteringExtentSize()
     {
+#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
         return fixedExecutableMemoryPoolSize;
+#else
+        UNREACHABLE_FOR_PLATFORM();
+        return 0;
+#endif
     }
     static bool passesFilter(uintptr_t address)
     {

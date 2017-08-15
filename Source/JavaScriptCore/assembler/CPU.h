@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008, 2012-2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -65,29 +65,6 @@ inline bool isX86_64()
 #endif
 }
 
-inline bool is64Bit()
-{
-#if USE(JSVALUE64)
-    return true;
-#else
-    return false;
-#endif
-}
-
-inline bool is32Bit()
-{
-    return !is64Bit();
-}
-
-inline bool isMIPS()
-{
-#if CPU(MIPS)
-    return true;
-#else
-    return false;
-#endif
-}
-
 inline bool optimizeForARMv7IDIVSupported()
 {
     return isARMv7IDIVSupported() && Options::useArchitectureSpecificOptimizations();
@@ -106,11 +83,6 @@ inline bool optimizeForX86()
 inline bool optimizeForX86_64()
 {
     return isX86_64() && Options::useArchitectureSpecificOptimizations();
-}
-
-inline bool hasSensibleDoubleToInt()
-{
-    return optimizeForX86();
 }
 
 } // namespace JSC

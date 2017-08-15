@@ -29,24 +29,35 @@
     left: 0;
     bottom: 0;
     width: 100%;
-    height: var(--inline-controls-bar-height);
+    height: 50px;
 }
 
 .media-controls.mac.inline > .controls-bar > * {
     position: absolute;
 }
 
-/* Start button blur */
-
-.media-controls.mac.inline > button.start > div {
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
+.media-controls.mac.inline button {
+    background-color: rgba(255, 255, 255, 0.572);
 }
 
-/* Controls placement */
+.media-controls.mac.inline button:active {
+    background-color: white;
+}
 
 .media-controls.mac.inline > .controls-bar button {
     height: 100% !important;
 }
+
+/* Blurred backgrounds */
+
+.media-controls.mac.inline > .controls-bar,
+.media-controls.mac.inline .volume-slider-container:before {
+    /* FIXME: we want to use the real System Dark treatment here, see <rdar://problem/19993961> */
+    background-color: rgba(30, 30, 30, 0.45);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+/* Controls placement */
 
 .media-controls.mac.inline button.play-pause {
     -webkit-mask-position-y: 12px;
@@ -57,7 +68,7 @@
 }
 
 .media-controls.mac.inline .scrubber.slider {
-    top: 13px;
+    top: 23px;
 }
 
 .media-controls.mac.inline button.mute {
@@ -92,25 +103,32 @@
 .media-controls.mac.inline .volume-slider-container {
     position: absolute;
 
-    bottom: 50px;
-    width: 81px;
-    height: 31px;
-    transform: rotate(-90deg) translate(25px, -25px);
+    top: 0px;
+    width: 31px;
+    height: 81px;
+    transform: translateY(-100%);
 }
 
-.media-controls.mac.inline .volume-slider-container > .background-tint {
+.media-controls.mac.inline .volume-slider-container:before {
+    content: "";
+
+    position: absolute;
     top: 0;
-    left: 1px;
+    left: 0;
     right: 0;
-    bottom: 0px;
-    width: auto;
-}
+    bottom: 1px;
 
-.media-controls.mac.inline .volume-slider-container > .background-tint > div {
-    border-radius: 0 4px 4px 0;
+    border-radius: 4px 4px 0 0;
 }
 
 .media-controls.mac.inline .volume.slider {
-    left: 11px;
-    top: 10px;
+    transform: rotate(-90deg);
+    left: -15px;
+    top: 40px;
+}
+
+/* Tracks Panel */
+
+.media-controls.mac.inline .tracks-panel {
+    bottom: 51px;
 }

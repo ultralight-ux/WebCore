@@ -35,9 +35,7 @@
 #include "HTMLNames.h"
 #include "HTMLTableElement.h"
 #include "LayoutRepainter.h"
-#include "RenderBlockFlow.h"
 #include "RenderChildIterator.h"
-#include "RenderDescendantIterator.h"
 #include "RenderIterator.h"
 #include "RenderLayer.h"
 #include "RenderNamedFlowFragment.h"
@@ -596,16 +594,6 @@ void RenderTable::layout()
             repaintRectangle(LayoutRect(movedSectionLogicalTop, visualOverflowRect().y(), visualOverflowRect().maxX() - movedSectionLogicalTop, visualOverflowRect().height()));
     }
 
-    bool paginated = view().layoutState() && view().layoutState()->isPaginated();
-    if (sectionMoved && paginated) {
-        markForPaginationRelayoutIfNeeded();
-        layoutIfNeeded();
-    }
-    
-    // FIXME: This value isn't the intrinsic content logical height, but we need
-    // to update the value as its used by flexbox layout. crbug.com/367324
-    cacheIntrinsicContentLogicalHeightForFlexItem(contentLogicalHeight());
-    
     m_columnLogicalWidthChanged = false;
     clearNeedsLayout();
 }
@@ -761,7 +749,7 @@ void RenderTable::paintObject(PaintInfo& paintInfo, const LayoutPoint& paintOffs
         paintOutline(paintInfo, LayoutRect(paintOffset, size()));
 }
 
-void RenderTable::adjustBorderBoxRectForPainting(LayoutRect& rect)
+void RenderTable::subtractCaptionRect(LayoutRect& rect) const
 {
     for (unsigned i = 0; i < m_captions.size(); i++) {
         LayoutUnit captionLogicalHeight = m_captions[i]->logicalHeight() + m_captions[i]->marginBefore() + m_captions[i]->marginAfter();
@@ -776,8 +764,6 @@ void RenderTable::adjustBorderBoxRectForPainting(LayoutRect& rect)
                 rect.move(captionLogicalHeight, 0);
         }
     }
-    
-    RenderBlock::adjustBorderBoxRectForPainting(rect);
 }
 
 void RenderTable::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
@@ -786,8 +772,8 @@ void RenderTable::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& p
         return;
 
     LayoutRect rect(paintOffset, size());
-    adjustBorderBoxRectForPainting(rect);
-    
+    subtractCaptionRect(rect);
+
     BackgroundBleedAvoidance bleedAvoidance = determineBackgroundBleedAvoidance(paintInfo.context());
     if (!boxShadowShouldBeAppliedToBackground(rect.location(), bleedAvoidance))
         paintBoxShadow(paintInfo, rect, style(), Normal);
@@ -804,7 +790,7 @@ void RenderTable::paintMask(PaintInfo& paintInfo, const LayoutPoint& paintOffset
         return;
 
     LayoutRect rect(paintOffset, size());
-    adjustBorderBoxRectForPainting(rect);
+    subtractCaptionRect(rect);
 
     paintMaskImages(paintInfo, rect);
 }

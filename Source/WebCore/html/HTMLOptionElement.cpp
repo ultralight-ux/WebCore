@@ -3,7 +3,7 @@
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
  *           (C) 2006 Alexey Proskuryakov (ap@nypop.com)
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2005, 2006, 2010, 2016 Apple Inc. All rights reserved.
  * Copyright (C) 2010 Google Inc. All rights reserved.
  * Copyright (C) 2011 Motorola Mobility, Inc.  All rights reserved.
  *
@@ -276,14 +276,6 @@ String HTMLOptionElement::label() const
     return collectOptionInnerText().stripWhiteSpace(isHTMLSpace).simplifyWhiteSpace(isHTMLSpace);
 }
 
-// Same as label() but ignores the label content attribute in quirks mode for compatibility with other browsers.
-String HTMLOptionElement::displayLabel() const
-{
-    if (document().inQuirksMode())
-        return collectOptionInnerText().stripWhiteSpace(isHTMLSpace).simplifyWhiteSpace(isHTMLSpace);
-    return label();
-}
-
 void HTMLOptionElement::setLabel(const String& label)
 {
     setAttributeWithoutSynchronization(labelAttr, label);
@@ -303,8 +295,8 @@ String HTMLOptionElement::textIndentedToRespectGroupLabel() const
 {
     ContainerNode* parent = parentNode();
     if (is<HTMLOptGroupElement>(parent))
-        return "    " + displayLabel();
-    return displayLabel();
+        return "    " + label();
+    return label();
 }
 
 bool HTMLOptionElement::isDisabledFormControl() const
@@ -342,7 +334,7 @@ String HTMLOptionElement::collectOptionInnerText() const
         if (is<Text>(*node))
             text.append(node->nodeValue());
         // Text nodes inside script elements are not part of the option text.
-        if (is<Element>(*node) && isScriptElement(downcast<Element>(*node)))
+        if (is<Element>(*node) && toScriptElementIfPossible(downcast<Element>(node)))
             node = NodeTraversal::nextSkippingChildren(*node, this);
         else
             node = NodeTraversal::next(*node, this);

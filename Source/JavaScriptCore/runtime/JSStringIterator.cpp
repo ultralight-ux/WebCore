@@ -37,7 +37,7 @@ const ClassInfo JSStringIterator::s_info = { "String Iterator", &Base::s_info, 0
 void JSStringIterator::finishCreation(VM& vm, JSGlobalObject*, JSString* iteratedString)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     putDirect(vm, vm.propertyNames->builtinNames().iteratedStringPrivateName(), iteratedString);
     putDirect(vm, vm.propertyNames->builtinNames().stringIteratorNextIndexPrivateName(), jsNumber(0));
 }

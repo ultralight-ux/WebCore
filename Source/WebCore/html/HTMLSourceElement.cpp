@@ -125,7 +125,7 @@ void HTMLSourceElement::scheduleErrorEvent()
     if (m_errorEventTimer.isActive())
         return;
 
-    m_errorEventTimer.startOneShot(0_s);
+    m_errorEventTimer.startOneShot(0);
 }
 
 void HTMLSourceElement::cancelPendingErrorEvent()
@@ -166,7 +166,7 @@ void HTMLSourceElement::suspend(ReasonForSuspension why)
 void HTMLSourceElement::resume()
 {
     if (m_shouldRescheduleErrorEventOnResume) {
-        m_errorEventTimer.startOneShot(0_s);
+        m_errorEventTimer.startOneShot(0);
         m_shouldRescheduleErrorEventOnResume = false;
     }
 }

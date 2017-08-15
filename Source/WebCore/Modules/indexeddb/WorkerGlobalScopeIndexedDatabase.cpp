@@ -35,6 +35,7 @@
 #include "IDBFactory.h"
 #include "IDBOpenDBRequest.h"
 #include "ScriptExecutionContext.h"
+#include "SecurityOrigin.h"
 #include "WorkerGlobalScope.h"
 
 namespace WebCore {

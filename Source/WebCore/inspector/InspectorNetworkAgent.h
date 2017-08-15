@@ -49,7 +49,7 @@ class Document;
 class DocumentLoader;
 class DocumentThreadableLoader;
 class InspectorPageAgent;
-class NetworkLoadMetrics;
+class NetworkLoadTiming;
 class NetworkResourcesData;
 class ResourceError;
 class ResourceLoader;
@@ -76,9 +76,10 @@ public:
     void willRecalculateStyle();
     void didRecalculateStyle();
     void willSendRequest(unsigned long identifier, DocumentLoader&, ResourceRequest&, const ResourceResponse& redirectResponse);
+    void markResourceAsCached(unsigned long identifier);
     void didReceiveResponse(unsigned long identifier, DocumentLoader&, const ResourceResponse&, ResourceLoader*);
     void didReceiveData(unsigned long identifier, const char* data, int dataLength, int encodedDataLength);
-    void didFinishLoading(unsigned long identifier, DocumentLoader&, const NetworkLoadMetrics&, ResourceLoader*);
+    void didFinishLoading(unsigned long identifier, DocumentLoader&, double finishTime);
     void didFailLoading(unsigned long identifier, DocumentLoader&, const ResourceError&);
     void didLoadResourceFromMemoryCache(DocumentLoader&, CachedResource&);
     void didReceiveThreadableLoaderResponse(unsigned long identifier, DocumentThreadableLoader&);
@@ -110,14 +111,13 @@ public:
     void disable(ErrorString&) override;
     void setExtraHTTPHeaders(ErrorString&, const Inspector::InspectorObject& headers) override;
     void getResponseBody(ErrorString&, const String& requestId, String* content, bool* base64Encoded) override;
-    void setResourceCachingDisabled(ErrorString&, bool disabled) override;
+    void setCacheDisabled(ErrorString&, bool cacheDisabled) override;
     void loadResource(ErrorString&, const String& frameId, const String& url, Ref<LoadResourceCallback>&&) override;
 
 private:
     void enable();
 
-    Ref<Inspector::Protocol::Network::ResourceTiming> buildObjectForTiming(const NetworkLoadMetrics&, ResourceLoader&);
-    Ref<Inspector::Protocol::Network::Metrics> buildObjectForMetrics(const NetworkLoadMetrics&);
+    Ref<Inspector::Protocol::Network::ResourceTiming> buildObjectForTiming(const NetworkLoadTiming&, ResourceLoader&);
     RefPtr<Inspector::Protocol::Network::Response> buildObjectForResourceResponse(const ResourceResponse&, ResourceLoader*);
     Ref<Inspector::Protocol::Network::CachedResource> buildObjectForCachedResource(CachedResource*);
 
@@ -133,6 +133,7 @@ private:
 
     std::unique_ptr<NetworkResourcesData> m_resourcesData;
     bool m_enabled { false };
+    bool m_cacheDisabled { false };
     bool m_loadingXHRSynchronously { false };
     HashMap<String, String> m_extraRequestHeaders;
     HashSet<unsigned long> m_hiddenRequestIdentifiers;

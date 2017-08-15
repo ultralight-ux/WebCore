@@ -65,7 +65,7 @@ public:
             return;
         m_active = false;
 
-        m_timer.startOneShot(1_s * m_hysteresisSeconds);
+        m_timer.startOneShot(m_hysteresisSeconds);
     }
 
     void impulse()
@@ -89,7 +89,7 @@ private:
     }
 
     std::function<void(HysteresisState)> m_callback;
-    double m_hysteresisSeconds; // FIXME: Should use Seconds.
+    double m_hysteresisSeconds;
     bool m_active;
     Timer m_timer;
 };

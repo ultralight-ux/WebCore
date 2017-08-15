@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2012, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -638,17 +638,12 @@ ALWAYS_INLINE bool JSValue::getUInt32(uint32_t& v) const
 
 ALWAYS_INLINE Identifier JSValue::toPropertyKey(ExecState* exec) const
 {
-    VM& vm = exec->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
     if (isString())
         return asString(*this)->toIdentifier(exec);
 
     JSValue primitive = toPrimitive(exec, PreferString);
-    RETURN_IF_EXCEPTION(scope, vm.propertyNames->emptyIdentifier);
     if (primitive.isSymbol())
         return Identifier::fromUid(asSymbol(primitive)->privateName());
-    scope.release();
     return primitive.toString(exec)->toIdentifier(exec);
 }
 
@@ -772,14 +767,14 @@ inline bool JSValue::isConstructor(ConstructType& constructType, ConstructData& 
 }
 
 // this method is here to be after the inline declaration of JSCell::inherits
-inline bool JSValue::inherits(VM& vm, const ClassInfo* classInfo) const
+inline bool JSValue::inherits(const ClassInfo* classInfo) const
 {
-    return isCell() && asCell()->inherits(vm, classInfo);
+    return isCell() && asCell()->inherits(classInfo);
 }
 
-inline const ClassInfo* JSValue::classInfoOrNull(VM& vm) const
+inline const ClassInfo* JSValue::classInfoOrNull() const
 {
-    return isCell() ? asCell()->classInfo(vm) : nullptr;
+    return isCell() ? asCell()->classInfo() : nullptr;
 }
 
 inline JSValue JSValue::toThis(ExecState* exec, ECMAMode ecmaMode) const

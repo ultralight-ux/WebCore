@@ -70,7 +70,7 @@ public:
         return internalLength();
     }
     
-    bool isMappedArgument(uint32_t i) const
+    bool canAccessIndexQuickly(uint32_t i) const
     {
         if (i >= m_totalLength)
             return false;
@@ -80,14 +80,14 @@ public:
         return !!overflowStorage()[i - namedLength].get();
     }
 
-    bool isMappedArgumentInDFG(uint32_t i) const
+    bool canAccessArgumentIndexQuicklyInDFG(uint32_t i) const
     {
-        return isMappedArgument(i);
+        return canAccessIndexQuickly(i);
     }
     
     JSValue getIndexQuickly(uint32_t i) const
     {
-        ASSERT_WITH_SECURITY_IMPLICATION(isMappedArgument(i));
+        ASSERT_WITH_SECURITY_IMPLICATION(canAccessIndexQuickly(i));
         unsigned namedLength = m_table->length();
         if (i < namedLength)
             return m_scope->variableAt(m_table->get(i)).get();
@@ -96,7 +96,7 @@ public:
 
     void setIndexQuickly(VM& vm, uint32_t i, JSValue value)
     {
-        ASSERT_WITH_SECURITY_IMPLICATION(isMappedArgument(i));
+        ASSERT_WITH_SECURITY_IMPLICATION(canAccessIndexQuickly(i));
         unsigned namedLength = m_table->length();
         if (i < namedLength)
             m_scope->variableAt(m_table->get(i)).set(vm, m_scope.get(), value);
@@ -108,27 +108,12 @@ public:
     {
         return m_callee;
     }
-
+    
     bool overrodeThings() const { return m_overrodeThings; }
     void overrideThings(VM&);
     void overrideThingsIfNecessary(VM&);
-    void unmapArgument(VM&, uint32_t index);
+    void overrideArgument(VM&, uint32_t index);
     
-    void initModifiedArgumentsDescriptorIfNecessary(VM& vm)
-    {
-        GenericArguments<ScopedArguments>::initModifiedArgumentsDescriptorIfNecessary(vm, m_table->length());
-    }
-
-    void setModifiedArgumentDescriptor(VM& vm, unsigned index)
-    {
-        GenericArguments<ScopedArguments>::setModifiedArgumentDescriptor(vm, index, m_table->length());
-    }
-
-    bool isModifiedArgumentDescriptor(unsigned index)
-    {
-        return GenericArguments<ScopedArguments>::isModifiedArgumentDescriptor(index, m_table->length());
-    }
-
     void copyToArguments(ExecState*, VirtualRegister firstElementDest, unsigned offset, unsigned length);
 
     DECLARE_INFO;

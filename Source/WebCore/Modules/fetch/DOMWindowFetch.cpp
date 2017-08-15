@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2016 Canon Inc.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted, provided that the following conditions
@@ -33,17 +32,16 @@
 #if ENABLE(FETCH_API)
 
 #include "DOMWindow.h"
-#include "Document.h"
+#include "FetchRequest.h"
 #include "FetchResponse.h"
 
 namespace WebCore {
 
 void DOMWindowFetch::fetch(DOMWindow& window, FetchRequest& request, Ref<DeferredPromise>&& promise)
 {
-    auto* document = window.document();
-    if (!document)
+    if (!window.scriptExecutionContext())
         return;
-    FetchResponse::fetch(*document, request, WTFMove(promise));
+    FetchResponse::fetch(*window.scriptExecutionContext(), request, WTFMove(promise));
 }
 
 } // namespace WebCore

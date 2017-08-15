@@ -45,26 +45,26 @@ class DOMError;
 
 class MediaEndpointSessionDescription : public RefCounted<MediaEndpointSessionDescription> {
 public:
-    static Ref<MediaEndpointSessionDescription> create(RTCSdpType, RefPtr<MediaEndpointSessionConfiguration>&&);
+    static Ref<MediaEndpointSessionDescription> create(RTCSessionDescription::SdpType, RefPtr<MediaEndpointSessionConfiguration>&&);
     static ExceptionOr<Ref<MediaEndpointSessionDescription>> create(RefPtr<RTCSessionDescription>&&, const SDPProcessor&);
     virtual ~MediaEndpointSessionDescription() { } // FIXME: Why is this virtual? There are no other virtual functions in this class.
 
     RefPtr<RTCSessionDescription> toRTCSessionDescription(const SDPProcessor&) const;
 
-    RTCSdpType type() const { return m_type; }
+    RTCSessionDescription::SdpType type() const { return m_type; }
     const String& typeString() const;
     MediaEndpointSessionConfiguration* configuration() const { return m_configuration.get(); }
 
     bool isLaterThan(MediaEndpointSessionDescription* other) const;
 
 private:
-    MediaEndpointSessionDescription(RTCSdpType type, RefPtr<MediaEndpointSessionConfiguration>&& configuration, RefPtr<RTCSessionDescription>&& rtcDescription)
+    MediaEndpointSessionDescription(RTCSessionDescription::SdpType type, RefPtr<MediaEndpointSessionConfiguration>&& configuration, RefPtr<RTCSessionDescription>&& rtcDescription)
         : m_type(type)
         , m_configuration(configuration)
         , m_rtcDescription(WTFMove(rtcDescription))
     { }
 
-    RTCSdpType m_type;
+    RTCSessionDescription::SdpType m_type;
     RefPtr<MediaEndpointSessionConfiguration> m_configuration;
 
     RefPtr<RTCSessionDescription> m_rtcDescription;

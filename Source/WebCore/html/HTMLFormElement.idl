@@ -19,24 +19,26 @@
  */
 
 [
-    LegacyUnenumerableNamedProperties,
+    CustomNamedGetter,
     OverrideBuiltins,
     JSGenerateToNativeObject,
 ] interface HTMLFormElement : HTMLElement {
     [Reflect=accept_charset] attribute DOMString acceptCharset;
     [Reflect, URL] attribute USVString action;
     attribute DOMString autocomplete;
+
     attribute DOMString enctype;
     [ImplementedAs=enctype] attribute DOMString encoding;
     attribute DOMString method;
+
     [Reflect] attribute DOMString name;
     [Reflect] attribute boolean noValidate;
     [Reflect] attribute DOMString target;
 
     readonly attribute HTMLFormControlsCollection elements;
-    readonly attribute unsigned long length;
-    getter Element? (unsigned long index);
-    getter (RadioNodeList or Element)? (DOMString name);
+    readonly attribute long length;
+
+    getter Element (unsigned long index);
 
     [ImplementedAs=submitFromJavaScript] void submit();
     void reset();

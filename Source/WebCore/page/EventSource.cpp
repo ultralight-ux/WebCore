@@ -132,13 +132,13 @@ void EventSource::scheduleInitialConnect()
     ASSERT(m_state == CONNECTING);
     ASSERT(!m_requestInFlight);
 
-    m_connectTimer.startOneShot(0_s);
+    m_connectTimer.startOneShot(0);
 }
 
 void EventSource::scheduleReconnect()
 {
     m_state = CONNECTING;
-    m_connectTimer.startOneShot(1_ms * m_reconnectDelay);
+    m_connectTimer.startOneShot(m_reconnectDelay / 1000.0);
     dispatchEvent(Event::create(eventNames().errorEvent, false, false));
 }
 
@@ -213,7 +213,7 @@ void EventSource::didReceiveData(const char* data, int length)
     parseEventStream();
 }
 
-void EventSource::didFinishLoading(unsigned long)
+void EventSource::didFinishLoading(unsigned long, double)
 {
     ASSERT(m_state == OPEN);
     ASSERT(m_requestInFlight);

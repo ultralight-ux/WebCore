@@ -28,8 +28,6 @@
 [
     NoInterfaceObject,
 ] interface WindowOrWorkerGlobalScope {
-    [Replaceable] readonly attribute USVString origin;
-
     // Timers.
     [Custom] long setTimeout(any handler, optional long timeout = 0);
     void clearTimeout(optional long handle = 0);

@@ -37,7 +37,6 @@
 #include "JSStringIterator.h"
 #include "Lookup.h"
 #include "ObjectPrototype.h"
-#include "ParseInt.h"
 #include "PropertyNameArray.h"
 #include "RegExpCache.h"
 #include "RegExpConstructor.h"
@@ -76,6 +75,19 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncToUpperCase(ExecState*);
 EncodedJSValue JSC_HOST_CALL stringProtoFuncLocaleCompare(ExecState*);
 EncodedJSValue JSC_HOST_CALL stringProtoFuncToLocaleLowerCase(ExecState*);
 EncodedJSValue JSC_HOST_CALL stringProtoFuncToLocaleUpperCase(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncBig(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncSmall(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncBlink(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncBold(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncFixed(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncItalics(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncStrike(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncSub(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncSup(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncFontcolor(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncFontsize(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncAnchor(ExecState*);
+EncodedJSValue JSC_HOST_CALL stringProtoFuncLink(ExecState*);
 EncodedJSValue JSC_HOST_CALL stringProtoFuncTrim(ExecState*);
 EncodedJSValue JSC_HOST_CALL stringProtoFuncTrimLeft(ExecState*);
 EncodedJSValue JSC_HOST_CALL stringProtoFuncTrimRight(ExecState*);
@@ -102,19 +114,6 @@ const ClassInfo StringPrototype::s_info = { "String", &StringObject::s_info, &st
     replace   JSBuiltin    DontEnum|Function 2
     search    JSBuiltin    DontEnum|Function 1
     split     JSBuiltin    DontEnum|Function 1
-    anchor    JSBuiltin    DontEnum|Function 1
-    big       JSBuiltin    DontEnum|Function 0
-    bold      JSBuiltin    DontEnum|Function 0
-    blink     JSBuiltin    DontEnum|Function 0
-    fixed     JSBuiltin    DontEnum|Function 0
-    fontcolor JSBuiltin    DontEnum|Function 1
-    fontsize  JSBuiltin    DontEnum|Function 1
-    italics   JSBuiltin    DontEnum|Function 0
-    link      JSBuiltin    DontEnum|Function 1
-    small     JSBuiltin    DontEnum|Function 0
-    strike    JSBuiltin    DontEnum|Function 0
-    sub       JSBuiltin    DontEnum|Function 0
-    sup       JSBuiltin    DontEnum|Function 0
 @end
 */
 
@@ -127,7 +126,7 @@ StringPrototype::StringPrototype(VM& vm, Structure* structure)
 void StringPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject, JSString* nameAndMessage)
 {
     Base::finishCreation(vm, nameAndMessage);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
     JSC_NATIVE_INTRINSIC_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->toString, stringProtoFuncToString, DontEnum, 0, StringPrototypeValueOfIntrinsic);
     JSC_NATIVE_INTRINSIC_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->valueOf, stringProtoFuncToString, DontEnum, 0, StringPrototypeValueOfIntrinsic);
@@ -142,7 +141,7 @@ void StringPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject, JSStr
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("slice", stringProtoFuncSlice, DontEnum, 2);
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("substr", stringProtoFuncSubstr, DontEnum, 2);
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("substring", stringProtoFuncSubstring, DontEnum, 2);
-    JSC_NATIVE_INTRINSIC_FUNCTION_WITHOUT_TRANSITION("toLowerCase", stringProtoFuncToLowerCase, DontEnum, 0, StringPrototypeToLowerCaseIntrinsic);
+    JSC_NATIVE_INTRINSIC_FUNCTION_WITHOUT_TRANSITION("toLowerCase", stringProtoFuncToLowerCase, DontEnum, 0, ToLowerCaseIntrinsic);
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("toUpperCase", stringProtoFuncToUpperCase, DontEnum, 0);
 #if ENABLE(INTL)
     JSC_BUILTIN_FUNCTION_WITHOUT_TRANSITION("localeCompare", stringPrototypeLocaleCompareCodeGenerator, DontEnum);
@@ -153,6 +152,19 @@ void StringPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject, JSStr
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("toLocaleLowerCase", stringProtoFuncToLowerCase, DontEnum, 0);
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("toLocaleUpperCase", stringProtoFuncToUpperCase, DontEnum, 0);
 #endif
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("big", stringProtoFuncBig, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("small", stringProtoFuncSmall, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("blink", stringProtoFuncBlink, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("bold", stringProtoFuncBold, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("fixed", stringProtoFuncFixed, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("italics", stringProtoFuncItalics, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("strike", stringProtoFuncStrike, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("sub", stringProtoFuncSub, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("sup", stringProtoFuncSup, DontEnum, 0);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("fontcolor", stringProtoFuncFontcolor, DontEnum, 1);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("fontsize", stringProtoFuncFontsize, DontEnum, 1);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("anchor", stringProtoFuncAnchor, DontEnum, 1);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("link", stringProtoFuncLink, DontEnum, 1);
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("trim", stringProtoFuncTrim, DontEnum, 0);
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("trimLeft", stringProtoFuncTrimLeft, DontEnum, 0);
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("trimRight", stringProtoFuncTrimRight, DontEnum, 0);
@@ -543,7 +555,6 @@ static ALWAYS_INLINE EncodedJSValue replaceUsingRegExpSearch(
 
                 cachedCall.setThis(jsUndefined());
                 JSValue jsResult = cachedCall.call();
-                RETURN_IF_EXCEPTION(scope, encodedJSValue());
                 replacements.append(jsResult.toWTFString(exec));
                 RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
@@ -584,7 +595,6 @@ static ALWAYS_INLINE EncodedJSValue replaceUsingRegExpSearch(
 
                 cachedCall.setThis(jsUndefined());
                 JSValue jsResult = cachedCall.call();
-                RETURN_IF_EXCEPTION(scope, encodedJSValue());
                 replacements.append(jsResult.toWTFString(exec));
                 RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
@@ -724,7 +734,6 @@ static ALWAYS_INLINE EncodedJSValue replaceUsingStringSearch(VM& vm, ExecState* 
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     const String& string = jsString->value(exec);
-    RETURN_IF_EXCEPTION(scope, encodedJSValue());
     String searchString = searchValue.toWTFString(exec);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
@@ -752,7 +761,7 @@ static ALWAYS_INLINE EncodedJSValue replaceUsingStringSearch(VM& vm, ExecState* 
 
     size_t matchEnd = matchStart + searchString.impl()->length();
     int ovector[2] = { static_cast<int>(matchStart),  static_cast<int>(matchEnd)};
-    String middlePart = callType != CallType::None ? replaceString : substituteBackreferences(replaceString, string, ovector, 0);
+    String middlePart = substituteBackreferences(replaceString, string, ovector, 0);
 
     size_t leftLength = stringImpl->length() - matchEnd;
     String rightPart(StringImpl::createSubstringSharingImpl(*stringImpl, matchEnd, leftLength));
@@ -816,10 +825,9 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncRepeatCharacter(ExecState* exec)
     ASSERT(repeatCount >= 0);
     ASSERT(!repeatCountValue.isDouble() || repeatCountValue.asDouble() == repeatCount);
 
-    auto viewWithString = string->viewWithUnderlyingString(exec);
+    auto viewWithString = string->viewWithUnderlyingString(*exec);
     StringView view = viewWithString.view;
-    ASSERT(view.length() == 1);
-    scope.assertNoException();
+    ASSERT(view.length() == 1 && !scope.exception());
     UChar character = view[0];
     scope.release();
     if (!(character & ~0xff))
@@ -830,7 +838,7 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncRepeatCharacter(ExecState* exec)
 ALWAYS_INLINE EncodedJSValue replace(
     VM& vm, ExecState* exec, JSString* string, JSValue searchValue, JSValue replaceValue)
 {
-    if (searchValue.inherits(vm, RegExpObject::info()))
+    if (searchValue.inherits(RegExpObject::info()))
         return replaceUsingRegExpSearch(vm, exec, string, searchValue, replaceValue);
     return replaceUsingStringSearch(vm, exec, string, searchValue, replaceValue);
 }
@@ -857,7 +865,7 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncReplaceUsingRegExp(ExecState* exec)
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
     JSValue searchValue = exec->argument(0);
-    if (!searchValue.inherits(vm, RegExpObject::info()))
+    if (!searchValue.inherits(RegExpObject::info()))
         return JSValue::encode(jsUndefined());
 
     scope.release();
@@ -899,7 +907,7 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncToString(ExecState* exec)
     if (thisValue.isString())
         return JSValue::encode(thisValue);
 
-    if (thisValue.inherits(vm, StringObject::info()))
+    if (thisValue.inherits(StringObject::info()))
         return JSValue::encode(asStringObject(thisValue)->internalValue());
 
     return throwVMTypeError(exec, scope);
@@ -913,7 +921,7 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncCharAt(ExecState* exec)
     JSValue thisValue = exec->thisValue();
     if (!checkObjectCoercible(thisValue))
         return throwVMTypeError(exec, scope);
-    auto viewWithString = thisValue.toString(exec)->viewWithUnderlyingString(exec);
+    auto viewWithString = thisValue.toString(exec)->viewWithUnderlyingString(*exec);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
     StringView view = viewWithString.view;
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
@@ -938,7 +946,7 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncCharCodeAt(ExecState* exec)
     JSValue thisValue = exec->thisValue();
     if (!checkObjectCoercible(thisValue))
         return throwVMTypeError(exec, scope);
-    auto viewWithString = thisValue.toString(exec)->viewWithUnderlyingString(exec);
+    auto viewWithString = thisValue.toString(exec)->viewWithUnderlyingString(*exec);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
     StringView view = viewWithString.view;
     JSValue a0 = exec->argument(0);
@@ -1049,9 +1057,9 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncIndexOf(ExecState* exec)
     if (thisJSString->length() < otherJSString->length() + pos)
         return JSValue::encode(jsNumber(-1));
 
-    auto thisViewWithString = thisJSString->viewWithUnderlyingString(exec);
+    auto thisViewWithString = thisJSString->viewWithUnderlyingString(*exec);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
-    auto otherViewWithString = otherJSString->viewWithUnderlyingString(exec);
+    auto otherViewWithString = otherJSString->viewWithUnderlyingString(*exec);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
     size_t result = thisViewWithString.view.find(otherViewWithString.view, pos);
     if (result == notFound)
@@ -1557,6 +1565,268 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncToLocaleUpperCase(ExecState* state)
 }
 #endif // ENABLE(INTL)
 
+EncodedJSValue JSC_HOST_CALL stringProtoFuncBig(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<big>", s, "</big>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncSmall(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<small>", s, "</small>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncBlink(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<blink>", s, "</blink>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncBold(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<b>", s, "</b>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncFixed(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<tt>", s, "</tt>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncItalics(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<i>", s, "</i>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncStrike(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<strike>", s, "</strike>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncSub(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<sub>", s, "</sub>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncSup(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<sup>", s, "</sup>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncFontcolor(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+
+    JSValue a0 = exec->argument(0);
+    String color = a0.toWTFString(exec);
+    color.replaceWithLiteral('"', "&quot;");
+
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<font color=\"", color, "\">", s, "</font>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncFontsize(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+
+    JSValue a0 = exec->argument(0);
+
+    uint32_t smallInteger;
+    if (a0.getUInt32(smallInteger) && smallInteger <= 9) {
+        unsigned stringSize = s.length();
+        unsigned bufferSize = 22 + stringSize;
+        // FIXME: Should we have an 8-bit version of this code path too? Or maybe only an 8-bit version?
+        UChar* buffer;
+        auto impl = StringImpl::tryCreateUninitialized(bufferSize, buffer);
+        if (!impl)
+            return JSValue::encode(jsUndefined());
+        buffer[0] = '<';
+        buffer[1] = 'f';
+        buffer[2] = 'o';
+        buffer[3] = 'n';
+        buffer[4] = 't';
+        buffer[5] = ' ';
+        buffer[6] = 's';
+        buffer[7] = 'i';
+        buffer[8] = 'z';
+        buffer[9] = 'e';
+        buffer[10] = '=';
+        buffer[11] = '"';
+        buffer[12] = '0' + smallInteger;
+        buffer[13] = '"';
+        buffer[14] = '>';
+        StringView(s).getCharactersWithUpconvert(&buffer[15]);
+        buffer[15 + stringSize] = '<';
+        buffer[16 + stringSize] = '/';
+        buffer[17 + stringSize] = 'f';
+        buffer[18 + stringSize] = 'o';
+        buffer[19 + stringSize] = 'n';
+        buffer[20 + stringSize] = 't';
+        buffer[21 + stringSize] = '>';
+        return JSValue::encode(jsNontrivialString(exec, WTFMove(impl)));
+    }
+
+    String fontSize = a0.toWTFString(exec);
+    fontSize.replaceWithLiteral('"', "&quot;");
+
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<font size=\"", fontSize, "\">", s, "</font>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncAnchor(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+
+    JSValue a0 = exec->argument(0);
+    String anchor = a0.toWTFString(exec);
+    anchor.replaceWithLiteral('"', "&quot;");
+
+    scope.release();
+    return JSValue::encode(jsMakeNontrivialString(exec, "<a name=\"", anchor, "\">", s, "</a>"));
+}
+
+EncodedJSValue JSC_HOST_CALL stringProtoFuncLink(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue thisValue = exec->thisValue();
+    if (!checkObjectCoercible(thisValue))
+        return throwVMTypeError(exec, scope);
+    String s = thisValue.toWTFString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+
+    JSValue a0 = exec->argument(0);
+    String linkText = a0.toWTFString(exec);
+    linkText.replaceWithLiteral('"', "&quot;");
+
+    unsigned linkTextSize = linkText.length();
+    unsigned stringSize = s.length();
+    unsigned bufferSize = 15 + linkTextSize + stringSize;
+    // FIXME: Should we have an 8-bit version of this code path too? Or maybe only an 8-bit version?
+    UChar* buffer;
+    auto impl = StringImpl::tryCreateUninitialized(bufferSize, buffer);
+    if (!impl)
+        return JSValue::encode(jsUndefined());
+    buffer[0] = '<';
+    buffer[1] = 'a';
+    buffer[2] = ' ';
+    buffer[3] = 'h';
+    buffer[4] = 'r';
+    buffer[5] = 'e';
+    buffer[6] = 'f';
+    buffer[7] = '=';
+    buffer[8] = '"';
+    StringView(linkText).getCharactersWithUpconvert(&buffer[9]);
+    buffer[9 + linkTextSize] = '"';
+    buffer[10 + linkTextSize] = '>';
+    StringView(s).getCharactersWithUpconvert(&buffer[11 + linkTextSize]);
+    buffer[11 + linkTextSize + stringSize] = '<';
+    buffer[12 + linkTextSize + stringSize] = '/';
+    buffer[13 + linkTextSize + stringSize] = 'a';
+    buffer[14 + linkTextSize + stringSize] = '>';
+    return JSValue::encode(jsNontrivialString(exec, WTFMove(impl)));
+}
+
 enum {
     TrimLeft = 1,
     TrimRight = 2
@@ -1799,7 +2069,7 @@ EncodedJSValue JSC_HOST_CALL stringProtoFuncNormalize(ExecState* exec)
     JSValue thisValue = exec->thisValue();
     if (!checkObjectCoercible(thisValue))
         return throwVMTypeError(exec, scope);
-    auto viewWithString = thisValue.toString(exec)->viewWithUnderlyingString(exec);
+    auto viewWithString = thisValue.toString(exec)->viewWithUnderlyingString(*exec);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
     StringView view = viewWithString.view;
 

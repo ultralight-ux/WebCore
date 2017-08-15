@@ -25,6 +25,7 @@
 #include "GraphicsContext.h"
 #include "Frame.h"
 #include "FrameView.h"
+#include "HTMLNames.h"
 #include "RenderView.h"
 #include "StyleInheritedData.h"
 #include "StyleResolver.h"
@@ -285,19 +286,16 @@ void PrintContext::outputLinkedDestinations(GraphicsContext& graphicsContext, Do
 
 String PrintContext::pageProperty(Frame* frame, const char* propertyName, int pageNumber)
 {
-    ASSERT(frame);
-    ASSERT(frame->document());
-
-    auto& document = *frame->document();
+    Document* document = frame->document();
     PrintContext printContext(frame);
     printContext.begin(800); // Any width is OK here.
-    document.updateLayout();
-    auto style = document.styleScope().resolver().styleForPage(pageNumber);
+    document->updateLayout();
+    std::unique_ptr<RenderStyle> style = document->styleScope().resolver().styleForPage(pageNumber);
 
     // Implement formatters for properties we care about.
     if (!strcmp(propertyName, "margin-left")) {
         if (style->marginLeft().isAuto())
-            return ASCIILiteral { "auto" };
+            return String("auto");
         return String::number(style->marginLeft().value());
     }
     if (!strcmp(propertyName, "line-height"))
@@ -307,9 +305,9 @@ String PrintContext::pageProperty(Frame* frame, const char* propertyName, int pa
     if (!strcmp(propertyName, "font-family"))
         return style->fontDescription().firstFamily();
     if (!strcmp(propertyName, "size"))
-        return String::number(style->pageSize().width.value()) + ' ' + String::number(style->pageSize().height.value());
+        return String::number(style->pageSize().width().value()) + ' ' + String::number(style->pageSize().height().value());
 
-    return makeString("pageProperty() unimplemented for: ", propertyName);
+    return String("pageProperty() unimplemented for: ") + propertyName;
 }
 
 bool PrintContext::isPageBoxVisible(Frame* frame, int pageNumber)

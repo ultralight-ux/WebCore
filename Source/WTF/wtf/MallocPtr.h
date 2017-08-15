@@ -69,17 +69,6 @@ public:
         return !m_ptr;
     }
 
-    T& operator*() const
-    {
-        ASSERT(m_ptr);
-        return *m_ptr;
-    }
-
-    T* operator->() const
-    {
-        return m_ptr;
-    }
-
     MallocPtr& operator=(MallocPtr&& other)
     {
         MallocPtr ptr = WTFMove(other);

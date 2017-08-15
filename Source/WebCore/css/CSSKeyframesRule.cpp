@@ -211,10 +211,12 @@ CSSKeyframeRule* CSSKeyframesRule::item(unsigned index) const
 { 
     if (index >= length())
         return nullptr;
+
     ASSERT(m_childRuleCSSOMWrappers.size() == m_keyframesRule->keyframes().size());
-    auto& rule = m_childRuleCSSOMWrappers[index];
+    RefPtr<CSSKeyframeRule>& rule = m_childRuleCSSOMWrappers[index];
     if (!rule)
-        rule = adoptRef(*new CSSKeyframeRule(m_keyframesRule->keyframes()[index], const_cast<CSSKeyframesRule*>(this)));
+        rule = adoptRef(new CSSKeyframeRule(const_cast<StyleRuleKeyframe&>(m_keyframesRule->keyframes()[index].get()), const_cast<CSSKeyframesRule*>(this)));
+
     return rule.get(); 
 }
 

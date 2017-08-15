@@ -80,8 +80,7 @@ void HTMLOListElement::parseAttribute(const QualifiedName& name, const AtomicStr
 {
     if (name == startAttr) {
         int oldStart = start();
-        auto optionalStart = parseHTMLInteger(value);
-        m_start = optionalStart ? std::optional<int>(optionalStart.value()) : std::nullopt;
+        m_start = parseHTMLInteger(value);
         if (oldStart == start())
             return;
         updateItemValues();

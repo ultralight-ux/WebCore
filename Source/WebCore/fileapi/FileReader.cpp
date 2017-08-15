@@ -228,20 +228,18 @@ void FileReader::fireEvent(const AtomicString& type)
     dispatchEvent(ProgressEvent::create(type, true, m_loader ? m_loader->bytesLoaded() : 0, m_loader ? m_loader->totalBytes() : 0));
 }
 
-std::optional<Variant<String, RefPtr<JSC::ArrayBuffer>>> FileReader::result() const
+RefPtr<ArrayBuffer> FileReader::arrayBufferResult() const
 {
     if (!m_loader || m_error)
-        return std::nullopt;
-    if (m_readType == FileReaderLoader::ReadAsArrayBuffer) {
-        auto result = m_loader->arrayBufferResult();
-        if (!result)
-            return std::nullopt;
-        return { result };
-    }
-    String result = m_loader->stringResult();
-    if (result.isNull())
-        return std::nullopt;
-    return { WTFMove(result) };
+        return nullptr;
+    return m_loader->arrayBufferResult();
+}
+
+String FileReader::stringResult()
+{
+    if (!m_loader || m_error)
+        return String();
+    return m_loader->stringResult();
 }
 
 } // namespace WebCore

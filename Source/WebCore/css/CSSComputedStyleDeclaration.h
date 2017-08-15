@@ -28,13 +28,11 @@
 
 namespace WebCore {
 
-class CSSFontStyleValue;
 class CSSPrimitiveValue;
 class CSSValueList;
 class Color;
 class Element;
 class FilterOperations;
-class FontSelectionValue;
 class MutableStyleProperties;
 class Node;
 class RenderObject;
@@ -65,13 +63,6 @@ public:
     bool propertyMatches(CSSPropertyID, const CSSValue*);
 
     static Ref<CSSValue> valueForFilter(const RenderStyle&, const FilterOperations&, AdjustPixelValuesForComputedStyle = AdjustPixelValues);
-
-    static Ref<CSSPrimitiveValue> fontNonKeywordWeightFromStyleValue(FontSelectionValue);
-    static Ref<CSSPrimitiveValue> fontWeightFromStyleValue(FontSelectionValue);
-    static Ref<CSSPrimitiveValue> fontNonKeywordStretchFromStyleValue(FontSelectionValue);
-    static Ref<CSSPrimitiveValue> fontStretchFromStyleValue(FontSelectionValue);
-    static Ref<CSSFontStyleValue> fontNonKeywordStyleFromStyleValue(FontSelectionValue);
-    static Ref<CSSFontStyleValue> fontStyleFromStyleValue(FontSelectionValue);
 
 private:
     // The styled element is either the element passed into computedPropertyValue, or the

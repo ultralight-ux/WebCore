@@ -28,7 +28,7 @@
 
 #include "InitializeThreading.h"
 #include "JSContextRefPrivate.h"
-#include "JavaScript.h"
+#include "JavaScriptCore.h"
 #include "Options.h"
 #include <chrono>
 #include <wtf/CurrentTime.h>

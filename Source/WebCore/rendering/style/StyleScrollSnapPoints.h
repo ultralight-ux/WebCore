@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,78 +27,43 @@
 
 #if ENABLE(CSS_SCROLL_SNAP)
 
-#include "LengthBox.h"
 #include "LengthSize.h"
-#include "RenderStyleConstants.h"
 #include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
 
-struct ScrollSnapType {
-    ScrollSnapAxis axis { ScrollSnapAxis::Both };
-    ScrollSnapStrictness strictness { ScrollSnapStrictness::None };
+struct ScrollSnapPoints {
+    Length repeatOffset;
+    bool hasRepeat;
+    bool usesElements;
+    Vector<Length> offsets;
+
+    ScrollSnapPoints();
 };
 
-inline bool operator==(const ScrollSnapType& a, const ScrollSnapType& b)
-{
-    return a.axis == b.axis && a.strictness == b.strictness;
-}
+bool operator==(const ScrollSnapPoints&, const ScrollSnapPoints&);
+inline bool operator!=(const ScrollSnapPoints& a, const ScrollSnapPoints& b) { return !(a == b); }
 
-inline bool operator!=(const ScrollSnapType& a, const ScrollSnapType& b) { return !(a == b); }
+LengthSize defaultScrollSnapDestination();
 
-class StyleScrollSnapPort : public RefCounted<StyleScrollSnapPort> {
+class StyleScrollSnapPoints : public RefCounted<StyleScrollSnapPoints> {
 public:
-    static Ref<StyleScrollSnapPort> create() { return adoptRef(*new StyleScrollSnapPort); }
-    Ref<StyleScrollSnapPort> copy() const;
+    static Ref<StyleScrollSnapPoints> create() { return adoptRef(*new StyleScrollSnapPoints); }
+    Ref<StyleScrollSnapPoints> copy() const;
 
-    ScrollSnapType type;
-    LengthBox scrollPadding { 0, 0, 0, 0 };
+    std::unique_ptr<ScrollSnapPoints> xPoints;
+    std::unique_ptr<ScrollSnapPoints> yPoints;
+    LengthSize destination;
+    Vector<LengthSize> coordinates;
 
 private:
-    StyleScrollSnapPort();
-    StyleScrollSnapPort(const StyleScrollSnapPort&);
+    StyleScrollSnapPoints();
+    StyleScrollSnapPoints(const StyleScrollSnapPoints&);
 };
 
-inline bool operator==(const StyleScrollSnapPort& a, const StyleScrollSnapPort& b)
-{
-    return a.type == b.type && a.scrollPadding == b.scrollPadding;
-}
-
-inline bool operator!=(const StyleScrollSnapPort& a, const StyleScrollSnapPort& b) { return !(a == b); }
-
-struct ScrollSnapAlign {
-    ScrollSnapAxisAlignType x { ScrollSnapAxisAlignType::None };
-    ScrollSnapAxisAlignType y { ScrollSnapAxisAlignType::None };
-};
-
-inline bool operator==(const ScrollSnapAlign& a, const ScrollSnapAlign& b)
-{
-    return a.x == b.x && a.y == b.y;
-}
-
-inline bool operator!=(const ScrollSnapAlign& a, const ScrollSnapAlign& b) { return !(a == b); }
-
-class StyleScrollSnapArea : public RefCounted<StyleScrollSnapArea> {
-public:
-    static Ref<StyleScrollSnapArea> create() { return adoptRef(*new StyleScrollSnapArea); }
-    Ref<StyleScrollSnapArea> copy() const;
-    bool hasSnapPosition() const { return alignment.x != ScrollSnapAxisAlignType::None || alignment.y != ScrollSnapAxisAlignType::None; }
-
-    ScrollSnapAlign alignment;
-    LengthBox scrollSnapMargin { 0, 0, 0, 0 };
-
-private:
-    StyleScrollSnapArea();
-    StyleScrollSnapArea(const StyleScrollSnapArea&);
-};
-
-inline bool operator==(const StyleScrollSnapArea& a, const StyleScrollSnapArea& b)
-{
-    return a.alignment == b.alignment && a.scrollSnapMargin == b.scrollSnapMargin;
-}
-
-inline bool operator!=(const StyleScrollSnapArea& a, const StyleScrollSnapArea& b) { return !(a == b); }
+bool operator==(const StyleScrollSnapPoints&, const StyleScrollSnapPoints&);
+inline bool operator!=(const StyleScrollSnapPoints& a, const StyleScrollSnapPoints& b) { return !(a == b); }
 
 } // namespace WebCore
 

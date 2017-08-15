@@ -54,6 +54,10 @@
 #include "DashboardRegion.h"
 #endif
 
+#if ENABLE(CSS_SCROLL_SNAP)
+#include "LengthRepeat.h"
+#endif
+
 using namespace WTF;
 
 namespace WebCore {
@@ -116,6 +120,9 @@ static inline bool isValidCSSUnitTypeForDoubleConversion(CSSPrimitiveValue::Unit
     case CSSPrimitiveValue::CSS_UNKNOWN:
     case CSSPrimitiveValue::CSS_URI:
     case CSSPrimitiveValue::CSS_VALUE_ID:
+#if ENABLE(CSS_SCROLL_SNAP)
+    case CSSPrimitiveValue::CSS_LENGTH_REPEAT:
+#endif
 #if ENABLE(DASHBOARD_SUPPORT)
     case CSSPrimitiveValue::CSS_DASHBOARD_REGION:
 #endif
@@ -183,6 +190,9 @@ static inline bool isStringType(CSSPrimitiveValue::UnitType type)
     case CSSPrimitiveValue::CSS_VW:
 #if ENABLE(DASHBOARD_SUPPORT)
     case CSSPrimitiveValue::CSS_DASHBOARD_REGION:
+#endif
+#if ENABLE(CSS_SCROLL_SNAP)
+    case CSSPrimitiveValue::CSS_LENGTH_REPEAT:
 #endif
         return false;
     }
@@ -395,11 +405,11 @@ void CSSPrimitiveValue::init(const Length& length)
         return;
     case MinContent:
         m_primitiveUnitType = CSS_VALUE_ID;
-        m_value.valueID = CSSValueMinContent;
+        m_value.valueID = CSSValueWebkitMinContent;
         return;
     case MaxContent:
         m_primitiveUnitType = CSS_VALUE_ID;
-        m_value.valueID = CSSValueMaxContent;
+        m_value.valueID = CSSValueWebkitMaxContent;
         return;
     case FillAvailable:
         m_primitiveUnitType = CSS_VALUE_ID;
@@ -407,7 +417,7 @@ void CSSPrimitiveValue::init(const Length& length)
         return;
     case FitContent:
         m_primitiveUnitType = CSS_VALUE_ID;
-        m_value.valueID = CSSValueFitContent;
+        m_value.valueID = CSSValueWebkitFitContent;
         return;
     case Percent:
         m_primitiveUnitType = CSS_PERCENTAGE;
@@ -427,7 +437,7 @@ void CSSPrimitiveValue::init(const LengthSize& lengthSize, const RenderStyle& st
 {
     m_primitiveUnitType = CSS_PAIR;
     m_hasCachedCSSText = false;
-    m_value.pair = &Pair::create(create(lengthSize.width, style), create(lengthSize.height, style)).leakRef();
+    m_value.pair = &Pair::create(create(lengthSize.width(), style), create(lengthSize.height(), style)).leakRef();
 }
 
 void CSSPrimitiveValue::init(Ref<Counter>&& counter)
@@ -450,6 +460,15 @@ void CSSPrimitiveValue::init(Ref<Quad>&& quad)
     m_hasCachedCSSText = false;
     m_value.quad = &quad.leakRef();
 }
+
+#if ENABLE(CSS_SCROLL_SNAP)
+void CSSPrimitiveValue::init(Ref<LengthRepeat>&& lengthRepeat)
+{
+    m_primitiveUnitType = CSS_LENGTH_REPEAT;
+    m_hasCachedCSSText = false;
+    m_value.lengthRepeat = &lengthRepeat.leakRef();
+}
+#endif
 
 #if ENABLE(DASHBOARD_SUPPORT)
 void CSSPrimitiveValue::init(RefPtr<DashboardRegion>&& r)
@@ -507,6 +526,11 @@ void CSSPrimitiveValue::cleanup()
     case CSS_QUAD:
         m_value.quad->deref();
         break;
+#if ENABLE(CSS_SCROLL_SNAP)
+    case CSS_LENGTH_REPEAT:
+        m_value.lengthRepeat->deref();
+        break;
+#endif
     case CSS_PAIR:
         m_value.pair->deref();
         break;
@@ -1071,6 +1095,10 @@ ALWAYS_INLINE String CSSPrimitiveValue::formatNumberForCustomCSSText() const
         return rectValue()->cssText();
     case CSS_QUAD:
         return quadValue()->cssText();
+#if ENABLE(CSS_SCROLL_SNAP)
+    case CSS_LENGTH_REPEAT:
+        return lengthRepeatValue()->cssText();
+#endif
     case CSS_RGBCOLOR:
         return color().cssText();
     case CSS_PAIR:
@@ -1201,6 +1229,10 @@ bool CSSPrimitiveValue::equals(const CSSPrimitiveValue& other) const
         return m_value.rect && other.m_value.rect && m_value.rect->equals(*other.m_value.rect);
     case CSS_QUAD:
         return m_value.quad && other.m_value.quad && m_value.quad->equals(*other.m_value.quad);
+#if ENABLE(CSS_SCROLL_SNAP)
+    case CSS_LENGTH_REPEAT:
+        return m_value.lengthRepeat && other.m_value.lengthRepeat && m_value.lengthRepeat->equals(*other.m_value.lengthRepeat);
+#endif
     case CSS_RGBCOLOR:
         return color() == other.color();
     case CSS_PAIR:

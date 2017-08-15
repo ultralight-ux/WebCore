@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 Google Inc. All rights reserved.
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -58,11 +58,6 @@ namespace WebCore {
     static void applyInitial##property(StyleResolver&); \
     static void applyValue##property(StyleResolver&, CSSValue&)
 
-template<typename T> inline T forwardInheritedValue(T&& value) { return std::forward<T>(value); }
-inline Length forwardInheritedValue(const Length& value) { auto copy = value; return copy; }
-inline LengthSize forwardInheritedValue(const LengthSize& value) { auto copy = value; return copy; }
-inline LengthBox forwardInheritedValue(const LengthBox& value) { auto copy = value; return copy; }
-
 // Note that we assume the CSS parser only allows valid CSSValue types.
 class StyleBuilderCustom {
 public:
@@ -81,6 +76,7 @@ public:
     DECLARE_PROPERTY_CUSTOM_HANDLERS(Fill);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(FontFamily);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(FontSize);
+    DECLARE_PROPERTY_CUSTOM_HANDLERS(FontWeight);
 #if ENABLE(CSS_IMAGE_RESOLUTION)
     DECLARE_PROPERTY_CUSTOM_HANDLERS(ImageResolution);
 #endif
@@ -97,9 +93,11 @@ public:
     DECLARE_PROPERTY_CUSTOM_HANDLERS(FontVariantLigatures);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(FontVariantNumeric);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(FontVariantEastAsian);
+#if ENABLE(CSS_GRID_LAYOUT)
     DECLARE_PROPERTY_CUSTOM_HANDLERS(GridTemplateAreas);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(GridTemplateColumns);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(GridTemplateRows);
+#endif // ENABLE(CSS_GRID_LAYOUT)
     DECLARE_PROPERTY_CUSTOM_HANDLERS(WebkitMaskBoxImageOutset);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(WebkitMaskBoxImageRepeat);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(WebkitMaskBoxImageSlice);
@@ -126,8 +124,6 @@ public:
     static void applyValueBaselineShift(StyleResolver&, CSSValue&);
     static void applyValueDirection(StyleResolver&, CSSValue&);
     static void applyValueVerticalAlign(StyleResolver&, CSSValue&);
-    static void applyInitialTextAlign(StyleResolver&);
-    static void applyValueTextAlign(StyleResolver&, CSSValue&);
 #if ENABLE(DASHBOARD_SUPPORT)
     static void applyValueWebkitDashboardRegion(StyleResolver&, CSSValue&);
 #endif
@@ -139,10 +135,13 @@ public:
     static void applyValueWebkitTextZoom(StyleResolver&, CSSValue&);
     static void applyValueWritingMode(StyleResolver&, CSSValue&);
     static void applyValueAlt(StyleResolver&, CSSValue&);
+#if ENABLE(CSS_SCROLL_SNAP)
+    static void applyInitialWebkitScrollSnapPointsX(StyleResolver&);
+    static void applyInheritWebkitScrollSnapPointsX(StyleResolver&);
+    static void applyInitialWebkitScrollSnapPointsY(StyleResolver&);
+    static void applyInheritWebkitScrollSnapPointsY(StyleResolver&);
+#endif
     static void applyValueWillChange(StyleResolver&, CSSValue&);
-
-    static void applyValueStrokeWidth(StyleResolver&, CSSValue&);
-    static void applyValueStrokeColor(StyleResolver&, CSSValue&);
 
 private:
     static void resetEffectiveZoom(StyleResolver&);
@@ -170,18 +169,6 @@ inline void StyleBuilderCustom::applyValueDirection(StyleResolver& styleResolver
 {
     styleResolver.style()->setDirection(downcast<CSSPrimitiveValue>(value));
     styleResolver.style()->setHasExplicitlySetDirection(true);
-}
-
-inline void StyleBuilderCustom::applyInitialTextAlign(StyleResolver& styleResolver)
-{
-    styleResolver.style()->setTextAlign(RenderStyle::initialTextAlign());
-    styleResolver.style()->setHasExplicitlySetTextAlign(true);
-}
-
-inline void StyleBuilderCustom::applyValueTextAlign(StyleResolver& styleResolver, CSSValue& value)
-{
-    styleResolver.style()->setTextAlign(StyleBuilderConverter::convertTextAlign(styleResolver, value));
-    styleResolver.style()->setHasExplicitlySetTextAlign(true);
 }
 
 inline void StyleBuilderCustom::resetEffectiveZoom(StyleResolver& styleResolver)
@@ -320,7 +307,6 @@ inline void StyleBuilderCustom::applyValueVerticalAlign(StyleResolver& styleReso
 }
 
 #if ENABLE(DASHBOARD_SUPPORT)
-
 static Length convertToIntLength(const CSSPrimitiveValue* primitiveValue, const CSSToLengthConversionData& conversionData)
 {
     return primitiveValue ? primitiveValue->convertToLength<FixedIntegerConversion | PercentConversion | CalculatedConversion>(conversionData) : Length(Undefined);
@@ -338,7 +324,7 @@ inline void StyleBuilderCustom::applyValueWebkitDashboardRegion(StyleResolver& s
     if (!region)
         return;
 
-    auto* first = region;
+    DashboardRegion* first = region;
     while (region) {
         Length top = convertToIntLength(region->top(), styleResolver.state().cssToLengthConversionData().copyWithAdjustedZoom(1.0f));
         Length right = convertToIntLength(region->right(), styleResolver.state().cssToLengthConversionData().copyWithAdjustedZoom(1.0f));
@@ -355,20 +341,17 @@ inline void StyleBuilderCustom::applyValueWebkitDashboardRegion(StyleResolver& s
             left = Length();
 
         if (region->m_isCircle)
-            styleResolver.style()->setDashboardRegion(StyleDashboardRegion::Circle, region->m_label, WTFMove(top), WTFMove(right), WTFMove(bottom), WTFMove(left), region != first);
+            styleResolver.style()->setDashboardRegion(StyleDashboardRegion::Circle, region->m_label, top, right, bottom, left, region == first ? false : true);
         else if (region->m_isRectangle)
-            styleResolver.style()->setDashboardRegion(StyleDashboardRegion::Rectangle, region->m_label, WTFMove(top), WTFMove(right), WTFMove(bottom), WTFMove(left), region != first);
-
+            styleResolver.style()->setDashboardRegion(StyleDashboardRegion::Rectangle, region->m_label, top, right, bottom, left, region == first ? false : true);
         region = region->m_next.get();
     }
 
     styleResolver.document().setHasAnnotatedRegions(true);
 }
-
 #endif // ENABLE(DASHBOARD_SUPPORT)
 
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-
 inline void StyleBuilderCustom::applyInheritImageResolution(StyleResolver& styleResolver)
 {
     styleResolver.style()->setImageResolutionSource(styleResolver.parentStyle()->imageResolutionSource());
@@ -401,23 +384,18 @@ inline void StyleBuilderCustom::applyValueImageResolution(StyleResolver& styleRe
     styleResolver.style()->setImageResolutionSnap(snap);
     styleResolver.style()->setImageResolution(resolution);
 }
-
 #endif // ENABLE(CSS_IMAGE_RESOLUTION)
 
 inline void StyleBuilderCustom::applyInheritSize(StyleResolver&) { }
-
 inline void StyleBuilderCustom::applyInitialSize(StyleResolver&) { }
-
 inline void StyleBuilderCustom::applyValueSize(StyleResolver& styleResolver, CSSValue& value)
 {
     styleResolver.style()->resetPageSizeType();
-
-    if (!is<CSSValueList>(value))
-        return;
-
     Length width;
     Length height;
     PageSizeType pageSizeType = PAGE_SIZE_AUTO;
+    if (!is<CSSValueList>(value))
+        return;
 
     auto& valueList = downcast<CSSValueList>(value);
     switch (valueList.length()) {
@@ -481,12 +459,12 @@ inline void StyleBuilderCustom::applyValueSize(StyleResolver& styleResolver, CSS
         return;
     }
     styleResolver.style()->setPageSizeType(pageSizeType);
-    styleResolver.style()->setPageSize({ WTFMove(width), WTFMove(height) });
+    styleResolver.style()->setPageSize(LengthSize(width, height));
 }
 
 inline void StyleBuilderCustom::applyInheritTextIndent(StyleResolver& styleResolver)
 {
-    styleResolver.style()->setTextIndent(Length { styleResolver.parentStyle()->textIndent() });
+    styleResolver.style()->setTextIndent(styleResolver.parentStyle()->textIndent());
 #if ENABLE(CSS3_TEXT)
     styleResolver.style()->setTextIndentLine(styleResolver.parentStyle()->textIndentLine());
     styleResolver.style()->setTextIndentType(styleResolver.parentStyle()->textIndentType());
@@ -524,7 +502,7 @@ inline void StyleBuilderCustom::applyValueTextIndent(StyleResolver& styleResolve
     if (lengthOrPercentageValue.isUndefined())
         return;
 
-    styleResolver.style()->setTextIndent(WTFMove(lengthOrPercentageValue));
+    styleResolver.style()->setTextIndent(lengthOrPercentageValue);
 #if ENABLE(CSS3_TEXT)
     styleResolver.style()->setTextIndentLine(textIndentLineValue);
     styleResolver.style()->setTextIndentType(textIndentTypeValue);
@@ -639,8 +617,8 @@ DEFINE_BORDER_IMAGE_MODIFIER_HANDLER(WebkitMaskBoxImage, Width)
 
 inline void StyleBuilderCustom::applyInheritLineHeight(StyleResolver& styleResolver)
 {
-    styleResolver.style()->setLineHeight(Length { styleResolver.parentStyle()->lineHeight() });
-    styleResolver.style()->setSpecifiedLineHeight(Length { styleResolver.parentStyle()->specifiedLineHeight() });
+    styleResolver.style()->setLineHeight(styleResolver.parentStyle()->lineHeight());
+    styleResolver.style()->setSpecifiedLineHeight(styleResolver.parentStyle()->specifiedLineHeight());
 }
 
 inline void StyleBuilderCustom::applyInitialLineHeight(StyleResolver& styleResolver)
@@ -656,8 +634,8 @@ inline void StyleBuilderCustom::applyValueLineHeight(StyleResolver& styleResolve
     if (!lineHeight)
         return;
 
-    styleResolver.style()->setLineHeight(Length { lineHeight.value() });
-    styleResolver.style()->setSpecifiedLineHeight(WTFMove(lineHeight.value()));
+    styleResolver.style()->setLineHeight(lineHeight.value());
+    styleResolver.style()->setSpecifiedLineHeight(lineHeight.value());
 }
 
 #endif
@@ -693,21 +671,21 @@ inline void StyleBuilderCustom::applyInheritClip(StyleResolver& styleResolver)
     auto* parentStyle = styleResolver.parentStyle();
     if (!parentStyle->hasClip())
         return applyInitialClip(styleResolver);
-    styleResolver.style()->setClip(Length { parentStyle->clipTop() }, Length { parentStyle->clipRight() },
-        Length { parentStyle->clipBottom() }, Length { parentStyle->clipLeft() });
+    styleResolver.style()->setClip(parentStyle->clipTop(), parentStyle->clipRight(), parentStyle->clipBottom(), parentStyle->clipLeft());
     styleResolver.style()->setHasClip(true);
 }
 
 inline void StyleBuilderCustom::applyValueClip(StyleResolver& styleResolver, CSSValue& value)
 {
     auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
-    if (auto* rect = primitiveValue.rectValue()) {
+
+    if (Rect* rect = primitiveValue.rectValue()) {
         auto conversionData = styleResolver.state().cssToLengthConversionData();
-        auto top = rect->top()->convertToLength<FixedIntegerConversion | PercentConversion | AutoConversion>(conversionData);
-        auto right = rect->right()->convertToLength<FixedIntegerConversion | PercentConversion | AutoConversion>(conversionData);
-        auto bottom = rect->bottom()->convertToLength<FixedIntegerConversion | PercentConversion | AutoConversion>(conversionData);
-        auto left = rect->left()->convertToLength<FixedIntegerConversion | PercentConversion | AutoConversion>(conversionData);
-        styleResolver.style()->setClip(WTFMove(top), WTFMove(right), WTFMove(bottom), WTFMove(left));
+        Length top = rect->top()->convertToLength<FixedIntegerConversion | PercentConversion | AutoConversion>(conversionData);
+        Length right = rect->right()->convertToLength<FixedIntegerConversion | PercentConversion | AutoConversion>(conversionData);
+        Length bottom = rect->bottom()->convertToLength<FixedIntegerConversion | PercentConversion | AutoConversion>(conversionData);
+        Length left = rect->left()->convertToLength<FixedIntegerConversion | PercentConversion | AutoConversion>(conversionData);
+        styleResolver.style()->setClip(top, right, bottom, left);
         styleResolver.style()->setHasClip(true);
     } else {
         ASSERT(primitiveValue.valueID() == CSSValueAuto);
@@ -763,12 +741,12 @@ inline void StyleBuilderCustom::applyValueWebkitTextZoom(StyleResolver& styleRes
     styleResolver.state().setFontDirty(true);
 }
 
-template<CSSPropertyID property>
+template <CSSPropertyID id>
 inline void StyleBuilderCustom::applyTextOrBoxShadowValue(StyleResolver& styleResolver, CSSValue& value)
 {
     if (is<CSSPrimitiveValue>(value)) {
         ASSERT(downcast<CSSPrimitiveValue>(value).valueID() == CSSValueNone);
-        if (property == CSSPropertyTextShadow)
+        if (id == CSSPropertyTextShadow)
             styleResolver.style()->setTextShadow(nullptr);
         else
             styleResolver.style()->setBoxShadow(nullptr);
@@ -789,8 +767,8 @@ inline void StyleBuilderCustom::applyTextOrBoxShadowValue(StyleResolver& styleRe
             color = styleResolver.colorFromPrimitiveValue(*shadowValue.color);
         else
             color = styleResolver.style()->color();
-        auto shadowData = std::make_unique<ShadowData>(IntPoint(x, y), blur, spread, shadowStyle, property == CSSPropertyWebkitBoxShadow, color.isValid() ? color : Color::transparent);
-        if (property == CSSPropertyTextShadow)
+        auto shadowData = std::make_unique<ShadowData>(IntPoint(x, y), blur, spread, shadowStyle, id == CSSPropertyWebkitBoxShadow, color.isValid() ? color : Color::transparent);
+        if (id == CSSPropertyTextShadow)
             styleResolver.style()->setTextShadow(WTFMove(shadowData), !isFirstEntry); // add to the list if this is not the first entry
         else
             styleResolver.style()->setBoxShadow(WTFMove(shadowData), !isFirstEntry); // add to the list if this is not the first entry
@@ -892,7 +870,8 @@ inline void StyleBuilderCustom::applyValueFontFamily(StyleResolver& styleResolve
         } else {
             switch (contentValue.valueID()) {
             case CSSValueWebkitBody:
-                family = styleResolver.settings().standardFontFamily();
+                if (Settings* settings = styleResolver.document().settings())
+                    family = settings->standardFontFamily();
                 break;
             case CSSValueSerif:
                 family = serifFamily;
@@ -916,10 +895,6 @@ inline void StyleBuilderCustom::applyValueFontFamily(StyleResolver& styleResolve
                 break;
             case CSSValueWebkitPictograph:
                 family = pictographFamily;
-                isGenericFamily = true;
-                break;
-            case CSSValueSystemUi:
-                family = systemUiFamily;
                 isGenericFamily = true;
                 break;
             default:
@@ -1187,22 +1162,22 @@ inline void StyleBuilderCustom::applyValueCursor(StyleResolver& styleResolver, C
 
 inline void StyleBuilderCustom::applyInitialFill(StyleResolver& styleResolver)
 {
-    auto& svgStyle = styleResolver.style()->accessSVGStyle();
+    SVGRenderStyle& svgStyle = styleResolver.style()->accessSVGStyle();
     svgStyle.setFillPaint(SVGRenderStyle::initialFillPaintType(), SVGRenderStyle::initialFillPaintColor(), SVGRenderStyle::initialFillPaintUri(), styleResolver.applyPropertyToRegularStyle(), styleResolver.applyPropertyToVisitedLinkStyle());
 }
 
 inline void StyleBuilderCustom::applyInheritFill(StyleResolver& styleResolver)
 {
-    auto& svgStyle = styleResolver.style()->accessSVGStyle();
-    auto& svgParentStyle = styleResolver.parentStyle()->svgStyle();
+    SVGRenderStyle& svgStyle = styleResolver.style()->accessSVGStyle();
+    const SVGRenderStyle& svgParentStyle = styleResolver.parentStyle()->svgStyle();
     svgStyle.setFillPaint(svgParentStyle.fillPaintType(), svgParentStyle.fillPaintColor(), svgParentStyle.fillPaintUri(), styleResolver.applyPropertyToRegularStyle(), styleResolver.applyPropertyToVisitedLinkStyle());
 
 }
 
 inline void StyleBuilderCustom::applyValueFill(StyleResolver& styleResolver, CSSValue& value)
 {
-    auto& svgStyle = styleResolver.style()->accessSVGStyle();
-    const auto* localValue = value.isPrimitiveValue() ? &downcast<CSSPrimitiveValue>(value) : nullptr;
+    SVGRenderStyle& svgStyle = styleResolver.style()->accessSVGStyle();
+    const CSSPrimitiveValue* localValue = value.isPrimitiveValue() ? &downcast<CSSPrimitiveValue>(value) : nullptr;
     String url;
     if (value.isValueList()) {
         const CSSValueList& list = downcast<CSSValueList>(value);
@@ -1214,10 +1189,10 @@ inline void StyleBuilderCustom::applyValueFill(StyleResolver& styleResolver, CSS
         return;
     
     Color color;
-    auto paintType = SVG_PAINTTYPE_RGBCOLOR;
+    SVGPaintType paintType = SVG_PAINTTYPE_RGBCOLOR;
     if (localValue->isURI()) {
         paintType = SVG_PAINTTYPE_URI;
-        url = localValue->stringValue();
+        url = downcast<CSSPrimitiveValue>(localValue)->stringValue();
     } else if (localValue->isValueID() && localValue->valueID() == CSSValueNone)
         paintType = url.isEmpty() ? SVG_PAINTTYPE_NONE : SVG_PAINTTYPE_URI_NONE;
     else if (localValue->isValueID() && localValue->valueID() == CSSValueCurrentcolor) {
@@ -1238,15 +1213,15 @@ inline void StyleBuilderCustom::applyInitialStroke(StyleResolver& styleResolver)
 
 inline void StyleBuilderCustom::applyInheritStroke(StyleResolver& styleResolver)
 {
-    auto& svgStyle = styleResolver.style()->accessSVGStyle();
-    auto& svgParentStyle = styleResolver.parentStyle()->svgStyle();
+    SVGRenderStyle& svgStyle = styleResolver.style()->accessSVGStyle();
+    const SVGRenderStyle& svgParentStyle = styleResolver.parentStyle()->svgStyle();
     svgStyle.setStrokePaint(svgParentStyle.strokePaintType(), svgParentStyle.strokePaintColor(), svgParentStyle.strokePaintUri(), styleResolver.applyPropertyToRegularStyle(), styleResolver.applyPropertyToVisitedLinkStyle());
 }
 
 inline void StyleBuilderCustom::applyValueStroke(StyleResolver& styleResolver, CSSValue& value)
 {
-    auto& svgStyle = styleResolver.style()->accessSVGStyle();
-    const auto* localValue = value.isPrimitiveValue() ? &downcast<CSSPrimitiveValue>(value) : nullptr;
+    SVGRenderStyle& svgStyle = styleResolver.style()->accessSVGStyle();
+    const CSSPrimitiveValue* localValue = value.isPrimitiveValue() ? &downcast<CSSPrimitiveValue>(value) : nullptr;
     String url;
     if (value.isValueList()) {
         const CSSValueList& list = downcast<CSSValueList>(value);
@@ -1258,7 +1233,7 @@ inline void StyleBuilderCustom::applyValueStroke(StyleResolver& styleResolver, C
         return;
     
     Color color;
-    auto paintType = SVG_PAINTTYPE_RGBCOLOR;
+    SVGPaintType paintType = SVG_PAINTTYPE_RGBCOLOR;
     if (localValue->isURI()) {
         paintType = SVG_PAINTTYPE_URI;
         url = downcast<CSSPrimitiveValue>(localValue)->stringValue();
@@ -1289,7 +1264,7 @@ inline void StyleBuilderCustom::applyInheritWebkitSvgShadow(StyleResolver& style
 
 inline void StyleBuilderCustom::applyValueWebkitSvgShadow(StyleResolver& styleResolver, CSSValue& value)
 {
-    auto& svgStyle = styleResolver.style()->accessSVGStyle();
+    SVGRenderStyle& svgStyle = styleResolver.style()->accessSVGStyle();
     if (is<CSSPrimitiveValue>(value)) {
         ASSERT(downcast<CSSPrimitiveValue>(value).valueID() == CSSValueNone);
         svgStyle.setShadow(nullptr);
@@ -1309,6 +1284,42 @@ inline void StyleBuilderCustom::applyValueWebkitSvgShadow(StyleResolver& styleRe
     ASSERT(!shadowValue.style);
 
     svgStyle.setShadow(std::make_unique<ShadowData>(location, blur, 0, Normal, false, color.isValid() ? color : Color::transparent));
+}
+
+inline void StyleBuilderCustom::applyInitialFontWeight(StyleResolver& styleResolver)
+{
+    auto fontDescription = styleResolver.fontDescription();
+    fontDescription.setWeight(FontWeightNormal);
+    styleResolver.setFontDescription(fontDescription);
+}
+
+inline void StyleBuilderCustom::applyInheritFontWeight(StyleResolver& styleResolver)
+{
+    auto fontDescription = styleResolver.fontDescription();
+    fontDescription.setWeight(styleResolver.parentFontDescription().weight());
+    styleResolver.setFontDescription(fontDescription);
+}
+
+inline void StyleBuilderCustom::applyValueFontWeight(StyleResolver& styleResolver, CSSValue& value)
+{
+    auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
+    auto fontDescription = styleResolver.fontDescription();
+    switch (primitiveValue.valueID()) {
+    case CSSValueInvalid:
+        ASSERT_NOT_REACHED();
+        break;
+    case CSSValueBolder:
+        fontDescription.setWeight(styleResolver.parentStyle()->fontDescription().weight());
+        fontDescription.setWeight(fontDescription.bolderWeight());
+        break;
+    case CSSValueLighter:
+        fontDescription.setWeight(styleResolver.parentStyle()->fontDescription().weight());
+        fontDescription.setWeight(fontDescription.lighterWeight());
+        break;
+    default:
+        fontDescription.setWeight(primitiveValue);
+    }
+    styleResolver.setFontDescription(fontDescription);
 }
 
 inline void StyleBuilderCustom::applyInitialColumnGap(StyleResolver& styleResolver)
@@ -1356,7 +1367,7 @@ inline void StyleBuilderCustom::applyValueContent(StyleResolver& styleResolver, 
     for (auto& item : downcast<CSSValueList>(value)) {
         if (is<CSSImageGeneratorValue>(item.get())) {
             if (is<CSSGradientValue>(item.get()))
-                styleResolver.style()->setContent(StyleGeneratedImage::create(downcast<CSSGradientValue>(item.get()).gradientWithStylesResolved(styleResolver)), didSet);
+                styleResolver.style()->setContent(StyleGeneratedImage::create(*downcast<CSSGradientValue>(item.get()).gradientWithStylesResolved(&styleResolver)), didSet);
             else
                 styleResolver.style()->setContent(StyleGeneratedImage::create(downcast<CSSImageGeneratorValue>(item.get())), didSet);
             didSet = true;
@@ -1646,6 +1657,7 @@ inline void StyleBuilderCustom::applyValueFontSize(StyleResolver& styleResolver,
     styleResolver.setFontDescription(fontDescription);
 }
 
+#if ENABLE(CSS_GRID_LAYOUT)
 inline void StyleBuilderCustom::applyInitialGridTemplateAreas(StyleResolver& styleResolver)
 {
     styleResolver.style()->setNamedGridArea(RenderStyle::initialNamedGridArea());
@@ -1744,6 +1756,7 @@ inline void StyleBuilderCustom::applyValueGridTemplateRows(StyleResolver& styleR
 
     SET_TRACKS_DATA(tracksData, styleResolver.style(), Row);
 }
+#endif // ENABLE(CSS_GRID_LAYOUT)
 
 void StyleBuilderCustom::applyValueAlt(StyleResolver& styleResolver, CSSValue& value)
 {
@@ -1767,6 +1780,30 @@ void StyleBuilderCustom::applyValueAlt(StyleResolver& styleResolver, CSSValue& v
     } else
         styleResolver.style()->setContentAltText(emptyAtom);
 }
+
+#if ENABLE(CSS_SCROLL_SNAP)
+
+inline void StyleBuilderCustom::applyInitialWebkitScrollSnapPointsX(StyleResolver& styleResolver)
+{
+    styleResolver.style()->setScrollSnapPointsX(nullptr);
+}
+
+inline void StyleBuilderCustom::applyInheritWebkitScrollSnapPointsX(StyleResolver& styleResolver)
+{
+    styleResolver.style()->setScrollSnapPointsX(styleResolver.parentStyle()->scrollSnapPointsX() ? std::make_unique<ScrollSnapPoints>(*styleResolver.parentStyle()->scrollSnapPointsX()) : nullptr);
+}
+
+inline void StyleBuilderCustom::applyInitialWebkitScrollSnapPointsY(StyleResolver& styleResolver)
+{
+    styleResolver.style()->setScrollSnapPointsY(nullptr);
+}
+
+inline void StyleBuilderCustom::applyInheritWebkitScrollSnapPointsY(StyleResolver& styleResolver)
+{
+    styleResolver.style()->setScrollSnapPointsY(styleResolver.parentStyle()->scrollSnapPointsY() ? std::make_unique<ScrollSnapPoints>(*styleResolver.parentStyle()->scrollSnapPointsY()) : nullptr);
+}
+
+#endif
 
 inline void StyleBuilderCustom::applyValueWillChange(StyleResolver& styleResolver, CSSValue& value)
 {
@@ -1795,22 +1832,6 @@ inline void StyleBuilderCustom::applyValueWillChange(StyleResolver& styleResolve
         }
     }
     styleResolver.style()->setWillChange(WTFMove(willChange));
-}
-
-inline void StyleBuilderCustom::applyValueStrokeWidth(StyleResolver& styleResolver, CSSValue& value)
-{
-    styleResolver.style()->setStrokeWidth(StyleBuilderConverter::convertLength(styleResolver, value));
-    styleResolver.style()->setHasExplicitlySetStrokeWidth(true);
-}
-
-inline void StyleBuilderCustom::applyValueStrokeColor(StyleResolver& styleResolver, CSSValue& value)
-{
-    auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
-    if (styleResolver.applyPropertyToRegularStyle())
-        styleResolver.style()->setStrokeColor(styleResolver.colorFromPrimitiveValue(primitiveValue, /* forVisitedLink */ false));
-    if (styleResolver.applyPropertyToVisitedLinkStyle())
-        styleResolver.style()->setVisitedLinkStrokeColor(styleResolver.colorFromPrimitiveValue(primitiveValue, /* forVisitedLink */ true));
-    styleResolver.style()->setHasExplicitlySetStrokeColor(true);
 }
 
 } // namespace WebCore

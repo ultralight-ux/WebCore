@@ -132,7 +132,7 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
             if (property.location() != PromotedLocationDescriptor(StructurePLoc))
                 continue;
 
-            RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(vm, Structure::info()));
+            RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(Structure::info()));
             structure = jsCast<Structure*>(JSValue::decode(values[i]));
             break;
         }
@@ -165,11 +165,11 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
         for (unsigned i = materialization->properties().size(); i--;) {
             const ExitPropertyValue& property = materialization->properties()[i];
             if (property.location() == PromotedLocationDescriptor(FunctionExecutablePLoc)) {
-                RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(vm, FunctionExecutable::info()));
+                RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(FunctionExecutable::info()));
                 executable = jsCast<FunctionExecutable*>(JSValue::decode(values[i]));
             }
             if (property.location() == PromotedLocationDescriptor(FunctionActivationPLoc)) {
-                RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(vm, JSScope::info()));
+                RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(JSScope::info()));
                 activation = jsCast<JSScope*>(JSValue::decode(values[i]));
             }
         }
@@ -190,10 +190,10 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
         for (unsigned i = materialization->properties().size(); i--;) {
             const ExitPropertyValue& property = materialization->properties()[i];
             if (property.location() == PromotedLocationDescriptor(ActivationScopePLoc)) {
-                RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(vm, JSScope::info()));
+                RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(JSScope::info()));
                 scope = jsCast<JSScope*>(JSValue::decode(values[i]));
             } else if (property.location() == PromotedLocationDescriptor(ActivationSymbolTablePLoc)) {
-                RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(vm, SymbolTable::info()));
+                RELEASE_ASSERT(JSValue::decode(values[i]).asCell()->inherits(SymbolTable::info()));
                 table = jsCast<SymbolTable*>(JSValue::decode(values[i]));
             }
         }
@@ -264,7 +264,7 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
                 CodeBlock* codeBlock = baselineCodeBlockForOriginAndBaselineCodeBlock(
                     materialization->origin(), exec->codeBlock());
 
-                unsigned numberOfArgumentsToSkip = codeBlock->numberOfArgumentsToSkip();
+                unsigned numberOfArgumentsToSkip = codeBlock->numParameters() - 1;
                 JSGlobalObject* globalObject = codeBlock->globalObject();
                 Structure* structure = globalObject->restParameterStructure();
                 JSValue* argumentsToCopyRegion = exec->addressOfArgumentsStart() + numberOfArgumentsToSkip;
@@ -352,21 +352,18 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
                 unsigned index = property.location().info();
                 if (index >= length)
                     continue;
-                result->putDirectIndex(exec, index, JSValue::decode(values[i]));
+                result->initializeIndex(vm, index, JSValue::decode(values[i]));
             }
             
             return result;
         }
         case PhantomCreateRest: {
-            unsigned numberOfArgumentsToSkip = codeBlock->numberOfArgumentsToSkip();
+            unsigned numberOfArgumentsToSkip = codeBlock->numParameters() - 1;
             JSGlobalObject* globalObject = codeBlock->globalObject();
             Structure* structure = globalObject->restParameterStructure();
             ASSERT(argumentCount > 0);
             unsigned arraySize = (argumentCount - 1) > numberOfArgumentsToSkip ? argumentCount - 1 - numberOfArgumentsToSkip : 0;
-
-            // FIXME: we should throw an out of memory error here if tryCreate() fails.
-            // https://bugs.webkit.org/show_bug.cgi?id=169784
-            JSArray* array = JSArray::tryCreate(vm, structure, arraySize);
+            JSArray* array = JSArray::tryCreateUninitialized(vm, structure, arraySize);
             RELEASE_ASSERT(array);
 
             for (unsigned i = materialization->properties().size(); i--;) {
@@ -380,7 +377,7 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
                 unsigned arrayIndex = argIndex - numberOfArgumentsToSkip;
                 if (arrayIndex >= arraySize)
                     continue;
-                array->putDirectIndex(exec, arrayIndex, JSValue::decode(values[i]));
+                array->initializeIndex(vm, arrayIndex, JSValue::decode(values[i]));
             }
 
 #if !ASSERT_DISABLED
@@ -432,7 +429,6 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
         // that we only support PhantomSpread over CreateRest, which is an array we create.
         // Any attempts to put a getter on any indices on the rest array will escape the array.
         JSFixedArray* fixedArray = JSFixedArray::createFromArray(exec, vm, array);
-        RELEASE_ASSERT(fixedArray);
         return fixedArray;
     }
 
@@ -449,17 +445,15 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
             if (property.location().kind() == NewArrayWithSpreadArgumentPLoc) {
                 ++numProperties;
                 JSValue value = JSValue::decode(values[i]);
-                if (JSFixedArray* fixedArray = jsDynamicCast<JSFixedArray*>(vm, value))
+                if (JSFixedArray* fixedArray = jsDynamicCast<JSFixedArray*>(value))
                     checkedArraySize += fixedArray->size();
                 else
                     checkedArraySize += 1;
             }
         }
 
-        // FIXME: we should throw an out of memory error here if checkedArraySize has hasOverflowed() or tryCreate() fails.
-        // https://bugs.webkit.org/show_bug.cgi?id=169784
         unsigned arraySize = checkedArraySize.unsafeGet(); // Crashes if overflowed.
-        JSArray* result = JSArray::tryCreate(vm, structure, arraySize);
+        JSArray* result = JSArray::tryCreateUninitialized(vm, structure, arraySize);
         RELEASE_ASSERT(result);
 
 #if !ASSERT_DISABLED
@@ -491,15 +485,15 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
 
         unsigned arrayIndex = 0;
         for (JSValue value : arguments) {
-            if (JSFixedArray* fixedArray = jsDynamicCast<JSFixedArray*>(vm, value)) {
+            if (JSFixedArray* fixedArray = jsDynamicCast<JSFixedArray*>(value)) {
                 for (unsigned i = 0; i < fixedArray->size(); i++) {
                     ASSERT(fixedArray->get(i));
-                    result->putDirectIndex(exec, arrayIndex, fixedArray->get(i));
+                    result->initializeIndex(vm, arrayIndex, fixedArray->get(i));
                     ++arrayIndex;
                 }
             } else {
                 // We are not spreading.
-                result->putDirectIndex(exec, arrayIndex, value);
+                result->initializeIndex(vm, arrayIndex, value);
                 ++arrayIndex;
             }
         }

@@ -33,11 +33,6 @@ class MediaControllerSupport
         for (let eventType of this.mediaEvents)
             mediaController.media.addEventListener(eventType, this);
 
-        for (let tracks of this.tracksToMonitor) {
-            for (let eventType of ["change", "addtrack", "removetrack"])
-                tracks.addEventListener(eventType, this);
-        }
-
         if (!this.control)
             return;
 
@@ -54,11 +49,6 @@ class MediaControllerSupport
         for (let eventType of this.mediaEvents)
             media.removeEventListener(eventType, this);
 
-        for (let tracks of this.tracksToMonitor) {
-            for (let eventType of ["change", "addtrack", "removetrack"])
-                tracks.removeEventListener(eventType, this);
-        }
-
         if (this.control)
             this.control.uiDelegate = null;
     }
@@ -71,12 +61,6 @@ class MediaControllerSupport
     }
 
     get mediaEvents()
-    {
-        // Implemented by subclasses.
-        return [];
-    }
-
-    get tracksToMonitor()
     {
         // Implemented by subclasses.
         return [];

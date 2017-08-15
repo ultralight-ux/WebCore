@@ -127,11 +127,6 @@ void AbstractHeapRepository::decorateFenceWrite(const AbstractHeap* heap, Value*
     m_heapForFenceWrite.append(HeapForValue(heap, value));
 }
 
-void AbstractHeapRepository::decorateFencedAccess(const AbstractHeap* heap, Value* value)
-{
-    m_heapForFencedAccess.append(HeapForValue(heap, value));
-}
-
 void AbstractHeapRepository::computeRangesAndDecorateInstructions()
 {
     root.compute();
@@ -161,8 +156,6 @@ void AbstractHeapRepository::computeRangesAndDecorateInstructions()
         entry.value->as<FenceValue>()->read = rangeFor(entry.heap);
     for (HeapForValue entry : m_heapForFenceWrite)
         entry.value->as<FenceValue>()->write = rangeFor(entry.heap);
-    for (HeapForValue entry : m_heapForFencedAccess)
-        entry.value->as<MemoryValue>()->setFenceRange(rangeFor(entry.heap));
 }
 
 } } // namespace JSC::FTL

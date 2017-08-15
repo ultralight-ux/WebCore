@@ -32,9 +32,9 @@
 
 namespace JSC {
 
-class IntlCollatorPrototype : public JSNonFinalObject {
+class IntlCollatorPrototype : public IntlCollator {
 public:
-    typedef JSNonFinalObject Base;
+    typedef IntlCollator Base;
     static const unsigned StructureFlags = Base::StructureFlags | HasStaticPropertyTable;
 
     static IntlCollatorPrototype* create(VM&, JSGlobalObject*, Structure*);

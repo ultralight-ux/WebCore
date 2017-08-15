@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012, 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,12 +29,15 @@
 
 #include "InbandTextTrackPrivateClient.h"
 #include "TextTrack.h"
+#include "TextTrackCueGeneric.h"
+#include <wtf/RefPtr.h>
+#include <wtf/TypeCasts.h>
 
 namespace WebCore {
 
-class InbandTextTrack : public TextTrack, private InbandTextTrackPrivateClient {
+class InbandTextTrack : public TextTrack, public InbandTextTrackPrivateClient {
 public:
-    static Ref<InbandTextTrack> create(ScriptExecutionContext&, TextTrackClient&, InbandTextTrackPrivate&);
+    static PassRefPtr<InbandTextTrack> create(ScriptExecutionContext*, TextTrackClient*, PassRefPtr<InbandTextTrackPrivate>);
     virtual ~InbandTextTrack();
 
     bool isClosedCaptions() const override;
@@ -47,38 +50,38 @@ public:
 
     AtomicString inBandMetadataTrackDispatchType() const override;
 
-    void setPrivate(InbandTextTrackPrivate&);
+    void setPrivate(PassRefPtr<InbandTextTrackPrivate>);
 
 protected:
-    InbandTextTrack(ScriptExecutionContext&, TextTrackClient&, InbandTextTrackPrivate&);
+    InbandTextTrack(ScriptExecutionContext*, TextTrackClient*, PassRefPtr<InbandTextTrackPrivate>);
 
     void setModeInternal(Mode);
     void updateKindFromPrivate();
 
-    Ref<InbandTextTrackPrivate> m_private;
+    RefPtr<InbandTextTrackPrivate> m_private;
 
 private:
     bool isInband() const final { return true; }
-    void idChanged(const AtomicString&) override;
-    void labelChanged(const AtomicString&) override;
-    void languageChanged(const AtomicString&) override;
-    void willRemove() override;
+    void idChanged(TrackPrivateBase*, const AtomicString&) override;
+    void labelChanged(TrackPrivateBase*, const AtomicString&) override;
+    void languageChanged(TrackPrivateBase*, const AtomicString&) override;
+    void willRemove(TrackPrivateBase*) override;
 
-    void addDataCue(const MediaTime&, const MediaTime&, const void*, unsigned) override { ASSERT_NOT_REACHED(); }
+    void addDataCue(InbandTextTrackPrivate*, const MediaTime&, const MediaTime&, const void*, unsigned) override { ASSERT_NOT_REACHED(); }
 
 #if ENABLE(DATACUE_VALUE)
-    void addDataCue(const MediaTime&, const MediaTime&, Ref<SerializedPlatformRepresentation>&&, const String&) override { ASSERT_NOT_REACHED(); }
-    void updateDataCue(const MediaTime&, const MediaTime&, SerializedPlatformRepresentation&) override  { ASSERT_NOT_REACHED(); }
-    void removeDataCue(const MediaTime&, const MediaTime&, SerializedPlatformRepresentation&) override  { ASSERT_NOT_REACHED(); }
+    void addDataCue(InbandTextTrackPrivate*, const MediaTime&, const MediaTime&, PassRefPtr<SerializedPlatformRepresentation>, const String&) override { ASSERT_NOT_REACHED(); }
+    void updateDataCue(InbandTextTrackPrivate*, const MediaTime&, const MediaTime&, PassRefPtr<SerializedPlatformRepresentation>) override  { ASSERT_NOT_REACHED(); }
+    void removeDataCue(InbandTextTrackPrivate*, const MediaTime&, const MediaTime&, PassRefPtr<SerializedPlatformRepresentation>) override  { ASSERT_NOT_REACHED(); }
 #endif
 
-    void addGenericCue(GenericCueData&) override { ASSERT_NOT_REACHED(); }
-    void updateGenericCue(GenericCueData&) override { ASSERT_NOT_REACHED(); }
-    void removeGenericCue(GenericCueData&) override { ASSERT_NOT_REACHED(); }
+    void addGenericCue(InbandTextTrackPrivate*, PassRefPtr<GenericCueData>) override { ASSERT_NOT_REACHED(); }
+    void updateGenericCue(InbandTextTrackPrivate*, GenericCueData*) override { ASSERT_NOT_REACHED(); }
+    void removeGenericCue(InbandTextTrackPrivate*, GenericCueData*) override { ASSERT_NOT_REACHED(); }
 
-    void parseWebVTTFileHeader(String&&) override { ASSERT_NOT_REACHED(); }
-    void parseWebVTTCueData(const char*, unsigned) override { ASSERT_NOT_REACHED(); }
-    void parseWebVTTCueData(const ISOWebVTTCue&) override { ASSERT_NOT_REACHED(); }
+    void parseWebVTTFileHeader(InbandTextTrackPrivate*, String&&) override { ASSERT_NOT_REACHED(); }
+    void parseWebVTTCueData(InbandTextTrackPrivate*, const char*, unsigned) override { ASSERT_NOT_REACHED(); }
+    void parseWebVTTCueData(InbandTextTrackPrivate*, const ISOWebVTTCue&) override { ASSERT_NOT_REACHED(); }
 
     MediaTime startTimeVariance() const override;
 };

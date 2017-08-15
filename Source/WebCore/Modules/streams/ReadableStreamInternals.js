@@ -54,7 +54,7 @@ function readableStreamReaderGenericInitialize(reader, stream)
         reader.@closedPromiseCapability = { @promise: @Promise.@resolve() };
     else {
         @assert(stream.@state === @streamErrored);
-        reader.@closedPromiseCapability = { @promise: @newHandledRejectedPromise(stream.@storedError) };
+        reader.@closedPromiseCapability = { @promise: @Promise.@reject(stream.@storedError) };
     }
 }
 
@@ -79,10 +79,8 @@ function privateInitializeReadableStreamDefaultController(stream, underlyingSour
     this.@strategy = @validateAndNormalizeQueuingStrategy(size, highWaterMark);
 
     const controller = this;
-    @promiseInvokeOrNoopNoCatch(underlyingSource, "start", [this]).@then(() => {
+    const startResult = @promiseInvokeOrNoopNoCatch(underlyingSource, "start", [this]).@then(() => {
         controller.@started = true;
-        @assert(!controller.@pulling);
-        @assert(!controller.@pullAgain);
         @readableStreamDefaultControllerCallPullIfNeeded(controller);
     }, (error) => {
         if (stream.@state === @streamReadable)
@@ -274,16 +272,11 @@ function readableStreamError(stream, error)
         for (let index = 0, length = requests.length; index < length; ++index)
             requests[index].@reject.@call(@undefined, error);
         reader.@readRequests = [];
-    } else {
-        @assert(@isReadableStreamBYOBReader(reader));
-        const requests = reader.@readIntoRequests;
-        for (let index = 0, length = requests.length; index < length; ++index)
-            requests[index].@reject.@call(@undefined, error);
-        reader.@readIntoRequests = [];
-    }
+    } else
+        // FIXME: Implement ReadableStreamBYOBReader.
+        @throwTypeError("Only ReadableStreamDefaultReader is currently supported");
 
     reader.@closedPromiseCapability.@reject.@call(@undefined, error);
-    reader.@closedPromiseCapability.@promise.@promiseIsHandled = true;
 }
 
 function readableStreamDefaultControllerCallPullIfNeeded(controller)
@@ -418,13 +411,6 @@ function readableStreamClose(stream)
     reader.@closedPromiseCapability.@resolve.@call();
 }
 
-function readableStreamFulfillReadRequest(stream, chunk, done)
-{
-    "use strict";
-
-    stream.@reader.@readRequests.@shift().@resolve.@call(@undefined, {value: chunk, done: done});
-}
-
 function readableStreamDefaultControllerEnqueue(controller, chunk)
 {
     "use strict";
@@ -434,7 +420,7 @@ function readableStreamDefaultControllerEnqueue(controller, chunk)
     @assert(stream.@state === @streamReadable);
 
     if (@isReadableStreamLocked(stream) && stream.@reader.@readRequests.length) {
-        @readableStreamFulfillReadRequest(stream, chunk, false);
+        stream.@reader.@readRequests.@shift().@resolve.@call(@undefined, {value: chunk, done: false});
         @readableStreamDefaultControllerCallPullIfNeeded(controller);
         return;
     }
@@ -501,9 +487,8 @@ function readableStreamReaderGenericRelease(reader)
     if (reader.@ownerReadableStream.@state === @streamReadable)
         reader.@closedPromiseCapability.@reject.@call(@undefined, new @TypeError("releasing lock of reader whose stream is still in readable state"));
     else
-        reader.@closedPromiseCapability = { @promise: @newHandledRejectedPromise(new @TypeError("reader released lock")) };
+        reader.@closedPromiseCapability = { @promise: @Promise.@reject(new @TypeError("reader released lock")) };
 
-    reader.@closedPromiseCapability.@promise.@promiseIsHandled = true;
     reader.@ownerReadableStream.@reader = @undefined;
-    reader.@ownerReadableStream = @undefined;
+    reader.@ownerReadableStream = null;
 }

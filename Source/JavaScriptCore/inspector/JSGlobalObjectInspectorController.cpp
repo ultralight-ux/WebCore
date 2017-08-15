@@ -47,8 +47,13 @@
 #include "ScriptArguments.h"
 #include "ScriptCallStack.h"
 #include "ScriptCallStackFactory.h"
-#include <wtf/StackTrace.h>
 #include <wtf/Stopwatch.h>
+
+#if OS(DARWIN) || (OS(LINUX) && !PLATFORM(GTK))
+#include <cxxabi.h>
+#include <dlfcn.h>
+#include <execinfo.h>
+#endif
 
 #if ENABLE(REMOTE_INSPECTOR)
 #include "JSGlobalObjectDebuggable.h"
@@ -182,7 +187,7 @@ void JSGlobalObjectInspectorController::pause()
     m_debuggerAgent->pause(dummyError);
 }
 
-void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack& callStack)
+void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack* callStack)
 {
 #if OS(DARWIN) || (OS(LINUX) && !PLATFORM(GTK))
     static const int framesToShow = 31;
@@ -195,11 +200,18 @@ void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack& call
     void** stack = samples + framesToSkip;
     int size = frames - framesToSkip;
     for (int i = 0; i < size; ++i) {
-        auto demangled = StackTrace::demangle(stack[i]);
-        if (demangled)
-            callStack.append(ScriptCallFrame(demangled->demangledName() ? demangled->demangledName() : demangled->mangledName(), ASCIILiteral("[native code]"), noSourceID, 0, 0));
+        const char* mangledName = nullptr;
+        char* cxaDemangled = nullptr;
+        Dl_info info;
+        if (dladdr(stack[i], &info) && info.dli_sname)
+            mangledName = info.dli_sname;
+        if (mangledName)
+            cxaDemangled = abi::__cxa_demangle(mangledName, nullptr, nullptr, nullptr);
+        if (mangledName || cxaDemangled)
+            callStack->append(ScriptCallFrame(cxaDemangled ? cxaDemangled : mangledName, ASCIILiteral("[native code]"), noSourceID, 0, 0));
         else
-            callStack.append(ScriptCallFrame(ASCIILiteral("?"), ASCIILiteral("[native code]"), noSourceID, 0, 0));
+            callStack->append(ScriptCallFrame(ASCIILiteral("?"), ASCIILiteral("[native code]"), noSourceID, 0, 0));
+        free(cxaDemangled);
     }
 #else
     UNUSED_PARAM(callStack);
@@ -208,14 +220,14 @@ void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack& call
 
 void JSGlobalObjectInspectorController::reportAPIException(ExecState* exec, Exception* exception)
 {
-    VM& vm = exec->vm();
-    if (isTerminatedExecutionException(vm, exception))
+    if (isTerminatedExecutionException(exception))
         return;
 
+    VM& vm = exec->vm();
     auto scope = DECLARE_CATCH_SCOPE(vm);
     ErrorHandlingScope errorScope(vm);
 
-    Ref<ScriptCallStack> callStack = createScriptCallStackFromException(exec, exception, ScriptCallStack::maxCallStackSizeToCapture);
+    RefPtr<ScriptCallStack> callStack = createScriptCallStackFromException(exec, exception, ScriptCallStack::maxCallStackSizeToCapture);
     if (includesNativeCallStackWhenReportingExceptions())
         appendAPIBacktrace(callStack.get());
 
@@ -232,7 +244,7 @@ void JSGlobalObjectInspectorController::reportAPIException(ExecState* exec, Exce
             ConsoleClient::printConsoleMessage(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, String(), 0, 0);
     }
 
-    m_consoleAgent->addMessageToConsole(std::make_unique<ConsoleMessage>(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, WTFMove(callStack)));
+    m_consoleAgent->addMessageToConsole(std::make_unique<ConsoleMessage>(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, callStack));
 }
 
 ConsoleClient* JSGlobalObjectInspectorController::consoleClient() const

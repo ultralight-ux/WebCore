@@ -48,11 +48,9 @@ small-caption
 -apple-system-short-footnote
 -apple-system-short-caption1
 -apple-system-tall-body
--apple-system-title0
 -apple-system-title1
 -apple-system-title2
 -apple-system-title3
--apple-system-title4
 #endif
 
 // This has to go after the -apple-system versions.
@@ -127,7 +125,15 @@ normal
 bold
 bolder
 lighter
-
+100
+200
+300
+400
+500
+600
+700
+800
+900
 //
 // CSS_PROP_FONT_SIZE:
 //
@@ -167,7 +173,6 @@ fantasy
 monospace
 -webkit-body
 -webkit-pictograph
-system-ui
 //
 //
 // CSS_PROP_*_COLOR
@@ -421,31 +426,27 @@ inline-grid
 // The order here must match the order of the ECursor enum in RenderStyleConstants.h.
 //
 auto
-default
-// none
-context-menu
-help
-pointer
-progress
-wait
-cell
 crosshair
-text
+default
+pointer
+move
 vertical-text
+cell
+context-menu
 alias
 // copy
-move
+progress
 no-drop
 not-allowed
-grab
-grabbing
+zoom-in
+zoom-out
 e-resize
-n-resize
 ne-resize
 nw-resize
-s-resize
+n-resize
 se-resize
 sw-resize
+s-resize
 w-resize
 ew-resize
 ns-resize
@@ -453,13 +454,15 @@ nesw-resize
 nwse-resize
 col-resize
 row-resize
+text
+wait
+help
 all-scroll
-zoom-in
-zoom-out
 -webkit-grab
 -webkit-grabbing
 -webkit-zoom-in
 -webkit-zoom-out
+// none
 //
 // CSS_PROP_CURSOR_VISIBILITY:
 // auto
@@ -508,8 +511,6 @@ hide
 higher
 invert
 inverted
-isolate-override
-plaintext
 -webkit-isolate
 -webkit-isolate-override
 -webkit-plaintext
@@ -594,7 +595,6 @@ space-evenly
 // flex-end
 // center
 // baseline
-first-baseline
 last-baseline
 // stretch
 
@@ -613,8 +613,7 @@ last-baseline
 // auto
 // stretch
 // baseline
-// last baseline
-// first baseline
+// last-baseline
 // center
 // start
 // end
@@ -688,12 +687,9 @@ min-intrinsic
 //
 // CSS3 intrinsic dimension keywords
 //
-min-content
 -webkit-min-content
-max-content
 -webkit-max-content
 -webkit-fill-available
-fit-content
 -webkit-fit-content
 
 //
@@ -844,11 +840,6 @@ padding-box
 //
 var
 -internal-variable-value
-
-//
-// UA Constants
-//
-constant
 
 //
 // CSS_PROP_BREAK_BEFORE/AFTER/INSIDE
@@ -1101,8 +1092,6 @@ elements
 // -webkit-scroll-snap-type
 mandatory
 proximity
-x
-y
 #endif
 
 // -webkit-region-fragment
@@ -1273,6 +1262,7 @@ span
 
 // grid-template-{columns|rows}
 minmax
+fit-content
 
 // grid-auto-flow
 auto-flow
@@ -1338,6 +1328,8 @@ display-p3
 reduce
 no-preference
 
+#if defined(ENABLE_CSS_GRID_LAYOUT) && ENABLE_CSS_GRID_LAYOUT
 // auto-repeat
 auto-fill
 auto-fit
+#endif

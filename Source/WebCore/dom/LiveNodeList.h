@@ -47,14 +47,13 @@ public:
     virtual bool isRootedAtDocument() const = 0;
 
     ALWAYS_INLINE NodeListInvalidationType invalidationType() const { return static_cast<NodeListInvalidationType>(m_invalidationType); }
-    ContainerNode& ownerNode() const { return m_ownerNode; }
-    ALWAYS_INLINE void invalidateCacheForAttribute(const QualifiedName& attrName) const
+    ContainerNode& ownerNode() const { return const_cast<ContainerNode&>(m_ownerNode.get()); }
+    ALWAYS_INLINE void invalidateCacheForAttribute(const QualifiedName* attrName) const
     {
-        if (shouldInvalidateTypeOnAttributeChange(invalidationType(), attrName))
-            invalidateCache();
+        if (!attrName || shouldInvalidateTypeOnAttributeChange(invalidationType(), *attrName))
+            invalidateCache(document());
     }
-    virtual void invalidateCacheForDocument(Document&) const = 0;
-    void invalidateCache() const { invalidateCacheForDocument(document()); }
+    virtual void invalidateCache(Document&) const = 0;
 
     bool isRegisteredForInvalidationAtDocument() const { return m_isRegisteredForInvalidationAtDocument; }
     void setRegisteredForInvalidationAtDocument(bool f) { m_isRegisteredForInvalidationAtDocument = f; }
@@ -90,7 +89,7 @@ public:
     bool collectionCanTraverseBackward() const { return true; }
     void willValidateIndexCache() const { document().registerNodeListForInvalidation(const_cast<CachedLiveNodeList<NodeListType>&>(*this)); }
 
-    void invalidateCacheForDocument(Document&) const final;
+    void invalidateCache(Document&) const final;
     size_t memoryCost() const final { return m_indexCache.memoryCost(); }
 
 protected:
@@ -114,8 +113,8 @@ ALWAYS_INLINE bool shouldInvalidateTypeOnAttributeChange(NodeListInvalidationTyp
         return attrName == HTMLNames::nameAttr;
     case InvalidateOnIdNameAttrChange:
         return attrName == HTMLNames::idAttr || attrName == HTMLNames::nameAttr;
-    case InvalidateOnForTypeAttrChange:
-        return attrName == HTMLNames::forAttr || attrName == HTMLNames::typeAttr;
+    case InvalidateOnForAttrChange:
+        return attrName == HTMLNames::forAttr;
     case InvalidateForFormControls:
         return attrName == HTMLNames::nameAttr || attrName == HTMLNames::idAttr || attrName == HTMLNames::forAttr
             || attrName == HTMLNames::formAttr || attrName == HTMLNames::typeAttr;
@@ -146,14 +145,14 @@ CachedLiveNodeList<NodeListType>::~CachedLiveNodeList()
 template <class NodeListType>
 inline ContainerNode& CachedLiveNodeList<NodeListType>::rootNode() const
 {
-    if (nodeList().isRootedAtDocument() && ownerNode().isConnected())
+    if (nodeList().isRootedAtDocument() && ownerNode().inDocument())
         return ownerNode().document();
 
     return ownerNode();
 }
 
 template <class NodeListType>
-void CachedLiveNodeList<NodeListType>::invalidateCacheForDocument(Document& document) const
+void CachedLiveNodeList<NodeListType>::invalidateCache(Document& document) const
 {
     if (!m_indexCache.hasValidCache(nodeList()))
         return;

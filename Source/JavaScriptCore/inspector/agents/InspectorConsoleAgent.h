@@ -71,9 +71,9 @@ public:
     void addMessageToConsole(std::unique_ptr<ConsoleMessage>);
 
     void startTiming(const String& title);
-    void stopTiming(const String& title, Ref<ScriptCallStack>&&);
+    void stopTiming(const String& title, PassRefPtr<ScriptCallStack>);
     void takeHeapSnapshot(const String& title);
-    void count(JSC::ExecState*, Ref<ScriptArguments>&&);
+    void count(JSC::ExecState*, PassRefPtr<ScriptArguments>);
 
 protected:
     void addConsoleMessage(std::unique_ptr<ConsoleMessage>);

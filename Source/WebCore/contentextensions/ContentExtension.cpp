@@ -45,20 +45,20 @@ ContentExtension::ContentExtension(const String& identifier, Ref<CompiledContent
     : m_identifier(identifier)
     , m_compiledExtension(WTFMove(compiledExtension))
 {
-    DFABytecodeInterpreter withoutConditions(m_compiledExtension->filtersWithoutConditionsBytecode(), m_compiledExtension->filtersWithoutConditionsBytecodeLength());
-    DFABytecodeInterpreter withConditions(m_compiledExtension->filtersWithConditionsBytecode(), m_compiledExtension->filtersWithConditionsBytecodeLength());
-    for (uint64_t action : withoutConditions.actionsMatchingEverything()) {
+    DFABytecodeInterpreter withoutDomains(m_compiledExtension->filtersWithoutDomainsBytecode(), m_compiledExtension->filtersWithoutDomainsBytecodeLength());
+    DFABytecodeInterpreter withDomains(m_compiledExtension->filtersWithDomainsBytecode(), m_compiledExtension->filtersWithDomainsBytecodeLength());
+    for (uint64_t action : withoutDomains.actionsMatchingEverything()) {
         ASSERT(static_cast<uint32_t>(action) == action);
-        m_universalActionsWithoutConditions.append(static_cast<uint32_t>(action));
+        m_universalActionsWithoutDomains.append(static_cast<uint32_t>(action));
     }
-    for (uint64_t action : withConditions.actionsMatchingEverything()) {
-        ASSERT((action & ~IfConditionFlag) == static_cast<uint32_t>(action));
-        m_universalActionsWithConditions.append(action);
+    for (uint64_t action : withDomains.actionsMatchingEverything()) {
+        ASSERT((action & ~IfDomainFlag) == static_cast<uint32_t>(action));
+        m_universalActionsWithDomains.append(action);
     }
     
     compileGlobalDisplayNoneStyleSheet();
-    m_universalActionsWithoutConditions.shrinkToFit();
-    m_universalActionsWithConditions.shrinkToFit();
+    m_universalActionsWithoutDomains.shrinkToFit();
+    m_universalActionsWithDomains.shrinkToFit();
 }
 
 uint32_t ContentExtension::findFirstIgnorePreviousRules() const
@@ -92,7 +92,7 @@ void ContentExtension::compileGlobalDisplayNoneStyleSheet()
     };
     
     StringBuilder css;
-    for (uint32_t universalActionLocation : m_universalActionsWithoutConditions) {
+    for (uint32_t universalActionLocation : m_universalActionsWithoutDomains) {
         if (inGlobalDisplayNoneStyleSheet(universalActionLocation)) {
             if (!css.isEmpty())
                 css.append(',');
@@ -113,44 +113,41 @@ void ContentExtension::compileGlobalDisplayNoneStyleSheet()
         m_globalDisplayNoneStyleSheet = nullptr;
 
     // These actions don't need to be applied individually any more. They will all be applied to every page as a precompiled style sheet.
-    m_universalActionsWithoutConditions.removeAllMatching(inGlobalDisplayNoneStyleSheet);
+    m_universalActionsWithoutDomains.removeAllMatching(inGlobalDisplayNoneStyleSheet);
 }
 
-void ContentExtension::populateConditionCacheIfNeeded(const URL& topURL)
+void ContentExtension::populateDomainCacheIfNeeded(const String& domain)
 {
-    if (m_cachedTopURL != topURL) {
-        DFABytecodeInterpreter interpreter(m_compiledExtension->topURLFiltersBytecode(), m_compiledExtension->topURLFiltersBytecodeLength());
+    if (m_cachedDomain != domain) {
+        DFABytecodeInterpreter interpreter(m_compiledExtension->domainFiltersBytecode(), m_compiledExtension->domainFiltersBytecodeLength());
         const uint16_t allLoadTypesAndResourceTypes = LoadTypeMask | ResourceTypeMask;
-        String string = m_compiledExtension->conditionsApplyOnlyToDomain() ? topURL.host() : topURL.string();
-        auto topURLActions = interpreter.interpret(string.utf8(), allLoadTypesAndResourceTypes);
+        auto domainActions = interpreter.interpret(domain.utf8(), allLoadTypesAndResourceTypes);
         
-        m_cachedTopURLActions.clear();
-        for (uint64_t action : topURLActions)
-            m_cachedTopURLActions.add(action);
-        for (uint64_t action : interpreter.actionsMatchingEverything())
-            m_cachedTopURLActions.add(action);
+        m_cachedDomainActions.clear();
+        for (uint64_t action : domainActions)
+            m_cachedDomainActions.add(action);
         
-        m_cachedUniversalConditionedActions.clear();
-        for (uint64_t action : m_universalActionsWithConditions) {
-        ASSERT_WITH_MESSAGE((action & ~IfConditionFlag) == static_cast<uint32_t>(action), "Universal actions with conditions should not have flags.");
-            if (!!(action & IfConditionFlag) == m_cachedTopURLActions.contains(action))
-                m_cachedUniversalConditionedActions.append(static_cast<uint32_t>(action));
+        m_cachedUniversalDomainActions.clear();
+        for (uint64_t action : m_universalActionsWithDomains) {
+            ASSERT_WITH_MESSAGE((action & ~IfDomainFlag) == static_cast<uint32_t>(action), "Universal actions with domains should not have flags.");
+            if (!!(action & IfDomainFlag) == m_cachedDomainActions.contains(action))
+                m_cachedUniversalDomainActions.append(static_cast<uint32_t>(action));
         }
-        m_cachedUniversalConditionedActions.shrinkToFit();
-        m_cachedTopURL = topURL;
+        m_cachedUniversalDomainActions.shrinkToFit();
+        m_cachedDomain = domain;
     }
 }
 
-const DFABytecodeInterpreter::Actions& ContentExtension::topURLActions(const URL& topURL)
+const DFABytecodeInterpreter::Actions& ContentExtension::cachedDomainActions(const String& domain)
 {
-    populateConditionCacheIfNeeded(topURL);
-    return m_cachedTopURLActions;
+    populateDomainCacheIfNeeded(domain);
+    return m_cachedDomainActions;
 }
 
-const Vector<uint32_t>& ContentExtension::universalActionsWithConditions(const URL& topURL)
+const Vector<uint32_t>& ContentExtension::universalActionsWithDomains(const String& domain)
 {
-    populateConditionCacheIfNeeded(topURL);
-    return m_cachedUniversalConditionedActions;
+    populateDomainCacheIfNeeded(domain);
+    return m_cachedUniversalDomainActions;
 }
     
 } // namespace ContentExtensions

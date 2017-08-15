@@ -35,7 +35,7 @@
 #if ASAN_ENABLED
 extern "C" void __asan_poison_memory_region(void const volatile *addr, size_t size);
 extern "C" void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
-extern "C" int __asan_address_is_poisoned(void const volatile *addr);
+extern "C" bool __asan_address_is_poisoned(void const volatile *addr);
 #endif
 
 namespace WTF {
@@ -133,11 +133,17 @@ public:
         ASSERT(m_ptr);
     }
 
-    T* operator->() const { ASSERT(m_ptr); return m_ptr; }
-    T* ptr() const RETURNS_NONNULL { ASSERT(m_ptr); return m_ptr; }
-    T& get() const { ASSERT(m_ptr); return *m_ptr; }
-    operator T&() const { ASSERT(m_ptr); return *m_ptr; }
-    bool operator!() const { ASSERT(m_ptr); return !*m_ptr; }
+    const T* operator->() const { ASSERT(m_ptr); return m_ptr; }
+    T* operator->() { ASSERT(m_ptr); return m_ptr; }
+
+    const T* ptr() const { ASSERT(m_ptr); return m_ptr; }
+    T* ptr() { ASSERT(m_ptr); return m_ptr; }
+
+    const T& get() const { ASSERT(m_ptr); return *m_ptr; }
+    T& get() { ASSERT(m_ptr); return *m_ptr; }
+
+    operator T&() { ASSERT(m_ptr); return *m_ptr; }
+    operator const T&() const { ASSERT(m_ptr); return *m_ptr; }
 
     template<typename U> Ref<T> replace(Ref<U>&&) WARN_UNUSED_RETURN;
 

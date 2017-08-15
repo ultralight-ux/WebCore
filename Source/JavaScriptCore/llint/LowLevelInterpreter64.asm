@@ -1,4 +1,4 @@
-# Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+# Copyright (C) 2011-2016 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -347,12 +347,12 @@ macro callCallSlowPath(slowPath, action)
     action(r0, r1)
 end
 
-macro callTrapHandler(throwHandler)
+macro callWatchdogTimerHandler(throwHandler)
     storei PC, ArgumentCount + TagOffset[cfr]
     prepareStateForCCall()
     move cfr, a0
     move PC, a1
-    cCall2(_llint_slow_path_handle_traps)
+    cCall2(_llint_slow_path_handle_watchdog_timer)
     btpnz r0, throwHandler
     loadi ArgumentCount + TagOffset[cfr], PC
 end
@@ -525,10 +525,6 @@ macro functionArityCheck(doneLabel, slowPath)
     move cfr, t3
     subp CalleeSaveSpaceAsVirtualRegisters * 8, t3
     addi CalleeSaveSpaceAsVirtualRegisters, t2
-    move t1, t0
-    lshiftp 3, t0
-    addp t0, cfr
-    addp t0, sp
 .copyLoop:
     loadq [t3], t0
     storeq t0, [t3, t1, 8]
@@ -542,6 +538,10 @@ macro functionArityCheck(doneLabel, slowPath)
     storeq t0, [t3, t1, 8]
     addp 8, t3
     baddinz 1, t2, .fillLoop
+
+    lshiftp 3, t1
+    addp t1, cfr
+    addp t1, sp
 
 .continue:
     # Reload CodeBlock and reset PC, since the slow_path clobbered them.

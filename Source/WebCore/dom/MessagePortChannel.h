@@ -32,7 +32,6 @@
 
 #include "SerializedScriptValue.h"
 #include <memory>
-#include <wtf/Deque.h>
 #include <wtf/Forward.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
@@ -52,16 +51,6 @@ namespace WebCore {
     class MessagePortChannel {
         WTF_MAKE_NONCOPYABLE(MessagePortChannel); WTF_MAKE_FAST_ALLOCATED;
     public:
-        struct EventData {
-            EventData(Ref<SerializedScriptValue>&& message, std::unique_ptr<MessagePortChannelArray>&& channels)
-                : message(WTFMove(message))
-                , channels(WTFMove(channels))
-            { }
-
-            Ref<SerializedScriptValue> message;
-            std::unique_ptr<MessagePortChannelArray> channels;
-        };
-
         explicit MessagePortChannel(RefPtr<PlatformMessagePortChannel>&&);
         static void createChannel(MessagePort*, MessagePort*);
 
@@ -82,12 +71,10 @@ namespace WebCore {
         bool hasPendingActivity();
 
         // Sends a message and optional cloned port to the remote port.
-        void postMessageToRemote(Ref<SerializedScriptValue>&&, std::unique_ptr<MessagePortChannelArray>);
+        void postMessageToRemote(RefPtr<SerializedScriptValue>&&, std::unique_ptr<MessagePortChannelArray>);
 
         // Extracts a message from the message queue for this port.
-        std::unique_ptr<EventData> takeMessageFromRemote();
-
-        Deque<std::unique_ptr<EventData>> takeAllMessagesFromRemote();
+        bool tryGetMessageFromRemote(RefPtr<SerializedScriptValue>&, std::unique_ptr<MessagePortChannelArray>&);
 
         // Returns the entangled port if run by the same thread (see MessagePort::locallyEntangledPort() for more details).
         MessagePort* locallyEntangledPort(const ScriptExecutionContext*);

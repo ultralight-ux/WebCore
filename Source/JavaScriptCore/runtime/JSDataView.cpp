@@ -44,14 +44,14 @@ JSDataView::JSDataView(VM& vm, ConstructionContext& context, ArrayBuffer* buffer
 }
 
 JSDataView* JSDataView::create(
-    ExecState* exec, Structure* structure, RefPtr<ArrayBuffer>&& buffer,
+    ExecState* exec, Structure* structure, PassRefPtr<ArrayBuffer> passedBuffer,
     unsigned byteOffset, unsigned byteLength)
 {
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    ASSERT(buffer);
-    if (!ArrayBufferView::verifySubRangeLength(*buffer, byteOffset, byteLength, sizeof(uint8_t))) {
+    RefPtr<ArrayBuffer> buffer = passedBuffer;
+    if (!ArrayBufferView::verifySubRangeLength(buffer, byteOffset, byteLength, sizeof(uint8_t))) {
         throwVMError(exec, scope, createRangeError(exec, ASCIILiteral("Length out of range of buffer")));
         return nullptr;
     }
@@ -60,7 +60,7 @@ JSDataView* JSDataView::create(
         return nullptr;
     }
     ConstructionContext context(
-        structure, buffer.copyRef(), byteOffset, byteLength, ConstructionContext::DataView);
+        structure, buffer, byteOffset, byteLength, ConstructionContext::DataView);
     ASSERT(context);
     JSDataView* result =
         new (NotNull, allocateCell<JSDataView>(vm.heap)) JSDataView(vm, context, buffer.get());
@@ -92,12 +92,12 @@ bool JSDataView::setIndex(ExecState*, unsigned, JSValue)
     return false;
 }
 
-RefPtr<DataView> JSDataView::possiblySharedTypedImpl()
+PassRefPtr<DataView> JSDataView::possiblySharedTypedImpl()
 {
     return DataView::create(possiblySharedBuffer(), byteOffset(), length());
 }
 
-RefPtr<DataView> JSDataView::unsharedTypedImpl()
+PassRefPtr<DataView> JSDataView::unsharedTypedImpl()
 {
     return DataView::create(unsharedBuffer(), byteOffset(), length());
 }
@@ -183,7 +183,7 @@ ArrayBuffer* JSDataView::slowDownAndWasteMemory(JSArrayBufferView*)
     return 0;
 }
 
-RefPtr<ArrayBufferView> JSDataView::getTypedArrayImpl(JSArrayBufferView* object)
+PassRefPtr<ArrayBufferView> JSDataView::getTypedArrayImpl(JSArrayBufferView* object)
 {
     JSDataView* thisObject = jsCast<JSDataView*>(object);
     return thisObject->possiblySharedTypedImpl();

@@ -35,8 +35,7 @@ class Frame;
 class SecurityOrigin;
 class StorageSyncManager;
 
-enum class StorageType;
-
+enum StorageType { LocalStorage, SessionStorage };
 struct SecurityOriginData;
 
 class StorageArea : public RefCounted<StorageArea> {

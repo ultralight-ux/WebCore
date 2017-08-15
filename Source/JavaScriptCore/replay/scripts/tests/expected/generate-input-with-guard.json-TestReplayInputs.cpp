@@ -62,7 +62,7 @@ namespace JSC {
 #if ENABLE(DUMMY_FEATURE)
 const String& InputTraits<Test::GetCurrentTime>::type()
 {
-    static NeverDestroyed<const String> type(MAKE_STATIC_STRING_IMPL("GetCurrentTime"));
+    static NeverDestroyed<const String> type(ASCIILiteral("GetCurrentTime"));
     return type;
 }
 
@@ -84,7 +84,7 @@ bool InputTraits<Test::GetCurrentTime>::decode(EncodedValue& encodedValue, std::
 
 const String& InputTraits<Test::SetRandomSeed>::type()
 {
-    static NeverDestroyed<const String> type(MAKE_STATIC_STRING_IMPL("SetRandomSeed"));
+    static NeverDestroyed<const String> type(ASCIILiteral("SetRandomSeed"));
     return type;
 }
 

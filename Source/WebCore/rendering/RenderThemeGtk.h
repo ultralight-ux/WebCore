@@ -81,7 +81,7 @@ public:
     Color platformInactiveListBoxSelectionBackgroundColor() const override;
     Color platformInactiveListBoxSelectionForegroundColor() const override;
 
-    Seconds caretBlinkInterval() const override;
+    double caretBlinkInterval() const override;
 
     void platformColorsDidChange() override;
 
@@ -168,7 +168,7 @@ private:
 #endif
 #endif
 
-    Seconds animationRepeatIntervalForProgressBar(RenderProgress&) const override;
+    double animationRepeatIntervalForProgressBar(RenderProgress&) const override;
     double animationDurationForProgressBar(RenderProgress&) const override;
     void adjustProgressBarStyle(StyleResolver&, RenderStyle&, const Element*) const override;
     IntRect progressBarRectForBounds(const RenderObject&, const IntRect&) const override;

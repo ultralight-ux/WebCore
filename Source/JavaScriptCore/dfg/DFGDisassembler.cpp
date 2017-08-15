@@ -159,7 +159,7 @@ void Disassembler::dumpDisassembly(PrintStream& out, const char* prefix, LinkBuf
     else
         amountOfNodeWhiteSpace = Graph::amountOfNodeWhiteSpace(context);
     auto prefixBuffer = std::make_unique<char[]>(prefixLength + amountOfNodeWhiteSpace + 1);
-    memcpy(prefixBuffer.get(), prefix, prefixLength);
+    strcpy(prefixBuffer.get(), prefix);
     for (int i = 0; i < amountOfNodeWhiteSpace; ++i)
         prefixBuffer[i + prefixLength] = ' ';
     prefixBuffer[prefixLength + amountOfNodeWhiteSpace] = 0;

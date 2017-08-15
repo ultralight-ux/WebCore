@@ -62,7 +62,6 @@ namespace WebCore {
     M(Media) \
     M(MediaSource) \
     M(MediaSourceSamples) \
-    M(MediaCaptureSamples) \
     M(MemoryPressure) \
     M(Network) \
     M(NotYetImplemented) \
@@ -87,8 +86,6 @@ namespace WebCore {
     M(URLParser) \
     M(WebAudio) \
     M(WebGL) \
-    M(WebGPU) \
-    M(WebRTC) \
     M(WebReplay) \
     M(WheelEventTestTriggers) \
 

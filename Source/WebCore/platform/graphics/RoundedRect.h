@@ -106,7 +106,6 @@ public:
     // Tests whether the quad intersects any part of this rounded rectangle.
     // This only works for convex quads.
     bool intersectsQuad(const FloatQuad&) const;
-    bool contains(const LayoutRect&) const;
 
     FloatRoundedRect pixelSnappedRoundedRectForPainting(float deviceScaleFactor) const;
 

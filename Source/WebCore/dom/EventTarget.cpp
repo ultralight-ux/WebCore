@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2005, 2006, 2007 Apple Inc. All rights reserved.
  * Copyright (C) 2006 Alexey Proskuryakov (ap@webkit.org)
  *           (C) 2007, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  *
@@ -32,11 +32,9 @@
 #include "config.h"
 #include "EventTarget.h"
 
-#include "DOMWrapperWorld.h"
 #include "EventNames.h"
 #include "ExceptionCode.h"
 #include "InspectorInstrumentation.h"
-#include "JSEventListener.h"
 #include "NoEventDispatchAssertion.h"
 #include "ScriptController.h"
 #include "WebKitAnimationEvent.h"
@@ -106,9 +104,9 @@ bool EventTarget::removeEventListener(const AtomicString& eventType, EventListen
     return data && data->eventListenerMap.remove(eventType, listener, options.capture);
 }
 
-bool EventTarget::setAttributeEventListener(const AtomicString& eventType, RefPtr<EventListener>&& listener, DOMWrapperWorld& isolatedWorld)
+bool EventTarget::setAttributeEventListener(const AtomicString& eventType, RefPtr<EventListener>&& listener)
 {
-    auto* existingListener = attributeEventListener(eventType, isolatedWorld);
+    auto* existingListener = attributeEventListener(eventType);
     if (!listener) {
         if (existingListener)
             removeEventListener(eventType, *existingListener, false);
@@ -121,18 +119,12 @@ bool EventTarget::setAttributeEventListener(const AtomicString& eventType, RefPt
     return addEventListener(eventType, listener.releaseNonNull());
 }
 
-EventListener* EventTarget::attributeEventListener(const AtomicString& eventType, DOMWrapperWorld& isolatedWorld)
+EventListener* EventTarget::attributeEventListener(const AtomicString& eventType)
 {
     for (auto& eventListener : eventListeners(eventType)) {
-        auto& listener = eventListener->callback();
-        if (!listener.isAttribute())
-            continue;
-
-        auto& listenerWorld = downcast<JSEventListener>(listener).isolatedWorld();
-        if (&listenerWorld == &isolatedWorld)
-            return &listener;
+        if (eventListener->callback().isAttribute())
+            return &eventListener->callback();
     }
-
     return nullptr;
 }
 
@@ -187,7 +179,6 @@ static const AtomicString& legacyType(const Event& event)
     if (event.type() == eventNames().transitionendEvent)
         return eventNames().webkitTransitionEndEvent;
 
-    // FIXME: This legacy name is not part of the specification (https://dom.spec.whatwg.org/#dispatching-events).
     if (event.type() == eventNames().wheelEvent)
         return eventNames().mousewheelEvent;
 
@@ -209,10 +200,6 @@ bool EventTarget::fireEventListeners(Event& event)
         fireEventListeners(event, *listenersVector);
         return !event.defaultPrevented();
     }
-
-    // Only fall back to legacy types for trusted events.
-    if (!event.isTrusted())
-        return !event.defaultPrevented();
 
     const AtomicString& legacyTypeName = legacyType(event);
     if (!legacyTypeName.isNull()) {

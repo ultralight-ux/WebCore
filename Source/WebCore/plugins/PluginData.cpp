@@ -148,6 +148,14 @@ bool PluginData::getPluginInfoForWebVisibleMimeType(const String& mimeType, Plug
     return false;
 }
 
+String PluginData::pluginNameForWebVisibleMimeType(const String& mimeType) const
+{
+    PluginInfo info;
+    if (getPluginInfoForWebVisibleMimeType(mimeType, info))
+        return info.name;
+    return String();
+}
+
 String PluginData::pluginFileForWebVisibleMimeType(const String& mimeType) const
 {
     PluginInfo info;

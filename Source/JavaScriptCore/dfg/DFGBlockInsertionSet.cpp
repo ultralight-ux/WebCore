@@ -44,22 +44,21 @@ void BlockInsertionSet::insert(const BlockInsertion& insertion)
     m_insertions.append(insertion);
 }
 
-void BlockInsertionSet::insert(size_t index, Ref<BasicBlock>&& block)
+void BlockInsertionSet::insert(size_t index, PassRefPtr<BasicBlock> block)
 {
-    insert(BlockInsertion(index, WTFMove(block)));
+    insert(BlockInsertion(index, block));
 }
 
 BasicBlock* BlockInsertionSet::insert(size_t index, float executionCount)
 {
-    Ref<BasicBlock> block = adoptRef(*new BasicBlock(
+    RefPtr<BasicBlock> block = adoptRef(new BasicBlock(
         UINT_MAX,
         m_graph.block(0)->variablesAtHead.numberOfArguments(),
         m_graph.block(0)->variablesAtHead.numberOfLocals(),
         executionCount));
     block->isReachable = true;
-    auto* result = block.ptr();
-    insert(index, WTFMove(block));
-    return result;
+    insert(index, block);
+    return block.get();
 }
 
 BasicBlock* BlockInsertionSet::insertBefore(BasicBlock* before, float executionCount)

@@ -30,6 +30,7 @@
 #include "NetworkResourcesData.h"
 
 #include "CachedResource.h"
+#include "MIMETypeRegistry.h"
 #include "ResourceResponse.h"
 #include "SharedBuffer.h"
 #include "TextResourceDecoder.h"

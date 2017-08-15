@@ -42,7 +42,7 @@ NativeErrorConstructor::NativeErrorConstructor(VM& vm, Structure* structure)
 void NativeErrorConstructor::finishCreation(VM& vm, JSGlobalObject* globalObject, Structure* prototypeStructure, const String& name)
 {
     Base::finishCreation(vm, name);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     
     NativeErrorPrototype* prototype = NativeErrorPrototype::create(vm, prototypeStructure, name, this);
     

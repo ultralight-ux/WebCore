@@ -26,7 +26,6 @@
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
 #include <wtf/text/AtomicString.h>
-#include <wtf/text/AtomicStringHash.h>
 
 namespace WebCore {
 
@@ -51,14 +50,14 @@ struct RuleFeatureSet {
     void shrinkToFit();
     void collectFeatures(const RuleData&);
 
-    HashSet<AtomicString> idsInRules;
-    HashSet<AtomicString> idsMatchingAncestorsInRules;
-    HashSet<AtomicString> classesInRules;
-    HashSet<AtomicString> attributeCanonicalLocalNamesInRules;
-    HashSet<AtomicString> attributeLocalNamesInRules;
+    HashSet<AtomicStringImpl*> idsInRules;
+    HashSet<AtomicStringImpl*> idsMatchingAncestorsInRules;
+    HashSet<AtomicStringImpl*> classesInRules;
+    HashSet<AtomicStringImpl*> attributeCanonicalLocalNamesInRules;
+    HashSet<AtomicStringImpl*> attributeLocalNamesInRules;
     Vector<RuleFeature> siblingRules;
     Vector<RuleFeature> uncommonAttributeRules;
-    HashMap<AtomicString, std::unique_ptr<Vector<RuleFeature>>> ancestorClassRules;
+    HashMap<AtomicStringImpl*, std::unique_ptr<Vector<RuleFeature>>> ancestorClassRules;
 
     struct AttributeRules {
         WTF_MAKE_FAST_ALLOCATED;
@@ -67,14 +66,14 @@ struct RuleFeatureSet {
         HashMap<SelectorKey, const CSSSelector*> selectors;
         Vector<RuleFeature> features;
     };
-    HashMap<AtomicString, std::unique_ptr<AttributeRules>> ancestorAttributeRulesForHTML;
+    HashMap<AtomicStringImpl*, std::unique_ptr<AttributeRules>> ancestorAttributeRulesForHTML;
     bool usesFirstLineRules { false };
     bool usesFirstLetterRules { false };
 
 private:
     struct SelectorFeatures {
         bool hasSiblingSelector { false };
-        Vector<AtomicString, 32> classesMatchingAncestors;
+        Vector<AtomicStringImpl*, 32> classesMatchingAncestors;
         Vector<const CSSSelector*> attributeSelectorsMatchingAncestors;
     };
     void recursivelyCollectFeaturesFromSelector(SelectorFeatures&, const CSSSelector&, bool matchesAncestor = false);

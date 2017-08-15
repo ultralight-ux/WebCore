@@ -30,6 +30,10 @@
 #include "CachedResourceClient.h"
 #include "CachedResourceClientWalker.h"
 #include "CachedResourceRequest.h"
+#include "HTTPHeaderNames.h"
+#include "HTTPParsers.h"
+#include "MIMETypeRegistry.h"
+#include "MemoryCache.h"
 #include "RuntimeApplicationChecks.h"
 #include "SharedBuffer.h"
 #include "TextResourceDecoder.h"
@@ -54,6 +58,11 @@ void CachedScript::setEncoding(const String& chs)
 String CachedScript::encoding() const
 {
     return m_decoder->encoding().name();
+}
+
+String CachedScript::mimeType() const
+{
+    return extractMIMETypeFromMediaType(m_response.httpHeaderField(HTTPHeaderName::ContentType)).convertToASCIILowercase();
 }
 
 StringView CachedScript::script()
@@ -123,6 +132,13 @@ void CachedScript::setBodyDataFrom(const CachedResource& resource)
     m_decodingState = script.m_decodingState;
     m_decoder = script.m_decoder;
 }
+
+#if ENABLE(NOSNIFF)
+bool CachedScript::mimeTypeAllowedByNosniff() const
+{
+    return parseContentTypeOptionsHeader(m_response.httpHeaderField(HTTPHeaderName::XContentTypeOptions)) != ContentTypeOptionsNosniff || MIMETypeRegistry::isSupportedJavaScriptMIMEType(mimeType());
+}
+#endif
 
 bool CachedScript::shouldIgnoreHTTPStatusCodeErrors() const
 {

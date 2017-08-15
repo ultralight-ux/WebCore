@@ -33,6 +33,7 @@
 #include "ImageObserver.h"
 #include "Length.h"
 #include "MIMETypeRegistry.h"
+#include "NotImplemented.h"
 #include "SharedBuffer.h"
 #include "TextStream.h"
 #include <math.h>
@@ -54,32 +55,29 @@ Image::~Image()
 {
 }
 
-Image& Image::nullImage()
+Image* Image::nullImage()
 {
     ASSERT(isMainThread());
     static Image& nullImage = BitmapImage::create().leakRef();
-    return nullImage;
+    return &nullImage;
 }
 
 bool Image::supportsType(const String& type)
 {
-    return MIMETypeRegistry::isSupportedImageResourceMIMEType(type);
+    return MIMETypeRegistry::isSupportedImageResourceMIMEType(type); 
 } 
 
-EncodedDataStatus Image::setData(RefPtr<SharedBuffer>&& data, bool allDataReceived)
+bool Image::setData(RefPtr<SharedBuffer>&& data, bool allDataReceived)
 {
     m_encodedImageData = WTFMove(data);
+    if (!m_encodedImageData.get())
+        return true;
 
-    // Don't do anything; it is an empty image.
-    if (!m_encodedImageData.get() || !m_encodedImageData->size())
-        return EncodedDataStatus::Complete;
-
+    int length = m_encodedImageData->size();
+    if (!length)
+        return true;
+    
     return dataChanged(allDataReceived);
-}
-
-URL Image::sourceURL() const
-{
-    return imageObserver() ? imageObserver()->sourceUrl() : URL();
 }
 
 void Image::fillWithSolidColor(GraphicsContext& ctxt, const FloatRect& dstRect, const Color& color, CompositeOperator op)
@@ -93,7 +91,7 @@ void Image::fillWithSolidColor(GraphicsContext& ctxt, const FloatRect& dstRect, 
     ctxt.setCompositeOperation(previousOperator);
 }
 
-void Image::drawTiled(GraphicsContext& ctxt, const FloatRect& destRect, const FloatPoint& srcPoint, const FloatSize& scaledTileSize, const FloatSize& spacing, CompositeOperator op, BlendMode blendMode, DecodingMode decodingMode)
+void Image::drawTiled(GraphicsContext& ctxt, const FloatRect& destRect, const FloatPoint& srcPoint, const FloatSize& scaledTileSize, const FloatSize& spacing, CompositeOperator op, BlendMode blendMode)
 {
     Color color = singlePixelSolidColor();
     if (color.isValid()) {
@@ -129,7 +127,7 @@ void Image::drawTiled(GraphicsContext& ctxt, const FloatRect& destRect, const Fl
         visibleSrcRect.setY((destRect.y() - oneTileRect.y()) / scale.height());
         visibleSrcRect.setWidth(destRect.width() / scale.width());
         visibleSrcRect.setHeight(destRect.height() / scale.height());
-        draw(ctxt, destRect, visibleSrcRect, op, blendMode, decodingMode, ImageOrientationDescription());
+        draw(ctxt, destRect, visibleSrcRect, op, blendMode, ImageOrientationDescription());
         return;
     }
 
@@ -142,7 +140,7 @@ void Image::drawTiled(GraphicsContext& ctxt, const FloatRect& destRect, const Fl
             visibleSrcRect.setY((destRect.y() - oneTileRect.y()) / scale.height());
             visibleSrcRect.setWidth(1);
             visibleSrcRect.setHeight(destRect.height() / scale.height());
-            draw(ctxt, destRect, visibleSrcRect, op, BlendModeNormal, decodingMode, ImageOrientationDescription());
+            draw(ctxt, destRect, visibleSrcRect, op, BlendModeNormal, ImageOrientationDescription());
             return;
         }
         if (size().height() == 1 && intersection(oneTileRect, destRect).width() == destRect.width()) {
@@ -151,7 +149,7 @@ void Image::drawTiled(GraphicsContext& ctxt, const FloatRect& destRect, const Fl
             visibleSrcRect.setY(0);
             visibleSrcRect.setWidth(destRect.width() / scale.width());
             visibleSrcRect.setHeight(1);
-            draw(ctxt, destRect, visibleSrcRect, op, BlendModeNormal, decodingMode, ImageOrientationDescription());
+            draw(ctxt, destRect, visibleSrcRect, op, BlendModeNormal, ImageOrientationDescription());
             return;
         }
     }
@@ -183,7 +181,7 @@ void Image::drawTiled(GraphicsContext& ctxt, const FloatRect& destRect, const Fl
                 FloatRect fromRect(toFloatPoint(currentTileRect.location() - oneTileRect.location()), currentTileRect.size());
                 fromRect.scale(1 / scale.width(), 1 / scale.height());
 
-                draw(ctxt, toRect, fromRect, op, BlendModeNormal, decodingMode, ImageOrientationDescription());
+                draw(ctxt, toRect, fromRect, op, BlendModeNormal, ImageOrientationDescription());
                 toX += currentTileRect.width();
                 currentTileRect.shiftXEdgeTo(oneTileRect.x());
             }

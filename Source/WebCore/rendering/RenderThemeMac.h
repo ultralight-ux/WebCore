@@ -87,7 +87,7 @@ public:
 #endif
 
     // Returns the repeat interval of the animation for the progress bar.
-    Seconds animationRepeatIntervalForProgressBar(RenderProgress&) const override;
+    double animationRepeatIntervalForProgressBar(RenderProgress&) const override;
     // Returns the duration of the animation for the progress bar.
     double animationDurationForProgressBar(RenderProgress&) const override;
     IntRect progressBarRectForBounds(const RenderObject&, const IntRect&) const override;
@@ -107,9 +107,8 @@ protected:
 #if ENABLE(VIDEO)
     // Media controls
     String mediaControlsStyleSheet() override;
-    String modernMediaControlsStyleSheet() override;
     String mediaControlsScript() override;
-    String mediaControlsBase64StringForIconNameAndType(const String&, const String&) override;
+    String mediaControlsBase64StringForIconAndPlatform(const String&, const String&) override;
 #endif
 
 #if ENABLE(SERVICE_CONTROLS)
@@ -172,8 +171,6 @@ private:
     String fileListNameForWidth(const FileList*, const FontCascade&, int width, bool multipleFilesAllowed) const override;
 
     Color systemColor(CSSValueID) const override;
-
-    void purgeCaches() override;
 
     // Get the control size based off the font. Used by some of the controls (like buttons).
     NSControlSize controlSizeForFont(const RenderStyle&) const;

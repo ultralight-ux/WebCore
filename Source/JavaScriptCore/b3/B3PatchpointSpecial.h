@@ -47,20 +47,19 @@ public:
     virtual ~PatchpointSpecial();
 
 protected:
-    void forEachArg(Air::Inst&, const ScopedLambda<Air::Inst::EachArgCallback>&) final;
-    bool isValid(Air::Inst&) final;
-    bool admitsStack(Air::Inst&, unsigned argIndex) final;
-    bool admitsExtendedOffsetAddr(Air::Inst&, unsigned) final;
+    void forEachArg(Air::Inst&, const ScopedLambda<Air::Inst::EachArgCallback>&) override;
+    bool isValid(Air::Inst&) override;
+    bool admitsStack(Air::Inst&, unsigned argIndex) override;
 
     // NOTE: the generate method will generate the hidden branch and then register a LatePath that
     // generates the stackmap. Super crazy dude!
 
-    CCallHelpers::Jump generate(Air::Inst&, CCallHelpers&, Air::GenerationContext&) final;
+    CCallHelpers::Jump generate(Air::Inst&, CCallHelpers&, Air::GenerationContext&) override;
     
-    bool isTerminal(Air::Inst&) final;
+    bool isTerminal(Air::Inst&) override;
 
-    void dumpImpl(PrintStream&) const final;
-    void deepDumpImpl(PrintStream&) const final;
+    void dumpImpl(PrintStream&) const override;
+    void deepDumpImpl(PrintStream&) const override;
 };
 
 } } // namespace JSC::B3

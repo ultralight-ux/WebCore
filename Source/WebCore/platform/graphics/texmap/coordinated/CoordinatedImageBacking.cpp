@@ -57,14 +57,14 @@ CoordinatedImageBackingID CoordinatedImageBacking::getCoordinatedImageBackingID(
     return reinterpret_cast<CoordinatedImageBackingID>(image);
 }
 
-Ref<CoordinatedImageBacking> CoordinatedImageBacking::create(Client& client, Ref<Image>&& image)
+PassRefPtr<CoordinatedImageBacking> CoordinatedImageBacking::create(Client* client, PassRefPtr<Image> image)
 {
-    return adoptRef(*new CoordinatedImageBacking(client, WTFMove(image)));
+    return adoptRef(new CoordinatedImageBacking(client, image));
 }
 
-CoordinatedImageBacking::CoordinatedImageBacking(Client& client, Ref<Image>&& image)
-    : m_client(&client)
-    , m_image(WTFMove(image))
+CoordinatedImageBacking::CoordinatedImageBacking(Client* client, PassRefPtr<Image> image)
+    : m_client(client)
+    , m_image(image)
     , m_id(getCoordinatedImageBackingID(m_image.get()))
     , m_clearContentsTimer(*this, &CoordinatedImageBacking::clearContentsTimerFired)
     , m_isDirty(false)
@@ -144,7 +144,7 @@ void CoordinatedImageBacking::releaseSurfaceIfNeeded()
     m_surface = nullptr;
 }
 
-static const Seconds clearContentsTimerInterval { 3_s };
+static const double clearContentsTimerInterval = 3;
 
 void CoordinatedImageBacking::updateVisibilityIfNeeded(bool& changedToVisible)
 {

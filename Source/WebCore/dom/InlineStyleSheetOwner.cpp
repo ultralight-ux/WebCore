@@ -116,14 +116,14 @@ void InlineStyleSheetOwner::childrenChanged(Element& element)
 {
     if (m_isParsingChildren)
         return;
-    if (!element.isConnected())
+    if (!element.inDocument())
         return;
     createSheetFromTextContents(element);
 }
 
 void InlineStyleSheetOwner::finishParsingChildren(Element& element)
 {
-    if (element.isConnected())
+    if (element.inDocument())
         createSheetFromTextContents(element);
     m_isParsingChildren = false;
 }
@@ -153,11 +153,11 @@ inline bool isValidCSSContentType(Element& element, const AtomicString& type)
 
 void InlineStyleSheetOwner::createSheet(Element& element, const String& text)
 {
-    ASSERT(element.isConnected());
+    ASSERT(element.inDocument());
     Document& document = element.document();
     if (m_sheet) {
         if (m_sheet->isLoading() && m_styleScope)
-            m_styleScope->removePendingSheet(element);
+            m_styleScope->removePendingSheet();
         clearSheet();
     }
 
@@ -178,7 +178,7 @@ void InlineStyleSheetOwner::createSheet(Element& element, const String& text)
         return;
 
     if (m_styleScope)
-        m_styleScope->addPendingSheet(element);
+        m_styleScope->addPendingSheet();
 
     auto cacheKey = makeInlineStyleSheetCacheKey(text, element);
     if (cacheKey) {
@@ -228,21 +228,21 @@ bool InlineStyleSheetOwner::isLoading() const
     return m_sheet && m_sheet->isLoading();
 }
 
-bool InlineStyleSheetOwner::sheetLoaded(Element& element)
+bool InlineStyleSheetOwner::sheetLoaded(Element&)
 {
     if (isLoading())
         return false;
 
     if (m_styleScope)
-        m_styleScope->removePendingSheet(element);
+        m_styleScope->removePendingSheet();
 
     return true;
 }
 
-void InlineStyleSheetOwner::startLoadingDynamicSheet(Element& element)
+void InlineStyleSheetOwner::startLoadingDynamicSheet(Element&)
 {
     if (m_styleScope)
-        m_styleScope->addPendingSheet(element);
+        m_styleScope->addPendingSheet();
 }
 
 void InlineStyleSheetOwner::clearCache()

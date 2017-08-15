@@ -30,6 +30,10 @@
 
 #if ENABLE(SMOOTH_SCROLLING)
 
+#if !ENABLE(REQUEST_ANIMATION_FRAME)
+#error "SMOOTH_SCROLLING requires REQUEST_ANIMATION_FRAME to be enabled."
+#endif
+
 #include "Timer.h"
 
 namespace WebCore {
@@ -76,29 +80,29 @@ private:
         double desiredVelocity { 0 };
 
         double startPosition { 0 };
-        MonotonicTime startTime;
+        double startTime { 0 };
         double startVelocity { 0 };
 
-        Seconds animationTime;
-        MonotonicTime lastAnimationTime;
+        double animationTime { 0 };
+        double lastAnimationTime { 0 };
 
         double attackPosition { 0 };
-        Seconds attackTime;
+        double attackTime { 0 };
         Curve attackCurve { Curve::Quadratic };
 
         double releasePosition { 0 };
-        Seconds releaseTime;
+        double releaseTime { 0 };
         Curve releaseCurve { Curve::Quadratic };
 
         int visibleLength { 0 };
     };
 
     bool updatePerAxisData(PerAxisData&, ScrollGranularity, float delta, float minScrollPosition, float maxScrollPosition);
-    bool animateScroll(PerAxisData&, MonotonicTime currentTime);
+    bool animateScroll(PerAxisData&, double currentTime);
 
 #if USE(REQUEST_ANIMATION_FRAME_TIMER)
     void requestAnimationTimerFired();
-    void startNextTimer(Seconds delay);
+    void startNextTimer(double delay);
 #else
     void startNextTimer();
 #endif
@@ -110,7 +114,7 @@ private:
     PerAxisData m_horizontalData;
     PerAxisData m_verticalData;
 
-    MonotonicTime m_startTime;
+    double m_startTime { 0 };
 #if USE(REQUEST_ANIMATION_FRAME_TIMER)
     Timer m_animationTimer;
 #else

@@ -28,7 +28,6 @@
 #if ENABLE(RESOURCE_USAGE)
 
 #include "FloatRect.h"
-#include "GraphicsLayer.h"
 #include "IntRect.h"
 #include "MainFrame.h"
 #include "PageOverlay.h"
@@ -82,11 +81,6 @@ private:
     ThreadIdentifier m_threadID { 0 };
     RetainPtr<CALayer> m_layer;
     RetainPtr<CALayer> m_containerLayer;
-#endif
-
-#if OS(LINUX)
-    std::unique_ptr<GraphicsLayer> m_paintLayer;
-    std::unique_ptr<GraphicsLayerClient> m_overlayPainter;
 #endif
 };
 

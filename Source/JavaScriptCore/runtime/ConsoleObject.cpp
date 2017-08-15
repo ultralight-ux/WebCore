@@ -68,7 +68,7 @@ ConsoleObject::ConsoleObject(VM& vm, Structure* structure)
 void ConsoleObject::finishCreation(VM& vm, JSGlobalObject* globalObject)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
     // For legacy reasons, console properties are enumerable, writable, deleteable,
     // and all have a length of 0. This may change if Console is standardized.
@@ -110,7 +110,8 @@ static EncodedJSValue consoleLogWithLevel(ExecState* exec, MessageLevel level)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->logWithLevel(exec, Inspector::createScriptArguments(exec, 0), level);
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->logWithLevel(exec, WTFMove(arguments), level);
     return JSValue::encode(jsUndefined());
 }
 
@@ -155,7 +156,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncDir(ExecState* exec)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->dir(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->dir(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -165,7 +167,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncDirXML(ExecState* exec)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->dirXML(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->dirXML(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -175,7 +178,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncTable(ExecState* exec)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->table(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->table(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -185,7 +189,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncTrace(ExecState* exec)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->trace(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->trace(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -203,7 +208,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncAssert(ExecState* exec)
     if (condition)
         return JSValue::encode(jsUndefined());
 
-    client->assertion(exec, Inspector::createScriptArguments(exec, 1));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 1));
+    client->assertion(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -213,7 +219,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncCount(ExecState* exec)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->count(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->count(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -333,7 +340,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncTimeStamp(ExecState* exec)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->timeStamp(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->timeStamp(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -343,7 +351,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncGroup(ExecState* exec)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->group(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->group(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -353,7 +362,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncGroupCollapsed(ExecState* ex
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->groupCollapsed(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->groupCollapsed(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 
@@ -363,7 +373,8 @@ static EncodedJSValue JSC_HOST_CALL consoleProtoFuncGroupEnd(ExecState* exec)
     if (!client)
         return JSValue::encode(jsUndefined());
 
-    client->groupEnd(exec, Inspector::createScriptArguments(exec, 0));
+    RefPtr<Inspector::ScriptArguments> arguments(Inspector::createScriptArguments(exec, 0));
+    client->groupEnd(exec, WTFMove(arguments));
     return JSValue::encode(jsUndefined());
 }
 

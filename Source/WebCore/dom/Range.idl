@@ -18,6 +18,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
+// Introduced in DOM Level 2:
 [
     Constructor,
     ConstructorCallWith=Document,
@@ -25,58 +26,57 @@
     ExportMacro=WEBCORE_EXPORT,
 ] interface Range {
     readonly attribute Node startContainer;
-    readonly attribute long startOffset; // FIXME: Should be unsigned long.
+    readonly attribute long startOffset;
     readonly attribute Node endContainer;
-    readonly attribute long endOffset; // FIXME: Should be unsigned long.
+    readonly attribute long endOffset;
     readonly attribute boolean collapsed;
     readonly attribute Node commonAncestorContainer;
 
-    [MayThrowException] void setStart(Node node, unsigned long offset);
-    [MayThrowException] void setEnd(Node node, unsigned long offset);
-    [MayThrowException] void setStartBefore(Node node);
-    [MayThrowException] void setStartAfter(Node node);
-    [MayThrowException] void setEndBefore(Node node);
-    [MayThrowException] void setEndAfter(Node node);
-    void collapse(optional boolean toStart = false);
-    [MayThrowException] void selectNode(Node node);
-    [MayThrowException] void selectNodeContents(Node node);
+    [MayThrowException] void setStart(Node refNode, unsigned long offset);
+    [MayThrowException] void setEnd(Node refNode, unsigned long offset);
 
+    [MayThrowException] void setStartBefore(Node refNode);
+    [MayThrowException] void setStartAfter(Node refNode);
+    [MayThrowException] void setEndBefore(Node refNode);
+    [MayThrowException] void setEndAfter(Node refNode);
+    void collapse(optional boolean toStart = false);
+    [MayThrowException] void expand(optional DOMString unit = "");
+    [MayThrowException] void selectNode(Node refNode);
+    [MayThrowException] void selectNodeContents(Node refNode);
+
+    // CompareHow
     const unsigned short START_TO_START = 0;
     const unsigned short START_TO_END = 1;
     const unsigned short END_TO_END = 2;
     const unsigned short END_TO_START = 3;
+
     [MayThrowException, ImplementedAs=compareBoundaryPointsForBindings] short compareBoundaryPoints(unsigned short how, Range sourceRange);
 
     [CEReactions, MayThrowException] void deleteContents();
     [CEReactions, MayThrowException, NewObject] DocumentFragment extractContents();
     [CEReactions, MayThrowException, NewObject] DocumentFragment cloneContents();
-    [CEReactions, MayThrowException] void insertNode(Node node);
+    [CEReactions, MayThrowException] void insertNode(Node newNode);
     [CEReactions, MayThrowException] void surroundContents(Node newParent);
-
     [NewObject] Range cloneRange();
+    DOMString toString();
+
     void detach();
 
-    [MayThrowException] boolean isPointInRange(Node node, unsigned long offset);
-    [MayThrowException] short comparePoint(Node node, unsigned long offset);
+    ClientRectList getClientRects();
+    ClientRect getBoundingClientRect();
 
-    [MayThrowException] boolean intersectsNode(Node node);
+    [CEReactions, MayThrowException, NewObject] DocumentFragment createContextualFragment(DOMString html);
 
-    DOMString toString(); // FIXME: Should be stringifier once we support it.
+    [MayThrowException] short compareNode(Node refNode);
 
-    // Extensions from CSSOM-view (https://drafts.csswg.org/cssom-view/#extensions-to-the-range-interface).
-    sequence<DOMRect> getClientRects();
-    [NewObject] DOMRect getBoundingClientRect();
-
-    // Extensions from DOMParsing and Serialization specification (https://w3c.github.io/DOM-Parsing/#extensions-to-the-range-interface).
-    [CEReactions, MayThrowException, NewObject] DocumentFragment createContextualFragment(DOMString fragment);
-
-    // Non standard.
-    [MayThrowException] void expand(optional DOMString unit = "");
-
-    // FIXME: We should likely drop this since no other browser supports it.
-    [MayThrowException] short compareNode(Node node);
+    // CompareResults
     const unsigned short NODE_BEFORE = 0;
     const unsigned short NODE_AFTER = 1;
     const unsigned short NODE_BEFORE_AND_AFTER = 2;
     const unsigned short NODE_INSIDE = 3;
+
+    [MayThrowException] boolean intersectsNode(Node refNode);
+
+    [MayThrowException] short comparePoint(Node refNode, unsigned long offset);
+    [MayThrowException] boolean isPointInRange(Node refNode, unsigned long offset);
 };

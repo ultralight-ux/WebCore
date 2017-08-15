@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2015, 2016 Ericsson AB. All rights reserved.
- * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,7 +44,7 @@ class SDPProcessor;
 
 class MediaEndpointPeerConnection final : public PeerConnectionBackend, public MediaEndpointClient {
 public:
-    WEBCORE_EXPORT explicit MediaEndpointPeerConnection(RTCPeerConnection&);
+    explicit MediaEndpointPeerConnection(RTCPeerConnection&);
 
 private:
     RefPtr<RTCSessionDescription> localDescription() const final;
@@ -58,12 +57,16 @@ private:
 
     void setConfiguration(MediaEndpointConfiguration&&) final;
 
-    void getStats(MediaStreamTrack*, Ref<DeferredPromise>&&) final;
+    void getStats(MediaStreamTrack*, PeerConnection::StatsPromise&&) final;
 
     Vector<RefPtr<MediaStream>> getRemoteStreams() const final;
 
     Ref<RTCRtpReceiver> createReceiver(const String& transceiverMid, const String& trackKind, const String& trackId) final;
-    void replaceTrack(RTCRtpSender&, Ref<MediaStreamTrack>&&, DOMPromiseDeferred<void>&&) final;
+    void replaceTrack(RTCRtpSender&, RefPtr<MediaStreamTrack>&&, DOMPromise<void>&&) final;
+
+    bool isNegotiationNeeded() const final { return m_negotiationNeeded; };
+    void markAsNeedingNegotiation() final;
+    void clearNegotiationNeededState() final { m_negotiationNeeded = false; };
 
     void emulatePlatformEvent(const String& action) final;
 
@@ -85,10 +88,10 @@ private:
 
     void addIceCandidateTask(RTCIceCandidate&);
 
-    void replaceTrackTask(RTCRtpSender&, const String& mid, Ref<MediaStreamTrack>&&, DOMPromiseDeferred<void>&);
+    void replaceTrackTask(RTCRtpSender&, const String& mid, RefPtr<MediaStreamTrack>&&, DOMPromise<void>&);
 
-    bool localDescriptionTypeValidForState(RTCSdpType) const;
-    bool remoteDescriptionTypeValidForState(RTCSdpType) const;
+    bool localDescriptionTypeValidForState(RTCSessionDescription::SdpType) const;
+    bool remoteDescriptionTypeValidForState(RTCSessionDescription::SdpType) const;
 
     MediaEndpointSessionDescription* internalLocalDescription() const;
     MediaEndpointSessionDescription* internalRemoteDescription() const;
@@ -98,7 +101,7 @@ private:
     void gotDtlsFingerprint(const String& fingerprint, const String& fingerprintFunction) final;
     void gotIceCandidate(const String& mid, IceCandidate&&) final;
     void doneGatheringCandidates(const String& mid) final;
-    void iceTransportStateChanged(const String& mid, RTCIceTransportState) final;
+    void iceTransportStateChanged(const String& mid, MediaEndpoint::IceTransportState) final;
 
     std::unique_ptr<RTCDataChannelHandler> createDataChannelHandler(const String&, const RTCDataChannelInit&) final;
 
@@ -126,6 +129,8 @@ private:
     RefPtr<MediaEndpointSessionDescription> m_pendingRemoteDescription;
 
     HashMap<String, RefPtr<MediaStream>> m_remoteStreamMap;
+
+    bool m_negotiationNeeded { false };
 };
 
 } // namespace WebCore
