@@ -1,0 +1,82 @@
+/*
+ * Copyright (C) 2006 Apple Inc.
+ * Copyright (C) 2006 Samuel Weinig <sam.weinig@gmail.com>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Library General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Library General Public License for more details.
+ *
+ * You should have received a copy of the GNU Library General Public License
+ * along with this library; see the file COPYING.LIB.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
+ */
+
+// Introduced in DOM Level 2:
+[
+    Constructor,
+    ConstructorCallWith=Document,
+    ImplementationLacksVTable,
+    ExportMacro=WEBCORE_EXPORT,
+] interface Range {
+    readonly attribute Node startContainer;
+    readonly attribute long startOffset;
+    readonly attribute Node endContainer;
+    readonly attribute long endOffset;
+    readonly attribute boolean collapsed;
+    readonly attribute Node commonAncestorContainer;
+
+    [MayThrowException] void setStart(Node refNode, unsigned long offset);
+    [MayThrowException] void setEnd(Node refNode, unsigned long offset);
+
+    [MayThrowException] void setStartBefore(Node refNode);
+    [MayThrowException] void setStartAfter(Node refNode);
+    [MayThrowException] void setEndBefore(Node refNode);
+    [MayThrowException] void setEndAfter(Node refNode);
+    void collapse(optional boolean toStart = false);
+    [MayThrowException] void expand(optional DOMString unit = "");
+    [MayThrowException] void selectNode(Node refNode);
+    [MayThrowException] void selectNodeContents(Node refNode);
+
+    // CompareHow
+    const unsigned short START_TO_START = 0;
+    const unsigned short START_TO_END = 1;
+    const unsigned short END_TO_END = 2;
+    const unsigned short END_TO_START = 3;
+
+    [MayThrowException, ImplementedAs=compareBoundaryPointsForBindings] short compareBoundaryPoints(unsigned short how, Range sourceRange);
+
+    [CEReactions, MayThrowException] void deleteContents();
+    [CEReactions, MayThrowException, NewObject] DocumentFragment extractContents();
+    [CEReactions, MayThrowException, NewObject] DocumentFragment cloneContents();
+    [CEReactions, MayThrowException] void insertNode(Node newNode);
+    [CEReactions, MayThrowException] void surroundContents(Node newParent);
+    [NewObject] Range cloneRange();
+    DOMString toString();
+
+    void detach();
+
+    ClientRectList getClientRects();
+    ClientRect getBoundingClientRect();
+
+    [CEReactions, MayThrowException, NewObject] DocumentFragment createContextualFragment(DOMString html);
+
+    [MayThrowException] short compareNode(Node refNode);
+
+    // CompareResults
+    const unsigned short NODE_BEFORE = 0;
+    const unsigned short NODE_AFTER = 1;
+    const unsigned short NODE_BEFORE_AND_AFTER = 2;
+    const unsigned short NODE_INSIDE = 3;
+
+    [MayThrowException] boolean intersectsNode(Node refNode);
+
+    [MayThrowException] short comparePoint(Node refNode, unsigned long offset);
+    [MayThrowException] boolean isPointInRange(Node refNode, unsigned long offset);
+};

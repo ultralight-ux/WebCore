@@ -1,0 +1,159 @@
+/*
+ * Copyright (C) 2012 Google Inc. All rights reserved.
+ * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
+ * Copyright (C) 2015, 2016 Ericsson AB. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer
+ *    in the documentation and/or other materials provided with the
+ *    distribution.
+ * 3. Neither the name of Google Inc. nor the names of its contributors
+ *    may be used to endorse or promote products derived from this
+ *    software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+dictionary RTCOfferAnswerOptions {
+    boolean voiceActivityDetection = true;
+};
+
+dictionary RTCOfferOptions : RTCOfferAnswerOptions {
+    boolean iceRestart = false;
+};
+
+dictionary RTCAnswerOptions : RTCOfferAnswerOptions {
+};
+
+dictionary RTCDataChannelInit {
+    boolean ordered = true;
+    unsigned short maxRetransmitTime;
+    unsigned short maxRetransmits;
+    USVString protocol = "";
+    boolean negotiated = false;
+    unsigned short id;
+};
+
+[
+    ActiveDOMObject,
+    Conditional=WEB_RTC,
+    ConstructorCallWith=ScriptExecutionContext,
+    EnabledAtRuntime=peerConnection,
+    ExportMacro=WEBCORE_EXPORT,
+    JSBuiltinConstructor,
+] interface RTCPeerConnection : EventTarget {
+    // Private initializer
+    [PrivateIdentifier, CallWith=Document, MayThrowException] void initializeWith(RTCConfiguration configuration);
+
+    // RTP Media API extensions
+    [PrivateIdentifier, PublicIdentifier] sequence<RTCRtpSender> getSenders();
+    sequence<RTCRtpReceiver> getReceivers();
+    sequence<RTCRtpTransceiver> getTransceivers();
+
+    [PrivateIdentifier, PublicIdentifier, MayThrowException] RTCRtpSender addTrack(MediaStreamTrack track, MediaStream... streams);
+    [PrivateIdentifier, PublicIdentifier, MayThrowException] void removeTrack(RTCRtpSender sender);
+
+    [MayThrowException] RTCRtpTransceiver addTransceiver(MediaStreamTrack track, optional RTCRtpTransceiverInit init);
+    [MayThrowException] RTCRtpTransceiver addTransceiver(DOMString kind, optional RTCRtpTransceiverInit init);
+
+    // Legacy MediaSream-based API (implemented on top of the RTP Media API)
+    [JSBuiltin] sequence<MediaStream> getLocalStreams();
+    [PrivateIdentifier, PublicIdentifier] sequence<MediaStream> getRemoteStreams();
+    [JSBuiltin] MediaStream getStreamById(DOMString streamId);
+
+    [JSBuiltin] void addStream(MediaStream stream);
+    [JSBuiltin] void removeStream(MediaStream stream);
+
+    [JSBuiltin] Promise<RTCSessionDescriptionInit> createOffer(optional RTCOfferOptions offerOptions);
+    // Legacy signature: Promise<void> createOffer(RTCSessionDescriptionCallback successCallback
+    //                                       RTCPeerConnectionErrorCallback errorCallback,
+    //                                       optional Dictionary offerOptions);
+
+    [JSBuiltin] Promise<RTCSessionDescriptionInit> createAnswer(optional RTCAnswerOptions answerOptions);
+    // Legacy signature: Promise<void> createAnswer(RTCSessionDescriptionCallback successCallback
+    //                                        RTCPeerConnectionErrorCallback errorCallback,
+    //                                        optional Dictionary answerOptions);
+
+    [JSBuiltin] Promise<void> setLocalDescription(RTCSessionDescription description);
+    // Legacy signature: Promise<void> setLocalDescription(RTCSessionDescription description
+    //                                               VoidCallback successCallback,
+    //                                               RTCPeerConnectionErrorCallback errorCallback);
+
+    readonly attribute RTCSessionDescription localDescription;
+    readonly attribute RTCSessionDescription currentLocalDescription;
+    readonly attribute RTCSessionDescription pendingLocalDescription;
+
+    [JSBuiltin] Promise<void> setRemoteDescription(RTCSessionDescription description);
+    // Legacy signature: Promise<void> setRemoteDescription(RTCSessionDescription description
+    //                                                VoidCallback successCallback,
+    //                                                RTCPeerConnectionErrorCallback errorCallback);
+
+    readonly attribute RTCSessionDescription remoteDescription;
+    readonly attribute RTCSessionDescription currentRemoteDescription;
+    readonly attribute RTCSessionDescription pendingRemoteDescription;
+
+    readonly attribute DOMString signalingState;
+
+    [JSBuiltin] Promise<void> addIceCandidate(RTCIceCandidate candidate);
+    // Legacy signature: Promise<void> addIceCandidate(RTCIceCandidate candidate
+    //                                           VoidCallback successCallback,
+    //                                           RTCPeerConnectionErrorCallback errorCallback);
+
+    readonly attribute DOMString iceGatheringState;
+    readonly attribute DOMString iceConnectionState;
+
+    RTCConfiguration getConfiguration();
+    [MayThrowException] void setConfiguration(RTCConfiguration configuration);
+
+    [JSBuiltin] Promise<RTCStatsReport> getStats(optional MediaStreamTrack? selector = null);
+    // Legacy signature: Promise<void> getStats(MediaStreamTrack? selector
+    //                                    RTCStatsCallback successCallback,
+    //                                    RTCPeerConnectionErrorCallback errorCallback);
+
+    // Private API used to implement the overloaded operations above. Queued functions are called by
+    // runQueuedOperation() (defined in RTCPeerConnectionInternals.js).
+    [PrivateIdentifier] Promise<RTCSessionDescriptionInit> queuedCreateOffer(optional RTCOfferOptions offerOptions);
+    [PrivateIdentifier] Promise<RTCSessionDescriptionInit> queuedCreateAnswer(optional RTCAnswerOptions answerOptions);
+    [PrivateIdentifier] Promise<void> queuedSetLocalDescription(RTCSessionDescription description);
+    [PrivateIdentifier] Promise<void> queuedSetRemoteDescription(RTCSessionDescription description);
+    [PrivateIdentifier] Promise<void> queuedAddIceCandidate(RTCIceCandidate candidate);
+    [PrivateIdentifier] Promise<RTCStatsReport> privateGetStats(MediaStreamTrack? selector);
+
+    [CallWith=ScriptExecutionContext, MayThrowException] RTCDataChannel createDataChannel([TreatNullAs=EmptyString] DOMString label, optional RTCDataChannelInit options);
+
+    void close();
+
+    attribute EventHandler onnegotiationneeded;
+    attribute EventHandler onicecandidate;
+    attribute EventHandler onsignalingstatechange;
+    attribute EventHandler ontrack;
+    attribute EventHandler oniceconnectionstatechange;
+    attribute EventHandler onicegatheringstatechange;
+    attribute EventHandler ondatachannel;
+
+    // Legacy event handler (MediaStream-based API)
+    attribute EventHandler onaddstream;
+};
+
+// This enum is mirrored in RTCRtpTransceiver.idl
+enum RTCRtpTransceiverDirection { "sendrecv", "sendonly", "recvonly", "inactive" };
+
+dictionary RTCRtpTransceiverInit {
+    RTCRtpTransceiverDirection direction = "sendrecv";
+};
