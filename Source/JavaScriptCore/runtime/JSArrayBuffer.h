@@ -1,0 +1,93 @@
+/*
+ * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ */
+
+#pragma once
+
+#include "ArrayBuffer.h"
+#include "JSObject.h"
+
+namespace JSC {
+
+class JSArrayBuffer : public JSNonFinalObject {
+public:
+    typedef JSNonFinalObject Base;
+    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetPropertyNames | OverridesGetOwnPropertySlot;
+    
+protected:
+    JSArrayBuffer(VM&, Structure*, PassRefPtr<ArrayBuffer>);
+    void finishCreation(VM&, JSGlobalObject*);
+    
+public:
+    // This function will register the new wrapper with the vm's TypedArrayController.
+    JS_EXPORT_PRIVATE static JSArrayBuffer* create(VM&, Structure*, PassRefPtr<ArrayBuffer>);
+
+    ArrayBuffer* impl() const { return m_impl; }
+    
+    static Structure* createStructure(VM&, JSGlobalObject*, JSValue prototype);
+
+    JS_EXPORT_PRIVATE bool isShared() const;
+    ArrayBufferSharingMode sharingMode() const;
+    
+    DECLARE_EXPORT_INFO;
+    
+    // This is the default DOM unwrapping. It calls toUnsharedArrayBuffer().
+    static ArrayBuffer* toWrapped(JSValue);
+    
+protected:
+
+    static size_t estimatedSize(JSCell*);
+    static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
+    static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
+    static bool deleteProperty(JSCell*, ExecState*, PropertyName);
+    
+    static void getOwnNonIndexPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
+
+private:
+    ArrayBuffer* m_impl;
+};
+
+inline ArrayBuffer* toPossiblySharedArrayBuffer(JSValue value)
+{
+    JSArrayBuffer* wrapper = jsDynamicCast<JSArrayBuffer*>(value);
+    if (!wrapper)
+        return nullptr;
+    return wrapper->impl();
+}
+
+inline ArrayBuffer* toUnsharedArrayBuffer(JSValue value)
+{
+    ArrayBuffer* result = toPossiblySharedArrayBuffer(value);
+    if (!result || result->isShared())
+        return nullptr;
+    return result;
+}
+
+inline ArrayBuffer* JSArrayBuffer::toWrapped(JSValue value)
+{
+    return toUnsharedArrayBuffer(value);
+}
+
+} // namespace JSC

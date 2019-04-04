@@ -1,1 +1,13 @@
+/Build
+/build
+/BuildVS
+/BuildRelease
+/BuildReleaseDbg
+/BuildReleaseMin
+/BuildRelease32
+/BuildReleaseDbg32
+/BuildReleaseMin32
+/deps
+*.pyc
 .DS_Store
+.vscode

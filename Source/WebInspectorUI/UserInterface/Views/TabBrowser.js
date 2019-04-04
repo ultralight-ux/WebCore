@@ -1,0 +1,489 @@
+/*
+ * Copyright (C) 2015 Apple Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+WebInspector.TabBrowser = class TabBrowser extends WebInspector.View
+{
+    constructor(element, tabBar, navigationSidebar, detailsSidebar)
+    {
+        console.assert(tabBar, "Must provide a TabBar.");
+
+        super(element);
+
+        this.element.classList.add("tab-browser");
+
+        this._tabBar = tabBar;
+        this._navigationSidebar = navigationSidebar || null;
+        this._detailsSidebar = detailsSidebar || null;
+
+        if (this._navigationSidebar) {
+            this._navigationSidebar.addEventListener(WebInspector.Sidebar.Event.CollapsedStateDidChange, this._sidebarCollapsedStateDidChange, this);
+            this._navigationSidebar.addEventListener(WebInspector.Sidebar.Event.WidthDidChange, this._sidebarWidthDidChange, this);
+        }
+
+        if (this._detailsSidebar) {
+            this._detailsSidebar.addEventListener(WebInspector.Sidebar.Event.CollapsedStateDidChange, this._sidebarCollapsedStateDidChange, this);
+            this._detailsSidebar.addEventListener(WebInspector.Sidebar.Event.SidebarPanelSelected, this._sidebarPanelSelected, this);
+            this._detailsSidebar.addEventListener(WebInspector.Sidebar.Event.WidthDidChange, this._sidebarWidthDidChange, this);
+        }
+
+        this._contentViewContainer = new WebInspector.ContentViewContainer;
+        this.addSubview(this._contentViewContainer);
+
+        let showNextTab = () => { this._showNextTab(); };
+        let showPreviousTab = () => { this._showPreviousTab(); };
+
+        let isRTL = WebInspector.resolvedLayoutDirection() === WebInspector.LayoutDirection.RTL;
+
+        let nextKey1 = isRTL ? WebInspector.KeyboardShortcut.Key.LeftCurlyBrace : WebInspector.KeyboardShortcut.Key.RightCurlyBrace;
+        let previousKey1 = isRTL ? WebInspector.KeyboardShortcut.Key.RightCurlyBrace : WebInspector.KeyboardShortcut.Key.LeftCurlyBrace;
+
+        this._showNextTabKeyboardShortcut1 = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Shift, nextKey1, showNextTab);
+        this._showPreviousTabKeyboardShortcut1 = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Shift, previousKey1, showPreviousTab);
+
+        let nextModifier2 = isRTL ? WebInspector.KeyboardShortcut.Modifier.Shift : 0;
+        let previousModifier2 = isRTL ? 0 : WebInspector.KeyboardShortcut.Modifier.Shift;
+
+        this._showNextTabKeyboardShortcut2 = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.Control | nextModifier2, WebInspector.KeyboardShortcut.Key.Tab, showNextTab);
+        this._showPreviousTabKeyboardShortcut2 = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.Control | previousModifier2, WebInspector.KeyboardShortcut.Key.Tab, showPreviousTab);
+
+        let previousTabKey = isRTL ? WebInspector.KeyboardShortcut.Key.Right : WebInspector.KeyboardShortcut.Key.Left;
+        let nextTabKey = isRTL ? WebInspector.KeyboardShortcut.Key.Left : WebInspector.KeyboardShortcut.Key.Right;
+        this._previousTabKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Shift, previousTabKey, this._showPreviousTabCheckingForEditableField.bind(this));
+        this._previousTabKeyboardShortcut.implicitlyPreventsDefault = false;
+        this._nextTabKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Shift, nextTabKey, this._showNextTabCheckingForEditableField.bind(this));
+        this._nextTabKeyboardShortcut.implicitlyPreventsDefault = false;
+
+        this._tabBar.addEventListener(WebInspector.TabBar.Event.TabBarItemSelected, this._tabBarItemSelected, this);
+        this._tabBar.addEventListener(WebInspector.TabBar.Event.TabBarItemAdded, this._tabBarItemAdded, this);
+        this._tabBar.addEventListener(WebInspector.TabBar.Event.TabBarItemRemoved, this._tabBarItemRemoved, this);
+        this._tabBar.newTabTabBarItem.addEventListener(WebInspector.PinnedTabBarItem.Event.ContextMenu, this._handleNewTabContextMenu, this);
+
+        this._recentTabContentViews = [];
+        this._closedTabClasses = new Set;
+    }
+
+    // Public
+
+    get tabBar()
+    {
+        return this._tabBar;
+    }
+
+    get navigationSidebar()
+    {
+        return this._navigationSidebar;
+    }
+
+    get detailsSidebar()
+    {
+        return this._detailsSidebar;
+    }
+
+    get selectedTabContentView()
+    {
+        return this._contentViewContainer.currentContentView;
+    }
+
+    bestTabContentViewForClass(constructor)
+    {
+        console.assert(!this.selectedTabContentView || this.selectedTabContentView === this._recentTabContentViews[0]);
+
+        for (var tabContentView of this._recentTabContentViews) {
+            if (tabContentView instanceof constructor)
+                return tabContentView;
+        }
+
+        return null;
+    }
+
+    bestTabContentViewForRepresentedObject(representedObject, options = {})
+    {
+        console.assert(!this.selectedTabContentView || this.selectedTabContentView === this._recentTabContentViews[0]);
+
+        for (var tabContentView of this._recentTabContentViews) {
+            if (options.ignoreSearchTab && tabContentView instanceof WebInspector.SearchTabContentView)
+                continue;
+
+            if (options.ignoreNetworkTab && tabContentView instanceof WebInspector.NetworkTabContentView)
+                continue;
+
+            if (tabContentView.canShowRepresentedObject(representedObject))
+                return tabContentView;
+        }
+
+        return null;
+    }
+
+    addTabForContentView(tabContentView, options = {})
+    {
+        console.assert(tabContentView instanceof WebInspector.TabContentView);
+        if (!(tabContentView instanceof WebInspector.TabContentView))
+            return false;
+
+        let tabBarItem = tabContentView.tabBarItem;
+
+        console.assert(tabBarItem instanceof WebInspector.TabBarItem);
+        if (!(tabBarItem instanceof WebInspector.TabBarItem))
+            return false;
+
+        if (tabBarItem.representedObject !== tabContentView)
+            tabBarItem.representedObject = tabContentView;
+
+        tabContentView.parentTabBrowser = this;
+
+        if (tabBarItem.parentTabBar === this._tabBar)
+            return true;
+
+        // Add the tab after the first tab content view, since the first
+        // tab content view is the currently selected one.
+        if (this._recentTabContentViews.length && this.selectedTabContentView)
+            this._recentTabContentViews.splice(1, 0, tabContentView);
+        else
+            this._recentTabContentViews.push(tabContentView);
+
+        if (typeof options.insertionIndex === "number")
+            this._tabBar.insertTabBarItem(tabBarItem, options.insertionIndex, options);
+        else
+            this._tabBar.addTabBarItem(tabBarItem, options);
+
+        console.assert(this._recentTabContentViews.length === this._tabBar.normalTabCount);
+        console.assert(!this.selectedTabContentView || this.selectedTabContentView === this._recentTabContentViews[0]);
+
+        return true;
+    }
+
+    showTabForContentView(tabContentView, options = {})
+    {
+        if (!this.addTabForContentView(tabContentView, options))
+            return false;
+
+        if (!options.suppressSelection)
+            this._tabBar.selectedTabBarItem = tabContentView.tabBarItem;
+
+        // FIXME: this is a workaround for <https://webkit.org/b/151876>.
+        // Without this extra call, we might never lay out the child tab
+        // if it has already marked itself as dirty in the same run loop
+        // as it is attached. It will schedule a layout, but when the rAF
+        // fires the parent will abort the layout because the counter is
+        // out of sync.
+        this.needsLayout();
+        return true;
+    }
+
+    closeTabForContentView(tabContentView, options = {})
+    {
+        console.assert(tabContentView instanceof WebInspector.TabContentView);
+        if (!(tabContentView instanceof WebInspector.TabContentView))
+            return false;
+
+        console.assert(tabContentView.tabBarItem instanceof WebInspector.TabBarItem);
+        if (!(tabContentView.tabBarItem instanceof WebInspector.TabBarItem))
+            return false;
+
+        if (tabContentView.tabBarItem.parentTabBar !== this._tabBar)
+            return false;
+
+        this._tabBar.removeTabBarItem(tabContentView.tabBarItem, options);
+
+        console.assert(this._recentTabContentViews.length === this._tabBar.normalTabCount);
+        console.assert(!this.selectedTabContentView || this.selectedTabContentView === this._recentTabContentViews[0]);
+
+        return true;
+    }
+
+    // Protected
+
+    layout()
+    {
+        if (this.layoutReason !== WebInspector.View.LayoutReason.Resize)
+            return;
+
+        for (let tabContentView of this._recentTabContentViews)
+            tabContentView[WebInspector.TabBrowser.NeedsResizeLayoutSymbol] = tabContentView !== this.selectedTabContentView;
+    }
+
+    // Private
+
+    _tabBarItemSelected(event)
+    {
+        let tabContentView = this._tabBar.selectedTabBarItem ? this._tabBar.selectedTabBarItem.representedObject : null;
+
+        if (tabContentView) {
+            let isSettingsTab = tabContentView instanceof WebInspector.SettingsTabContentView;
+            if (!isSettingsTab) {
+                this._recentTabContentViews.remove(tabContentView);
+                this._recentTabContentViews.unshift(tabContentView);
+            }
+
+            this._contentViewContainer.showContentView(tabContentView);
+
+            console.assert(this.selectedTabContentView);
+            console.assert(this._recentTabContentViews.length === this._tabBar.normalTabCount);
+            console.assert(this.selectedTabContentView === this._recentTabContentViews[0] || isSettingsTab);
+        } else {
+            this._contentViewContainer.closeAllContentViews();
+
+            console.assert(!this.selectedTabContentView);
+        }
+
+        this._showNavigationSidebarPanelForTabContentView(tabContentView);
+        this._showDetailsSidebarPanelsForTabContentView(tabContentView);
+
+        // If the tab browser was resized prior to showing the tab, the new tab needs to perform a resize layout.
+        if (tabContentView && tabContentView[WebInspector.TabBrowser.NeedsResizeLayoutSymbol]) {
+            tabContentView[WebInspector.TabBrowser.NeedsResizeLayoutSymbol] = false;
+            tabContentView.updateLayout(WebInspector.View.LayoutReason.Resize);
+        }
+
+        this.dispatchEventToListeners(WebInspector.TabBrowser.Event.SelectedTabContentViewDidChange);
+    }
+
+    _tabBarItemAdded(event)
+    {
+        let tabContentView = event.data.tabBarItem.representedObject;
+
+        console.assert(tabContentView);
+        if (!tabContentView)
+            return;
+
+        this._closedTabClasses.delete(tabContentView.constructor);
+    }
+
+    _tabBarItemRemoved(event)
+    {
+        let tabContentView = event.data.tabBarItem.representedObject;
+
+        console.assert(tabContentView);
+        if (!tabContentView)
+            return;
+
+        this._recentTabContentViews.remove(tabContentView);
+
+        if (!tabContentView.constructor.isEphemeral())
+            this._closedTabClasses.add(tabContentView.constructor);
+
+        this._contentViewContainer.closeContentView(tabContentView);
+
+        tabContentView.parentTabBrowser = null;
+
+        console.assert(this._recentTabContentViews.length === this._tabBar.normalTabCount);
+        console.assert(!this.selectedTabContentView || this.selectedTabContentView === this._recentTabContentViews[0]);
+    }
+
+    _handleNewTabContextMenu(event)
+    {
+        // The array must be reversed because Sets insert into the end, and we want to display the
+        // most recently closed item first (which is the last item added to the set).
+        let closedTabClasses = Array.from(this._closedTabClasses).reverse();
+        let allTabClasses = Array.from(WebInspector.knownTabClasses());
+        let tabClassesToDisplay = closedTabClasses.concat(allTabClasses.filter((tabClass) => {
+            if (closedTabClasses.includes(tabClass))
+                return false;
+
+            if (tabClass.isEphemeral())
+                return false;
+
+            return WebInspector.isNewTabWithTypeAllowed(tabClass.Type);
+        }));
+        if (!tabClassesToDisplay.length)
+            return;
+
+        let contextMenu = event.data.contextMenu;
+
+        contextMenu.appendItem(WebInspector.UIString("Recently Closed Tabs"), null, true);
+
+        for (let tabClass of tabClassesToDisplay) {
+            contextMenu.appendItem(tabClass.tabInfo().title, () => {
+                WebInspector.createNewTabWithType(tabClass.Type, {shouldShowNewTab: true});
+            });
+        }
+    }
+
+    _sidebarPanelSelected(event)
+    {
+        if (this._ignoreSidebarEvents)
+            return;
+
+        var tabContentView = this.selectedTabContentView;
+        if (!tabContentView)
+            return;
+
+        console.assert(event.target === this._detailsSidebar);
+
+        if (tabContentView.managesDetailsSidebarPanels)
+            return;
+
+        var selectedSidebarPanel = this._detailsSidebar.selectedSidebarPanel;
+        tabContentView.detailsSidebarSelectedPanelSetting.value = selectedSidebarPanel ? selectedSidebarPanel.identifier : null;
+    }
+
+    _sidebarCollapsedStateDidChange(event)
+    {
+        if (this._ignoreSidebarEvents)
+            return;
+
+        var tabContentView = this.selectedTabContentView;
+        if (!tabContentView)
+            return;
+
+        if (event.target === this._navigationSidebar)
+            tabContentView.navigationSidebarCollapsedSetting.value = this._navigationSidebar.collapsed;
+        else if (event.target === this._detailsSidebar && !tabContentView.managesDetailsSidebarPanels)
+            tabContentView.detailsSidebarCollapsedSetting.value = this._detailsSidebar.collapsed;
+    }
+
+    _sidebarWidthDidChange(event)
+    {
+        if (this._ignoreSidebarEvents || !event.data)
+            return;
+
+        let tabContentView = this.selectedTabContentView;
+        if (!tabContentView)
+            return;
+
+        switch (event.target) {
+        case this._navigationSidebar:
+            tabContentView.navigationSidebarWidthSetting.value = event.data.newWidth;
+            break;
+
+        case this._detailsSidebar:
+            tabContentView.detailsSidebarWidthSetting.value = event.data.newWidth;
+            break;
+        }
+    }
+
+    _showNavigationSidebarPanelForTabContentView(tabContentView)
+    {
+        if (!this._navigationSidebar)
+            return;
+
+        this._ignoreSidebarEvents = true;
+
+        this._navigationSidebar.removeSidebarPanel(0);
+
+        console.assert(!this._navigationSidebar.sidebarPanels.length);
+
+        if (!tabContentView) {
+            this._ignoreSidebarEvents = false;
+            return;
+        }
+
+        if (tabContentView.navigationSidebarWidthSetting.value)
+            this._navigationSidebar.width = tabContentView.navigationSidebarWidthSetting.value;
+
+        var navigationSidebarPanel = tabContentView.navigationSidebarPanel;
+        if (!navigationSidebarPanel) {
+            this._navigationSidebar.collapsed = true;
+            this._ignoreSidebarEvents = false;
+            return;
+        }
+
+        this._navigationSidebar.addSidebarPanel(navigationSidebarPanel);
+        this._navigationSidebar.selectedSidebarPanel = navigationSidebarPanel;
+
+        this._navigationSidebar.collapsed = tabContentView.navigationSidebarCollapsedSetting.value;
+
+        this._ignoreSidebarEvents = false;
+    }
+
+    _showDetailsSidebarPanelsForTabContentView(tabContentView)
+    {
+        if (!this._detailsSidebar)
+            return;
+
+        this._ignoreSidebarEvents = true;
+
+        for (var i = this._detailsSidebar.sidebarPanels.length - 1; i >= 0; --i)
+            this._detailsSidebar.removeSidebarPanel(i);
+
+        console.assert(!this._detailsSidebar.sidebarPanels.length);
+
+        if (!tabContentView) {
+            this._ignoreSidebarEvents = false;
+            return;
+        }
+
+        if (tabContentView.detailsSidebarWidthSetting.value)
+            this._detailsSidebar.width = tabContentView.detailsSidebarWidthSetting.value;
+
+        if (tabContentView.managesDetailsSidebarPanels) {
+            tabContentView.showDetailsSidebarPanels();
+            this._ignoreSidebarEvents = false;
+            return;
+        }
+
+        var detailsSidebarPanels = tabContentView.detailsSidebarPanels;
+        if (!detailsSidebarPanels) {
+            this._detailsSidebar.collapsed = true;
+            this._ignoreSidebarEvents = false;
+            return;
+        }
+
+        for (var detailsSidebarPanel of detailsSidebarPanels)
+            this._detailsSidebar.addSidebarPanel(detailsSidebarPanel);
+
+        this._detailsSidebar.selectedSidebarPanel = tabContentView.detailsSidebarSelectedPanelSetting.value || detailsSidebarPanels[0];
+
+        this._detailsSidebar.collapsed = tabContentView.detailsSidebarCollapsedSetting.value || !detailsSidebarPanels.length;
+
+        this._ignoreSidebarEvents = false;
+    }
+
+    _showPreviousTab(event)
+    {
+        this._tabBar.selectPreviousTab();
+    }
+
+    _showNextTab(event)
+    {
+        this._tabBar.selectNextTab();
+    }
+
+    _showNextTabCheckingForEditableField(event)
+    {
+        if (WebInspector.isEventTargetAnEditableField(event))
+            return;
+
+        this._showNextTab(event);
+
+        event.preventDefault();
+    }
+
+    _showPreviousTabCheckingForEditableField(event)
+    {
+        if (WebInspector.isEventTargetAnEditableField(event))
+            return;
+
+        this._showPreviousTab(event);
+
+        event.preventDefault();
+    }
+};
+
+WebInspector.TabBrowser.NeedsResizeLayoutSymbol = Symbol("needs-resize-layout");
+
+WebInspector.TabBrowser.Event = {
+    SelectedTabContentViewDidChange: "tab-browser-selected-tab-content-view-did-change"
+};
