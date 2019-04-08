@@ -81,6 +81,15 @@ elseif (PORT MATCHES "UltralightWin")
     set(PLATFORM "win")
 endif ()
 
+if (APPLE)
+    # Strip non-essential symbols from dylib on macOS
+    # You should disable this is you need debug symbols.
+    add_custom_command(TARGET create_sdk POST_BUILD
+        COMMAND strip -u -r bin/libWebCore.dylib
+        WORKING_DIRECTORY ${INSTALL_DIR}
+    )
+endif ()
+
 set(PKG_FILENAME "webcore-bin-${GIT_COMMIT_HASH}-${PLATFORM}-${ARCHITECTURE}.7z")
 
 if (NOT GIT_BRANCH MATCHES "master")
