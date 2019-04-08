@@ -3975,34 +3975,4 @@ if(PORT MATCHES "UltralightMac")
 endif()
 endif ()
 
-add_custom_command(TARGET WebCore POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${DERIVED_SOURCES_DIR}"
-    "${CMAKE_CURRENT_BINARY_DIR}/out/DerivedSources")
-    
-#add_custom_command(TARGET WebCore POST_BUILD
-#    COMMAND ${CMAKE_COMMAND} -E copy_directory "${WEBKIT_LIBRARIES_DIR}/include"
-#    "${CMAKE_CURRENT_BINARY_DIR}/out/WebKitLibraries/include")
-    
-#add_custom_command(TARGET WebCore POST_BUILD
-#    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/license/"
-#    "${CMAKE_CURRENT_BINARY_DIR}/out/license")
-    
-if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-    INSTALL(TARGETS WebCore
-      RUNTIME DESTINATION "bin/x64"
-      LIBRARY DESTINATION "bin/x64"
-      ARCHIVE DESTINATION "lib/x64"
-    )
-else ()
-    INSTALL(TARGETS WebCore
-      RUNTIME DESTINATION "bin/x86"
-      LIBRARY DESTINATION "bin/x86"
-      ARCHIVE DESTINATION "lib/x86"
-    )
-endif ()
-
-add_custom_target(create_sdk ALL "${CMAKE_COMMAND}" 
-    -D CMAKE_INSTALL_PREFIX:string=${CMAKE_CURRENT_BINARY_DIR}/out
-    -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_install.cmake" 
-    DEPENDS WebCore) 
-    
+include(${PROJECT_SOURCE_DIR}/CreateSDK.cmake)

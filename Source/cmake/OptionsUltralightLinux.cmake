@@ -83,11 +83,7 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBGL PUBLIC OFF)
 WEBKIT_OPTION_END()
 
 if (NOT WEBKIT_LIBRARIES_DIR)
-    if (DEFINED ENV{WEBKIT_LIBRARIES})
-        set(WEBKIT_LIBRARIES_DIR "$ENV{WEBKIT_LIBRARIES}")
-    else ()
-        set(WEBKIT_LIBRARIES_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/linux")
-    endif ()
+    set(WEBKIT_LIBRARIES_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries")
 endif ()
 
 include_directories("${CMAKE_BINARY_DIR}/DerivedSources/ForwardingHeaders" "${CMAKE_BINARY_DIR}/DerivedSources" "${WEBKIT_LIBRARIES_DIR}/include")
@@ -101,21 +97,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
 set(JavaScriptCore_LIBRARY_TYPE SHARED)
 set(WTF_LIBRARY_TYPE SHARED)
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    # 64 bits
-    link_directories("${WEBKIT_LIBRARIES_DIR}/lib/x64")
-    link_directories("${ULTRALIGHTCORE_DIR}/lib/x64")
-    set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/x64/libicuuc.a
-                      ${WEBKIT_LIBRARIES_DIR}/lib/x64/libicui18n.a
-                      ${WEBKIT_LIBRARIES_DIR}/lib/x64/libicudata.a)
-elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
-    # 32 bits
-    link_directories("${WEBKIT_LIBRARIES_DIR}/lib/x86")
-    link_directories("${ULTRALIGHTCORE_DIR}/lib/x86")
-    set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/x86/libicuuc.a
-                      ${WEBKIT_LIBRARIES_DIR}/lib/x86/libicui18n.a
-                      ${WEBKIT_LIBRARIES_DIR}/lib/x86/libicudata.a)
-endif()
+
+link_directories("${WEBKIT_LIBRARIES_DIR}/lib")
+link_directories("${ULTRALIGHTCORE_DIR}/lib")
+set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/libicuuc.a
+                  ${WEBKIT_LIBRARIES_DIR}/lib/libicui18n.a
+                  ${WEBKIT_LIBRARIES_DIR}/lib/libicudata.a)
 
 set(USE_GLIB 1)
 set(USE_CURL 1)

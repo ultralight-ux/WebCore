@@ -309,6 +309,6 @@ file(REMOVE_RECURSE "${BUILD_TMP}")
 
 list(APPEND WebCore_LIBRARIES WTF)
 list(APPEND WebCore_LIBRARIES JavaScriptCore)
-#list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
+list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
 list(APPEND WebCore_LIBRARIES UltralightCore)
 list(APPEND WebCoreTestSupport_LIBRARIES WTF)

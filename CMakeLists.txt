@@ -1,9 +1,13 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.3.2)
 project(WebCore)
 
 # This should be removed once we require CMake 3.3.
 if (POLICY CMP0058)
     cmake_policy(SET CMP0058 NEW)
+endif ()
+
+if (POLICY CMP0038)
+    cmake_policy(SET CMP0038 OLD)
 endif ()
 
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.1")
@@ -13,6 +17,8 @@ endif()
 include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/Source/cmake")
+
+get_filename_component(WEBCORE_ROOT "./" REALPATH)
 
 set(ENABLE_WEBCORE ON)
 set(ENABLE_WEBKIT OFF)
@@ -74,68 +80,11 @@ else ()
     message(FATAL_ERROR "Unknown OS '${CMAKE_SYSTEM_NAME}'")
 endif ()
 
-if (PORT MATCHES "UltralightLinux")
-    ExternalProject_Add(WebCoreDeps
-      URL https://github.com/ultralight-ux/WebCore-deps/releases/download/v1.0/webcore-deps-bin-1.0-linux.tgz
-      URL_MD5 a661c1422127a63d528d572e10f895e6
-      SOURCE_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/"
-      BUILD_IN_SOURCE 1
-      CONFIGURE_COMMAND ""
-      BUILD_COMMAND ""
-      INSTALL_COMMAND ""
-    )
-    ExternalProject_Add(UltralightCoreBin
-      URL https://github.com/ultralight-ux/UltralightCore-bin/releases/download/r24a222c/ultralightcore-bin-24a222c-linux.tgz
-      URL_MD5 053806e3072b126360ae62e028a78bff
-      SOURCE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/"
-      BUILD_IN_SOURCE 1
-      CONFIGURE_COMMAND ""
-      BUILD_COMMAND ""
-      INSTALL_COMMAND ""
-    )
-elseif (PORT MATCHES "UltralightMac")
-    ExternalProject_Add(WebCoreDeps
-      URL https://github.com/ultralight-ux/WebCore-deps/releases/download/v1.0/webcore-deps-bin-1.0-mac.tgz
-      URL_MD5 946e6c0bb2490e343181f9ae28314ac5
-      SOURCE_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/"
-      BUILD_IN_SOURCE 1
-      CONFIGURE_COMMAND ""
-      BUILD_COMMAND ""
-      INSTALL_COMMAND ""
-    )
-    ExternalProject_Add(UltralightCoreBin
-      URL https://github.com/ultralight-ux/UltralightCore-bin/releases/download/r24a222c/ultralightcore-bin-24a222c-mac.tgz
-      URL_MD5 b4d91a48c527a9eb06421bf1ca98575f
-      SOURCE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/"
-      BUILD_IN_SOURCE 1
-      CONFIGURE_COMMAND ""
-      BUILD_COMMAND ""
-      INSTALL_COMMAND ""
-    )
-elseif (PORT MATCHES "UltralightWin")
-    ExternalProject_Add(WebCoreDeps
-      URL https://github.com/ultralight-ux/WebCore-deps/releases/download/v1.0/webcore-deps-bin-1.0-win.zip
-      URL_MD5 3e4e28ffc8ee9277285340942c6c21a1
-      SOURCE_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/"
-      BUILD_IN_SOURCE 1
-      CONFIGURE_COMMAND ""
-      BUILD_COMMAND ""
-      INSTALL_COMMAND ""
-    )
-    ExternalProject_Add(UltralightCoreBin
-      URL https://github.com/ultralight-ux/UltralightCore-bin/releases/download/r24a222c/ultralightcore-bin-24a222c-win.zip
-      URL_MD5 de7ee483da84f8a30bfb1e76fc4a3930
-      SOURCE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/"
-      BUILD_IN_SOURCE 1
-      CONFIGURE_COMMAND ""
-      BUILD_COMMAND ""
-      INSTALL_COMMAND ""
-    )
-endif ()
-
 set(WTF_PLATFORM_ULTRALIGHT 1)
 
 string(TOLOWER ${PORT} WEBKIT_PORT_DIR)
+
+include(Deps.cmake)
 
 # -----------------------------------------------------------------------------
 # Default library types

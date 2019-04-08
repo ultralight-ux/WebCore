@@ -26,7 +26,7 @@ if (NOT SQLITE_DIR)
     set(SQLITE_DIR "${CMAKE_SOURCE_DIR}/Source/SQLite")
 endif ()
 if (NOT ULTRALIGHTCORE_DIR)
-    set(SQLITE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore")
+    set(ULTRALIGHTCORE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore")
 endif ()
 
 

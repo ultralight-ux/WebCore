@@ -1,11 +1,6 @@
 /Build
 /build
-/build_release_x64
-/build_release_x86
-/build_debug_x64
-/build_debug_x86
-/build_vs_x64
-/build_vs_x86
+/build_*
 /deps
 *.pyc
 .DS_Store
