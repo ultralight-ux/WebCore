@@ -12,8 +12,9 @@ pipeline {
           }
           steps {
             sh '''
+               PATH=$PATH:/usr/local/bin
                echo $PATH
-               which make
+               which cmake
                ./make
             '''
           }
