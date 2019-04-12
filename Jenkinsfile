@@ -12,6 +12,7 @@ pipeline {
           }
           steps {
             sh '''
+               cmake --version
                mkdir -p build
                cd build
                cmake .. -G "Ninja"
