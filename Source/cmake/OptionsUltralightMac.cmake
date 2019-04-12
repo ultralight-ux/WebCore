@@ -86,9 +86,7 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBGL PUBLIC OFF)
 
 WEBKIT_OPTION_END()
 
-if (NOT WEBKIT_LIBRARIES_DIR)
-    set(WEBKIT_LIBRARIES_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries")
-endif ()
+get_filename_component(WEBKIT_LIBRARIES_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries" REALPATH)
 
 include_directories("${CMAKE_BINARY_DIR}/DerivedSources/ForwardingHeaders" "${CMAKE_BINARY_DIR}/DerivedSources" "${WEBKIT_LIBRARIES_DIR}/include")
 

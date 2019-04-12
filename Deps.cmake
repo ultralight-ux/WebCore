@@ -4,8 +4,8 @@ else ()
     set(ARCHITECTURE "x86")
 endif ()
 
-set(WEBCORE_DEPS_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/")
-set(ULTRALIGHTCORE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/")
+get_filename_component(WEBCORE_DEPS_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries" REALPATH)
+get_filename_component(ULTRALIGHTCORE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/" REALPATH)
 
 if (PORT MATCHES "UltralightLinux")
     set(PLATFORM "linux")
@@ -24,11 +24,11 @@ set(ULTRALIGHTCORE_REV "84bd860")
 ExternalProject_Add(WebCoreDeps
   URL https://github.com/ultralight-ux/WebCore-deps/releases/download/${WEBCORE_DEPS_REV}/webcore-deps-bin-${WEBCORE_DEPS_REV}-${PLATFORM}-${ARCHITECTURE}.7z
   SOURCE_DIR "${WEBCORE_DEPS_DIR}"
-  BUILD_IN_SOURCE 1
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
   BUILD_BYPRODUCTS ${WEBCORE_DEPS_PRODUCTS}
   INSTALL_COMMAND ""
+  INSTALL_DIR ${PROJECT_BINARY_DIR}/dummyInstall
 )
 
 ExternalProject_Add(UltralightCoreBin
