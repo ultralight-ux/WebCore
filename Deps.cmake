@@ -14,14 +14,17 @@ endif ()
 
 set(WEBCORE_DEPS_REV "1.0")
 set(ULTRALIGHTCORE_REV "84bd860")
+set(WEBCORE_DEPS_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/")
+set(ULTRALIGHTCORE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/")
 
 ExternalProject_Add(WebCoreDeps
   URL https://github.com/ultralight-ux/WebCore-deps/releases/download/${WEBCORE_DEPS_REV}/webcore-deps-bin-${WEBCORE_DEPS_REV}-${PLATFORM}-${ARCHITECTURE}.7z
-  SOURCE_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/"
+  SOURCE_DIR "${WEBCORE_DEPS_DIR}"
   BUILD_IN_SOURCE 1
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
+  BUILD_BYPRODUCTS "${WEBCORE_DEPS_DIR}/lib/libicuuc.a ${WEBCORE_DEPS_DIR}/lib/libicui18n.a ${WEBCORE_DEPS_DIR}/lib/libicudata.a"
 )
 
 ExternalProject_Add(UltralightCoreBin
