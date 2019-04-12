@@ -4,26 +4,30 @@ else ()
     set(ARCHITECTURE "x86")
 endif ()
 
+set(WEBCORE_DEPS_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/")
+set(ULTRALIGHTCORE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/")
+
 if (PORT MATCHES "UltralightLinux")
     set(PLATFORM "linux")
+    set(WEBCORE_DEPS_PRODUCTS "${WEBCORE_DEPS_DIR}/lib/libicuuc.a ${WEBCORE_DEPS_DIR}/lib/libicui18n.a ${WEBCORE_DEPS_DIR}/lib/libicudata.a")
 elseif (PORT MATCHES "UltralightMac")
     set(PLATFORM "mac")
+    set(WEBCORE_DEPS_PRODUCTS "${WEBCORE_DEPS_DIR}/lib/libicuuc.a ${WEBCORE_DEPS_DIR}/lib/libicui18n.a ${WEBCORE_DEPS_DIR}/lib/libicudata.a")
 elseif (PORT MATCHES "UltralightWin")
     set(PLATFORM "win")
+    set(WEBCORE_DEPS_PRODUCTS "")
 endif ()
 
 set(WEBCORE_DEPS_REV "1.0")
 set(ULTRALIGHTCORE_REV "84bd860")
-
-set(WEBCORE_DEPS_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries/")
-set(ULTRALIGHTCORE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/")
 
 ExternalProject_Add(WebCoreDeps
   URL https://github.com/ultralight-ux/WebCore-deps/releases/download/${WEBCORE_DEPS_REV}/webcore-deps-bin-${WEBCORE_DEPS_REV}-${PLATFORM}-${ARCHITECTURE}.7z
   SOURCE_DIR "${WEBCORE_DEPS_DIR}"
   BUILD_IN_SOURCE 1
   CONFIGURE_COMMAND ""
-  BUILD_COMMAND ""
+  BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
+  BUILD_BYPRODUCTS ${WEBCORE_DEPS_PRODUCTS}
   INSTALL_COMMAND ""
 )
 
