@@ -1120,6 +1120,7 @@ add_executable(LLIntOffsetsExtractor
     ${JAVASCRIPTCORE_DIR}/llint/LLIntOffsetsExtractor.cpp
     ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/LLIntDesiredOffsets.h ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/Bytecodes.h
 )
+add_dependencies(LLIntOffsetsExtractor WebCoreDeps)
 target_link_libraries(LLIntOffsetsExtractor WTF)
 
 # The build system will execute asm.rb every time LLIntOffsetsExtractor's mtime is newer than
