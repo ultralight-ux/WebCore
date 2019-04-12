@@ -11,7 +11,11 @@ pipeline {
 
           }
           steps {
-            sh './make'
+            sh '''
+               echo $PATH
+               which make
+               ./make
+            '''
           }
         }
       }
