@@ -12,10 +12,11 @@ pipeline {
           }
           steps {
             sh '''
-               PATH=$PATH:/usr/local/bin
-               echo $PATH
-               which cmake
-               ./make
+               mkdir -p build
+               cd build
+               cmake ..
+               make
+               cd ..
             '''
           }
         }
