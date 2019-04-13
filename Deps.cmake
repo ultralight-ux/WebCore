@@ -4,8 +4,8 @@ else ()
     set(ARCHITECTURE "x86")
 endif ()
 
-get_filename_component(WEBCORE_DEPS_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries" REALPATH)
-get_filename_component(ULTRALIGHTCORE_DIR "${CMAKE_SOURCE_DIR}/deps/UltralightCore/" REALPATH)
+get_filename_component(WEBCORE_DEPS_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/WebKitLibraries" REALPATH)
+get_filename_component(ULTRALIGHTCORE_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/UltralightCore/" REALPATH)
 
 if (PORT MATCHES "UltralightLinux")
     set(PLATFORM "linux")
