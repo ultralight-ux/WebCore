@@ -3,12 +3,12 @@ pipeline {
   stages {
     stage('Build') {
       parallel {
+        /*
         stage('Build macOS') {
           agent {
             node {
               label 'macos'
             }
-
           }
           steps {
             sh '''
@@ -25,6 +25,7 @@ pipeline {
             '''
           }
         }
+        */
         stage('Build Windows x64') {
           agent {
             node {
@@ -52,9 +53,11 @@ pipeline {
       }
     }
     stage('Deploy') {
+      /*
       when {
         branch 'dev'
       }
+      */
       steps {
         withAWS(endpointUrl:'https://sfo2.digitaloceanspaces.com',credentials:'jenkins-access') {
           s3Delete(bucket: 'bin', path:'**/*')
