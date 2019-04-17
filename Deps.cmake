@@ -34,8 +34,8 @@ ExternalProject_Add(WebCoreDeps
 ExternalProject_Add(UltralightCoreBin
   URL https://github.com/ultralight-ux/UltralightCore-bin/releases/download/${ULTRALIGHTCORE_REV}/ultralightcore-bin-${ULTRALIGHTCORE_REV}-${PLATFORM}-${ARCHITECTURE}.7z
   SOURCE_DIR "${ULTRALIGHT_CORE_DIR}"
-  BUILD_IN_SOURCE 1
   CONFIGURE_COMMAND ""
-  BUILD_COMMAND ""
+  BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
   INSTALL_COMMAND ""
+  INSTALL_DIR ${PROJECT_BINARY_DIR}/dummyInstall
 )
