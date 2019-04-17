@@ -47,7 +47,7 @@ pipeline {
           post {
             success {
               withAWS(endpointUrl:'https://sfo2.digitaloceanspaces.com', credentials:'jenkins-access') {
-                s3Upload(bucket: 'bin', workingDir:'build', includePathPattern:'*.7z');
+                s3Upload(bucket: 'bin', workingDir:'build', includePathPattern:'*.7z', acl:'PublicRead');
               }
             }
           }
