@@ -35,7 +35,7 @@ pipeline {
             bat '''
                if not exist build mkdir build
                cd build
-               call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" amd64
+               call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64
                set CC=cl.exe
                set CXX=cl.exe
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
