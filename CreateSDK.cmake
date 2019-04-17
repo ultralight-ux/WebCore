@@ -92,13 +92,9 @@ endif ()
 
 set(PKG_FILENAME "webcore-bin-${GIT_COMMIT_HASH}-${PLATFORM}-${ARCHITECTURE}.7z")
 
-if (NOT GIT_BRANCH MATCHES "master")
+if (NOT GIT_STATUS STREQUAL "")
     add_custom_command(TARGET create_sdk POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "NOTE: No release archive created, not currently on master branch."
-    )
-elseif (NOT GIT_STATUS STREQUAL "")
-    add_custom_command(TARGET create_sdk POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "NOTE: No release archive created, working directory not clean."
+        COMMAND ${CMAKE_COMMAND} -E echo "NOTE: No release archive created, working directory has been modified."
     )
 elseif (NOT GIT_CHERRY STREQUAL "")
     add_custom_command(TARGET create_sdk POST_BUILD

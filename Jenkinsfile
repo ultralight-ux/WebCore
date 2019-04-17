@@ -34,11 +34,6 @@ pipeline {
           }
           steps {
             bat '''
-               if not exist build_deps mkdir build_deps
-               cd build_deps
-               cmake ../Source/GetDeps -G "Ninja"
-               ninja
-               cd ..
                if not exist build mkdir build
                cd build
                call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64
@@ -49,19 +44,13 @@ pipeline {
                cd ..
             '''
           }
-        }
-      }
-    }
-    stage('Deploy') {
-      /*
-      when {
-        branch 'dev'
-      }
-      */
-      steps {
-        withAWS(endpointUrl:'https://sfo2.digitaloceanspaces.com',credentials:'jenkins-access') {
-          s3Delete(bucket: 'bin', path:'**/*')
-          s3Upload(bucket: 'bin', workingDir:'build', includePathPattern:'**/*');
+          post {
+            success {
+              withAWS(endpointUrl:'https://sfo2.digitaloceanspaces.com', credentials:'jenkins-access') {
+                s3Upload(bucket: 'bin', workingDir:'build', includePathPattern:'*.7z');
+              }
+            }
+          }
         }
       }
     }
