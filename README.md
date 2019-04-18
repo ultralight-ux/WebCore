@@ -6,6 +6,20 @@
  * Ninja (https://ninja-build.org/)
  * Recent GCC/Clang on macOS/Linux
  * Visual Studio 2015 on Windows
+ * Perl 5.10+
+ * Python 2.7+
+ * Ruby 1.9+
+ * Gperf 3.0.1+
+ 
+### Settings up on Windows
+
+To get everything on Windows, first install Chocolatey (https://chocolatey.org), then type the following:
+
+```
+choco install cmake ninja strawberryperl python2 ruby1.9 gperf
+```
+
+You'll still need to install Visual Studio 2015 (Community Edition works fine, get the C++ packages).
  
 ### Setting up on Linux (Debian 9.5+)
  
