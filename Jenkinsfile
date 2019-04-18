@@ -3,7 +3,6 @@ pipeline {
   stages {
     stage('Build') {
       parallel {
-        /*
         stage('Build macOS') {
           agent {
             node {
@@ -24,8 +23,14 @@ pipeline {
                cd ..
             '''
           }
+          post {
+            success {
+              withAWS(endpointUrl:'https://sfo2.digitaloceanspaces.com', credentials:'jenkins-access') {
+                s3Upload(bucket: 'bin', workingDir:'build', includePathPattern:'*.7z', acl:'PublicRead');
+              }
+            }
+          }
         }
-        */
         stage('Build Windows x64') {
           agent {
             node {
