@@ -11,15 +11,25 @@
  * Ruby 1.9+
  * Gperf 3.0.1+
  
-### Settings up on Windows
+### Setting up on Windows
 
-To get everything on Windows, first install Chocolatey (https://chocolatey.org), then type the following:
+1. Install Visual Studio 2015 (Free Community Edition works fine). Remember to select the C++ packages.
+2. Install Chocolatey (https://chocolatey.org).
+3. Run the following from command line: 
 
 ```
 choco install cmake ninja strawberryperl python2 ruby1.9 gperf
 ```
 
-You'll still need to install Visual Studio 2015 (Community Edition works fine, get the C++ packages).
+### Setting up on macOS
+
+1. Install Xcode 9.4.1 (Older versions of Xcode can be found here: https://developer.apple.com/download/more/)
+2. Install Homebrew (https://brew.sh/)
+3. Run the following from command line:
+
+```
+brew install cmake ninja
+```
  
 ### Setting up on Linux (Debian 9.5+)
  
