@@ -11,6 +11,7 @@ pipeline {
           }
           steps {
             sh '''
+               export PATH="/usr/local/bin:$PATH"
                mkdir -p build_deps
                cd build_deps
                cmake ../Source/GetDeps -G "Ninja"
