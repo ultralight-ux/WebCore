@@ -24,14 +24,14 @@ pipeline {
                # Build Debug
                mkdir -p build_dbg
                cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+               cmake .. -G "Ninja" -DBUILD_DBG=1
                ninja
                cd ..
 
                # Build Release
                mkdir -p build
                cd build
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
+               cmake .. -G "Ninja"
                ninja
                cd ..
             '''
@@ -128,14 +128,14 @@ pipeline {
                # Build Debug
                mkdir -p build_dbg
                cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+               cmake .. -G "Ninja" -DBUILD_DBG=1
                ninja
                cd ..
 
                # Build Release
                mkdir -p build
                cd build
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
+               cmake .. -G "Ninja"
                ninja
                cd ..
             '''
