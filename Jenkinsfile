@@ -10,31 +10,25 @@ pipeline {
             }
           }
           steps {
-            // Setup environment
             sh '''
+               # Setup environment
                export PATH="/usr/local/bin:$PATH"
-            '''
 
-            // Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
-            sh '''
+               # Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
                mkdir -p build_deps
                cd build_deps
                cmake ../Source/GetDeps -G "Ninja"
                ninja
                cd ..
-            '''
-
-            // Build Debug
-            sh '''
+               
+               # Build Debug
                mkdir -p build_dbg
                cd build
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
                ninja
                cd ..
-            '''
 
-            // Build Release
-            sh '''
+               # Build Release
                mkdir -p build
                cd build
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
@@ -55,24 +49,20 @@ pipeline {
             }
           }
           steps {
-            // Setup environment
             bat '''
+               rem Setup environment
                call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64
                set CC=cl.exe
                set CXX=cl.exe
-            '''
-
-            // Build Debug
-            bat '''
+              
+               rem Build Debug
                if not exist build_dbg mkdir build_dbg
                cd build_dbg
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
                ninja
                cd ..
-            '''
 
-            // Build Release
-            bat '''
+               rem Build Release
                if not exist build mkdir build
                cd build
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
@@ -93,24 +83,20 @@ pipeline {
             }
           }
           steps {
-            // Setup environment
             bat '''
+               rem Setup environment
                call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64_x86
                set CC=cl.exe
                set CXX=cl.exe
-            '''
-
-            // Build Debug
-            bat '''
+              
+               rem Build Debug
                if not exist build_dbg mkdir build_dbg
                cd build_dbg
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
                ninja
                cd ..
-            '''
 
-            // Build Release
-            bat '''
+               rem Build Release
                if not exist build mkdir build
                cd build
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
@@ -131,26 +117,22 @@ pipeline {
             }
           }
           steps {
-            // Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
             sh '''
+               # Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
                mkdir -p build_deps
                cd build_deps
                cmake ../Source/GetDeps -G "Ninja"
                ninja
                cd ..
-            '''
-
-            // Build Debug
-            sh '''
+               
+               # Build Debug
                mkdir -p build_dbg
                cd build
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
                ninja
                cd ..
-            '''
 
-            // Build Release
-            sh '''
+               # Build Release
                mkdir -p build
                cd build
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
