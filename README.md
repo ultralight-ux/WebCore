@@ -33,7 +33,7 @@ brew install cmake ninja
  
 ### Setting up on Linux (Debian 9.5+)
  
- To get everything on Linux, just type the following:
+To get everything on Linux, just type the following:
  
 ```
 sudo apt install cmake ninja-build gperf ruby clang libgcrypt20 libgcrypt11-dev lld-4.0
@@ -41,7 +41,7 @@ sudo apt install cmake ninja-build gperf ruby clang libgcrypt20 libgcrypt11-dev 
     
 ## Building from source
  
- To build on Windows:
+To build on Windows:
  
 ```
 make release x64
