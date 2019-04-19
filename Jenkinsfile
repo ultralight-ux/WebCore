@@ -58,7 +58,7 @@ pipeline {
         stage('Build Windows x86') {
           agent {
             node {
-              label 'windows'
+              label 'win_x86'
             }
           }
           steps {
