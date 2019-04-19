@@ -10,16 +10,34 @@ pipeline {
             }
           }
           steps {
+            // Setup environment
             sh '''
                export PATH="/usr/local/bin:$PATH"
+            '''
+
+            // Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
+            sh '''
                mkdir -p build_deps
                cd build_deps
                cmake ../Source/GetDeps -G "Ninja"
                ninja
                cd ..
+            '''
+
+            // Build Debug
+            sh '''
+               mkdir -p build_dbg
+               cd build
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+               ninja
+               cd ..
+            '''
+
+            // Build Release
+            sh '''
                mkdir -p build
                cd build
-               cmake .. -G "Ninja"
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
                ninja
                cd ..
             '''
@@ -37,12 +55,26 @@ pipeline {
             }
           }
           steps {
+            // Setup environment
             bat '''
-               if not exist build mkdir build
-               cd build
                call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64
                set CC=cl.exe
                set CXX=cl.exe
+            '''
+
+            // Build Debug
+            bat '''
+               if not exist build_dbg mkdir build_dbg
+               cd build_dbg
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+               ninja
+               cd ..
+            '''
+
+            // Build Release
+            bat '''
+               if not exist build mkdir build
+               cd build
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
                ninja
                cd ..
@@ -61,12 +93,26 @@ pipeline {
             }
           }
           steps {
+            // Setup environment
             bat '''
-               if not exist build mkdir build
-               cd build
                call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64_x86
                set CC=cl.exe
                set CXX=cl.exe
+            '''
+
+            // Build Debug
+            bat '''
+               if not exist build_dbg mkdir build_dbg
+               cd build_dbg
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+               ninja
+               cd ..
+            '''
+
+            // Build Release
+            bat '''
+               if not exist build mkdir build
+               cd build
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
                ninja
                cd ..
@@ -85,15 +131,29 @@ pipeline {
             }
           }
           steps {
+            // Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
             sh '''
                mkdir -p build_deps
                cd build_deps
                cmake ../Source/GetDeps -G "Ninja"
                ninja
                cd ..
+            '''
+
+            // Build Debug
+            sh '''
+               mkdir -p build_dbg
+               cd build
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+               ninja
+               cd ..
+            '''
+
+            // Build Release
+            sh '''
                mkdir -p build
                cd build
-               cmake .. -G "Ninja"
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
                ninja
                cd ..
             '''
@@ -112,8 +172,10 @@ pipeline {
 def deploy() {
   withAWS(endpointUrl:'https://sfo2.digitaloceanspaces.com', credentials:'jenkins-access') {
     if (env.BRANCH_NAME == 'master') {
+      s3Upload(bucket: 'webcore-bin-dbg', workingDir:'build_dbg', includePathPattern:'*.7z', acl:'PublicRead');
       s3Upload(bucket: 'webcore-bin', workingDir:'build', includePathPattern:'*.7z', acl:'PublicRead');
     } else if (env.BRANCH_NAME == 'dev') {
+      s3Upload(bucket: 'webcore-bin-dev-dbg', workingDir:'build_dbg', includePathPattern:'*.7z', acl:'PublicRead');
       s3Upload(bucket: 'webcore-bin-dev', workingDir:'build', includePathPattern:'*.7z', acl:'PublicRead');
     }
   }
