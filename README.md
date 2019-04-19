@@ -1,5 +1,7 @@
 # Ultralight WebCore Port
 
+This is the full source and build toolchain of the custom WebCore module for Ultralight. Pre-built binaries can be found at : __TODO__
+
 ## You'll need the following:
 
  * CMake 3.2+ (https://cmake.org/)
@@ -41,13 +43,25 @@ sudo apt install cmake ninja-build gperf ruby clang libgcrypt20 libgcrypt11-dev 
     
 ## Building from source
  
-To build on Windows:
- 
+### Building on Windows
+
+To build for Windows / 64-bit:
+
 ```
 make release x64
 ```
 
-To build on macOS/Linux:
+OR
+
+To build for Windows / 32-bit:
+
+```
+make release x86
+```
+
+### Building on macOS and Linux
+
+To build for macOS/Linux:
 
 ```
 ./make
