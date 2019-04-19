@@ -33,7 +33,7 @@ pipeline {
         stage('Build Windows x64') {
           agent {
             node {
-              label 'windows'
+              label 'win_x64'
             }
           }
           steps {
