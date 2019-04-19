@@ -3,6 +3,7 @@ pipeline {
   stages {
     stage('Build') {
       parallel {
+        /*
         stage('Build macOS') {
           agent {
             node {
@@ -53,7 +54,7 @@ pipeline {
               deploy();
             }
           }
-        }
+        }*/
         stage('Build Windows x86') {
           agent {
             node {
@@ -78,6 +79,7 @@ pipeline {
             }
           }
         }
+        /*
         stage('Build Linux') {
           agent {
             node {
@@ -104,6 +106,7 @@ pipeline {
             }
           }
         }
+        */
       }
     }
   }
