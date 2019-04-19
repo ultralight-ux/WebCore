@@ -23,7 +23,7 @@ pipeline {
                
                # Build Debug
                mkdir -p build_dbg
-               cd build
+               cd build_dbg
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
                ninja
                cd ..
@@ -127,7 +127,7 @@ pipeline {
                
                # Build Debug
                mkdir -p build_dbg
-               cd build
+               cd build_dbg
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
                ninja
                cd ..
