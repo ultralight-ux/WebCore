@@ -20,6 +20,12 @@ INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/SQLite"
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/storage"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore" FILES_MATCHING PATTERN "*.h")
         
+if (PORT MATCHES "UltralightWin")
+  if (${CMAKE_BUILD_TYPE} MATCHES Debug OR ${CMAKE_BUILD_TYPE} MATCHES RelWithDebInfo)
+    INSTALL(FILES "${PROJECT_BINARY_DIR}/bin/WebCore.pdb" DESTINATION "bin")
+  endif ()
+endif ()
+
 if (CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(ARCHITECTURE "x64")
 else ()
@@ -82,12 +88,13 @@ elseif (PORT MATCHES "UltralightWin")
 endif ()
 
 if (APPLE)
-    # Strip non-essential symbols from dylib on macOS
-    # You should disable this is you need debug symbols.
+  if (NOT ${BUILD_DBG})
+    # Strip non-essential symbols from dylib in release build on macOS
     add_custom_command(TARGET create_sdk POST_BUILD
         COMMAND strip -u -r bin/libWebCore.dylib
         WORKING_DIRECTORY ${INSTALL_DIR}
     )
+  endif ()
 endif ()
 
 set(PKG_FILENAME "webcore-bin-${GIT_COMMIT_HASH}-${PLATFORM}-${ARCHITECTURE}.7z")
