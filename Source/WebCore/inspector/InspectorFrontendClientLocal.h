@@ -55,19 +55,19 @@ public:
         virtual void setProperty(const String& name, const String& value);
     };
 
-    WEBCORE_EXPORT InspectorFrontendClientLocal(InspectorController* inspectedPageController, Page* frontendPage, std::unique_ptr<Settings>);
-    WEBCORE_EXPORT virtual ~InspectorFrontendClientLocal();
+    InspectorFrontendClientLocal(InspectorController* inspectedPageController, Page* frontendPage, std::unique_ptr<Settings>);
+    virtual ~InspectorFrontendClientLocal();
 
-    WEBCORE_EXPORT void windowObjectCleared() final;
-    WEBCORE_EXPORT void frontendLoaded() override;
+    void windowObjectCleared() final;
+    void frontendLoaded() override;
 
     void startWindowDrag() override { }
-    WEBCORE_EXPORT void moveWindowBy(float x, float y) final;
+    void moveWindowBy(float x, float y) final;
 
-    WEBCORE_EXPORT void requestSetDockSide(DockSide) final;
-    WEBCORE_EXPORT void changeAttachedWindowHeight(unsigned) final;
-    WEBCORE_EXPORT void changeAttachedWindowWidth(unsigned) final;
-    WEBCORE_EXPORT void openInNewTab(const String& url) final;
+    void requestSetDockSide(DockSide) final;
+    void changeAttachedWindowHeight(unsigned) final;
+    void changeAttachedWindowWidth(unsigned) final;
+    void openInNewTab(const String& url) final;
     bool canSave()  override { return false; }
     void save(const String&, const String&, bool, bool) override { }
     void append(const String&, const String&) override { }
@@ -75,42 +75,42 @@ public:
     virtual void attachWindow(DockSide) = 0;
     virtual void detachWindow() = 0;
 
-    WEBCORE_EXPORT void sendMessageToBackend(const String& message) final;
+    void sendMessageToBackend(const String& message) final;
 
-    WEBCORE_EXPORT bool isUnderTest() final;
-    WEBCORE_EXPORT unsigned inspectionLevel() const final;
+    bool isUnderTest() final;
+    unsigned inspectionLevel() const final;
 
-    WEBCORE_EXPORT bool canAttachWindow();
-    WEBCORE_EXPORT void setDockingUnavailable(bool);
+    bool canAttachWindow();
+    void setDockingUnavailable(bool);
 
-    WEBCORE_EXPORT static unsigned constrainedAttachedWindowHeight(unsigned preferredHeight, unsigned totalWindowHeight);
-    WEBCORE_EXPORT static unsigned constrainedAttachedWindowWidth(unsigned preferredWidth, unsigned totalWindowWidth);
+    static unsigned constrainedAttachedWindowHeight(unsigned preferredHeight, unsigned totalWindowHeight);
+    static unsigned constrainedAttachedWindowWidth(unsigned preferredWidth, unsigned totalWindowWidth);
 
     // Direct Frontend API
-    WEBCORE_EXPORT bool isDebuggingEnabled();
-    WEBCORE_EXPORT void setDebuggingEnabled(bool);
+    bool isDebuggingEnabled();
+    void setDebuggingEnabled(bool);
 
-    WEBCORE_EXPORT bool isTimelineProfilingEnabled();
-    WEBCORE_EXPORT void setTimelineProfilingEnabled(bool);
+    bool isTimelineProfilingEnabled();
+    void setTimelineProfilingEnabled(bool);
 
-    WEBCORE_EXPORT bool isProfilingJavaScript();
-    WEBCORE_EXPORT void startProfilingJavaScript();
-    WEBCORE_EXPORT void stopProfilingJavaScript();
+    bool isProfilingJavaScript();
+    void startProfilingJavaScript();
+    void stopProfilingJavaScript();
 
-    WEBCORE_EXPORT void showConsole();
+    void showConsole();
 
-    WEBCORE_EXPORT void showMainResourceForFrame(Frame*);
+    void showMainResourceForFrame(Frame*);
 
-    WEBCORE_EXPORT void showResources();
+    void showResources();
 
-    WEBCORE_EXPORT void setAttachedWindow(DockSide);
+    void setAttachedWindow(DockSide);
 
-    WEBCORE_EXPORT Page* inspectedPage() const;
+    Page* inspectedPage() const;
     Page* frontendPage() const { return m_frontendPage; }
 protected:
     virtual void setAttachedWindowHeight(unsigned) = 0;
     virtual void setAttachedWindowWidth(unsigned) = 0;
-    WEBCORE_EXPORT void restoreAttachedWindowHeight();
+    void restoreAttachedWindowHeight();
 
 private:
     bool evaluateAsBoolean(const String& expression);
