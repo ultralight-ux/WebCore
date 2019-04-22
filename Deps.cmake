@@ -19,10 +19,10 @@ elseif (PORT MATCHES "UltralightWin")
 endif ()
 
 set(WEBCORE_DEPS_REV "1.0")
-set(ULTRALIGHTCORE_REV "84bd860")
+set(ULTRALIGHTCORE_REV "83e83db")
 
 ExternalProject_Add(WebCoreDeps
-  URL https://github.com/ultralight-ux/WebCore-deps/releases/download/${WEBCORE_DEPS_REV}/webcore-deps-bin-${WEBCORE_DEPS_REV}-${PLATFORM}-${ARCHITECTURE}.7z
+  URL https://webcoredeps-bin.sfo2.cdn.digitaloceanspaces.com/webcoredeps-bin-${WEBCORE_DEPS_REV}-${PLATFORM}-${ARCHITECTURE}.7z
   SOURCE_DIR "${WEBCORE_DEPS_DIR}"
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
@@ -32,7 +32,7 @@ ExternalProject_Add(WebCoreDeps
 )
 
 ExternalProject_Add(UltralightCoreBin
-  URL https://github.com/ultralight-ux/UltralightCore-bin/releases/download/${ULTRALIGHTCORE_REV}/ultralightcore-bin-${ULTRALIGHTCORE_REV}-${PLATFORM}-${ARCHITECTURE}.7z
+  URL https://ultralightcore-bin.sfo2.cdn.digitaloceanspaces.com/ultralightcore-${ULTRALIGHTCORE_REV}-${PLATFORM}-${ARCHITECTURE}.7z
   SOURCE_DIR "${ULTRALIGHTCORE_DIR}"
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
