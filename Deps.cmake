@@ -32,7 +32,7 @@ ExternalProject_Add(WebCoreDeps
 )
 
 ExternalProject_Add(UltralightCoreBin
-  URL https://ultralightcore-bin.sfo2.cdn.digitaloceanspaces.com/ultralightcore-${ULTRALIGHTCORE_REV}-${PLATFORM}-${ARCHITECTURE}.7z
+  URL https://ultralightcore-bin.sfo2.cdn.digitaloceanspaces.com/ultralightcore-bin-${ULTRALIGHTCORE_REV}-${PLATFORM}-${ARCHITECTURE}.7z
   SOURCE_DIR "${ULTRALIGHTCORE_DIR}"
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
