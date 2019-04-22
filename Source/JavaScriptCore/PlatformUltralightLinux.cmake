@@ -20,8 +20,8 @@ file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${JAVASCRIPTCORE_DIR}/${_dire
 endforeach ()
 
 # Write the post-build bash script
-file(WRITE "{BUILD_TMP}/postBuild.sh" "#!/bin/bash\nrsync -aqW ${DERIVED_SOURCES_DIR}/JavaScriptCore/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore 2>/dev/null\n")
-file(APPEND "{BUILD_TMP}/postBuild.sh" "rsync -aqW ${DERIVED_SOURCES_DIR}/JavaScriptCore/inspector/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore 2>/dev/null\n")
+file(WRITE "${BUILD_TMP}/postBuild.sh" "#!/bin/bash\nrsync -aqW ${DERIVED_SOURCES_DIR}/JavaScriptCore/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore 2>/dev/null\n")
+file(APPEND "${BUILD_TMP}/postBuild.sh" "rsync -aqW ${DERIVED_SOURCES_DIR}/JavaScriptCore/inspector/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore 2>/dev/null\n")
 
 # Copy bash scripts over and chmod to executable
 file (COPY "${BUILD_TMP}/preBuild.sh" DESTINATION "${CMAKE_BINARY_DIR}/DerivedSources/JavaScriptCore" FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ)
