@@ -336,7 +336,7 @@ endmacro()
 macro(WEBKIT_CREATE_FORWARDING_HEADERS _framework)
     # On Windows, we copy the entire contents of forwarding headers.
     # EDIT- Force all platforms in Ultralight to copy entire contents.
-    # if (NOT WIN32)
+    if (FALSE)
         set(_processing_directories 0)
         set(_processing_files 0)
         set(_target_directory "${DERIVED_SOURCES_DIR}/ForwardingHeaders/${_framework}")
@@ -366,7 +366,7 @@ macro(WEBKIT_CREATE_FORWARDING_HEADERS _framework)
                 WEBKIT_CREATE_FORWARDING_HEADER(${_target_directory} ${_currentArg})
             endif ()
         endforeach ()
-    # endif ()
+    endif ()
 endmacro()
 
 # Helper macro which wraps generate-message-receiver.py and generate-message-header.py scripts
