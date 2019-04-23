@@ -19,6 +19,26 @@ INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/SQLite"
         DESTINATION "DerivedSources/ForwardingHeaders" FILES_MATCHING PATTERN "*.h")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/storage"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore" FILES_MATCHING PATTERN "*.h")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JavaScript.h"
+        DESTINATION "JavaScriptCore/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSBase.h"
+        DESTINATION "JavaScriptCore/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSContextRef.h"
+        DESTINATION "JavaScriptCore/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSStringRef.h"
+        DESTINATION "JavaScriptCore/")   
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSObjectRef.h"
+        DESTINATION "JavaScriptCore/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSTypedArray.h"
+        DESTINATION "JavaScriptCore/")   
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSValueRef.h"
+        DESTINATION "JavaScriptCore/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/WebKitAvailability.h"
+        DESTINATION "JavaScriptCore/")   
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSObjectRefPrivate.h"
+        DESTINATION "JavaScriptCore/")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSRetainPtr.h"
+        DESTINATION "JavaScriptCore/")
         
 if (PORT MATCHES "UltralightWin")
   if (${CMAKE_BUILD_TYPE} MATCHES Debug OR ${CMAKE_BUILD_TYPE} MATCHES RelWithDebInfo)
