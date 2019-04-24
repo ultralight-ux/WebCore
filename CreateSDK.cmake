@@ -19,26 +19,28 @@ INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/SQLite"
         DESTINATION "DerivedSources/ForwardingHeaders" FILES_MATCHING PATTERN "*.h")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/storage"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore" FILES_MATCHING PATTERN "*.h")
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JavaScript.h"
-        DESTINATION "JavaScriptCore/")
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSBase.h"
-        DESTINATION "JavaScriptCore/")
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSContextRef.h"
-        DESTINATION "JavaScriptCore/")
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSStringRef.h"
-        DESTINATION "JavaScriptCore/")   
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSObjectRef.h"
-        DESTINATION "JavaScriptCore/")
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSTypedArray.h"
-        DESTINATION "JavaScriptCore/")   
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSValueRef.h"
-        DESTINATION "JavaScriptCore/")
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/WebKitAvailability.h"
-        DESTINATION "JavaScriptCore/")   
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSObjectRefPrivate.h"
-        DESTINATION "JavaScriptCore/")
-INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSRetainPtr.h"
-        DESTINATION "JavaScriptCore/")
+
+set(JAVASCRIPTCORE_HEADERS
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JavaScript.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSBase.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSContextRef.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSStringRef.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSObjectRef.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSTypedArray.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSValueRef.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/WebKitAvailability.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSObjectRefPrivate.h"
+  "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JSRetainPtr.h"
+  )
+
+INSTALL(FILES ${JAVASCRIPTCORE_HEADERS} DESTINATION "include/JavaScriptCore/")
+
+set(WEBINSPECTORUI_DIR "${CMAKE_SOURCE_DIR}/Source/WebInspectorUI")
+
+INSTALL(DIRECTORY "${WEBINSPECTORUI_DIR}/UserInterface/" DESTINATION "inspector")
+INSTALL(FILES "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/inspector/InspectorBackendCommands.js"
+              "${WEBINSPECTORUI_DIR}/Localizations/en.lproj/localizedStrings.js"
+              DESTINATION "inspector")
         
 if (PORT MATCHES "UltralightWin")
   if (${CMAKE_BUILD_TYPE} MATCHES Debug OR ${CMAKE_BUILD_TYPE} MATCHES RelWithDebInfo)
