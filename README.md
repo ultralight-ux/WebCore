@@ -1,6 +1,14 @@
 # Ultralight WebCore Port
 
-This is the full source and build toolchain of the custom WebCore module for Ultralight. Pre-built binaries can be found at : __TODO__
+This is the full source and build toolchain of the custom WebCore module for Ultralight.
+
+## Downloading pre-built binaries
+
+Pre-built binares are uploaded to the following S3 buckets every commit:
+ * Debug Bins: https://webcore-bin-dbg.sfo2.digitaloceanspaces.com/
+ * Release Bins: https://webcore-bin.sfo2.digitaloceanspaces.com/
+
+Click any of the bucket links to get an XML file listing. Download a package by appending the filename to the bucket URL.
 
 ## You'll need the following:
 
