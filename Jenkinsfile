@@ -91,7 +91,7 @@ pipeline {
                rem Build Debug
                if not exist build_dbg mkdir build_dbg
                cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Debug
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
                ninja
                cd ..
             '''
@@ -145,7 +145,7 @@ pipeline {
                rem Build Debug
                if not exist build_dbg mkdir build_dbg
                cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Debug
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
                ninja
                cd ..
             '''
