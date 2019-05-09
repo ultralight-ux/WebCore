@@ -2088,7 +2088,7 @@ WebInspector.resolvedLayoutDirection = function()
 {
     let layoutDirection = WebInspector.settings.layoutDirection.value;
     if (layoutDirection === WebInspector.LayoutDirection.System)
-        layoutDirection = InspectorFrontendHost.userInterfaceLayoutDirection();
+        layoutDirection = WebInspector.LayoutDirection.LTR; /*InspectorFrontendHost.userInterfaceLayoutDirection();*/
 
     return layoutDirection;
 };
