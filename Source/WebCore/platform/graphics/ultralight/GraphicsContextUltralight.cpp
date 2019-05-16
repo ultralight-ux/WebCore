@@ -702,8 +702,19 @@ void GraphicsContext::strokeRect(const FloatRect& rect, float width)
     return;
   }
 
-  // TODO
-  notImplemented();
+  if (width < 0.001)
+    return;
+
+  if (rect.isEmpty() || rect.isZero())
+    return;
+
+  Path path;
+  path.addRect(rect);
+
+  ultralight::Paint paint;
+  WebCore::Color color = strokeColor();
+  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+  platformContext()->canvas()->DrawPath(path.ultralightPath(), paint, false, true, width);
 }
 
 void GraphicsContext::setLineCap(LineCap lineCap)
