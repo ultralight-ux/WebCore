@@ -23,29 +23,30 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
+#include "BPlatform.h"
 #include "PerProcess.h"
 #include "VMHeap.h"
 #include <thread>
 
 namespace bmalloc {
 
-LargeRange VMHeap::tryAllocateLargeChunk(std::lock_guard<StaticMutex>&, size_t alignment, size_t size)
+XLargeRange VMHeap::tryAllocateLargeChunk(std::lock_guard<StaticMutex>&, size_t alignment, size_t size)
 {
     // We allocate VM in aligned multiples to increase the chances that
     // the OS will provide contiguous ranges that we can merge.
     size_t roundedAlignment = roundUpToMultipleOf<chunkSize>(alignment);
     if (roundedAlignment < alignment) // Check for overflow
-        return LargeRange();
+        return XLargeRange();
     alignment = roundedAlignment;
 
     size_t roundedSize = roundUpToMultipleOf<chunkSize>(size);
     if (roundedSize < size) // Check for overflow
-        return LargeRange();
+        return XLargeRange();
     size = roundedSize;
 
     void* memory = tryVMAllocate(alignment, size);
     if (!memory)
-        return LargeRange();
+        return XLargeRange();
 
     Chunk* chunk = static_cast<Chunk*>(memory);
     
@@ -53,7 +54,7 @@ LargeRange VMHeap::tryAllocateLargeChunk(std::lock_guard<StaticMutex>&, size_t a
     m_zone.addRange(Range(chunk->bytes(), size));
 #endif
 
-    return LargeRange(chunk->bytes(), size, 0);
+    return XLargeRange(chunk->bytes(), size, 0);
 }
 
 void VMHeap::allocateSmallChunk(std::lock_guard<StaticMutex>& lock, size_t pageClass)

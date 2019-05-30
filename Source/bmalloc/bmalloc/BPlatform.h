@@ -42,6 +42,10 @@
 #define BOS_UNIX 1
 #endif
 
+#if defined(WIN32) || defined(_WIN32)
+#define BOS_WINDOWS 1
+#endif
+
 #if BOS(DARWIN) && ((defined(TARGET_OS_EMBEDDED) && TARGET_OS_EMBEDDED) \
     || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) \
     || (defined(TARGET_IPHONE_SIMULATOR) && TARGET_IPHONE_SIMULATOR))
@@ -189,7 +193,11 @@
 
 #endif /* ARM */
 
+#if !BOS(WINDOWS)
 #define BATTRIBUTE_PRINTF(formatStringArgument, extraArguments) __attribute__((__format__(printf, formatStringArgument, extraArguments)))
+#else
+#define BATTRIBUTE_PRINTF(formatStringArgument, extraArguments)
+#endif
 
 #if (BPLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200) || (BPLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 100000)
 #define BUSE_OS_LOG 1

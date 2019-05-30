@@ -48,9 +48,24 @@ template<typename T> inline constexpr T min(T a, T b)
     return a < b ? a : b;
 }
 
+/*
+* C++'s idea of a reinterpret_cast lacks sufficient cojones.
+*/
+template<typename ToType, typename FromType>
+inline ToType bitwise_cast(FromType from)
+{
+    static_assert(sizeof(FromType) == sizeof(ToType), "bitwise_cast size of FromType and ToType must be equal!");
+    union {
+        FromType from;
+        ToType to;
+    } u;
+    u.from = from;
+    return u.to;
+}
+
 template<typename T> inline constexpr T mask(T value, uintptr_t mask)
 {
-    return reinterpret_cast<T>(reinterpret_cast<uintptr_t>(value) & mask);
+    return bitwise_cast<T>(bitwise_cast<uintptr_t>(value) & mask);
 }
 
 template<typename T> inline constexpr bool test(T value, uintptr_t mask)
@@ -66,7 +81,7 @@ inline constexpr bool isPowerOfTwo(size_t size)
 template<typename T> inline T roundUpToMultipleOf(size_t divisor, T x)
 {
     BASSERT(isPowerOfTwo(divisor));
-    return reinterpret_cast<T>((reinterpret_cast<uintptr_t>(x) + (divisor - 1)) & ~(divisor - 1));
+    return bitwise_cast<T>((bitwise_cast<uintptr_t>(x) + (divisor - 1)) & ~(divisor - 1));
 }
 
 template<size_t divisor, typename T> inline constexpr T roundUpToMultipleOf(T x)
@@ -120,7 +135,11 @@ template<typename T> inline constexpr size_t bitCount()
 
 inline constexpr unsigned long log2(unsigned long value)
 {
+#if BOS(WINDOWS)
+    return value == 0 || value == 1 ? 0 : 1 + log2(value / 2);
+#else
     return bitCount<unsigned long>() - 1 - __builtin_clzl(value);
+#endif
 }
 
 } // namespace bmalloc

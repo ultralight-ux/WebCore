@@ -29,7 +29,12 @@
 #include "BPlatform.h"
 #include "Inline.h"
 #include <mutex>
+
+#if !BOS(WINDOWS)
 #include <pthread.h>
+#else
+#include <windows.h>
+#endif
 
 #if defined(__has_include)
 #if __has_include(<System/pthread_machdep.h>)
@@ -55,7 +60,11 @@ public:
     static T* getSlowCase();
 
 private:
+#if !BOS(WINDOWS)
     static void destructor(void*);
+#else
+    static void WINAPI destructor(void*);
+#endif
 };
 
 #if HAVE_PTHREAD_MACHDEP_H
@@ -84,30 +93,52 @@ template<> struct PerThreadStorage<Cache> {
 
 template<typename T> struct PerThreadStorage {
     static bool s_didInitialize;
+#if !BOS(WINDOWS)
     static pthread_key_t s_key;
+#else
+    static DWORD s_key;
+#endif
     static std::once_flag s_onceFlag;
     
     static void* get()
     {
         if (!s_didInitialize)
             return nullptr;
+#if !BOS(WINDOWS)
         return pthread_getspecific(s_key);
+#else
+        return FlsGetValue(s_key);
+#endif
     }
-    
+
+#if !BOS(WINDOWS)
     static void init(void* object, void (*destructor)(void*))
+#else
+    static void init(void* object, void (WINAPI *destructor)(void*))
+#endif
     {
         std::call_once(s_onceFlag, [destructor]() {
-            int error = pthread_key_create(&s_key, destructor);
-            if (error)
-                BCRASH();
+#if !BOS(WINDOWS)
+            pthread_key_create(&s_key, destructor);
+#else
+            s_key = FlsAlloc(destructor);
+#endif
             s_didInitialize = true;
         });
+#if !BOS(WINDOWS)
         pthread_setspecific(s_key, object);
+#else
+        FlsSetValue(s_key, object);
+#endif
     }
 };
 
 template<typename T> bool PerThreadStorage<T>::s_didInitialize;
+#if !BOS(WINDOWS)
 template<typename T> pthread_key_t PerThreadStorage<T>::s_key;
+#else
+template<typename T> DWORD PerThreadStorage<T>::s_key;
+#endif
 template<typename T> std::once_flag PerThreadStorage<T>::s_onceFlag;
 
 #endif

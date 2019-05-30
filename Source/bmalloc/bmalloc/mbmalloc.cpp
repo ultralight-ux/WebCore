@@ -25,7 +25,11 @@
 
 #include "bmalloc.h"
 
+#if !BOS(WINDOWS)
 #define EXPORT __attribute__((visibility("default")))
+#else
+#define EXPORT __declspec(dllexport)
+#endif
 
 extern "C" {
 

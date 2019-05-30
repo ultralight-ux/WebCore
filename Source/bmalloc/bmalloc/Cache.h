@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,14 +36,16 @@ namespace bmalloc {
 
 class Cache {
 public:
+    enum AlignedDeallocateTag { AlignedDeallocate };
+
     void* operator new(size_t);
     void operator delete(void*, size_t);
 
     static void* tryAllocate(size_t);
     static void* allocate(size_t);
-    static void* tryAllocate(size_t alignment, size_t);
     static void* allocate(size_t alignment, size_t);
     static void deallocate(void*);
+    static void deallocate(void*, AlignedDeallocateTag);
     static void* reallocate(void*, size_t);
 
     static void scavenge();
@@ -58,6 +60,7 @@ private:
     static void* allocateSlowCaseNullCache(size_t);
     static void* allocateSlowCaseNullCache(size_t alignment, size_t);
     static void deallocateSlowCaseNullCache(void*);
+    static void deallocateSlowCaseNullCache(void*, AlignedDeallocateTag);
     static void* reallocateSlowCaseNullCache(void*, size_t);
 
     Deallocator m_deallocator;
@@ -80,14 +83,6 @@ inline void* Cache::allocate(size_t size)
     return cache->allocator().allocate(size);
 }
 
-inline void* Cache::tryAllocate(size_t alignment, size_t size)
-{
-    Cache* cache = PerThread<Cache>::getFastCase();
-    if (!cache)
-        return allocateSlowCaseNullCache(alignment, size);
-    return cache->allocator().tryAllocate(alignment, size);
-}
-
 inline void* Cache::allocate(size_t alignment, size_t size)
 {
     Cache* cache = PerThread<Cache>::getFastCase();
@@ -102,6 +97,14 @@ inline void Cache::deallocate(void* object)
     if (!cache)
         return deallocateSlowCaseNullCache(object);
     return cache->deallocator().deallocate(object);
+}
+
+inline void Cache::deallocate(void* object, AlignedDeallocateTag)
+{
+    Cache* cache = PerThread<Cache>::getFastCase();
+    if (!cache)
+        return deallocateSlowCaseNullCache(object, Cache::AlignedDeallocate);
+    return cache->deallocator().deallocate(object, Deallocator::AlignedDeallocate);
 }
 
 inline void* Cache::reallocate(void* object, size_t newSize)

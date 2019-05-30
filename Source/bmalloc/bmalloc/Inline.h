@@ -26,8 +26,16 @@
 #ifndef Inline_h
 #define Inline_h
 
+#include "BPlatform.h"
+
+#if !BOS(WINDOWS)
 #define INLINE __attribute__((always_inline)) inline
 
 #define NO_INLINE __attribute__((noinline))
+#else
+#define INLINE __forceinline
+
+#define NO_INLINE __declspec(noinline)
+#endif
 
 #endif // Inline_h

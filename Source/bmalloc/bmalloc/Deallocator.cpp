@@ -32,7 +32,9 @@
 #include "PerProcess.h"
 #include <algorithm>
 #include <cstdlib>
+#if !BOS(WINDOWS)
 #include <sys/mman.h>
+#endif
 
 using namespace std;
 
@@ -81,6 +83,27 @@ void Deallocator::deallocateSlowCase(void* object)
         free(object);
         return;
     }
+
+    deallocateSlowCaseInternal(object);
+}
+
+void Deallocator::deallocateSlowCase(void* object, AlignedDeallocateTag)
+{
+    if (!m_isBmallocEnabled) {
+#if !BOS(WINDOWS)
+        free(object);
+#else
+        _aligned_free(object);
+#endif
+        return;
+    }
+
+    deallocateSlowCaseInternal(object);
+}
+
+void Deallocator::deallocateSlowCaseInternal(void* object)
+{
+    BASSERT(!deallocateFastCase(object));
 
     if (!object)
         return;

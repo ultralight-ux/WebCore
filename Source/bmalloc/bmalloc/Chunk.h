@@ -48,8 +48,8 @@ public:
     SmallLine* line(size_t offset);
 
     char* bytes() { return reinterpret_cast<char*>(this); }
-    SmallLine* lines() { return &m_lines[0]; }
-    SmallPage* pages() { return &m_pages[0]; }
+    SmallLine* lines() { return &m_lines.front(); }
+    SmallPage* pages() { return &m_pages.front(); }
 
 private:
     std::array<SmallLine, chunkSize / smallLineSize> m_lines;

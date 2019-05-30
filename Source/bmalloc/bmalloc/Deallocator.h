@@ -41,7 +41,10 @@ public:
     Deallocator(Heap*);
     ~Deallocator();
 
+    enum AlignedDeallocateTag { AlignedDeallocate };
+
     void deallocate(void*);
+    void deallocate(void*, AlignedDeallocateTag);
     void scavenge();
     
     void processObjectLog();
@@ -50,6 +53,8 @@ public:
 private:
     bool deallocateFastCase(void*);
     void deallocateSlowCase(void*);
+    void deallocateSlowCase(void*, AlignedDeallocateTag);
+    void deallocateSlowCaseInternal(void*);
 
     FixedVector<void*, deallocatorLogCapacity> m_objectLog;
     bool m_isBmallocEnabled;
@@ -72,6 +77,12 @@ inline void Deallocator::deallocate(void* object)
 {
     if (!deallocateFastCase(object))
         deallocateSlowCase(object);
+}
+
+inline void Deallocator::deallocate(void* object, AlignedDeallocateTag)
+{
+    if (!deallocateFastCase(object))
+        deallocateSlowCase(object, Deallocator::AlignedDeallocate);
 }
 
 } // namespace bmalloc
