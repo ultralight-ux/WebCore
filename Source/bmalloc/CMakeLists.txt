@@ -24,6 +24,10 @@ if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
     )
 endif ()
 
+if (WIN32)
+    add_definitions(-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS)
+endif ()
+
 set(bmalloc_LIBRARIES
     ${CMAKE_DL_LIBS}
 )

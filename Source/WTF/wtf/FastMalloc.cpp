@@ -46,7 +46,7 @@
 
 namespace WTF {
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !PLATFORM(ULTRALIGHT)
 namespace {
 size_t maxSingleAllocationSize = std::numeric_limits<size_t>::max();
 };
@@ -67,6 +67,8 @@ void fastSetMaxSingleAllocationSize(size_t size)
     } while (false)
 
 #else // !defined(NDEBUG)
+
+void fastSetMaxSingleAllocationSize(size_t size) {}
 
 #define ASSERT_IS_WITHIN_LIMIT(size)
 #define FAIL_IF_EXCEEDS_LIMIT(size)

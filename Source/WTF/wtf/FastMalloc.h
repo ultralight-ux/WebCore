@@ -136,7 +136,7 @@ using WTF::fastAlignedFree;
 #define WTF_PRIVATE_INLINE inline
 #endif
 
-#if PLATFORM(ULTRALIGHT)
+#if PLATFORM(ULTRALIGHT) && defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
 #define WTF_MAKE_FAST_ALLOCATED \
 public: \
     void* operator new(size_t, void* p) { return p; } \
