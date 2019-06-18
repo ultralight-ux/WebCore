@@ -31,6 +31,10 @@
 #include "BitmapTextureGL.h"
 #endif
 
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
+#include "BitmapTextureUltralight.h"
+#endif
+
 namespace WebCore {
 
 static const double s_releaseUnusedSecondsTolerance = 3;
@@ -106,6 +110,8 @@ RefPtr<BitmapTexture> BitmapTexturePool::createTexture(const BitmapTexture::Flag
 {
 #if USE(TEXTURE_MAPPER_GL)
     return adoptRef(new BitmapTextureGL(m_context3D, flags));
+#elif USE(TEXTURE_MAPPER_ULTRALIGHT)
+    return adoptRef(new BitmapTextureUltralight(flags));
 #else
     return nullptr;
 #endif

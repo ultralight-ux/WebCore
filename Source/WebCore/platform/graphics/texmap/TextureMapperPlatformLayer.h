@@ -31,7 +31,7 @@
 
 namespace WebCore {
 
-class TextureMapperPlatformLayer {
+class WEBCORE_EXPORT TextureMapperPlatformLayer {
 public:
     class Client {
     public:

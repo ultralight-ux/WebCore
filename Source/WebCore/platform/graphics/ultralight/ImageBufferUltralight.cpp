@@ -56,8 +56,9 @@ RefPtr<Image> ImageBuffer::sinkIntoImage(std::unique_ptr<ImageBuffer> imageBuffe
 RefPtr<Image> ImageBuffer::copyImage(BackingStoreCopy copyBehavior, ScaleBehavior) const
 {
   // TODO
-  notImplemented();
-  return RefPtr<Image>();
+  //notImplemented();
+  //return RefPtr<Image>();
+  return m_data.m_image;
 }
 
 BackingStoreCopy ImageBuffer::fastCopyImageMode()

@@ -28,7 +28,7 @@ if "%1"=="release" (
   set "FLAGS=-G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel"
 )
 if "%1"=="debug" (
-  set "FLAGS=-G "Ninja" -DCMAKE_BUILD_TYPE=Debug"
+  set "FLAGS=-G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo"
 )
 call "%VCVARS%" %CFG%
 if not exist %DIRNAME% mkdir %DIRNAME%

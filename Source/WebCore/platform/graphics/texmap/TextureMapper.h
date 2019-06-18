@@ -38,7 +38,7 @@ class GraphicsLayer;
 class TextureMapper;
 class FilterOperations;
 
-class TextureMapper {
+class WEBCORE_EXPORT TextureMapper {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     enum PaintFlag {

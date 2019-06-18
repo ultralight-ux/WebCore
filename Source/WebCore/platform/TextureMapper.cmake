@@ -24,6 +24,13 @@ if (USE_TEXTURE_MAPPER_GL)
     )
 endif ()
 
+if (USE_TEXTURE_MAPPER_ULTRALIGHT)
+    list(APPEND WebCore_SOURCES
+        platform/graphics/texmap/BitmapTextureUltralight.cpp
+        platform/graphics/texmap/TextureMapperUltralight.cpp
+    )
+endif ()
+
 if (USE_COORDINATED_GRAPHICS)
     list(APPEND WebCore_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/page/scrolling/coordinatedgraphics"

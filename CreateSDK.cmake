@@ -11,6 +11,8 @@ INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/graphics/ultral
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/graphics" FILES_MATCHING PATTERN "*.h")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/graphics/harfbuzz"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/graphics" FILES_MATCHING PATTERN "*.h")
+INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/graphics/texmap"
+        DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/graphics" FILES_MATCHING PATTERN "*.h")
 INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/MIMETypeRegistry.h"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/")
 INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/FileChooser.h"

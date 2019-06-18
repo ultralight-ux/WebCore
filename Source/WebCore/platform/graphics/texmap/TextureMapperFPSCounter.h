@@ -29,7 +29,7 @@
 namespace WebCore {
 class TextureMapper;
 
-class TextureMapperFPSCounter {
+class WEBCORE_EXPORT TextureMapperFPSCounter {
     WTF_MAKE_NONCOPYABLE(TextureMapperFPSCounter);
     WTF_MAKE_FAST_ALLOCATED;
 public:

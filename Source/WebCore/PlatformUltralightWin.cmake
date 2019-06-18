@@ -3,6 +3,7 @@ add_definitions(/bigobj -D__STDC_CONSTANT_MACROS -DSTATICALLY_LINKED_WITH_WTF
                 -DCURL_STATICLIB)
 
 include(platform/ImageDecoders.cmake)
+include(platform/TextureMapper.cmake)
 
 list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${CMAKE_BINARY_DIR}/../include/private"
@@ -116,8 +117,6 @@ list(APPEND WebCore_SOURCES
 	platform/graphics/ultralight/FreeTypeLib.cpp
 	platform/graphics/ultralight/GlyphPageUltralight.cpp
 	platform/graphics/ultralight/ImageDecoderUltralight.cpp
-	platform/graphics/ultralight/GraphicsLayerUltralight.cpp
-	platform/graphics/ultralight/GraphicsLayerUltralight.h
 	platform/graphics/ultralight/UltralightStubs.cpp
 	platform/graphics/ultralight/NativeImageUltralight.cpp
 	platform/graphics/ultralight/FontRenderer.h

@@ -41,7 +41,7 @@ class Image;
 class TextureMapper;
 
 // A 2D texture that can be the target of software or GL rendering.
-class BitmapTexture : public RefCounted<BitmapTexture> {
+class WEBCORE_EXPORT BitmapTexture : public RefCounted<BitmapTexture> {
 public:
     enum Flag {
         NoFlag = 0,

@@ -64,7 +64,7 @@ AffineTransform GraphicsContext::getCTM(IncludeDeviceScale) const
 
   ultralight::RefPtr<ultralight::Canvas> canvas = platformContext()->canvas();
   ultralight::Matrix m = canvas->GetMatrix();
-  return AffineTransform(m.data[0], m.data[1], m.data[2], m.data[3], m.data[4], m.data[5]);
+  return AffineTransform(m.a(), m.b(), m.c(), m.d(), m.e(), m.f());
 }
 
 PlatformContextUltralight* GraphicsContext::platformContext() const

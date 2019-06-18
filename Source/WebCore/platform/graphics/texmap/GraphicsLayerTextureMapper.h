@@ -32,7 +32,7 @@
 
 namespace WebCore {
 
-class GraphicsLayerTextureMapper final : public GraphicsLayer, TextureMapperPlatformLayer::Client {
+class WEBCORE_EXPORT GraphicsLayerTextureMapper final : public GraphicsLayer, TextureMapperPlatformLayer::Client {
 public:
     explicit GraphicsLayerTextureMapper(Type, GraphicsLayerClient&);
     virtual ~GraphicsLayerTextureMapper();

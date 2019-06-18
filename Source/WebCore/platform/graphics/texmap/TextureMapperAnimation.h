@@ -30,7 +30,7 @@ class TextureMapperAnimation {
 public:
     enum class AnimationState { Playing, Paused, Stopped };
 
-    class Client {
+    class WEBCORE_EXPORT Client {
     public:
         virtual void setAnimatedTransform(const TransformationMatrix&) = 0;
         virtual void setAnimatedOpacity(float) = 0;
