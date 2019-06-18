@@ -36,7 +36,8 @@ void BitmapTextureUltralight::updateContents(Image* image,
     if (image->isCanvasImage()) {
       ultralight::RefPtr<ultralight::Canvas> imageCanvas = static_cast<CanvasImage*>(image)->canvas();
       ultralight::Rect src_uv = imageCanvas->render_target().uv_coords;
-      ultralight::Rect dest = { targetRect.x(), targetRect.y(), targetRect.maxX(), targetRect.maxY() };
+      ultralight::Rect dest = { (float)targetRect.x(), (float)targetRect.y(),
+        (float)targetRect.maxX(), (float)targetRect.maxY() };
       ultralight::Paint paint;
       paint.color = UltralightRGBA(255, 255, 255, 255);
 
@@ -57,8 +58,8 @@ void BitmapTextureUltralight::updateContents(Image* image,
           (float)imageSize.height() };
       srcRect.Move(offset.x(), offset.y());
 
-      ultralight::Rect destRect = { targetRect.x(), targetRect.y(),
-          targetRect.maxX(), targetRect.maxY() };
+      ultralight::Rect destRect = { (float)targetRect.x(), (float)targetRect.y(),
+        (float)targetRect.maxX(), (float)targetRect.maxY() };
 
       ultralight::Paint paint;
       paint.color = UltralightColorWHITE;
