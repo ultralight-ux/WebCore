@@ -3,7 +3,7 @@
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
 #include "BitmapTexture.h"
-#include "ultralight/private/Canvas.h"
+#include <Ultralight/private/Canvas.h>
 
 namespace WebCore {
 
