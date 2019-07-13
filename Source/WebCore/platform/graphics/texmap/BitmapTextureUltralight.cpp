@@ -18,13 +18,14 @@ BitmapTextureUltralight::~BitmapTextureUltralight() {
 
 void BitmapTextureUltralight::didReset() {
     if (canvas_ && canvas_size_ == contentSize()) {
-        canvas_->Clear();
+        //canvas_->Clear();
         return;
     }
 
     canvas_size_ = contentSize();
     canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
         canvas_size_.height(), ultralight::kBitmapFormat_RGBA8);
+    canvas_->set_clears_after_drawing(false);
 }
 
 void BitmapTextureUltralight::updateContents(Image* image,
@@ -43,7 +44,9 @@ void BitmapTextureUltralight::updateContents(Image* image,
 
       // TODO: handle offset
 
+      canvas_->set_blending_enabled(false);
       canvas_->DrawCanvas(*imageCanvas, src_uv, dest, paint);
+      canvas_->set_blending_enabled(true);
 
       paint.color = UltralightColorRED;
 
@@ -63,8 +66,10 @@ void BitmapTextureUltralight::updateContents(Image* image,
 
       ultralight::Paint paint;
       paint.color = UltralightColorWHITE;
+      canvas_->set_blending_enabled(false);
       canvas_->DrawImage(frameImage->first, frameImage->second, srcRect,
         destRect, paint);
+      canvas_->set_blending_enabled(true);
     }
 }
 
