@@ -4872,6 +4872,12 @@ void RenderLayer::paintMaskForFragments(const LayerFragments& layerFragments, Gr
 void RenderLayer::paintChildClippingMaskForFragments(const LayerFragments& layerFragments, GraphicsContext& context, const LayerPaintingInfo& localPaintingInfo,
     RenderObject* subtreePaintRootForRenderer)
 {
+#if USE(ULTRALIGHT)
+  // TODO, figure out clipping mask for compositor, clipping shader only
+  // supports affine matrices
+  return;
+#endif
+
     for (const auto& fragment : layerFragments) {
         if (!fragment.shouldPaintContent)
             continue;

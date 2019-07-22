@@ -1,5 +1,6 @@
 #include "config.h"
 #include "TextureMapperUltralight.h"
+#include "BitmapTexturePool.h"
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
@@ -7,7 +8,9 @@
 
 namespace WebCore {
 
-TextureMapperUltralight::TextureMapperUltralight() {}
+TextureMapperUltralight::TextureMapperUltralight() {
+  m_texturePool = std::make_unique<BitmapTexturePool>();
+}
 
 TextureMapperUltralight::~TextureMapperUltralight() {}
 
@@ -36,18 +39,14 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     ultralight::Rect dest = { target.x(), target.y(), target.maxX(), target.maxY() };
     ultralight::Paint paint;
     paint.color = UltralightRGBA(255, 255, 255, (unsigned char)(opacity * 255.0f));
-    //paint.color = UltralightColorGREEN;
-
-   // current_surface_->DrawRect(dest, paint);
-    //return;
+ 
     current_surface_->Save();
     current_surface_->Transform(modelViewMatrix);
     current_surface_->DrawCanvas(*srcCanvas, src_uv, dest, paint);
     current_surface_->Restore();
 
-    paint.color = UltralightColorGREEN;
-
-    current_surface_->DrawRect({ 20, 20, 30, 30 }, paint);
+    //paint.color = UltralightColorGREEN;
+    //current_surface_->DrawRect({ 20, 20, 30, 30 }, paint);
 }
 
 void TextureMapperUltralight::drawSolidColor(const FloatRect&,

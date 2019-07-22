@@ -48,6 +48,10 @@ public:
     explicit BitmapTexturePool(RefPtr<GraphicsContext3D>&&);
 #endif
 
+#if USE(TEXTURE_MAPPER_ULTRALIGHT)
+    explicit BitmapTexturePool();
+#endif
+
     RefPtr<BitmapTexture> acquireTexture(const IntSize&, const BitmapTexture::Flags);
 
 private:

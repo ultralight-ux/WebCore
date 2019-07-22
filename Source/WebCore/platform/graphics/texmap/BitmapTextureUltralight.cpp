@@ -18,7 +18,6 @@ BitmapTextureUltralight::~BitmapTextureUltralight() {
 
 void BitmapTextureUltralight::didReset() {
     if (canvas_ && canvas_size_ == contentSize()) {
-        //canvas_->Clear();
         return;
     }
 
@@ -50,7 +49,7 @@ void BitmapTextureUltralight::updateContents(Image* image,
 
       paint.color = UltralightColorRED;
 
-      canvas_->DrawRect({ 10, 10, 20, 20 }, paint);
+      //canvas_->DrawRect({ 10, 10, 20, 20 }, paint);
       //return;
     } else if (image->isBitmapImage()) {
       NativeImagePtr frameImage = image->nativeImageForCurrentFrame();

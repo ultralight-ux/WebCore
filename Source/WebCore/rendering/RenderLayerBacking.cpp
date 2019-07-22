@@ -1591,6 +1591,11 @@ void RenderLayerBacking::updateMaskingLayer(bool hasMask, bool hasClipPath)
 
 void RenderLayerBacking::updateChildClippingStrategy(bool needsDescendantsClippingLayer)
 {
+#if USE(ULTRALIGHT)
+  // TODO: Handle mask clipping layers correctly in Ultralight.
+  needsDescendantsClippingLayer = false;
+#endif
+
     if (hasClippingLayer() && needsDescendantsClippingLayer) {
         if (is<RenderBox>(renderer()) && (renderer().style().clipPath() || renderer().style().hasBorderRadius())) {
             // FIXME: we shouldn't get geometry here as layout may not have been udpated.
