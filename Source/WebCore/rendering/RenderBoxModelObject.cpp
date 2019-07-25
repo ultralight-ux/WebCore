@@ -2336,9 +2336,9 @@ void RenderBoxModelObject::paintBoxShadow(const PaintInfo& info, const LayoutRec
           if (fillRect.isEmpty())
             continue;
 
-          FloatRect pixelSnappedShadowRect = snapRectToDevicePixels(border.rect(), deviceScaleFactor);
-          pixelSnappedShadowRect.inflate(shadowPaintingExtent + shadowSpread);
-          pixelSnappedShadowRect.move(shadowOffset);
+          FloatRect pixelShadowRect = rectToDevicePixels(border.rect());
+          pixelShadowRect.inflate(shadowPaintingExtent + shadowSpread);
+          pixelShadowRect.move(shadowOffset);
 
           // Move the fill just outside the clip, adding 1 pixel separation so that the fill does not
           // bleed in (due to antialiasing) if the context is transformed.
@@ -2346,60 +2346,58 @@ void RenderBoxModelObject::paintBoxShadow(const PaintInfo& info, const LayoutRec
           shadowOffset -= extraOffset;
           fillRect.move(extraOffset);
 
-          FloatRoundedRect rectToClipOut = border.pixelSnappedRoundedRectForPainting(deviceScaleFactor);
-          FloatRoundedRect pixelSnappedFillRect = fillRect.pixelSnappedRoundedRectForPainting(deviceScaleFactor);
+          FloatRoundedRect rectToClipOut = FloatRoundedRect(rectToDevicePixels(border.rect()), border.radii());
+          FloatRoundedRect pixelFillRect = FloatRoundedRect(rectToDevicePixels(fillRect.rect()), fillRect.radii());
 
-          RoundedRect influenceRect(LayoutRect(pixelSnappedShadowRect), border.radii());
+          RoundedRect influenceRect(LayoutRect(pixelShadowRect), border.radii());
           influenceRect.expandRadii(2 * shadowPaintingExtent + shadowSpread);
 
           if (allCornersClippedOut(influenceRect, info.rect))
-            pixelSnappedFillRect.setRadii(FloatRoundedRect::Radii(0.0f));
+            pixelFillRect.setRadii(FloatRoundedRect::Radii(0.0f));
           else {
-            pixelSnappedFillRect.expandRadii(shadowSpread);
-            if (!pixelSnappedFillRect.isRenderable())
-              pixelSnappedFillRect.adjustRadii();
+            pixelFillRect.expandRadii(shadowSpread);
+            if (!pixelFillRect.isRenderable())
+              pixelFillRect.adjustRadii();
           }
 
           PlatformGraphicsContext* platformCtx = context.platformContext();
-          platformCtx->DrawBoxShadow(pixelSnappedFillRect, shadowOffset, shadowRadius, shadowColor, false, rectToClipOut);
+          platformCtx->DrawBoxShadow(pixelFillRect, shadowOffset, shadowRadius, shadowColor, false, rectToClipOut);
         }
         else {
           // Inset shadow.
-          FloatRoundedRect pixelSnappedBorderRect = border.pixelSnappedRoundedRectForPainting(deviceScaleFactor);
-          FloatRect pixelSnappedHoleRect = pixelSnappedBorderRect.rect();
-          pixelSnappedHoleRect.inflate(-shadowSpread);
+          FloatRoundedRect pixelBorderRect = FloatRoundedRect(rectToDevicePixels(border.rect()), border.radii());
+          FloatRect pixelHoleRect = pixelBorderRect.rect();
+          pixelHoleRect.inflate(-shadowSpread);
 
-          if (pixelSnappedHoleRect.isEmpty()) {
+          if (pixelHoleRect.isEmpty()) {
             if (hasBorderRadius)
-              context.fillRoundedRect(pixelSnappedBorderRect, shadowColor);
+              context.fillRoundedRect(pixelBorderRect, shadowColor);
             else
-              context.fillRect(pixelSnappedBorderRect.rect(), shadowColor);
+              context.fillRect(pixelBorderRect.rect(), shadowColor);
             continue;
           }
 
           if (!includeLogicalLeftEdge) {
             if (isHorizontal) {
-              pixelSnappedHoleRect.move(-std::max(shadowOffset.width(), 0) - shadowPaintingExtent, 0);
-              pixelSnappedHoleRect.setWidth(pixelSnappedHoleRect.width() + std::max(shadowOffset.width(), 0) + shadowPaintingExtent);
+              pixelHoleRect.move(-std::max(shadowOffset.width(), 0) - shadowPaintingExtent, 0);
+              pixelHoleRect.setWidth(pixelHoleRect.width() + std::max(shadowOffset.width(), 0) + shadowPaintingExtent);
             }
             else {
-              pixelSnappedHoleRect.move(0, -std::max(shadowOffset.height(), 0) - shadowPaintingExtent);
-              pixelSnappedHoleRect.setHeight(pixelSnappedHoleRect.height() + std::max(shadowOffset.height(), 0) + shadowPaintingExtent);
+              pixelHoleRect.move(0, -std::max(shadowOffset.height(), 0) - shadowPaintingExtent);
+              pixelHoleRect.setHeight(pixelHoleRect.height() + std::max(shadowOffset.height(), 0) + shadowPaintingExtent);
             }
           }
           if (!includeLogicalRightEdge) {
             if (isHorizontal)
-              pixelSnappedHoleRect.setWidth(pixelSnappedHoleRect.width() - std::min(shadowOffset.width(), 0) + shadowPaintingExtent);
+              pixelHoleRect.setWidth(pixelHoleRect.width() - std::min(shadowOffset.width(), 0) + shadowPaintingExtent);
             else
-              pixelSnappedHoleRect.setHeight(pixelSnappedHoleRect.height() - std::min(shadowOffset.height(), 0) + shadowPaintingExtent);
+              pixelHoleRect.setHeight(pixelHoleRect.height() - std::min(shadowOffset.height(), 0) + shadowPaintingExtent);
           }
 
-          Color fillColor(shadowColor.red(), shadowColor.green(), shadowColor.blue(), 255);
-
-          FloatRoundedRect pixelSnappedRoundedHole = FloatRoundedRect(pixelSnappedHoleRect, pixelSnappedBorderRect.radii());
+          FloatRoundedRect pixelRoundedHole = FloatRoundedRect(pixelHoleRect, pixelBorderRect.radii());
 
           PlatformGraphicsContext* platformCtx = context.platformContext();
-          platformCtx->DrawBoxShadow(pixelSnappedRoundedHole, shadowOffset, shadowRadius, shadowColor, true, pixelSnappedBorderRect);
+          platformCtx->DrawBoxShadow(pixelBorderRect, shadowOffset, shadowRadius, shadowColor, true, pixelRoundedHole);
         }
     }
 #else
