@@ -46,6 +46,11 @@
 #include "WebKitTransitionEvent.h"
 #include <wtf/CurrentTime.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <ultralight/platform/Config.h>
+#endif
+
 namespace WebCore {
 
 static const double cAnimationTimerDelay = 1.0 / 60;
@@ -172,8 +177,12 @@ void AnimationControllerPrivate::updateAnimationTimer(SetChanged callSetChanged/
 
     // If we want service immediately, we start a repeating timer to reduce the overhead of starting
     if (!timeToNextService) {
+        double timerDelay = cAnimationTimerDelay;
+#if USE(ULTRALIGHT)
+        timerDelay = ultralight::Platform::instance().config().animation_timer_delay;
+#endif
         if (!m_animationTimer.isActive() || m_animationTimer.repeatInterval() == 0)
-            m_animationTimer.startRepeating(cAnimationTimerDelay);
+            m_animationTimer.startRepeating(timerDelay);
         return;
     }
 

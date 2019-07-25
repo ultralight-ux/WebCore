@@ -26,6 +26,11 @@
 #include "TextureMapperAnimation.h"
 #include <wtf/CurrentTime.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
+#endif
+
 #if !USE(COORDINATED_GRAPHICS)
 
 namespace WebCore {
@@ -393,8 +398,14 @@ void GraphicsLayerTextureMapper::updateDebugBorderAndRepaintCount()
     if (isShowingDebugBorder())
         updateDebugIndicators();
 
+    bool is_forcing_repaint = false;
+#if USE(ULTRALIGHT)
+    if (ultralight::Platform::instance().config().force_repaint)
+      is_forcing_repaint = true;
+#endif
+
     // When this has its own backing store (e.g. Qt WK1), update the repaint count before calling TextureMapperLayer::flushCompositingStateForThisLayerOnly().
-    bool needsToRepaint = shouldHaveBackingStore() && (m_needsDisplay || !m_needsDisplayRect.isEmpty());
+    bool needsToRepaint = shouldHaveBackingStore() && (m_needsDisplay || !m_needsDisplayRect.isEmpty() || is_forcing_repaint);
     if (isShowingRepaintCounter() && needsToRepaint) {
         incrementRepaintCount();
         m_changeMask |= RepaintCountChange;
@@ -539,11 +550,20 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded()
     }
     ASSERT(m_backingStore);
 
+    bool is_forcing_repaint = false;
+#if USE(ULTRALIGHT)
+    if (ultralight::Platform::instance().config().force_repaint)
+      is_forcing_repaint = true;
+#endif
+
     IntRect dirtyRect = enclosingIntRect(FloatRect(FloatPoint::zero(), m_size));
-    if (!m_needsDisplay)
+
+    if (!is_forcing_repaint) {
+      if (!m_needsDisplay)
         dirtyRect.intersect(enclosingIntRect(m_needsDisplayRect));
-    if (dirtyRect.isEmpty())
+      if (dirtyRect.isEmpty())
         return;
+    }
 
     TextureMapperTiledBackingStore* backingStore = static_cast<TextureMapperTiledBackingStore*>(m_backingStore.get());
     backingStore->updateContentsScale(pageScaleFactor() * deviceScaleFactor());
