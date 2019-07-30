@@ -17,6 +17,10 @@ public:
     return Convert(config.user_stylesheet);
   }
 
+  virtual Color platformFocusRingColor() const override { return Color(0, 151, 255); }
+
+  virtual Color platformActiveSelectionBackgroundColor() const override { return Color(0, 151, 255); }
+
   virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const {}
 };
 

@@ -396,9 +396,13 @@ void GraphicsContext::drawFocusRing(const Path& path, float width, float /* offs
   Color ringColor = color;
   adjustFocusRingColor(ringColor);
   adjustFocusRingLineWidth(width);
+  
+  if (width <= 0.1 || path.isEmpty())
+    return;
 
-  // TODO
-  notImplemented();
+  ultralight::Paint paint;
+  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+  platformContext()->canvas()->DrawPath(path.ultralightPath(), paint, false, true, width * 0.5);
 }
 
 void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width, float /* offset */, const Color& color)
@@ -406,22 +410,13 @@ void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width,
   if (paintingDisabled())
     return;
 
-  Path path;
-#if PLATFORM(GTK)
-  for (const auto& rect : rects)
-    path.addRect(rect);
-#else
   unsigned rectCount = rects.size();
   int radius = (width - 1) / 2;
-  Path subPath;
   for (unsigned i = 0; i < rectCount; ++i) {
-    if (i > 0)
-      subPath.clear();
-    subPath.addRoundedRect(rects[i], FloatSize(radius, radius));
-    path.addPath(subPath, AffineTransform());
+    Path path;
+    path.addRoundedRect(rects[i], FloatSize(radius, radius));
+    drawFocusRing(path, width, 0, color);
   }
-#endif
-  drawFocusRing(path, width, 0, color);
 }
 
 void GraphicsContext::drawLineForText(const FloatPoint& origin, float width, bool printing, bool doubleUnderlines, StrokeStyle)
