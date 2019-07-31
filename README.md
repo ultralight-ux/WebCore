@@ -35,6 +35,7 @@ choco install cmake ninja strawberryperl python2 ruby1.9 gperf
 
 1. Install Xcode 9.4.1 (Older versions of Xcode can be found here: https://developer.apple.com/download/more/)
 2. Install Homebrew (https://brew.sh/)
+3. Homebrew may overwrite the command line tools, if so run: `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`
 3. Run the following from command line:
 
 ```
