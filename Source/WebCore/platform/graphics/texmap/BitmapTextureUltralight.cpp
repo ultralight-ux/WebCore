@@ -18,13 +18,13 @@ BitmapTextureUltralight::~BitmapTextureUltralight() {
 
 void BitmapTextureUltralight::didReset() {
     if (canvas_ && canvas_size_ == contentSize()) {
+        canvas_->Clear();
         return;
     }
 
     canvas_size_ = contentSize();
     canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
         canvas_size_.height(), ultralight::kBitmapFormat_RGBA8);
-    canvas_->set_clears_after_drawing(false);
 }
 
 void BitmapTextureUltralight::updateContents(Image* image,
