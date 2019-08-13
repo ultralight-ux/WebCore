@@ -4,10 +4,12 @@
 #include "ScrollbarThemeComposite.h"
 #include "Scrollbar.h"
 #include "GraphicsContext.h"
+#include "FloatRoundedRect.h"
 
 namespace WebCore {
 
-static const int thickness = 16;
+//static const int thickness = 16;
+static const int thickness = 12;
 static const RGBA32 trackColor = 0xFFE6E6E6;
 static bool enableButtons = false;
 
@@ -18,7 +20,7 @@ protected:
 
   bool hasThumb(Scrollbar&) override { return true; }
 
-  virtual int scrollbarThickness(ScrollbarControlSize = RegularScrollbar) override { return 16; }
+  virtual int scrollbarThickness(ScrollbarControlSize = RegularScrollbar) override { return thickness; }
 
   IntRect backButtonRect(Scrollbar& scrollbar, ScrollbarPart part, bool painting) override {
     if (!enableButtons || part != BackButtonStartPart)
@@ -54,20 +56,27 @@ protected:
   }
 
   void paintTrackBackground(GraphicsContext& context, Scrollbar& scrollbar, const IntRect& trackRect) override {
-    context.fillRect(trackRect, trackColor);
+    if (scrollbar.enabled()) {
+      //context.fillRect(trackRect, trackColor);
+    }
   }
 
   void paintButton(GraphicsContext& context, Scrollbar& scrollbar, const IntRect& buttonRect, ScrollbarPart part) override {
-    if (part == BackButtonStartPart || part == ForwardButtonStartPart)
-      context.fillRect(buttonRect, trackColor);
+    if (scrollbar.enabled()) {
+      //if (part == BackButtonStartPart || part == ForwardButtonStartPart)
+      //  context.fillRect(buttonRect, trackColor);
+    }
   }
 
   void paintThumb(GraphicsContext& context, Scrollbar& scrollbar, const IntRect& thumbRect) override {
-    IntRect r = thumbRect;
-    r.contract(6, 6);
-    r.move(3, 3);
-    if (scrollbar.enabled())
-      context.fillRect(r, Color::lightGray);
+    if (scrollbar.enabled()) {
+      IntRect r = thumbRect;
+      r.contract(6, 6);
+      r.move(3, 3);
+      float minDimension = std::min(r.width(), r.height());
+      FloatRoundedRect rrect(r, FloatRoundedRect::Radii(minDimension * 0.5f));
+      context.fillRoundedRect(rrect, Color(0.2f, 0.2f, 0.2f, 0.6f));
+    }
   }
 
   int maxOverlapBetweenPages() override { return 40; }
