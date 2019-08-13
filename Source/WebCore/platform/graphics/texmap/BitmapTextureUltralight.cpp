@@ -7,6 +7,10 @@
 #include "GraphicsContext.h"
 #include "Image.h"
 #include "CanvasImage.h"
+#include "GraphicsLayer.h"
+#include "TextureMapper.h"
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
 
 namespace WebCore {
 
@@ -70,6 +74,43 @@ void BitmapTextureUltralight::updateContents(Image* image,
         destRect, paint);
       canvas_->set_blending_enabled(true);
     }
+}
+
+void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
+  GraphicsLayer* sourceLayer, const IntRect& targetRect,
+  const IntPoint& offset, UpdateContentsFlag updateContentsFlag,
+  float scale) {
+  IntRect sourceRect(targetRect);
+  sourceRect.setLocation(offset);
+  sourceRect.scale(1 / scale);
+  
+  canvas_->set_scissor_enabled(true);
+  auto config = ultralight::Platform::instance().config();
+  canvas_->SetScissorRect(FloatRect(sourceRect));
+
+  // Add 2 pixel buffer around drawn area to avoid artifacts
+  sourceRect.expand(4, 4);
+  sourceRect.move(-2, -2);
+
+  // Clear rect by disabling blending and drawing a transparent quad.
+  canvas_->set_blending_enabled(false);
+  ultralight::Paint paint;
+  paint.color = UltralightColorTRANSPARENT;
+  canvas_->DrawRect(FloatRect(sourceRect), paint);
+  canvas_->set_blending_enabled(true);
+
+  canvas_->Save();
+  {
+    GraphicsContext ctx(canvas_);
+    ctx.setImageInterpolationQuality(textureMapper.imageInterpolationQuality());
+    ctx.setTextDrawingMode(textureMapper.textDrawingMode());
+    ctx.applyDeviceScaleFactor(scale);
+
+    sourceLayer->paintGraphicsLayerContents(ctx, sourceRect);
+  }
+  canvas_->Restore();
+
+  canvas_->set_scissor_enabled(false);
 }
 
 void BitmapTextureUltralight::updateContents(const void*, const IntRect& target,

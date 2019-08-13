@@ -27,6 +27,11 @@ public:
     virtual void updateContents(Image*, const IntRect&, const IntPoint& offset,
         UpdateContentsFlag) override;
 
+    virtual void updateContents(TextureMapper& textureMapper,
+      GraphicsLayer* sourceLayer, const IntRect& targetRect,
+      const IntPoint& offset, UpdateContentsFlag updateContentsFlag,
+      float scale) override;
+
     virtual void updateContents(const void*, const IntRect& target,
         const IntPoint& offset, int bytesPerLine, UpdateContentsFlag) override;
 
