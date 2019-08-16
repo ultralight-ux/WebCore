@@ -19,7 +19,7 @@ elseif (PORT MATCHES "UltralightWin")
 endif ()
 
 set(WEBCORE_DEPS_REV "1.0")
-set(ULTRALIGHTCORE_REV "fe5598d")
+set(ULTRALIGHTCORE_REV "cf75bcb")
 
 ExternalProject_Add(WebCoreDeps
   URL https://webcoredeps-bin.sfo2.cdn.digitaloceanspaces.com/webcoredeps-bin-${WEBCORE_DEPS_REV}-${PLATFORM}-${ARCHITECTURE}.7z
