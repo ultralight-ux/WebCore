@@ -1,6 +1,7 @@
 #include "config.h"
 #include "TextureMapperUltralight.h"
 #include "BitmapTexturePool.h"
+#include "FloatQuad.h"
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
@@ -62,16 +63,38 @@ void TextureMapperUltralight::bindSurface(BitmapTexture* surface) {
   current_surface_ = static_cast<BitmapTextureUltralight*>(surface)->canvas();
 }
 
-void TextureMapperUltralight::beginClip(const TransformationMatrix&,
-    const FloatRect&) {}
+void TextureMapperUltralight::beginClip(const TransformationMatrix& mat,
+    const FloatRect& rect) {
+  auto surface = current_surface_ ? current_surface_ : default_surface_;
+  surface->Save();
 
-void TextureMapperUltralight::endClip() {}
+  // TODO: support 3d transforms in clip
+  if (!mat.isAffine())
+    return;
+
+  FloatQuad quad = mat.projectQuad(rect);
+  IntRect bbox = quad.enclosingBoundingBox();
+
+  // Only use scissors on rectilinear clips.
+  if (!quad.isRectilinear() || bbox.isEmpty())
+    return;
+
+  ultralight::Rect scissor_box = { bbox.x(), bbox.y(), bbox.maxX(), bbox.maxY() };
+  ultralight::Rect new_scissor = surface->GetScissorRect().Intersect(scissor_box);
+
+  surface->set_scissor_enabled(true);
+  surface->SetScissorRect(new_scissor);
+}
+
+void TextureMapperUltralight::endClip() {
+  auto surface = current_surface_ ? current_surface_ : default_surface_;
+  surface->Restore();
+}
 
 IntRect TextureMapperUltralight::clipBounds() {
-  if (!default_surface_)
-    IntRect(0, 0, 2048, 2048);
-    
-  return IntRect(0, 0, default_surface_->width(), default_surface_->height());
+  auto surface = current_surface_ ? current_surface_ : default_surface_;
+  ultralight::Rect bounds = surface->GetScissorRect();
+  return IntRect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
 }
 
 PassRefPtr<BitmapTexture> TextureMapperUltralight::createTexture() {
