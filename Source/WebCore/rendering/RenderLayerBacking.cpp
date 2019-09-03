@@ -2080,6 +2080,13 @@ bool RenderLayerBacking::isDirectlyCompositedImage() const
 
 void RenderLayerBacking::contentChanged(ContentChangeType changeType)
 {
+#if !USE(COORDINATED_GRAPHICS)
+    // Temporary hack to display images correctly in non-coordinated-graphics
+    // texture mapper. See updateDirectlyCompositedBackgroundImage()
+    if (changeType == ImageChanged || changeType == BackgroundImageChanged)
+      m_graphicsLayer->setContentsNeedsDisplay();
+#endif
+
     if ((changeType == ImageChanged) && isDirectlyCompositedImage()) {
         updateImageContents();
         return;
