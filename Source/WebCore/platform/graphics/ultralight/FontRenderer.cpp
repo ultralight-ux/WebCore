@@ -9,7 +9,7 @@ namespace WebCore {
 
 bool RenderBitmapGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face face, FT_UInt glyph_index) {
   FT_Error error;
-  error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER | FT_LOAD_FORCE_AUTOHINT | FT_LOAD_TARGET_NORMAL);
+  error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL);
   if (error) {
     font->StoreGlyph(glyph_index, 0, 0, 0, 0, nullptr);
     return false;
@@ -32,7 +32,7 @@ bool RenderBitmapGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face face, 
   uint32_t bitmap_height = slot->bitmap.rows;
   assert(slot->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY);
   auto bitmap = ultralight::Bitmap::Create(bitmap_width, bitmap_height, 
-    ultralight::kBitmapFormat_A8, bitmap_width * bpp, slot->bitmap.buffer,
+    ultralight::kBitmapFormat_A8_UNORM, bitmap_width * bpp, slot->bitmap.buffer,
     bitmap_width * bitmap_height * bpp);
   
   ultralight::Point offset = { (float)slot->bitmap_left, (float)slot->bitmap_top };

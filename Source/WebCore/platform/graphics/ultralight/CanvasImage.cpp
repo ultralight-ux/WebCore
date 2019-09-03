@@ -6,7 +6,7 @@
 namespace WebCore {
 
 CanvasImage::CanvasImage(const IntSize& size) {
-  m_canvas = ultralight::Canvas::Create(size.width(), size.height(), ultralight::kBitmapFormat_RGBA8);
+  m_canvas = ultralight::Canvas::Create(size.width(), size.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB);
   m_context.reset(new GraphicsContext(m_canvas));
   m_canvas->Clear();
 }

@@ -28,7 +28,7 @@ void BitmapTextureUltralight::didReset() {
 
     canvas_size_ = contentSize();
     canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
-        canvas_size_.height(), ultralight::kBitmapFormat_RGBA8);
+        canvas_size_.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB);
 }
 
 void BitmapTextureUltralight::updateContents(Image* image,

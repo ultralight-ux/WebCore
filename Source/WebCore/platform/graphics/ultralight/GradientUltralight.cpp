@@ -37,10 +37,10 @@ namespace WebCore {
     m_gradient->num_stops = num_stops;
     for (size_t i = 0; i < num_stops; ++i) {
       m_gradient->stops[i].stop = m_stops[i].stop;
-      m_gradient->stops[i].color[0] = m_stops[i].red;
-      m_gradient->stops[i].color[1] = m_stops[i].green;
-      m_gradient->stops[i].color[2] = m_stops[i].blue;
-      m_gradient->stops[i].color[3] = m_stops[i].alpha;
+      m_gradient->stops[i].color = UltralightRGBA(m_stops[i].red * 255.0f,
+                                                  m_stops[i].green * 255.0f,
+                                                  m_stops[i].blue * 255.0f,
+                                                  m_stops[i].alpha * 255.0f);
     }
 
     return m_gradient;

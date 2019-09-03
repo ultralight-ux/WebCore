@@ -23,8 +23,8 @@ namespace WebCore {
 #define DISTANCE_FIELD_FONT_SIZE 24
 
 float RoundUpDistanceFieldFontSize(float size) {
-  // We round up to next highest multiple of 16
-  return std::ceil((size + 16.0f) / 16.0f) * 16.0f;
+  // We round up to next highest multiple of 6
+  return std::ceil((size + 6.0f) / 6.0f) * 6.0f;
 }
 
 FontPlatformData::FontPlatformData(FT_Face face, ultralight::RefPtr<ultralight::Buffer> data, const FontDescription& description)
@@ -34,13 +34,17 @@ FontPlatformData::FontPlatformData(FT_Face face, ultralight::RefPtr<ultralight::
   auto config = ultralight::Platform::instance().config();
   m_distanceField = m_face->face_flags & FT_FACE_FLAG_SCALABLE;
 
-  if (config.device_scale_hint < 1.1 && m_size < 24)
+  // Disable distance field fonts for non-high-DPI screens
+  //if (config.device_scale_hint < 1.1)
     m_distanceField = false;
 
-  if (isDistanceField())
-    m_internalSize = RoundUpDistanceFieldFontSize(m_size * config.device_scale_hint);
-  else
-    m_internalSize = m_size;
+  //double sdf_scale = 1.1f;
+
+  //if (isDistanceField())
+  //  m_internalSize = RoundUpDistanceFieldFontSize(m_size * sdf_scale * config.device_scale_hint);
+  //else
+  //  m_internalSize = m_size;
+  m_internalSize = (float)std::lround(m_size * config.device_scale_hint);
 
   //
   // This is an important part of distance field fonts: we want to share the distance field representation
