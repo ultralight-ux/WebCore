@@ -453,6 +453,7 @@ void CachedImage::finishLoading(SharedBuffer* data)
     if (m_image)
         setEncodedSize(m_image->data() ? m_image->data()->size() : 0);
     CachedResource::finishLoading(data);
+    notifyObservers();
 }
 
 void CachedImage::didReplaceSharedBufferContents()
