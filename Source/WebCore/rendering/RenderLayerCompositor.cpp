@@ -1489,7 +1489,8 @@ void RenderLayerCompositor::computeCompositingRequirements(RenderLayer* ancestor
     // if there are composited layers that we didn't hit in our traversal (e.g. because of visibility:hidden).
     if (layer.isRootLayer() && !childState.subtreeIsCompositing && !requiresCompositingLayer(layer) && !m_forceCompositingMode && !hasAnyAdditionalCompositedLayers(layer)) {
         // Don't drop out of compositing on iOS, because we may flash. See <rdar://problem/8348337>.
-#if !PLATFORM(IOS)
+        // Don't drop out of compositing on Ultralight either.
+#if !PLATFORM(IOS) && !PLATFORM(ULTRALIGHT)
         enableCompositingMode(false);
         willBeComposited = false;
 #endif
