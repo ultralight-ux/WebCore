@@ -14,9 +14,16 @@
 #include "ft2build.h"
 #include FT_FREETYPE_H
 
+/*
 static int TwentySixDotSix2Pixel(const int i)
 {
   return (i >> 6) + (32 < (i & 63));
+}
+*/
+
+inline float TwentySixDotSix2Float(const int i)
+{
+  return i / 64.0f;
 }
 
 namespace WebCore {
@@ -103,14 +110,10 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
     if (use_kerning && previous && glyph_index) {
       FT_Vector delta;
       FT_Get_Kerning(face, previous, glyph_index, FT_KERNING_DEFAULT, &delta);
-      int32_t kerning_delta = TwentySixDotSix2Pixel(delta.x);
-      pen_x += kerning_delta;
+      pen_x += TwentySixDotSix2Float(delta.x) * ultraFont->font_scale();
     }
 
-    if (platform_font.isDistanceField())
-      glyphBuf.append({ glyph_index, ultralight::Point(pen_x, pen_y) });
-    else
-      glyphBuf.append({ glyph_index, ultralight::Point((int)pen_x, (int)pen_y) });
+    glyphBuf.append({ glyph_index, pen_x });
 
     //pen_x += font.platformWidthForGlyph(glyph_index);
     pen_x += advances[i].width();
@@ -121,9 +124,10 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
     WebCore::PlatformContextUltralight* platformContext = context.platformContext();
     PlatformCanvas canvas = platformContext->canvas();
 
-    float glyph_scale = font.platformData().size() / ultraFont->font_size();
-
     if (context.hasVisibleShadow()) {
+      /**
+      // TODO: Handle text shadows properly with offscreen blur filter
+
       WebCore::FloatSize shadow_size;
       float shadow_blur;
       WebCore::Color shadow_color;
@@ -137,14 +141,14 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
       // Draw SDF twice to multiply (lol such a hack)
       canvas->DrawGlyphs(*ultraFont, paint, glyphBuf.data(), glyphBuf.size(), glyph_scale, shadow_blur > 0.0f, shadow_offset);
       canvas->DrawGlyphs(*ultraFont, paint, glyphBuf.data(), glyphBuf.size(), glyph_scale, shadow_blur > 0.0f, shadow_offset);
+      */
     }
-
 
     ultralight::Paint paint;
     WebCore::Color color = context.fillColor();
     paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
 
-    canvas->DrawGlyphs(*ultraFont, paint, glyphBuf.data(), glyphBuf.size(), glyph_scale, false, ultralight::Point(0.0f, 0.0f));
+    canvas->DrawGlyphs(*ultraFont, paint, pen_y, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f));
     glyphBuf.resize(0);
   }
 
@@ -183,9 +187,11 @@ void Font::platformInit()
 
   FT_Select_Charmap(face, ft_encoding_unicode);
 
-  float ascent = TwentySixDotSix2Pixel(metrics.ascender);
-  float descent = TwentySixDotSix2Pixel(-metrics.descender);
-  float capHeight = TwentySixDotSix2Pixel(metrics.height);
+  double scale = const_cast<FontPlatformData&>(m_platformData).font()->font_scale();
+
+  float ascent = TwentySixDotSix2Float(metrics.ascender) * scale;
+  float descent = TwentySixDotSix2Float(-metrics.descender) * scale;
+  float capHeight = TwentySixDotSix2Float(metrics.height) * scale;
   float lineGap = capHeight - ascent - descent;
 
   m_fontMetrics.setAscent(ascent);
@@ -199,12 +205,12 @@ void Font::platformInit()
   FT_Error error;
   error = FT_Load_Char(face, (FT_ULong)'x', FT_LOAD_DEFAULT);
   assert(error == 0);
-  int xHeight = TwentySixDotSix2Pixel(face->glyph->metrics.height);
+  float xHeight = TwentySixDotSix2Float(face->glyph->metrics.height) * scale;
   m_fontMetrics.setXHeight(xHeight);
 
   error = FT_Load_Char(face, (FT_ULong)' ', FT_LOAD_DEFAULT);
   assert(error == 0);
-  m_spaceWidth = TwentySixDotSix2Pixel(face->glyph->metrics.horiAdvance);
+  m_spaceWidth = TwentySixDotSix2Float(face->glyph->metrics.horiAdvance) * scale;
 
   /*
   printf("From FaceMetrics\n");

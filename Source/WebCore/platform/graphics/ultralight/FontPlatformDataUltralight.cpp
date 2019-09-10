@@ -20,40 +20,34 @@ static int TwentySixDotSix2Pixel(const int i)
 
 namespace WebCore {
 
-#define DISTANCE_FIELD_FONT_SIZE 24
+#define ENABLE_DISTANCE_FIELD_FONTS 0
 
+#if ENABLE_DISTANCE_FIELD_FONTS
 float RoundUpDistanceFieldFontSize(float size) {
   // We round up to next highest multiple of 6
   return std::ceil((size + 6.0f) / 6.0f) * 6.0f;
 }
+#endif
 
 FontPlatformData::FontPlatformData(FT_Face face, ultralight::RefPtr<ultralight::Buffer> data, const FontDescription& description)
   : m_face(face), m_data(data) {
-  m_size = description.computedPixelSize();
+  
   m_fixedWidth = m_face->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
   auto config = ultralight::Platform::instance().config();
+
+  m_size = (float)std::floor(description.computedPixelSize() * config.device_scale_hint);
+
+#if ENABLE_DISTANCE_FIELD_FONTS
   m_distanceField = m_face->face_flags & FT_FACE_FLAG_SCALABLE;
+  if (isDistanceField())
+      m_size = RoundUpDistanceFieldFontSize(m_size);
+#else
+  m_distanceField = false;
+#endif
 
-  // Disable distance field fonts for non-high-DPI screens
-  //if (config.device_scale_hint < 1.1)
-    m_distanceField = false;
-
-  //double sdf_scale = 1.1f;
-
-  //if (isDistanceField())
-  //  m_internalSize = RoundUpDistanceFieldFontSize(m_size * sdf_scale * config.device_scale_hint);
-  //else
-  //  m_internalSize = m_size;
-  m_internalSize = (float)std::lround(m_size * config.device_scale_hint);
-
-  //
-  // This is an important part of distance field fonts: we want to share the distance field representation
-  // of each Font, regardless of font size, to prevent duplication of efforts. We use a separate cache in
-  // Ultralight to hold cached glyph images (for both raster / distance field fonts) and query this here.
-  // Please note that m_size and m_internalSize may not match when distance field fonts are used.
-  //
   auto font_cache = ultralight::FontCache::instance();
-  m_font = font_cache->GetFont((uint64_t)hash(), isDistanceField(), m_internalSize);
+  double font_scale = 1.0 / config.device_scale_hint;
+  m_font = font_cache->GetFont((uint64_t)hash(), isDistanceField(), m_size, font_scale);
 }
 
 FontPlatformData::FontPlatformData(const FontPlatformData& other) {
@@ -121,8 +115,7 @@ float FontPlatformData::glyphWidth(Glyph glyph) {
     FontRenderer::RenderGlyph(ultraFont, face, glyph);
   }
 
-  float glyph_scale = size() / ultraFont->font_size();
-  return TwentySixDotSix2Pixel(ultraFont->GetGlyphAdvance(glyph) * glyph_scale);
+  return ultraFont->GetGlyphAdvance(glyph);
 }
 
 FloatRect FontPlatformData::glyphExtents(Glyph glyph) {
@@ -132,9 +125,8 @@ FloatRect FontPlatformData::glyphExtents(Glyph glyph) {
     FontRenderer::RenderGlyph(ultraFont, face, glyph);
   }
 
-  float glyph_scale = size() / ultraFont->font_size();
-  float width = TwentySixDotSix2Pixel(ultraFont->GetGlyphWidth(glyph) * glyph_scale);
-  float height = TwentySixDotSix2Pixel(ultraFont->GetGlyphHeight(glyph) * glyph_scale);
+  float width = ultraFont->GetGlyphWidth(glyph);
+  float height = ultraFont->GetGlyphHeight(glyph);
   return FloatRect(0.0f, 0.0f, width, height);
 }
 

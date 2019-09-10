@@ -174,7 +174,7 @@ hb_font_t* HarfBuzzFace::createFont()
     hb_font_t* font = hb_font_create(m_face);
     HarfBuzzFontData* hbFontData = new HarfBuzzFontData(m_glyphCacheForFaceCacheEntry, m_platformData);
     hb_font_set_funcs(font, harfBuzzUltralightGetFontFuncs(), hbFontData, destroyHarfBuzzFontData);
-    const float size = m_platformData->size();
+    const float size = m_platformData->size() * m_platformData->font()->font_scale();
     if (floorf(size) == size)
         hb_font_set_ppem(font, size, size);
     int scale = floatToHarfBuzzPosition(size);

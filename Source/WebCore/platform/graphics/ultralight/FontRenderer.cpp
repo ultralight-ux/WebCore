@@ -1,13 +1,21 @@
 #include "FontRenderer.h"
 #include <Ultralight/Bitmap.h>
 #include <Ultralight/private/Path.h>
+#include "FreeTypeLib.h"
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
+#include FT_BITMAP_H
 
 namespace WebCore {
 
+inline double TwentySixDotSix2FloatPixels(FT_Pos val) {
+  return static_cast<double>(val) / 64.0;
+}
+
 bool RenderBitmapGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face face, FT_UInt glyph_index) {
+  FT_Set_Pixel_Sizes(face, 0, (FT_UInt)font->font_size());
+
   FT_Error error;
   error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL);
   if (error) {
@@ -15,10 +23,10 @@ bool RenderBitmapGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face face, 
     return false;
   }
 
-  int advance = face->glyph->metrics.horiAdvance;
-  int width = face->glyph->metrics.width;
-  int height = face->glyph->metrics.height;
-  int bearing = face->glyph->metrics.horiBearingY;
+  double advance = TwentySixDotSix2FloatPixels(face->glyph->metrics.horiAdvance) * font->font_scale();
+  double width = TwentySixDotSix2FloatPixels(face->glyph->metrics.width) * font->font_scale();
+  double height = TwentySixDotSix2FloatPixels(face->glyph->metrics.height) * font->font_scale();
+  double bearing = TwentySixDotSix2FloatPixels(face->glyph->metrics.horiBearingY) * font->font_scale();
 
   FT_GlyphSlot slot = face->glyph;
 
@@ -30,13 +38,39 @@ bool RenderBitmapGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face face, 
   unsigned char bpp = 1;
   uint32_t bitmap_width = slot->bitmap.width;
   uint32_t bitmap_height = slot->bitmap.rows;
-  assert(slot->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY);
-  auto bitmap = ultralight::Bitmap::Create(bitmap_width, bitmap_height, 
-    ultralight::kBitmapFormat_A8_UNORM, bitmap_width * bpp, slot->bitmap.buffer,
-    bitmap_width * bitmap_height * bpp);
+  ultralight::RefPtr<ultralight::Bitmap> bitmap;
+  if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_MONO) {
+    FT_Library lib = GetFreeTypeLib();
+    FT_Bitmap converted_bitmap;
+    FT_Bitmap_Init(&converted_bitmap);
+    error = FT_Bitmap_Convert(lib, &slot->bitmap, &converted_bitmap, 1);
+    if (error) {
+      FT_Bitmap_Done(lib, &converted_bitmap);
+      font->StoreGlyph(glyph_index, advance, width, height, bearing, nullptr);
+      return false;
+    }
+
+    bitmap = ultralight::Bitmap::Create(bitmap_width, bitmap_height,
+      ultralight::kBitmapFormat_A8_UNORM, bitmap_width * bpp, converted_bitmap.buffer,
+      bitmap_width * bitmap_height * bpp);
+    FT_Bitmap_Done(lib, &converted_bitmap);
+
+    // The bitmap values are currently 0 and 1, we need to scale 1 -> 255
+    uint8_t* pixels = (uint8_t*)bitmap->LockPixels();
+    for (size_t i = 0; i < bitmap->size(); ++i)
+      if (pixels[i] > 0)
+        pixels[i] = 255;
+    bitmap->UnlockPixels();
+  }
+  else {
+    assert(slot->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY);
+    bitmap = ultralight::Bitmap::Create(bitmap_width, bitmap_height,
+      ultralight::kBitmapFormat_A8_UNORM, bitmap_width * bpp, slot->bitmap.buffer,
+      bitmap_width * bitmap_height * bpp);
+  }
   
-  ultralight::Point offset = { (float)slot->bitmap_left, (float)slot->bitmap_top };
-  font->StoreGlyph(glyph_index, advance, width, height, bearing, bitmap, offset);
+  font->StoreGlyph(glyph_index, advance, width, height, bearing, bitmap,
+    ultralight::Point((float)slot->bitmap_left, (float)slot->bitmap_top * -1.0f));
   return true;
 }
 
@@ -50,7 +84,6 @@ struct RenderContext {
 
 int MoveTo(const FT_Vector* p1, void* data) {
   auto path = static_cast<RenderContext*>(data)->path;
-  //path->Close();
   auto pt = POINT(p1);
   path->MoveTo(pt);
   return 0;
@@ -60,7 +93,6 @@ int LineTo(const FT_Vector* p1, void* data) {
   auto path = static_cast<RenderContext*>(data)->path;
   auto pt = POINT(p1);
   path->LineTo(pt);
-  //path->ConicTo(POINT(p1), POINT(p1));
   return 0;
 }
 
@@ -81,8 +113,6 @@ int CubicTo(const FT_Vector* p1, const FT_Vector* p2, const FT_Vector* p3, void*
 static FT_Outline_Funcs g_outline_funcs = { &MoveTo, &LineTo, &ConicTo, &CubicTo, 0, 0 };
 
 bool RenderDistanceFieldGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face face, FT_UInt glyph_index) {
-  // We make sure to set the current pixel size before rendering since
-  // distance field fonts may have a different internal size.
   FT_Set_Pixel_Sizes(face, 0, (FT_UInt)font->font_size());
 
   FT_Error error;
@@ -92,10 +122,10 @@ bool RenderDistanceFieldGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face
     return false;
   }
 
-  int advance = face->glyph->metrics.horiAdvance;
-  int width = face->glyph->metrics.width;
-  int height = face->glyph->metrics.height;
-  int bearing = face->glyph->metrics.horiBearingY;
+  double advance = TwentySixDotSix2FloatPixels(face->glyph->metrics.horiAdvance) * font->font_scale();
+  double width = TwentySixDotSix2FloatPixels(face->glyph->metrics.width) * font->font_scale();
+  double height = TwentySixDotSix2FloatPixels(face->glyph->metrics.height) * font->font_scale();
+  double bearing = TwentySixDotSix2FloatPixels(face->glyph->metrics.horiBearingY) * font->font_scale();
 
   FT_GlyphSlot slot = face->glyph;
 

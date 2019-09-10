@@ -260,7 +260,6 @@ public:
     HarfBuzzFace* harfBuzzFace() const;
     Vector<ultralight::Glyph>& glyphBuffer() { return m_glyphBuffer; }
     bool isDistanceField() { return m_distanceField; }
-    float internalSize() { return m_internalSize; }
     float glyphWidth(Glyph glyph);
     FloatRect glyphExtents(Glyph glyph);
 #endif
@@ -307,7 +306,6 @@ private:
     mutable RefPtr<HarfBuzzFace> m_harfBuzzFace;
     Vector<ultralight::Glyph> m_glyphBuffer;
     bool m_distanceField; // Whether or not this font is rendered via SDF
-    float m_internalSize; // May be different from m_size if m_distanceField is set.
 #endif
 
     // The values below are common to all ports
