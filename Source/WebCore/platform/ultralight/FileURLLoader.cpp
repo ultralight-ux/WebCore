@@ -55,7 +55,8 @@ void load(const URL& url, LoadCompletionHandler&& completionHandler) {
             ultralight::String16 mimeType = "application/unknown";
             fs->GetFileMimeType(path, mimeType);
             loadTask->result.mimeType = ultralight::Convert(mimeType);
-
+            ultralight::String16 charset = "utf-8";
+            loadTask->result.charset = ultralight::Convert(charset);
           }
         }
         fs->CloseFile(file);
