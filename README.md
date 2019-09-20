@@ -2,6 +2,13 @@
 
 This is the full source and build toolchain of the custom WebCore module for Ultralight.
 
+## Useful Links
+
+| Link                   | URL                                 |
+| ---------------------- | ----------------------------------- |
+| __Main Website__       | <https://ultralig.ht>               |
+| __Slack Channel__      | <https://chat.ultralig.ht>          |
+
 ## Downloading pre-built binaries
 
 Pre-built binares are uploaded to the following S3 buckets every commit:
