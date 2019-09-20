@@ -180,7 +180,7 @@ void GraphicsContext::fillPath(const Path& path)
   ultralight::Paint paint;
   WebCore::Color color = fillColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->DrawPath(path.ultralightPath(), paint, true, false, 1.0);
+  platformContext()->canvas()->FillPath(path.ultralightPath(), paint);
 }
 
 void GraphicsContext::strokePath(const Path& path)
@@ -196,7 +196,7 @@ void GraphicsContext::strokePath(const Path& path)
   ultralight::Paint paint;
   WebCore::Color color = strokeColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->DrawPath(path.ultralightPath(), paint, false, true, strokeThickness());
+  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, strokeThickness());
 }
 
 void GraphicsContext::fillRect(const FloatRect& rect)
@@ -402,7 +402,7 @@ void GraphicsContext::drawFocusRing(const Path& path, float width, float /* offs
 
   ultralight::Paint paint;
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->DrawPath(path.ultralightPath(), paint, false, true, width * 0.5);
+  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width * 0.5);
 }
 
 void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width, float /* offset */, const Color& color)
@@ -709,7 +709,7 @@ void GraphicsContext::strokeRect(const FloatRect& rect, float width)
   ultralight::Paint paint;
   WebCore::Color color = strokeColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->DrawPath(path.ultralightPath(), paint, false, true, width);
+  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width);
 }
 
 void GraphicsContext::setLineCap(LineCap lineCap)
