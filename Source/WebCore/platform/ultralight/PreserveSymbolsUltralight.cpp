@@ -1,5 +1,6 @@
 #include "config.h"
 #include "JavaScriptCore/JavaScript.h"
+#include "JavaScriptCore/JSTypedArray.h"
 
 namespace WebCore {
 
@@ -17,6 +18,19 @@ WEBCORE_EXPORT void PreserveSymbols() {
   JSContextGetGlobalContext(nullptr);
   JSGlobalContextCopyName(nullptr);
   JSGlobalContextSetName(nullptr, nullptr);
+  JSObjectGetArrayBufferByteLength(nullptr, nullptr, nullptr);
+  JSObjectGetArrayBufferBytesPtr(nullptr, nullptr, nullptr);
+  JSObjectGetTypedArrayBuffer(nullptr, nullptr, nullptr);
+  JSObjectGetTypedArrayByteLength(nullptr, nullptr, nullptr);
+  JSObjectGetTypedArrayByteOffset(nullptr, nullptr, nullptr);
+  JSObjectGetTypedArrayBytesPtr(nullptr, nullptr, nullptr);
+  JSObjectGetTypedArrayLength(nullptr, nullptr, nullptr);
+  JSObjectMakeArrayBufferWithBytesNoCopy(nullptr, nullptr, 0, nullptr, nullptr, nullptr);
+  JSObjectMakeTypedArray(nullptr, kJSTypedArrayTypeNone, 0, nullptr);
+  JSObjectMakeTypedArrayWithArrayBuffer(nullptr, kJSTypedArrayTypeNone, nullptr, nullptr);
+  auto _0 = JSObjectMakeTypedArrayWithArrayBufferAndOffset(nullptr, kJSTypedArrayTypeNone, nullptr, 0, 0, nullptr);
+  auto _1 = JSObjectMakeTypedArrayWithBytesNoCopy(nullptr, kJSTypedArrayTypeNone, nullptr, 0, nullptr, nullptr, nullptr);
+  auto _2 = JSValueGetTypedArrayType(nullptr, nullptr, nullptr);
 }
 
 }
