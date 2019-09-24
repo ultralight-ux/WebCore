@@ -1,5 +1,6 @@
 #include "config.h"
 #include "JavaScriptCore/JavaScript.h"
+#include "JavaScriptCore/JSTypedArray.h"
 
 namespace WebCore {
 
@@ -24,12 +25,12 @@ WEBCORE_EXPORT void PreserveSymbols() {
   JSObjectGetTypedArrayByteOffset(nullptr, nullptr, nullptr);
   JSObjectGetTypedArrayBytesPtr(nullptr, nullptr, nullptr);
   JSObjectGetTypedArrayLength(nullptr, nullptr, nullptr);
-  JSObjectMakeArrayBufferWithBytesNoCopy(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
-  JSObjectMakeTypedArray(nullptr, nullptr, nullptr, nullptr);
-  JSObjectMakeTypedArrayWithArrayBuffer(nullptr, nullptr, nullptr, nullptr);
-  auto _ = JSObjectMakeTypedArrayWithArrayBufferAndOffset(nullptr, kJSTypedArrayTypeNone, nullptr, 0, 0, nullptr);
-  auto _ = JSObjectMakeTypedArrayWithBytesNoCopy(nullptr, kJSTypedArrayTypeNone, nullptr, 0, nullptr, nullptr, nullptr);
-  auto _ = JSValueGetTypedArrayType(nullptr, nullptr, nullptr);
+  JSObjectMakeArrayBufferWithBytesNoCopy(nullptr, nullptr, 0, nullptr, nullptr, nullptr);
+  JSObjectMakeTypedArray(nullptr, kJSTypedArrayTypeNone, 0, nullptr);
+  JSObjectMakeTypedArrayWithArrayBuffer(nullptr, kJSTypedArrayTypeNone, nullptr, nullptr);
+  auto _0 = JSObjectMakeTypedArrayWithArrayBufferAndOffset(nullptr, kJSTypedArrayTypeNone, nullptr, 0, 0, nullptr);
+  auto _1 = JSObjectMakeTypedArrayWithBytesNoCopy(nullptr, kJSTypedArrayTypeNone, nullptr, 0, nullptr, nullptr, nullptr);
+  auto _2 = JSValueGetTypedArrayType(nullptr, nullptr, nullptr);
 }
 
 }
