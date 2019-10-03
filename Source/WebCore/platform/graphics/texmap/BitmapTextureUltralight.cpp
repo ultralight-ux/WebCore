@@ -18,12 +18,21 @@ BitmapTextureUltralight::BitmapTextureUltralight(const BitmapTexture::Flags flag
 }
 
 BitmapTextureUltralight::~BitmapTextureUltralight() {
+  if (canvas_) {
+    canvas_->RecycleRenderTexture();
+    canvas_ = nullptr;
+  }
 }
 
 void BitmapTextureUltralight::didReset() {
     if (canvas_ && canvas_size_ == contentSize()) {
         canvas_->Clear();
         return;
+    }
+
+    if (canvas_) {
+      canvas_->RecycleRenderTexture();
+      canvas_ = nullptr;
     }
 
     canvas_size_ = contentSize();
