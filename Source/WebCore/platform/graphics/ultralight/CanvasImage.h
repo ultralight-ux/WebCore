@@ -10,9 +10,9 @@ namespace WebCore {
 
 class CanvasImage final : public Image {
 public:
-  static PassRefPtr<CanvasImage> create(const IntSize& size)
+  static PassRefPtr<CanvasImage> create(const IntSize& size, bool isDeferred)
   {
-    return adoptRef(new CanvasImage(size));
+    return adoptRef(new CanvasImage(size, isDeferred));
   }
 
   virtual ~CanvasImage();
@@ -36,7 +36,7 @@ protected:
 
   bool currentFrameKnownToBeOpaque() const override { return false; }
 
-  CanvasImage(const IntSize& size);
+  CanvasImage(const IntSize& size, bool isDeferred);
 
 private:
   bool isCanvasImage() const override { return true; }
@@ -44,6 +44,9 @@ private:
   friend class ImageBuffer;
   ultralight::RefPtr<ultralight::Canvas> m_canvas;
   std::unique_ptr<GraphicsContext> m_context;
+
+  // Only used if we are doing deferred draw calls via a CanvasRecorder
+  ultralight::RefPtr<ultralight::Canvas> m_backingStore;
 };
 
 }  // namespace WebCore

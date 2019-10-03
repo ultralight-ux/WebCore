@@ -17,9 +17,9 @@ using namespace std;
 
 namespace WebCore {
 
-ImageBufferData::ImageBufferData(const IntSize& size, RenderingMode renderingMode)
+ImageBufferData::ImageBufferData(const IntSize& size, RenderingMode renderingMode, bool isDeferred)
   : m_size(size)
-  , m_image(CanvasImage::create(size))
+  , m_image(CanvasImage::create(size, isDeferred))
 {
 }
 
@@ -27,8 +27,8 @@ ImageBufferData::~ImageBufferData()
 {
 }
   
-ImageBuffer::ImageBuffer(const FloatSize& size, float /* resolutionScale */, ColorSpace, RenderingMode renderingMode, bool& success)
-  : m_data(IntSize(size), renderingMode)
+ImageBuffer::ImageBuffer(const FloatSize& size, float /* resolutionScale */, ColorSpace, RenderingMode renderingMode, bool isDeferred, bool& success)
+  : m_data(IntSize(size), renderingMode, isDeferred)
   , m_size(size)
   , m_logicalSize(size)
 {

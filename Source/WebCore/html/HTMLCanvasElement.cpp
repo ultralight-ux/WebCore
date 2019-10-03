@@ -663,7 +663,13 @@ void HTMLCanvasElement::createImageBuffer() const
 
     RenderingMode renderingMode = shouldAccelerate(bufferSize) ? Accelerated : Unaccelerated;
 
+#if USE(ULTRALIGHT)
+    // We force creation of a deferred ImageBuffer here since Canvas draw calls
+    // may be done outside of our paint/render loop.
+    setImageBuffer(ImageBuffer::create(size(), renderingMode, 1, WebCore::ColorSpaceSRGB, true));
+#else
     setImageBuffer(ImageBuffer::create(size(), renderingMode));
+#endif
     if (!m_imageBuffer)
         return;
     m_imageBuffer->context().setShadowsIgnoreTransforms(true);

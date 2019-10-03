@@ -201,16 +201,7 @@ void GraphicsContext::strokePath(const Path& path)
 
 void GraphicsContext::fillRect(const FloatRect& rect)
 {
-  if (paintingDisabled())
-    return;
-
-  if (isRecording()) {
-    m_displayListRecorder->fillRect(rect);
-    return;
-  }
-
-  // TODO
-  notImplemented();
+  fillRect(rect, fillColor());
 }
 
 void GraphicsContext::fillRect(const FloatRect& rect, const Color& color)
@@ -683,8 +674,24 @@ void GraphicsContext::clearRect(const FloatRect& rect)
     return;
   }
 
-  // TODO
-  notImplemented();
+  FloatRect sourceRect = rect;
+
+  auto canvas = platformContext()->canvas();
+
+  canvas->set_scissor_enabled(true);
+  canvas->SetScissorRect(sourceRect);
+
+  // Add 2 pixel buffer around drawn area to avoid artifacts
+  sourceRect.expand(4, 4);
+  sourceRect.move(-2, -2);
+
+  // Clear rect by disabling blending and drawing a transparent quad.
+  canvas->set_blending_enabled(false);
+  ultralight::Paint paint;
+  paint.color = UltralightColorTRANSPARENT;
+  canvas->DrawRect(sourceRect, paint);
+  canvas->set_blending_enabled(true);
+  canvas->set_scissor_enabled(false);
 }
 
 void GraphicsContext::strokeRect(const FloatRect& rect, float width)

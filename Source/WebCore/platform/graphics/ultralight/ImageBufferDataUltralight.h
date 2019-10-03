@@ -28,7 +28,7 @@ namespace WebCore {
 #endif
   {
   public:
-    ImageBufferData(const IntSize&, RenderingMode);
+    ImageBufferData(const IntSize&, RenderingMode, bool isDeferred);
     virtual ~ImageBufferData();
 
     RefPtr<CanvasImage> m_image;

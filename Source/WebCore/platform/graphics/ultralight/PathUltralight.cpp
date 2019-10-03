@@ -94,7 +94,10 @@ bool Path::isEmpty() const
 
 bool Path::hasCurrentPoint() const
 {
-  return !isEmpty();
+  if (isNull())
+    return false;
+
+  return platformPath()->path()->has_current_point();
 }
 
 FloatPoint Path::currentPoint() const
