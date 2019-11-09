@@ -109,7 +109,7 @@ void TextureMapperUltralight::beginPainting(PaintFlags) {
 void TextureMapperUltralight::endPainting() {}
 
 IntSize TextureMapperUltralight::maxTextureSize() const {
-    return IntSize(2048, 2048);
+    return IntSize(4096, 4096);
 }
 
 }  // namespace WebCore
