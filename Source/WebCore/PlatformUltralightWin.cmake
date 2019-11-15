@@ -155,10 +155,10 @@ list(APPEND WebCore_SOURCES
     platform/network/curl/SocketStreamHandleImplCurl.cpp
 )
 
-list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
-    ${WEBCORE_DIR}/css/themeWin.css
-    ${WEBCORE_DIR}/css/themeWinQuirks.css
-)
+#list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
+#    ${WEBCORE_DIR}/css/themeWin.css
+#    ${WEBCORE_DIR}/css/themeWinQuirks.css
+#)
 
 set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     .

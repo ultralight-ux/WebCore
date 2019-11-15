@@ -21,6 +21,9 @@
  *
  */
 
+ /* Force this stylesheet to use iOS's default styles in Ultralight */
+#define WTF_PLATFORM_IOS 1
+
 @namespace "http://www.w3.org/1999/xhtml";
 
 html {
@@ -388,8 +391,8 @@ input:matches([type="password"], [type="search"]) {
     -webkit-appearance: textfield;
     background-color: white;
 #if defined(WTF_PLATFORM_IOS) && WTF_PLATFORM_IOS
-    border-radius: 5px;
-    font: 11px Helvetica, -webkit-pictograph;
+    border-radius: 4px;
+    font: 0.875em "Segoe UI", -apple-system, Helvetica, sans-serif, -webkit-pictograph;
     border: 1px solid #4c4c4c;
     padding: 0.2em 0.5em 0.3em 0.5em;
 #else
@@ -693,11 +696,12 @@ input:matches([type="button"], [type="submit"], [type="reset"]), input[type="fil
     border: 2px outset ButtonFace;
     background-color: ButtonFace;
 #else
-    padding: 0 1.0em;
+    border-radius: 20px;
+    padding: 0 1.125em;
     border: 1px solid #4c4c4c;
     /* We want to be as close to background-color:transparent as possible without actually being transparent. */
     background-color: rgba(255, 255, 255, 0.01);
-    font: 11px Helvetica;
+    font: 0.875em "Segoe UI", -apple-system, Helvetica, sans-serif;
 #endif
     box-sizing: border-box;
 }
@@ -785,7 +789,7 @@ input[type="checkbox"] {
 #if !(defined(WTF_PLATFORM_IOS) && WTF_PLATFORM_IOS)
     box-sizing: border-box;
 #else
-    border-radius: 5px;
+    border-radius: 4px;
     width: 16px;
     height: 16px;
     padding: 0px;
@@ -882,7 +886,7 @@ select {
     border: 1px solid #4c4c4c;
     /* We want to be as close to background:transparent as possible without actually being transparent */
     background-color: rgba(255, 255, 255, 0.01);
-    font: 11px Helvetica;
+    font: 0.875em "Segoe UI", -apple-system, Helvetica, sans-serif;
     padding: 0 0.4em 0 0.4em;
 #else
     -webkit-appearance: menulist;

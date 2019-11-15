@@ -1410,9 +1410,14 @@ void RenderBox::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& pai
     }
     paintBoxShadow(paintInfo, paintRect, style(), Inset);
 
+#if PLATFORM(ULTRALIGHT)
+    if (borderOrBackgroundPaintingIsNeeded && style().hasVisibleBorderDecoration())
+      paintBorder(paintInfo, paintRect, style(), bleedAvoidance);
+#else
     // The theme will tell us whether or not we should also paint the CSS border.
     if (bleedAvoidance != BackgroundBleedBackgroundOverBorder && (!style().hasAppearance() || (borderOrBackgroundPaintingIsNeeded && theme().paintBorderOnly(*this, paintInfo, paintRect))) && style().hasVisibleBorderDecoration())
-        paintBorder(paintInfo, paintRect, style(), bleedAvoidance);
+      paintBorder(paintInfo, paintRect, style(), bleedAvoidance);
+#endif
 
     if (bleedAvoidance == BackgroundBleedUseTransparencyLayer)
         paintInfo.context().endTransparencyLayer();
