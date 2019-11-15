@@ -12,6 +12,7 @@
 #include "WebCore/FloatRoundedRect.h"
 #include "WebCore/rendering/RenderBox.h"
 #include "WebCore/css/CSSToLengthConversionData.h"
+#include "UserAgentStyleSheets.h"
 
 namespace WebCore {
 
@@ -23,9 +24,24 @@ public:
   RenderThemeUltralight() {}
   virtual ~RenderThemeUltralight() {}
 
-  virtual String extraDefaultStyleSheet() { 
+  virtual String extraDefaultStyleSheet() override { 
     auto& config = ultralight::Platform::instance().config();
-    return Convert(config.user_stylesheet);
+    WTF::String configStylesheet = Convert(config.user_stylesheet);
+
+    WTF::String platformStylesheet;
+#if OS(WINDOWS)
+    platformStylesheet = String(themeWinUserAgentStyleSheet, sizeof(themeWinUserAgentStyleSheet));
+#endif
+
+    return platformStylesheet + configStylesheet;
+  }
+
+  virtual String extraQuirksStyleSheet() override { 
+    WTF::String platformStylesheet; 
+#if OS(WINDOWS)
+    platformStylesheet = String(themeWinQuirksUserAgentStyleSheet, sizeof(themeWinQuirksUserAgentStyleSheet));
+#endif
+    return platformStylesheet;
   }
 
   FloatRect addRoundedBorderClip(const RenderObject& box, GraphicsContext& context, const IntRect& rect)
@@ -308,7 +324,7 @@ public:
       return;
 
     // Use the font size to determine the intrinsic width of the control.
-    style.setHeight(Length(static_cast<int>(ControlBaseHeight / ControlBaseFontSize * style.fontDescription().computedSize()), Fixed));
+    //style.setHeight(Length(static_cast<int>(ControlBaseHeight / ControlBaseFontSize * style.fontDescription().computedSize()), Fixed));
   }
 
   void adjustRoundBorderRadius(RenderStyle& style, RenderBox& box) const

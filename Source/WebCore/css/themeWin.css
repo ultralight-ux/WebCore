@@ -40,7 +40,7 @@ input[type="password"],
 input[type="tel"],
 input[type="url"],
 input[type="text"] {
-    padding:1px 0;
+    padding:2px 1px;
 }
 
 input[type="search"] {
@@ -48,11 +48,11 @@ input[type="search"] {
 }
 
 input[type="checkbox"] {
-    margin:3px 3px 3px 4px;
+    margin:2px 3px 3px 4px;
 }
 
 input[type="radio"] {
-    margin:3px 3px 0 5px;
+    margin:2px 3px 3px 5px;
 }
 
 input[type="range"] {
@@ -102,7 +102,7 @@ input::-webkit-outer-spin-button {
 }
 
 input[type="button"], input[type="submit"], input[type="reset"], input[type="file"]::-webkit-file-upload-button, button {
-    padding: 1px 6px;
+    padding: 0px 8px;
 }
 
 /* Windows selects are not rounded. Custom borders for them shouldn't be either. */
@@ -122,4 +122,43 @@ option {
 
 textarea {
   font-family: monospace;
+}
+
+textarea,
+input[type="range"],
+input,
+input:matches([type="password"], [type="search"]) {
+    border-radius: 0;
+    font-family: Arial,sans-serif;
+    border-color: rgb(180, 180, 180);
+}
+
+keygen, select {
+    border-radius: 0;
+}
+
+input:matches([type="button"], [type="submit"], [type="reset"]), input[type="file"]::-webkit-file-upload-button, button {
+    border-radius: 0;
+    font-family: Arial,sans-serif;
+    background-color: rgb(220, 220, 220);
+}
+
+input[type="checkbox"] {
+    border-radius: 0;
+    width: 12px;
+    height: 12px;
+}
+
+select {
+    font-family: Arial,sans-serif;
+}
+
+input[type="radio"] {
+    border-radius: 6px;
+    width: 12px;
+    height: 12px;
+}
+
+input:matches([type="radio"], [type="checkbox"]) {
+    border-color: rgb(180, 180, 180);
 }

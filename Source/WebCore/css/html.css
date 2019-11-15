@@ -392,7 +392,7 @@ input:matches([type="password"], [type="search"]) {
     background-color: white;
 #if defined(WTF_PLATFORM_IOS) && WTF_PLATFORM_IOS
     border-radius: 4px;
-    font: 0.875em "Segoe UI", -apple-system, Helvetica, sans-serif, -webkit-pictograph;
+    font: 0.875em -apple-system, Helvetica, Arial, sans-serif, -webkit-pictograph;
     border: 1px solid #4c4c4c;
     padding: 0.2em 0.5em 0.3em 0.5em;
 #else
@@ -701,7 +701,7 @@ input:matches([type="button"], [type="submit"], [type="reset"]), input[type="fil
     border: 1px solid #4c4c4c;
     /* We want to be as close to background-color:transparent as possible without actually being transparent. */
     background-color: rgba(255, 255, 255, 0.01);
-    font: 0.875em "Segoe UI", -apple-system, Helvetica, sans-serif;
+    font: 0.875em -apple-system, Helvetica, Arial, sans-serif;
 #endif
     box-sizing: border-box;
 }
@@ -886,7 +886,7 @@ select {
     border: 1px solid #4c4c4c;
     /* We want to be as close to background:transparent as possible without actually being transparent */
     background-color: rgba(255, 255, 255, 0.01);
-    font: 0.875em "Segoe UI", -apple-system, Helvetica, sans-serif;
+    font: 0.875em -apple-system, Helvetica, Arial, sans-serif;
     padding: 0 0.4em 0 0.4em;
 #else
     -webkit-appearance: menulist;
@@ -1224,4 +1224,13 @@ attachment {
 }
 
 /* noscript is handled internally, as it depends on settings. */
+
+/* extras for Ultralight */
+input[type="button"], input[type="submit"], input[type="reset"], input[type="file"]::-webkit-file-upload-button, button {
+    height: 1.65em;
+}
+
+input[type="button"]:active, input[type="submit"]:active, input[type="reset"]:active, input[type="file"]::-webkit-file-upload-button:active, button:active {
+    background: linear-gradient(rgb(200, 200, 200), rgb(255, 255, 255));
+}
 
