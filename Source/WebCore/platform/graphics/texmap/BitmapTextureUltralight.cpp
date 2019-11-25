@@ -25,17 +25,16 @@ BitmapTextureUltralight::~BitmapTextureUltralight() {
 }
 
 void BitmapTextureUltralight::didReset() {
-    if (canvas_ && canvas_size_ == contentSize()) {
-        canvas_->Clear();
-        return;
-    }
+  canvas_size_ = contentSize();
 
     if (canvas_) {
-      canvas_->RecycleRenderTexture();
-      canvas_ = nullptr;
+      if(canvas_size_ != contentSize())
+        canvas_->Resize(canvas_size_.width(), canvas_size_.height());
+      
+      canvas_->Clear();
+      return;
     }
-
-    canvas_size_ = contentSize();
+    
     canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
         canvas_size_.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB);
 }
