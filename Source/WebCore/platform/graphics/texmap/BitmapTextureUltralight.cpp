@@ -27,16 +27,16 @@ BitmapTextureUltralight::~BitmapTextureUltralight() {
 void BitmapTextureUltralight::didReset() {
   canvas_size_ = contentSize();
 
-    if (canvas_) {
-      if(canvas_size_ != contentSize())
-        canvas_->Resize(canvas_size_.width(), canvas_size_.height());
+  if (canvas_) {
+    if(canvas_size_.width() != canvas_->width() || canvas_size_.height() != canvas_->height())
+      canvas_->Resize(canvas_size_.width(), canvas_size_.height());
       
-      canvas_->Clear();
-      return;
-    }
+    canvas_->Clear();
+    return;
+  }
     
-    canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
-        canvas_size_.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB);
+  canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
+      canvas_size_.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB);
 }
 
 void BitmapTextureUltralight::updateContents(Image* image,
