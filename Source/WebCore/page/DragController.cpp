@@ -835,6 +835,9 @@ bool DragController::startDrag(Frame& src, const DragState& state, DragOperation
             src.editor().didWriteSelectionToPasteboard();
         }
         m_client.willPerformDragSourceAction(DragSourceActionSelection, dragOrigin, dataTransfer);
+#if PLATFORM(ULTRALIGHT)
+        return false;
+#endif
         if (!dragImage) {
             dragImage = dissolveDragImageToFraction(createDragImageForSelection(src), DragImageAlpha);
             dragLoc = dragLocForSelectionDrag(src);
@@ -913,7 +916,9 @@ bool DragController::startDrag(Frame& src, const DragState& state, DragOperation
         }
         
         m_client.willPerformDragSourceAction(DragSourceActionAttachment, dragOrigin, dataTransfer);
-        
+#if PLATFORM(ULTRALIGHT)
+        return false;
+#endif
         if (!dragImage) {
             dragImage = dissolveDragImageToFraction(createDragImageForSelection(src), DragImageAlpha);
             dragLoc = dragLocForSelectionDrag(src);
