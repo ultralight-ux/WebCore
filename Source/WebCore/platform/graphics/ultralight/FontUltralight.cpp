@@ -142,6 +142,18 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
       canvas->DrawGlyphs(*ultraFont, paint, glyphBuf.data(), glyphBuf.size(), glyph_scale, shadow_blur > 0.0f, shadow_offset);
       canvas->DrawGlyphs(*ultraFont, paint, glyphBuf.data(), glyphBuf.size(), glyph_scale, shadow_blur > 0.0f, shadow_offset);
       */
+
+      // We are just drawing text shadows ignoring blur right now.
+      WebCore::FloatSize shadow_size;
+      float shadow_blur;
+      WebCore::Color shadow_color;
+      context.getShadow(shadow_size, shadow_blur, shadow_color);
+
+      ultralight::Paint paint;
+      paint.color = UltralightRGBA(shadow_color.red(), shadow_color.green(), shadow_color.blue(), shadow_color.alpha());
+
+      ultralight::Point shadow_offset = { shadow_size.width(), shadow_size.height() };
+      canvas->DrawGlyphs(*ultraFont, paint, pen_y, glyphBuf.data(), glyphBuf.size(), shadow_offset);
     }
 
     ultralight::Paint paint;
