@@ -403,11 +403,20 @@ void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width,
 
   unsigned rectCount = rects.size();
   int radius = (width - 1) / 2;
-  for (unsigned i = 0; i < rectCount; ++i) {
-    Path path;
-    path.addRoundedRect(rects[i], FloatSize(radius, radius));
-    drawFocusRing(path, width, 0, color);
-  }
+
+  if (rectCount == 0)
+    return;
+
+  // Determine the bounding rectangle of all the rects and use that
+  // to draw the rounded focus ring path.
+  // NOTE: Other ports are drawing every rect here which seems incorrect?
+  FloatRect boundingRect = rects[0];
+  for (unsigned i = 1; i < rectCount; ++i) 
+    boundingRect.unite(rects[i]);
+
+  Path path;
+  path.addRoundedRect(boundingRect, FloatSize(radius, radius));
+  drawFocusRing(path, width, 0, color);
 }
 
 void GraphicsContext::drawLineForText(const FloatPoint& origin, float width, bool printing, bool doubleUnderlines, StrokeStyle)
