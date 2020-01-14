@@ -25,7 +25,6 @@
 #include "OverlapTestRequestClient.h"
 #include "RenderReplaced.h"
 #include "Widget.h"
-#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -44,18 +43,18 @@ public:
     }
 
     static bool isSuspended() { return s_widgetHierarchyUpdateSuspendCount; }
-    static void scheduleWidgetToMove(Widget* widget, FrameView* frame) { widgetNewParentMap().set(widget, frame); }
+    static void scheduleWidgetToMove(Widget& widget, FrameView* frame) { widgetNewParentMap().set(&widget, frame); }
 
 private:
-    typedef HashMap<RefPtr<Widget>, FrameView*> WidgetToParentMap;
+    using WidgetToParentMap = HashMap<RefPtr<Widget>, FrameView*>;
     static WidgetToParentMap& widgetNewParentMap();
 
     WEBCORE_EXPORT void moveWidgets();
-
     WEBCORE_EXPORT static unsigned s_widgetHierarchyUpdateSuspendCount;
 };
     
 class RenderWidget : public RenderReplaced, private OverlapTestRequestClient {
+    WTF_MAKE_ISO_ALLOCATED(RenderWidget);
 public:
     virtual ~RenderWidget();
 
@@ -64,7 +63,7 @@ public:
     Widget* widget() const { return m_widget.get(); }
     WEBCORE_EXPORT void setWidget(RefPtr<Widget>&&);
 
-    static RenderWidget* find(const Widget*);
+    static RenderWidget* find(const Widget&);
 
     enum class ChildWidgetState { Valid, Destroyed };
     ChildWidgetState updateWidgetPosition() WARN_UNUSED_RETURN;
@@ -72,14 +71,13 @@ public:
 
     bool requiresAcceleratedCompositing() const;
 
-    WeakPtr<RenderWidget> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
-
     void ref() { ++m_refCount; }
     void deref();
 
 protected:
     RenderWidget(HTMLFrameOwnerElement&, RenderStyle&&);
 
+    void willBeDestroyed() override;
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) final;
     void layout() override;
     void paint(PaintInfo&, const LayoutPoint&) override;
@@ -95,14 +93,12 @@ private:
     bool needsPreferredWidthsRecalculation() const final;
     RenderBox* embeddedContentBox() const final;
 
-    void willBeDestroyed() final;
     void setSelectionState(SelectionState) final;
     void setOverlapTestResult(bool) final;
 
     bool setWidgetGeometry(const LayoutRect&);
     bool updateWidgetGeometry();
 
-    WeakPtrFactory<RenderWidget> m_weakPtrFactory;
     RefPtr<Widget> m_widget;
     IntRect m_clipRect; // The rectangle needs to remain correct after scrolling, so it is stored in content view coordinates, and not clipped to window.
     unsigned m_refCount { 1 };

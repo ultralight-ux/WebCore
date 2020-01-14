@@ -23,8 +23,11 @@
 #include "SVGAnimateColorElement.h"
 
 #include "SVGNames.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGAnimateColorElement);
     
 inline SVGAnimateColorElement::SVGAnimateColorElement(const QualifiedName& tagName, Document& document)
     : SVGAnimateElementBase(tagName, document)
@@ -35,21 +38,6 @@ inline SVGAnimateColorElement::SVGAnimateColorElement(const QualifiedName& tagNa
 Ref<SVGAnimateColorElement> SVGAnimateColorElement::create(const QualifiedName& tagName, Document& document)
 {
     return adoptRef(*new SVGAnimateColorElement(tagName, document));
-}
-
-static bool attributeValueIsCurrentColor(const String& value)
-{
-    static NeverDestroyed<const AtomicString> currentColor("currentColor", AtomicString::ConstructFromLiteral);
-    return value == currentColor;
-}
-
-void SVGAnimateColorElement::determinePropertyValueTypes(const String& from, const String& to)
-{
-    SVGAnimateElementBase::determinePropertyValueTypes(from, to);
-    if (attributeValueIsCurrentColor(from))
-        m_fromPropertyValueType = CurrentColorValue;
-    if (attributeValueIsCurrentColor(to))
-        m_toPropertyValueType = CurrentColorValue;
 }
 
 }

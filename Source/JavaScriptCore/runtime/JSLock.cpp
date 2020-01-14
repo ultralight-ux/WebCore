@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005, 2008, 2012, 2014, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2018 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -26,12 +26,22 @@
 #include "JSGlobalObject.h"
 #include "JSObject.h"
 #include "JSCInlines.h"
+#include "MachineStackMarker.h"
 #include "SamplingProfiler.h"
+#include "WasmCapabilities.h"
+#include "WasmMachineThreads.h"
 #include <thread>
+#include <wtf/StackPointer.h>
+#include <wtf/Threading.h>
+#include <wtf/threads/Signals.h>
+
+#if USE(WEB_THREAD)
+#include <wtf/ios/WebCoreThread.h>
+#endif
 
 namespace JSC {
 
-StaticLock GlobalJSLock::s_sharedInstanceMutex;
+Lock GlobalJSLock::s_sharedInstanceMutex;
 
 GlobalJSLock::GlobalJSLock()
 {
@@ -44,24 +54,17 @@ GlobalJSLock::~GlobalJSLock()
 }
 
 JSLockHolder::JSLockHolder(ExecState* exec)
-    : m_vm(&exec->vm())
+    : JSLockHolder(exec->vm())
 {
-    init();
 }
 
 JSLockHolder::JSLockHolder(VM* vm)
-    : m_vm(vm)
+    : JSLockHolder(*vm)
 {
-    init();
 }
 
 JSLockHolder::JSLockHolder(VM& vm)
     : m_vm(&vm)
-{
-    init();
-}
-
-void JSLockHolder::init()
 {
     m_vm->apiLock().lock();
 }
@@ -74,12 +77,10 @@ JSLockHolder::~JSLockHolder()
 }
 
 JSLock::JSLock(VM* vm)
-    : m_ownerThreadID(std::thread::id())
-    , m_lockCount(0)
+    : m_lockCount(0)
     , m_lockDropDepth(0)
-    , m_hasExclusiveThread(false)
     , m_vm(vm)
-    , m_entryAtomicStringTable(nullptr)
+    , m_entryAtomStringTable(nullptr)
 {
 }
 
@@ -93,13 +94,6 @@ void JSLock::willDestroyVM(VM* vm)
     m_vm = nullptr;
 }
 
-void JSLock::setExclusiveThread(std::thread::id threadId)
-{
-    RELEASE_ASSERT(!m_lockCount && m_ownerThreadID == std::thread::id());
-    m_hasExclusiveThread = (threadId != std::thread::id());
-    m_ownerThreadID = threadId;
-}
-
 void JSLock::lock()
 {
     lock(1);
@@ -108,15 +102,25 @@ void JSLock::lock()
 void JSLock::lock(intptr_t lockCount)
 {
     ASSERT(lockCount > 0);
-    if (currentThreadIsHoldingLock()) {
-        m_lockCount += lockCount;
-        return;
+#if USE(WEB_THREAD)
+    if (m_isWebThreadAware) {
+        ASSERT(WebCoreWebThreadIsEnabled && WebCoreWebThreadIsEnabled());
+        WebCoreWebThreadLock();
+    }
+#endif
+
+    bool success = m_lock.tryLock();
+    if (UNLIKELY(!success)) {
+        if (currentThreadIsHoldingLock()) {
+            m_lockCount += lockCount;
+            return;
+        }
+        m_lock.lock();
     }
 
-    if (!m_hasExclusiveThread) {
-        m_lock.lock();
-        m_ownerThreadID = std::this_thread::get_id();
-    }
+    m_ownerThread = &Thread::current();
+    WTF::storeStoreFence();
+    m_hasOwnerThread = true;
     ASSERT(!m_lockCount);
     m_lockCount = lockCount;
 
@@ -124,15 +128,18 @@ void JSLock::lock(intptr_t lockCount)
 }
 
 void JSLock::didAcquireLock()
-{
+{  
     // FIXME: What should happen to the per-thread identifier table if we don't have a VM?
     if (!m_vm)
         return;
     
-    WTFThreadData& threadData = wtfThreadData();
-    ASSERT(!m_entryAtomicStringTable);
-    m_entryAtomicStringTable = threadData.setCurrentAtomicStringTable(m_vm->atomicStringTable());
-    ASSERT(m_entryAtomicStringTable);
+    Thread& thread = Thread::current();
+    ASSERT(!m_entryAtomStringTable);
+    m_entryAtomStringTable = thread.setCurrentAtomStringTable(m_vm->atomStringTable());
+    ASSERT(m_entryAtomStringTable);
+
+    m_vm->setLastStackTop(thread.savedLastStackTop());
+    ASSERT(thread.stack().contains(m_vm->lastStackTop()));
 
     if (m_vm->heap.hasAccess())
         m_shouldReleaseHeapAccess = false;
@@ -142,15 +149,29 @@ void JSLock::didAcquireLock()
     }
 
     RELEASE_ASSERT(!m_vm->stackPointerAtVMEntry());
-    void* p = &p; // A proxy for the current stack pointer.
+    void* p = currentStackPointer();
     m_vm->setStackPointerAtVMEntry(p);
 
-    m_vm->setLastStackTop(threadData.savedLastStackTop());
+    if (m_vm->heap.machineThreads().addCurrentThread()) {
+        if (isKernTCSMAvailable())
+            enableKernTCSM();
+    }
 
-    m_vm->heap.machineThreads().addCurrentThread();
+#if ENABLE(WEBASSEMBLY)
+    if (Wasm::isSupported())
+        Wasm::startTrackingCurrentThread();
+#endif
+
+#if HAVE(MACH_EXCEPTIONS)
+    registerThreadForMachExceptionHandling(Thread::current());
+#endif
+
+    // Note: everything below must come after addCurrentThread().
+    m_vm->traps().notifyGrabAllLocks();
+    
+    m_vm->firePrimitiveGigacageEnabledIfNecessary();
 
 #if ENABLE(SAMPLING_PROFILER)
-    // Note: this must come after addCurrentThread().
     if (SamplingProfiler* samplingProfiler = m_vm->samplingProfiler())
         samplingProfiler->noticeJSLockAcquisition();
 #endif
@@ -174,19 +195,19 @@ void JSLock::unlock(intptr_t unlockCount)
     m_lockCount -= unlockCount;
 
     if (!m_lockCount) {
-        
-        if (!m_hasExclusiveThread) {
-            m_ownerThreadID = std::thread::id();
-            m_lock.unlock();
-        }
+        m_hasOwnerThread = false;
+        m_lock.unlock();
     }
 }
 
 void JSLock::willReleaseLock()
-{
+{   
     RefPtr<VM> vm = m_vm;
     if (vm) {
         vm->drainMicrotasks();
+
+        if (!vm->topCallFrame)
+            vm->clearLastException();
 
         vm->heap.releaseDelayedReleasedObjects();
         vm->setStackPointerAtVMEntry(nullptr);
@@ -195,9 +216,9 @@ void JSLock::willReleaseLock()
             vm->heap.releaseAccess();
     }
 
-    if (m_entryAtomicStringTable) {
-        wtfThreadData().setCurrentAtomicStringTable(m_entryAtomicStringTable);
-        m_entryAtomicStringTable = nullptr;
+    if (m_entryAtomStringTable) {
+        Thread::current().setCurrentAtomStringTable(m_entryAtomStringTable);
+        m_entryAtomStringTable = nullptr;
     }
 }
 
@@ -211,22 +232,9 @@ void JSLock::unlock(ExecState* exec)
     exec->vm().apiLock().unlock();
 }
 
-bool JSLock::currentThreadIsHoldingLock()
-{
-    ASSERT(!m_hasExclusiveThread || (exclusiveThread() == std::this_thread::get_id()));
-    if (m_hasExclusiveThread)
-        return !!m_lockCount;
-    return m_ownerThreadID == std::this_thread::get_id();
-}
-
 // This function returns the number of locks that were dropped.
 unsigned JSLock::dropAllLocks(DropAllLocks* dropper)
 {
-    if (m_hasExclusiveThread) {
-        ASSERT(exclusiveThread() == std::this_thread::get_id());
-        return 0;
-    }
-
     if (!currentThreadIsHoldingLock())
         return 0;
 
@@ -234,9 +242,9 @@ unsigned JSLock::dropAllLocks(DropAllLocks* dropper)
 
     dropper->setDropDepth(m_lockDropDepth);
 
-    WTFThreadData& threadData = wtfThreadData();
-    threadData.setSavedStackPointerAtVMEntry(m_vm->stackPointerAtVMEntry());
-    threadData.setSavedLastStackTop(m_vm->lastStackTop());
+    Thread& thread = Thread::current();
+    thread.setSavedStackPointerAtVMEntry(m_vm->stackPointerAtVMEntry());
+    thread.setSavedLastStackTop(m_vm->lastStackTop());
 
     unsigned droppedLockCount = m_lockCount;
     unlock(droppedLockCount);
@@ -246,8 +254,6 @@ unsigned JSLock::dropAllLocks(DropAllLocks* dropper)
 
 void JSLock::grabAllLocks(DropAllLocks* dropper, unsigned droppedLockCount)
 {
-    ASSERT(!m_hasExclusiveThread || !droppedLockCount);
-
     // If no locks were dropped, nothing to do!
     if (!droppedLockCount)
         return;
@@ -257,15 +263,15 @@ void JSLock::grabAllLocks(DropAllLocks* dropper, unsigned droppedLockCount)
 
     while (dropper->dropDepth() != m_lockDropDepth) {
         unlock(droppedLockCount);
-        std::this_thread::yield();
+        Thread::yield();
         lock(droppedLockCount);
     }
 
     --m_lockDropDepth;
 
-    WTFThreadData& threadData = wtfThreadData();
-    m_vm->setStackPointerAtVMEntry(threadData.savedStackPointerAtVMEntry());
-    m_vm->setLastStackTop(threadData.savedLastStackTop());
+    Thread& thread = Thread::current();
+    m_vm->setStackPointerAtVMEntry(thread.savedStackPointerAtVMEntry());
+    m_vm->setLastStackTop(thread.savedLastStackTop());
 }
 
 JSLock::DropAllLocks::DropAllLocks(VM* vm)

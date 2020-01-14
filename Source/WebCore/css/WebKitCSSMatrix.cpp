@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,12 +31,15 @@
 #include "CSSPropertyNames.h"
 #include "CSSToLengthConversionData.h"
 #include "CSSValueKeywords.h"
-#include "ExceptionCode.h"
 #include "StyleProperties.h"
 #include "TransformFunctions.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/MathExtras.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(WebKitCSSMatrix);
 
 inline WebKitCSSMatrix::WebKitCSSMatrix(const TransformationMatrix& matrix)
     : m_matrix(matrix)
@@ -54,12 +57,10 @@ ExceptionOr<Ref<WebKitCSSMatrix>> WebKitCSSMatrix::create(const String& string)
     auto setMatrixValueResult = result->setMatrixValue(string);
     if (setMatrixValueResult.hasException())
         return setMatrixValueResult.releaseException();
-    return WTFMove(result);
+    return result;
 }
 
-WebKitCSSMatrix::~WebKitCSSMatrix()
-{
-}
+WebKitCSSMatrix::~WebKitCSSMatrix() = default;
 
 ExceptionOr<void> WebKitCSSMatrix::setMatrixValue(const String& string)
 {
@@ -68,7 +69,7 @@ ExceptionOr<void> WebKitCSSMatrix::setMatrixValue(const String& string)
 
     auto styleDeclaration = MutableStyleProperties::create();
     if (CSSParser::parseValue(styleDeclaration, CSSPropertyTransform, string, true, HTMLStandardMode) == CSSParser::ParseResult::Error)
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
     // Convert to TransformOperations. This can fail if a property requires style (i.e., param uses 'ems' or 'exs')
     auto value = styleDeclaration->getPropertyCSSValue(CSSPropertyTransform);
@@ -79,13 +80,13 @@ ExceptionOr<void> WebKitCSSMatrix::setMatrixValue(const String& string)
 
     TransformOperations operations;
     if (!transformsForValue(*value, CSSToLengthConversionData(), operations))
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
     // Convert transform operations to a TransformationMatrix. This can fail if a parameter has a percentage ('%').
     TransformationMatrix matrix;
     for (auto& operation : operations.operations()) {
         if (operation->apply(matrix, IntSize(0, 0)))
-            return Exception { SYNTAX_ERR };
+            return Exception { SyntaxError };
     }
     m_matrix = matrix;
     return { };
@@ -99,14 +100,14 @@ RefPtr<WebKitCSSMatrix> WebKitCSSMatrix::multiply(WebKitCSSMatrix* secondMatrix)
 
     auto matrix = create(m_matrix);
     matrix->m_matrix.multiply(secondMatrix->m_matrix);
-    return WTFMove(matrix);
+    return matrix;
 }
 
 ExceptionOr<Ref<WebKitCSSMatrix>> WebKitCSSMatrix::inverse() const
 {
     auto inverse = m_matrix.inverse();
     if (!inverse)
-        return Exception { NOT_SUPPORTED_ERR };
+        return Exception { NotSupportedError };
     return create(inverse.value());
 }
 
@@ -197,16 +198,15 @@ Ref<WebKitCSSMatrix> WebKitCSSMatrix::skewY(double angle) const
     return matrix;
 }
 
-String WebKitCSSMatrix::toString() const
+ExceptionOr<String> WebKitCSSMatrix::toString() const
 {
-    // FIXME - Need to ensure valid CSS floating point values (https://bugs.webkit.org/show_bug.cgi?id=20674)
+    if (!m_matrix.containsOnlyFiniteValues())
+        return Exception { InvalidStateError, "Matrix contains non-finite values"_s };
+
     if (m_matrix.isAffine())
-        return String::format("matrix(%f, %f, %f, %f, %f, %f)", m_matrix.a(), m_matrix.b(), m_matrix.c(), m_matrix.d(), m_matrix.e(), m_matrix.f());
-    return String::format("matrix3d(%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f)",
-        m_matrix.m11(), m_matrix.m12(), m_matrix.m13(), m_matrix.m14(),
-        m_matrix.m21(), m_matrix.m22(), m_matrix.m23(), m_matrix.m24(),
-        m_matrix.m31(), m_matrix.m32(), m_matrix.m33(), m_matrix.m34(),
-        m_matrix.m41(), m_matrix.m42(), m_matrix.m43(), m_matrix.m44());
+        return makeString("matrix(", m_matrix.a(), ", ", m_matrix.b(), ", ", m_matrix.c(), ", ", m_matrix.d(), ", ", m_matrix.e(), ", ", m_matrix.f(), ')');
+
+    return makeString("matrix3d(", m_matrix.m11(), ", ", m_matrix.m12(), ", ", m_matrix.m13(), ", ", m_matrix.m14(), ", ", m_matrix.m21(), ", ", m_matrix.m22(), ", ", m_matrix.m23(), ", ", m_matrix.m24(), ", ", m_matrix.m31(), ", ", m_matrix.m32(), ", ", m_matrix.m33(), ", ", m_matrix.m34(), ", ", m_matrix.m41(), ", ", m_matrix.m42(), ", ", m_matrix.m43(), ", ", m_matrix.m44(), ')');
 }
 
 } // namespace WebCore

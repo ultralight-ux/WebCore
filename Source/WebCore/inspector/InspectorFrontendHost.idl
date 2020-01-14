@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Matt Lilek <webkit@mattlilek.com>
  * Copyright (C) 2009 Google Inc. All rights reserved.
  *
@@ -36,20 +36,31 @@
 ] interface InspectorFrontendHost {
     void loaded();
     void closeWindow();
+    void reopen();
+    void reset();
+
     void bringToFront();
     void inspectedURLChanged(DOMString newURL);
 
+    readonly attribute boolean supportsShowCertificate;
+    boolean showCertificate(DOMString serializedCertificate);
+
     void setZoomFactor(unrestricted float zoom);
     float zoomFactor();
+
+    DOMString userInterfaceLayoutDirection();
 
     void requestSetDockSide(DOMString side);
 
     void setAttachedWindowHeight(unsigned long height);
     void setAttachedWindowWidth(unsigned long width);
 
+    void setSheetRect(unrestricted float x, unrestricted float y, unsigned long width, unsigned long height);
+
     void startWindowDrag();
     void moveWindowBy(unrestricted float x, unrestricted float y);
 
+    readonly attribute boolean isRemote;
     DOMString localizedStringsURL();
     DOMString backendCommandsURL();
     DOMString debuggableType();
@@ -66,12 +77,23 @@
     DOMString platform();
     DOMString port();
 
-    [Custom] void showContextMenu(MouseEvent event, any items);
-    void dispatchEventAsContextMenuEvent(Event? event);
+    void showContextMenu(Event event, sequence<ContextMenuItem> items);
+    void dispatchEventAsContextMenuEvent(Event event);
     void sendMessageToBackend(DOMString message);
     void unbufferedLog(DOMString message);
 
     boolean isUnderTest();
 
     void beep();
+    void inspectInspector();
+    boolean isBeingInspected();
+};
+
+dictionary ContextMenuItem {
+    DOMString type;
+    DOMString label;
+    long id;
+    boolean enabled;
+    boolean checked;
+    sequence<ContextMenuItem> subItems;
 };

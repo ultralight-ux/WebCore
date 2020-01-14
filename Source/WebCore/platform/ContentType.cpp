@@ -27,12 +27,32 @@
 
 #include "config.h"
 #include "ContentType.h"
+#include "HTMLParserIdioms.h"
+#include <wtf/JSONValues.h>
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
+
+ContentType::ContentType(String&& contentType)
+    : m_type(WTFMove(contentType))
+{
+}
 
 ContentType::ContentType(const String& contentType)
     : m_type(contentType)
 {
+}
+
+const String& ContentType::codecsParameter()
+{
+    static NeverDestroyed<String> codecs { "codecs"_s };
+    return codecs;
+}
+
+const String& ContentType::profilesParameter()
+{
+    static NeverDestroyed<String> profiles { "profiles"_s };
+    return profiles;
 }
 
 String ContentType::parameter(const String& parameterName) const
@@ -43,7 +63,7 @@ String ContentType::parameter(const String& parameterName) const
     // a MIME type can have one or more "param=value" after a semi-colon, and separated from each other by semi-colons
     size_t semi = strippedType.find(';');
     if (semi != notFound) {
-        size_t start = strippedType.find(parameterName, semi + 1, false);
+        size_t start = strippedType.findIgnoringASCIICase(parameterName, semi + 1);
         if (start != notFound) {
             start = strippedType.find('=', start + parameterName.length());
             if (start != notFound) {
@@ -64,7 +84,7 @@ String ContentType::parameter(const String& parameterName) const
     return parameterValue;
 }
 
-String ContentType::type() const
+String ContentType::containerType() const
 {
     String strippedType = m_type.stripWhiteSpace();
 
@@ -76,19 +96,39 @@ String ContentType::type() const
     return strippedType;
 }
 
+static inline Vector<String> splitParameters(StringView parametersView)
+{
+    Vector<String> result;
+    for (auto view : parametersView.split(','))
+        result.append(view.stripLeadingAndTrailingMatchedCharacters(isHTMLSpace<UChar>).toString());
+    return result;
+}
+
 Vector<String> ContentType::codecs() const
 {
-    String codecsParameter = parameter(ASCIILiteral("codecs"));
+    return splitParameters(parameter(codecsParameter()));
+}
 
-    if (codecsParameter.isEmpty())
-        return Vector<String>();
+Vector<String> ContentType::profiles() const
+{
+    return splitParameters(parameter(profilesParameter()));
+}
 
-    Vector<String> codecs;
-    codecsParameter.split(',', codecs);
-    for (size_t i = 0; i < codecs.size(); ++i)
-        codecs[i] = codecs[i].simplifyWhiteSpace();
+String ContentType::toJSONString() const
+{
+    auto object = JSON::Object::create();
 
-    return codecs;
+    object->setString("containerType"_s, containerType());
+
+    auto codecs = codecsParameter();
+    if (!codecs.isEmpty())
+        object->setString("codecs"_s, codecs);
+
+    auto profiles = profilesParameter();
+    if (!profiles.isEmpty())
+        object->setString("profiles"_s, profiles);
+
+    return object->toJSONString();
 }
 
 } // namespace WebCore

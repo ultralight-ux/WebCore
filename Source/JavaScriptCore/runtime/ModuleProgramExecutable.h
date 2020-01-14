@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2010, 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,15 +25,22 @@
 
 #pragma once
 
-#include "ScriptExecutable.h"
+#include "ExecutableToCodeBlockEdge.h"
+#include "GlobalExecutable.h"
 
 namespace JSC {
 
-class ModuleProgramExecutable final : public ScriptExecutable {
+class ModuleProgramExecutable final : public GlobalExecutable {
     friend class LLIntOffsetsExtractor;
 public:
-    typedef ScriptExecutable Base;
+    using Base = GlobalExecutable;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
+
+    template<typename CellType, SubspaceAccess mode>
+    static IsoSubspace* subspaceFor(VM& vm)
+    {
+        return vm.moduleProgramExecutableSpace<mode>();
+    }
 
     static ModuleProgramExecutable* create(ExecState*, const SourceCode&);
 
@@ -41,10 +48,10 @@ public:
 
     ModuleProgramCodeBlock* codeBlock()
     {
-        return m_moduleProgramCodeBlock.get();
+        return bitwise_cast<ModuleProgramCodeBlock*>(ExecutableToCodeBlockEdge::unwrap(m_moduleProgramCodeBlock.get()));
     }
 
-    PassRefPtr<JITCode> generatedJITCode()
+    Ref<JITCode> generatedJITCode()
     {
         return generatedJITCodeForCall();
     }
@@ -62,6 +69,8 @@ public:
 
     SymbolTable* moduleEnvironmentSymbolTable() { return m_moduleEnvironmentSymbolTable.get(); }
 
+    TemplateObjectMap& ensureTemplateObjectMap(VM&);
+
 private:
     friend class ExecutableBase;
     friend class ScriptExecutable;
@@ -72,7 +81,8 @@ private:
 
     WriteBarrier<UnlinkedModuleProgramCodeBlock> m_unlinkedModuleProgramCodeBlock;
     WriteBarrier<SymbolTable> m_moduleEnvironmentSymbolTable;
-    WriteBarrier<ModuleProgramCodeBlock> m_moduleProgramCodeBlock;
+    WriteBarrier<ExecutableToCodeBlockEdge> m_moduleProgramCodeBlock;
+    std::unique_ptr<TemplateObjectMap> m_templateObjectMap;
 };
 
 } // namespace JSC

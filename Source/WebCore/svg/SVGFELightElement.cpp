@@ -2,6 +2,7 @@
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
  * Copyright (C) 2005 Oliver Hunt <oliver@nerget.com>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -33,39 +34,28 @@
 #include "SVGFilterElement.h"
 #include "SVGFilterPrimitiveStandardAttributes.h"
 #include "SVGNames.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
-// Animated property definitions
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::azimuthAttr, Azimuth, azimuth)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::elevationAttr, Elevation, elevation)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::xAttr, X, x)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::yAttr, Y, y)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::zAttr, Z, z)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::pointsAtXAttr, PointsAtX, pointsAtX)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::pointsAtYAttr, PointsAtY, pointsAtY)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::pointsAtZAttr, PointsAtZ, pointsAtZ)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::specularExponentAttr, SpecularExponent, specularExponent)
-DEFINE_ANIMATED_NUMBER(SVGFELightElement, SVGNames::limitingConeAngleAttr, LimitingConeAngle, limitingConeAngle)
-
-BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGFELightElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(azimuth)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(elevation)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(x)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(y)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(z)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(pointsAtX)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(pointsAtY)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(pointsAtZ)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(specularExponent)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(limitingConeAngle)
-END_REGISTER_ANIMATED_PROPERTIES
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGFELightElement);
 
 SVGFELightElement::SVGFELightElement(const QualifiedName& tagName, Document& document)
     : SVGElement(tagName, document)
-    , m_specularExponent(1)
 {
-    registerAnimatedPropertiesForSVGFELightElement();
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        PropertyRegistry::registerProperty<SVGNames::azimuthAttr, &SVGFELightElement::m_azimuth>();
+        PropertyRegistry::registerProperty<SVGNames::elevationAttr, &SVGFELightElement::m_elevation>();
+        PropertyRegistry::registerProperty<SVGNames::xAttr, &SVGFELightElement::m_x>();
+        PropertyRegistry::registerProperty<SVGNames::yAttr, &SVGFELightElement::m_y>();
+        PropertyRegistry::registerProperty<SVGNames::zAttr, &SVGFELightElement::m_z>();
+        PropertyRegistry::registerProperty<SVGNames::pointsAtXAttr, &SVGFELightElement::m_pointsAtX>();
+        PropertyRegistry::registerProperty<SVGNames::pointsAtYAttr, &SVGFELightElement::m_pointsAtY>();
+        PropertyRegistry::registerProperty<SVGNames::pointsAtZAttr, &SVGFELightElement::m_pointsAtZ>();
+        PropertyRegistry::registerProperty<SVGNames::specularExponentAttr, &SVGFELightElement::m_specularExponent>();
+        PropertyRegistry::registerProperty<SVGNames::limitingConeAngleAttr, &SVGFELightElement::m_limitingConeAngle>();
+    });
 }
 
 SVGFELightElement* SVGFELightElement::findLightElement(const SVGElement* svgElement)
@@ -77,63 +67,55 @@ SVGFELightElement* SVGFELightElement::findLightElement(const SVGElement* svgElem
     return nullptr;
 }
 
-RefPtr<LightSource> SVGFELightElement::findLightSource(const SVGElement* svgElement)
-{
-    SVGFELightElement* lightNode = findLightElement(svgElement);
-    if (!lightNode)
-        return 0;
-    return lightNode->lightSource();
-}
-
-void SVGFELightElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void SVGFELightElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     if (name == SVGNames::azimuthAttr) {
-        setAzimuthBaseValue(value.toFloat());
+        m_azimuth->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::elevationAttr) {
-        setElevationBaseValue(value.toFloat());
+        m_elevation->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::xAttr) {
-        setXBaseValue(value.toFloat());
+        m_x->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::yAttr) {
-        setYBaseValue(value.toFloat());
+        m_y->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::zAttr) {
-        setZBaseValue(value.toFloat());
+        m_z->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::pointsAtXAttr) {
-        setPointsAtXBaseValue(value.toFloat());
+        m_pointsAtX->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::pointsAtYAttr) {
-        setPointsAtYBaseValue(value.toFloat());
+        m_pointsAtY->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::pointsAtZAttr) {
-        setPointsAtZBaseValue(value.toFloat());
+        m_pointsAtZ->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::specularExponentAttr) {
-        setSpecularExponentBaseValue(value.toFloat());
+        m_specularExponent->setBaseValInternal(value.toFloat());
         return;
     }
 
     if (name == SVGNames::limitingConeAngleAttr) {
-        setLimitingConeAngleBaseValue(value.toFloat());
+        m_limitingConeAngle->setBaseValInternal(value.toFloat());
         return;
     }
 
@@ -142,12 +124,8 @@ void SVGFELightElement::parseAttribute(const QualifiedName& name, const AtomicSt
 
 void SVGFELightElement::svgAttributeChanged(const QualifiedName& attrName)
 {
-    if (attrName == SVGNames::azimuthAttr || attrName == SVGNames::elevationAttr
-        || attrName == SVGNames::xAttr || attrName == SVGNames::yAttr || attrName == SVGNames::zAttr
-        || attrName == SVGNames::pointsAtXAttr || attrName == SVGNames::pointsAtYAttr || attrName == SVGNames::pointsAtZAttr
-        || attrName == SVGNames::specularExponentAttr || attrName == SVGNames::limitingConeAngleAttr) {
-
-        auto* parent = parentElement();
+    if (PropertyRegistry::isKnownAttribute(attrName)) {
+        auto parent = makeRefPtr(parentElement());
         if (!parent)
             return;
 
@@ -173,9 +151,9 @@ void SVGFELightElement::childrenChanged(const ChildChange& change)
 {
     SVGElement::childrenChanged(change);
 
-    if (change.source == ChildChangeSourceParser)
+    if (change.source == ChildChangeSource::Parser)
         return;
-    ContainerNode* parent = parentNode();
+    auto parent = makeRefPtr(parentNode());
     if (!parent)
         return;
     RenderElement* renderer = parent->renderer();

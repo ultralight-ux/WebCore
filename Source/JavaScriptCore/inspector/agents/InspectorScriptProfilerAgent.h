@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,10 +25,10 @@
 
 #pragma once
 
+#include "Debugger.h"
+#include "InspectorAgentBase.h"
 #include "InspectorBackendDispatchers.h"
 #include "InspectorFrontendDispatchers.h"
-#include "inspector/InspectorAgentBase.h"
-#include "inspector/ScriptDebugServer.h"
 #include <wtf/Noncopyable.h>
 
 namespace JSC {
@@ -41,6 +41,7 @@ typedef String ErrorString;
 
 class JS_EXPORT_PRIVATE InspectorScriptProfilerAgent final : public InspectorAgentBase, public ScriptProfilerBackendDispatcherHandler, public JSC::Debugger::ProfilingClient {
     WTF_MAKE_NONCOPYABLE(InspectorScriptProfilerAgent);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     InspectorScriptProfilerAgent(AgentContext&);
     virtual ~InspectorScriptProfilerAgent();
@@ -52,22 +53,13 @@ public:
     void startTracking(ErrorString&, const bool* includeSamples) override;
     void stopTracking(ErrorString&) override;
 
-    void programmaticCaptureStarted();
-    void programmaticCaptureStopped();
-
     // Debugger::ProfilingClient
     bool isAlreadyProfiling() const override;
-    double willEvaluateScript() override;
-    void didEvaluateScript(double, JSC::ProfilingReason) override;
+    Seconds willEvaluateScript() override;
+    void didEvaluateScript(Seconds, JSC::ProfilingReason) override;
 
 private:
-    struct Event {
-        Event(double start, double end) : startTime(start), endTime(end) { }
-        double startTime { 0 };
-        double endTime { 0 };
-    };
-
-    void addEvent(double startTime, double endTime, JSC::ProfilingReason);
+    void addEvent(Seconds startTime, Seconds endTime, JSC::ProfilingReason);
     void trackingComplete();
     void stopSamplingWhenDisconnecting();
 

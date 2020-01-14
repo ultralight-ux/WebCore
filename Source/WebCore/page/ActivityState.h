@@ -25,10 +25,16 @@
 
 #pragma once
 
+#include <wtf/OptionSet.h>
+
+namespace WTF {
+class TextStream;
+}
+
 namespace WebCore {
 
 struct ActivityState {
-    enum {
+    enum Flag {
         WindowIsActive = 1 << 0,
         IsFocused = 1 << 1,
         IsVisible = 1 << 2,
@@ -37,12 +43,10 @@ struct ActivityState {
         IsVisuallyIdle = 1 << 5,
         IsAudible = 1 << 6,
         IsLoading = 1 << 7,
+        IsCapturingMedia = 1 << 8,
     };
 
-    typedef unsigned Flags;
-
-    static const Flags NoFlags = 0;
-    static const Flags AllFlags = WindowIsActive | IsFocused | IsVisible | IsVisibleOrOccluded | IsInWindow | IsVisuallyIdle | IsAudible | IsLoading;
+    static constexpr OptionSet<Flag> allFlags() { return { WindowIsActive, IsFocused, IsVisible, IsVisibleOrOccluded, IsInWindow, IsVisuallyIdle, IsAudible, IsLoading, IsCapturingMedia }; }
 };
 
 enum class ActivityStateForCPUSampling {
@@ -50,5 +54,7 @@ enum class ActivityStateForCPUSampling {
     VisibleNonActive,
     VisibleAndActive
 };
+
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, OptionSet<ActivityState::Flag>);
 
 } // namespace WebCore

@@ -32,15 +32,16 @@
 #pragma once
 
 #include "Event.h"
+#include "JSValueInWrappedObject.h"
 #include "SerializedScriptValue.h"
-#include <bindings/ScriptValue.h>
+#include <JavaScriptCore/Strong.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class ErrorEvent final : public Event {
 public:
-    static Ref<ErrorEvent> create(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, const Deprecated::ScriptValue& error)
+    static Ref<ErrorEvent> create(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, JSC::Strong<JSC::Unknown> error)
     {
         return adoptRef(*new ErrorEvent(message, fileName, lineNumber, columnNumber, error));
     }
@@ -53,9 +54,9 @@ public:
         JSC::JSValue error;
     };
 
-    static Ref<ErrorEvent> create(JSC::ExecState& state, const AtomicString& type, const Init& initializer, IsTrusted isTrusted = IsTrusted::No)
+    static Ref<ErrorEvent> create(const AtomString& type, const Init& initializer, IsTrusted isTrusted = IsTrusted::No)
     {
-        return adoptRef(*new ErrorEvent(state, type, initializer, isTrusted));
+        return adoptRef(*new ErrorEvent(type, initializer, isTrusted));
     }
 
     virtual ~ErrorEvent();
@@ -64,16 +65,18 @@ public:
     const String& filename() const { return m_fileName; }
     unsigned lineno() const { return m_lineNumber; }
     unsigned colno() const { return m_columnNumber; }
-    const Deprecated::ScriptValue& error() const { return m_error; }
-    JSC::JSValue sanitizedErrorValue(JSC::ExecState&, JSC::JSGlobalObject&);
+    JSC::JSValue error(JSC::ExecState&, JSC::JSGlobalObject&);
+
+    const JSValueInWrappedObject& originalError() const { return m_error; }
+    SerializedScriptValue* serializedError() const { return m_serializedError.get(); }
 
     EventInterface eventInterface() const override;
 
-private:
-    ErrorEvent(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, const Deprecated::ScriptValue& error);
-    ErrorEvent(JSC::ExecState&, const AtomicString&, const Init&, IsTrusted);
-
     RefPtr<SerializedScriptValue> trySerializeError(JSC::ExecState&);
+
+private:
+    ErrorEvent(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, JSC::Strong<JSC::Unknown> error);
+    ErrorEvent(const AtomString&, const Init&, IsTrusted);
 
     bool isErrorEvent() const override;
 
@@ -81,8 +84,8 @@ private:
     String m_fileName;
     unsigned m_lineNumber;
     unsigned m_columnNumber;
-    Deprecated::ScriptValue m_error;
-    RefPtr<SerializedScriptValue> m_serializedDetail;
+    JSValueInWrappedObject m_error;
+    RefPtr<SerializedScriptValue> m_serializedError;
     bool m_triedToSerialize { false };
 };
 

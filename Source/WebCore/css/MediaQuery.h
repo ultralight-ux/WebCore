@@ -28,7 +28,7 @@
 
 #pragma once
 
-#include "MediaQueryExp.h"
+#include "MediaQueryExpression.h"
 #include <wtf/Vector.h>
 
 namespace WebCore {
@@ -54,11 +54,13 @@ public:
 private:
     String serialize() const;
 
-    Restrictor m_restrictor;
     String m_mediaType;
-    Vector<MediaQueryExpression> m_expressions;
-    bool m_ignored { false };
     mutable String m_serializationCache;
+    Vector<MediaQueryExpression> m_expressions;
+    Restrictor m_restrictor;
+    bool m_ignored { false };
 };
+
+WTF::TextStream& operator<<(WTF::TextStream&, const MediaQuery&);
 
 } // namespace

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2010, 2013, 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,13 +38,13 @@
 
 namespace JSC {
 
-const ClassInfo NativeExecutable::s_info = { "NativeExecutable", &ExecutableBase::s_info, 0, CREATE_METHOD_TABLE(NativeExecutable) };
+const ClassInfo NativeExecutable::s_info = { "NativeExecutable", &ExecutableBase::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(NativeExecutable) };
 
-NativeExecutable* NativeExecutable::create(VM& vm, PassRefPtr<JITCode> callThunk, NativeFunction function, PassRefPtr<JITCode> constructThunk, NativeFunction constructor, Intrinsic intrinsic, const DOMJIT::Signature* signature, const String& name)
+NativeExecutable* NativeExecutable::create(VM& vm, Ref<JITCode>&& callThunk, TaggedNativeFunction function, Ref<JITCode>&& constructThunk, TaggedNativeFunction constructor, const String& name)
 {
     NativeExecutable* executable;
-    executable = new (NotNull, allocateCell<NativeExecutable>(vm.heap)) NativeExecutable(vm, function, constructor, intrinsic, signature);
-    executable->finishCreation(vm, callThunk, constructThunk, name);
+    executable = new (NotNull, allocateCell<NativeExecutable>(vm.heap)) NativeExecutable(vm, function, constructor);
+    executable->finishCreation(vm, WTFMove(callThunk), WTFMove(constructThunk), name);
     return executable;
 }
 
@@ -55,34 +55,49 @@ void NativeExecutable::destroy(JSCell* cell)
 
 Structure* NativeExecutable::createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)
 {
-    return Structure::create(vm, globalObject, proto, TypeInfo(CellType, StructureFlags), info());
+    return Structure::create(vm, globalObject, proto, TypeInfo(NativeExecutableType, StructureFlags), info());
 }
 
-void NativeExecutable::finishCreation(VM& vm, PassRefPtr<JITCode> callThunk, PassRefPtr<JITCode> constructThunk, const String& name)
+void NativeExecutable::finishCreation(VM& vm, Ref<JITCode>&& callThunk, Ref<JITCode>&& constructThunk, const String& name)
 {
     Base::finishCreation(vm);
-    m_jitCodeForCall = callThunk;
-    m_jitCodeForConstruct = constructThunk;
+    m_jitCodeForCall = WTFMove(callThunk);
+    m_jitCodeForConstruct = WTFMove(constructThunk);
     m_jitCodeForCallWithArityCheck = m_jitCodeForCall->addressForCall(MustCheckArity);
     m_jitCodeForConstructWithArityCheck = m_jitCodeForConstruct->addressForCall(MustCheckArity);
     m_name = name;
+
+    assertIsTaggedWith(m_jitCodeForCall->addressForCall(ArityCheckNotRequired).executableAddress(), JSEntryPtrTag);
+    assertIsTaggedWith(m_jitCodeForConstruct->addressForCall(ArityCheckNotRequired).executableAddress(), JSEntryPtrTag);
+    assertIsTaggedWith(m_jitCodeForCallWithArityCheck.executableAddress(), JSEntryPtrTag);
+    assertIsTaggedWith(m_jitCodeForConstructWithArityCheck.executableAddress(), JSEntryPtrTag);
 }
 
-NativeExecutable::NativeExecutable(VM& vm, NativeFunction function, NativeFunction constructor, Intrinsic intrinsic, const DOMJIT::Signature* signature)
-    : ExecutableBase(vm, vm.nativeExecutableStructure.get(), NUM_PARAMETERS_IS_HOST, intrinsic)
+NativeExecutable::NativeExecutable(VM& vm, TaggedNativeFunction function, TaggedNativeFunction constructor)
+    : ExecutableBase(vm, vm.nativeExecutableStructure.get())
     , m_function(function)
     , m_constructor(constructor)
-    , m_signature(signature)
 {
+}
+
+const DOMJIT::Signature* NativeExecutable::signatureFor(CodeSpecializationKind kind) const
+{
+    ASSERT(hasJITCodeFor(kind));
+    return generatedJITCodeFor(kind)->signature();
+}
+
+Intrinsic NativeExecutable::intrinsic() const
+{
+    return generatedJITCodeFor(CodeForCall)->intrinsic();
 }
 
 CodeBlockHash NativeExecutable::hashFor(CodeSpecializationKind kind) const
 {
     if (kind == CodeForCall)
-        return CodeBlockHash(static_cast<unsigned>(bitwise_cast<size_t>(m_function)));
-    
+        return CodeBlockHash(bitwise_cast<uintptr_t>(m_function));
+
     RELEASE_ASSERT(kind == CodeForConstruct);
-    return CodeBlockHash(static_cast<unsigned>(bitwise_cast<size_t>(m_constructor)));
+    return CodeBlockHash(bitwise_cast<uintptr_t>(m_constructor));
 }
 
 } // namespace JSC

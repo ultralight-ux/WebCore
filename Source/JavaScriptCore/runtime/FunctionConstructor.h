@@ -30,7 +30,7 @@ namespace JSC {
 
 class FunctionPrototype;
 
-class FunctionConstructor : public InternalFunction {
+class FunctionConstructor final : public InternalFunction {
 public:
     typedef InternalFunction Base;
 
@@ -45,27 +45,26 @@ public:
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype) 
     { 
-        return Structure::create(vm, globalObject, prototype, TypeInfo(ObjectType, StructureFlags), info()); 
+        return Structure::create(vm, globalObject, prototype, TypeInfo(InternalFunctionType, StructureFlags), info()); 
     }
 
 private:
     FunctionConstructor(VM&, Structure*);
     void finishCreation(VM&, FunctionPrototype*);
-    static ConstructType getConstructData(JSCell*, ConstructData&);
-    static CallType getCallData(JSCell*, CallData&);
 };
 
 enum class FunctionConstructionMode {
     Function,
     Generator,
     Async,
+    AsyncGenerator,
 };
 
-JSObject* constructFunction(ExecState*, JSGlobalObject*, const ArgList&, const Identifier& functionName, const String& sourceURL, const WTF::TextPosition&, FunctionConstructionMode = FunctionConstructionMode::Function, JSValue newTarget = JSValue());
+JSObject* constructFunction(ExecState*, JSGlobalObject*, const ArgList&, const Identifier& functionName, const SourceOrigin&, const String& sourceURL, const WTF::TextPosition&, FunctionConstructionMode = FunctionConstructionMode::Function, JSValue newTarget = JSValue());
 JSObject* constructFunction(ExecState*, JSGlobalObject*, const ArgList&, FunctionConstructionMode = FunctionConstructionMode::Function, JSValue newTarget = JSValue());
 
 JS_EXPORT_PRIVATE JSObject* constructFunctionSkippingEvalEnabledCheck(
-    ExecState*, JSGlobalObject*, const ArgList&, const Identifier&, 
+    ExecState*, JSGlobalObject*, const ArgList&, const Identifier&, const SourceOrigin&,
     const String&, const WTF::TextPosition&, int overrideLineNumber = -1,
     FunctionConstructionMode = FunctionConstructionMode::Function, JSValue newTarget = JSValue());
 

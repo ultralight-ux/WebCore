@@ -28,17 +28,12 @@
 
 #include "IntPoint.h"
 #include "PlatformEvent.h"
+#include "PointerID.h"
 #include <wtf/WindowsExtras.h>
 
 #if PLATFORM(GTK)
 typedef struct _GdkEventButton GdkEventButton;
 typedef struct _GdkEventMotion GdkEventMotion;
-#endif
-
-#if PLATFORM(EFL)
-typedef struct _Evas_Event_Mouse_Down Evas_Event_Mouse_Down;
-typedef struct _Evas_Event_Mouse_Up Evas_Event_Mouse_Up;
-typedef struct _Evas_Event_Mouse_Move Evas_Event_Mouse_Move;
 #endif
 
 namespace WebCore {
@@ -47,7 +42,9 @@ const double ForceAtClick = 1;
 const double ForceAtForceClick = 2;
 
     // These button numbers match the ones used in the DOM API, 0 through 2, except for NoButton which isn't specified.
-    enum MouseButton : int8_t { NoButton = -1, LeftButton, MiddleButton, RightButton };
+    // We use -2 for NoButton because -1 is a valid value in the DOM API for Pointer Events for pointermove events that
+    // indicate that the pressed mouse button hasn't changed since the last event.
+    enum MouseButton : int8_t { LeftButton = 0, MiddleButton, RightButton, NoButton = -2 };
     enum SyntheticClickType : int8_t { NoTap, OneFingerTap, TwoFingerTap };
 
     class PlatformMouseEvent : public PlatformEvent {
@@ -67,7 +64,7 @@ const double ForceAtForceClick = 2;
         }
 
         PlatformMouseEvent(const IntPoint& position, const IntPoint& globalPosition, MouseButton button, PlatformEvent::Type type,
-                           int clickCount, bool shiftKey, bool ctrlKey, bool altKey, bool metaKey, double timestamp, double force, SyntheticClickType syntheticClickType)
+                           int clickCount, bool shiftKey, bool ctrlKey, bool altKey, bool metaKey, WallTime timestamp, double force, SyntheticClickType syntheticClickType, PointerID pointerId = mousePointerID)
             : PlatformEvent(type, shiftKey, ctrlKey, altKey, metaKey, timestamp)
             , m_position(position)
             , m_globalPosition(globalPosition)
@@ -76,6 +73,7 @@ const double ForceAtForceClick = 2;
             , m_modifierFlags(0)
             , m_force(force)
             , m_syntheticClickType(syntheticClickType)
+            , m_pointerId(pointerId)
 #if PLATFORM(MAC)
             , m_eventNumber(0)
             , m_menuTypeForEvent(0)
@@ -92,22 +90,17 @@ const double ForceAtForceClick = 2;
 #endif
 
         MouseButton button() const { return m_button; }
+        unsigned short buttons() const { return m_buttons; }
         int clickCount() const { return m_clickCount; }
         unsigned modifierFlags() const { return m_modifierFlags; }
         double force() const { return m_force; }
         SyntheticClickType syntheticClickType() const { return m_syntheticClickType; }
+        PointerID pointerId() const { return m_pointerId; }
 
 #if PLATFORM(GTK) 
         explicit PlatformMouseEvent(GdkEventButton*);
         explicit PlatformMouseEvent(GdkEventMotion*);
         void setClickCount(int count) { m_clickCount = count; }
-#endif
-
-#if PLATFORM(EFL)
-        void setClickCount(unsigned int);
-        PlatformMouseEvent(const Evas_Event_Mouse_Down*, IntPoint);
-        PlatformMouseEvent(const Evas_Event_Mouse_Up*, IntPoint);
-        PlatformMouseEvent(const Evas_Event_Mouse_Move*, IntPoint);
 #endif
 
 #if PLATFORM(MAC)
@@ -128,10 +121,12 @@ const double ForceAtForceClick = 2;
         IntPoint m_movementDelta;
 #endif
         MouseButton m_button;
+        unsigned short m_buttons { 0 };
         int m_clickCount;
         unsigned m_modifierFlags;
         double m_force { 0 };
         SyntheticClickType m_syntheticClickType { NoTap };
+        PointerID m_pointerId { mousePointerID };
 
 #if PLATFORM(MAC)
         int m_eventNumber;
@@ -143,15 +138,15 @@ const double ForceAtForceClick = 2;
 
 #if COMPILER(MSVC)
     // These functions are necessary to work around the fact that MSVC will not find a most-specific
-    // operator== to use after implicitly converting MouseButton to an unsigned short.
-    inline bool operator==(unsigned short a, MouseButton b)
+    // operator== to use after implicitly converting MouseButton to a short.
+    inline bool operator==(short a, MouseButton b)
     {
-        return a == static_cast<unsigned short>(b);
+        return a == static_cast<short>(b);
     }
 
-    inline bool operator!=(unsigned short a, MouseButton b)
+    inline bool operator!=(short a, MouseButton b)
     {
-        return a != static_cast<unsigned short>(b);
+        return a != static_cast<short>(b);
     }
 #endif
 

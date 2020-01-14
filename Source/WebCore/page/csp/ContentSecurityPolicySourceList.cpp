@@ -30,10 +30,10 @@
 #include "ContentSecurityPolicy.h"
 #include "ContentSecurityPolicyDirectiveNames.h"
 #include "ParsingUtilities.h"
-#include "SecurityOrigin.h"
-#include "URL.h"
+#include "TextEncoding.h"
 #include <wtf/ASCIICType.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/URL.h>
 #include <wtf/text/Base64.h>
 
 namespace WebCore {
@@ -131,7 +131,7 @@ bool ContentSecurityPolicySourceList::isProtocolAllowedByStar(const URL& url) co
     return isAllowed;
 }
 
-bool ContentSecurityPolicySourceList::matches(const URL& url, bool didReceiveRedirectResponse)
+bool ContentSecurityPolicySourceList::matches(const URL& url, bool didReceiveRedirectResponse) const
 {
     if (m_allowStar && isProtocolAllowedByStar(url))
         return true;
@@ -173,7 +173,7 @@ void ContentSecurityPolicySourceList::parse(const UChar* begin, const UChar* end
         skipWhile<UChar, isSourceCharacter>(position, end);
 
         String scheme, host, path;
-        std::optional<uint16_t> port;
+        Optional<uint16_t> port;
         bool hostHasWildcard = false;
         bool portHasWildcard = false;
 
@@ -197,13 +197,15 @@ void ContentSecurityPolicySourceList::parse(const UChar* begin, const UChar* end
 
         ASSERT(position == end || isASCIISpace(*position));
     }
+    
+    m_list.shrinkToFit();
 }
 
 // source            = scheme ":"
 //                   / ( [ scheme "://" ] host [ port ] [ path ] )
 //                   / "'self'"
 //
-bool ContentSecurityPolicySourceList::parseSource(const UChar* begin, const UChar* end, String& scheme, String& host, std::optional<uint16_t>& port, String& path, bool& hostHasWildcard, bool& portHasWildcard)
+bool ContentSecurityPolicySourceList::parseSource(const UChar* begin, const UChar* end, String& scheme, String& host, Optional<uint16_t>& port, String& path, bool& hostHasWildcard, bool& portHasWildcard)
 {
     if (begin == end)
         return false;
@@ -292,7 +294,7 @@ bool ContentSecurityPolicySourceList::parseSource(const UChar* begin, const UCha
         return false;
 
     if (!beginPort)
-        port = std::nullopt;
+        port = WTF::nullopt;
     else {
         if (!parsePort(beginPort, beginPath, port, portHasWildcard))
             return false;
@@ -394,7 +396,7 @@ bool ContentSecurityPolicySourceList::parsePath(const UChar* begin, const UChar*
 
 // port              = ":" ( 1*DIGIT / "*" )
 //
-bool ContentSecurityPolicySourceList::parsePort(const UChar* begin, const UChar* end, std::optional<uint16_t>& port, bool& portHasWildcard)
+bool ContentSecurityPolicySourceList::parsePort(const UChar* begin, const UChar* end, Optional<uint16_t>& port, bool& portHasWildcard)
 {
     ASSERT(begin <= end);
     ASSERT(!port);
@@ -407,7 +409,7 @@ bool ContentSecurityPolicySourceList::parsePort(const UChar* begin, const UChar*
         return false;
     
     if (end - begin == 1 && *begin == '*') {
-        port = std::nullopt;
+        port = WTF::nullopt;
         portHasWildcard = true;
         return true;
     }
@@ -426,56 +428,28 @@ bool ContentSecurityPolicySourceList::parsePort(const UChar* begin, const UChar*
     return ok;
 }
 
-static bool isBase64Character(UChar c)
-{
-    return isASCIIAlphanumeric(c) || c == '+' || c == '/' || c == '-' || c == '_';
-}
-
 // Match Blink's behavior of allowing an equal sign to appear anywhere in the value of the nonce
 // even though this does not match the behavior of Content Security Policy Level 3 spec.,
 // <https://w3c.github.io/webappsec-csp/> (29 February 2016).
 static bool isNonceCharacter(UChar c)
 {
-    return isBase64Character(c) || c == '=';
+    return isBase64OrBase64URLCharacter(c) || c == '=';
 }
 
 // nonce-source    = "'nonce-" nonce-value "'"
 // nonce-value     = base64-value
 bool ContentSecurityPolicySourceList::parseNonceSource(const UChar* begin, const UChar* end)
 {
-    static NeverDestroyed<String> noncePrefix("'nonce-", String::ConstructFromLiteral);
-    if (!StringView(begin, end - begin).startsWithIgnoringASCIICase(noncePrefix.get()))
+    const unsigned noncePrefixLength = 7;
+    if (!StringView(begin, end - begin).startsWithIgnoringASCIICase("'nonce-"))
         return false;
-    const UChar* position = begin + noncePrefix.get().length();
+    const UChar* position = begin + noncePrefixLength;
     const UChar* beginNonceValue = position;
     skipWhile<UChar, isNonceCharacter>(position, end);
     if (position >= end || position == beginNonceValue || *position != '\'')
         return false;
     m_nonces.add(String(beginNonceValue, position - beginNonceValue));
     return true;
-}
-
-static bool parseHashAlgorithmAdvancingPosition(const UChar*& position, size_t length, ContentSecurityPolicyHashAlgorithm& algorithm)
-{
-    static struct {
-        NeverDestroyed<String> label;
-        ContentSecurityPolicyHashAlgorithm algorithm;
-    } labelToHashAlgorithmTable[] {
-        { ASCIILiteral("sha256"), ContentSecurityPolicyHashAlgorithm::SHA_256 },
-        { ASCIILiteral("sha384"), ContentSecurityPolicyHashAlgorithm::SHA_384 },
-        { ASCIILiteral("sha512"), ContentSecurityPolicyHashAlgorithm::SHA_512 },
-    };
-
-    StringView stringView(position, length);
-    for (auto& entry : labelToHashAlgorithmTable) {
-        String& label = entry.label.get();
-        if (!stringView.startsWithIgnoringASCIICase(label))
-            continue;
-        position += label.length();
-        algorithm = entry.algorithm;
-        return true;
-    }
-    return false;
 }
 
 // hash-source    = "'" hash-algorithm "-" base64-value "'"
@@ -490,31 +464,18 @@ bool ContentSecurityPolicySourceList::parseHashSource(const UChar* begin, const 
     if (!skipExactly<UChar>(position, end, '\''))
         return false;
 
-    ContentSecurityPolicyHashAlgorithm algorithm;
-    if (!parseHashAlgorithmAdvancingPosition(position, end - position, algorithm))
+    auto digest = parseCryptographicDigest(position, end);
+    if (!digest)
         return false;
 
-    if (!skipExactly<UChar>(position, end, '-'))
+    if (position >= end || *position != '\'')
         return false;
 
-    const UChar* beginHashValue = position;
-    skipWhile<UChar, isBase64Character>(position, end);
-    skipExactly<UChar>(position, end, '=');
-    skipExactly<UChar>(position, end, '=');
-    if (position >= end || position == beginHashValue || *position != '\'')
-        return false;
-    Vector<uint8_t> digest;
-    StringView hashValue(beginHashValue, position - beginHashValue); // base64url or base64 encoded
-    // FIXME: Normalize Base64URL to Base64 instead of decoding twice. See <https://bugs.webkit.org/show_bug.cgi?id=155186>.
-    if (!base64Decode(hashValue.toStringWithoutCopying(), digest, Base64ValidatePadding)) {
-        if (!base64URLDecode(hashValue.toStringWithoutCopying(), digest))
-            return false;
-    }
-    if (digest.size() > maximumContentSecurityPolicyDigestLength)
+    if (digest->value.size() > ContentSecurityPolicyHash::maximumDigestLength)
         return false;
 
-    m_hashes.add(std::make_pair(algorithm, digest));
-    m_hashAlgorithmsUsed |= algorithm;
+    m_hashAlgorithmsUsed.add(digest->algorithm);
+    m_hashes.add(WTFMove(*digest));
     return true;
 }
 

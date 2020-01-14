@@ -29,9 +29,9 @@
 #include "DOMWrapperWorld.h"
 #include "UserScript.h"
 #include "UserStyleSheet.h"
-#include <heap/HeapInlines.h>
-#include <runtime/JSCellInlines.h>
-#include <runtime/StructureInlines.h>
+#include <JavaScriptCore/HeapInlines.h>
+#include <JavaScriptCore/JSCellInlines.h>
+#include <JavaScriptCore/StructureInlines.h>
 
 #if ENABLE(CONTENT_EXTENSIONS)
 #include "CompiledContentExtension.h"
@@ -44,15 +44,11 @@ Ref<UserContentController> UserContentController::create()
     return adoptRef(*new UserContentController);
 }
 
-UserContentController::UserContentController()
-{
-}
+UserContentController::UserContentController() = default;
 
-UserContentController::~UserContentController()
-{
-}
+UserContentController::~UserContentController() = default;
 
-void UserContentController::forEachUserScript(const std::function<void(DOMWrapperWorld&, const UserScript&)>& functor) const
+void UserContentController::forEachUserScript(Function<void(DOMWrapperWorld&, const UserScript&)>&& functor) const
 {
     for (const auto& worldAndUserScriptVector : m_userScripts) {
         auto& world = *worldAndUserScriptVector.key.get();
@@ -61,7 +57,7 @@ void UserContentController::forEachUserScript(const std::function<void(DOMWrappe
     }
 }
 
-void UserContentController::forEachUserStyleSheet(const std::function<void(const UserStyleSheet&)>& functor) const
+void UserContentController::forEachUserStyleSheet(Function<void(const UserStyleSheet&)>&& functor) const
 {
     for (auto& styleSheetVector : m_userStyleSheets.values()) {
         for (const auto& styleSheet : *styleSheetVector)
@@ -70,7 +66,7 @@ void UserContentController::forEachUserStyleSheet(const std::function<void(const
 }
 
 #if ENABLE(USER_MESSAGE_HANDLERS)
-void UserContentController::forEachUserMessageHandler(const std::function<void(const UserMessageHandlerDescriptor&)>&) const
+void UserContentController::forEachUserMessageHandler(Function<void(const UserMessageHandlerDescriptor&)>&&) const
 {
 }
 #endif

@@ -27,7 +27,7 @@ namespace JSC {
 
 class StringObject : public JSWrapperObject {
 public:
-    typedef JSWrapperObject Base;
+    using Base = JSWrapperObject;
     static const unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | OverridesGetPropertyNames;
 
     static StringObject* create(VM& vm, Structure* structure)
@@ -54,29 +54,22 @@ public:
     JS_EXPORT_PRIVATE static bool deleteProperty(JSCell*, ExecState*, PropertyName);
     JS_EXPORT_PRIVATE static bool deletePropertyByIndex(JSCell*, ExecState*, unsigned propertyName);
     JS_EXPORT_PRIVATE static void getOwnPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
+    JS_EXPORT_PRIVATE static void getOwnNonIndexPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
     JS_EXPORT_PRIVATE static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
 
     DECLARE_EXPORT_INFO;
 
-    JSString* internalValue() const { return asString(JSWrapperObject::internalValue());}
+    JSString* internalValue() const { return asString(JSWrapperObject::internalValue()); }
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
-        return Structure::create(vm, globalObject, prototype, TypeInfo(ObjectType, StructureFlags), info());
+        return Structure::create(vm, globalObject, prototype, TypeInfo(StringObjectType, StructureFlags), info());
     }
 
 protected:
     JS_EXPORT_PRIVATE void finishCreation(VM&, JSString*);
     JS_EXPORT_PRIVATE StringObject(VM&, Structure*);
 };
-
-StringObject* asStringObject(JSValue);
-
-inline StringObject* asStringObject(JSValue value)
-{
-    ASSERT(asObject(value)->inherits(StringObject::info()));
-    return static_cast<StringObject*>(asObject(value));
-}
 
 JS_EXPORT_PRIVATE StringObject* constructString(VM&, JSGlobalObject*, JSValue);
 
@@ -92,7 +85,7 @@ static inline JSString* jsStringWithReuse(ExecState* exec, JSValue originalValue
         ASSERT(asString(originalValue)->value(exec) == string);
         return asString(originalValue);
     }
-    return jsString(exec, string);
+    return jsString(&exec->vm(), string);
 }
 
 // Helper that tries to use the JSString substring sharing mechanism if 'originalValue' is a JSString.
@@ -106,7 +99,7 @@ static inline JSString* jsSubstring(ExecState* exec, JSValue originalValue, cons
         ASSERT(asString(originalValue)->value(exec) == string);
         return jsSubstring(exec, asString(originalValue), offset, length);
     }
-    return jsSubstring(exec, string, offset, length);
+    return jsSubstring(&exec->vm(), string, offset, length);
 }
 
 } // namespace JSC

@@ -32,7 +32,6 @@
 
 #if ENABLE(QUOTA)
 
-#include "DOMWindowProperty.h"
 #include "Supplementable.h"
 #include "WorkerNavigator.h"
 
@@ -42,6 +41,7 @@ class StorageQuota;
 class WorkerNavigator;
 
 class WorkerNavigatorStorageQuota : public Supplement<WorkerNavigator> {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WorkerNavigatorStorageQuota();
     virtual ~WorkerNavigatorStorageQuota();

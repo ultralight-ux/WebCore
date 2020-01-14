@@ -40,29 +40,24 @@
 #include "PageConsoleClient.h"
 #include "PageGroup.h"
 #include "ScriptController.h"
-#include <heap/StrongInlines.h>
-#include <runtime/JSLock.h>
-#include <runtime/WeakGCMapInlines.h>
-
-using namespace JSC;
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/StrongInlines.h>
+#include <JavaScriptCore/WeakGCMapInlines.h>
 
 namespace WebCore {
+using namespace JSC;
 
 ScriptCachedFrameData::ScriptCachedFrameData(Frame& frame)
 {
     JSLockHolder lock(commonVM());
 
-    ScriptController& scriptController = frame.script();
-    Vector<JSC::Strong<JSDOMWindowShell>> windowShells = scriptController.windowShells();
-
-    for (size_t i = 0; i < windowShells.size(); ++i) {
-        JSDOMWindowShell* windowShell = windowShells[i].get();
-        JSDOMWindow* window = windowShell->window();
-        m_windows.add(&windowShell->world(), Strong<JSDOMWindow>(window->vm(), window));
+    for (auto windowProxy : frame.windowProxy().jsWindowProxiesAsVector()) {
+        auto* window = jsCast<JSDOMWindow*>(windowProxy->window());
+        m_windows.add(&windowProxy->world(), Strong<JSDOMWindow>(window->vm(), window));
         window->setConsoleClient(nullptr);
     }
 
-    scriptController.attachDebugger(nullptr);
+    frame.windowProxy().attachDebugger(nullptr);
 }
 
 ScriptCachedFrameData::~ScriptCachedFrameData()
@@ -75,30 +70,28 @@ void ScriptCachedFrameData::restore(Frame& frame)
     JSLockHolder lock(commonVM());
 
     Page* page = frame.page();
-    ScriptController& scriptController = frame.script();
-    Vector<JSC::Strong<JSDOMWindowShell>> windowShells = scriptController.windowShells();
 
-    for (size_t i = 0; i < windowShells.size(); ++i) {
-        JSDOMWindowShell* windowShell = windowShells[i].get();
-        DOMWrapperWorld* world = &windowShell->world();
+    for (auto windowProxy : frame.windowProxy().jsWindowProxiesAsVector()) {
+        auto* world = &windowProxy->world();
 
-        if (JSDOMWindow* window = m_windows.get(world).get())
-            windowShell->setWindow(window->vm(), window);
+        if (auto* window = m_windows.get(world).get())
+            windowProxy->setWindow(window->vm(), *window);
         else {
-            DOMWindow* domWindow = frame.document()->domWindow();
-            if (&windowShell->window()->wrapped() == domWindow)
+            ASSERT(frame.document()->domWindow());
+            auto& domWindow = *frame.document()->domWindow();
+            if (&windowProxy->wrapped() == &domWindow)
                 continue;
 
-            windowShell->setWindow(domWindow);
+            windowProxy->setWindow(domWindow);
 
             if (page) {
-                scriptController.attachDebugger(windowShell, page->debugger());
-                windowShell->window()->setProfileGroup(page->group().identifier());
+                windowProxy->attachDebugger(page->debugger());
+                windowProxy->window()->setProfileGroup(page->group().identifier());
             }
         }
 
         if (page)
-            windowShell->window()->setConsoleClient(&page->console());
+            windowProxy->window()->setConsoleClient(&page->console());
     }
 }
 

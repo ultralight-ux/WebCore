@@ -29,7 +29,6 @@
 #if ENABLE(INDEXED_DATABASE)
 
 #include "Document.h"
-#include "ExceptionCode.h"
 #include "IDBBindingUtilities.h"
 #include "IDBConnectionProxy.h"
 #include "IDBDatabaseIdentifier.h"
@@ -37,13 +36,12 @@
 #include "IDBOpenDBRequest.h"
 #include "Logging.h"
 #include "Page.h"
-#include "SchemeRegistry.h"
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
 static bool shouldThrowSecurityException(ScriptExecutionContext& context)
 {
@@ -72,33 +70,30 @@ IDBFactory::IDBFactory(IDBClient::IDBConnectionProxy& connectionProxy)
 {
 }
 
-IDBFactory::~IDBFactory()
-{
-}
+IDBFactory::~IDBFactory() = default;
 
-ExceptionOr<Ref<IDBOpenDBRequest>> IDBFactory::open(ScriptExecutionContext& context, const String& name, std::optional<uint64_t> version)
+ExceptionOr<Ref<IDBOpenDBRequest>> IDBFactory::open(ScriptExecutionContext& context, const String& name, Optional<uint64_t> version)
 {
     LOG(IndexedDB, "IDBFactory::open");
     
     if (version && !version.value())
-        return Exception { TypeError, ASCIILiteral("IDBFactory.open() called with a version of 0") };
+        return Exception { TypeError, "IDBFactory.open() called with a version of 0"_s };
 
-    return openInternal(context, name, version.value_or(0));
+    return openInternal(context, name, version.valueOr(0));
 }
 
 ExceptionOr<Ref<IDBOpenDBRequest>> IDBFactory::openInternal(ScriptExecutionContext& context, const String& name, uint64_t version)
 {
     if (name.isNull())
-        return Exception { TypeError, ASCIILiteral("IDBFactory.open() called without a database name") };
+        return Exception { TypeError, "IDBFactory.open() called without a database name"_s };
 
     if (shouldThrowSecurityException(context))
-        return Exception { SECURITY_ERR, ASCIILiteral("IDBFactory.open() called in an invalid security context") };
+        return Exception { SecurityError, "IDBFactory.open() called in an invalid security context"_s };
 
     ASSERT(context.securityOrigin());
-    ASSERT(context.topOrigin());
-    IDBDatabaseIdentifier databaseIdentifier(name, *context.securityOrigin(), *context.topOrigin());
+    IDBDatabaseIdentifier databaseIdentifier(name, context.sessionID(), SecurityOriginData { context.securityOrigin()->data() }, SecurityOriginData { context.topOrigin().data() });
     if (!databaseIdentifier.isValid())
-        return Exception { TypeError, ASCIILiteral("IDBFactory.open() called with an invalid security origin") };
+        return Exception { TypeError, "IDBFactory.open() called with an invalid security origin"_s };
 
     LOG(IndexedDBOperations, "IDB opening database: %s %" PRIu64, name.utf8().data(), version);
 
@@ -110,16 +105,15 @@ ExceptionOr<Ref<IDBOpenDBRequest>> IDBFactory::deleteDatabase(ScriptExecutionCon
     LOG(IndexedDB, "IDBFactory::deleteDatabase - %s", name.utf8().data());
 
     if (name.isNull())
-        return Exception { TypeError, ASCIILiteral("IDBFactory.deleteDatabase() called without a database name") };
+        return Exception { TypeError, "IDBFactory.deleteDatabase() called without a database name"_s };
 
     if (shouldThrowSecurityException(context))
-        return Exception { SECURITY_ERR, ASCIILiteral("IDBFactory.deleteDatabase() called in an invalid security context") };
+        return Exception { SecurityError, "IDBFactory.deleteDatabase() called in an invalid security context"_s };
 
     ASSERT(context.securityOrigin());
-    ASSERT(context.topOrigin());
-    IDBDatabaseIdentifier databaseIdentifier(name, *context.securityOrigin(), *context.topOrigin());
+    IDBDatabaseIdentifier databaseIdentifier(name, context.sessionID(), SecurityOriginData { context.securityOrigin()->data() }, SecurityOriginData { context.topOrigin().data() });
     if (!databaseIdentifier.isValid())
-        return Exception { TypeError, ASCIILiteral("IDBFactory.deleteDatabase() called with an invalid security origin") };
+        return Exception { TypeError, "IDBFactory.deleteDatabase() called with an invalid security origin"_s };
 
     LOG(IndexedDBOperations, "IDB deleting database: %s", name.utf8().data());
 
@@ -129,17 +123,19 @@ ExceptionOr<Ref<IDBOpenDBRequest>> IDBFactory::deleteDatabase(ScriptExecutionCon
 ExceptionOr<short> IDBFactory::cmp(ExecState& execState, JSValue firstValue, JSValue secondValue)
 {
     auto first = scriptValueToIDBKey(execState, firstValue);
-    auto second = scriptValueToIDBKey(execState, secondValue);
+    if (!first->isValid())
+        return Exception { DataError, "Failed to execute 'cmp' on 'IDBFactory': The parameter is not a valid key."_s };
 
-    if (!first->isValid() || !second->isValid())
-        return Exception { IDBDatabaseException::DataError, ASCIILiteral("Failed to execute 'cmp' on 'IDBFactory': The parameter is not a valid key.") };
+    auto second = scriptValueToIDBKey(execState, secondValue);
+    if (!second->isValid())
+        return Exception { DataError, "Failed to execute 'cmp' on 'IDBFactory': The parameter is not a valid key."_s };
 
     return first->compare(second.get());
 }
 
-void IDBFactory::getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, std::function<void (const Vector<String>&)> callback)
+void IDBFactory::getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, Function<void (const Vector<String>&)>&& callback)
 {
-    m_connectionProxy->getAllDatabaseNames(mainFrameOrigin, openingOrigin, callback);
+    m_connectionProxy->getAllDatabaseNames(mainFrameOrigin, openingOrigin, WTFMove(callback));
 }
 
 } // namespace WebCore

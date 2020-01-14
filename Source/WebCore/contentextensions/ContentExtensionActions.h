@@ -27,31 +27,52 @@
 
 #if ENABLE(CONTENT_EXTENSIONS)
 
+#include <wtf/HashSet.h>
+#include <wtf/text/WTFString.h>
+
 namespace WebCore {
 
+struct ContentRuleListResults;
+class Page;
 class ResourceRequest;
 
 namespace ContentExtensions {
 
-typedef uint8_t SerializedActionByte;
+struct Action;
+using SerializedActionByte = uint8_t;
 
 enum class ActionType : uint8_t {
     BlockLoad,
     BlockCookies,
     CSSDisplayNoneSelector,
-    CSSDisplayNoneStyleSheet,
+    Notify,
     IgnorePreviousRules,
     MakeHTTPS,
-    InvalidAction,
 };
 
-struct BlockedStatus {
-    bool blockedLoad { false };
-    bool blockedCookies { false };
-    bool madeHTTPS { false };
+static inline bool hasStringArgument(ActionType actionType)
+{
+    switch (actionType) {
+    case ActionType::CSSDisplayNoneSelector:
+    case ActionType::Notify:
+        return true;
+    case ActionType::BlockLoad:
+    case ActionType::BlockCookies:
+    case ActionType::IgnorePreviousRules:
+    case ActionType::MakeHTTPS:
+        return false;
+    }
+    ASSERT_NOT_REACHED();
+    return false;
+}
+
+struct ActionsFromContentRuleList {
+    String contentRuleListIdentifier;
+    bool sawIgnorePreviousRules { false };
+    Vector<Action> actions;
 };
 
-void applyBlockedStatusToRequest(const BlockedStatus&, ResourceRequest&);
+WEBCORE_EXPORT void applyResultsToRequest(ContentRuleListResults&&, Page*, ResourceRequest&);
 
 } // namespace ContentExtensions
 

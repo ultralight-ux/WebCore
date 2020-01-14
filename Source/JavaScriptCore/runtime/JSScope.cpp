@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2017 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,6 +39,8 @@ namespace JSC {
 
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(JSScope);
 
+const ClassInfo JSScope::s_info = { "Scope", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSScope) };
+
 void JSScope::visitChildren(JSCell* cell, SlotVisitor& visitor)
 {
     JSScope* thisObject = jsCast<JSScope*>(cell);
@@ -50,13 +52,11 @@ void JSScope::visitChildren(JSCell* cell, SlotVisitor& visitor)
 // Returns true if we found enough information to terminate optimization.
 static inline bool abstractAccess(ExecState* exec, JSScope* scope, const Identifier& ident, GetOrPut getOrPut, size_t depth, bool& needsVarInjectionChecks, ResolveOp& op, InitializationMode initializationMode)
 {
+    VM& vm = exec->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+
     if (scope->isJSLexicalEnvironment()) {
         JSLexicalEnvironment* lexicalEnvironment = jsCast<JSLexicalEnvironment*>(scope);
-        if (ident == exec->propertyNames().arguments) {
-            // We know the property will be at this lexical environment scope, but we don't know how to cache it.
-            op = ResolveOp(Dynamic, 0, 0, 0, 0, 0);
-            return true;
-        }
 
         SymbolTable* symbolTable = lexicalEnvironment->symbolTable();
         {
@@ -80,6 +80,7 @@ static inline bool abstractAccess(ExecState* exec, JSScope* scope, const Identif
             JSModuleEnvironment* moduleEnvironment = jsCast<JSModuleEnvironment*>(scope);
             AbstractModuleRecord* moduleRecord = moduleEnvironment->moduleRecord();
             AbstractModuleRecord::Resolution resolution = moduleRecord->resolveImport(exec, ident);
+            RETURN_IF_EXCEPTION(throwScope, false);
             if (resolution.type == AbstractModuleRecord::Resolution::Type::Resolved) {
                 AbstractModuleRecord* importedRecord = resolution.moduleRecord;
                 JSModuleEnvironment* importedEnvironment = importedRecord->moduleEnvironment();
@@ -160,9 +161,10 @@ static inline bool abstractAccess(ExecState* exec, JSScope* scope, const Identif
             return true;
         }
 
+        Structure* structure = globalObject->structure(vm);
         if (!slot.isCacheableValue()
-            || !globalObject->structure()->propertyAccessesAreCacheable()
-            || (globalObject->structure()->hasReadOnlyOrGetterSetterPropertiesExcludingProto() && getOrPut == Put)) {
+            || !structure->propertyAccessesAreCacheable()
+            || (structure->hasReadOnlyOrGetterSetterPropertiesExcludingProto() && getOrPut == Put)) {
             // We know the property will be at global scope, but we don't know how to cache it.
             ASSERT(!scope->next());
             op = ResolveOp(makeType(GlobalProperty, needsVarInjectionChecks), 0, 0, 0, 0, 0);
@@ -170,7 +172,7 @@ static inline bool abstractAccess(ExecState* exec, JSScope* scope, const Identif
         }
 
         
-        WatchpointState state = globalObject->structure()->ensurePropertyReplacementWatchpointSet(exec->vm(), slot.cachedOffset())->state();
+        WatchpointState state = structure->ensurePropertyReplacementWatchpointSet(vm, slot.cachedOffset())->state();
         if (state == IsWatched && getOrPut == Put) {
             // The field exists, but because the replacement watchpoint is still intact. This is
             // kind of dangerous. We have two options:
@@ -181,7 +183,7 @@ static inline bool abstractAccess(ExecState* exec, JSScope* scope, const Identif
             // We go with option (2) here because it seems less evil.
             op = ResolveOp(makeType(GlobalProperty, needsVarInjectionChecks), depth, 0, 0, 0, 0);
         } else
-            op = ResolveOp(makeType(GlobalProperty, needsVarInjectionChecks), depth, globalObject->structure(), 0, 0, slot.cachedOffset());
+            op = ResolveOp(makeType(GlobalProperty, needsVarInjectionChecks), depth, structure, 0, 0, slot.cachedOffset());
         return true;
     }
 
@@ -206,7 +208,7 @@ static inline bool isUnscopable(ExecState* exec, JSScope* scope, JSObject* objec
     if (scope->type() != WithScopeType)
         return false;
 
-    JSValue unscopables = object->get(exec, exec->propertyNames().unscopablesSymbol);
+    JSValue unscopables = object->get(exec, vm.propertyNames->unscopablesSymbol);
     RETURN_IF_EXCEPTION(throwScope, false);
     if (!unscopables.isObject())
         return false;
@@ -216,7 +218,8 @@ static inline bool isUnscopable(ExecState* exec, JSScope* scope, JSObject* objec
     return blocked.toBoolean(exec);
 }
 
-JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const Identifier& ident)
+template<typename ReturnPredicateFunctor, typename SkipPredicateFunctor>
+ALWAYS_INLINE JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const Identifier& ident, ReturnPredicateFunctor returnPredicate, SkipPredicateFunctor skipPredicate)
 {
     VM& vm = exec->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
@@ -243,19 +246,65 @@ JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const Identifier& id
             return object;
         }
 
+        if (skipPredicate(scope))
+            continue;
+
         bool hasProperty = object->hasProperty(exec, ident);
         RETURN_IF_EXCEPTION(throwScope, nullptr);
         if (hasProperty) {
             bool unscopable = isUnscopable(exec, scope, object, ident);
-            ASSERT(!throwScope.exception() || !unscopable);
+            EXCEPTION_ASSERT(!throwScope.exception() || !unscopable);
             if (!unscopable)
                 return object;
         }
+
+        if (returnPredicate(scope))
+            return object;
     }
+}
+
+JSValue JSScope::resolveScopeForHoistingFuncDeclInEval(ExecState* exec, JSScope* scope, const Identifier& ident)
+{
+    VM& vm = exec->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+
+    auto returnPredicate = [&] (JSScope* scope) -> bool {
+        return scope->isVarScope();
+    };
+    auto skipPredicate = [&] (JSScope* scope) -> bool {
+        return scope->isWithScope();
+    };
+    JSObject* object = resolve(exec, scope, ident, returnPredicate, skipPredicate);
+    RETURN_IF_EXCEPTION(throwScope, { });
+
+    bool result = false;
+    if (JSScope* scope = jsDynamicCast<JSScope*>(vm, object)) {
+        if (SymbolTable* scopeSymbolTable = scope->symbolTable(vm)) {
+            result = scope->isGlobalObject()
+                ? JSObject::isExtensible(object, exec)
+                : scopeSymbolTable->scopeType() == SymbolTable::ScopeType::VarScope;
+        }
+    }
+
+    return result ? JSValue(object) : jsUndefined();
+}
+
+JSObject* JSScope::resolve(ExecState* exec, JSScope* scope, const Identifier& ident)
+{
+    auto predicate1 = [&] (JSScope*) -> bool {
+        return false;
+    };
+    auto predicate2 = [&] (JSScope*) -> bool {
+        return false;
+    };
+    return resolve(exec, scope, ident, predicate1, predicate2);
 }
 
 ResolveOp JSScope::abstractResolve(ExecState* exec, size_t depthOffset, JSScope* scope, const Identifier& ident, GetOrPut getOrPut, ResolveType unlinkedType, InitializationMode initializationMode)
 {
+    VM& vm = exec->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+
     ResolveOp op(Dynamic, 0, 0, 0, 0, 0);
     if (unlinkedType == Dynamic)
         return op;
@@ -263,7 +312,9 @@ ResolveOp JSScope::abstractResolve(ExecState* exec, size_t depthOffset, JSScope*
     bool needsVarInjectionChecks = JSC::needsVarInjectionChecks(unlinkedType);
     size_t depth = depthOffset;
     for (; scope; scope = scope->next()) {
-        if (abstractAccess(exec, scope, ident, getOrPut, depth, needsVarInjectionChecks, op, initializationMode))
+        bool success = abstractAccess(exec, scope, ident, getOrPut, depth, needsVarInjectionChecks, op, initializationMode);
+        RETURN_IF_EXCEPTION(throwScope, ResolveOp(Dynamic, 0, 0, 0, 0, 0));
+        if (success)
             break;
         ++depth;
     }
@@ -350,12 +401,19 @@ JSScope* JSScope::constantScopeForCodeBlock(ResolveType type, CodeBlock* codeBlo
     return nullptr;
 }
 
-SymbolTable* JSScope::symbolTable()
+SymbolTable* JSScope::symbolTable(VM& vm)
 {
-    if (JSSymbolTableObject* symbolTableObject = jsDynamicCast<JSSymbolTableObject*>(this))
+    if (JSSymbolTableObject* symbolTableObject = jsDynamicCast<JSSymbolTableObject*>(vm, this))
         return symbolTableObject->symbolTable();
 
     return nullptr;
+}
+
+JSValue JSScope::toThis(JSCell*, ExecState* exec, ECMAMode ecmaMode)
+{
+    if (ecmaMode == StrictMode)
+        return jsUndefined();
+    return exec->globalThisValue();
 }
 
 } // namespace JSC

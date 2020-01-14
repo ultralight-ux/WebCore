@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,13 +29,14 @@
 #include "JSCInlines.h"
 #include "TypeError.h"
 #include "TypedArrayController.h"
+#include <wtf/Gigacage.h>
 
 namespace JSC {
 
 const ClassInfo JSArrayBuffer::s_info = {
-    "ArrayBuffer", &Base::s_info, 0, CREATE_METHOD_TABLE(JSArrayBuffer)};
+    "ArrayBuffer", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSArrayBuffer)};
 
-JSArrayBuffer::JSArrayBuffer(VM& vm, Structure* structure, PassRefPtr<ArrayBuffer> arrayBuffer)
+JSArrayBuffer::JSArrayBuffer(VM& vm, Structure* structure, RefPtr<ArrayBuffer>&& arrayBuffer)
     : Base(vm, structure)
     , m_impl(arrayBuffer.get())
 {
@@ -45,17 +46,16 @@ void JSArrayBuffer::finishCreation(VM& vm, JSGlobalObject* globalObject)
 {
     Base::finishCreation(vm);
     // This probably causes GCs in the various VMs to overcount the impact of the array buffer.
-    vm.heap.addReference(this, m_impl);
-    vm.m_typedArrayController->registerWrapper(globalObject, m_impl, this);
+    vm.heap.addReference(this, impl());
+    vm.m_typedArrayController->registerWrapper(globalObject, impl(), this);
 }
 
 JSArrayBuffer* JSArrayBuffer::create(
-    VM& vm, Structure* structure, PassRefPtr<ArrayBuffer> passedBuffer)
+    VM& vm, Structure* structure, RefPtr<ArrayBuffer>&& buffer)
 {
-    RefPtr<ArrayBuffer> buffer = passedBuffer;
     JSArrayBuffer* result =
         new (NotNull, allocateCell<JSArrayBuffer>(vm.heap))
-        JSArrayBuffer(vm, structure, buffer);
+        JSArrayBuffer(vm, structure, WTFMove(buffer));
     result->finishCreation(vm, structure->globalObject());
     return result;
 }
@@ -64,94 +64,25 @@ Structure* JSArrayBuffer::createStructure(
     VM& vm, JSGlobalObject* globalObject, JSValue prototype)
 {
     return Structure::create(
-        vm, globalObject, prototype, TypeInfo(ObjectType, StructureFlags), info(),
+        vm, globalObject, prototype, TypeInfo(ArrayBufferType, StructureFlags), info(),
         NonArray);
 }
 
 bool JSArrayBuffer::isShared() const
 {
-    return m_impl->isShared();
+    return impl()->isShared();
 }
 
 ArrayBufferSharingMode JSArrayBuffer::sharingMode() const
 {
-    return m_impl->sharingMode();
+    return impl()->sharingMode();
 }
 
-size_t JSArrayBuffer::estimatedSize(JSCell* cell)
+size_t JSArrayBuffer::estimatedSize(JSCell* cell, VM& vm)
 {
     JSArrayBuffer* thisObject = jsCast<JSArrayBuffer*>(cell);
     size_t bufferEstimatedSize = thisObject->impl()->gcSizeEstimateInBytes();
-    return Base::estimatedSize(cell) + bufferEstimatedSize;
-}
-
-bool JSArrayBuffer::getOwnPropertySlot(
-    JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot& slot)
-{
-    JSArrayBuffer* thisObject = jsCast<JSArrayBuffer*>(object);
-    
-    if (propertyName == exec->propertyNames().byteLength) {
-        slot.setValue(thisObject, DontDelete | ReadOnly, jsNumber(thisObject->impl()->byteLength()));
-        return true;
-    }
-    
-    return Base::getOwnPropertySlot(thisObject, exec, propertyName, slot);
-}
-
-bool JSArrayBuffer::put(
-    JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value,
-    PutPropertySlot& slot)
-{
-    VM& vm = exec->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-    JSArrayBuffer* thisObject = jsCast<JSArrayBuffer*>(cell);
-
-    if (UNLIKELY(isThisValueAltered(slot, thisObject))) {
-        scope.release();
-        return ordinarySetSlow(exec, thisObject, propertyName, value, slot.thisValue(), slot.isStrictMode());
-    }
-    
-    if (propertyName == vm.propertyNames->byteLength)
-        return typeError(exec, scope, slot.isStrictMode(), ASCIILiteral("Attempting to write to a read-only array buffer property."));
-
-    scope.release();
-    return Base::put(thisObject, exec, propertyName, value, slot);
-}
-
-bool JSArrayBuffer::defineOwnProperty(
-    JSObject* object, ExecState* exec, PropertyName propertyName,
-    const PropertyDescriptor& descriptor, bool shouldThrow)
-{
-    VM& vm = exec->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-    JSArrayBuffer* thisObject = jsCast<JSArrayBuffer*>(object);
-    
-    if (propertyName == vm.propertyNames->byteLength)
-        return typeError(exec, scope, shouldThrow, ASCIILiteral("Attempting to define read-only array buffer property."));
-
-    scope.release();
-    return Base::defineOwnProperty(thisObject, exec, propertyName, descriptor, shouldThrow);
-}
-
-bool JSArrayBuffer::deleteProperty(JSCell* cell, ExecState* exec, PropertyName propertyName)
-{
-    JSArrayBuffer* thisObject = jsCast<JSArrayBuffer*>(cell);
-    
-    if (propertyName == exec->propertyNames().byteLength)
-        return false;
-    
-    return Base::deleteProperty(thisObject, exec, propertyName);
-}
-
-void JSArrayBuffer::getOwnNonIndexPropertyNames(
-    JSObject* object, ExecState* exec, PropertyNameArray& array, EnumerationMode mode)
-{
-    JSArrayBuffer* thisObject = jsCast<JSArrayBuffer*>(object);
-    
-    if (mode.includeDontEnumProperties())
-        array.add(exec->propertyNames().byteLength);
-    
-    Base::getOwnNonIndexPropertyNames(thisObject, exec, array, mode);
+    return Base::estimatedSize(cell, vm) + bufferEstimatedSize;
 }
 
 } // namespace JSC

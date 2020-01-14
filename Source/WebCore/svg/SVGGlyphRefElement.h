@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 Leo Yang <leoyang@webkit.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -27,6 +28,7 @@
 namespace WebCore {
 
 class SVGGlyphRefElement final : public SVGElement, public SVGURIReference {
+    WTF_MAKE_ISO_ALLOCATED(SVGGlyphRefElement);
 public:
     static Ref<SVGGlyphRefElement> create(const QualifiedName&, Document&);
 
@@ -44,17 +46,17 @@ public:
 private:
     SVGGlyphRefElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
-    bool rendererIsNeeded(const RenderStyle&) final { return false; }
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGGlyphRefElement, SVGElement, SVGURIReference>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGGlyphRefElement)
-        DECLARE_ANIMATED_STRING_OVERRIDE(Href, href)
-    END_DECLARE_ANIMATED_PROPERTIES
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    bool rendererIsNeeded(const RenderStyle&) final { return false; }
 
     float m_x { 0 };
     float m_y { 0 };
     float m_dx { 0 };
     float m_dy { 0 };
+    PropertyRegistry m_propertyRegistry { *this };
 };
 
 }

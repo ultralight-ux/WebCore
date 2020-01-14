@@ -39,6 +39,7 @@ namespace WebCore {
 class HTMLSelectElement;
 
 class RenderListBox final : public RenderBlockFlow, public ScrollableArea {
+    WTF_MAKE_ISO_ALLOCATED(RenderListBox);
 public:
     RenderListBox(HTMLSelectElement&, RenderStyle&&);
     virtual ~RenderListBox();
@@ -67,6 +68,8 @@ public:
     bool scrolledToRight() const override;
 
 private:
+    void willBeDestroyed() override;
+
     void element() const = delete;
 
     const char* renderName() const override { return "RenderListBox"; }
@@ -103,17 +106,18 @@ private:
     int scrollTop() const override;
     int scrollWidth() const override;
     int scrollHeight() const override;
-    void setScrollLeft(int) override;
-    void setScrollTop(int) override;
+    void setScrollLeft(int, ScrollType, ScrollClamping) override;
+    void setScrollTop(int, ScrollType, ScrollClamping) override;
 
     bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) override;
 
     // ScrollableArea interface.
-    int scrollSize(ScrollbarOrientation) const override;
-    int scrollOffset(ScrollbarOrientation) const override;
     void setScrollOffset(const ScrollOffset&) override;
+
+    ScrollPosition scrollPosition() const override;
     ScrollPosition minimumScrollPosition() const override;
     ScrollPosition maximumScrollPosition() const override;
+
     void invalidateScrollbarRect(Scrollbar&, const IntRect&) override;
     bool isActive() const override;
     bool isScrollCornerVisible() const override { return false; } // We don't support resize on list boxes yet. If we did these would have to change.
@@ -138,11 +142,11 @@ private:
     bool usesMockScrollAnimator() const override;
     void logMockScrollAnimatorMessage(const String&) const override;
 
-    // NOTE: This should only be called by the overriden setScrollOffset from ScrollableArea.
+    // NOTE: This should only be called by the overridden setScrollOffset from ScrollableArea.
     void scrollTo(int newOffset);
 
-    using PaintFunction = std::function<void(PaintInfo&, const LayoutPoint&, int listItemIndex)>;
-    void paintItem(PaintInfo&, const LayoutPoint&, PaintFunction);
+    using PaintFunction = WTF::Function<void(PaintInfo&, const LayoutPoint&, int listItemIndex)>;
+    void paintItem(PaintInfo&, const LayoutPoint&, const PaintFunction&);
 
     void setHasVerticalScrollbar(bool hasScrollbar);
     Ref<Scrollbar> createScrollbar();
@@ -175,8 +179,8 @@ private:
     int m_optionsWidth;
     int m_indexOffset;
 
-    std::optional<int> m_indexOfFirstVisibleItemInsidePaddingTopArea;
-    std::optional<int> m_indexOfFirstVisibleItemInsidePaddingBottomArea;
+    Optional<int> m_indexOfFirstVisibleItemInsidePaddingTopArea;
+    Optional<int> m_indexOfFirstVisibleItemInsidePaddingBottomArea;
 
     RefPtr<Scrollbar> m_vBar;
 };

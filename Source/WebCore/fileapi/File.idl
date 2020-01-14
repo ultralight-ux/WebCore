@@ -23,7 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-typedef (ArrayBufferView or ArrayBuffer) BufferSource;
 typedef (BufferSource or Blob or USVString) BlobPart;
 
 // FIXME: This should be exposed on Workers as well.
@@ -36,6 +35,9 @@ typedef (BufferSource or Blob or USVString) BlobPart;
 ] interface File : Blob {
     readonly attribute DOMString name;
     readonly attribute long long lastModified;
+
+    // https://wicg.github.io/entries-api/#file-interface
+    [EnabledAtRuntime=DirectoryUpload, ImplementedAs=relativePath] readonly attribute USVString webkitRelativePath;
 };
 
 dictionary FilePropertyBag : BlobPropertyBag {

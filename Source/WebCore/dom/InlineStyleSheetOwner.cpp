@@ -23,8 +23,10 @@
 
 #include "ContentSecurityPolicy.h"
 #include "Element.h"
+#include "Logging.h"
 #include "MediaList.h"
 #include "MediaQueryEvaluator.h"
+#include "MediaQueryParser.h"
 #include "ScriptableDocumentParser.h"
 #include "ShadowRoot.h"
 #include "StyleScope.h"
@@ -48,7 +50,7 @@ static CSSParserContext parserContextForElement(const Element& element)
 {
     auto* shadowRoot = element.containingShadowRoot();
     // User agent shadow trees can't contain document-relative URLs. Use blank URL as base allowing cross-document sharing.
-    auto& baseURL = shadowRoot && shadowRoot->mode() == ShadowRootMode::UserAgent ? blankURL() : element.document().baseURL();
+    auto& baseURL = shadowRoot && shadowRoot->mode() == ShadowRootMode::UserAgent ? WTF::blankURL() : element.document().baseURL();
 
     CSSParserContext result = CSSParserContext { element.document(), baseURL, element.document().characterSetWithUTF8Fallback() };
     if (shadowRoot && shadowRoot->mode() == ShadowRootMode::UserAgent)
@@ -56,7 +58,7 @@ static CSSParserContext parserContextForElement(const Element& element)
     return result;
 }
 
-static std::optional<InlineStyleSheetCacheKey> makeInlineStyleSheetCacheKey(const String& text, const Element& element)
+static Optional<InlineStyleSheetCacheKey> makeInlineStyleSheetCacheKey(const String& text, const Element& element)
 {
     // Only cache for shadow trees. Main document inline stylesheets are generally unique and can't be shared between documents.
     // FIXME: This could be relaxed when a stylesheet does not contain document-relative URLs (or #urls).
@@ -116,14 +118,14 @@ void InlineStyleSheetOwner::childrenChanged(Element& element)
 {
     if (m_isParsingChildren)
         return;
-    if (!element.inDocument())
+    if (!element.isConnected())
         return;
     createSheetFromTextContents(element);
 }
 
 void InlineStyleSheetOwner::finishParsingChildren(Element& element)
 {
-    if (element.inDocument())
+    if (element.isConnected())
         createSheetFromTextContents(element);
     m_isParsingChildren = false;
 }
@@ -140,24 +142,24 @@ void InlineStyleSheetOwner::clearSheet()
     sheet->clearOwnerNode();
 }
 
-inline bool isValidCSSContentType(Element& element, const AtomicString& type)
+inline bool isValidCSSContentType(Element& element, const AtomString& type)
 {
     if (type.isEmpty())
         return true;
     // FIXME: Should MIME types really be case sensitive in XML documents? Doesn't seem like they should,
     // even though other things are case sensitive in that context. MIME types should never be case sensitive.
     // We should verify this and then remove the isHTMLElement check here.
-    static NeverDestroyed<const AtomicString> cssContentType("text/css", AtomicString::ConstructFromLiteral);
+    static NeverDestroyed<const AtomString> cssContentType("text/css", AtomString::ConstructFromLiteral);
     return element.isHTMLElement() ? equalLettersIgnoringASCIICase(type, "text/css") : type == cssContentType;
 }
 
 void InlineStyleSheetOwner::createSheet(Element& element, const String& text)
 {
-    ASSERT(element.inDocument());
+    ASSERT(element.isConnected());
     Document& document = element.document();
     if (m_sheet) {
         if (m_sheet->isLoading() && m_styleScope)
-            m_styleScope->removePendingSheet();
+            m_styleScope->removePendingSheet(element);
         clearSheet();
     }
 
@@ -170,23 +172,25 @@ void InlineStyleSheetOwner::createSheet(Element& element, const String& text)
     if (!contentSecurityPolicy.allowInlineStyle(document.url(), m_startTextPosition.m_line, text, hasKnownNonce))
         return;
 
-    RefPtr<MediaQuerySet> mediaQueries = MediaQuerySet::create(m_media);
+    auto mediaQueries = MediaQuerySet::create(m_media, MediaQueryParserContext(document));
 
-    MediaQueryEvaluator screenEval(ASCIILiteral("screen"), true);
-    MediaQueryEvaluator printEval(ASCIILiteral("print"), true);
-    if (!screenEval.evaluate(*mediaQueries) && !printEval.evaluate(*mediaQueries))
+    MediaQueryEvaluator screenEval("screen"_s, true);
+    MediaQueryEvaluator printEval("print"_s, true);
+    LOG(MediaQueries, "InlineStyleSheetOwner::createSheet evaluating queries");
+    if (!screenEval.evaluate(mediaQueries.get()) && !printEval.evaluate(mediaQueries.get()))
         return;
 
     if (m_styleScope)
-        m_styleScope->addPendingSheet();
+        m_styleScope->addPendingSheet(element);
 
     auto cacheKey = makeInlineStyleSheetCacheKey(text, element);
     if (cacheKey) {
         if (auto* cachedSheet = inlineStyleSheetCache().get(*cacheKey)) {
             ASSERT(cachedSheet->isCacheable());
             m_sheet = CSSStyleSheet::createInline(*cachedSheet, element, m_startTextPosition);
-            m_sheet->setMediaQueries(mediaQueries.releaseNonNull());
-            m_sheet->setTitle(element.title());
+            m_sheet->setMediaQueries(WTFMove(mediaQueries));
+            if (!element.isInShadowTree())
+                m_sheet->setTitle(element.title());
 
             sheetLoaded(element);
             element.notifyLoadedSheetAndAllCriticalSubresources(false);
@@ -199,8 +203,9 @@ void InlineStyleSheetOwner::createSheet(Element& element, const String& text)
     auto contents = StyleSheetContents::create(String(), parserContextForElement(element));
 
     m_sheet = CSSStyleSheet::createInline(contents.get(), element, m_startTextPosition);
-    m_sheet->setMediaQueries(mediaQueries.releaseNonNull());
-    m_sheet->setTitle(element.title());
+    m_sheet->setMediaQueries(WTFMove(mediaQueries));
+    if (!element.isInShadowTree())
+        m_sheet->setTitle(element.title());
 
     contents->parseString(text);
 
@@ -215,8 +220,9 @@ void InlineStyleSheetOwner::createSheet(Element& element, const String& text)
         // Prevent pathological growth.
         const size_t maximumInlineStyleSheetCacheSize = 50;
         if (inlineStyleSheetCache().size() > maximumInlineStyleSheetCacheSize) {
-            inlineStyleSheetCache().begin()->value->removedFromMemoryCache();
-            inlineStyleSheetCache().remove(inlineStyleSheetCache().begin());
+            auto toRemove = inlineStyleSheetCache().random();
+            toRemove->value->removedFromMemoryCache();
+            inlineStyleSheetCache().remove(toRemove);
         }
     }
 }
@@ -228,21 +234,21 @@ bool InlineStyleSheetOwner::isLoading() const
     return m_sheet && m_sheet->isLoading();
 }
 
-bool InlineStyleSheetOwner::sheetLoaded(Element&)
+bool InlineStyleSheetOwner::sheetLoaded(Element& element)
 {
     if (isLoading())
         return false;
 
     if (m_styleScope)
-        m_styleScope->removePendingSheet();
+        m_styleScope->removePendingSheet(element);
 
     return true;
 }
 
-void InlineStyleSheetOwner::startLoadingDynamicSheet(Element&)
+void InlineStyleSheetOwner::startLoadingDynamicSheet(Element& element)
 {
     if (m_styleScope)
-        m_styleScope->addPendingSheet();
+        m_styleScope->addPendingSheet(element);
 }
 
 void InlineStyleSheetOwner::clearCache()

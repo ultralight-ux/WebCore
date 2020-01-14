@@ -42,7 +42,6 @@
 #include "SQLStatementErrorCallback.h"
 #include "SQLTransaction.h"
 #include "SQLTransactionCoordinator.h"
-#include "SQLValue.h"
 #include "SQLiteTransaction.h"
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/WTFString.h>
@@ -354,7 +353,7 @@ SQLTransactionBackend::~SQLTransactionBackend()
 
 void SQLTransactionBackend::doCleanup()
 {
-    ASSERT(currentThread() == m_frontend.database().databaseThread().getThreadID());
+    ASSERT(m_frontend.database().databaseThread().getThread() == &Thread::current());
 
     m_frontend.releaseOriginLockIfNeeded();
 
@@ -466,7 +465,7 @@ void SQLTransactionBackend::computeNextStateAndCleanupIfNeeded()
 
 void SQLTransactionBackend::notifyDatabaseThreadIsShuttingDown()
 {
-    ASSERT(currentThread() == m_frontend.database().databaseThread().getThreadID());
+    ASSERT(m_frontend.database().databaseThread().getThread() == &Thread::current());
 
     // If the transaction is in progress, we should roll it back here, since this
     // is our last opportunity to do something related to this transaction on the

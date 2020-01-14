@@ -25,20 +25,32 @@
 
 #pragma once
 
-#include "JSCell.h"
+#include "JSCast.h"
+#include "JSPromise.h"
 #include "Structure.h"
 
 namespace JSC {
 
+class Exception;
 class JSPromiseConstructor;
+class JSFunction;
 
 class JSPromiseDeferred : public JSCell {
 public:
     typedef JSCell Base;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
 
-    JS_EXPORT_PRIVATE static JSPromiseDeferred* create(ExecState*, JSGlobalObject*);
-    JS_EXPORT_PRIVATE static JSPromiseDeferred* create(VM&, JSObject* promise, JSValue resolve, JSValue reject);
+    struct DeferredData {
+        WTF_FORBID_HEAP_ALLOCATION;
+    public:
+        JSPromise* promise { nullptr };
+        JSFunction* resolve { nullptr };
+        JSFunction* reject { nullptr };
+    };
+    static DeferredData createDeferredData(ExecState*, JSGlobalObject*, JSPromiseConstructor*);
+
+    JS_EXPORT_PRIVATE static JSPromiseDeferred* tryCreate(ExecState*, JSGlobalObject*);
+    JS_EXPORT_PRIVATE static JSPromiseDeferred* create(VM&, JSPromise*, JSFunction* resolve, JSFunction* reject);
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
@@ -47,26 +59,33 @@ public:
 
     DECLARE_EXPORT_INFO;
 
-    JSObject* promise() const { return m_promise.get(); }
-    JSValue resolve() const { return m_resolve.get(); }
-    JSValue reject() const { return m_reject.get(); }
+    JSPromise* promise() const { return m_promise.get(); }
+    JSFunction* resolve() const { return m_resolve.get(); }
+    JSFunction* reject() const { return m_reject.get(); }
 
     JS_EXPORT_PRIVATE void resolve(ExecState*, JSValue);
     JS_EXPORT_PRIVATE void reject(ExecState*, JSValue);
+    JS_EXPORT_PRIVATE void reject(ExecState*, Exception*);
+
+#ifndef NDEBUG
+    void promiseAsyncPending() { m_promiseIsAsyncPending = true; }
+#endif
 
 protected:
     JSPromiseDeferred(VM&, Structure*);
-    void finishCreation(VM&, JSObject*, JSValue, JSValue);
+    void finishCreation(VM&, JSPromise*, JSFunction* resolve, JSFunction* reject);
     static void visitChildren(JSCell*, SlotVisitor&);
 
 private:
     JSPromiseDeferred(VM&);
 
-    WriteBarrier<JSObject> m_promise;
-    WriteBarrier<Unknown> m_resolve;
-    WriteBarrier<Unknown> m_reject;
-};
+#ifndef NDEBUG
+    bool m_promiseIsAsyncPending { false };
+#endif
 
-JSValue newPromiseCapability(ExecState*, JSGlobalObject*, JSPromiseConstructor*);
+    WriteBarrier<JSPromise> m_promise;
+    WriteBarrier<JSFunction> m_resolve;
+    WriteBarrier<JSFunction> m_reject;
+};
 
 } // namespace JSC

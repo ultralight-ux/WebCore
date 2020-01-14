@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2007 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -23,28 +24,23 @@
 
 #include "SVGNames.h"
 #include "SVGStringList.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
-// Animated property definitions
-DEFINE_ANIMATED_BOOLEAN(SVGViewElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
-DEFINE_ANIMATED_RECT(SVGViewElement, SVGNames::viewBoxAttr, ViewBox, viewBox)
-DEFINE_ANIMATED_PRESERVEASPECTRATIO(SVGViewElement, SVGNames::preserveAspectRatioAttr, PreserveAspectRatio, preserveAspectRatio)
-
-BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGViewElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(viewBox)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(preserveAspectRatio)
-    REGISTER_PARENT_ANIMATED_PROPERTIES(SVGElement)
-END_REGISTER_ANIMATED_PROPERTIES
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGViewElement);
 
 inline SVGViewElement::SVGViewElement(const QualifiedName& tagName, Document& document)
     : SVGElement(tagName, document)
-    , m_zoomAndPan(SVGZoomAndPanMagnify)
-    , m_viewTarget(SVGNames::viewTargetAttr)
+    , SVGExternalResourcesRequired(this)
+    , SVGFitToViewBox(this)
 {
     ASSERT(hasTagName(SVGNames::viewTag));
-    registerAnimatedPropertiesForSVGViewElement();
+    
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        PropertyRegistry::registerProperty<SVGNames::viewTargetAttr, &SVGViewElement::m_viewTarget>();
+    });
 }
 
 Ref<SVGViewElement> SVGViewElement::create(const QualifiedName& tagName, Document& document)
@@ -52,20 +48,17 @@ Ref<SVGViewElement> SVGViewElement::create(const QualifiedName& tagName, Documen
     return adoptRef(*new SVGViewElement(tagName, document));
 }
 
-Ref<SVGStringList> SVGViewElement::viewTarget()
+void SVGViewElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
-    return SVGStringList::create(*this, m_viewTarget);
-}
+    if (name == SVGNames::viewTargetAttr) {
+        m_viewTarget->reset(value);
+        return;
+    }
 
-void SVGViewElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
-{
-    if (name == SVGNames::viewTargetAttr)
-        m_viewTarget.reset(value);
-
-    SVGExternalResourcesRequired::parseAttribute(name, value);
-    SVGFitToViewBox::parseAttribute(this, name, value);
-    SVGZoomAndPan::parseAttribute(*this, name, value);
     SVGElement::parseAttribute(name, value);
+    SVGExternalResourcesRequired::parseAttribute(name, value);
+    SVGFitToViewBox::parseAttribute(name, value);
+    SVGZoomAndPan::parseAttribute(name, value);
 }
 
 }

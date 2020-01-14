@@ -27,25 +27,13 @@
 
 #include "LayoutRect.h"
 #include "RenderBlockFlow.h"
+#include "SimpleLineLayout.h"
 #include "SimpleLineLayoutFlowContents.h"
-#include "SimpleLineLayoutFunctions.h"
+#include <wtf/IteratorRange.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 namespace SimpleLineLayout {
-
-template <class IteratorType>
-class Range {
-public:
-    Range(IteratorType begin, IteratorType end) : m_begin(begin), m_end(end) { }
-
-    IteratorType begin() const { return m_begin; }
-    IteratorType end() const { return m_end; }
-
-private:
-    IteratorType m_begin;
-    IteratorType m_end;
-};
 
 class RunResolver {
     WTF_MAKE_FAST_ALLOCATED;
@@ -56,20 +44,32 @@ public:
     public:
         explicit Run(const Iterator&);
 
+        // Position relative to the enclosing flow block.
         unsigned start() const;
         unsigned end() const;
+        // Position relative to the actual renderer.
+        unsigned localStart() const;
+        unsigned localEnd() const;
+
+        float logicalLeft() const;
+        float logicalRight() const;
 
         FloatRect rect() const;
         float expansion() const;
         ExpansionBehavior expansionBehavior() const;
         int baselinePosition() const;
         StringView text() const;
+        String textWithHyphen() const;
+        const RenderObject& renderer() const;
         bool isEndOfLine() const;
+        bool hasHyphen() const { return m_iterator.simpleRun().hasHyphen; }
+        const SimpleLineLayout::Run& simpleRun() const { return m_iterator.simpleRun(); }
 
         unsigned lineIndex() const;
 
     private:
         float computeBaselinePosition() const;
+        void constructStringForHyphenIfNeeded();
 
         const Iterator& m_iterator;
     };
@@ -105,15 +105,20 @@ public:
     RunResolver(const RenderBlockFlow&, const Layout&);
 
     const RenderBlockFlow& flow() const { return m_flowRenderer; }
+    const FlowContents& flowContents() const { return m_flowContents; }
     Iterator begin() const;
     Iterator end() const;
 
-    Range<Iterator> rangeForRect(const LayoutRect&) const;
-    Range<Iterator> rangeForRenderer(const RenderObject&) const;
+    WTF::IteratorRange<Iterator> rangeForRect(const LayoutRect&) const;
+    WTF::IteratorRange<Iterator> rangeForRenderer(const RenderObject&) const;
+    WTF::IteratorRange<Iterator> rangeForLine(unsigned lineIndex) const;
+    Iterator runForPoint(const LayoutPoint&) const;
+    WTF::IteratorRange<Iterator> rangeForRendererWithOffsets(const RenderObject&, unsigned start, unsigned end) const;
 
 private:
     enum class IndexType { First, Last };
     unsigned lineIndexForHeight(LayoutUnit, IndexType) const;
+    unsigned adjustLineIndexForStruts(LayoutUnit, IndexType, unsigned lineIndexCandidate) const;
 
     const RenderBlockFlow& m_flowRenderer;
     const Layout& m_layout;
@@ -129,8 +134,6 @@ private:
 
 class LineResolver {
 public:
-    class Iterator;
-
     class Iterator {
     public:
         explicit Iterator(RunResolver::Iterator);
@@ -139,26 +142,27 @@ public:
         bool operator==(const Iterator&) const;
         bool operator!=(const Iterator&) const;
 
-        const FloatRect operator*() const;
+        FloatRect operator*() const;
+        // FIXME: Use a list to support multiple renderers per line.
+        const RenderObject& renderer() const;
 
     private:
         RunResolver::Iterator m_runIterator;
-        LayoutRect m_rect;
     };
 
-    LineResolver(const RenderBlockFlow&, const Layout&);
+    LineResolver(const RunResolver&);
 
     Iterator begin() const;
     Iterator end() const;
 
-    Range<Iterator> rangeForRect(const LayoutRect&) const;
+    WTF::IteratorRange<Iterator> rangeForRect(const LayoutRect&) const;
 
 private:
-    RunResolver m_runResolver;
+    const RunResolver& m_runResolver;
 };
 
 RunResolver runResolver(const RenderBlockFlow&, const Layout&);
-LineResolver lineResolver(const RenderBlockFlow&, const Layout&);
+LineResolver lineResolver(const RunResolver&);
 
 inline unsigned RunResolver::Run::start() const
 {
@@ -168,6 +172,16 @@ inline unsigned RunResolver::Run::start() const
 inline unsigned RunResolver::Run::end() const
 {
     return m_iterator.simpleRun().end;
+}
+
+inline float RunResolver::Run::logicalLeft() const
+{
+    return m_iterator.simpleRun().logicalLeft;
+}
+
+inline float RunResolver::Run::logicalRight() const
+{
+    return m_iterator.simpleRun().logicalRight;
 }
 
 inline float RunResolver::Run::expansion() const
@@ -203,7 +217,15 @@ inline RunResolver::Iterator& RunResolver::Iterator::operator++()
 inline float RunResolver::Run::computeBaselinePosition() const
 {
     auto& resolver = m_iterator.resolver();
-    return resolver.m_lineHeight * lineIndex() + resolver.m_baseline + resolver.m_borderAndPaddingBefore;
+    auto offset = resolver.m_borderAndPaddingBefore + resolver.m_lineHeight * lineIndex();
+    if (!resolver.m_layout.hasLineStruts())
+        return offset + resolver.m_baseline;
+    for (auto& strutEntry : resolver.m_layout.struts()) {
+        if (strutEntry.lineBreak > lineIndex())
+            break;
+        offset += strutEntry.offset;
+    }
+    return offset + resolver.m_baseline;
 }
 
 inline RunResolver::Iterator& RunResolver::Iterator::operator--()
@@ -271,10 +293,10 @@ inline LineResolver::Iterator LineResolver::end() const
     return Iterator(m_runResolver.end());
 }
 
-inline Range<LineResolver::Iterator> LineResolver::rangeForRect(const LayoutRect& rect) const
+inline WTF::IteratorRange<LineResolver::Iterator> LineResolver::rangeForRect(const LayoutRect& rect) const
 {
     auto runRange = m_runResolver.rangeForRect(rect);
-    return Range<Iterator>(Iterator(runRange.begin()), Iterator(runRange.end()));
+    return { Iterator(runRange.begin()), Iterator(runRange.end()) };
 }
 
 inline RunResolver runResolver(const RenderBlockFlow& flow, const Layout& layout)
@@ -282,9 +304,9 @@ inline RunResolver runResolver(const RenderBlockFlow& flow, const Layout& layout
     return RunResolver(flow, layout);
 }
 
-inline LineResolver lineResolver(const RenderBlockFlow& flow, const Layout& layout)
+inline LineResolver lineResolver(const RunResolver& runResolver)
 {
-    return LineResolver(flow, layout);
+    return LineResolver(runResolver);
 }
 
 }

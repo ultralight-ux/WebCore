@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011, 2013 Google Inc.  All rights reserved.
- * Copyright (C) 2011, 2012, 2013, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -30,10 +30,9 @@
  */
 
 #include "config.h"
+#include "TextTrackCue.h"
 
 #if ENABLE(VIDEO_TRACK)
-
-#include "TextTrackCue.h"
 
 #include "CSSPropertyNames.h"
 #include "CSSValueKeywords.h"
@@ -45,24 +44,25 @@
 #include "TextTrackCueList.h"
 #include "VTTCue.h"
 #include "VTTRegionList.h"
+#include <wtf/HexNumber.h>
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/MathExtras.h>
+#include <wtf/NeverDestroyed.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebCore {
 
-static const int invalidCueIndex = -1;
+WTF_MAKE_ISO_ALLOCATED_IMPL(TextTrackCue);
 
-const AtomicString& TextTrackCue::cueShadowPseudoId()
+const AtomString& TextTrackCue::cueShadowPseudoId()
 {
-    static NeverDestroyed<const AtomicString> cue("cue", AtomicString::ConstructFromLiteral);
+    static NeverDestroyed<const AtomString> cue("cue", AtomString::ConstructFromLiteral);
     return cue;
 }
 
 TextTrackCue::TextTrackCue(ScriptExecutionContext& context, const MediaTime& start, const MediaTime& end)
     : m_startTime(start)
     , m_endTime(end)
-    , m_cueIndex(invalidCueIndex)
-    , m_processingCueChanges(0)
-    , m_track(0)
     , m_scriptExecutionContext(context)
     , m_isActive(false)
     , m_pauseOnExit(false)
@@ -149,30 +149,13 @@ void TextTrackCue::setPauseOnExit(bool value)
     m_pauseOnExit = value;
 }
 
-int TextTrackCue::cueIndex()
-{
-    if (m_cueIndex == invalidCueIndex) {
-        ASSERT(track());
-        ASSERT(track()->cues());
-        if (TextTrackCueList* cueList = track()->cues())
-            m_cueIndex = cueList->getCueIndex(this);
-    }
-
-    return m_cueIndex;
-}
-
-void TextTrackCue::invalidateCueIndex()
-{
-    m_cueIndex = invalidCueIndex;
-}
-
-bool TextTrackCue::dispatchEvent(Event& event)
+void TextTrackCue::dispatchEvent(Event& event)
 {
     // When a TextTrack's mode is disabled: no cues are active, no events fired.
     if (!track() || track()->mode() == TextTrack::Mode::Disabled)
-        return false;
+        return;
 
-    return EventTarget::dispatchEvent(event);
+    EventTarget::dispatchEvent(event);
 }
 
 bool TextTrackCue::isActive()
@@ -236,6 +219,43 @@ bool TextTrackCue::doesExtendCue(const TextTrackCue& cue) const
         return false;
     
     return true;
+}
+
+void TextTrackCue::toJSON(JSON::Object& value) const
+{
+    ASCIILiteral type = "Generic"_s;
+    switch (cueType()) {
+    case TextTrackCue::Generic:
+        type = "Generic"_s;
+        break;
+    case TextTrackCue::WebVTT:
+        type = "WebVTT"_s;
+        break;
+    case TextTrackCue::Data:
+        type = "Data"_s;
+        break;
+    }
+
+    value.setString("type"_s, type);
+    value.setDouble("startTime"_s, startTime());
+    value.setDouble("endTime"_s, endTime());
+}
+
+String TextTrackCue::toJSONString() const
+{
+    auto object = JSON::Object::create();
+
+    toJSON(object.get());
+
+    return object->toJSONString();
+}
+
+String TextTrackCue::debugString() const
+{
+    String text;
+    if (isRenderable())
+        text = toVTTCue(this)->text();
+    return makeString("0x", hex(reinterpret_cast<uintptr_t>(this)), " id=", id(), " interval=", startTime(), "-->", endTime(), " cue=", text, ')');
 }
 
 } // namespace WebCore

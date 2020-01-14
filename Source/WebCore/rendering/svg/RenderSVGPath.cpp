@@ -30,17 +30,18 @@
 
 #include "SVGPathElement.h"
 #include "SVGSubpathData.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderSVGPath);
 
 RenderSVGPath::RenderSVGPath(SVGGraphicsElement& element, RenderStyle&& style)
     : RenderSVGShape(element, WTFMove(style))
 {
 }
 
-RenderSVGPath::~RenderSVGPath()
-{
-}
+RenderSVGPath::~RenderSVGPath() = default;
 
 void RenderSVGPath::updateShapeFromElement()
 {
@@ -66,7 +67,7 @@ FloatRect RenderSVGPath::calculateUpdatedStrokeBoundingBox() const
 
 static void useStrokeStyleToFill(GraphicsContext& context)
 {
-    if (Gradient* gradient = context.strokeGradient())
+    if (auto gradient = context.strokeGradient())
         context.setFillGradient(*gradient);
     else if (Pattern* pattern = context.strokePattern())
         context.setFillPattern(*pattern);
@@ -76,7 +77,7 @@ static void useStrokeStyleToFill(GraphicsContext& context)
 
 void RenderSVGPath::strokeShape(GraphicsContext& context) const
 {
-    if (!style().svgStyle().hasVisibleStroke())
+    if (!style().hasVisibleStroke())
         return;
 
     RenderSVGShape::strokeShape(context);
@@ -100,20 +101,19 @@ void RenderSVGPath::strokeShape(GraphicsContext& context) const
     }
 }
 
-bool RenderSVGPath::shapeDependentStrokeContains(const FloatPoint& point)
+bool RenderSVGPath::shapeDependentStrokeContains(const FloatPoint& point, PointCoordinateSpace pointCoordinateSpace)
 {
-    if (RenderSVGShape::shapeDependentStrokeContains(point))
+    if (RenderSVGShape::shapeDependentStrokeContains(point, pointCoordinateSpace))
         return true;
 
-    const SVGRenderStyle& svgStyle = style().svgStyle();
     for (size_t i = 0; i < m_zeroLengthLinecapLocations.size(); ++i) {
-        ASSERT(svgStyle.hasStroke());
+        ASSERT(style().svgStyle().hasStroke());
         float strokeWidth = this->strokeWidth();
-        if (svgStyle.capStyle() == SquareCap) {
+        if (style().capStyle() == SquareCap) {
             if (zeroLengthSubpathRect(m_zeroLengthLinecapLocations[i], strokeWidth).contains(point))
                 return true;
         } else {
-            ASSERT(svgStyle.capStyle() == RoundCap);
+            ASSERT(style().capStyle() == RoundCap);
             FloatPoint radiusVector(point.x() - m_zeroLengthLinecapLocations[i].x(), point.y() -  m_zeroLengthLinecapLocations[i].y());
             if (radiusVector.lengthSquared() < strokeWidth * strokeWidth * .25f)
                 return true;
@@ -126,7 +126,7 @@ bool RenderSVGPath::shouldStrokeZeroLengthSubpath() const
 {
     // Spec(11.4): Any zero length subpath shall not be stroked if the "stroke-linecap" property has a value of butt
     // but shall be stroked if the "stroke-linecap" property has a value of round or square
-    return style().svgStyle().hasStroke() && style().svgStyle().capStyle() != ButtCap;
+    return style().svgStyle().hasStroke() && style().capStyle() != ButtCap;
 }
 
 Path* RenderSVGPath::zeroLengthLinecapPath(const FloatPoint& linecapPosition) const
@@ -134,7 +134,7 @@ Path* RenderSVGPath::zeroLengthLinecapPath(const FloatPoint& linecapPosition) co
     static NeverDestroyed<Path> tempPath;
 
     tempPath.get().clear();
-    if (style().svgStyle().capStyle() == SquareCap)
+    if (style().capStyle() == SquareCap)
         tempPath.get().addRect(zeroLengthSubpathRect(linecapPosition, this->strokeWidth()));
     else
         tempPath.get().addEllipse(zeroLengthSubpathRect(linecapPosition, this->strokeWidth()));

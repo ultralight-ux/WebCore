@@ -25,9 +25,9 @@
 
 #pragma once
 
-#include <heap/Weak.h>
-#include <runtime/JSCJSValueInlines.h>
-#include <runtime/JSObject.h>
+#include <JavaScriptCore/JSCJSValueInlines.h>
+#include <JavaScriptCore/JSObject.h>
+#include <JavaScriptCore/Weak.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -35,9 +35,9 @@ namespace WebCore {
 
 class GCObservation final : public RefCounted<GCObservation> {
 public:
-    template<typename... Args> static RefPtr<GCObservation> create(Args&&... args)
+    template<typename... Args> static Ref<GCObservation> create(Args&&... args)
     {
-        return adoptRef(new GCObservation(std::forward<Args>(args)...));
+        return adoptRef(*new GCObservation(std::forward<Args>(args)...));
     }
 
     bool wasCollected() const { return !m_observedValue; }

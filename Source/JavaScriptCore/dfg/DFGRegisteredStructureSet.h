@@ -27,6 +27,7 @@
 
 #if ENABLE(DFG_JIT)
 
+#include "ArrayProfile.h"
 #include "DFGRegisteredStructure.h"
 #include "StructureSet.h"
 #include <wtf/TinyPtrSet.h>
@@ -48,11 +49,6 @@ public:
     
     RegisteredStructureSet(RegisteredStructure structure)
         : TinyPtrSet(structure)
-    {
-    }
-    
-    ALWAYS_INLINE RegisteredStructureSet(const RegisteredStructureSet& other)
-        : TinyPtrSet(other)
     {
     }
     

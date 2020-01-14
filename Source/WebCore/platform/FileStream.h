@@ -28,32 +28,26 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef FileStream_h
-#define FileStream_h
+#pragma once
 
-#include "FileSystem.h"
+#include <wtf/FileSystem.h>
 
 namespace WebCore {
 
-class URL;
-
 // All methods are synchronous.
 class FileStream {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     FileStream();
     ~FileStream();
 
     // Gets the size of a file. Also validates if the file has been changed or not if the expected modification time is provided, i.e. non-zero.
     // Returns total number of bytes if successful. -1 otherwise.
-    long long getSize(const String& path, double expectedModificationTime);
+    long long getSize(const String& path, Optional<WallTime> expectedModificationTime);
 
     // Opens a file for reading. The reading starts at the specified offset and lasts till the specified length.
     // Returns true on success. False otherwise.
     bool openForRead(const String& path, long long offset, long long length);
-
-    // Opens a file for writing.
-    // Returns true on success. False otherwise.
-    bool openForWrite(const String& path);
 
     // Closes the file.
     void close();
@@ -63,20 +57,10 @@ public:
     // If 0 is returned, it means that the reading is completed.
     int read(char* buffer, int length);
 
-    // Writes a blob to the file.
-    // Returns number of bytes being written on success. -1 otherwise.
-    int write(const URL& blobURL, long long position, int length);
-
-    // Truncates the file to the specified position.
-    // Returns true on success. False otherwise.
-    bool truncate(long long position);
-
 private:
-    PlatformFileHandle m_handle;
+    FileSystem::PlatformFileHandle m_handle;
     long long m_bytesProcessed;
     long long m_totalBytesToRead;
 };
 
 } // namespace WebCore
-
-#endif // FileStream_h

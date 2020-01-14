@@ -30,14 +30,16 @@
  */
 
 #include "config.h"
-#if ENABLE(DETAILS_ELEMENT)
 #include "DetailsMarkerControl.h"
 
 #include "HTMLNames.h"
 #include "HTMLSummaryElement.h"
 #include "RenderDetailsMarker.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(DetailsMarkerControl);
 
 Ref<DetailsMarkerControl> DetailsMarkerControl::create(Document& document)
 {
@@ -47,7 +49,7 @@ Ref<DetailsMarkerControl> DetailsMarkerControl::create(Document& document)
 DetailsMarkerControl::DetailsMarkerControl(Document& document)
     : HTMLDivElement(HTMLNames::divTag, document)
 {
-    setPseudo(AtomicString("-webkit-details-marker", AtomicString::ConstructFromLiteral));
+    setPseudo(AtomString("-webkit-details-marker", AtomString::ConstructFromLiteral));
 }
 
 RenderPtr<RenderElement> DetailsMarkerControl::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
@@ -61,5 +63,3 @@ bool DetailsMarkerControl::rendererIsNeeded(const RenderStyle& style)
 }
 
 }
-
-#endif

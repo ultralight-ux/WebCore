@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 1999-2002 Harri Porten (porten@kde.org)
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2003-2009, 2012, 2016 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2018 Apple Inc. All rights reserved.
  *  Copyright (C) 2007 Cameron Zwarich (cwzwarich@uwaterloo.ca)
  *  Copyright (C) 2007 Maks Orlovich
  *
@@ -26,49 +26,42 @@
 #include "JSGlobalObjectFunctions.h"
 
 #include "CallFrame.h"
+#include "CatchScope.h"
 #include "EvalExecutable.h"
+#include "Exception.h"
 #include "IndirectEvalExecutable.h"
 #include "Interpreter.h"
+#include "IntlDateTimeFormat.h"
+#include "IntlObject.h"
+#include "JSCInlines.h"
 #include "JSFunction.h"
 #include "JSGlobalObject.h"
+#include "JSInternalPromise.h"
+#include "JSModuleLoader.h"
+#include "JSPromise.h"
+#include "JSPromiseDeferred.h"
 #include "JSString.h"
-#include "JSStringBuilder.h"
 #include "Lexer.h"
 #include "LiteralParser.h"
 #include "Nodes.h"
+#include "ObjectConstructor.h"
 #include "JSCInlines.h"
+#include "ParseInt.h"
 #include "Parser.h"
 #include "StackVisitor.h"
-#include <wtf/dtoa.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unicode/utf8.h>
 #include <wtf/ASCIICType.h>
 #include <wtf/Assertions.h>
 #include <wtf/HexNumber.h>
 #include <wtf/MathExtras.h>
-#include <wtf/StringExtras.h>
+#include <wtf/dtoa.h>
 #include <wtf/text/StringBuilder.h>
-#include <wtf/unicode/UTF8.h>
-
-using namespace WTF;
-using namespace Unicode;
 
 namespace JSC {
 
-static const char* const ObjectProtoCalledOnNullOrUndefinedError = "Object.prototype.__proto__ called on null or undefined";
-
-template<typename CallbackWhenNoException>
-static ALWAYS_INLINE typename std::result_of<CallbackWhenNoException(StringView)>::type toStringView(ExecState* exec, JSValue value, CallbackWhenNoException callback)
-{
-    VM& vm = exec->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-    JSString* string = value.toStringOrNull(exec);
-    if (UNLIKELY(!string))
-        return { };
-    auto viewWithString = string->viewWithUnderlyingString(*exec);
-    RETURN_IF_EXCEPTION(scope, { });
-    return callback(viewWithString.view);
-}
+const ASCIILiteral ObjectProtoCalledOnNullOrUndefinedError { "Object.prototype.__proto__ called on null or undefined"_s };
 
 template<unsigned charactersCount>
 static Bitmap<256> makeCharacterBitmap(const char (&characters)[charactersCount])
@@ -90,10 +83,10 @@ static JSValue encode(ExecState* exec, const Bitmap<256>& doNotEscape, const Cha
     // https://tc39.github.io/ecma262/#sec-encode
 
     auto throwException = [&scope, exec] {
-        return JSC::throwException(exec, scope, createURIError(exec, ASCIILiteral("String contained an illegal UTF-16 sequence.")));
+        return JSC::throwException(exec, scope, createURIError(exec, "String contained an illegal UTF-16 sequence."_s));
     };
 
-    StringBuilder builder;
+    StringBuilder builder(StringBuilder::OverflowHandler::RecordOverflow);
     builder.reserveCapacity(length);
 
     // 4. Repeat
@@ -152,11 +145,13 @@ static JSValue encode(ExecState* exec, const Bitmap<256>& doNotEscape, const Cha
             // 4-d-vi-1. Let jOctet be the value at index j within Octets.
             // 4-d-vi-2. Let S be a String containing three code units "%XY" where XY are two uppercase hexadecimal digits encoding the value of jOctet.
             // 4-d-vi-3. Let R be a new String value computed by concatenating the previous value of R and S.
-            builder.append(static_cast<LChar>('%'));
+            builder.append('%');
             appendByteAsHex(utf8OctetsBuffer[index], builder);
         }
     }
 
+    if (UNLIKELY(builder.hasOverflowed()))
+        return throwOutOfMemoryError(exec, scope);
     return jsString(exec, builder.toString());
 }
 
@@ -176,7 +171,7 @@ static JSValue decode(ExecState* exec, const CharType* characters, int length, c
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSStringBuilder builder;
+    StringBuilder builder(StringBuilder::OverflowHandler::RecordOverflow);
     int k = 0;
     UChar u = 0;
     while (k < length) {
@@ -186,10 +181,15 @@ static JSValue decode(ExecState* exec, const CharType* characters, int length, c
             int charLen = 0;
             if (k <= length - 3 && isASCIIHexDigit(p[1]) && isASCIIHexDigit(p[2])) {
                 const char b0 = Lexer<CharType>::convertHex(p[1], p[2]);
-                const int sequenceLen = UTF8SequenceLength(b0);
-                if (sequenceLen && k <= length - sequenceLen * 3) {
+                const int sequenceLen = 1 + U8_COUNT_TRAIL_BYTES(b0);
+                if (k <= length - sequenceLen * 3) {
                     charLen = sequenceLen * 3;
-                    char sequence[5];
+#if U_ICU_VERSION_MAJOR_NUM >= 60
+                    uint8_t sequence[U8_MAX_LENGTH];
+#else
+                    // In pre-60 ICU, U8_COUNT_TRAIL_BYTES returns 0..5
+                    uint8_t sequence[6];
+#endif
                     sequence[0] = b0;
                     for (int i = 1; i < sequenceLen; ++i) {
                         const CharType* q = p + i * 3;
@@ -201,22 +201,26 @@ static JSValue decode(ExecState* exec, const CharType* characters, int length, c
                         }
                     }
                     if (charLen != 0) {
-                        sequence[sequenceLen] = 0;
-                        const int character = decodeUTF8Sequence(sequence);
-                        if (character < 0 || character >= 0x110000)
+                        UChar32 character;
+                        int32_t offset = 0;
+                        U8_NEXT(sequence, offset, sequenceLen, character);
+                        if (character < 0)
                             charLen = 0;
-                        else if (character >= 0x10000) {
+                        else if (!U_IS_BMP(character)) {
                             // Convert to surrogate pair.
-                            builder.append(static_cast<UChar>(0xD800 | ((character - 0x10000) >> 10)));
-                            u = static_cast<UChar>(0xDC00 | ((character - 0x10000) & 0x3FF));
-                        } else
+                            ASSERT(U_IS_SUPPLEMENTARY(character));
+                            builder.append(U16_LEAD(character));
+                            u = U16_TRAIL(character);
+                        } else {
+                            ASSERT(!U_IS_SURROGATE(character));
                             u = static_cast<UChar>(character);
+                        }
                     }
                 }
             }
             if (charLen == 0) {
                 if (strict)
-                    return throwException(exec, scope, createURIError(exec, ASCIILiteral("URI error")));
+                    return throwException(exec, scope, createURIError(exec, "URI error"_s));
                 // The only case where we don't use "strict" mode is the "unescape" function.
                 // For that, it's good to support the wonky "%u" syntax for compatibility with WinIE.
                 if (k <= length - 6 && p[1] == 'u'
@@ -235,7 +239,9 @@ static JSValue decode(ExecState* exec, const CharType* characters, int length, c
         k++;
         builder.append(c);
     }
-    return builder.build(exec);
+    if (UNLIKELY(builder.hasOverflowed()))
+        return throwOutOfMemoryError(exec, scope);
+    RELEASE_AND_RETURN(scope, jsString(&vm, builder.toString()));
 }
 
 static JSValue decode(ExecState* exec, const Bitmap<256>& doNotUnescape, bool strict)
@@ -245,185 +251,6 @@ static JSValue decode(ExecState* exec, const Bitmap<256>& doNotUnescape, bool st
             return decode(exec, view.characters8(), view.length(), doNotUnescape, strict);
         return decode(exec, view.characters16(), view.length(), doNotUnescape, strict);
     });
-}
-
-bool isStrWhiteSpace(UChar c)
-{
-    switch (c) {
-        // ECMA-262-5th 7.2 & 7.3
-        case 0x0009:
-        case 0x000A:
-        case 0x000B:
-        case 0x000C:
-        case 0x000D:
-        case 0x0020:
-        case 0x00A0:
-        case 0x180E: // This character used to be in Zs category before Unicode 6.3, and EcmaScript says that we should keep treating it as such.
-        case 0x2028:
-        case 0x2029:
-        case 0xFEFF:
-            return true;
-        default:
-            return c > 0xFF && u_charType(c) == U_SPACE_SEPARATOR;
-    }
-}
-
-static int parseDigit(unsigned short c, int radix)
-{
-    int digit = -1;
-
-    if (isASCIIDigit(c))
-        digit = c - '0';
-    else if (isASCIIUpper(c))
-        digit = c - 'A' + 10;
-    else if (isASCIILower(c))
-        digit = c - 'a' + 10;
-
-    if (digit >= radix)
-        return -1;
-    return digit;
-}
-
-double parseIntOverflow(const LChar* s, unsigned length, int radix)
-{
-    double number = 0.0;
-    double radixMultiplier = 1.0;
-
-    for (const LChar* p = s + length - 1; p >= s; p--) {
-        if (radixMultiplier == std::numeric_limits<double>::infinity()) {
-            if (*p != '0') {
-                number = std::numeric_limits<double>::infinity();
-                break;
-            }
-        } else {
-            int digit = parseDigit(*p, radix);
-            number += digit * radixMultiplier;
-        }
-
-        radixMultiplier *= radix;
-    }
-
-    return number;
-}
-
-static double parseIntOverflow(const UChar* s, unsigned length, int radix)
-{
-    double number = 0.0;
-    double radixMultiplier = 1.0;
-
-    for (const UChar* p = s + length - 1; p >= s; p--) {
-        if (radixMultiplier == std::numeric_limits<double>::infinity()) {
-            if (*p != '0') {
-                number = std::numeric_limits<double>::infinity();
-                break;
-            }
-        } else {
-            int digit = parseDigit(*p, radix);
-            number += digit * radixMultiplier;
-        }
-
-        radixMultiplier *= radix;
-    }
-
-    return number;
-}
-
-static double parseIntOverflow(StringView string, int radix)
-{
-    if (string.is8Bit())
-        return parseIntOverflow(string.characters8(), string.length(), radix);
-    return parseIntOverflow(string.characters16(), string.length(), radix);
-}
-
-// ES5.1 15.1.2.2
-template <typename CharType>
-ALWAYS_INLINE
-static double parseInt(StringView s, const CharType* data, int radix)
-{
-    // 1. Let inputString be ToString(string).
-    // 2. Let S be a newly created substring of inputString consisting of the first character that is not a
-    //    StrWhiteSpaceChar and all characters following that character. (In other words, remove leading white
-    //    space.) If inputString does not contain any such characters, let S be the empty string.
-    int length = s.length();
-    int p = 0;
-    while (p < length && isStrWhiteSpace(data[p]))
-        ++p;
-
-    // 3. Let sign be 1.
-    // 4. If S is not empty and the first character of S is a minus sign -, let sign be -1.
-    // 5. If S is not empty and the first character of S is a plus sign + or a minus sign -, then remove the first character from S.
-    double sign = 1;
-    if (p < length) {
-        if (data[p] == '+')
-            ++p;
-        else if (data[p] == '-') {
-            sign = -1;
-            ++p;
-        }
-    }
-
-    // 6. Let R = ToInt32(radix).
-    // 7. Let stripPrefix be true.
-    // 8. If R != 0,then
-    //   b. If R != 16, let stripPrefix be false.
-    // 9. Else, R == 0
-    //   a. LetR = 10.
-    // 10. If stripPrefix is true, then
-    //   a. If the length of S is at least 2 and the first two characters of S are either ―0x or ―0X,
-    //      then remove the first two characters from S and let R = 16.
-    // 11. If S contains any character that is not a radix-R digit, then let Z be the substring of S
-    //     consisting of all characters before the first such character; otherwise, let Z be S.
-    if ((radix == 0 || radix == 16) && length - p >= 2 && data[p] == '0' && (data[p + 1] == 'x' || data[p + 1] == 'X')) {
-        radix = 16;
-        p += 2;
-    } else if (radix == 0)
-        radix = 10;
-
-    // 8.a If R < 2 or R > 36, then return NaN.
-    if (radix < 2 || radix > 36)
-        return PNaN;
-
-    // 13. Let mathInt be the mathematical integer value that is represented by Z in radix-R notation, using the letters
-    //     A-Z and a-z for digits with values 10 through 35. (However, if R is 10 and Z contains more than 20 significant
-    //     digits, every significant digit after the 20th may be replaced by a 0 digit, at the option of the implementation;
-    //     and if R is not 2, 4, 8, 10, 16, or 32, then mathInt may be an implementation-dependent approximation to the
-    //     mathematical integer value that is represented by Z in radix-R notation.)
-    // 14. Let number be the Number value for mathInt.
-    int firstDigitPosition = p;
-    bool sawDigit = false;
-    double number = 0;
-    while (p < length) {
-        int digit = parseDigit(data[p], radix);
-        if (digit == -1)
-            break;
-        sawDigit = true;
-        number *= radix;
-        number += digit;
-        ++p;
-    }
-
-    // 12. If Z is empty, return NaN.
-    if (!sawDigit)
-        return PNaN;
-
-    // Alternate code path for certain large numbers.
-    if (number >= mantissaOverflowLowerBound) {
-        if (radix == 10) {
-            size_t parsedLength;
-            number = parseDouble(s.substring(firstDigitPosition, p - firstDigitPosition), parsedLength);
-        } else if (radix == 2 || radix == 4 || radix == 8 || radix == 16 || radix == 32)
-            number = parseIntOverflow(s.substring(firstDigitPosition, p - firstDigitPosition), radix);
-    }
-
-    // 15. Return sign x number.
-    return sign * number;
-}
-
-static double parseInt(StringView s, int radix)
-{
-    if (s.is8Bit())
-        return parseInt(s, s.characters8(), radix);
-    return parseInt(s, s.characters16(), radix);
 }
 
 static const int SizeOfInfinity = 8;
@@ -482,7 +309,7 @@ static double jsOctalIntegerLiteral(const CharType*& data, const CharType* end)
     }
     if (number >= mantissaOverflowLowerBound)
         number = parseIntOverflow(firstDigitPosition, data - firstDigitPosition, 8);
-    
+
     return number;
 }
 
@@ -559,11 +386,11 @@ static double toDouble(const CharType* characters, unsigned size)
         if (!isStrWhiteSpace(*characters))
             break;
     }
-    
+
     // Empty string.
     if (characters == endCharacters)
         return 0.0;
-    
+
     double number;
     if (characters[0] == '0' && characters + 2 < endCharacters) {
         if ((characters[1] | 0x20) == 'x' && isASCIIHexDigit(characters[2]))
@@ -576,7 +403,7 @@ static double toDouble(const CharType* characters, unsigned size)
             number = jsStrDecimalLiteral(characters, endCharacters);
     } else
         number = jsStrDecimalLiteral(characters, endCharacters);
-    
+
     // Allow trailing white space.
     for (; characters < endCharacters; ++characters) {
         if (!isStrWhiteSpace(*characters))
@@ -584,7 +411,7 @@ static double toDouble(const CharType* characters, unsigned size)
     }
     if (characters != endCharacters)
         return PNaN;
-    
+
     return number;
 }
 
@@ -669,22 +496,26 @@ EncodedJSValue JSC_HOST_CALL globalFuncEval(ExecState* exec)
     String s = asString(x)->value(exec);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
+    JSValue parsedObject;
     if (s.is8Bit()) {
         LiteralParser<LChar> preparser(exec, s.characters8(), s.length(), NonStrictJSON);
-        if (JSValue parsedObject = preparser.tryLiteralParse())
-            return JSValue::encode(parsedObject);
+        parsedObject = preparser.tryLiteralParse();
     } else {
         LiteralParser<UChar> preparser(exec, s.characters16(), s.length(), NonStrictJSON);
-        if (JSValue parsedObject = preparser.tryLiteralParse())
-            return JSValue::encode(parsedObject);        
+        parsedObject = preparser.tryLiteralParse();
     }
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    if (parsedObject)
+        return JSValue::encode(parsedObject);
 
-    JSGlobalObject* calleeGlobalObject = exec->jsCallee()->globalObject();
-    EvalExecutable* eval = IndirectEvalExecutable::create(exec, makeSource(s), false, DerivedContextType::None, false, EvalContextType::None);
+    SourceOrigin sourceOrigin = exec->callerSourceOrigin();
+    JSGlobalObject* calleeGlobalObject = exec->jsCallee()->globalObject(vm);
+    EvalExecutable* eval = IndirectEvalExecutable::create(exec, makeSource(s, sourceOrigin), false, DerivedContextType::None, false, EvalContextType::None);
+    EXCEPTION_ASSERT(!!scope.exception() == !eval);
     if (!eval)
-        return JSValue::encode(jsUndefined());
+        return encodedJSValue();
 
-    return JSValue::encode(exec->interpreter()->execute(eval, exec, calleeGlobalObject->globalThis(), calleeGlobalObject->globalScope()));
+    RELEASE_AND_RETURN(scope, JSValue::encode(vm.interpreter->execute(eval, exec, calleeGlobalObject->globalThis(), calleeGlobalObject->globalScope())));
 }
 
 EncodedJSValue JSC_HOST_CALL globalFuncParseInt(ExecState* exec)
@@ -717,7 +548,7 @@ EncodedJSValue JSC_HOST_CALL globalFuncParseInt(ExecState* exec)
 
 EncodedJSValue JSC_HOST_CALL globalFuncParseFloat(ExecState* exec)
 {
-    auto viewWithString = exec->argument(0).toString(exec)->viewWithUnderlyingString(*exec);
+    auto viewWithString = exec->argument(0).toString(exec)->viewWithUnderlyingString(exec);
     return JSValue::encode(jsNumber(parseFloat(viewWithString.view)));
 }
 
@@ -770,7 +601,7 @@ EncodedJSValue JSC_HOST_CALL globalFuncEscape(ExecState* exec)
     );
 
     return JSValue::encode(toStringView(exec, exec->argument(0), [&] (StringView view) {
-        JSStringBuilder builder;
+        StringBuilder builder;
         if (view.is8Bit()) {
             const LChar* c = view.characters8();
             for (unsigned k = 0; k < view.length(); k++, c++) {
@@ -778,53 +609,55 @@ EncodedJSValue JSC_HOST_CALL globalFuncEscape(ExecState* exec)
                 if (doNotEscape.get(static_cast<LChar>(u)))
                     builder.append(*c);
                 else {
-                    builder.append(static_cast<LChar>('%'));
-                    appendByteAsHex(static_cast<LChar>(u), builder);
+                    builder.append('%');
+                    appendByteAsHex(u, builder);
                 }
             }
-
-            return builder.build(exec);
+            return jsString(exec, builder.toString());
         }
 
         const UChar* c = view.characters16();
         for (unsigned k = 0; k < view.length(); k++, c++) {
             UChar u = c[0];
             if (u >= doNotEscape.size()) {
-                builder.append(static_cast<LChar>('%'));
-                builder.append(static_cast<LChar>('u'));
+                builder.appendLiteral("%u");
                 appendByteAsHex(u >> 8, builder);
                 appendByteAsHex(u & 0xFF, builder);
             } else if (doNotEscape.get(static_cast<LChar>(u)))
                 builder.append(*c);
             else {
-                builder.append(static_cast<LChar>('%'));
+                builder.append('%');
                 appendByteAsHex(u, builder);
             }
         }
 
-        return builder.build(exec);
+        return jsString(exec, builder.toString());
     }));
 }
 
 EncodedJSValue JSC_HOST_CALL globalFuncUnescape(ExecState* exec)
 {
     return JSValue::encode(toStringView(exec, exec->argument(0), [&] (StringView view) {
-        StringBuilder builder;
+        // We use int for k and length intentionally since we would like to evaluate
+        // the condition `k <= length -6` even if length is less than 6.
         int k = 0;
-        int len = view.length();
+        int length = view.length();
+
+        StringBuilder builder;
+        builder.reserveCapacity(length);
 
         if (view.is8Bit()) {
             const LChar* characters = view.characters8();
             LChar convertedLChar;
-            while (k < len) {
+            while (k < length) {
                 const LChar* c = characters + k;
-                if (c[0] == '%' && k <= len - 6 && c[1] == 'u') {
+                if (c[0] == '%' && k <= length - 6 && c[1] == 'u') {
                     if (isASCIIHexDigit(c[2]) && isASCIIHexDigit(c[3]) && isASCIIHexDigit(c[4]) && isASCIIHexDigit(c[5])) {
                         builder.append(Lexer<UChar>::convertUnicode(c[2], c[3], c[4], c[5]));
                         k += 6;
                         continue;
                     }
-                } else if (c[0] == '%' && k <= len - 3 && isASCIIHexDigit(c[1]) && isASCIIHexDigit(c[2])) {
+                } else if (c[0] == '%' && k <= length - 3 && isASCIIHexDigit(c[1]) && isASCIIHexDigit(c[2])) {
                     convertedLChar = LChar(Lexer<LChar>::convertHex(c[1], c[2]));
                     c = &convertedLChar;
                     k += 2;
@@ -835,16 +668,16 @@ EncodedJSValue JSC_HOST_CALL globalFuncUnescape(ExecState* exec)
         } else {
             const UChar* characters = view.characters16();
 
-            while (k < len) {
+            while (k < length) {
                 const UChar* c = characters + k;
                 UChar convertedUChar;
-                if (c[0] == '%' && k <= len - 6 && c[1] == 'u') {
+                if (c[0] == '%' && k <= length - 6 && c[1] == 'u') {
                     if (isASCIIHexDigit(c[2]) && isASCIIHexDigit(c[3]) && isASCIIHexDigit(c[4]) && isASCIIHexDigit(c[5])) {
                         convertedUChar = Lexer<UChar>::convertUnicode(c[2], c[3], c[4], c[5]);
                         c = &convertedUChar;
                         k += 5;
                     }
-                } else if (c[0] == '%' && k <= len - 3 && isASCIIHexDigit(c[1]) && isASCIIHexDigit(c[2])) {
+                } else if (c[0] == '%' && k <= length - 3 && isASCIIHexDigit(c[1]) && isASCIIHexDigit(c[2])) {
                     convertedUChar = UChar(Lexer<UChar>::convertHex(c[1], c[2]));
                     c = &convertedUChar;
                     k += 2;
@@ -864,12 +697,19 @@ EncodedJSValue JSC_HOST_CALL globalFuncThrowTypeError(ExecState* exec)
     auto scope = DECLARE_THROW_SCOPE(vm);
     return throwVMTypeError(exec, scope);
 }
-    
+
 EncodedJSValue JSC_HOST_CALL globalFuncThrowTypeErrorArgumentsCalleeAndCaller(ExecState* exec)
 {
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     return throwVMTypeError(exec, scope, "'arguments', 'callee', and 'caller' cannot be accessed in this context.");
+}
+
+EncodedJSValue JSC_HOST_CALL globalFuncMakeTypeError(ExecState* exec)
+{
+    JSGlobalObject* globalObject = exec->lexicalGlobalObject();
+    Structure* errorStructure = globalObject->errorStructure(ErrorType::TypeError);
+    return JSValue::encode(ErrorInstance::create(exec, errorStructure, exec->argument(0), nullptr, TypeNothing, false));
 }
 
 EncodedJSValue JSC_HOST_CALL globalFuncProtoGetter(ExecState* exec)
@@ -879,17 +719,18 @@ EncodedJSValue JSC_HOST_CALL globalFuncProtoGetter(ExecState* exec)
 
     JSValue thisValue = exec->thisValue().toThis(exec, StrictMode);
     if (thisValue.isUndefinedOrNull())
-        return throwVMTypeError(exec, scope, ASCIILiteral(ObjectProtoCalledOnNullOrUndefinedError));
+        return throwVMError(exec, scope, createNotAnObjectError(exec, thisValue));
 
-    JSObject* thisObject = jsDynamicCast<JSObject*>(thisValue);
+    JSObject* thisObject = jsDynamicCast<JSObject*>(vm, thisValue);
     if (!thisObject) {
-        JSObject* prototype = exec->thisValue().synthesizePrototype(exec);
+        JSObject* prototype = thisValue.synthesizePrototype(exec);
+        EXCEPTION_ASSERT(!!scope.exception() == !prototype);
         if (UNLIKELY(!prototype))
             return JSValue::encode(JSValue());
         return JSValue::encode(prototype);
     }
 
-    return JSValue::encode(thisObject->getPrototype(vm, exec));
+    RELEASE_AND_RETURN(scope, JSValue::encode(thisObject->getPrototype(vm, exec)));
 }
 
 EncodedJSValue JSC_HOST_CALL globalFuncProtoSetter(ExecState* exec)
@@ -899,11 +740,11 @@ EncodedJSValue JSC_HOST_CALL globalFuncProtoSetter(ExecState* exec)
 
     JSValue thisValue = exec->thisValue().toThis(exec, StrictMode);
     if (thisValue.isUndefinedOrNull())
-        return throwVMTypeError(exec, scope, ASCIILiteral(ObjectProtoCalledOnNullOrUndefinedError));
+        return throwVMTypeError(exec, scope, ObjectProtoCalledOnNullOrUndefinedError);
 
     JSValue value = exec->argument(0);
 
-    JSObject* thisObject = jsDynamicCast<JSObject*>(thisValue);
+    JSObject* thisObject = jsDynamicCast<JSObject*>(vm, thisValue);
 
     // Setting __proto__ of a primitive should have no effect.
     if (!thisObject)
@@ -913,15 +754,121 @@ EncodedJSValue JSC_HOST_CALL globalFuncProtoSetter(ExecState* exec)
     if (!value.isObject() && !value.isNull())
         return JSValue::encode(jsUndefined());
 
+    scope.release();
     bool shouldThrowIfCantSet = true;
     thisObject->setPrototype(vm, exec, value, shouldThrowIfCantSet);
     return JSValue::encode(jsUndefined());
 }
-    
+
+EncodedJSValue JSC_HOST_CALL globalFuncHostPromiseRejectionTracker(ExecState* exec)
+{
+    JSGlobalObject* globalObject = exec->lexicalGlobalObject();
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (!globalObject->globalObjectMethodTable()->promiseRejectionTracker)
+        return JSValue::encode(jsUndefined());
+
+    JSPromise* promise = jsCast<JSPromise*>(exec->argument(0));
+    JSValue operationValue = exec->argument(1);
+
+    ASSERT(operationValue.isNumber());
+    auto operation = static_cast<JSPromiseRejectionOperation>(operationValue.toUInt32(exec));
+    ASSERT(operation == JSPromiseRejectionOperation::Reject || operation == JSPromiseRejectionOperation::Handle);
+    scope.assertNoException();
+
+    globalObject->globalObjectMethodTable()->promiseRejectionTracker(globalObject, exec, promise, operation);
+    RETURN_IF_EXCEPTION(scope, { });
+
+    return JSValue::encode(jsUndefined());
+}
+
 EncodedJSValue JSC_HOST_CALL globalFuncBuiltinLog(ExecState* exec)
 {
     dataLog(exec->argument(0).toWTFString(exec), "\n");
     return JSValue::encode(jsUndefined());
 }
+
+EncodedJSValue JSC_HOST_CALL globalFuncBuiltinDescribe(ExecState* exec)
+{
+    return JSValue::encode(jsString(exec, toString(exec->argument(0))));
+}
+
+EncodedJSValue JSC_HOST_CALL globalFuncImportModule(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+
+    auto* globalObject = exec->lexicalGlobalObject();
+
+    auto* promise = JSPromiseDeferred::tryCreate(exec, globalObject);
+    RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
+
+    auto catchScope = DECLARE_CATCH_SCOPE(vm);
+    auto reject = [&] (JSValue rejectionReason) {
+        catchScope.clearException();
+        promise->reject(exec, rejectionReason);
+        catchScope.clearException();
+        return JSValue::encode(promise->promise());
+    };
+
+    auto sourceOrigin = exec->callerSourceOrigin();
+    RELEASE_ASSERT(exec->argumentCount() == 1);
+    auto* specifier = exec->uncheckedArgument(0).toString(exec);
+    if (Exception* exception = catchScope.exception())
+        return reject(exception->value());
+
+    // We always specify parameters as undefined. Once dynamic import() starts accepting fetching parameters,
+    // we should retrieve this from the arguments.
+    JSValue parameters = jsUndefined();
+    auto* internalPromise = globalObject->moduleLoader()->importModule(exec, specifier, parameters, sourceOrigin);
+    if (Exception* exception = catchScope.exception())
+        return reject(exception->value());
+    promise->resolve(exec, internalPromise);
+
+    catchScope.clearException();
+    return JSValue::encode(promise->promise());
+}
+
+EncodedJSValue JSC_HOST_CALL globalFuncPropertyIsEnumerable(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    RELEASE_ASSERT(exec->argumentCount() == 2);
+    JSObject* object = jsCast<JSObject*>(exec->uncheckedArgument(0));
+    auto propertyName = exec->uncheckedArgument(1).toPropertyKey(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+
+    scope.release();
+    PropertyDescriptor descriptor;
+    bool enumerable = object->getOwnPropertyDescriptor(exec, propertyName, descriptor) && descriptor.enumerable();
+    return JSValue::encode(jsBoolean(enumerable));
+}
+
+EncodedJSValue JSC_HOST_CALL globalFuncOwnKeys(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSObject* object = exec->argument(0).toObject(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    RELEASE_AND_RETURN(scope, JSValue::encode(ownPropertyKeys(exec, object, PropertyNameMode::StringsAndSymbols, DontEnumPropertiesMode::Include)));
+}
+
+#if ENABLE(INTL)
+EncodedJSValue JSC_HOST_CALL globalFuncDateTimeFormat(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSGlobalObject* globalObject = exec->lexicalGlobalObject();
+    IntlDateTimeFormat* dateTimeFormat = IntlDateTimeFormat::create(vm, globalObject->dateTimeFormatStructure());
+    dateTimeFormat->initializeDateTimeFormat(*exec, exec->argument(0), exec->argument(1));
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    double value = exec->argument(2).toNumber(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    RELEASE_AND_RETURN(scope, JSValue::encode(dateTimeFormat->format(*exec, value)));
+}
+#endif
 
 } // namespace JSC

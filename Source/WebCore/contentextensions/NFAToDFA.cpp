@@ -41,9 +41,9 @@ namespace WebCore {
 
 namespace ContentExtensions {
 
-typedef MutableRange<char, NFANodeIndexSet> NFANodeRange;
-typedef MutableRangeList<char, NFANodeIndexSet> NFANodeRangeList;
-typedef MutableRangeList<char, NFANodeIndexSet, 128> PreallocatedNFANodeRangeList;
+typedef MutableRange<signed char, NFANodeIndexSet> NFANodeRange;
+typedef MutableRangeList<signed char, NFANodeIndexSet> NFANodeRangeList;
+typedef MutableRangeList<signed char, NFANodeIndexSet, 128> PreallocatedNFANodeRangeList;
 typedef Vector<uint32_t, 0, ContentExtensionsOverflowHandler> UniqueNodeList;
 typedef Vector<UniqueNodeList, 0, ContentExtensionsOverflowHandler> NFANodeClosures;
 
@@ -269,33 +269,6 @@ struct NodeIdSetToUniqueNodeIdSetTranslator {
 
         ASSERT(location.impl());
     }
-};
-
-class SetTransitions {
-public:
-    NodeIdSet& operator[](unsigned index)
-    {
-        ASSERT(index < size());
-        return m_targets[index];
-    }
-
-    unsigned size() const
-    {
-        return WTF_ARRAY_LENGTH(m_targets);
-    }
-
-    NodeIdSet* begin()
-    {
-        return m_targets;
-    }
-
-    NodeIdSet* end()
-    {
-        return m_targets + size();
-    }
-
-private:
-    NodeIdSet m_targets[128];
 };
 
 struct DataConverterWithEpsilonClosure {

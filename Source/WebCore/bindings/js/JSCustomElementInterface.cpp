@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 Google Inc. All rights reserved.
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,49 +31,48 @@
 #include "DOMWrapperWorld.h"
 #include "HTMLUnknownElement.h"
 #include "JSDOMBinding.h"
-#include "JSDOMGlobalObject.h"
+#include "JSDOMConvertNullable.h"
+#include "JSDOMConvertStrings.h"
+#include "JSDOMWindow.h"
 #include "JSElement.h"
+#include "JSExecState.h"
+#include "JSExecStateInstrumentation.h"
 #include "JSHTMLElement.h"
-#include "JSMainThreadExecState.h"
-#include "JSMainThreadExecStateInstrumentation.h"
 #include "ScriptExecutionContext.h"
-#include <heap/WeakInlines.h>
-#include <runtime/JSLock.h>
-
-using namespace JSC;
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/WeakInlines.h>
 
 namespace WebCore {
+using namespace JSC;
 
 JSCustomElementInterface::JSCustomElementInterface(const QualifiedName& name, JSObject* constructor, JSDOMGlobalObject* globalObject)
     : ActiveDOMCallback(globalObject->scriptExecutionContext())
     , m_name(name)
     , m_constructor(constructor)
-    , m_isolatedWorld(&globalObject->world())
+    , m_isolatedWorld(globalObject->world())
 {
 }
 
-JSCustomElementInterface::~JSCustomElementInterface()
-{
-}
+JSCustomElementInterface::~JSCustomElementInterface() = default;
 
-static RefPtr<Element> constructCustomElementSynchronously(Document&, VM&, ExecState&, JSObject* constructor, const AtomicString& localName);
+static RefPtr<Element> constructCustomElementSynchronously(Document&, VM&, ExecState&, JSObject* constructor, const AtomString& localName);
 
-Ref<Element> JSCustomElementInterface::constructElementWithFallback(Document& document, const AtomicString& localName)
+Ref<Element> JSCustomElementInterface::constructElementWithFallback(Document& document, const AtomString& localName)
 {
     if (auto element = tryToConstructCustomElement(document, localName))
         return element.releaseNonNull();
 
-    auto element = HTMLUnknownElement::create(QualifiedName(nullAtom, localName, HTMLNames::xhtmlNamespaceURI), document);
+    auto element = HTMLUnknownElement::create(QualifiedName(nullAtom(), localName, HTMLNames::xhtmlNamespaceURI), document);
     element->setIsCustomElementUpgradeCandidate();
     element->setIsFailedCustomElement(*this);
 
-    return WTFMove(element);
+    return element;
 }
 
 Ref<Element> JSCustomElementInterface::constructElementWithFallback(Document& document, const QualifiedName& name)
 {
     if (auto element = tryToConstructCustomElement(document, name.localName())) {
-        if (name.prefix() != nullAtom)
+        if (!name.prefix().isNull())
             element->setPrefix(name.prefix());
         return element.releaseNonNull();
     }
@@ -82,10 +81,10 @@ Ref<Element> JSCustomElementInterface::constructElementWithFallback(Document& do
     element->setIsCustomElementUpgradeCandidate();
     element->setIsFailedCustomElement(*this);
 
-    return WTFMove(element);
+    return element;
 }
 
-RefPtr<Element> JSCustomElementInterface::tryToConstructCustomElement(Document& document, const AtomicString& localName)
+RefPtr<Element> JSCustomElementInterface::tryToConstructCustomElement(Document& document, const AtomString& localName)
 {
     if (!canInvokeCallback())
         return nullptr;
@@ -102,7 +101,7 @@ RefPtr<Element> JSCustomElementInterface::tryToConstructCustomElement(Document& 
     ASSERT(&document == scriptExecutionContext());
     auto& state = *document.execState();
     auto element = constructCustomElementSynchronously(document, vm, state, m_constructor.get(), localName);
-    ASSERT(!!scope.exception() == !element);
+    EXCEPTION_ASSERT(!!scope.exception() == !element);
     if (!element) {
         auto* exception = scope.exception();
         scope.clearException();
@@ -115,48 +114,49 @@ RefPtr<Element> JSCustomElementInterface::tryToConstructCustomElement(Document& 
 
 // https://dom.spec.whatwg.org/#concept-create-element
 // 6. 1. If the synchronous custom elements flag is set
-static RefPtr<Element> constructCustomElementSynchronously(Document& document, VM& vm, ExecState& state, JSObject* constructor, const AtomicString& localName)
+static RefPtr<Element> constructCustomElementSynchronously(Document& document, VM& vm, ExecState& state, JSObject* constructor, const AtomString& localName)
 {
     auto scope = DECLARE_THROW_SCOPE(vm);
     ConstructData constructData;
-    ConstructType constructType = constructor->methodTable()->getConstructData(constructor, constructData);
+    ConstructType constructType = constructor->methodTable(vm)->getConstructData(constructor, constructData);
     if (constructType == ConstructType::None) {
         ASSERT_NOT_REACHED();
         return nullptr;
     }
 
-    InspectorInstrumentationCookie cookie = JSMainThreadExecState::instrumentFunctionConstruct(&document, constructType, constructData);
+    InspectorInstrumentationCookie cookie = JSExecState::instrumentFunctionConstruct(&document, constructType, constructData);
     MarkedArgumentBuffer args;
+    ASSERT(!args.hasOverflowed());
     JSValue newElement = construct(&state, constructor, constructType, constructData, args);
     InspectorInstrumentation::didCallFunction(cookie, &document);
     RETURN_IF_EXCEPTION(scope, nullptr);
 
     ASSERT(!newElement.isEmpty());
-    HTMLElement* wrappedElement = JSHTMLElement::toWrapped(newElement);
+    HTMLElement* wrappedElement = JSHTMLElement::toWrapped(vm, newElement);
     if (!wrappedElement) {
-        throwTypeError(&state, scope, ASCIILiteral("The result of constructing a custom element must be a HTMLElement"));
+        throwTypeError(&state, scope, "The result of constructing a custom element must be a HTMLElement"_s);
         return nullptr;
     }
 
     if (wrappedElement->hasAttributes()) {
-        throwNotSupportedError(state, scope, ASCIILiteral("A newly constructed custom element must not have attributes"));
+        throwNotSupportedError(state, scope, "A newly constructed custom element must not have attributes"_s);
         return nullptr;
     }
     if (wrappedElement->hasChildNodes()) {
-        throwNotSupportedError(state, scope, ASCIILiteral("A newly constructed custom element must not have child nodes"));
+        throwNotSupportedError(state, scope, "A newly constructed custom element must not have child nodes"_s);
         return nullptr;
     }
     if (wrappedElement->parentNode()) {
-        throwNotSupportedError(state, scope, ASCIILiteral("A newly constructed custom element must not have a parent node"));
+        throwNotSupportedError(state, scope, "A newly constructed custom element must not have a parent node"_s);
         return nullptr;
     }
     if (&wrappedElement->document() != &document) {
-        throwNotSupportedError(state, scope, ASCIILiteral("A newly constructed custom element belongs to a wrong docuemnt"));
+        throwNotSupportedError(state, scope, "A newly constructed custom element belongs to a wrong document"_s);
         return nullptr;
     }
     ASSERT(wrappedElement->namespaceURI() == HTMLNames::xhtmlNamespaceURI);
     if (wrappedElement->localName() != localName) {
-        throwNotSupportedError(state, scope, ASCIILiteral("A newly constructed custom element belongs to a wrong docuemnt"));
+        throwNotSupportedError(state, scope, "A newly constructed custom element has incorrect local name"_s);
         return nullptr;
     }
 
@@ -178,16 +178,16 @@ void JSCustomElementInterface::upgradeElement(Element& element)
     if (!m_constructor)
         return;
 
-    ScriptExecutionContext* context = scriptExecutionContext();
+    auto* context = scriptExecutionContext();
     if (!context)
         return;
-    ASSERT(context->isDocument());
-    JSDOMGlobalObject* globalObject = toJSDOMGlobalObject(context, *m_isolatedWorld);
+    auto* globalObject = toJSDOMWindow(downcast<Document>(*context).frame(), m_isolatedWorld);
+    if (!globalObject)
+        return;
     ExecState* state = globalObject->globalExec();
-    RETURN_IF_EXCEPTION(scope, void());
 
     ConstructData constructData;
-    ConstructType constructType = m_constructor->methodTable()->getConstructData(m_constructor.get(), constructData);
+    ConstructType constructType = m_constructor->methodTable(vm)->getConstructData(m_constructor.get(), constructData);
     if (constructType == ConstructType::None) {
         ASSERT_NOT_REACHED();
         return;
@@ -198,7 +198,8 @@ void JSCustomElementInterface::upgradeElement(Element& element)
     m_constructionStack.append(&element);
 
     MarkedArgumentBuffer args;
-    InspectorInstrumentationCookie cookie = JSMainThreadExecState::instrumentFunctionConstruct(context, constructType, constructData);
+    ASSERT(!args.hasOverflowed());
+    InspectorInstrumentationCookie cookie = JSExecState::instrumentFunctionConstruct(context, constructType, constructData);
     JSValue returnedElement = construct(state, m_constructor.get(), constructType, constructData, args);
     InspectorInstrumentation::didCallFunction(cookie, context);
 
@@ -210,10 +211,10 @@ void JSCustomElementInterface::upgradeElement(Element& element)
         return;
     }
 
-    Element* wrappedElement = JSElement::toWrapped(returnedElement);
+    Element* wrappedElement = JSElement::toWrapped(vm, returnedElement);
     if (!wrappedElement || wrappedElement != &element) {
         element.setIsFailedCustomElement(*this);
-        reportException(state, createDOMException(state, INVALID_STATE_ERR, "Custom element constructor failed to upgrade an element"));
+        reportException(state, createDOMException(state, TypeError, "Custom element constructor returned a wrong element"));
         return;
     }
     element.setIsDefinedCustomElement(*this);
@@ -229,26 +230,28 @@ void JSCustomElementInterface::invokeCallback(Element& element, JSObject* callba
         return;
 
     Ref<JSCustomElementInterface> protectedThis(*this);
-    JSLockHolder lock(m_isolatedWorld->vm());
+    VM& vm = m_isolatedWorld->vm();
+    JSLockHolder lock(vm);
 
-    ASSERT(context);
-    ASSERT(context->isDocument());
-    JSDOMGlobalObject* globalObject = toJSDOMGlobalObject(context, *m_isolatedWorld);
+    auto* globalObject = toJSDOMWindow(downcast<Document>(*context).frame(), m_isolatedWorld);
+    if (!globalObject)
+        return;
     ExecState* state = globalObject->globalExec();
 
     JSObject* jsElement = asObject(toJS(state, globalObject, element));
 
     CallData callData;
-    CallType callType = callback->methodTable()->getCallData(callback, callData);
+    CallType callType = callback->methodTable(vm)->getCallData(callback, callData);
     ASSERT(callType != CallType::None);
 
     MarkedArgumentBuffer args;
     addArguments(state, globalObject, args);
+    RELEASE_ASSERT(!args.hasOverflowed());
 
-    InspectorInstrumentationCookie cookie = JSMainThreadExecState::instrumentFunctionCall(context, callType, callData);
+    InspectorInstrumentationCookie cookie = JSExecState::instrumentFunctionCall(context, callType, callData);
 
     NakedPtr<JSC::Exception> exception;
-    JSMainThreadExecState::call(state, callback, callType, callData, jsElement, args, exception);
+    JSExecState::call(state, callback, callType, callData, jsElement, args, exception);
 
     InspectorInstrumentation::didCallFunction(cookie, context);
 
@@ -297,7 +300,7 @@ void JSCustomElementInterface::setAttributeChangedCallback(JSC::JSObject* callba
         m_observedAttributes.add(name);
 }
 
-void JSCustomElementInterface::invokeAttributeChangedCallback(Element& element, const QualifiedName& attributeName, const AtomicString& oldValue, const AtomicString& newValue)
+void JSCustomElementInterface::invokeAttributeChangedCallback(Element& element, const QualifiedName& attributeName, const AtomString& oldValue, const AtomString& newValue)
 {
     invokeCallback(element, m_attributeChangedCallback.get(), [&](ExecState* state, JSDOMGlobalObject*, MarkedArgumentBuffer& args) {
         args.append(toJS<IDLDOMString>(*state, attributeName.localName()));

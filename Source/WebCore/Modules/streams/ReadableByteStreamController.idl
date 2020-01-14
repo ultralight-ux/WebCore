@@ -29,15 +29,15 @@
 
 [
     Conditional=STREAMS_API,
-    CustomConstructor(ReadableStream stream, any underlyingByteSource, unsigned long highWaterMark),
+    Constructor(ReadableStream stream, any underlyingByteSource, unsigned long highWaterMark),
     Exposed=(Window,Worker),
     JSBuiltin,
-    NoInterfaceObject
+    PrivateIdentifier
 ] interface ReadableByteStreamController {
     [NotEnumerable] void enqueue(optional any chunk);
     [NotEnumerable] void close();
     [NotEnumerable] void error(optional any error);
 
-    //FIXME: Add byobRequest when implemented.
+    [NotEnumerable] readonly attribute ReadableStreamBYOBRequest byobRequest;
     [NotEnumerable] readonly attribute double desiredSize;
 };

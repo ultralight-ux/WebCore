@@ -101,7 +101,7 @@ SQLiteIDBCursor::~SQLiteIDBCursor()
         m_transaction->closeCursor(*this);
 }
 
-void SQLiteIDBCursor::currentData(IDBGetResult& result)
+void SQLiteIDBCursor::currentData(IDBGetResult& result, const Optional<IDBKeyPath>& keyPath)
 {
     ASSERT(!m_fetchedRecords.isEmpty());
 
@@ -112,7 +112,7 @@ void SQLiteIDBCursor::currentData(IDBGetResult& result)
         return;
     }
 
-    result = { currentRecord.record.key, currentRecord.record.primaryKey, currentRecord.record.value ? *currentRecord.record.value : IDBValue() };
+    result = { currentRecord.record.key, currentRecord.record.primaryKey, currentRecord.record.value ? *currentRecord.record.value : IDBValue(), keyPath};
 }
 
 static String buildIndexStatement(const IDBKeyRangeData& keyRange, IndexedDB::CursorDirection cursorDirection)
@@ -132,7 +132,7 @@ static String buildIndexStatement(const IDBKeyRangeData& keyRange, IndexedDB::Cu
         builder.append('<');
 
     builder.appendLiteral(" CAST(? AS TEXT) ORDER BY key");
-    if (cursorDirection == IndexedDB::CursorDirection::Prev || cursorDirection == IndexedDB::CursorDirection::PrevNoDuplicate)
+    if (cursorDirection == IndexedDB::CursorDirection::Prev || cursorDirection == IndexedDB::CursorDirection::Prevunique)
         builder.appendLiteral(" DESC");
 
     builder.appendLiteral(", value");
@@ -164,7 +164,7 @@ static String buildObjectStoreStatement(const IDBKeyRangeData& keyRange, Indexed
 
     builder.appendLiteral(" CAST(? AS TEXT) ORDER BY key");
 
-    if (cursorDirection == IndexedDB::CursorDirection::Prev || cursorDirection == IndexedDB::CursorDirection::PrevNoDuplicate)
+    if (cursorDirection == IndexedDB::CursorDirection::Prev || cursorDirection == IndexedDB::CursorDirection::Prevunique)
         builder.appendLiteral(" DESC");
 
     builder.append(';');
@@ -214,32 +214,40 @@ void SQLiteIDBCursor::objectStoreRecordsChanged()
     if (m_statementNeedsReset)
         return;
 
+    ASSERT(!m_fetchedRecords.isEmpty());
+
+    m_currentKeyForUniqueness = m_fetchedRecords.first().record.key;
+
+    if (m_cursorDirection != IndexedDB::CursorDirection::Nextunique && m_cursorDirection != IndexedDB::CursorDirection::Prevunique) {
+        if (!m_fetchedRecords.last().isTerminalRecord())
+            fetch(ShouldFetchForSameKey::Yes);
+
+        while (m_fetchedRecords.last().record.key != m_fetchedRecords.first().record.key)
+            m_fetchedRecords.removeLast();
+    } else
+        m_fetchedRecords.clear();
+
     // If ObjectStore or Index contents changed, we need to reset the statement and bind new parameters to it.
     // This is to pick up any changes that might exist.
     // We also need to throw away any fetched records as they may no longer be valid.
 
     m_statementNeedsReset = true;
-    ASSERT(!m_fetchedRecords.isEmpty());
 
-    if (m_cursorDirection == IndexedDB::CursorDirection::Next || m_cursorDirection == IndexedDB::CursorDirection::NextNoDuplicate) {
-        m_currentLowerKey = m_fetchedRecords.first().record.key;
+    if (m_cursorDirection == IndexedDB::CursorDirection::Next || m_cursorDirection == IndexedDB::CursorDirection::Nextunique) {
+        m_currentLowerKey = m_currentKeyForUniqueness;
         if (!m_keyRange.lowerOpen) {
             m_keyRange.lowerOpen = true;
             m_keyRange.lowerKey = m_currentLowerKey;
             m_statement = nullptr;
         }
     } else {
-        m_currentUpperKey = m_fetchedRecords.first().record.key;
+        m_currentUpperKey = m_currentKeyForUniqueness;
         if (!m_keyRange.upperOpen) {
             m_keyRange.upperOpen = true;
             m_keyRange.upperKey = m_currentUpperKey;
             m_statement = nullptr;
         }
     }
-
-    m_currentKeyForUniqueness = m_fetchedRecords.first().record.key;
-
-    m_fetchedRecords.clear();
 }
 
 void SQLiteIDBCursor::resetAndRebindStatement()
@@ -360,23 +368,25 @@ bool SQLiteIDBCursor::advance(uint64_t count)
     return true;
 }
 
-bool SQLiteIDBCursor::fetch()
+bool SQLiteIDBCursor::fetch(ShouldFetchForSameKey shouldFetchForSameKey)
 {
     ASSERT(m_fetchedRecords.isEmpty() || !m_fetchedRecords.last().isTerminalRecord());
 
     m_fetchedRecords.append({ });
 
-    bool isUnique = m_cursorDirection == IndexedDB::CursorDirection::NextNoDuplicate || m_cursorDirection == IndexedDB::CursorDirection::PrevNoDuplicate;
+    bool isUnique = m_cursorDirection == IndexedDB::CursorDirection::Nextunique || m_cursorDirection == IndexedDB::CursorDirection::Prevunique || shouldFetchForSameKey == ShouldFetchForSameKey::Yes;
     if (!isUnique)
         return fetchNextRecord(m_fetchedRecords.last());
 
-    while (!m_fetchedRecords.last().completed) {
-        if (!fetchNextRecord(m_fetchedRecords.last()))
-            return false;
-
-        // If the new current key is different from the old current key, we're done.
+    while (fetchNextRecord(m_fetchedRecords.last())) {
         if (m_currentKeyForUniqueness.compare(m_fetchedRecords.last().record.key))
             return true;
+
+        if (m_fetchedRecords.last().completed)
+            return false;
+
+        if (shouldFetchForSameKey == ShouldFetchForSameKey::Yes)
+            m_fetchedRecords.append({ });
     }
 
     return false;
@@ -446,7 +456,8 @@ SQLiteIDBCursor::FetchResult SQLiteIDBCursor::internalFetchNextRecord(SQLiteCurs
         record.record.primaryKey = record.record.key;
 
         Vector<String> blobURLs, blobFilePaths;
-        auto error = m_transaction->backingStore().getBlobRecordsForObjectStoreRecord(record.rowID, blobURLs, blobFilePaths);
+        PAL::SessionID sessionID;
+        auto error = m_transaction->backingStore().getBlobRecordsForObjectStoreRecord(record.rowID, blobURLs, sessionID, blobFilePaths);
         if (!error.isNull()) {
             LOG_ERROR("Unable to fetch blob records from database while advancing cursor");
             markAsErrored(record);
@@ -454,7 +465,7 @@ SQLiteIDBCursor::FetchResult SQLiteIDBCursor::internalFetchNextRecord(SQLiteCurs
         }
 
         if (m_cursorType == IndexedDB::CursorType::KeyAndValue)
-            record.record.value = std::make_unique<IDBValue>(ThreadSafeDataBuffer::adoptVector(keyData), blobURLs, blobFilePaths);
+            record.record.value = std::make_unique<IDBValue>(ThreadSafeDataBuffer::create(WTFMove(keyData)), blobURLs, sessionID, blobFilePaths);
     } else {
         if (!deserializeIDBKeyData(keyData.data(), keyData.size(), record.record.primaryKey)) {
             LOG_ERROR("Unable to deserialize value data from database while advancing index cursor");
@@ -476,7 +487,7 @@ SQLiteIDBCursor::FetchResult SQLiteIDBCursor::internalFetchNextRecord(SQLiteCurs
 
         if (result == SQLITE_ROW) {
             objectStoreStatement.getColumnBlobAsVector(0, keyData);
-            record.record.value = std::make_unique<IDBValue>(ThreadSafeDataBuffer::adoptVector(keyData));
+            record.record.value = std::make_unique<IDBValue>(ThreadSafeDataBuffer::create(WTFMove(keyData)));
         } else if (result == SQLITE_DONE) {
             // This indicates that the record we're trying to retrieve has been removed from the object store.
             // Skip over it.
@@ -509,7 +520,7 @@ bool SQLiteIDBCursor::iterate(const IDBKeyData& targetKey, const IDBKeyData& tar
             return false;
 
         // Search for the next key >= the target if the cursor is a Next cursor, or the next key <= if the cursor is a Previous cursor.
-        if (m_cursorDirection == IndexedDB::CursorDirection::Next || m_cursorDirection == IndexedDB::CursorDirection::NextNoDuplicate) {
+        if (m_cursorDirection == IndexedDB::CursorDirection::Next || m_cursorDirection == IndexedDB::CursorDirection::Nextunique) {
             if (m_fetchedRecords.first().record.key.compare(targetKey) >= 0)
                 break;
         } else if (m_fetchedRecords.first().record.key.compare(targetKey) <= 0)
@@ -524,7 +535,7 @@ bool SQLiteIDBCursor::iterate(const IDBKeyData& targetKey, const IDBKeyData& tar
                 return false;
 
             // Search for the next primary key >= the primary target if the cursor is a Next cursor, or the next key <= if the cursor is a Previous cursor.
-            if (m_cursorDirection == IndexedDB::CursorDirection::Next || m_cursorDirection == IndexedDB::CursorDirection::NextNoDuplicate) {
+            if (m_cursorDirection == IndexedDB::CursorDirection::Next || m_cursorDirection == IndexedDB::CursorDirection::Nextunique) {
                 if (m_fetchedRecords.first().record.primaryKey.compare(targetPrimaryKey) >= 0)
                     break;
             } else if (m_fetchedRecords.first().record.primaryKey.compare(targetPrimaryKey) <= 0)

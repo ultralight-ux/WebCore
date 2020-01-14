@@ -31,10 +31,11 @@
 #include "DFGCommon.h"
 #include "FTLState.h"
 #include "Options.h"
+#include <wtf/Optional.h>
 
 namespace JSC { namespace B3 {
 
-bool shouldDumpIR(B3ComplitationMode mode)
+bool shouldDumpIR(B3CompilationMode mode)
 {
 #if ENABLE(FTL_JIT)
     return FTL::verboseCompilationEnabled() || FTL::shouldDumpDisassembly() || shouldDumpIRAtEachPhase(mode);
@@ -43,7 +44,7 @@ bool shouldDumpIR(B3ComplitationMode mode)
 #endif
 }
 
-bool shouldDumpIRAtEachPhase(B3ComplitationMode mode)
+bool shouldDumpIRAtEachPhase(B3CompilationMode mode)
 {
     if (mode == B3Mode)
         return Options::dumpGraphAtEachPhase() || Options::dumpB3GraphAtEachPhase();
@@ -65,9 +66,15 @@ bool shouldSaveIRBeforePhase()
     return Options::verboseValidationFailure();
 }
 
-bool shouldMeasurePhaseTiming()
+Optional<GPRReg> pinnedExtendedOffsetAddrRegister()
 {
-    return Options::logB3PhaseTimes();
+#if CPU(ARM64)
+    return static_cast<GPRReg>(+MacroAssembler::dataTempRegister);
+#elif CPU(X86_64)
+    return WTF::nullopt;
+#else
+#error Unhandled architecture.
+#endif
 }
 
 } } // namespace JSC::B3

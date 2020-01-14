@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2011, 2012, 2013 Apple Inc.  All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,66 +38,68 @@ class VideoTrack;
 
 class VideoTrackClient {
 public:
-    virtual ~VideoTrackClient() { }
-    virtual void videoTrackSelectedChanged(VideoTrack*) = 0;
+    virtual ~VideoTrackClient() = default;
+    virtual void videoTrackSelectedChanged(VideoTrack&) = 0;
 };
 
-class VideoTrack final : public MediaTrackBase, public VideoTrackPrivateClient {
+class VideoTrack final : public MediaTrackBase, private VideoTrackPrivateClient {
 public:
-    static Ref<VideoTrack> create(VideoTrackClient* client, PassRefPtr<VideoTrackPrivate> trackPrivate)
+    static Ref<VideoTrack> create(VideoTrackClient& client, VideoTrackPrivate& trackPrivate)
     {
         return adoptRef(*new VideoTrack(client, trackPrivate));
     }
     virtual ~VideoTrack();
 
-    static const AtomicString& alternativeKeyword();
-    static const AtomicString& captionsKeyword();
-    static const AtomicString& mainKeyword();
-    static const AtomicString& signKeyword();
-    static const AtomicString& subtitlesKeyword();
-    static const AtomicString& commentaryKeyword();
-    const AtomicString& defaultKindKeyword() const override { return emptyAtom; }
+    static const AtomString& alternativeKeyword();
+    static const AtomString& captionsKeyword();
+    static const AtomString& mainKeyword();
+    static const AtomString& signKeyword();
+    static const AtomString& subtitlesKeyword();
+    static const AtomString& commentaryKeyword();
 
     bool selected() const { return m_selected; }
     virtual void setSelected(const bool);
 
-    void clearClient() override { m_client = 0; }
+    void clearClient() final { m_client = nullptr; }
     VideoTrackClient* client() const { return m_client; }
 
     size_t inbandTrackIndex();
 
 #if ENABLE(MEDIA_SOURCE)
-    void setKind(const AtomicString&) override;
-    void setLanguage(const AtomicString&) override;
+    void setKind(const AtomString&) final;
+    void setLanguage(const AtomString&) final;
 #endif
 
     const MediaDescription& description() const;
 
-    void setPrivate(PassRefPtr<VideoTrackPrivate>);
-
-protected:
-    VideoTrack(VideoTrackClient*, PassRefPtr<VideoTrackPrivate> privateTrack);
+    void setPrivate(VideoTrackPrivate&);
+    void setMediaElement(HTMLMediaElement*) override;
 
 private:
-    bool isValidKind(const AtomicString&) const override;
+    VideoTrack(VideoTrackClient&, VideoTrackPrivate&);
+
+    bool isValidKind(const AtomString&) const final;
 
     // VideoTrackPrivateClient
-    void selectedChanged(VideoTrackPrivate*, bool) override;
+    void selectedChanged(bool) final;
 
     // TrackPrivateBaseClient
-    void idChanged(TrackPrivateBase*, const AtomicString&) override;
-    void labelChanged(TrackPrivateBase*, const AtomicString&) override;
-    void languageChanged(TrackPrivateBase*, const AtomicString&) override;
-    void willRemove(TrackPrivateBase*) override;
+    void idChanged(const AtomString&) final;
+    void labelChanged(const AtomString&) final;
+    void languageChanged(const AtomString&) final;
+    void willRemove() final;
 
-    bool enabled() const override { return selected(); }
+    bool enabled() const final { return selected(); }
 
     void updateKindFromPrivate();
 
-    bool m_selected;
-    VideoTrackClient* m_client;
+#if !RELEASE_LOG_DISABLED
+    const char* logClassName() const final { return "VideoTrack"; }
+#endif
 
-    RefPtr<VideoTrackPrivate> m_private;
+    VideoTrackClient* m_client { nullptr };
+    Ref<VideoTrackPrivate> m_private;
+    bool m_selected { false };
 };
 
 } // namespace WebCore

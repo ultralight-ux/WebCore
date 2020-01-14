@@ -291,7 +291,8 @@ Vector<Path> PathUtilities::pathsWithShrinkWrappedRects(const Vector<FloatRect>&
 
     if (rects.size() > 20) {
         Path path;
-        path.addRoundedRect(unionRect(rects), FloatSize(radius, radius));
+        for (const auto& rect : rects)
+            path.addRoundedRect(rect, FloatSize(radius, radius));
         paths.append(path);
         return paths;
     }
@@ -300,7 +301,8 @@ Vector<Path> PathUtilities::pathsWithShrinkWrappedRects(const Vector<FloatRect>&
     Vector<FloatPointGraph::Polygon> polys = polygonsForRect(rects, graph);
     if (polys.isEmpty()) {
         Path path;
-        path.addRoundedRect(unionRect(rects), FloatSize(radius, radius));
+        for (const auto& rect : rects)
+            path.addRoundedRect(rect, FloatSize(radius, radius));
         paths.append(path);
         return paths;
     }
@@ -462,13 +464,13 @@ static FloatRoundedRect::Radii adjustedtRadiiForHuggingCurve(const FloatSize& to
     return radii;
 }
     
-static std::optional<FloatRect> rectFromPolygon(const FloatPointGraph::Polygon& poly)
+static Optional<FloatRect> rectFromPolygon(const FloatPointGraph::Polygon& poly)
 {
     if (poly.size() != 4)
-        return std::optional<FloatRect>();
+        return Optional<FloatRect>();
 
-    std::optional<FloatPoint> topLeft;
-    std::optional<FloatPoint> bottomRight;
+    Optional<FloatPoint> topLeft;
+    Optional<FloatPoint> bottomRight;
     for (unsigned i = 0; i < poly.size(); ++i) {
         const auto& toEdge = poly[i];
         const auto& fromEdge = (i > 0) ? poly[i - 1] : poly[poly.size() - 1];
@@ -482,18 +484,19 @@ static std::optional<FloatRect> rectFromPolygon(const FloatPointGraph::Polygon& 
         }
     }
     if (!topLeft || !bottomRight)
-        return std::optional<FloatRect>();
+        return Optional<FloatRect>();
     return FloatRect(topLeft.value(), bottomRight.value());
 }
 
-Path PathUtilities::pathWithShrinkWrappedRectsForOutline(const Vector<FloatRect>& rects, const BorderData& borderData, float outlineOffset, TextDirection direction,
-    WritingMode writingMode, float deviceScaleFactor)
+Path PathUtilities::pathWithShrinkWrappedRectsForOutline(const Vector<FloatRect>& rects, const BorderData& borderData,
+    float outlineOffset, TextDirection direction, WritingMode writingMode, float deviceScaleFactor)
 {
     ASSERT(borderData.hasBorderRadius());
-    FloatSize topLeftRadius = FloatSize(borderData.topLeft().width().value(), borderData.topLeft().height().value());
-    FloatSize topRightRadius = FloatSize(borderData.topRight().width().value(), borderData.topRight().height().value());
-    FloatSize bottomRightRadius = FloatSize(borderData.bottomRight().width().value(), borderData.bottomRight().height().value());
-    FloatSize bottomLeftRadius = FloatSize(borderData.bottomLeft().width().value(), borderData.bottomLeft().height().value());
+
+    FloatSize topLeftRadius { borderData.topLeft().width.value(), borderData.topLeft().height.value() };
+    FloatSize topRightRadius { borderData.topRight().width.value(), borderData.topRight().height.value() };
+    FloatSize bottomRightRadius { borderData.bottomRight().width.value(), borderData.bottomRight().height.value() };
+    FloatSize bottomLeftRadius { borderData.bottomLeft().width.value(), borderData.bottomLeft().height.value() };
 
     auto roundedRect = [topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius, outlineOffset, deviceScaleFactor] (const FloatRect& rect)
     {
@@ -516,7 +519,7 @@ Path PathUtilities::pathWithShrinkWrappedRectsForOutline(const Vector<FloatRect>
         return Path();
     const auto& poly = polys.at(0);
     // Fast path when poly has one rect only.
-    std::optional<FloatRect> rect = rectFromPolygon(poly);
+    Optional<FloatRect> rect = rectFromPolygon(poly);
     if (rect)
         return roundedRect(rect.value());
 
@@ -577,14 +580,10 @@ Path PathUtilities::pathWithShrinkWrappedRectsForOutline(const Vector<FloatRect>
             continue;
         }
         }
-        FloatPoint startPoint;
-        FloatPoint endPoint;
-        std::tie(startPoint, endPoint) = startAndEndPointsForCorner(fromEdge, toEdge, radius);
+        auto [startPoint, endPoint] = startAndEndPointsForCorner(fromEdge, toEdge, radius);
         moveOrAddLineTo(startPoint);
 
-        FloatPoint cp1;
-        FloatPoint cp2;
-        std::tie(cp1, cp2) = controlPointsForBezierCurve(corner, fromEdge, toEdge, radius);
+        auto [cp1, cp2] = controlPointsForBezierCurve(corner, fromEdge, toEdge, radius);
         path.addBezierCurveTo(cp1, cp2, endPoint);
     }
     path.closeSubpath();

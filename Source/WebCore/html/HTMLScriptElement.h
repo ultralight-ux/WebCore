@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2017 Inc. All rights reserved.
  * Copyright (C) 2008 Nikolas Zimmermann <zimmermann@kde.org>
  *
  * This library is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 namespace WebCore {
 
 class HTMLScriptElement final : public HTMLElement, public ScriptElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLScriptElement);
 public:
     static Ref<HTMLScriptElement> create(const QualifiedName&, Document&, bool wasInsertedByParser, bool alreadyStarted = false);
 
@@ -40,15 +41,18 @@ public:
     WEBCORE_EXPORT void setAsync(bool);
     WEBCORE_EXPORT bool async() const;
 
-    WEBCORE_EXPORT void setCrossOrigin(const AtomicString&);
+    WEBCORE_EXPORT void setCrossOrigin(const AtomString&);
     WEBCORE_EXPORT String crossOrigin() const;
+
+    using HTMLElement::ref;
+    using HTMLElement::deref;
 
 private:
     HTMLScriptElement(const QualifiedName&, Document&, bool wasInsertedByParser, bool alreadyStarted);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
-    InsertionNotificationRequest insertedInto(ContainerNode&) final;
-    void finishedInsertingSubtree() final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
+    void didFinishInsertingNode() final;
     void childrenChanged(const ChildChange&) final;
 
     bool isURLAttribute(const Attribute&) const final;
@@ -61,8 +65,9 @@ private:
     String languageAttributeValue() const final;
     String forAttributeValue() const final;
     String eventAttributeValue() const final;
-    bool asyncAttributeValue() const final;
-    bool deferAttributeValue() const final;
+    bool hasAsyncAttribute() const final;
+    bool hasDeferAttribute() const final;
+    bool hasNoModuleAttribute() const final;
     bool hasSourceAttribute() const final;
 
     void dispatchLoadEvent() final;

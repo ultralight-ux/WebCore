@@ -37,9 +37,9 @@
 
 namespace WebCore {
 
-MutationObserverRegistration::MutationObserverRegistration(PassRefPtr<MutationObserver> observer, Node* registrationNode, MutationObserverOptions options, const HashSet<AtomicString>& attributeFilter)
+MutationObserverRegistration::MutationObserverRegistration(MutationObserver& observer, Node& node, MutationObserverOptions options, const HashSet<AtomString>& attributeFilter)
     : m_observer(observer)
-    , m_registrationNode(registrationNode)
+    , m_node(node)
     , m_options(options)
     , m_attributeFilter(attributeFilter)
 {
@@ -48,64 +48,59 @@ MutationObserverRegistration::MutationObserverRegistration(PassRefPtr<MutationOb
 
 MutationObserverRegistration::~MutationObserverRegistration()
 {
-    clearTransientRegistrations();
+    takeTransientRegistrations();
     m_observer->observationEnded(*this);
 }
 
-void MutationObserverRegistration::resetObservation(MutationObserverOptions options, const HashSet<AtomicString>& attributeFilter)
+void MutationObserverRegistration::resetObservation(MutationObserverOptions options, const HashSet<AtomString>& attributeFilter)
 {
-    clearTransientRegistrations();
+    takeTransientRegistrations();
     m_options = options;
     m_attributeFilter = attributeFilter;
 }
 
-void MutationObserverRegistration::observedSubtreeNodeWillDetach(Node* node)
+void MutationObserverRegistration::observedSubtreeNodeWillDetach(Node& node)
 {
     if (!isSubtree())
         return;
 
-    node->registerTransientMutationObserver(this);
+    node.registerTransientMutationObserver(*this);
     m_observer->setHasTransientRegistration();
 
     if (!m_transientRegistrationNodes) {
-        m_transientRegistrationNodes = std::make_unique<NodeHashSet>();
+        m_transientRegistrationNodes = std::make_unique<HashSet<GCReachableRef<Node>>>();
 
-        ASSERT(!m_registrationNodeKeepAlive);
-        m_registrationNodeKeepAlive = m_registrationNode; // Balanced in clearTransientRegistrations.
+        ASSERT(!m_nodeKeptAlive);
+        m_nodeKeptAlive = &m_node; // Balanced in takeTransientRegistrations.
     }
     m_transientRegistrationNodes->add(node);
 }
 
-void MutationObserverRegistration::clearTransientRegistrations()
+std::unique_ptr<HashSet<GCReachableRef<Node>>> MutationObserverRegistration::takeTransientRegistrations()
 {
     if (!m_transientRegistrationNodes) {
-        ASSERT(!m_registrationNodeKeepAlive);
-        return;
+        ASSERT(!m_nodeKeptAlive);
+        return nullptr;
     }
 
     for (auto& node : *m_transientRegistrationNodes)
-        node->unregisterTransientMutationObserver(this);
+        node->unregisterTransientMutationObserver(*this);
 
-    m_transientRegistrationNodes = nullptr;
+    auto returnValue = WTFMove(m_transientRegistrationNodes);
 
-    ASSERT(m_registrationNodeKeepAlive);
-    m_registrationNodeKeepAlive = nullptr; // Balanced in observeSubtreeNodeWillDetach.
+    ASSERT(m_nodeKeptAlive);
+    m_nodeKeptAlive = nullptr; // Balanced in observeSubtreeNodeWillDetach.
+
+    return returnValue;
 }
 
-void MutationObserverRegistration::unregisterAndDelete(MutationObserverRegistration* registry)
-{
-    RefPtr<Node> registrationNode(registry->m_registrationNode);
-    registrationNode->unregisterMutationObserver(registry);
-    // The above line will cause registry to be deleted, so don't do any more in this function.
-}
-
-bool MutationObserverRegistration::shouldReceiveMutationFrom(Node* node, MutationObserver::MutationType type, const QualifiedName* attributeName) const
+bool MutationObserverRegistration::shouldReceiveMutationFrom(Node& node, MutationObserver::MutationType type, const QualifiedName* attributeName) const
 {
     ASSERT((type == MutationObserver::Attributes && attributeName) || !attributeName);
     if (!(m_options & type))
         return false;
 
-    if (m_registrationNode != node && !isSubtree())
+    if (&m_node != &node && !isSubtree())
         return false;
 
     if (type != MutationObserver::Attributes || !(m_options & MutationObserver::AttributeFilter))
@@ -119,11 +114,11 @@ bool MutationObserverRegistration::shouldReceiveMutationFrom(Node* node, Mutatio
 
 void MutationObserverRegistration::addRegistrationNodesToSet(HashSet<Node*>& nodes) const
 {
-    nodes.add(m_registrationNode);
+    nodes.add(&m_node);
     if (!m_transientRegistrationNodes)
         return;
     for (auto& node : *m_transientRegistrationNodes)
-        nodes.add(node.get());
+        nodes.add(node.ptr());
 }
 
 } // namespace WebCore

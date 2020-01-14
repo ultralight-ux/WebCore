@@ -26,19 +26,20 @@
 
 #pragma once
 
-#if PLATFORM(COCOA)
-// FIXME: Remove Source/WebCore/page/cocoa/UserAgent.h
-#include_next "UserAgent.h"
-#else
-
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
-class URL;
 
-String standardUserAgent(const String& applicationName = emptyString(), const String& applicationVersion = emptyString());
-String standardUserAgentForURL(const URL&);
+#if PLATFORM(COCOA)
+enum class UserAgentType { Default, Desktop };
+WEBCORE_EXPORT String standardUserAgentWithApplicationName(const String& applicationName, const String& userAgentOSVersion = emptyString(), UserAgentType = UserAgentType::Default);
+
+WEBCORE_EXPORT String osNameForUserAgent();
+WEBCORE_EXPORT String systemMarketingVersionForUserAgentString();
+#else
+
+WEBCORE_EXPORT String standardUserAgent(const String& applicationName = emptyString(), const String& applicationVersion = emptyString());
+WEBCORE_EXPORT String standardUserAgentForURL(const URL&);
+#endif
 
 }
-
-#endif

@@ -30,7 +30,7 @@
 
 #if ENABLE(STREAMS_API)
 
-#include "JSDOMPromise.h"
+#include "JSDOMPromiseDeferred.h"
 #include "ReadableStreamDefaultController.h"
 #include <wtf/Optional.h>
 
@@ -38,10 +38,10 @@ namespace WebCore {
 
 class ReadableStreamSource : public RefCounted<ReadableStreamSource> {
 public:
-    virtual ~ReadableStreamSource() { }
+    virtual ~ReadableStreamSource() = default;
 
-    void start(ReadableStreamDefaultController&&, DOMPromise<void>&&);
-    void pull(DOMPromise<void>&&);
+    void start(ReadableStreamDefaultController&&, DOMPromiseDeferred<void>&&);
+    void pull(DOMPromiseDeferred<void>&&);
     void cancel(JSC::JSValue);
 
     bool isPulling() const { return !!m_promise; }
@@ -63,11 +63,11 @@ protected:
     virtual void doCancel() = 0;
 
 private:
-    std::optional<DOMPromise<void>> m_promise;
-    std::optional<ReadableStreamDefaultController> m_controller;
+    Optional<DOMPromiseDeferred<void>> m_promise;
+    Optional<ReadableStreamDefaultController> m_controller;
 };
 
-inline void ReadableStreamSource::start(ReadableStreamDefaultController&& controller, DOMPromise<void>&& promise)
+inline void ReadableStreamSource::start(ReadableStreamDefaultController&& controller, DOMPromiseDeferred<void>&& promise)
 {
     ASSERT(!m_promise);
     m_promise = WTFMove(promise);
@@ -77,7 +77,7 @@ inline void ReadableStreamSource::start(ReadableStreamDefaultController&& contro
     doStart();
 }
 
-inline void ReadableStreamSource::pull(DOMPromise<void>&& promise)
+inline void ReadableStreamSource::pull(DOMPromiseDeferred<void>&& promise)
 {
     ASSERT(!m_promise);
     ASSERT(m_controller);
@@ -91,14 +91,14 @@ inline void ReadableStreamSource::pull(DOMPromise<void>&& promise)
 inline void ReadableStreamSource::startFinished()
 {
     ASSERT(m_promise);
-    std::exchange(m_promise, std::nullopt).value().resolve();
+    std::exchange(m_promise, WTF::nullopt).value().resolve();
     setInactive();
 }
 
 inline void ReadableStreamSource::pullFinished()
 {
     ASSERT(m_promise);
-    std::exchange(m_promise, std::nullopt).value().resolve();
+    std::exchange(m_promise, WTF::nullopt).value().resolve();
     setInactive();
 }
 
@@ -111,7 +111,7 @@ inline void ReadableStreamSource::cancel(JSC::JSValue)
 inline void ReadableStreamSource::clean()
 {
     if (m_promise) {
-        m_promise = std::nullopt;
+        m_promise = WTF::nullopt;
         setInactive();
     }
 }

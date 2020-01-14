@@ -94,8 +94,8 @@ static bool checkPageSelectorComponents(const CSSSelector* selector, bool isLeft
 {
     for (const CSSSelector* component = selector; component; component = component->tagHistory()) {
         if (component->match() == CSSSelector::Tag) {
-            const AtomicString& localName = component->tagQName().localName();
-            if (localName != starAtom && localName != pageName)
+            const AtomString& localName = component->tagQName().localName();
+            if (localName != starAtom() && localName != pageName)
                 return false;
         } else if (component->match() == CSSSelector::PagePseudoClass) {
             CSSSelector::PagePseudoClassType pseudoType = component->pagePseudoClassType();

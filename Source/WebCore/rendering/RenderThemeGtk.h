@@ -33,7 +33,7 @@ namespace WebCore {
 
 class RenderThemeGtk final : public RenderTheme {
 public:
-    static Ref<RenderTheme> create();
+    friend NeverDestroyed<RenderThemeGtk>;
 
 #if ENABLE(DATALIST_ELEMENT)
     // Returns size of one slider tick mark for a horizontal track.
@@ -48,8 +48,6 @@ private:
     void updateCachedSystemFontDescription(CSSValueID, FontCascadeDescription&) const override;
 
 public:
-#ifndef GTK_API_VERSION_2
-
     // A method asking if the theme's controls actually care about redrawing when hovered.
     bool supportsHover(const RenderStyle&) const override { return true; }
 
@@ -70,23 +68,25 @@ public:
     int baselinePosition(const RenderBox&) const override;
 
     // The platform selection color.
-    Color platformActiveSelectionBackgroundColor() const override;
-    Color platformInactiveSelectionBackgroundColor() const override;
-    Color platformActiveSelectionForegroundColor() const override;
-    Color platformInactiveSelectionForegroundColor() const override;
+    Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    Color platformActiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
+    Color platformInactiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
 
     // List Box selection color
-    Color platformActiveListBoxSelectionBackgroundColor() const override;
-    Color platformActiveListBoxSelectionForegroundColor() const override;
-    Color platformInactiveListBoxSelectionBackgroundColor() const override;
-    Color platformInactiveListBoxSelectionForegroundColor() const override;
+    Color platformActiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    Color platformActiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
+    Color platformInactiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    Color platformInactiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
 
-    double caretBlinkInterval() const override;
+    Color disabledTextColor(const Color&, const Color&) const override;
+
+    Seconds caretBlinkInterval() const override;
 
     void platformColorsDidChange() override;
 
     // System colors.
-    Color systemColor(CSSValueID) const override;
+    Color systemColor(CSSValueID, OptionSet<StyleColor::Options>) const override;
 
     bool popsMenuBySpaceOrReturn() const override { return true; }
 
@@ -168,8 +168,8 @@ private:
 #endif
 #endif
 
-    double animationRepeatIntervalForProgressBar(RenderProgress&) const override;
-    double animationDurationForProgressBar(RenderProgress&) const override;
+    Seconds animationRepeatIntervalForProgressBar(RenderProgress&) const override;
+    Seconds animationDurationForProgressBar(RenderProgress&) const override;
     void adjustProgressBarStyle(StyleResolver&, RenderStyle&, const Element*) const override;
     IntRect progressBarRectForBounds(const RenderObject&, const IntRect&) const override;
     bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&) override;
@@ -187,7 +187,6 @@ private:
 #endif
 
     static IntRect calculateProgressRect(const RenderObject&, const IntRect&);
-#endif // GTK_API_VERSION_2
 };
 
 } // namespace WebCore

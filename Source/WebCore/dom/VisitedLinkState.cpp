@@ -33,7 +33,8 @@
 #include "Frame.h"
 #include "HTMLAnchorElement.h"
 #include "Page.h"
-#include "PageGroup.h"
+#include "SVGAElement.h"
+#include "SVGNames.h"
 #include "VisitedLinkStore.h"
 #include "XLinkNames.h"
 
@@ -41,15 +42,15 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-inline static const AtomicString* linkAttribute(const Element& element)
+inline static const AtomString* linkAttribute(const Element& element)
 {
     if (!element.isLink())
-        return 0;
+        return nullptr;
     if (element.isHTMLElement())
         return &element.attributeWithoutSynchronization(HTMLNames::hrefAttr);
     if (element.isSVGElement())
-        return &element.getAttribute(XLinkNames::hrefAttr);
-    return 0;
+        return &element.getAttribute(SVGNames::hrefAttr, XLinkNames::hrefAttr);
+    return nullptr;
 }
 
 VisitedLinkState::VisitedLinkState(Document& document)
@@ -67,61 +68,59 @@ void VisitedLinkState::invalidateStyleForAllLinks()
     }
 }
 
-inline static LinkHash linkHashForElement(Document& document, const Element& element)
+inline static Optional<SharedStringHash> linkHashForElement(const Element& element)
 {
     if (is<HTMLAnchorElement>(element))
         return downcast<HTMLAnchorElement>(element).visitedLinkHash();
-    if (const AtomicString* attribute = linkAttribute(element))
-        return WebCore::visitedLinkHash(document.baseURL(), *attribute);
-    return 0;
+    if (is<SVGAElement>(element))
+        return downcast<SVGAElement>(element).visitedLinkHash();
+    return WTF::nullopt;
 }
 
-void VisitedLinkState::invalidateStyleForLink(LinkHash linkHash)
+void VisitedLinkState::invalidateStyleForLink(SharedStringHash linkHash)
 {
     if (!m_linksCheckedForVisitedState.contains(linkHash))
         return;
     for (auto& element : descendantsOfType<Element>(m_document)) {
-        if (linkHashForElement(m_document, element) == linkHash)
+        if (element.isLink() && linkHashForElement(element) == linkHash)
             element.invalidateStyleForSubtree();
     }
 }
 
-EInsideLink VisitedLinkState::determineLinkStateSlowCase(const Element& element)
+InsideLink VisitedLinkState::determineLinkStateSlowCase(const Element& element)
 {
     ASSERT(element.isLink());
 
-    const AtomicString* attribute = linkAttribute(element);
+    const AtomString* attribute = linkAttribute(element);
     if (!attribute || attribute->isNull())
-        return NotInsideLink;
+        return InsideLink::NotInside;
 
-    // An empty href refers to the document itself which is always visited. It is useful to check this explicitly so
+    auto hashIfFound = linkHashForElement(element);
+
+    if (!hashIfFound)
+        return attribute->isEmpty() ? InsideLink::InsideVisited : InsideLink::InsideUnvisited;
+
+    auto hash = *hashIfFound;
+
+    // An empty href (hash==0) refers to the document itself which is always visited. It is useful to check this explicitly so
     // that visited links can be tested in platform independent manner, without explicit support in the test harness.
-    if (attribute->isEmpty())
-        return InsideVisitedLink;
-
-    LinkHash hash;
-    if (is<HTMLAnchorElement>(element))
-        hash = downcast<HTMLAnchorElement>(element).visitedLinkHash();
-    else
-        hash = WebCore::visitedLinkHash(element.document().baseURL(), *attribute);
-
     if (!hash)
-        return InsideUnvisitedLink;
+        return InsideLink::InsideVisited;
 
     Frame* frame = element.document().frame();
     if (!frame)
-        return InsideUnvisitedLink;
+        return InsideLink::InsideUnvisited;
 
     Page* page = frame->page();
     if (!page)
-        return InsideUnvisitedLink;
+        return InsideLink::InsideUnvisited;
 
     m_linksCheckedForVisitedState.add(hash);
 
     if (!page->visitedLinkStore().isLinkVisited(*page, hash, element.document().baseURL(), *attribute))
-        return InsideUnvisitedLink;
+        return InsideLink::InsideUnvisited;
 
-    return InsideVisitedLink;
+    return InsideLink::InsideVisited;
 }
 
 } // namespace WebCore

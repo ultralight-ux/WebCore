@@ -38,7 +38,7 @@ class InbandTextTrackPrivate;
 
 class PlatformTextTrackClient {
 public:
-    virtual ~PlatformTextTrackClient() { }
+    virtual ~PlatformTextTrackClient() = default;
     
     virtual TextTrack* publicTrack() = 0;
     virtual InbandTextTrackPrivate* privateTrack() { return 0; }
@@ -65,17 +65,17 @@ public:
         Showing
     };
     
-    static PassRefPtr<PlatformTextTrack> create(PlatformTextTrackClient* client, const String& label, const String& language, TrackMode mode, TrackKind kind, TrackType type, int uniqueId)
+    static Ref<PlatformTextTrack> create(PlatformTextTrackClient* client, const String& label, const String& language, TrackMode mode, TrackKind kind, TrackType type, int uniqueId)
     {
-        return adoptRef(new PlatformTextTrack(client, label, language, String(), mode, kind, type, uniqueId, false));
+        return adoptRef(*new PlatformTextTrack(client, label, language, String(), mode, kind, type, uniqueId, false));
     }
 
-    static PassRefPtr<PlatformTextTrack> createOutOfBand(const String& label, const String& language, const String& url, TrackMode mode, TrackKind kind, int uniqueId, bool isDefault)
+    static Ref<PlatformTextTrack> createOutOfBand(const String& label, const String& language, const String& url, TrackMode mode, TrackKind kind, int uniqueId, bool isDefault)
     {
-        return adoptRef(new PlatformTextTrack(nullptr, label, language, url, mode, kind, OutOfBand, uniqueId, isDefault));
+        return adoptRef(*new PlatformTextTrack(nullptr, label, language, url, mode, kind, OutOfBand, uniqueId, isDefault));
     }
 
-    virtual ~PlatformTextTrack() { }
+    virtual ~PlatformTextTrack() = default;
     
     TrackType type() const { return m_type; }
     TrackKind kind() const { return m_kind; }
@@ -87,15 +87,15 @@ public:
     int uniqueId() const { return m_uniqueId; }
     bool isDefault() const { return m_isDefault; }
 
-    static PlatformTextTrack* captionMenuOffItem()
+    static PlatformTextTrack& captionMenuOffItem()
     {
-        static PlatformTextTrack* off = PlatformTextTrack::create(nullptr, "off menu item", "", Showing, Subtitle, InBand, 0).leakRef();
+        static PlatformTextTrack& off = PlatformTextTrack::create(nullptr, "off menu item", "", Showing, Subtitle, InBand, 0).leakRef();
         return off;
     }
 
-    static PlatformTextTrack* captionMenuAutomaticItem()
+    static PlatformTextTrack& captionMenuAutomaticItem()
     {
-        static PlatformTextTrack* automatic = PlatformTextTrack::create(nullptr, "automatic menu item", "", Showing, Subtitle, InBand, 0).leakRef();
+        static PlatformTextTrack& automatic = PlatformTextTrack::create(nullptr, "automatic menu item", "", Showing, Subtitle, InBand, 0).leakRef();
         return automatic;
     }
 

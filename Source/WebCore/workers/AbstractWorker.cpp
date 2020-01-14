@@ -32,32 +32,34 @@
 #include "AbstractWorker.h"
 
 #include "ContentSecurityPolicy.h"
-#include "ExceptionCode.h"
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(AbstractWorker);
 
 ExceptionOr<URL> AbstractWorker::resolveURL(const String& url, bool shouldBypassMainWorldContentSecurityPolicy)
 {
     if (url.isEmpty())
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
     auto& context = *scriptExecutionContext();
 
     // FIXME: This should use the dynamic global scope (bug #27887).
     URL scriptURL = context.completeURL(url);
     if (!scriptURL.isValid())
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
     if (!context.securityOrigin()->canRequest(scriptURL))
-        return Exception { SECURITY_ERR };
+        return Exception { SecurityError };
 
     ASSERT(context.contentSecurityPolicy());
     if (!shouldBypassMainWorldContentSecurityPolicy && !context.contentSecurityPolicy()->allowChildContextFromSource(scriptURL))
-        return Exception { SECURITY_ERR };
+        return Exception { SecurityError };
 
-    return WTFMove(scriptURL);
+    return scriptURL;
 }
 
 } // namespace WebCore

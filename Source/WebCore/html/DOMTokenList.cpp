@@ -26,17 +26,16 @@
 #include "config.h"
 #include "DOMTokenList.h"
 
-#include "ExceptionCode.h"
 #include "HTMLParserIdioms.h"
 #include "SpaceSplitString.h"
 #include <wtf/HashSet.h>
 #include <wtf/SetForScope.h>
-#include <wtf/text/AtomicStringHash.h>
+#include <wtf/text/AtomStringHash.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
-DOMTokenList::DOMTokenList(Element& element, const QualifiedName& attributeName, WTF::Function<bool(StringView)>&& isSupportedToken)
+DOMTokenList::DOMTokenList(Element& element, const QualifiedName& attributeName, IsSupportedTokenFunction&& isSupportedToken)
     : m_element(element)
     , m_attributeName(attributeName)
     , m_isSupportedToken(WTFMove(isSupportedToken))
@@ -51,10 +50,10 @@ static inline bool tokenContainsHTMLSpace(const String& token)
 ExceptionOr<void> DOMTokenList::validateToken(const String& token)
 {
     if (token.isEmpty())
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
     if (tokenContainsHTMLSpace(token))
-        return Exception { INVALID_CHARACTER_ERR };
+        return Exception { InvalidCharacterError };
 
     return { };
 }
@@ -69,7 +68,7 @@ ExceptionOr<void> DOMTokenList::validateTokens(const String* tokens, size_t leng
     return { };
 }
 
-bool DOMTokenList::contains(const AtomicString& token) const
+bool DOMTokenList::contains(const AtomString& token) const
 {
     return tokens().contains(token);
 }
@@ -77,7 +76,7 @@ bool DOMTokenList::contains(const AtomicString& token) const
 inline ExceptionOr<void> DOMTokenList::addInternal(const String* newTokens, size_t length)
 {
     // This is usually called with a single token.
-    Vector<AtomicString, 1> uniqueNewTokens;
+    Vector<AtomString, 1> uniqueNewTokens;
     uniqueNewTokens.reserveInitialCapacity(length);
 
     auto& tokens = this->tokens();
@@ -103,7 +102,7 @@ ExceptionOr<void> DOMTokenList::add(const Vector<String>& tokens)
     return addInternal(tokens.data(), tokens.size());
 }
 
-ExceptionOr<void> DOMTokenList::add(const AtomicString& token)
+ExceptionOr<void> DOMTokenList::add(const AtomString& token)
 {
     return addInternal(&token.string(), 1);
 }
@@ -128,12 +127,12 @@ ExceptionOr<void> DOMTokenList::remove(const Vector<String>& tokens)
     return removeInternal(tokens.data(), tokens.size());
 }
 
-ExceptionOr<void> DOMTokenList::remove(const AtomicString& token)
+ExceptionOr<void> DOMTokenList::remove(const AtomString& token)
 {
     return removeInternal(&token.string(), 1);
 }
 
-ExceptionOr<bool> DOMTokenList::toggle(const AtomicString& token, std::optional<bool> force)
+ExceptionOr<bool> DOMTokenList::toggle(const AtomString& token, Optional<bool> force)
 {
     auto result = validateToken(token);
     if (result.hasException())
@@ -142,7 +141,7 @@ ExceptionOr<bool> DOMTokenList::toggle(const AtomicString& token, std::optional<
     auto& tokens = this->tokens();
 
     if (tokens.contains(token)) {
-        if (!force.value_or(false)) {
+        if (!force.valueOr(false)) {
             tokens.removeFirst(token);
             updateAssociatedAttributeFromTokens();
             return false;
@@ -158,27 +157,48 @@ ExceptionOr<bool> DOMTokenList::toggle(const AtomicString& token, std::optional<
     return true;
 }
 
-ExceptionOr<void> DOMTokenList::replace(const AtomicString& token, const AtomicString& newToken)
+static inline void replaceInOrderedSet(Vector<AtomString>& tokens, size_t tokenIndex, const AtomString& newToken)
+{
+    ASSERT(tokenIndex != notFound);
+    ASSERT(tokenIndex < tokens.size());
+
+    auto newTokenIndex = tokens.find(newToken);
+    if (newTokenIndex == notFound) {
+        tokens[tokenIndex] = newToken;
+        return;
+    }
+
+    if (newTokenIndex == tokenIndex)
+        return;
+
+    if (newTokenIndex > tokenIndex) {
+        tokens[tokenIndex] = newToken;
+        tokens.remove(newTokenIndex);
+    } else
+        tokens.remove(tokenIndex);
+}
+
+// https://dom.spec.whatwg.org/#dom-domtokenlist-replace
+ExceptionOr<bool> DOMTokenList::replace(const AtomString& token, const AtomString& newToken)
 {
     if (token.isEmpty() || newToken.isEmpty())
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
     if (tokenContainsHTMLSpace(token) || tokenContainsHTMLSpace(newToken))
-        return Exception { INVALID_CHARACTER_ERR };
+        return Exception { InvalidCharacterError };
 
     auto& tokens = this->tokens();
-    size_t index = tokens.find(token);
-    if (index == notFound)
-        return { };
 
-    if (tokens.find(newToken) != notFound)
-        tokens.remove(index);
-    else
-        tokens[index] = newToken;
+    auto tokenIndex = tokens.find(token);
+    if (tokenIndex == notFound)
+        return false;
+
+    replaceInOrderedSet(tokens, tokenIndex, newToken);
+    ASSERT(token == newToken || tokens.find(token) == notFound);
 
     updateAssociatedAttributeFromTokens();
 
-    return { };
+    return true;
 }
 
 // https://dom.spec.whatwg.org/#concept-domtokenlist-validation
@@ -186,11 +206,11 @@ ExceptionOr<bool> DOMTokenList::supports(StringView token)
 {
     if (!m_isSupportedToken)
         return Exception { TypeError };
-    return m_isSupportedToken(token);
+    return m_isSupportedToken(m_element.document(), token);
 }
 
 // https://dom.spec.whatwg.org/#dom-domtokenlist-value
-const AtomicString& DOMTokenList::value() const
+const AtomString& DOMTokenList::value() const
 {
     return m_element.getAttribute(m_attributeName);
 }
@@ -205,7 +225,7 @@ void DOMTokenList::updateTokensFromAttributeValue(const String& value)
     // Clear tokens but not capacity.
     m_tokens.shrink(0);
 
-    HashSet<AtomicString> addedTokens;
+    HashSet<AtomString> addedTokens;
     // https://dom.spec.whatwg.org/#ordered%20sets
     for (unsigned start = 0; ; ) {
         while (start < value.length() && isHTMLSpace(value[start]))
@@ -216,7 +236,7 @@ void DOMTokenList::updateTokensFromAttributeValue(const String& value)
         while (end < value.length() && !isHTMLSpace(value[end]))
             ++end;
 
-        AtomicString token = value.substring(start, end - start);
+        AtomString token = value.substring(start, end - start);
         if (!addedTokens.contains(token)) {
             m_tokens.append(token);
             addedTokens.add(token);
@@ -229,7 +249,7 @@ void DOMTokenList::updateTokensFromAttributeValue(const String& value)
     m_tokensNeedUpdating = false;
 }
 
-void DOMTokenList::associatedAttributeValueChanged(const AtomicString&)
+void DOMTokenList::associatedAttributeValueChanged(const AtomString&)
 {
     // Do not reset the DOMTokenList value if the attribute value was changed by us.
     if (m_inUpdateAssociatedAttributeFromTokens)
@@ -243,6 +263,9 @@ void DOMTokenList::updateAssociatedAttributeFromTokens()
 {
     ASSERT(!m_tokensNeedUpdating);
 
+    if (m_tokens.isEmpty() && !m_element.hasAttribute(m_attributeName))
+        return;
+
     // https://dom.spec.whatwg.org/#concept-ordered-set-serializer
     StringBuilder builder;
     for (auto& token : tokens()) {
@@ -250,13 +273,13 @@ void DOMTokenList::updateAssociatedAttributeFromTokens()
             builder.append(' ');
         builder.append(token);
     }
-    AtomicString serializedValue = builder.toAtomicString();
+    AtomString serializedValue = builder.toAtomString();
 
     SetForScope<bool> inAttributeUpdate(m_inUpdateAssociatedAttributeFromTokens, true);
     m_element.setAttribute(m_attributeName, serializedValue);
 }
 
-Vector<AtomicString>& DOMTokenList::tokens()
+Vector<AtomString>& DOMTokenList::tokens()
 {
     if (m_tokensNeedUpdating)
         updateTokensFromAttributeValue(m_element.getAttribute(m_attributeName));

@@ -20,7 +20,7 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "config.h"
@@ -28,27 +28,39 @@
 
 #include "ApplicationCacheStorage.h"
 #include "BackForwardClient.h"
+#include "CacheStorageProvider.h"
+#include "CookieJar.h"
 #include "DatabaseProvider.h"
 #include "DiagnosticLoggingClient.h"
 #include "EditorClient.h"
+#include "LibWebRTCProvider.h"
+#include "PerformanceLoggingClient.h"
 #include "PluginInfoProvider.h"
 #include "SocketProvider.h"
+#include "SpeechSynthesisClient.h"
 #include "StorageNamespaceProvider.h"
 #include "UserContentController.h"
 #include "ValidationMessageClient.h"
 #include "VisitedLinkStore.h"
 #include "WebGLStateTracker.h"
 
+#if ENABLE(WEB_AUTHN)
+#include "AuthenticatorCoordinatorClient.h"
+#endif
+
 namespace WebCore {
 
-PageConfiguration::PageConfiguration(UniqueRef<EditorClient>&& editorClient, Ref<SocketProvider>&& socketProvider)
+PageConfiguration::PageConfiguration(UniqueRef<EditorClient>&& editorClient, Ref<SocketProvider>&& socketProvider, UniqueRef<LibWebRTCProvider>&& libWebRTCProvider, Ref<CacheStorageProvider>&& cacheStorageProvider, Ref<BackForwardClient>&& backForwardClient, Ref<CookieJar>&& cookieJar)
     : editorClient(WTFMove(editorClient))
     , socketProvider(WTFMove(socketProvider))
+    , libWebRTCProvider(WTFMove(libWebRTCProvider))
+    , backForwardClient(WTFMove(backForwardClient))
+    , cookieJar(WTFMove(cookieJar))
+    , cacheStorageProvider(WTFMove(cacheStorageProvider))
 {
 }
 
-PageConfiguration::~PageConfiguration()
-{
-}
+PageConfiguration::~PageConfiguration() = default;
+PageConfiguration::PageConfiguration(PageConfiguration&&) = default;
 
 }

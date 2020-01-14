@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Nikolas Zimmermann <zimmermann@kde.org>
+ * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,29 +21,24 @@
 
 #pragma once
 
-#include "CachedResourceClient.h"
-#include "CachedResourceHandle.h"
 #include "ContainerNode.h"
 #include "LoadableScript.h"
-#include "LoadableScriptClient.h"
-#include "Timer.h"
-#include "URL.h"
+#include "UserGestureIndicator.h"
+#include <wtf/MonotonicTime.h>
 #include <wtf/text/TextPosition.h>
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class CachedScript;
 class ContainerNode;
 class Element;
+class LoadableModuleScript;
 class PendingScript;
-class ScriptElement;
 class ScriptSourceCode;
-class CachedModuleScript;
 
 class ScriptElement {
 public:
-    virtual ~ScriptElement() { }
+    virtual ~ScriptElement() = default;
 
     Element& element() { return m_element; }
     const Element& element() const { return m_element; }
@@ -53,7 +49,7 @@ public:
     String scriptCharset() const { return m_characterEncoding; }
     WEBCORE_EXPORT String scriptContent() const;
     void executeClassicScript(const ScriptSourceCode&);
-    void executeModuleScript(CachedModuleScript&);
+    void executeModuleScript(LoadableModuleScript&);
 
     void executePendingScript(PendingScript&);
 
@@ -68,11 +64,12 @@ public:
     bool willExecuteInOrder() const { return m_willExecuteInOrder; }
     LoadableScript* loadableScript() { return m_loadableScript.get(); }
 
-    CachedResourceHandle<CachedScript> requestScriptWithCacheForModuleScript(const URL&);
-
     // https://html.spec.whatwg.org/multipage/scripting.html#concept-script-type
     enum class ScriptType { Classic, Module };
     ScriptType scriptType() const { return m_isModuleScript ? ScriptType::Module : ScriptType::Classic; }
+
+    void ref();
+    void deref();
 
 protected:
     ScriptElement(Element&, bool createdByParser, bool isEvaluated);
@@ -83,8 +80,14 @@ protected:
     bool forceAsync() const { return m_forceAsync; }
 
     // Helper functions used by our parent classes.
-    bool shouldCallFinishedInsertingSubtree(ContainerNode&);
-    void finishedInsertingSubtree();
+    Node::InsertedIntoAncestorResult insertedIntoAncestor(Node::InsertionType insertionType, ContainerNode&) const
+    {
+        if (insertionType.connectedToDocument && !m_parserInserted)
+            return Node::InsertedIntoAncestorResult::NeedsPostInsertionCallback;
+        return Node::InsertedIntoAncestorResult::Done;
+    }
+
+    void didFinishInsertingNode();
     void childrenChanged(const ContainerNode::ChildChange&);
     void handleSourceAttribute(const String& sourceURL);
     void handleAsyncAttribute();
@@ -92,11 +95,10 @@ protected:
 private:
     void executeScriptAndDispatchEvent(LoadableScript&);
 
-    std::optional<ScriptType> determineScriptType(LegacyTypeSupport) const;
+    Optional<ScriptType> determineScriptType(LegacyTypeSupport) const;
     bool ignoresLoadRequest() const;
     bool isScriptForEventSupported() const;
-
-    CachedResourceHandle<CachedScript> requestScriptWithCache(const URL&, const String& nonceAttribute, const String& crossoriginAttribute);
+    void dispatchLoadEventRespectingUserGestureIndicator();
 
     bool requestClassicScript(const String& sourceURL);
     bool requestModuleScript(const TextPosition& scriptStartPosition);
@@ -107,9 +109,10 @@ private:
     virtual String languageAttributeValue() const = 0;
     virtual String forAttributeValue() const = 0;
     virtual String eventAttributeValue() const = 0;
-    virtual bool asyncAttributeValue() const = 0;
-    virtual bool deferAttributeValue() const = 0;
+    virtual bool hasAsyncAttribute() const = 0;
+    virtual bool hasDeferAttribute() const = 0;
     virtual bool hasSourceAttribute() const = 0;
+    virtual bool hasNoModuleAttribute() const = 0;
 
     Element& m_element;
     WTF::OrdinalNumber m_startLineNumber;
@@ -126,9 +129,13 @@ private:
     String m_characterEncoding;
     String m_fallbackCharacterEncoding;
     RefPtr<LoadableScript> m_loadableScript;
+
+    MonotonicTime m_creationTime;
+    RefPtr<UserGestureToken> m_userGestureToken;
 };
 
-// FIXME: replace with downcast<ScriptElement>.
-ScriptElement* toScriptElementIfPossible(Element*);
+// FIXME: replace with is/downcast<ScriptElement>.
+bool isScriptElement(Element&);
+ScriptElement& downcastScriptElement(Element&);
 
 }

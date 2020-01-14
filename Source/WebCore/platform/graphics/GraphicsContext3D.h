@@ -32,10 +32,12 @@
 #include "IntRect.h"
 #include "PlatformLayer.h"
 #include <memory>
+#include <wtf/HashCountedSet.h>
 #include <wtf/HashMap.h>
 #include <wtf/ListHashSet.h>
-#include <wtf/Noncopyable.h>
 #include <wtf/RefCounted.h>
+#include <wtf/RetainPtr.h>
+#include <wtf/UniqueArray.h>
 #include <wtf/text/WTFString.h>
 
 #if USE(CA)
@@ -51,33 +53,45 @@
 #endif
 
 #if PLATFORM(COCOA)
-#if PLATFORM(IOS)
+
+#if USE(OPENGL_ES)
 #include <OpenGLES/ES2/gl.h>
 #ifdef __OBJC__
 #import <OpenGLES/EAGL.h>
-#endif // __OBJC__
-#endif // PLATFORM(IOS)
-#include <wtf/RetainPtr.h>
-OBJC_CLASS CALayer;
-OBJC_CLASS WebGLLayer;
-#elif PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN_CAIRO)
-typedef unsigned int GLuint;
-#endif
-
-#if PLATFORM(IOS)
-#ifdef __OBJC__
 typedef EAGLContext* PlatformGraphicsContext3D;
 #else
 typedef void* PlatformGraphicsContext3D;
 #endif // __OBJC__
-#elif PLATFORM(MAC)
-typedef struct _CGLContextObject *CGLContextObj;
+#endif // USE(OPENGL_ES)
 
+#if USE(OPENGL)
+typedef struct _CGLContextObject *CGLContextObj;
 typedef CGLContextObj PlatformGraphicsContext3D;
-#else
+#endif // USE(OPENGL)
+
+#if USE(ANGLE)
+typedef void* PlatformGraphicsContext3D;
+typedef void* PlatformGraphicsContext3DDisplay;
+typedef void* PlatformGraphicsContext3DSurface;
+typedef void* PlatformGraphicsContext3DConfig;
+#endif // USE(ANGLE)
+
+OBJC_CLASS CALayer;
+OBJC_CLASS WebGLLayer;
+typedef struct __IOSurface* IOSurfaceRef;
+#endif // PLATFORM(COCOA)
+
+#if USE(NICOSIA)
+namespace Nicosia {
+class GC3DLayer;
+}
+#endif
+
+#if !PLATFORM(COCOA)
+typedef unsigned GLuint;
 typedef void* PlatformGraphicsContext3D;
 typedef void* PlatformGraphicsSurface3D;
-#endif
+#endif // !PLATFORM(COCOA)
 
 // These are currently the same among all implementations.
 const PlatformGraphicsContext3D NullPlatformGraphicsContext3D = 0;
@@ -85,21 +99,22 @@ const Platform3DObject NullPlatform3DObject = 0;
 
 namespace WebCore {
 class Extensions3D;
-#if USE(OPENGL_ES_2)
+#if !PLATFORM(COCOA) && USE(OPENGL_ES)
 class Extensions3DOpenGLES;
-#else
+#elif USE(OPENGL) || (PLATFORM(COCOA) && USE(OPENGL_ES))
 class Extensions3DOpenGL;
+#elif USE(ANGLE)
+class Extensions3DANGLE;
 #endif
 class HostWindow;
 class Image;
 class ImageBuffer;
-class ImageSource;
 class ImageData;
 class IntRect;
 class IntSize;
 class WebGLRenderingContextBase;
-#if USE(CAIRO)
-class PlatformContextCairo;
+#if USE(TEXTURE_MAPPER)
+class TextureMapperGC3DPlatformLayer;
 #endif
 
 typedef WTF::HashMap<CString, uint64_t> ShaderNameHash;
@@ -114,6 +129,15 @@ class GraphicsContext3DPrivate;
 
 class GraphicsContext3D : public RefCounted<GraphicsContext3D> {
 public:
+    class Client {
+    public:
+        virtual ~Client() { }
+        virtual void didComposite() = 0;
+        virtual void forceContextLost() = 0;
+        virtual void recycleContext() = 0;
+        virtual void dispatchContextChangedNotification() = 0;
+    };
+
     enum {
         // WebGL 1 constants
         DEPTH_BUFFER_BIT = 0x00000100,
@@ -712,7 +736,9 @@ public:
         TEXTURE_IMMUTABLE_FORMAT = 0x912F,
         MAX_ELEMENT_INDEX = 0x8D6B,
         NUM_SAMPLE_COUNTS = 0x9380,
-        TEXTURE_IMMUTABLE_LEVELS = 0x82DF, 
+        TEXTURE_IMMUTABLE_LEVELS = 0x82DF,
+        PRIMITIVE_RESTART_FIXED_INDEX = 0x8D69,
+        PRIMITIVE_RESTART = 0x8F9D,
 
         // OpenGL ES 3 constants
         MAP_READ_BIT = 0x0001
@@ -721,31 +747,33 @@ public:
     enum RenderStyle {
         RenderOffscreen,
         RenderDirectlyToHostWindow,
-        RenderToCurrentGLContext
     };
 
     class ContextLostCallback {
     public:
         virtual void onContextLost() = 0;
-        virtual ~ContextLostCallback() {}
+        virtual ~ContextLostCallback() = default;
     };
 
     class ErrorMessageCallback {
     public:
         virtual void onErrorMessage(const String& message, GC3Dint id) = 0;
-        virtual ~ErrorMessageCallback() { }
+        virtual ~ErrorMessageCallback() = default;
     };
 
     void setContextLostCallback(std::unique_ptr<ContextLostCallback>);
     void setErrorMessageCallback(std::unique_ptr<ErrorMessageCallback>);
 
     static RefPtr<GraphicsContext3D> create(GraphicsContext3DAttributes, HostWindow*, RenderStyle = RenderOffscreen);
-    static RefPtr<GraphicsContext3D> createForCurrentGLContext();
     ~GraphicsContext3D();
 
 #if PLATFORM(COCOA)
+    static Ref<GraphicsContext3D> createShared(GraphicsContext3D& sharedContext);
+#endif
+
+#if PLATFORM(COCOA)
     PlatformGraphicsContext3D platformGraphicsContext3D() const { return m_contextObj; }
-    Platform3DObject platformTexture() const { return m_compositorTexture; }
+    Platform3DObject platformTexture() const { return m_texture; }
     CALayer* platformLayer() const { return reinterpret_cast<CALayer*>(m_webGLLayer.get()); }
 #else
     PlatformGraphicsContext3D platformGraphicsContext3D();
@@ -754,13 +782,21 @@ public:
 #endif
 
     bool makeContextCurrent();
-    void setWebGLContext(WebGLRenderingContextBase* base) { m_webglContext = base; }
+
+    void addClient(Client& client) { m_clients.add(&client); }
+    void removeClient(Client& client) { m_clients.remove(&client); }
 
     // With multisampling on, blit from multisampleFBO to regular FBO.
     void prepareTexture();
 
     // Equivalent to ::glTexImage2D(). Allows pixels==0 with no allocation.
     void texImage2DDirect(GC3Denum target, GC3Dint level, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height, GC3Dint border, GC3Denum format, GC3Denum type, const void* pixels);
+
+    // Get an attribute location without checking the name -> mangledname mapping.
+    int getAttribLocationDirect(Platform3DObject program, const String& name);
+
+    // Compile a shader without going through ANGLE.
+    void compileShaderDirect(Platform3DObject);
 
     // Helper to texImage2D with pixel==0 case: pixels are initialized to 0.
     // Return true if no GL error is synthesized.
@@ -967,8 +1003,13 @@ public:
     GC3Dboolean unmapBuffer(GC3Denum target);
     void copyBufferSubData(GC3Denum readTarget, GC3Denum writeTarget, GC3Dintptr readOffset, GC3Dintptr writeOffset, GC3Dsizeiptr);
 
+    void getInternalformativ(GC3Denum target, GC3Denum internalformat, GC3Denum pname, GC3Dsizei bufSize, GC3Dint* params);
+    void renderbufferStorageMultisample(GC3Denum target, GC3Dsizei samples, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height);
+
     void texStorage2D(GC3Denum target, GC3Dsizei levels, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height);
     void texStorage3D(GC3Denum target, GC3Dsizei levels, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height, GC3Dsizei depth);
+
+    void getActiveUniforms(Platform3DObject program, const Vector<GC3Duint>& uniformIndices, GC3Denum pname, Vector<GC3Dint>& params);
 
     GC3Denum checkFramebufferStatus(GC3Denum target);
     void clear(GC3Dbitfield mask);
@@ -1016,14 +1057,18 @@ public:
     void getIntegerv(GC3Denum pname, GC3Dint* value);
     void getInteger64v(GC3Denum pname, GC3Dint64* value);
     void getProgramiv(Platform3DObject program, GC3Denum pname, GC3Dint* value);
+#if !USE(ANGLE)
     void getNonBuiltInActiveSymbolCount(Platform3DObject program, GC3Denum pname, GC3Dint* value);
+#endif // !USE(ANGLE)
     String getProgramInfoLog(Platform3DObject);
     String getUnmangledInfoLog(Platform3DObject[2], GC3Dsizei, const String&);
     void getRenderbufferParameteriv(GC3Denum target, GC3Denum pname, GC3Dint* value);
     void getShaderiv(Platform3DObject, GC3Denum pname, GC3Dint* value);
     String getShaderInfoLog(Platform3DObject);
     void getShaderPrecisionFormat(GC3Denum shaderType, GC3Denum precisionType, GC3Dint* range, GC3Dint* precision);
+#if !USE(ANGLE)
     String getShaderSource(Platform3DObject);
+#endif // !USE(ANGLE)
     String getString(GC3Denum name);
     void getTexParameterfv(GC3Denum target, GC3Denum pname, GC3Dfloat* value);
     void getTexParameteriv(GC3Denum target, GC3Denum pname, GC3Dint* value);
@@ -1068,38 +1113,40 @@ public:
     void texSubImage2D(GC3Denum target, GC3Dint level, GC3Dint xoffset, GC3Dint yoffset, GC3Dsizei width, GC3Dsizei height, GC3Denum format, GC3Denum type, const void* pixels);
 
     void uniform1f(GC3Dint location, GC3Dfloat x);
-    void uniform1fv(GC3Dint location, GC3Dsizei, GC3Dfloat* v);
+    void uniform1fv(GC3Dint location, GC3Dsizei, const GC3Dfloat* v);
     void uniform1i(GC3Dint location, GC3Dint x);
-    void uniform1iv(GC3Dint location, GC3Dsizei, GC3Dint* v);
+    void uniform1iv(GC3Dint location, GC3Dsizei, const GC3Dint* v);
     void uniform2f(GC3Dint location, GC3Dfloat x, GC3Dfloat y);
-    void uniform2fv(GC3Dint location, GC3Dsizei, GC3Dfloat* v);
+    void uniform2fv(GC3Dint location, GC3Dsizei, const GC3Dfloat* v);
     void uniform2i(GC3Dint location, GC3Dint x, GC3Dint y);
-    void uniform2iv(GC3Dint location, GC3Dsizei, GC3Dint* v);
+    void uniform2iv(GC3Dint location, GC3Dsizei, const GC3Dint* v);
     void uniform3f(GC3Dint location, GC3Dfloat x, GC3Dfloat y, GC3Dfloat z);
-    void uniform3fv(GC3Dint location, GC3Dsizei, GC3Dfloat* v);
+    void uniform3fv(GC3Dint location, GC3Dsizei, const GC3Dfloat* v);
     void uniform3i(GC3Dint location, GC3Dint x, GC3Dint y, GC3Dint z);
-    void uniform3iv(GC3Dint location, GC3Dsizei, GC3Dint* v);
+    void uniform3iv(GC3Dint location, GC3Dsizei, const GC3Dint* v);
     void uniform4f(GC3Dint location, GC3Dfloat x, GC3Dfloat y, GC3Dfloat z, GC3Dfloat w);
-    void uniform4fv(GC3Dint location, GC3Dsizei, GC3Dfloat* v);
+    void uniform4fv(GC3Dint location, GC3Dsizei, const GC3Dfloat* v);
     void uniform4i(GC3Dint location, GC3Dint x, GC3Dint y, GC3Dint z, GC3Dint w);
-    void uniform4iv(GC3Dint location, GC3Dsizei, GC3Dint* v);
-    void uniformMatrix2fv(GC3Dint location, GC3Dsizei, GC3Dboolean transpose, GC3Dfloat* value);
-    void uniformMatrix3fv(GC3Dint location, GC3Dsizei, GC3Dboolean transpose, GC3Dfloat* value);
-    void uniformMatrix4fv(GC3Dint location, GC3Dsizei, GC3Dboolean transpose, GC3Dfloat* value);
+    void uniform4iv(GC3Dint location, GC3Dsizei, const GC3Dint* v);
+    void uniformMatrix2fv(GC3Dint location, GC3Dsizei, GC3Dboolean transpose, const GC3Dfloat* value);
+    void uniformMatrix3fv(GC3Dint location, GC3Dsizei, GC3Dboolean transpose, const GC3Dfloat* value);
+    void uniformMatrix4fv(GC3Dint location, GC3Dsizei, GC3Dboolean transpose, const GC3Dfloat* value);
 
     void useProgram(Platform3DObject);
     void validateProgram(Platform3DObject);
+#if !USE(ANGLE)
     bool checkVaryingsPacking(Platform3DObject vertexShader, Platform3DObject fragmentShader) const;
     bool precisionsMatch(Platform3DObject vertexShader, Platform3DObject fragmentShader) const;
+#endif
 
     void vertexAttrib1f(GC3Duint index, GC3Dfloat x);
-    void vertexAttrib1fv(GC3Duint index, GC3Dfloat* values);
+    void vertexAttrib1fv(GC3Duint index, const GC3Dfloat* values);
     void vertexAttrib2f(GC3Duint index, GC3Dfloat x, GC3Dfloat y);
-    void vertexAttrib2fv(GC3Duint index, GC3Dfloat* values);
+    void vertexAttrib2fv(GC3Duint index, const GC3Dfloat* values);
     void vertexAttrib3f(GC3Duint index, GC3Dfloat x, GC3Dfloat y, GC3Dfloat z);
-    void vertexAttrib3fv(GC3Duint index, GC3Dfloat* values);
+    void vertexAttrib3fv(GC3Duint index, const GC3Dfloat* values);
     void vertexAttrib4f(GC3Duint index, GC3Dfloat x, GC3Dfloat y, GC3Dfloat z, GC3Dfloat w);
-    void vertexAttrib4fv(GC3Duint index, GC3Dfloat* values);
+    void vertexAttrib4fv(GC3Duint index, const GC3Dfloat* values);
     void vertexAttribPointer(GC3Duint index, GC3Dint size, GC3Denum type, GC3Dboolean normalized,
                              GC3Dsizei stride, GC3Dintptr offset);
 
@@ -1117,12 +1164,7 @@ public:
     GC3Dboolean isVertexArray(Platform3DObject);
     void bindVertexArray(Platform3DObject);
 
-#if PLATFORM(GTK) || PLATFORM(EFL) || USE(CAIRO)
-    void paintToCanvas(const unsigned char* imagePixels, int imageWidth, int imageHeight,
-                       int canvasWidth, int canvasHeight, PlatformContextCairo* context);
-#elif USE(CG)
-    void paintToCanvas(const unsigned char* imagePixels, int imageWidth, int imageHeight, int canvasWidth, int canvasHeight, GraphicsContext&);
-#endif
+    void paintToCanvas(const unsigned char* imagePixels, const IntSize& imageSize, const IntSize& canvasSize, GraphicsContext&);
 
     void markContextChanged();
     void markLayerComposited();
@@ -1137,12 +1179,29 @@ public:
     RefPtr<ImageData> paintRenderingResultsToImageData();
     bool paintCompositedResultsToCanvas(ImageBuffer*);
 
-#if PLATFORM(IOS)
-    void endPaint();
+#if USE(OPENGL) && ENABLE(WEBGL2)
+    void primitiveRestartIndex(GC3Duint);
 #endif
-#if PLATFORM(MAC)
+
+#if PLATFORM(COCOA)
+    bool texImageIOSurface2D(GC3Denum target, GC3Denum internalFormat, GC3Dsizei width, GC3Dsizei height, GC3Denum format, GC3Denum type, IOSurfaceRef, GC3Duint plane);
+
+#if USE(OPENGL_ES)
+    void presentRenderbuffer();
+#endif
+
+#if USE(OPENGL)
+    void allocateIOSurfaceBackingStore(IntSize);
+    void updateFramebufferTextureBackingStoreFromLayer();
     void updateCGLContext();
 #endif
+
+#if USE(ANGLE) && PLATFORM(MAC)
+    void allocateIOSurfaceBackingStore(IntSize);
+    void updateFramebufferTextureBackingStoreFromLayer();
+#endif
+#endif // PLATFORM(COCOA)
+
     void setContextVisibility(bool);
 
     GraphicsContext3DPowerPreference powerPreferenceUsedForCreation() const { return m_powerPreferenceUsedForCreation; }
@@ -1244,13 +1303,12 @@ public:
         bool extractImage(bool premultiplyAlpha, bool ignoreGammaAndColorProfile);
 
 #if USE(CAIRO)
-        ImageSource* m_decoder;
         RefPtr<cairo_surface_t> m_imageSurface;
 #elif USE(CG)
         RetainPtr<CGImageRef> m_cgImage;
         RetainPtr<CGImageRef> m_decodedImage;
         RetainPtr<CFDataRef> m_pixelData;
-        std::unique_ptr<uint8_t[]> m_formalizedRGBA8Data;
+        UniqueArray<uint8_t> m_formalizedRGBA8Data;
 #endif
         Image* m_image;
         ImageHtmlDomSource m_imageHtmlDomSource;
@@ -1263,9 +1321,20 @@ public:
         unsigned m_imageSourceUnpackAlignment;
     };
 
+    void setFailNextGPUStatusCheck() { m_failNextStatusCheck = true; }
+
+    GC3Denum activeTextureUnit() const { return m_state.activeTextureUnit; }
+    GC3Denum currentBoundTexture() const { return m_state.currentBoundTexture(); }
+    GC3Denum currentBoundTarget() const { return m_state.currentBoundTarget(); }
+    unsigned textureSeed(GC3Duint texture) { return m_state.textureSeedCount.count(texture); }
+
+#if PLATFORM(MAC)
+    using PlatformDisplayID = uint32_t;
+    void screenDidChange(PlatformDisplayID);
+#endif
+
 private:
-    GraphicsContext3D(GraphicsContext3DAttributes, HostWindow*, RenderStyle = RenderOffscreen);
-    static int GPUCheckCounter;
+    GraphicsContext3D(GraphicsContext3DAttributes, HostWindow*, RenderStyle = RenderOffscreen, GraphicsContext3D* sharedContext = nullptr);
 
     // Helper for packImageData/extractImageData/extractTextureData which implement packing of pixel
     // data into the specified OpenGL destination format and type.
@@ -1281,31 +1350,36 @@ private:
     void validateDepthStencil(const char* packedDepthStencilExtension);
     void validateAttributes();
     
-    // Call to make during draw calls to check on the GPU's status.
-    void checkGPUStatusIfNecessary();
+    // Did the most recent drawing operation leave the GPU in an acceptable state?
+    void checkGPUStatus();
 
     // Read rendering results into a pixel array with the same format as the
     // backbuffer.
     void readRenderingResults(unsigned char* pixels, int pixelsSize);
     void readPixelsAndConvertToBGRAIfNecessary(int x, int y, int width, int height, unsigned char* pixels);
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     void setRenderbufferStorageFromDrawable(GC3Dsizei width, GC3Dsizei height);
 #endif
 
     bool reshapeFBOs(const IntSize&);
     void resolveMultisamplingIfNecessary(const IntRect& = IntRect());
     void attachDepthAndStencilBufferIfNeeded(GLuint internalDepthStencilFormat, int width, int height);
-#if PLATFORM(EFL) && USE(GRAPHICS_SURFACE)
-    void createGraphicsSurfaces(const IntSize&);
+
+#if PLATFORM(COCOA)
+    bool allowOfflineRenderers() const;
 #endif
 
-    int m_currentWidth, m_currentHeight;
+    int m_currentWidth { 0 };
+    int m_currentHeight { 0 };
 
 #if PLATFORM(COCOA)
     RetainPtr<WebGLLayer> m_webGLLayer;
-    PlatformGraphicsContext3D m_contextObj;
-#endif
+    PlatformGraphicsContext3D m_contextObj { nullptr };
+#if USE(ANGLE)
+    PlatformGraphicsContext3DDisplay m_displayObj { nullptr };
+#endif // USE(ANGLE)
+#endif // PLATFORM(COCOA)
 
 #if PLATFORM(WIN) && USE(CA)
     RefPtr<PlatformCALayer> m_webGLLayer;
@@ -1339,8 +1413,14 @@ private:
         }
     };
 
+#if !USE(ANGLE)
+    // FIXME: Shaders are never removed from this map, even if they and their program are deleted.
+    // This is bad, and it also relies on the fact we never reuse Platform3DObject numbers.
     typedef HashMap<Platform3DObject, ShaderSourceEntry> ShaderSourceMap;
     ShaderSourceMap m_shaderSourceMap;
+
+    typedef HashMap<Platform3DObject, std::pair<Platform3DObject, Platform3DObject>> LinkedShaderMap;
+    LinkedShaderMap m_linkedShaderMap;
 
     struct ActiveShaderSymbolCounts {
         Vector<GC3Dint> filteredToActualAttributeIndexMap;
@@ -1368,73 +1448,126 @@ private:
     String mappedSymbolName(Platform3DObject program, ANGLEShaderSymbolType, const String& name);
     String mappedSymbolName(Platform3DObject shaders[2], size_t count, const String& name);
     String originalSymbolName(Platform3DObject program, ANGLEShaderSymbolType, const String& name);
-
-    ANGLEWebKitBridge m_compiler;
+    Optional<String> mappedSymbolInShaderSourceMap(Platform3DObject shader, ANGLEShaderSymbolType, const String& name);
+    Optional<String> originalSymbolInShaderSourceMap(Platform3DObject shader, ANGLEShaderSymbolType, const String& name);
 
     std::unique_ptr<ShaderNameHash> nameHashMapForShaders;
+#endif // !USE(ANGLE)
 
-#if ((PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN)) && USE(OPENGL_ES_2))
+#if !PLATFORM(COCOA) && USE(OPENGL_ES)
     friend class Extensions3DOpenGLES;
-    std::unique_ptr<Extensions3DOpenGLES> m_extensions;
-#else
-    friend class Extensions3DOpenGL;
-    std::unique_ptr<Extensions3DOpenGL> m_extensions;
-#endif
     friend class Extensions3DOpenGLCommon;
+    std::unique_ptr<Extensions3DOpenGLES> m_extensions;
+#elif USE(OPENGL) || (PLATFORM(COCOA) && USE(OPENGL_ES))
+    friend class Extensions3DOpenGL;
+    friend class Extensions3DOpenGLCommon;
+    std::unique_ptr<Extensions3DOpenGL> m_extensions;
+#elif USE(ANGLE)
+    friend class Extensions3DANGLE;
+    std::unique_ptr<Extensions3DANGLE> m_extensions;
+#endif
 
     GraphicsContext3DAttributes m_attrs;
     GraphicsContext3DPowerPreference m_powerPreferenceUsedForCreation { GraphicsContext3DPowerPreference::Default };
     RenderStyle m_renderStyle;
     Vector<Vector<float>> m_vertexArray;
 
-    GC3Duint m_texture;
-    GC3Duint m_compositorTexture;
-    GC3Duint m_fbo;
-#if USE(COORDINATED_GRAPHICS_THREADED)
-    GC3Duint m_intermediateTexture;
+#if !USE(ANGLE)
+    ANGLEWebKitBridge m_compiler;
 #endif
 
-    GC3Duint m_depthBuffer;
-    GC3Duint m_stencilBuffer;
-    GC3Duint m_depthStencilBuffer;
+    GC3Duint m_texture { 0 };
+    GC3Duint m_fbo { 0 };
+#if USE(COORDINATED_GRAPHICS)
+    GC3Duint m_compositorTexture { 0 };
+    GC3Duint m_intermediateTexture { 0 };
+#endif
 
-    bool m_layerComposited;
-    GC3Duint m_internalColorFormat;
+    GC3Duint m_depthBuffer { 0 };
+    GC3Duint m_stencilBuffer { 0 };
+    GC3Duint m_depthStencilBuffer { 0 };
+
+    bool m_layerComposited { false };
+    GC3Duint m_internalColorFormat { 0 };
+
+#if USE(ANGLE)
+    PlatformGraphicsContext3DSurface m_pbuffer;
+#endif
 
     struct GraphicsContext3DState {
-        GraphicsContext3DState()
-            : boundFBO(0)
-            , activeTexture(GraphicsContext3D::TEXTURE0)
-            , boundTexture0(0)
-        { }
+        GC3Duint boundFBO { 0 };
+        GC3Denum activeTextureUnit { GraphicsContext3D::TEXTURE0 };
 
-        GC3Duint boundFBO;
-        GC3Denum activeTexture;
-        GC3Duint boundTexture0;
+        using BoundTextureMap = HashMap<GC3Denum,
+            std::pair<GC3Duint, GC3Denum>,
+            WTF::IntHash<GC3Denum>, 
+            WTF::UnsignedWithZeroKeyHashTraits<GC3Duint>,
+            WTF::PairHashTraits<WTF::UnsignedWithZeroKeyHashTraits<GC3Duint>, WTF::UnsignedWithZeroKeyHashTraits<GC3Duint>>
+        >;
+        BoundTextureMap boundTextureMap;
+        GC3Duint currentBoundTexture() const { return boundTexture(activeTextureUnit); }
+        GC3Duint boundTexture(GC3Denum textureUnit) const
+        {
+            auto iterator = boundTextureMap.find(textureUnit);
+            if (iterator != boundTextureMap.end())
+                return iterator->value.first;
+            return 0;
+        }
+
+        GC3Duint currentBoundTarget() const { return boundTarget(activeTextureUnit); }
+        GC3Denum boundTarget(GC3Denum textureUnit) const
+        {
+            auto iterator = boundTextureMap.find(textureUnit);
+            if (iterator != boundTextureMap.end())
+                return iterator->value.second;
+            return 0;
+        }
+
+        void setBoundTexture(GC3Denum textureUnit, GC3Duint texture, GC3Denum target)
+        {
+            boundTextureMap.set(textureUnit, std::make_pair(texture, target));
+        }
+
+        using TextureSeedCount = HashCountedSet<GC3Duint, WTF::IntHash<GC3Duint>, WTF::UnsignedWithZeroKeyHashTraits<GC3Duint>>;
+        TextureSeedCount textureSeedCount;
     };
 
     GraphicsContext3DState m_state;
 
     // For multisampling
-    GC3Duint m_multisampleFBO;
-    GC3Duint m_multisampleDepthStencilBuffer;
-    GC3Duint m_multisampleColorBuffer;
+    GC3Duint m_multisampleFBO { 0 };
+    GC3Duint m_multisampleDepthStencilBuffer { 0 };
+    GC3Duint m_multisampleColorBuffer { 0 };
 
     // Errors raised by synthesizeGLError().
     ListHashSet<GC3Denum> m_syntheticErrors;
 
+#if USE(NICOSIA) && USE(TEXTURE_MAPPER)
+    friend class Nicosia::GC3DLayer;
+    std::unique_ptr<Nicosia::GC3DLayer> m_nicosiaLayer;
+#elif USE(TEXTURE_MAPPER)
+    friend class TextureMapperGC3DPlatformLayer;
+    std::unique_ptr<TextureMapperGC3DPlatformLayer> m_texmapLayer;
+#else
     friend class GraphicsContext3DPrivate;
     std::unique_ptr<GraphicsContext3DPrivate> m_private;
+#endif
 
-    // FIXME: Layering violation.
-    WebGLRenderingContextBase* m_webglContext;
+    HashSet<Client*> m_clients;
 
     bool m_isForWebGL2 { false };
+    bool m_usingCoreProfile { false };
+
+    unsigned m_statusCheckCount { 0 };
+    bool m_failNextStatusCheck { false };
 
 #if USE(CAIRO)
     Platform3DObject m_vao { 0 };
 #endif
 
+#if PLATFORM(COCOA) && USE(OPENGL)
+    bool m_hasSwitchedToHighPerformanceGPU { false };
+#endif
 };
 
 } // namespace WebCore

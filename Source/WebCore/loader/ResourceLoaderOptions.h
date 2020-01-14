@@ -30,32 +30,40 @@
 
 #pragma once
 
+#include "ContentSecurityPolicyResponseHeaders.h"
 #include "FetchOptions.h"
-#include "ResourceHandleTypes.h"
+#include "HTTPHeaderNames.h"
+#include "ServiceWorkerTypes.h"
+#include "StoredCredentialsPolicy.h"
+#include <wtf/HashSet.h>
+#include <wtf/Vector.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-enum SendCallbackPolicy {
+enum class SendCallbackPolicy : uint8_t {
     SendCallbacks,
     DoNotSendCallbacks
 };
 
-enum ContentSniffingPolicy {
+// FIXME: These options are named poorly. We only implement force disabling content sniffing, not enabling it,
+// and even that only on some platforms.
+enum class ContentSniffingPolicy : uint8_t {
     SniffContent,
     DoNotSniffContent
 };
 
-enum DataBufferingPolicy {
+enum class DataBufferingPolicy : uint8_t {
     BufferData,
     DoNotBufferData
 };
 
-enum SecurityCheckPolicy {
+enum class SecurityCheckPolicy : uint8_t {
     SkipSecurityCheck,
     DoSecurityCheck
 };
 
-enum CertificateInfoPolicy {
+enum class CertificateInfoPolicy : uint8_t {
     IncludeCertificateInfo,
     DoNotIncludeCertificateInfo
 };
@@ -75,26 +83,60 @@ enum class CachingPolicy : uint8_t {
     DisallowCaching
 };
 
-enum class ClientCredentialPolicy {
+enum class ClientCredentialPolicy : uint8_t {
     CannotAskClientForCredentials,
     MayAskClientForCredentials
 };
 
-enum class SameOriginDataURLFlag {
+enum class SameOriginDataURLFlag : uint8_t {
     Set,
     Unset
+};
+
+enum class InitiatorContext : uint8_t {
+    Document,
+    Worker,
+};
+
+enum class ServiceWorkersMode : uint8_t {
+    All,
+    None,
+    Only // An error will happen if service worker is not handling the fetch. Used to bypass preflight safely.
+};
+
+enum class ApplicationCacheMode : uint8_t {
+    Use,
+    Bypass
+};
+
+// FIXME: These options are named poorly. We only implement force disabling content encoding sniffing, not enabling it,
+// and even that only on some platforms.
+enum class ContentEncodingSniffingPolicy : uint8_t {
+    Sniff,
+    DoNotSniff,
+};
+
+enum class PreflightPolicy : uint8_t {
+    Consider,
+    Force,
+    Prevent
+};
+
+enum class LoadedFromOpaqueSource : uint8_t {
+    Yes,
+    No
 };
 
 struct ResourceLoaderOptions : public FetchOptions {
     ResourceLoaderOptions() { }
 
-    ResourceLoaderOptions(const FetchOptions& options) : FetchOptions(options) { }
+    ResourceLoaderOptions(FetchOptions options) : FetchOptions { WTFMove(options) } { }
 
-    ResourceLoaderOptions(SendCallbackPolicy sendLoadCallbacks, ContentSniffingPolicy sniffContent, DataBufferingPolicy dataBufferingPolicy, StoredCredentials allowCredentials, ClientCredentialPolicy credentialPolicy, FetchOptions::Credentials credentials, SecurityCheckPolicy securityCheck, FetchOptions::Mode mode, CertificateInfoPolicy certificateInfoPolicy, ContentSecurityPolicyImposition contentSecurityPolicyImposition, DefersLoadingPolicy defersLoadingPolicy, CachingPolicy cachingPolicy)
+    ResourceLoaderOptions(SendCallbackPolicy sendLoadCallbacks, ContentSniffingPolicy sniffContent, DataBufferingPolicy dataBufferingPolicy, StoredCredentialsPolicy storedCredentialsPolicy, ClientCredentialPolicy credentialPolicy, FetchOptions::Credentials credentials, SecurityCheckPolicy securityCheck, FetchOptions::Mode mode, CertificateInfoPolicy certificateInfoPolicy, ContentSecurityPolicyImposition contentSecurityPolicyImposition, DefersLoadingPolicy defersLoadingPolicy, CachingPolicy cachingPolicy)
         : sendLoadCallbacks(sendLoadCallbacks)
         , sniffContent(sniffContent)
         , dataBufferingPolicy(dataBufferingPolicy)
-        , allowCredentials(allowCredentials)
+        , storedCredentialsPolicy(storedCredentialsPolicy)
         , securityCheck(securityCheck)
         , certificateInfoPolicy(certificateInfoPolicy)
         , contentSecurityPolicyImposition(contentSecurityPolicyImposition)
@@ -106,19 +148,30 @@ struct ResourceLoaderOptions : public FetchOptions {
         this->mode = mode;
     }
 
-    SendCallbackPolicy sendLoadCallbacks { DoNotSendCallbacks };
-    ContentSniffingPolicy sniffContent { DoNotSniffContent };
-    DataBufferingPolicy dataBufferingPolicy { BufferData };
-    StoredCredentials allowCredentials { DoNotAllowStoredCredentials };
-    SecurityCheckPolicy securityCheck { DoSecurityCheck };
-    CertificateInfoPolicy certificateInfoPolicy { DoNotIncludeCertificateInfo };
+#if ENABLE(SERVICE_WORKER)
+    Optional<ServiceWorkerRegistrationIdentifier> serviceWorkerRegistrationIdentifier;
+#endif
+    HashSet<HTTPHeaderName, WTF::IntHash<HTTPHeaderName>, WTF::StrongEnumHashTraits<HTTPHeaderName>> httpHeadersToKeep;
+    Optional<ContentSecurityPolicyResponseHeaders> cspResponseHeaders;
+    unsigned maxRedirectCount { 20 };
+
+    SendCallbackPolicy sendLoadCallbacks { SendCallbackPolicy::DoNotSendCallbacks };
+    ContentSniffingPolicy sniffContent { ContentSniffingPolicy::DoNotSniffContent };
+    ContentEncodingSniffingPolicy sniffContentEncoding { ContentEncodingSniffingPolicy::Sniff };
+    DataBufferingPolicy dataBufferingPolicy { DataBufferingPolicy::BufferData };
+    StoredCredentialsPolicy storedCredentialsPolicy { StoredCredentialsPolicy::DoNotUse };
+    SecurityCheckPolicy securityCheck { SecurityCheckPolicy::DoSecurityCheck };
+    CertificateInfoPolicy certificateInfoPolicy { CertificateInfoPolicy::DoNotIncludeCertificateInfo };
     ContentSecurityPolicyImposition contentSecurityPolicyImposition { ContentSecurityPolicyImposition::DoPolicyCheck };
     DefersLoadingPolicy defersLoadingPolicy { DefersLoadingPolicy::AllowDefersLoading };
     CachingPolicy cachingPolicy { CachingPolicy::AllowCaching };
     SameOriginDataURLFlag sameOriginDataURLFlag { SameOriginDataURLFlag::Unset };
-
+    InitiatorContext initiatorContext { InitiatorContext::Document };
+    ServiceWorkersMode serviceWorkersMode { ServiceWorkersMode::All };
+    ApplicationCacheMode applicationCacheMode { ApplicationCacheMode::Use };
     ClientCredentialPolicy clientCredentialPolicy { ClientCredentialPolicy::CannotAskClientForCredentials };
-    unsigned maxRedirectCount { 20 };
+    PreflightPolicy preflightPolicy { PreflightPolicy::Consider };
+    LoadedFromOpaqueSource loadedFromOpaqueSource { LoadedFromOpaqueSource::No };
 };
 
 } // namespace WebCore

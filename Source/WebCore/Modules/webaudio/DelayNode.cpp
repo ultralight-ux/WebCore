@@ -29,22 +29,25 @@
 #include "DelayNode.h"
 
 #include "DelayProcessor.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(DelayNode);
 
 const double maximumAllowedDelayTime = 180;
 
 inline DelayNode::DelayNode(AudioContext& context, float sampleRate, double maxDelayTime)
     : AudioBasicProcessorNode(context, sampleRate)
 {
-    m_processor = std::make_unique<DelayProcessor>(context, sampleRate, 1, maxDelayTime);
     setNodeType(NodeTypeDelay);
+    m_processor = std::make_unique<DelayProcessor>(context, sampleRate, 1, maxDelayTime);
 }
 
 ExceptionOr<Ref<DelayNode>> DelayNode::create(AudioContext& context, float sampleRate, double maxDelayTime)
 {
     if (maxDelayTime <= 0 || maxDelayTime >= maximumAllowedDelayTime)
-        return Exception { NOT_SUPPORTED_ERR };
+        return Exception { NotSupportedError };
     return adoptRef(*new DelayNode(context, sampleRate, maxDelayTime));
 }
 

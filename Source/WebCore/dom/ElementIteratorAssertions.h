@@ -25,8 +25,7 @@
 
 #pragma once
 
-#include "Element.h"
-#include "NoEventDispatchAssertion.h"
+#include "ScriptDisallowedScope.h"
 
 namespace WebCore {
 
@@ -40,7 +39,7 @@ public:
 private:
     const Document* m_document;
     uint64_t m_initialDOMTreeVersion;
-    std::optional<NoEventDispatchAssertion> m_eventDispatchAssertion;
+    Optional<ScriptDisallowedScope> m_eventDispatchAssertion;
 };
 
 // FIXME: No real point in doing these as inlines; they are for debugging and we usually turn off inlining in debug builds.
@@ -50,7 +49,7 @@ inline ElementIteratorAssertions::ElementIteratorAssertions(const Node* first)
     , m_initialDOMTreeVersion(first ? m_document->domTreeVersion() : 0)
 {
     if (first)
-        m_eventDispatchAssertion = NoEventDispatchAssertion();
+        m_eventDispatchAssertion = ScriptDisallowedScope();
 }
 
 inline bool ElementIteratorAssertions::domTreeHasMutated() const
@@ -60,14 +59,14 @@ inline bool ElementIteratorAssertions::domTreeHasMutated() const
 
 inline void ElementIteratorAssertions::dropEventDispatchAssertion()
 {
-    m_eventDispatchAssertion = std::nullopt;
+    m_eventDispatchAssertion = WTF::nullopt;
 }
 
 inline void ElementIteratorAssertions::clear()
 {
     m_document = nullptr;
     m_initialDOMTreeVersion = 0;
-    m_eventDispatchAssertion = std::nullopt;
+    m_eventDispatchAssertion = WTF::nullopt;
 }
 
 } // namespace WebCore

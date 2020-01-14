@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2007 David Smith (catfish.man@gmail.com)
- * Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2019 Apple Inc. All rights reserved.
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -26,6 +26,7 @@
 #include "PODIntervalTree.h"
 #include "RootInlineBox.h"
 #include <wtf/ListHashSet.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -40,13 +41,13 @@ public:
 
     static std::unique_ptr<FloatingObject> create(RenderBox&);
     std::unique_ptr<FloatingObject> copyToNewContainer(LayoutSize, bool shouldPaint = false, bool isDescendant = false) const;
-    std::unique_ptr<FloatingObject> unsafeClone() const;
+    std::unique_ptr<FloatingObject> cloneForNewParent() const;
 
     explicit FloatingObject(RenderBox&);
-    FloatingObject(RenderBox&, Type, const LayoutRect&, bool shouldPaint, bool isDescendant);
+    FloatingObject(RenderBox&, Type, const LayoutRect&, const LayoutSize&, bool shouldPaint, bool isDescendant);
 
     Type type() const { return static_cast<Type>(m_type); }
-    RenderBox& renderer() const { return m_renderer; }
+    RenderBox& renderer() const { return *m_renderer; }
 
     bool isPlaced() const { return m_isPlaced; }
     void setIsPlaced(bool placed = true) { m_isPlaced = placed; }
@@ -62,6 +63,8 @@ public:
     void setY(LayoutUnit y) { ASSERT(!isInPlacedTree()); m_frameRect.setY(y); }
     void setWidth(LayoutUnit width) { ASSERT(!isInPlacedTree()); m_frameRect.setWidth(width); }
     void setHeight(LayoutUnit height) { ASSERT(!isInPlacedTree()); m_frameRect.setHeight(height); }
+
+    void setMarginOffset(LayoutSize offset) { ASSERT(!isInPlacedTree()); m_marginOffset = offset; }
 
     const LayoutRect& frameRect() const { ASSERT(isPlaced()); return m_frameRect; }
     void setFrameRect(const LayoutRect& frameRect) { ASSERT(!isInPlacedTree()); m_frameRect = frameRect; }
@@ -80,14 +83,26 @@ public:
     void setIsDescendant(bool isDescendant) { m_isDescendant = isDescendant; }
 
     // FIXME: Callers of these methods are dangerous and should be whitelisted explicitly or removed.
-    RootInlineBox* originatingLine() const { return m_originatingLine; }
-    void setOriginatingLine(RootInlineBox* line) { m_originatingLine = line; }
+    RootInlineBox* originatingLine() const { return m_originatingLine.get(); }
+    void clearOriginatingLine() { m_originatingLine = nullptr; }
+    void setOriginatingLine(RootInlineBox& line) { m_originatingLine = makeWeakPtr(line); }
+
+    LayoutSize locationOffsetOfBorderBox() const
+    {
+        ASSERT(isPlaced());
+        return LayoutSize(m_frameRect.location().x() + m_marginOffset.width(), m_frameRect.location().y() + m_marginOffset.height());
+    }
+    LayoutSize marginOffset() const { ASSERT(isPlaced()); return m_marginOffset; }
+    LayoutSize translationOffsetToAncestor() const;
+
+    String debugString() const;
 
 private:
-    RenderBox& m_renderer;
-    RootInlineBox* m_originatingLine;
+    WeakPtr<RenderBox> m_renderer;
+    WeakPtr<RootInlineBox> m_originatingLine;
     LayoutRect m_frameRect;
     LayoutUnit m_paginationStrut;
+    LayoutSize m_marginOffset;
 
     unsigned m_type : 2; // Type (left or right aligned)
     unsigned m_shouldPaint : 1;
@@ -98,16 +113,25 @@ private:
 #endif
 };
 
+// FIXME: This could be simplified if we made it inherit from PtrHash<std::unique_ptr<FloatingObject>> and
+// changed PtrHashBase to have all of its hash and equal functions bottleneck through single functions (as
+// is done here). That would allow us to only override those master hash and equal functions.
 struct FloatingObjectHashFunctions {
-    static unsigned hash(const std::unique_ptr<FloatingObject>& key) { return PtrHash<RenderBox*>::hash(&key->renderer()); }
-    static bool equal(const std::unique_ptr<FloatingObject>& a, const std::unique_ptr<FloatingObject>& b) { return &a->renderer() == &b->renderer(); }
+    typedef std::unique_ptr<FloatingObject> T;
+    typedef typename WTF::GetPtrHelper<T>::PtrType PtrType;
+
+    static unsigned hash(PtrType key) { return PtrHash<RenderBox*>::hash(&key->renderer()); }
+    static bool equal(PtrType a, PtrType b) { return &a->renderer() == &b->renderer(); }
     static const bool safeToCompareToEmptyOrDeleted = true;
+
+    static unsigned hash(const T& key) { return hash(WTF::getPtr(key)); }
+    static bool equal(const T& a, const T& b) { return equal(WTF::getPtr(a), WTF::getPtr(b)); }
+    static bool equal(PtrType a, const T& b) { return equal(a, WTF::getPtr(b)); }
+    static bool equal(const T& a, PtrType b) { return equal(WTF::getPtr(a), b); }
 };
 struct FloatingObjectHashTranslator {
     static unsigned hash(const RenderBox& key) { return PtrHash<const RenderBox*>::hash(&key); }
-    static unsigned hash(const FloatingObject& key) { return PtrHash<RenderBox*>::hash(&key.renderer()); }
     static bool equal(const std::unique_ptr<FloatingObject>& a, const RenderBox& b) { return &a->renderer() == &b; }
-    static bool equal(const std::unique_ptr<FloatingObject>& a, const FloatingObject& b) { return &a->renderer() == &b.renderer(); }
 };
 
 typedef ListHashSet<std::unique_ptr<FloatingObject>, FloatingObjectHashFunctions> FloatingObjectSet;
@@ -148,6 +172,7 @@ public:
     LayoutUnit findNextFloatLogicalBottomBelowForBlock(LayoutUnit logicalHeight);
 
 private:
+    const RenderBlockFlow& renderer() const { return *m_renderer; }
     void computePlacedFloatsTree();
     const FloatingObjectTree* placedFloatsTree();
     void increaseObjectsCount(FloatingObject::Type);
@@ -159,17 +184,20 @@ private:
     unsigned m_leftObjectsCount;
     unsigned m_rightObjectsCount;
     bool m_horizontalWritingMode;
-    const RenderBlockFlow& m_renderer;
+    WeakPtr<const RenderBlockFlow> m_renderer;
 };
-
-#ifndef NDEBUG
-// This helper is used by PODIntervalTree for debugging purposes.
-template<> struct ValueToString<FloatingObject*> {
-    static String string(const FloatingObject* floatingObject)
-    {
-        return String::format("%p (%ix%i %ix%i)", floatingObject, floatingObject->frameRect().x().toInt(), floatingObject->frameRect().y().toInt(), floatingObject->frameRect().maxX().toInt(), floatingObject->frameRect().maxY().toInt());
-    }
-};
-#endif
 
 } // namespace WebCore
+
+#ifndef NDEBUG
+
+namespace WTF {
+
+// This helper is used by PODIntervalTree for debugging purposes.
+template<> struct ValueToString<WebCore::FloatingObject*> {
+    static String string(const WebCore::FloatingObject* floatingObject) { return floatingObject->debugString(); }
+};
+
+} // namespace WTF
+
+#endif

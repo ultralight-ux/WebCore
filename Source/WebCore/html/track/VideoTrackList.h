@@ -41,7 +41,7 @@ public:
     }
     virtual ~VideoTrackList();
 
-    VideoTrack* getTrackById(const AtomicString&) const;
+    VideoTrack* getTrackById(const AtomString&) const;
     int selectedIndex() const;
 
     VideoTrack* item(unsigned) const;
@@ -53,7 +53,9 @@ public:
 
 private:
     VideoTrackList(HTMLMediaElement*, ScriptExecutionContext*);
+    const char* activeDOMObjectName() const final;
 };
+static_assert(sizeof(VideoTrackList) == sizeof(TrackListBase), "");
 
 } // namespace WebCore
 

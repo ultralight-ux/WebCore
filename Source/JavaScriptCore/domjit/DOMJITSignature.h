@@ -37,38 +37,25 @@ namespace JSC { namespace DOMJIT {
 #define JSC_DOMJIT_SIGNATURE_MAX_ARGUMENTS 2
 #define JSC_DOMJIT_SIGNATURE_MAX_ARGUMENTS_INCLUDING_THIS (1 + JSC_DOMJIT_SIGNATURE_MAX_ARGUMENTS)
 
-class Patchpoint;
-
-typedef Ref<Patchpoint> CheckDOMGeneratorFunction(void);
-
 class Signature {
 public:
     template<typename... Arguments>
-    constexpr Signature(uintptr_t unsafeFunction, CheckDOMGeneratorFunction* checkDOMGeneratorFunction, const ClassInfo* classInfo, Effect effect, SpeculatedType result, Arguments... arguments)
+    constexpr Signature(uintptr_t unsafeFunction, const ClassInfo* classInfo, Effect effect, SpeculatedType result, Arguments... arguments)
         : unsafeFunction(unsafeFunction)
-        , checkDOMGeneratorFunction(checkDOMGeneratorFunction)
         , classInfo(classInfo)
-        , effect(effect)
         , result(result)
         , arguments {static_cast<SpeculatedType>(arguments)...}
         , argumentCount(sizeof...(Arguments))
+        , effect(effect)
     {
     }
-
-#if ENABLE(JIT)
-    Ref<Patchpoint> checkDOM() const
-    {
-        return checkDOMGeneratorFunction();
-    }
-#endif
 
     uintptr_t unsafeFunction;
-    CheckDOMGeneratorFunction* checkDOMGeneratorFunction;
     const ClassInfo* const classInfo;
-    const Effect effect;
     const SpeculatedType result;
     const SpeculatedType arguments[JSC_DOMJIT_SIGNATURE_MAX_ARGUMENTS];
     const unsigned argumentCount;
+    const Effect effect;
 };
 
 } }

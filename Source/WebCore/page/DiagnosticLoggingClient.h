@@ -27,24 +27,31 @@
 
 #include "DiagnosticLoggingResultType.h"
 #include <wtf/FastMalloc.h>
-#include <wtf/Forward.h>
+#include <wtf/HashMap.h>
 #include <wtf/RandomNumber.h>
+#include <wtf/Variant.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-enum class ShouldSample { No, Yes };
+enum class ShouldSample : bool { No, Yes };
 
 class DiagnosticLoggingClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     virtual void logDiagnosticMessage(const String& message, const String& description, ShouldSample) = 0;
     virtual void logDiagnosticMessageWithResult(const String& message, const String& description, DiagnosticLoggingResultType, ShouldSample) = 0;
-    // FIXME: rename this to logDiagnosticMessageWithNumericValue().
-    virtual void logDiagnosticMessageWithValue(const String& message, const String& description, const String& value, ShouldSample) = 0;
+    virtual void logDiagnosticMessageWithValue(const String& message, const String& description, double value, unsigned significantFigures, ShouldSample) = 0;
+    virtual void logDiagnosticMessageWithEnhancedPrivacy(const String& message, const String& description, ShouldSample) = 0;
+
+    using ValuePayload = Variant<String, uint64_t, int64_t, bool, double>;
+    using ValueDictionary = HashMap<String, ValuePayload>;
+
+    virtual void logDiagnosticMessageWithValueDictionary(const String& message, const String& description, const ValueDictionary&, ShouldSample) = 0;
 
     static bool shouldLogAfterSampling(ShouldSample);
 
-    virtual ~DiagnosticLoggingClient() { }
+    virtual ~DiagnosticLoggingClient() = default;
 };
 
 inline bool DiagnosticLoggingClient::shouldLogAfterSampling(ShouldSample shouldSample)

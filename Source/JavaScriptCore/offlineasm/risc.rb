@@ -1,4 +1,4 @@
-# Copyright (C) 2011, 2012 Apple Inc. All rights reserved.
+# Copyright (C) 2011-2018 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -374,7 +374,7 @@ def riscLowerMalformedImmediates(list, validImmediates)
             when "addi", "addp", "addq", "addis", "subi", "subp", "subq", "subis"
                 if node.operands[0].is_a? Immediate and
                         (not validImmediates.include? node.operands[0].value) and
-                        validImmediates.include? -node.operands[0].value
+                        validImmediates.include? -node.operands[0].value and
                         node.operands.size == 2
                     if node.opcode =~ /add/
                         newOpcode = "sub" + $~.post_match
@@ -448,9 +448,15 @@ end
 
 def riscLowerMisplacedAddresses(list)
     newList = []
+    hasBackendSpecificLowering = Instruction.respond_to? "lowerMisplacedAddresses#{$activeBackend}"
     list.each {
         | node |
         if node.is_a? Instruction
+            if hasBackendSpecificLowering
+                wasHandled, newList = Instruction.send("lowerMisplacedAddresses#{$activeBackend}", node, newList)
+                next if wasHandled
+            end
+
             postInstructions = []
             annotation = node.annotation
             case node.opcode
@@ -575,7 +581,7 @@ def riscLowerNot(list)
         if node.is_a? Instruction
             case node.opcode
             when "noti", "notp"
-                raise "Wrong nubmer of operands at #{node.codeOriginString}" unless node.operands.size == 1
+                raise "Wrong number of operands at #{node.codeOriginString}" unless node.operands.size == 1
                 suffix = node.opcode[-1..-1]
                 newList << Instruction.new(node.codeOrigin, "xor" + suffix,
                                            [Immediate.new(node.codeOrigin, -1), node.operands[0]])

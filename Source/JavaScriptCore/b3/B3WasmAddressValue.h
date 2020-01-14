@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 #if ENABLE(B3_JIT)
 
 #include "B3Value.h"
+#include "GPRInfo.h"
 
 namespace JSC { namespace B3 {
 
@@ -39,14 +40,17 @@ public:
 
     GPRReg pinnedGPR() const { return m_pinnedGPR; }
 
+    B3_SPECIALIZE_VALUE_FOR_FIXED_CHILDREN(1)
+    B3_SPECIALIZE_VALUE_FOR_FINAL_SIZE_FIXED_CHILDREN
+
 protected:
     void dumpMeta(CommaPrinter&, PrintStream&) const override;
 
-    Value* cloneImpl() const override;
-
 private:
     friend class Procedure;
+    friend class Value;
 
+    static Opcode opcodeFromConstructor(Origin, Value*, GPRReg) { return WasmAddress; }
     WasmAddressValue(Origin, Value*, GPRReg);
 
     GPRReg m_pinnedGPR;

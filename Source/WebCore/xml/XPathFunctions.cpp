@@ -304,13 +304,13 @@ Value FunPosition::evaluate() const
     return Expression::evaluationContext().position;
 }
 
-static AtomicString atomicSubstring(StringBuilder& builder, unsigned start, unsigned length)
+static AtomString atomicSubstring(StringBuilder& builder, unsigned start, unsigned length)
 {
     ASSERT(start <= builder.length());
     ASSERT(length <= builder.length() - start);
     if (builder.is8Bit())
-        return AtomicString(builder.characters8() + start, length);
-    return AtomicString(builder.characters16() + start, length);
+        return AtomString(builder.characters8() + start, length);
+    return AtomString(builder.characters16() + start, length);
 }
 
 Value FunId::evaluate() const
@@ -367,7 +367,7 @@ static inline String expandedNameLocalPart(Node* node)
 
 static inline String expandedName(Node* node)
 {
-    const AtomicString& prefix = node->prefix();
+    const AtomString& prefix = node->prefix();
     return prefix.isEmpty() ? expandedNameLocalPart(node) : prefix + ":" + expandedNameLocalPart(node);
 }
 
@@ -669,7 +669,7 @@ struct FunctionMapValue {
     Interval argumentCountInterval;
 };
 
-static void populateFunctionMap(HashMap<String, FunctionMapValue>& functionMap)
+static HashMap<String, FunctionMapValue> createFunctionMap()
 {
     struct FunctionMapping {
         const char* name;
@@ -706,15 +706,15 @@ static void populateFunctionMap(HashMap<String, FunctionMapValue>& functionMap)
         { "true", { createFunctionTrue, 0 } },
     };
 
+    HashMap<String, FunctionMapValue> map;
     for (auto& function : functions)
-        functionMap.add(function.name, function.function);
+        map.add(function.name, function.function);
+    return map;
 }
 
 std::unique_ptr<Function> Function::create(const String& name, unsigned numArguments)
 {
-    static NeverDestroyed<HashMap<String, FunctionMapValue>> functionMap;
-    if (functionMap.get().isEmpty())
-        populateFunctionMap(functionMap);
+    static const auto functionMap = makeNeverDestroyed(createFunctionMap());
 
     auto it = functionMap.get().find(name);
     if (it == functionMap.get().end())
@@ -733,7 +733,7 @@ std::unique_ptr<Function> Function::create(const String& name)
 
 std::unique_ptr<Function> Function::create(const String& name, Vector<std::unique_ptr<Expression>> arguments)
 {
-    std::unique_ptr<Function> function = create(name, arguments.size());
+    auto function = create(name, arguments.size());
     if (function)
         function->setArguments(name, WTFMove(arguments));
     return function;

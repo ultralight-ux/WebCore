@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,22 +26,25 @@
 #pragma once
 
 #include "WebGLRenderingContextBase.h"
+#include <memory>
+
+#if ENABLE(WEBGL)
 
 namespace WebCore {
 
 class WebGLRenderingContext final : public WebGLRenderingContextBase {
+    WTF_MAKE_ISO_ALLOCATED(WebGLRenderingContext);
 public:
-    WebGLRenderingContext(HTMLCanvasElement&, GraphicsContext3DAttributes);
-    WebGLRenderingContext(HTMLCanvasElement&, PassRefPtr<GraphicsContext3D>, GraphicsContext3DAttributes);
+    static std::unique_ptr<WebGLRenderingContext> create(CanvasBase&, GraphicsContext3DAttributes);
+    static std::unique_ptr<WebGLRenderingContext> create(CanvasBase&, Ref<GraphicsContext3D>&&, GraphicsContext3DAttributes);
 
-private:
     bool isWebGL1() const final { return true; }
 
     WebGLExtension* getExtension(const String&) final;
-    WebGLGetInfo getParameter(GC3Denum pname) final;
-    Vector<String> getSupportedExtensions() final;
+    WebGLAny getParameter(GC3Denum pname) final;
+    Optional<Vector<String>> getSupportedExtensions() final;
 
-    WebGLGetInfo getFramebufferAttachmentParameter(GC3Denum target, GC3Denum attachment, GC3Denum pname) final;
+    WebGLAny getFramebufferAttachmentParameter(GC3Denum target, GC3Denum attachment, GC3Denum pname) final;
     void renderbufferStorage(GC3Denum target, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height) final;
     bool validateFramebufferFuncParameters(const char* functionName, GC3Denum target, GC3Denum attachment) final;
     void hint(GC3Denum target, GC3Denum mode) final;
@@ -53,8 +56,14 @@ private:
     bool validateIndexArrayConservative(GC3Denum type, unsigned& numElementsRequired) final;
     bool validateBlendEquation(const char* functionName, GC3Denum mode) final;
     bool validateCapability(const char* functionName, GC3Denum cap) final;
+
+private:
+    WebGLRenderingContext(CanvasBase&, GraphicsContext3DAttributes);
+    WebGLRenderingContext(CanvasBase&, Ref<GraphicsContext3D>&&, GraphicsContext3DAttributes);
 };
-    
+
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CANVASRENDERINGCONTEXT(WebCore::WebGLRenderingContext, isWebGL1())
+
+#endif

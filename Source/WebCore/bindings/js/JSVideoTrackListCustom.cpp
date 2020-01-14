@@ -27,13 +27,13 @@
 
 #if ENABLE(VIDEO_TRACK)
 
+#include "Element.h"
 #include "JSVideoTrackList.h"
-
 #include "JSNodeCustom.h"
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
 void JSVideoTrackList::visitAdditionalChildren(SlotVisitor& visitor)
 {

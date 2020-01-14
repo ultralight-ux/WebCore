@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google, Inc. All rights reserved.
- * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,24 +27,24 @@
 #include "config.h"
 #include "ContentSecurityPolicy.h"
 
+#include "ContentSecurityPolicyClient.h"
 #include "ContentSecurityPolicyDirective.h"
 #include "ContentSecurityPolicyDirectiveList.h"
 #include "ContentSecurityPolicyDirectiveNames.h"
 #include "ContentSecurityPolicyHash.h"
 #include "ContentSecurityPolicySource.h"
 #include "ContentSecurityPolicySourceList.h"
-#include "CryptoDigest.h"
+#include "CustomHeaderFields.h"
 #include "DOMStringList.h"
 #include "Document.h"
 #include "DocumentLoader.h"
 #include "EventNames.h"
 #include "FormData.h"
-#include "FormDataList.h"
 #include "Frame.h"
 #include "HTMLParserIdioms.h"
 #include "InspectorInstrumentation.h"
-#include "JSDOMWindowShell.h"
-#include "JSMainThreadExecState.h"
+#include "JSExecState.h"
+#include "JSWindowProxy.h"
 #include "ParsingUtilities.h"
 #include "PingLoader.h"
 #include "ResourceRequest.h"
@@ -54,16 +54,17 @@
 #include "SecurityPolicyViolationEvent.h"
 #include "Settings.h"
 #include "TextEncoding.h"
-#include <inspector/InspectorValues.h>
-#include <inspector/ScriptCallStack.h>
-#include <inspector/ScriptCallStackFactory.h>
+#include <JavaScriptCore/ScriptCallStack.h>
+#include <JavaScriptCore/ScriptCallStackFactory.h>
+#include <pal/crypto/CryptoDigest.h>
+#include <wtf/JSONValues.h>
 #include <wtf/SetForScope.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/TextPosition.h>
 
-using namespace Inspector;
 
 namespace WebCore {
+using namespace Inspector;
 
 static String consoleMessageForViolation(const char* effectiveViolatedDirective, const ContentSecurityPolicyDirective& violatedDirective, const URL& blockedURL, const char* prefix, const char* subject = "it")
 {
@@ -89,24 +90,22 @@ static String consoleMessageForViolation(const char* effectiveViolatedDirective,
     return result.toString();
 }
 
-ContentSecurityPolicy::ContentSecurityPolicy(ScriptExecutionContext& scriptExecutionContext)
+ContentSecurityPolicy::ContentSecurityPolicy(URL&& protectedURL, ContentSecurityPolicyClient* client)
+    : m_client { client }
+    , m_protectedURL { WTFMove(protectedURL) }
+{
+    updateSourceSelf(SecurityOrigin::create(m_protectedURL).get());
+}
+
+ContentSecurityPolicy::ContentSecurityPolicy(URL&& protectedURL, ScriptExecutionContext& scriptExecutionContext)
     : m_scriptExecutionContext(&scriptExecutionContext)
-    , m_sandboxFlags(SandboxNone)
+    , m_protectedURL { WTFMove(protectedURL) }
 {
     ASSERT(scriptExecutionContext.securityOrigin());
     updateSourceSelf(*scriptExecutionContext.securityOrigin());
 }
 
-ContentSecurityPolicy::ContentSecurityPolicy(const SecurityOrigin& securityOrigin, const Frame* frame)
-    : m_frame(frame)
-    , m_sandboxFlags(SandboxNone)
-{
-    updateSourceSelf(securityOrigin);
-}
-
-ContentSecurityPolicy::~ContentSecurityPolicy()
-{
-}
+ContentSecurityPolicy::~ContentSecurityPolicy() = default;
 
 void ContentSecurityPolicy::copyStateFrom(const ContentSecurityPolicy* other) 
 {
@@ -114,7 +113,20 @@ void ContentSecurityPolicy::copyStateFrom(const ContentSecurityPolicy* other)
         return;
     ASSERT(m_policies.isEmpty());
     for (auto& policy : other->m_policies)
-        didReceiveHeader(policy->header(), policy->headerType(), ContentSecurityPolicy::PolicyFrom::Inherited);
+        didReceiveHeader(policy->header(), policy->headerType(), ContentSecurityPolicy::PolicyFrom::Inherited, String { });
+    m_referrer = other->m_referrer;
+    m_httpStatusCode = other->m_httpStatusCode;
+}
+
+void ContentSecurityPolicy::createPolicyForPluginDocumentFrom(const ContentSecurityPolicy& other)
+{
+    if (m_hasAPIPolicy)
+        return;
+    ASSERT(m_policies.isEmpty());
+    for (auto& policy : other.m_policies)
+        didReceiveHeader(policy->header(), policy->headerType(), ContentSecurityPolicy::PolicyFrom::InheritedForPluginDocument, String { });
+    m_referrer = other.m_referrer;
+    m_httpStatusCode = other.m_httpStatusCode;
 }
 
 void ContentSecurityPolicy::copyUpgradeInsecureRequestStateFrom(const ContentSecurityPolicy& other)
@@ -148,44 +160,56 @@ bool ContentSecurityPolicy::allowRunningOrDisplayingInsecureContent(const URL& u
     return allow;
 }
 
-void ContentSecurityPolicy::didCreateWindowShell(JSDOMWindowShell& windowShell) const
+void ContentSecurityPolicy::didCreateWindowProxy(JSWindowProxy& windowProxy) const
 {
-    JSDOMWindow* window = windowShell.window();
+    auto* window = windowProxy.window();
     ASSERT(window);
     ASSERT(window->scriptExecutionContext());
     ASSERT(window->scriptExecutionContext()->contentSecurityPolicy() == this);
-    if (!windowShell.world().isNormal()) {
+    if (!windowProxy.world().isNormal()) {
         window->setEvalEnabled(true);
         return;
     }
     window->setEvalEnabled(m_lastPolicyEvalDisabledErrorMessage.isNull(), m_lastPolicyEvalDisabledErrorMessage);
+    window->setWebAssemblyEnabled(m_lastPolicyWebAssemblyDisabledErrorMessage.isNull(), m_lastPolicyWebAssemblyDisabledErrorMessage);
 }
 
 ContentSecurityPolicyResponseHeaders ContentSecurityPolicy::responseHeaders() const
 {
-    ContentSecurityPolicyResponseHeaders result;
-    result.m_headers.reserveInitialCapacity(m_policies.size());
-    for (auto& policy : m_policies)
-        result.m_headers.uncheckedAppend({ policy->header(), policy->headerType() });
-    return result;
+    if (!m_cachedResponseHeaders) {
+        ContentSecurityPolicyResponseHeaders result;
+        result.m_headers.reserveInitialCapacity(m_policies.size());
+        for (auto& policy : m_policies)
+            result.m_headers.uncheckedAppend({ policy->header(), policy->headerType() });
+        result.m_httpStatusCode = m_httpStatusCode;
+        m_cachedResponseHeaders = WTFMove(result);
+    }
+    return *m_cachedResponseHeaders;
 }
 
-void ContentSecurityPolicy::didReceiveHeaders(const ContentSecurityPolicyResponseHeaders& headers, ReportParsingErrors reportParsingErrors)
+void ContentSecurityPolicy::didReceiveHeaders(const ContentSecurityPolicyResponseHeaders& headers, String&& referrer, ReportParsingErrors reportParsingErrors)
 {
     SetForScope<bool> isReportingEnabled(m_isReportingEnabled, reportParsingErrors == ReportParsingErrors::Yes);
     for (auto& header : headers.m_headers)
-        didReceiveHeader(header.first, header.second, ContentSecurityPolicy::PolicyFrom::HTTPHeader);
+        didReceiveHeader(header.first, header.second, ContentSecurityPolicy::PolicyFrom::HTTPHeader, String { });
+    m_referrer = WTFMove(referrer);
+    m_httpStatusCode = headers.m_httpStatusCode;
 }
 
-void ContentSecurityPolicy::didReceiveHeader(const String& header, ContentSecurityPolicyHeaderType type, ContentSecurityPolicy::PolicyFrom policyFrom)
+void ContentSecurityPolicy::didReceiveHeader(const String& header, ContentSecurityPolicyHeaderType type, ContentSecurityPolicy::PolicyFrom policyFrom, String&& referrer, int httpStatusCode)
 {
     if (m_hasAPIPolicy)
         return;
+
+    m_referrer = WTFMove(referrer);
+    m_httpStatusCode = httpStatusCode;
 
     if (policyFrom == PolicyFrom::API) {
         ASSERT(m_policies.isEmpty());
         m_hasAPIPolicy = true;
     }
+
+    m_cachedResponseHeaders = WTF::nullopt;
 
     // RFC2616, section 4.2 specifies that headers appearing multiple times can
     // be combined with a comma. Walk the header string, and parse each comma
@@ -230,14 +254,18 @@ void ContentSecurityPolicy::applyPolicyToScriptExecutionContext()
     bool enableStrictMixedContentMode = false;
     for (auto& policy : m_policies) {
         const ContentSecurityPolicyDirective* violatedDirective = policy->violatedDirectiveForUnsafeEval();
-        if (violatedDirective && !violatedDirective->directiveList().isReportOnly())
+        if (violatedDirective && !violatedDirective->directiveList().isReportOnly()) {
             m_lastPolicyEvalDisabledErrorMessage = policy->evalDisabledErrorMessage();
+            m_lastPolicyWebAssemblyDisabledErrorMessage = policy->webAssemblyDisabledErrorMessage();
+        }
         if (policy->hasBlockAllMixedContentDirective() && !policy->isReportOnly())
             enableStrictMixedContentMode = true;
     }
 
     if (!m_lastPolicyEvalDisabledErrorMessage.isNull())
         m_scriptExecutionContext->disableEval(m_lastPolicyEvalDisabledErrorMessage);
+    if (!m_lastPolicyWebAssemblyDisabledErrorMessage.isNull())
+        m_scriptExecutionContext->disableWebAssembly(m_lastPolicyWebAssemblyDisabledErrorMessage);
     if (m_sandboxFlags != SandboxNone && is<Document>(m_scriptExecutionContext))
         m_scriptExecutionContext->enforceSandboxFlags(m_sandboxFlags);
     if (enableStrictMixedContentMode)
@@ -256,8 +284,8 @@ bool ContentSecurityPolicy::urlMatchesSelf(const URL& url) const
 
 bool ContentSecurityPolicy::allowContentSecurityPolicySourceStarToMatchAnyProtocol() const
 {
-    if (Settings* settings = is<Document>(m_scriptExecutionContext) ? downcast<Document>(*m_scriptExecutionContext).settings() : nullptr)
-        return settings->allowContentSecurityPolicySourceStarToMatchAnyProtocol();
+    if (is<Document>(m_scriptExecutionContext))
+        return downcast<Document>(*m_scriptExecutionContext).settings().allowContentSecurityPolicySourceStarToMatchAnyProtocol();
     return false;
 }
 
@@ -311,20 +339,6 @@ bool ContentSecurityPolicy::allPoliciesAllow(ViolatedDirectiveCallback&& callbac
     return isAllowed;
 }
 
-static CryptoDigest::Algorithm toCryptoDigestAlgorithm(ContentSecurityPolicyHashAlgorithm algorithm)
-{
-    switch (algorithm) {
-    case ContentSecurityPolicyHashAlgorithm::SHA_256:
-        return CryptoDigest::Algorithm::SHA_256;
-    case ContentSecurityPolicyHashAlgorithm::SHA_384:
-        return CryptoDigest::Algorithm::SHA_384;
-    case ContentSecurityPolicyHashAlgorithm::SHA_512:
-        return CryptoDigest::Algorithm::SHA_512;
-    }
-    ASSERT_NOT_REACHED();
-    return CryptoDigest::Algorithm::SHA_512;
-}
-
 template<typename Predicate>
 ContentSecurityPolicy::HashInEnforcedAndReportOnlyPoliciesPair ContentSecurityPolicy::findHashOfContentInPolicies(Predicate&& predicate, const String& content, OptionSet<ContentSecurityPolicyHashAlgorithm> algorithms) const
 {
@@ -339,13 +353,11 @@ ContentSecurityPolicy::HashInEnforcedAndReportOnlyPoliciesPair ContentSecurityPo
 
     // FIXME: Compute the digest with respect to the raw bytes received from the page.
     // See <https://bugs.webkit.org/show_bug.cgi?id=155184>.
-    CString contentCString = encodingToUse.encode(content, EntitiesForUnencodables);
+    auto encodedContent = encodingToUse.encode(content, UnencodableHandling::Entities);
     bool foundHashInEnforcedPolicies = false;
     bool foundHashInReportOnlyPolicies = false;
     for (auto algorithm : algorithms) {
-        auto cryptoDigest = CryptoDigest::create(toCryptoDigestAlgorithm(algorithm));
-        cryptoDigest->addBytes(contentCString.data(), contentCString.length());
-        ContentSecurityPolicyHash hash = { algorithm, cryptoDigest->computeHash() };
+        ContentSecurityPolicyHash hash = cryptographicDigestForBytes(algorithm, encodedContent.data(), encodedContent.size());
         if (!foundHashInEnforcedPolicies && allPoliciesWithDispositionAllow(ContentSecurityPolicy::Disposition::Enforce, std::forward<Predicate>(predicate), hash))
             foundHashInEnforcedPolicies = true;
         if (!foundHashInReportOnlyPolicies && allPoliciesWithDispositionAllow(ContentSecurityPolicy::Disposition::ReportOnly, std::forward<Predicate>(predicate), hash))
@@ -360,11 +372,14 @@ bool ContentSecurityPolicy::allowJavaScriptURLs(const String& contextURL, const 
 {
     if (overrideContentSecurityPolicy)
         return true;
+    bool didNotifyInspector = false;
     auto handleViolatedDirective = [&] (const ContentSecurityPolicyDirective& violatedDirective) {
         String consoleMessage = consoleMessageForViolation(ContentSecurityPolicyDirectiveNames::scriptSrc, violatedDirective, URL(), "Refused to execute a script", "its hash, its nonce, or 'unsafe-inline'");
         reportViolation(ContentSecurityPolicyDirectiveNames::scriptSrc, violatedDirective, URL(), consoleMessage, contextURL, TextPosition(contextLine, WTF::OrdinalNumber()));
-        if (!violatedDirective.directiveList().isReportOnly())
+        if (!didNotifyInspector && violatedDirective.directiveList().isReportOnly()) {
             reportBlockedScriptExecutionToInspector(violatedDirective.text());
+            didNotifyInspector = true;
+        }
     };
     return allPoliciesAllow(WTFMove(handleViolatedDirective), &ContentSecurityPolicyDirectiveList::violatedDirectiveForUnsafeInlineScript);
 }
@@ -373,11 +388,14 @@ bool ContentSecurityPolicy::allowInlineEventHandlers(const String& contextURL, c
 {
     if (overrideContentSecurityPolicy)
         return true;
+    bool didNotifyInspector = false;
     auto handleViolatedDirective = [&] (const ContentSecurityPolicyDirective& violatedDirective) {
         String consoleMessage = consoleMessageForViolation(ContentSecurityPolicyDirectiveNames::scriptSrc, violatedDirective, URL(), "Refused to execute a script for an inline event handler", "'unsafe-inline'");
         reportViolation(ContentSecurityPolicyDirectiveNames::scriptSrc, violatedDirective, URL(), consoleMessage, contextURL, TextPosition(contextLine, WTF::OrdinalNumber()));
-        if (!violatedDirective.directiveList().isReportOnly())
+        if (!didNotifyInspector && !violatedDirective.directiveList().isReportOnly()) {
             reportBlockedScriptExecutionToInspector(violatedDirective.text());
+            didNotifyInspector = true;
+        }
     };
     return allPoliciesAllow(WTFMove(handleViolatedDirective), &ContentSecurityPolicyDirectiveList::violatedDirectiveForUnsafeInlineScript);
 }
@@ -408,16 +426,17 @@ bool ContentSecurityPolicy::allowInlineScript(const String& contextURL, const WT
 {
     if (overrideContentSecurityPolicy)
         return true;
-    bool foundHashInEnforcedPolicies;
-    bool foundHashInReportOnlyPolicies;
-    std::tie(foundHashInEnforcedPolicies, foundHashInReportOnlyPolicies) = findHashOfContentInPolicies(&ContentSecurityPolicyDirectiveList::violatedDirectiveForScriptHash, scriptContent, m_hashAlgorithmsForInlineScripts);
+    bool didNotifyInspector = false;
+    auto [foundHashInEnforcedPolicies, foundHashInReportOnlyPolicies] = findHashOfContentInPolicies(&ContentSecurityPolicyDirectiveList::violatedDirectiveForScriptHash, scriptContent, m_hashAlgorithmsForInlineScripts);
     if (foundHashInEnforcedPolicies && foundHashInReportOnlyPolicies)
         return true;
     auto handleViolatedDirective = [&] (const ContentSecurityPolicyDirective& violatedDirective) {
         String consoleMessage = consoleMessageForViolation(ContentSecurityPolicyDirectiveNames::scriptSrc, violatedDirective, URL(), "Refused to execute a script", "its hash, its nonce, or 'unsafe-inline'");
         reportViolation(ContentSecurityPolicyDirectiveNames::scriptSrc, violatedDirective, URL(), consoleMessage, contextURL, TextPosition(contextLine, WTF::OrdinalNumber()));
-        if (!violatedDirective.directiveList().isReportOnly())
+        if (!didNotifyInspector && !violatedDirective.directiveList().isReportOnly()) {
             reportBlockedScriptExecutionToInspector(violatedDirective.text());
+            didNotifyInspector = true;
+        }
     };
     // FIXME: We should not report that the inline script violated a policy when its hash matched a source
     // expression in the policy and the page has more than one policy. See <https://bugs.webkit.org/show_bug.cgi?id=159832>.
@@ -432,9 +451,7 @@ bool ContentSecurityPolicy::allowInlineStyle(const String& contextURL, const WTF
         return true;
     if (m_overrideInlineStyleAllowed)
         return true;
-    bool foundHashInEnforcedPolicies;
-    bool foundHashInReportOnlyPolicies;
-    std::tie(foundHashInEnforcedPolicies, foundHashInReportOnlyPolicies) = findHashOfContentInPolicies(&ContentSecurityPolicyDirectiveList::violatedDirectiveForStyleHash, styleContent, m_hashAlgorithmsForInlineStylesheets);
+    auto [foundHashInEnforcedPolicies, foundHashInReportOnlyPolicies] = findHashOfContentInPolicies(&ContentSecurityPolicyDirectiveList::violatedDirectiveForStyleHash, styleContent, m_hashAlgorithmsForInlineStylesheets);
     if (foundHashInEnforcedPolicies && foundHashInReportOnlyPolicies)
         return true;
     auto handleViolatedDirective = [&] (const ContentSecurityPolicyDirective& violatedDirective) {
@@ -452,11 +469,14 @@ bool ContentSecurityPolicy::allowEval(JSC::ExecState* state, bool overrideConten
 {
     if (overrideContentSecurityPolicy)
         return true;
+    bool didNotifyInspector = false;
     auto handleViolatedDirective = [&] (const ContentSecurityPolicyDirective& violatedDirective) {
         String consoleMessage = consoleMessageForViolation(ContentSecurityPolicyDirectiveNames::scriptSrc, violatedDirective, URL(), "Refused to execute a script", "'unsafe-eval'");
         reportViolation(ContentSecurityPolicyDirectiveNames::scriptSrc, violatedDirective, URL(), consoleMessage, state);
-        if (!violatedDirective.directiveList().isReportOnly())
+        if (!didNotifyInspector && !violatedDirective.directiveList().isReportOnly()) {
             reportBlockedScriptExecutionToInspector(violatedDirective.text());
+            didNotifyInspector = true;
+        }
     };
     return allPoliciesAllow(WTFMove(handleViolatedDirective), &ContentSecurityPolicyDirectiveList::violatedDirectiveForUnsafeEval);
 }
@@ -475,6 +495,34 @@ bool ContentSecurityPolicy::allowFrameAncestors(const Frame& frame, const URL& u
         reportViolation(ContentSecurityPolicyDirectiveNames::frameAncestors, violatedDirective, url, consoleMessage, sourceURL, sourcePosition);
     };
     return allPoliciesAllow(WTFMove(handleViolatedDirective), &ContentSecurityPolicyDirectiveList::violatedDirectiveForFrameAncestor, frame);
+}
+
+bool ContentSecurityPolicy::overridesXFrameOptions() const
+{
+    // If a resource is delivered with an policy that includes a directive named frame-ancestors and whose disposition
+    // is "enforce", then the X-Frame-Options header MUST be ignored.
+    // https://www.w3.org/TR/CSP3/#frame-ancestors-and-frame-options
+    for (auto& policy : m_policies) {
+        if (!policy->isReportOnly() && policy->hasFrameAncestorsDirective())
+            return true;
+    }
+    return false;
+}
+
+bool ContentSecurityPolicy::allowFrameAncestors(const Vector<RefPtr<SecurityOrigin>>& ancestorOrigins, const URL& url, bool overrideContentSecurityPolicy) const
+{
+    if (overrideContentSecurityPolicy)
+        return true;
+    bool isTopLevelFrame = ancestorOrigins.isEmpty();
+    if (isTopLevelFrame)
+        return true;
+    String sourceURL;
+    TextPosition sourcePosition(WTF::OrdinalNumber::beforeFirst(), WTF::OrdinalNumber());
+    auto handleViolatedDirective = [&] (const ContentSecurityPolicyDirective& violatedDirective) {
+        String consoleMessage = consoleMessageForViolation(ContentSecurityPolicyDirectiveNames::frameAncestors, violatedDirective, url, "Refused to load");
+        reportViolation(ContentSecurityPolicyDirectiveNames::frameAncestors, violatedDirective, url, consoleMessage, sourceURL, sourcePosition);
+    };
+    return allPoliciesAllow(WTFMove(handleViolatedDirective), &ContentSecurityPolicyDirectiveList::violatedDirectiveForFrameAncestorOrigins, ancestorOrigins);
 }
 
 bool ContentSecurityPolicy::allowPluginType(const String& type, const String& typeAttribute, const URL& url, bool overrideContentSecurityPolicy) const
@@ -558,6 +606,13 @@ bool ContentSecurityPolicy::allowFontFromSource(const URL& url, RedirectResponse
     return allowResourceFromSource(url, redirectResponseReceived, ContentSecurityPolicyDirectiveNames::fontSrc, &ContentSecurityPolicyDirectiveList::violatedDirectiveForFont);
 }
 
+#if ENABLE(APPLICATION_MANIFEST)
+bool ContentSecurityPolicy::allowManifestFromSource(const URL& url, RedirectResponseReceived redirectResponseReceived) const
+{
+    return allowResourceFromSource(url, redirectResponseReceived, ContentSecurityPolicyDirectiveNames::manifestSrc, &ContentSecurityPolicyDirectiveList::violatedDirectiveForManifest);
+}
+#endif // ENABLE(APPLICATION_MANIFEST)
+
 bool ContentSecurityPolicy::allowMediaFromSource(const URL& url, RedirectResponseReceived redirectResponseReceived) const
 {
     return allowResourceFromSource(url, redirectResponseReceived, ContentSecurityPolicyDirectiveNames::mediaSrc, &ContentSecurityPolicyDirectiveList::violatedDirectiveForMedia);
@@ -596,13 +651,13 @@ bool ContentSecurityPolicy::allowBaseURI(const URL& url, bool overrideContentSec
     return allPoliciesAllow(WTFMove(handleViolatedDirective), &ContentSecurityPolicyDirectiveList::violatedDirectiveForBaseURI, url);
 }
 
-static String stripURLForUseInReport(Document& document, const URL& url)
+String ContentSecurityPolicy::deprecatedURLForReporting(const URL& url) const
 {
     if (!url.isValid())
-        return String();
+        return { };
     if (!url.isHierarchical() || url.protocolIs("file"))
         return url.protocol().toString();
-    return document.securityOrigin()->canRequest(url) ? url.strippedForUseAsReferrer() : SecurityOrigin::create(url).get().toString();
+    return static_cast<SecurityOriginData>(*m_selfSource).securityOrigin()->canRequest(url) ? url.strippedForUseAsReferrer() : SecurityOrigin::create(url)->toString();
 }
 
 void ContentSecurityPolicy::reportViolation(const String& violatedDirective, const ContentSecurityPolicyDirective& effectiveViolatedDirective, const URL& blockedURL, const String& consoleMessage, JSC::ExecState* state) const
@@ -624,58 +679,60 @@ void ContentSecurityPolicy::reportViolation(const String& effectiveViolatedDirec
 
 void ContentSecurityPolicy::reportViolation(const String& effectiveViolatedDirective, const String& violatedDirective, const ContentSecurityPolicyDirectiveList& violatedDirectiveList, const URL& blockedURL, const String& consoleMessage, const String& sourceURL, const TextPosition& sourcePosition, JSC::ExecState* state) const
 {
-    logToConsole(consoleMessage, sourceURL, sourcePosition.m_line, state);
+    logToConsole(consoleMessage, sourceURL, sourcePosition.m_line, sourcePosition.m_column, state);
 
     if (!m_isReportingEnabled)
         return;
 
     // FIXME: Support sending reports from worker.
-    if (!is<Document>(m_scriptExecutionContext) && !m_frame)
-        return;
+    CSPInfo info;
+    info.documentURI = blockedURL;
+    if (m_client)
+        m_client->willSendCSPViolationReport(info);
+    else {
+        if (!is<Document>(m_scriptExecutionContext))
+            return;
 
-    ASSERT(!m_frame || effectiveViolatedDirective == ContentSecurityPolicyDirectiveNames::frameAncestors);
+        auto& document = downcast<Document>(*m_scriptExecutionContext);
+        auto* frame = document.frame();
+        if (!frame)
+            return;
 
-    Document& document = is<Document>(m_scriptExecutionContext) ? downcast<Document>(*m_scriptExecutionContext) : *m_frame->document();
-    Frame* frame = document.frame();
-    ASSERT(!m_frame || m_frame == frame);
-    if (!frame)
-        return;
+        info.documentURI = document.url().strippedForUseAsReferrer();
 
-    String documentURI;
-    String blockedURI;
-    if (is<Document>(m_scriptExecutionContext)) {
-        documentURI = document.url().strippedForUseAsReferrer();
-        blockedURI = stripURLForUseInReport(document, blockedURL);
-    } else {
-        // The URL of |document| may not have been initialized (say, when reporting a frame-ancestors violation).
-        // So, we use the URL of the blocked document for the protected document URL.
-        documentURI = blockedURL;
-        blockedURI = blockedURL;
+        auto stack = createScriptCallStack(JSExecState::currentState(), 2);
+        auto* callFrame = stack->firstNonNativeCallFrame();
+        if (callFrame && callFrame->lineNumber()) {
+            info.sourceFile = deprecatedURLForReporting(URL { URL { }, callFrame->sourceURL() });
+            info.lineNumber = callFrame->lineNumber();
+            info.columnNumber = callFrame->columnNumber();
+        }
     }
-    String violatedDirectiveText = violatedDirective;
-    String originalPolicy = violatedDirectiveList.header();
-    String referrer = document.referrer();
-    ASSERT(document.loader());
-    unsigned short statusCode = document.url().protocolIs("http") && document.loader() ? document.loader()->response().httpStatusCode() : 0;
+    ASSERT(m_client || is<Document>(m_scriptExecutionContext));
 
-    String sourceFile;
-    int lineNumber = 0;
-    int columnNumber = 0;
-    RefPtr<ScriptCallStack> stack = createScriptCallStack(JSMainThreadExecState::currentState(), 2);
-    const ScriptCallFrame* callFrame = stack->firstNonNativeCallFrame();
-    if (callFrame && callFrame->lineNumber()) {
-        sourceFile = stripURLForUseInReport(document, URL(URL(), callFrame->sourceURL()));
-        lineNumber = callFrame->lineNumber();
-        columnNumber = callFrame->columnNumber();
-    }
+    String blockedURI = deprecatedURLForReporting(blockedURL);
+    // FIXME: Is it policy to not use the status code for HTTPS, or is that a bug?
+    unsigned short httpStatusCode = m_selfSourceProtocol == "http" ? m_httpStatusCode : 0;
 
     // 1. Dispatch violation event.
-    bool canBubble = false;
-    bool cancelable = false;
-    document.enqueueDocumentEvent(SecurityPolicyViolationEvent::create(eventNames().securitypolicyviolationEvent, canBubble, cancelable, documentURI, referrer, blockedURI, violatedDirectiveText, effectiveViolatedDirective, originalPolicy, sourceFile, statusCode, lineNumber, columnNumber));
+    SecurityPolicyViolationEvent::Init violationEventInit;
+    violationEventInit.documentURI = info.documentURI;
+    violationEventInit.referrer = m_referrer;
+    violationEventInit.blockedURI = blockedURI;
+    violationEventInit.violatedDirective = violatedDirective;
+    violationEventInit.effectiveDirective = effectiveViolatedDirective;
+    violationEventInit.originalPolicy = violatedDirectiveList.header();
+    violationEventInit.sourceFile = info.sourceFile;
+    violationEventInit.statusCode = httpStatusCode;
+    violationEventInit.lineNumber =  info.lineNumber;
+    violationEventInit.columnNumber = info.columnNumber;
+    if (m_client)
+        m_client->enqueueSecurityPolicyViolationEvent(WTFMove(violationEventInit));
+    else
+        downcast<Document>(*m_scriptExecutionContext).enqueueSecurityPolicyViolationEvent(WTFMove(violationEventInit));
 
     // 2. Send violation report (if applicable).
-    const Vector<String>& reportURIs = violatedDirectiveList.reportURIs();
+    auto& reportURIs = violatedDirectiveList.reportURIs();
     if (reportURIs.isEmpty())
         return;
 
@@ -689,37 +746,44 @@ void ContentSecurityPolicy::reportViolation(const String& effectiveViolatedDirec
     // sent explicitly. As for which directive was violated, that's pretty
     // harmless information.
 
-    auto cspReport = InspectorObject::create();
-    cspReport->setString(ASCIILiteral("document-uri"), documentURI);
-    cspReport->setString(ASCIILiteral("referrer"), referrer);
-    cspReport->setString(ASCIILiteral("violated-directive"), violatedDirectiveText);
-    cspReport->setString(ASCIILiteral("effective-directive"), effectiveViolatedDirective);
-    cspReport->setString(ASCIILiteral("original-policy"), originalPolicy);
-    cspReport->setString(ASCIILiteral("blocked-uri"), blockedURI);
-    cspReport->setInteger(ASCIILiteral("status-code"), statusCode);
-    if (!sourceFile.isNull()) {
-        cspReport->setString(ASCIILiteral("source-file"), sourceFile);
-        cspReport->setInteger(ASCIILiteral("line-number"), lineNumber);
-        cspReport->setInteger(ASCIILiteral("column-number"), columnNumber);
+    auto cspReport = JSON::Object::create();
+    cspReport->setString("document-uri"_s, info.documentURI);
+    cspReport->setString("referrer"_s, m_referrer);
+    cspReport->setString("violated-directive"_s, violatedDirective);
+    cspReport->setString("effective-directive"_s, effectiveViolatedDirective);
+    cspReport->setString("original-policy"_s, violatedDirectiveList.header());
+    cspReport->setString("blocked-uri"_s, blockedURI);
+    cspReport->setInteger("status-code"_s, httpStatusCode);
+    if (!info.sourceFile.isNull()) {
+        cspReport->setString("source-file"_s, info.sourceFile);
+        cspReport->setInteger("line-number"_s, info.lineNumber);
+        cspReport->setInteger("column-number"_s, info.columnNumber);
     }
 
-    RefPtr<InspectorObject> reportObject = InspectorObject::create();
-    reportObject->setObject(ASCIILiteral("csp-report"), WTFMove(cspReport));
+    auto reportObject = JSON::Object::create();
+    reportObject->setObject("csp-report"_s, WTFMove(cspReport));
 
-    RefPtr<FormData> report = FormData::create(reportObject->toJSONString().utf8());
-    for (const auto& url : reportURIs)
-        PingLoader::sendViolationReport(*frame, is<Document>(m_scriptExecutionContext) ? document.completeURL(url) : document.completeURL(url, blockedURL), report.copyRef(), ViolationReportType::ContentSecurityPolicy);
+    auto report = FormData::create(reportObject->toJSONString().utf8());
+
+    if (m_client) {
+        for (const auto& url : reportURIs)
+            m_client->sendCSPViolationReport(URL { m_protectedURL, url }, report.copyRef());
+    } else {
+        auto& document = downcast<Document>(*m_scriptExecutionContext);
+        for (const auto& url : reportURIs)
+            PingLoader::sendViolationReport(*document.frame(), URL { m_protectedURL, url }, report.copyRef(), ViolationReportType::ContentSecurityPolicy);
+    }
 }
 
 void ContentSecurityPolicy::reportUnsupportedDirective(const String& name) const
 {
     String message;
     if (equalLettersIgnoringASCIICase(name, "allow"))
-        message = ASCIILiteral("The 'allow' directive has been replaced with 'default-src'. Please use that directive instead, as 'allow' has no effect.");
+        message = "The 'allow' directive has been replaced with 'default-src'. Please use that directive instead, as 'allow' has no effect."_s;
     else if (equalLettersIgnoringASCIICase(name, "options"))
-        message = ASCIILiteral("The 'options' directive has been replaced with 'unsafe-inline' and 'unsafe-eval' source expressions for the 'script-src' and 'style-src' directives. Please use those directives instead, as 'options' has no effect.");
+        message = "The 'options' directive has been replaced with 'unsafe-inline' and 'unsafe-eval' source expressions for the 'script-src' and 'style-src' directives. Please use those directives instead, as 'options' has no effect."_s;
     else if (equalLettersIgnoringASCIICase(name, "policy-uri"))
-        message = ASCIILiteral("The 'policy-uri' directive has been removed from the specification. Please specify a complete policy via the Content-Security-Policy header.");
+        message = "The 'policy-uri' directive has been removed from the specification. Please specify a complete policy via the Content-Security-Policy header."_s;
     else
         message = makeString("Unrecognized Content-Security-Policy directive '", name, "'.\n"); // FIXME: Why does this include a newline?
 
@@ -794,31 +858,21 @@ void ContentSecurityPolicy::reportMissingReportURI(const String& policy) const
     logToConsole("The Content Security Policy '" + policy + "' was delivered in report-only mode, but does not specify a 'report-uri'; the policy will have no effect. Please either add a 'report-uri' directive, or deliver the policy via the 'Content-Security-Policy' header.");
 }
 
-void ContentSecurityPolicy::logToConsole(const String& message, const String& contextURL, const WTF::OrdinalNumber& contextLine, JSC::ExecState* state) const
+void ContentSecurityPolicy::logToConsole(const String& message, const String& contextURL, const WTF::OrdinalNumber& contextLine, const WTF::OrdinalNumber& contextColumn, JSC::ExecState* state) const
 {
     if (!m_isReportingEnabled)
         return;
 
-    // FIXME: <http://webkit.org/b/114317> ContentSecurityPolicy::logToConsole should include a column number
-    if (m_scriptExecutionContext)
-        m_scriptExecutionContext->addConsoleMessage(MessageSource::Security, MessageLevel::Error, message, contextURL, contextLine.oneBasedInt(), 0, state);
-    else if (m_frame && m_frame->document())
-        static_cast<ScriptExecutionContext*>(m_frame->document())->addConsoleMessage(MessageSource::Security, MessageLevel::Error, message, contextURL, contextLine.oneBasedInt(), 0, state);
+    if (m_client)
+        m_client->addConsoleMessage(MessageSource::Security, MessageLevel::Error, message, 0);
+    else if (m_scriptExecutionContext)
+        m_scriptExecutionContext->addConsoleMessage(MessageSource::Security, MessageLevel::Error, message, contextURL, contextLine.oneBasedInt(), contextColumn.oneBasedInt(), state);
 }
 
 void ContentSecurityPolicy::reportBlockedScriptExecutionToInspector(const String& directiveText) const
 {
     if (m_scriptExecutionContext)
         InspectorInstrumentation::scriptExecutionBlockedByCSP(m_scriptExecutionContext, directiveText);
-}
-
-bool ContentSecurityPolicy::experimentalFeaturesEnabled() const
-{
-#if ENABLE(CSP_NEXT)
-    return RuntimeEnabledFeatures::sharedFeatures().experimentalContentSecurityPolicyFeaturesEnabled();
-#else
-    return false;
-#endif
 }
 
 void ContentSecurityPolicy::upgradeInsecureRequestIfNeeded(ResourceRequest& request, InsecureRequestType requestType) const
@@ -833,20 +887,20 @@ void ContentSecurityPolicy::upgradeInsecureRequestIfNeeded(URL& url, InsecureReq
     if (!url.protocolIs("http") && !url.protocolIs("ws"))
         return;
 
-    bool upgradeRequest = m_insecureNavigationRequestsToUpgrade.contains(SecurityOrigin::create(url));
+    bool upgradeRequest = m_insecureNavigationRequestsToUpgrade.contains(SecurityOriginData::fromURL(url));
     if (requestType == InsecureRequestType::Load || requestType == InsecureRequestType::FormSubmission)
         upgradeRequest |= m_upgradeInsecureRequests;
-    
+
     if (!upgradeRequest)
         return;
 
     if (url.protocolIs("http"))
         url.setProtocol("https");
-    else if (url.protocolIs("ws"))
+    else {
+        ASSERT(url.protocolIs("ws"));
         url.setProtocol("wss");
-    else
-        return;
-    
+    }
+
     if (url.port() && url.port().value() == 80)
         url.setPort(443);
 }
@@ -868,7 +922,7 @@ void ContentSecurityPolicy::setUpgradeInsecureRequests(bool upgradeInsecureReque
     else if (upgradeURL.protocolIs("wss"))
         upgradeURL.setProtocol("ws");
     
-    m_insecureNavigationRequestsToUpgrade.add(SecurityOrigin::create(upgradeURL));
+    m_insecureNavigationRequestsToUpgrade.add(SecurityOriginData::fromURL(upgradeURL));
 }
 
 void ContentSecurityPolicy::inheritInsecureNavigationRequestsToUpgradeFromOpener(const ContentSecurityPolicy& other)
@@ -876,12 +930,12 @@ void ContentSecurityPolicy::inheritInsecureNavigationRequestsToUpgradeFromOpener
     m_insecureNavigationRequestsToUpgrade.add(other.m_insecureNavigationRequestsToUpgrade.begin(), other.m_insecureNavigationRequestsToUpgrade.end());
 }
 
-HashSet<RefPtr<SecurityOrigin>>&& ContentSecurityPolicy::takeNavigationRequestsToUpgrade()
+HashSet<SecurityOriginData> ContentSecurityPolicy::takeNavigationRequestsToUpgrade()
 {
     return WTFMove(m_insecureNavigationRequestsToUpgrade);
 }
 
-void ContentSecurityPolicy::setInsecureNavigationRequestsToUpgrade(HashSet<RefPtr<SecurityOrigin>>&& insecureNavigationRequests)
+void ContentSecurityPolicy::setInsecureNavigationRequestsToUpgrade(HashSet<SecurityOriginData>&& insecureNavigationRequests)
 {
     m_insecureNavigationRequestsToUpgrade = WTFMove(insecureNavigationRequests);
 }

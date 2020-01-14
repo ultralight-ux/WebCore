@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2011, 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,13 +33,37 @@ class HTMLAllCollection final : public AllDescendantsCollection {
 public:
     static Ref<HTMLAllCollection> create(Document&, CollectionType);
 
-    Element* namedItemWithIndex(const AtomicString& name, unsigned index) const;
-    RefPtr<NodeList> tags(const String&);
+    Optional<Variant<RefPtr<HTMLCollection>, RefPtr<Element>>> namedOrIndexedItemOrItems(const AtomString& nameOrIndex) const;
+    Optional<Variant<RefPtr<HTMLCollection>, RefPtr<Element>>> namedItemOrItems(const AtomString&) const;
 
 private:
     HTMLAllCollection(Document&, CollectionType);
+};
+static_assert(sizeof(HTMLAllCollection) == sizeof(AllDescendantsCollection), "");
+
+class HTMLAllNamedSubCollection final : public CachedHTMLCollection<HTMLAllNamedSubCollection, CollectionTraversalType::Descendants> {
+    WTF_MAKE_ISO_ALLOCATED(HTMLAllNamedSubCollection);
+public:
+    static Ref<HTMLAllNamedSubCollection> create(Document& document, CollectionType type, const AtomString& name)
+    {
+        return adoptRef(*new HTMLAllNamedSubCollection(document, type, name));
+    }
+    virtual ~HTMLAllNamedSubCollection();
+
+    bool elementMatches(Element&) const;
+
+private:
+    HTMLAllNamedSubCollection(Document& document, CollectionType type, const AtomString& name)
+        : CachedHTMLCollection<HTMLAllNamedSubCollection, CollectionTraversalType::Descendants>(document, type)
+        , m_name(name)
+    {
+        ASSERT(type == DocumentAllNamedItems);
+    }
+
+    AtomString m_name;
 };
 
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_HTMLCOLLECTION(HTMLAllCollection, DocAll)
+SPECIALIZE_TYPE_TRAITS_HTMLCOLLECTION(HTMLAllNamedSubCollection, DocumentAllNamedItems)

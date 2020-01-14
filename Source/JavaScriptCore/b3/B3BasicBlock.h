@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,6 +40,7 @@ class BlockInsertionSet;
 class InsertionSet;
 class Procedure;
 class Value;
+template<typename> class GenericBlockInsertionSet;
 
 class BasicBlock {
     WTF_MAKE_NONCOPYABLE(BasicBlock);
@@ -63,6 +64,13 @@ public:
     size_t size() const { return m_values.size(); }
     Value* at(size_t index) const { return m_values[index]; }
     Value*& at(size_t index) { return m_values[index]; }
+    
+    Value* get(size_t index) const
+    {
+        if (index >= size())
+            return nullptr;
+        return at(index);
+    }
 
     Value* last() const { return m_values.last(); }
     Value*& last() { return m_values.last(); }
@@ -76,8 +84,6 @@ public:
 
     template<typename ValueType, typename... Arguments>
     ValueType* appendNew(Procedure&, Arguments...);
-    template<typename ValueType, typename... Arguments>
-    ValueType* appendNewNonTerminal(Procedure&, Arguments...);
 
     JS_EXPORT_PRIVATE Value* appendIntConstant(Procedure&, Origin, Type, int64_t value);
     Value* appendIntConstant(Procedure&, Value* likeValue, int64_t value);
@@ -158,6 +164,7 @@ private:
     friend class BlockInsertionSet;
     friend class InsertionSet;
     friend class Procedure;
+    template<typename> friend class GenericBlockInsertionSet;
     
     // Instantiate via Procedure.
     BasicBlock(unsigned index, double frequency);

@@ -28,19 +28,22 @@
 #include "HTMLLabelElement.h"
 #include "HTMLNames.h"
 #include "NodeRareData.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
 using namespace HTMLNames;
 
+WTF_MAKE_ISO_ALLOCATED_IMPL(LabelsNodeList);
+
 LabelsNodeList::LabelsNodeList(LabelableElement& forNode)
-    : CachedLiveNodeList(forNode, InvalidateOnForAttrChange)
+    : CachedLiveNodeList(forNode, InvalidateOnForTypeAttrChange)
 {
 }
 
 LabelsNodeList::~LabelsNodeList()
 {
-    ownerNode().nodeLists()->removeCacheWithAtomicName(this, starAtom);
+    ownerNode().nodeLists()->removeCacheWithAtomicName(this, starAtom());
 } 
     
 bool LabelsNodeList::elementMatches(Element& testNode) const

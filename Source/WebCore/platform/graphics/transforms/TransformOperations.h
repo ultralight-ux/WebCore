@@ -22,8 +22,7 @@
  *
  */
 
-#ifndef TransformOperations_h
-#define TransformOperations_h
+#pragma once
 
 #include "LayoutSize.h"
 #include "TransformOperation.h"
@@ -35,7 +34,7 @@ namespace WebCore {
 class TransformOperations {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    TransformOperations(bool makeIdentity = false);
+    explicit TransformOperations(bool makeIdentity = false);
     
     bool operator==(const TransformOperations& o) const;
     bool operator!=(const TransformOperations& o) const
@@ -53,12 +52,22 @@ public:
     // values describe affine transforms)
     bool has3DOperation() const
     {
-        for (unsigned i = 0; i < m_operations.size(); ++i)
-            if (m_operations[i]->is3DOperation())
+        for (const auto& operation : m_operations) {
+            if (operation->is3DOperation())
                 return true;
+        }
         return false;
     }
-    
+
+    bool isRepresentableIn2D() const
+    {
+        for (const auto& operation : m_operations) {
+            if (!operation->isRepresentableIn2D())
+                return false;
+        }
+        return true;
+    }
+
     bool operationsMatch(const TransformOperations&) const;
     
     void clear()
@@ -82,8 +91,7 @@ private:
     Vector<RefPtr<TransformOperation>> m_operations;
 };
 
-TextStream& operator<<(TextStream&, const TransformOperations&);
+WTF::TextStream& operator<<(WTF::TextStream&, const TransformOperations&);
 
 } // namespace WebCore
 
-#endif // TransformOperations_h

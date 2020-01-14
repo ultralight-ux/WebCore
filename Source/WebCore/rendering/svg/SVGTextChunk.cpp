@@ -22,6 +22,8 @@
 #include "SVGTextChunk.h"
 
 #include "SVGInlineTextBox.h"
+#include "SVGTextContentElement.h"
+#include "SVGTextFragment.h"
 
 namespace WebCore {
 
@@ -41,12 +43,12 @@ SVGTextChunk::SVGTextChunk(const Vector<SVGInlineTextBox*>& lineLayoutBoxes, uns
         m_chunkStyle |= SVGTextChunk::VerticalText;
     
     switch (svgStyle.textAnchor()) {
-    case TA_START:
+    case TextAnchor::Start:
         break;
-    case TA_MIDDLE:
+    case TextAnchor::Middle:
         m_chunkStyle |= MiddleAnchor;
         break;
-    case TA_END:
+    case TextAnchor::End:
         m_chunkStyle |= EndAnchor;
         break;
     }

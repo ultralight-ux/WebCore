@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2008 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,33 +21,47 @@
 
 #pragma once
 
-#include "SVGAnimatedLengthList.h"
-#include "SVGAnimatedNumberList.h"
 #include "SVGTextContentElement.h"
 
 namespace WebCore {
 
 class SVGTextPositioningElement : public SVGTextContentElement {
+    WTF_MAKE_ISO_ALLOCATED(SVGTextPositioningElement);
 public:
     static SVGTextPositioningElement* elementFromRenderer(RenderBoxModelObject&);
+
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGTextPositioningElement, SVGTextContentElement>;
+
+    const SVGLengthList& x() const { return m_x->currentValue(); }
+    const SVGLengthList& y() const { return m_y->currentValue(); }
+    const SVGLengthList& dx() const { return m_dx->currentValue(); }
+    const SVGLengthList& dy() const { return m_dy->currentValue(); }
+    const SVGNumberList& rotate() const { return m_rotate->currentValue(); }
+
+    SVGAnimatedLengthList& xAnimated() { return m_x; }
+    SVGAnimatedLengthList& yAnimated() { return m_y; }
+    SVGAnimatedLengthList& dxAnimated() { return m_dx; }
+    SVGAnimatedLengthList& dyAnimated() { return m_dy; }
+    SVGAnimatedNumberList& rotateAnimated() { return m_rotate; }
 
 protected:
     SVGTextPositioningElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     void svgAttributeChanged(const QualifiedName&) override;
 
 private:
     bool isPresentationAttribute(const QualifiedName&) const final;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGTextPositioningElement)
-        DECLARE_ANIMATED_LENGTH_LIST(X, x)
-        DECLARE_ANIMATED_LENGTH_LIST(Y, y)
-        DECLARE_ANIMATED_LENGTH_LIST(Dx, dx)
-        DECLARE_ANIMATED_LENGTH_LIST(Dy, dy)
-        DECLARE_ANIMATED_NUMBER_LIST(Rotate, rotate)
-    END_DECLARE_ANIMATED_PROPERTIES
+    const SVGPropertyRegistry& propertyRegistry() const override { return m_propertyRegistry; }
+
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedLengthList> m_x { SVGAnimatedLengthList::create(this, SVGLengthMode::Width) };
+    Ref<SVGAnimatedLengthList> m_y { SVGAnimatedLengthList::create(this, SVGLengthMode::Height) };
+    Ref<SVGAnimatedLengthList> m_dx { SVGAnimatedLengthList::create(this, SVGLengthMode::Width) };
+    Ref<SVGAnimatedLengthList> m_dy { SVGAnimatedLengthList::create(this, SVGLengthMode::Height) };
+    Ref<SVGAnimatedNumberList> m_rotate { SVGAnimatedNumberList::create(this) };
 };
 
 } // namespace WebCore

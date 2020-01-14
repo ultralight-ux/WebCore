@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,20 +41,13 @@ namespace WebCore {
 
 class PaymentMerchantSession {
 public:
-    PaymentMerchantSession()
+    PaymentMerchantSession() = default;
+    explicit PaymentMerchantSession(RetainPtr<PKPaymentMerchantSession>&& pkPaymentMerchantSession)
+        : m_pkPaymentMerchantSession { WTFMove(pkPaymentMerchantSession) }
     {
     }
 
-    explicit PaymentMerchantSession(PKPaymentMerchantSession *pkPaymentMerchantSession)
-        : m_pkPaymentMerchantSession(pkPaymentMerchantSession)
-    {
-    }
-
-    ~PaymentMerchantSession()
-    {
-    }
-
-    static std::optional<PaymentMerchantSession> fromJS(JSC::ExecState&, JSC::JSValue, String& errorMessage);
+    static Optional<PaymentMerchantSession> fromJS(JSC::ExecState&, JSC::JSValue, String& errorMessage);
 
     PKPaymentMerchantSession *pkPaymentMerchantSession() const { return m_pkPaymentMerchantSession.get(); }
 

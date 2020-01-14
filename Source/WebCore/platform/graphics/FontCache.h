@@ -27,22 +27,24 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef FontCache_h
-#define FontCache_h
+#pragma once
 
 #include "FontDescription.h"
+#include "FontPlatformData.h"
+#include "FontTaggedSettings.h"
 #include "Timer.h"
 #include <array>
 #include <limits.h>
 #include <wtf/Forward.h>
-#include <wtf/PassRefPtr.h>
+#include <wtf/ListHashSet.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
-#include <wtf/text/AtomicStringHash.h>
+#include <wtf/WorkQueue.h>
+#include <wtf/text/AtomStringHash.h>
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
-#include <CoreText/CTFont.h>
+#include "FontCacheCoreText.h"
 #endif
 
 #if OS(WINDOWS)
@@ -58,6 +60,7 @@ class FontPlatformData;
 class FontSelector;
 class OpenTypeVerticalData;
 class Font;
+enum class IsForPlatformFont : uint8_t;
 
 #if PLATFORM(WIN)
 #if USE(IMLANG_FONT_LINK2)
@@ -73,8 +76,9 @@ struct FontDescriptionKey {
 
     FontDescriptionKey(const FontDescription& description)
         : m_size(description.computedPixelSize())
-        , m_weight(description.weight())
+        , m_fontSelectionRequest(description.fontSelectionRequest())
         , m_flags(makeFlagsKey(description))
+        , m_locale(description.locale())
         , m_featureSettings(description.featureSettings())
 #if ENABLE(VARIATION_FONTS)
         , m_variationSettings(description.variationSettings())
@@ -88,8 +92,9 @@ struct FontDescriptionKey {
     bool operator==(const FontDescriptionKey& other) const
     {
         return m_size == other.m_size
-            && m_weight == other.m_weight
+            && m_fontSelectionRequest == other.m_fontSelectionRequest
             && m_flags == other.m_flags
+            && m_locale == other.m_locale
 #if ENABLE(VARIATION_FONTS)
             && m_variationSettings == other.m_variationSettings
 #endif
@@ -107,7 +112,10 @@ struct FontDescriptionKey {
     {
         IntegerHasher hasher;
         hasher.add(m_size);
-        hasher.add(m_weight);
+        hasher.add(m_fontSelectionRequest.weight);
+        hasher.add(m_fontSelectionRequest.width);
+        hasher.add(m_fontSelectionRequest.slope.valueOr(normalItalicValue()));
+        hasher.add(m_locale.existingHash());
         for (unsigned flagItem : m_flags)
             hasher.add(flagItem);
         hasher.add(m_featureSettings.hash());
@@ -120,14 +128,16 @@ struct FontDescriptionKey {
 private:
     static std::array<unsigned, 2> makeFlagsKey(const FontDescription& description)
     {
-        static_assert(USCRIPT_CODE_LIMIT < 0x1000, "Script code must fit in an unsigned along with the other flags");
-        unsigned first = static_cast<unsigned>(description.script()) << 11
+        unsigned first = static_cast<unsigned>(description.script()) << 15
+            | static_cast<unsigned>(description.shouldAllowDesignSystemUIFonts()) << 14
+            | static_cast<unsigned>(description.shouldAllowUserInstalledFonts()) << 13
+            | static_cast<unsigned>(description.fontStyleAxis() == FontStyleAxis::slnt) << 12
+            | static_cast<unsigned>(description.opticalSizing()) << 11
             | static_cast<unsigned>(description.textRenderingMode()) << 9
             | static_cast<unsigned>(description.fontSynthesis()) << 6
             | static_cast<unsigned>(description.widthVariant()) << 4
             | static_cast<unsigned>(description.nonCJKGlyphOrientation()) << 3
             | static_cast<unsigned>(description.orientation()) << 2
-            | static_cast<unsigned>(description.italic()) << 1
             | static_cast<unsigned>(description.renderingMode());
         unsigned second = static_cast<unsigned>(description.variantEastAsianRuby()) << 27
             | static_cast<unsigned>(description.variantEastAsianWidth()) << 25
@@ -151,8 +161,9 @@ private:
 
     // FontCascade::locale() is explicitly not included in this struct.
     unsigned m_size { 0 };
-    unsigned m_weight { 0 };
+    FontSelectionRequest m_fontSelectionRequest;
     std::array<unsigned, 2> m_flags {{ 0, 0 }};
+    AtomString m_locale;
     FontFeatureSettings m_featureSettings;
 #if ENABLE(VARIATION_FONTS)
     FontVariationSettings m_variationSettings;
@@ -181,13 +192,13 @@ public:
     WEBCORE_EXPORT static FontCache& singleton();
 
     // These methods are implemented by the platform.
-    RefPtr<Font> systemFallbackForCharacters(const FontDescription&, const Font* originalFontData, bool isPlatformFont, const UChar* characters, unsigned length);
+    enum class PreferColoredFont : uint8_t { No, Yes };
+    RefPtr<Font> systemFallbackForCharacters(const FontDescription&, const Font* originalFontData, IsForPlatformFont, PreferColoredFont, const UChar* characters, unsigned length);
     Vector<String> systemFontFamilies();
     void platformInit();
 
-#if PLATFORM(IOS)
-    static float weightOfCTFont(CTFontRef);
-#endif
+    static bool isSystemFontForbiddenForEditing(const String&);
+
 #if PLATFORM(COCOA)
     WEBCORE_EXPORT static void setFontWhitelist(const Vector<String>&);
 #endif
@@ -200,13 +211,12 @@ public:
 
     // This function exists so CSSFontSelector can have a unified notion of preinstalled fonts and @font-face.
     // It comes into play when you create an @font-face which shares a family name as a preinstalled font.
-    Vector<FontTraitsMask> getTraitsInFamily(const AtomicString&);
+    Vector<FontSelectionCapabilities> getFontSelectionCapabilitiesInFamily(const AtomString&, AllowUserInstalledFonts);
 
-    WEBCORE_EXPORT RefPtr<Font> fontForFamily(const FontDescription&, const AtomicString&, const FontFeatureSettings* fontFaceFeatures = nullptr, const FontVariantSettings* fontFaceVariantSettings = nullptr, bool checkingAlternateName = false);
+    WEBCORE_EXPORT RefPtr<Font> fontForFamily(const FontDescription&, const AtomString&, const FontFeatureSettings* fontFaceFeatures = nullptr, const FontVariantSettings* fontFaceVariantSettings = nullptr, FontSelectionSpecifiedCapabilities fontFaceCapabilities = { }, bool checkingAlternateName = false);
     WEBCORE_EXPORT Ref<Font> lastResortFallbackFont(const FontDescription&);
-    Ref<Font> lastResortFallbackFontForEveryCharacter(const FontDescription&);
     WEBCORE_EXPORT Ref<Font> fontForPlatformData(const FontPlatformData&);
-    RefPtr<Font> similarFont(const FontDescription&, const AtomicString& family);
+    RefPtr<Font> similarFont(const FontDescription&, const AtomString& family);
 
     void addClient(FontSelector&);
     void removeClient(FontSelector&);
@@ -220,12 +230,30 @@ public:
     void platformPurgeInactiveFontData();
 
 #if PLATFORM(WIN)
-    RefPtr<Font> fontFromDescriptionAndLogFont(const FontDescription&, const LOGFONT&, AtomicString& outFontFamilyName);
+    RefPtr<Font> fontFromDescriptionAndLogFont(const FontDescription&, const LOGFONT&, AtomString& outFontFamilyName);
 #endif
 
 #if ENABLE(OPENTYPE_VERTICAL)
     RefPtr<OpenTypeVerticalData> verticalData(const FontPlatformData&);
 #endif
+
+    std::unique_ptr<FontPlatformData> createFontPlatformDataForTesting(const FontDescription&, const AtomString& family);
+    
+    bool shouldMockBoldSystemFontForAccessibility() const { return m_shouldMockBoldSystemFontForAccessibility; }
+    void setShouldMockBoldSystemFontForAccessibility(bool shouldMockBoldSystemFontForAccessibility) { m_shouldMockBoldSystemFontForAccessibility = shouldMockBoldSystemFontForAccessibility; }
+
+    struct PrewarmInformation {
+        Vector<String> seenFamilies;
+        Vector<String> fontNamesRequiringSystemFallback;
+
+        bool isEmpty() const;
+        PrewarmInformation isolatedCopy() const;
+
+        template<class Encoder> void encode(Encoder&) const;
+        template<class Decoder> static Optional<PrewarmInformation> decode(Decoder&);
+    };
+    PrewarmInformation collectPrewarmInformation() const;
+    void prewarm(const PrewarmInformation&);
 
 private:
     FontCache();
@@ -234,55 +262,37 @@ private:
     WEBCORE_EXPORT void purgeInactiveFontDataIfNeeded();
 
     // FIXME: This method should eventually be removed.
-    FontPlatformData* getCachedFontPlatformData(const FontDescription&, const AtomicString& family, const FontFeatureSettings* fontFaceFeatures = nullptr, const FontVariantSettings* fontFaceVariantSettings = nullptr, bool checkingAlternateName = false);
+    FontPlatformData* getCachedFontPlatformData(const FontDescription&, const AtomString& family, const FontFeatureSettings* fontFaceFeatures = nullptr, const FontVariantSettings* fontFaceVariantSettings = nullptr, FontSelectionSpecifiedCapabilities fontFaceCapabilities = { }, bool checkingAlternateName = false);
 
     // These methods are implemented by each platform.
 #if PLATFORM(COCOA)
     FontPlatformData* getCustomFallbackFont(const UInt32, const FontDescription&);
 #endif
-    std::unique_ptr<FontPlatformData> createFontPlatformData(const FontDescription&, const AtomicString& family, const FontFeatureSettings* fontFaceFeatures, const FontVariantSettings* fontFaceVariantSettings);
+    WEBCORE_EXPORT std::unique_ptr<FontPlatformData> createFontPlatformData(const FontDescription&, const AtomString& family, const FontFeatureSettings* fontFaceFeatures, const FontVariantSettings* fontFaceVariantSettings, FontSelectionSpecifiedCapabilities fontFaceCapabilities);
     
-    static const AtomicString& alternateFamilyName(const AtomicString&);
-    static const AtomicString& platformAlternateFamilyName(const AtomicString&);
+    static const AtomString& alternateFamilyName(const AtomString&);
+    static const AtomString& platformAlternateFamilyName(const AtomString&);
 
     Timer m_purgeTimer;
+    
+    bool m_shouldMockBoldSystemFontForAccessibility { false };
 
 #if PLATFORM(COCOA)
+    ListHashSet<String> m_seenFamiliesForPrewarming;
+    ListHashSet<String> m_fontNamesRequiringSystemFallbackForPrewarming;
+    RefPtr<WorkQueue> m_prewarmQueue;
+
     friend class ComplexTextController;
 #endif
     friend class Font;
 };
 
-#if PLATFORM(COCOA)
+inline std::unique_ptr<FontPlatformData> FontCache::createFontPlatformDataForTesting(const FontDescription& fontDescription, const AtomString& family)
+{
+    return createFontPlatformData(fontDescription, family, nullptr, nullptr, { });
+}
 
-struct SynthesisPair {
-    SynthesisPair(bool needsSyntheticBold, bool needsSyntheticOblique)
-        : needsSyntheticBold(needsSyntheticBold)
-        , needsSyntheticOblique(needsSyntheticOblique)
-    {
-    }
-
-    std::pair<bool, bool> boldObliquePair() const
-    {
-        return std::make_pair(needsSyntheticBold, needsSyntheticOblique);
-    }
-
-    bool needsSyntheticBold;
-    bool needsSyntheticOblique;
-};
-
-RetainPtr<CTFontRef> preparePlatformFont(CTFontRef, TextRenderingMode, const FontFeatureSettings* fontFaceFeatures, const FontVariantSettings* fontFaceVariantSettings, const FontFeatureSettings& features, const FontVariantSettings&, const FontVariationSettings&);
-FontWeight fontWeightFromCoreText(CGFloat weight);
-uint16_t toCoreTextFontWeight(FontWeight);
-bool isFontWeightBold(FontWeight);
-void platformInvalidateFontCache();
-SynthesisPair computeNecessarySynthesis(CTFontRef, const FontDescription&, bool isPlatformFont = false);
-RetainPtr<CTFontRef> platformFontWithFamilySpecialCase(const AtomicString& family, FontWeight, CTFontSymbolicTraits, float size);
-RetainPtr<CTFontRef> platformFontWithFamily(const AtomicString& family, CTFontSymbolicTraits, FontWeight, TextRenderingMode, float size);
-RetainPtr<CTFontRef> platformLookupFallbackFont(CTFontRef, FontWeight, const AtomicString& locale, const UChar* characters, unsigned length);
-bool requiresCustomFallbackFont(UChar32 character);
-
-#else
+#if !PLATFORM(COCOA)
 
 inline void FontCache::platformPurgeInactiveFontData()
 {
@@ -290,6 +300,34 @@ inline void FontCache::platformPurgeInactiveFontData()
 
 #endif
 
+
+inline bool FontCache::PrewarmInformation::isEmpty() const
+{
+    return seenFamilies.isEmpty() && fontNamesRequiringSystemFallback.isEmpty();
 }
 
-#endif
+inline FontCache::PrewarmInformation FontCache::PrewarmInformation::isolatedCopy() const
+{
+    return { seenFamilies.isolatedCopy(), fontNamesRequiringSystemFallback.isolatedCopy() };
+}
+
+template<class Encoder>
+void FontCache::PrewarmInformation::encode(Encoder& encoder) const
+{
+    encoder << seenFamilies;
+    encoder << fontNamesRequiringSystemFallback;
+}
+
+template<class Decoder>
+Optional<FontCache::PrewarmInformation> FontCache::PrewarmInformation::decode(Decoder& decoder)
+{
+    PrewarmInformation prewarmInformation;
+    if (!decoder.decode(prewarmInformation.seenFamilies))
+        return { };
+    if (!decoder.decode(prewarmInformation.fontNamesRequiringSystemFallback))
+        return { };
+
+    return prewarmInformation;
+}
+
+}

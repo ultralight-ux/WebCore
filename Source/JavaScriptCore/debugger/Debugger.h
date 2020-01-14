@@ -50,7 +50,7 @@ public:
 
     VM& vm() { return m_vm; }
 
-    JSC::DebuggerCallFrame* currentDebuggerCallFrame();
+    JSC::DebuggerCallFrame& currentDebuggerCallFrame();
     bool hasHandlerForExceptionCallback() const
     {
         ASSERT(m_reasonForPause == PausedForException);
@@ -138,17 +138,17 @@ public:
 
     class ProfilingClient {
     public:
-        virtual ~ProfilingClient() { }
+        virtual ~ProfilingClient();
         virtual bool isAlreadyProfiling() const = 0;
-        virtual double willEvaluateScript() = 0;
-        virtual void didEvaluateScript(double startTime, ProfilingReason) = 0;
+        virtual Seconds willEvaluateScript() = 0;
+        virtual void didEvaluateScript(Seconds startTime, ProfilingReason) = 0;
     };
 
     void setProfilingClient(ProfilingClient*);
     bool hasProfilingClient() const { return m_profilingClient != nullptr; }
     bool isAlreadyProfiling() const { return m_profilingClient && m_profilingClient->isAlreadyProfiling(); }
-    double willEvaluateScript();
-    void didEvaluateScript(double startTime, ProfilingReason);
+    Seconds willEvaluateScript();
+    void didEvaluateScript(Seconds startTime, ProfilingReason);
 
 protected:
     virtual void handleBreakpointHit(JSGlobalObject*, const Breakpoint&) { }

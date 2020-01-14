@@ -35,7 +35,7 @@ void IDBGetResult::dataFromBuffer(SharedBuffer& buffer)
     Vector<uint8_t> data(buffer.size());
     memcpy(data.data(), buffer.data(), buffer.size());
 
-    m_value = ThreadSafeDataBuffer::adoptVector(data);
+    m_value = ThreadSafeDataBuffer::create(WTFMove(data));
 }
 
 IDBGetResult::IDBGetResult(const IDBGetResult& that, IsolatedCopyTag)
@@ -55,6 +55,11 @@ void IDBGetResult::isolatedCopy(const IDBGetResult& source, IDBGetResult& destin
     destination.m_primaryKeyData = source.m_primaryKeyData.isolatedCopy();
     destination.m_keyPath = WebCore::isolatedCopy(source.m_keyPath);
     destination.m_isDefined = source.m_isDefined;
+}
+
+void IDBGetResult::setValue(IDBValue&& value)
+{
+    m_value = WTFMove(value);
 }
 
 } // namespace WebCore

@@ -83,6 +83,7 @@ private:
     void stopParsing() final;
     bool isWaitingForScripts() const override;
     bool isExecutingScript() const final;
+    bool hasScriptsWaitingForStylesheets() const final;
     void executeScriptsWaitingForStylesheets() final;
     void suspendScheduledTasks() final;
     void resumeScheduledTasks() final;
@@ -119,6 +120,9 @@ private:
     bool isScheduledForResume() const;
     bool inPumpSession() const;
     bool shouldDelayEnd() const;
+
+    void didBeginYieldingParser() final;
+    void didEndYieldingParser() final;
 
     HTMLParserOptions m_options;
     HTMLInputStream m_input;

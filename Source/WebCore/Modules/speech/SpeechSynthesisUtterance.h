@@ -36,10 +36,11 @@
 namespace WebCore {
 
 class SpeechSynthesisUtterance final : public PlatformSpeechSynthesisUtteranceClient, public RefCounted<SpeechSynthesisUtterance>, public ContextDestructionObserver, public EventTargetWithInlineData {
+    WTF_MAKE_ISO_ALLOCATED(SpeechSynthesisUtterance);
 public:
     static Ref<SpeechSynthesisUtterance> create(ScriptExecutionContext&, const String&);
 
-    ~SpeechSynthesisUtterance();
+    virtual ~SpeechSynthesisUtterance();
 
     const String& text() const { return m_platformUtterance->text(); }
     void setText(const String& text) { m_platformUtterance->setText(text); }
@@ -59,24 +60,24 @@ public:
     float pitch() const { return m_platformUtterance->pitch(); }
     void setPitch(float pitch) { m_platformUtterance->setPitch(pitch); }
 
-    double startTime() const { return m_platformUtterance->startTime(); }
-    void setStartTime(double startTime) { m_platformUtterance->setStartTime(startTime); }
+    MonotonicTime startTime() const { return m_platformUtterance->startTime(); }
+    void setStartTime(MonotonicTime startTime) { m_platformUtterance->setStartTime(startTime); }
 
-    using RefCounted<SpeechSynthesisUtterance>::ref;
-    using RefCounted<SpeechSynthesisUtterance>::deref;
-
-    ScriptExecutionContext* scriptExecutionContext() const override { return ContextDestructionObserver::scriptExecutionContext(); }
+    using RefCounted::ref;
+    using RefCounted::deref;
 
     PlatformSpeechSynthesisUtterance* platformUtterance() const { return m_platformUtterance.get(); }
 
 private:
     SpeechSynthesisUtterance(ScriptExecutionContext&, const String&);
+
+    ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
+    EventTargetInterface eventTargetInterface() const final { return SpeechSynthesisUtteranceEventTargetInterfaceType; }
+    void refEventTarget() final { ref(); }
+    void derefEventTarget() final { deref(); }
+
     RefPtr<PlatformSpeechSynthesisUtterance> m_platformUtterance;
     RefPtr<SpeechSynthesisVoice> m_voice;
-
-    EventTargetInterface eventTargetInterface() const override { return SpeechSynthesisUtteranceEventTargetInterfaceType; }
-    void refEventTarget() override { ref(); }
-    void derefEventTarget() override { deref(); }
 };
 
 } // namespace WebCore

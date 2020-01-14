@@ -30,7 +30,9 @@
 
 #if ENABLE(ENCRYPTED_MEDIA)
 
-#include "JSDOMPromise.h"
+#include "GenericTaskQueue.h"
+#include "JSDOMPromiseDeferred.h"
+#include "MediaKeySystemConfiguration.h"
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -38,8 +40,6 @@ namespace WebCore {
 
 class CDM;
 class MediaKeys;
-
-struct MediaKeySystemConfiguration;
 
 class MediaKeySystemAccess : public RefCounted<MediaKeySystemAccess> {
 public:
@@ -56,6 +56,7 @@ private:
     String m_keySystem;
     std::unique_ptr<MediaKeySystemConfiguration> m_configuration;
     Ref<CDM> m_implementation;
+    GenericTaskQueue<Timer> m_taskQueue;
 };
 
 } // namespace WebCore

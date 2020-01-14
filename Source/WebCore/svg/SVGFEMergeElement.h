@@ -20,19 +20,24 @@
 
 #pragma once
 
-#include "FEMerge.h"
 #include "SVGFilterPrimitiveStandardAttributes.h"
 
 namespace WebCore {
 
 class SVGFEMergeElement final : public SVGFilterPrimitiveStandardAttributes {
+    WTF_MAKE_ISO_ALLOCATED(SVGFEMergeElement);
 public:
     static Ref<SVGFEMergeElement> create(const QualifiedName&, Document&);
 
 private:
     SVGFEMergeElement(const QualifiedName&, Document&);
 
-    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) override;
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFEMergeElement, SVGFilterPrimitiveStandardAttributes>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+
+    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) const override;
+
+    PropertyRegistry m_propertyRegistry { *this };
 };
 
 } // namespace WebCore

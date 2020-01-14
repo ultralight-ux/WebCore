@@ -25,16 +25,39 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#if defined(ENABLE_VIDEO) && ENABLE_VIDEO && defined(ENABLE_CSS_TYPED_OM) && ENABLE_CSS_TYPED_OM
+typedef (HTMLImageElement or HTMLVideoElement or HTMLCanvasElement or ImageBitmap or TypedOMCSSImageValue) CanvasImageSource;
+#elif defined(ENABLE_VIDEO) && ENABLE_VIDEO
+typedef (HTMLImageElement or HTMLVideoElement or HTMLCanvasElement or ImageBitmap) CanvasImageSource;
+#else
+typedef (HTMLImageElement or HTMLCanvasElement or ImageBitmap) CanvasImageSource;
+#endif
+
+typedef (CanvasImageSource or Blob or ImageData) ImageBitmapSource;
+
 [
     NoInterfaceObject,
 ] interface WindowOrWorkerGlobalScope {
-    // Timers.
-    [Custom] long setTimeout(any handler, optional long timeout = 0);
+    [Replaceable] readonly attribute USVString origin;
+
+    // Timers
+    // FIXME: This should take a TimerHandler (a.k.a. (DOMString or Function)) rather than a ScheduledAction.
+    [CallWith=ExecState, MayThrowException] long setTimeout(ScheduledAction handler, optional long timeout = 0, any... arguments);
     void clearTimeout(optional long handle = 0);
-    [Custom] long setInterval(any handler, optional long timeout = 0);
+    // FIXME: This should take a TimerHandler (a.k.a. (DOMString or Function)) rather than a ScheduledAction.
+    [CallWith=ExecState, MayThrowException] long setInterval(ScheduledAction handler, optional long timeout = 0, any... arguments);
     void clearInterval(optional long handle = 0);
+
+    [Custom] void queueMicrotask(VoidCallback callback);
 
     // Base64 utility methods.
     [MayThrowException] DOMString atob(DOMString string);
     [MayThrowException] DOMString btoa(DOMString string);
+
+    // Secure Contexts
+    [EnabledAtRuntime=IsSecureContextAttribute] readonly attribute boolean isSecureContext;
+
+    // ImageBitmap.
+    [EnabledAtRuntime=ImageBitmapOffscreenCanvas] Promise<ImageBitmap> createImageBitmap(ImageBitmapSource image, optional ImageBitmapOptions options);
+    [EnabledAtRuntime=ImageBitmapOffscreenCanvas] Promise<ImageBitmap> createImageBitmap(ImageBitmapSource image, long sx, long sy, long sw, long sh, optional ImageBitmapOptions options);
 };

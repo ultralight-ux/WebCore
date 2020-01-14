@@ -26,20 +26,20 @@
 
 #pragma once
 
-#include <inspector/ScriptDebugServer.h>
+#include <JavaScriptCore/ScriptDebugServer.h>
 
 namespace WebCore {
 
 class Frame;
-class FrameView;
 class Page;
 class PageGroup;
 
 class PageScriptDebugServer final : public Inspector::ScriptDebugServer {
     WTF_MAKE_NONCOPYABLE(PageScriptDebugServer);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     PageScriptDebugServer(Page&);
-    virtual ~PageScriptDebugServer() { }
+    virtual ~PageScriptDebugServer() = default;
 
     void recompileAllJSFunctions() override;
 
@@ -56,9 +56,7 @@ private:
     void runEventLoopWhilePausedInternal();
 
     void setJavaScriptPaused(const PageGroup&, bool paused);
-    void setJavaScriptPaused(Page*, bool paused);
-    void setJavaScriptPaused(Frame*, bool paused);
-    void setJavaScriptPaused(FrameView*, bool paused);
+    void setJavaScriptPaused(Frame&, bool paused);
 
     Page& m_page;
 };

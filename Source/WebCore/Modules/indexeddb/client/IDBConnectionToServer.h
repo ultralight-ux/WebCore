@@ -30,6 +30,7 @@
 #include "IDBConnectionProxy.h"
 #include "IDBConnectionToServerDelegate.h"
 #include "IDBResourceIdentifier.h"
+#include <wtf/Function.h>
 #include <wtf/HashMap.h>
 #include <wtf/Ref.h>
 #include <wtf/ThreadSafeRefCounted.h>
@@ -54,7 +55,7 @@ class IDBConnectionToServer : public ThreadSafeRefCounted<IDBConnectionToServer>
 public:
     WEBCORE_EXPORT static Ref<IDBConnectionToServer> create(IDBConnectionToServerDelegate&);
 
-    uint64_t identifier() const;
+    WEBCORE_EXPORT uint64_t identifier() const;
 
     IDBConnectionProxy& proxy();
 
@@ -136,15 +137,19 @@ public:
     // versionchange transaction, but the page is already torn down.
     void abortOpenAndUpgradeNeeded(uint64_t databaseConnectionIdentifier, const IDBResourceIdentifier& transactionIdentifier);
 
-    void getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, std::function<void (const Vector<String>&)>);
+    void getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, WTF::Function<void (const Vector<String>&)>&&);
     WEBCORE_EXPORT void didGetAllDatabaseNames(uint64_t callbackID, const Vector<String>& databaseNames);
 
 private:
     IDBConnectionToServer(IDBConnectionToServerDelegate&);
 
-    Ref<IDBConnectionToServerDelegate> m_delegate;
+    typedef void (IDBConnectionToServer::*ResultFunction)(const IDBResultData&);
+    void callResultFunctionWithErrorLater(ResultFunction, const IDBResourceIdentifier& requestIdentifier);
+    
+    WeakPtr<IDBConnectionToServerDelegate> m_delegate;
+    bool m_serverConnectionIsValid { true };
 
-    HashMap<uint64_t, std::function<void (const Vector<String>&)>> m_getAllDatabaseNamesCallbacks;
+    HashMap<uint64_t, WTF::Function<void (const Vector<String>&)>> m_getAllDatabaseNamesCallbacks;
 
     std::unique_ptr<IDBConnectionProxy> m_proxy;
 };

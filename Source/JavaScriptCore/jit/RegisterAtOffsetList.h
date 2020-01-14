@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(JIT)
+#if ENABLE(ASSEMBLER)
 
 #include "RegisterAtOffset.h"
 #include "RegisterSet.h"
@@ -38,7 +38,7 @@ public:
     enum OffsetBaseType { FramePointerBased, ZeroBased };
 
     RegisterAtOffsetList();
-    RegisterAtOffsetList(RegisterSet, OffsetBaseType = FramePointerBased);
+    explicit RegisterAtOffsetList(RegisterSet, OffsetBaseType = FramePointerBased);
 
     void dump(PrintStream&) const;
 
@@ -52,6 +52,11 @@ public:
         return m_registers.size();
     }
 
+    const RegisterAtOffset& at(size_t index) const
+    {
+        return m_registers.at(index);
+    }
+
     RegisterAtOffset& at(size_t index)
     {
         return m_registers.at(index);
@@ -63,10 +68,12 @@ public:
     Vector<RegisterAtOffset>::const_iterator begin() const { return m_registers.begin(); }
     Vector<RegisterAtOffset>::const_iterator end() const { return m_registers.end(); }
 
+    static const RegisterAtOffsetList& llintBaselineCalleeSaveRegisters(); // Registers and Offsets saved and used by the LLInt.
+
 private:
     Vector<RegisterAtOffset> m_registers;
 };
 
 } // namespace JSC
 
-#endif // ENABLE(JIT)
+#endif // ENABLE(ASSEMBLER)

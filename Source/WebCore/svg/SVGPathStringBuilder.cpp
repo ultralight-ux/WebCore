@@ -25,13 +25,9 @@
 
 namespace WebCore {
 
-SVGPathStringBuilder::SVGPathStringBuilder()
-{
-}
+SVGPathStringBuilder::SVGPathStringBuilder() = default;
 
-SVGPathStringBuilder::~SVGPathStringBuilder()
-{
-}
+SVGPathStringBuilder::~SVGPathStringBuilder() = default;
 
 String SVGPathStringBuilder::result()
 {
@@ -61,15 +57,15 @@ static void appendFlag(StringBuilder& stringBuilder, bool flag)
 
 static void appendNumber(StringBuilder& stringBuilder, float number)
 {
-    stringBuilder.appendNumber(number);
+    stringBuilder.appendFixedPrecisionNumber(number);
     stringBuilder.append(' ');
 }
 
 static void appendPoint(StringBuilder& stringBuilder, const FloatPoint& point)
 {
-    stringBuilder.appendNumber(point.x());
+    stringBuilder.appendFixedPrecisionNumber(point.x());
     stringBuilder.append(' ');
-    stringBuilder.appendNumber(point.y());
+    stringBuilder.appendFixedPrecisionNumber(point.y());
     stringBuilder.append(' ');
 }
 

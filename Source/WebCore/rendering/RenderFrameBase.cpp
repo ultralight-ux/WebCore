@@ -30,8 +30,12 @@
 #include "FrameView.h"
 #include "HTMLFrameElementBase.h"
 #include "RenderView.h"
+#include "ScriptDisallowedScope.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderFrameBase);
 
 RenderFrameBase::RenderFrameBase(HTMLFrameElementBase& element, RenderStyle&& style)
     : RenderWidget(element, WTFMove(style))
@@ -56,7 +60,7 @@ void RenderFrameBase::layoutWithFlattening(bool hasFixedWidth, bool hasFixedHeig
 {
     view().protectRenderWidgetUntilLayoutIsDone(*this);
 
-    peformLayoutWithFlattening(hasFixedWidth, hasFixedHeight);
+    performLayoutWithFlattening(hasFixedWidth, hasFixedHeight);
 
     clearNeedsLayout();
 }
@@ -68,15 +72,17 @@ RenderView* RenderFrameBase::childRenderView() const
     return childView()->renderView();
 }
 
-void RenderFrameBase::peformLayoutWithFlattening(bool hasFixedWidth, bool hasFixedHeight)
+void RenderFrameBase::performLayoutWithFlattening(bool hasFixedWidth, bool hasFixedHeight)
 {
+    // FIXME: Refactor frame flattening code so that we don't need to disable assertions here.
+    ScriptDisallowedScope::DisableAssertionsInScope scope;
     if (!childRenderView())
         return;
 
     if (!shouldExpandFrame(width(), height(), hasFixedWidth, hasFixedHeight)) {
         if (updateWidgetPosition() == ChildWidgetState::Destroyed)
             return;
-        childView()->layout();
+        childView()->layoutContext().layout();
         return;
     }
 
@@ -100,7 +106,7 @@ void RenderFrameBase::peformLayoutWithFlattening(bool hasFixedWidth, bool hasFix
         // update again to pass the new width to the child frame
         if (updateWidgetPosition() == ChildWidgetState::Destroyed)
             return;
-        childView()->layout();
+        childView()->layoutContext().layout();
     }
 
     ASSERT(childView());
@@ -113,7 +119,7 @@ void RenderFrameBase::peformLayoutWithFlattening(bool hasFixedWidth, bool hasFix
     if (updateWidgetPosition() == ChildWidgetState::Destroyed)
         return;
 
-    ASSERT(!childView()->layoutPending());
+    ASSERT(!childView()->layoutContext().isLayoutPending());
     ASSERT(!childRenderView()->needsLayout());
     ASSERT(!childRenderView()->firstChild() || !childRenderView()->firstChild()->firstChildSlow() || !childRenderView()->firstChild()->firstChildSlow()->needsLayout());
 }

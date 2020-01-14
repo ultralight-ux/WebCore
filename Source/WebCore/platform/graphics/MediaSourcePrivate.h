@@ -46,8 +46,8 @@ class MediaSourcePrivate : public RefCounted<MediaSourcePrivate> {
 public:
     typedef Vector<String> CodecsArray;
 
-    MediaSourcePrivate() { }
-    virtual ~MediaSourcePrivate() { }
+    MediaSourcePrivate() = default;
+    virtual ~MediaSourcePrivate() = default;
 
     enum AddStatus { Ok, NotSupported, ReachedIdLimit };
     virtual AddStatus addSourceBuffer(const ContentType&, RefPtr<SourceBufferPrivate>&) = 0;
@@ -63,7 +63,32 @@ public:
     virtual void seekCompleted() = 0;
 };
 
-}
+String convertEnumerationToString(MediaSourcePrivate::AddStatus);
+String convertEnumerationToString(MediaSourcePrivate::EndOfStreamStatus);
+
+} // namespace WebCore
+
+namespace WTF {
+
+template<typename Type> struct LogArgument;
+
+template <>
+struct LogArgument<WebCore::MediaSourcePrivate::AddStatus> {
+    static String toString(const WebCore::MediaSourcePrivate::AddStatus status)
+    {
+        return convertEnumerationToString(status);
+    }
+};
+
+template <>
+struct LogArgument<WebCore::MediaSourcePrivate::EndOfStreamStatus> {
+    static String toString(const WebCore::MediaSourcePrivate::EndOfStreamStatus status)
+    {
+        return convertEnumerationToString(status);
+    }
+};
+
+} // namespace WTF
 
 #endif
 #endif

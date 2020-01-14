@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2009 Brent Fulgham.  All rights reserved.
  * Copyright (C) 2009 Google Inc.  All rights reserved.
+ * Copyright (C) 2018 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -34,50 +35,58 @@
 
 #if USE(CURL)
 
+#include "DeprecatedGlobalSettings.h"
 #include "Logging.h"
+#include "SocketStreamError.h"
 #include "SocketStreamHandleClient.h"
-#include "URL.h"
-#include <mutex>
-#include <wtf/Lock.h>
+#include "StorageSessionProvider.h"
 #include <wtf/MainThread.h>
+#include <wtf/URL.h>
 #include <wtf/text/CString.h>
 
 namespace WebCore {
 
-static std::unique_ptr<char[]> createCopy(const char* data, int length)
-{
-    std::unique_ptr<char[]> copy(new char[length]);
-    memcpy(copy.get(), data, length);
-
-    return WTFMove(copy);
-}
-
-SocketStreamHandleImpl::SocketStreamHandleImpl(const URL& url, SocketStreamHandleClient& client)
+SocketStreamHandleImpl::SocketStreamHandleImpl(const URL& url, SocketStreamHandleClient& client, const StorageSessionProvider* provider)
     : SocketStreamHandle(url, client)
+    , m_storageSessionProvider(provider)
 {
     LOG(Network, "SocketStreamHandle %p new client %p", this, &m_client);
     ASSERT(isMainThread());
-    startThread();
+
+    // FIXME: Using DeprecatedGlobalSettings from here is a layering violation.
+    if (m_url.protocolIs("wss") && DeprecatedGlobalSettings::allowsAnySSLCertificate())
+        CurlContext::singleton().sslHandle().setIgnoreSSLErrors(true);
+
+    m_workerThread = Thread::create("WebSocket thread", [this, protectedThis = makeRef(*this)] {
+        threadEntryPoint();
+    });
 }
 
 SocketStreamHandleImpl::~SocketStreamHandleImpl()
 {
     LOG(Network, "SocketStreamHandle %p delete", this);
-    ASSERT(!m_workerThread);
+    stopThread();
 }
 
-std::optional<size_t> SocketStreamHandleImpl::platformSend(const char* data, size_t length)
+Optional<size_t> SocketStreamHandleImpl::platformSendInternal(const uint8_t* data, size_t length)
 {
     LOG(Network, "SocketStreamHandle %p platformSend", this);
-
     ASSERT(isMainThread());
 
-    startThread();
+    if (m_hasPendingWriteData)
+        return 0;
 
-    auto copy = createCopy(data, length);
+    m_hasPendingWriteData = true;
 
-    std::lock_guard<Lock> lock(m_mutexSend);
-    m_sendData.append(SocketData { WTFMove(copy), length });
+    auto writeBuffer = makeUniqueArray<uint8_t>(length);
+    memcpy(writeBuffer.get(), data, length);
+
+    callOnWorkerThread([this, writeBuffer = WTFMove(writeBuffer), writeBufferSize = length]() mutable {
+        ASSERT(!isMainThread());
+        m_writeBuffer = WTFMove(writeBuffer);
+        m_writeBufferSize = writeBufferSize;
+        m_writeBufferOffset = 0;
+    });
 
     return length;
 }
@@ -85,159 +94,96 @@ std::optional<size_t> SocketStreamHandleImpl::platformSend(const char* data, siz
 void SocketStreamHandleImpl::platformClose()
 {
     LOG(Network, "SocketStreamHandle %p platformClose", this);
-
     ASSERT(isMainThread());
 
-    stopThread();
+    if (m_state == Closed)
+        return;
+    m_state = Closed;
 
+    stopThread();
     m_client.didCloseSocketStream(*this);
 }
 
-bool SocketStreamHandleImpl::readData(CURL* curlHandle)
+void SocketStreamHandleImpl::threadEntryPoint()
 {
     ASSERT(!isMainThread());
 
-    const size_t bufferSize = 1024;
-    std::unique_ptr<char[]> data(new char[bufferSize]);
-    size_t bytesRead = 0;
+    CurlSocketHandle socket { m_url.isolatedCopy(), [this](CURLcode errorCode) {
+        handleError(errorCode);
+    }};
 
-    CURLcode ret = curl_easy_recv(curlHandle, data.get(), bufferSize, &bytesRead);
-
-    if (ret == CURLE_OK && bytesRead >= 0) {
-        m_mutexReceive.lock();
-        m_receiveData.append(SocketData { WTFMove(data), bytesRead });
-        m_mutexReceive.unlock();
-
-        ref();
-
-        callOnMainThread([this] {
-            didReceiveData();
-            deref();
-        });
-
-        return true;
-    }
-
-    if (ret == CURLE_AGAIN)
-        return true;
-
-    return false;
-}
-
-bool SocketStreamHandleImpl::sendData(CURL* curlHandle)
-{
-    ASSERT(!isMainThread());
-
-    while (true) {
-
-        m_mutexSend.lock();
-        if (!m_sendData.size()) {
-            m_mutexSend.unlock();
-            break;
-        }
-        auto sendData = m_sendData.takeFirst();
-        m_mutexSend.unlock();
-
-        size_t totalBytesSent = 0;
-        while (totalBytesSent < sendData.size) {
-            size_t bytesSent = 0;
-            CURLcode ret = curl_easy_send(curlHandle, sendData.data.get() + totalBytesSent, sendData.size - totalBytesSent, &bytesSent);
-            if (ret == CURLE_OK)
-                totalBytesSent += bytesSent;
-            else
-                break;
-        }
-
-        // Insert remaining data into send queue.
-
-        if (totalBytesSent < sendData.size) {
-            const size_t restLength = sendData.size - totalBytesSent;
-            auto copy = createCopy(sendData.data.get() + totalBytesSent, restLength);
-
-            std::lock_guard<Lock> lock(m_mutexSend);
-            m_sendData.prepend(SocketData { WTFMove(copy), restLength });
-
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool SocketStreamHandleImpl::waitForAvailableData(CURL* curlHandle, std::chrono::milliseconds selectTimeout)
-{
-    ASSERT(!isMainThread());
-
-    std::chrono::microseconds usec = std::chrono::duration_cast<std::chrono::microseconds>(selectTimeout);
-
-    struct timeval timeout;
-    if (usec <= std::chrono::microseconds(0)) {
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 0;
-    } else {
-        timeout.tv_sec = usec.count() / 1000000;
-        timeout.tv_usec = usec.count() % 1000000;
-    }
-
-    long socket;
-    if (curl_easy_getinfo(curlHandle, CURLINFO_LASTSOCKET, &socket) != CURLE_OK)
-        return false;
-
-    fd_set fdread;
-    FD_ZERO(&fdread);
-    FD_SET(socket, &fdread);
-    int rc = ::select(0, &fdread, nullptr, nullptr, &timeout);
-    return rc == 1;
-}
-
-void SocketStreamHandleImpl::startThread()
-{
-    ASSERT(isMainThread());
-
-    if (m_workerThread)
+    // Connect to host
+    if (!socket.connect())
         return;
 
-    ref(); // stopThread() will call deref().
+    callOnMainThread([this, protectedThis = makeRef(*this)] {
+        if (m_state == Connecting) {
+            m_state = Open;
+            m_client.didOpenSocketStream(*this);
+        }
+    });
 
-    m_workerThread = createThread("WebSocket thread", [this] {
+    while (m_running) {
+        executeTasks();
 
-        ASSERT(!isMainThread());
+        auto result = socket.wait(20_ms, m_writeBuffer.get());
+        if (!result)
+            continue;
 
-        CURL* curlHandle = curl_easy_init();
+        // These logic only run when there's data waiting.
+        if (result->writable && m_running) {
+            auto bytesSent = socket.send(m_writeBuffer.get() + m_writeBufferOffset, m_writeBufferSize - m_writeBufferOffset);
+            m_writeBufferOffset += bytesSent;
 
-        if (!curlHandle)
-            return;
+            if (m_writeBufferSize <= m_writeBufferOffset) {
+                m_writeBuffer = nullptr;
+                m_writeBufferSize = 0;
+                m_writeBufferOffset = 0;
 
-        curl_easy_setopt(curlHandle, CURLOPT_URL, m_url.host().utf8().data());
-        if (m_url.port())
-            curl_easy_setopt(curlHandle, CURLOPT_PORT, m_url.port().value());
-        curl_easy_setopt(curlHandle, CURLOPT_CONNECT_ONLY, 1L);
-
-        // Connect to host
-        if (curl_easy_perform(curlHandle) != CURLE_OK)
-            return;
-
-        ref();
-
-        callOnMainThread([this] {
-            // Check reference count to fix a crash.
-            // When the call is invoked on the main thread after all other references are released, the SocketStreamClient
-            // is already deleted. Accessing the SocketStreamClient in didOpenSocket() will then cause a crash.
-            if (refCount() > 1)
-                didOpenSocket();
-            deref();
-        });
-
-        while (!m_stopThread) {
-            // Send queued data
-            sendData(curlHandle);
-
-            // Wait until socket has available data
-            if (waitForAvailableData(curlHandle, std::chrono::milliseconds(20)))
-                readData(curlHandle);
+                callOnMainThread([this, protectedThis = makeRef(*this)] {
+                    m_hasPendingWriteData = false;
+                    sendPendingData();
+                });
+            }
         }
 
-        curl_easy_cleanup(curlHandle);
+        if (result->readable && m_running) {
+            auto readBuffer = makeUniqueArray<uint8_t>(kReadBufferSize);
+            auto bytesRead = socket.receive(readBuffer.get(), kReadBufferSize);
+            // `nullopt` result means nothing to handle at this moment.
+            if (!bytesRead)
+                continue;
+
+            // 0 bytes indicates a closed connection.
+            if (!*bytesRead) {
+                m_running = false;
+                callOnMainThread([this, protectedThis = makeRef(*this)] {
+                    close();
+                });
+                break;
+            }
+
+            callOnMainThread([this, protectedThis = makeRef(*this), buffer = WTFMove(readBuffer), size = *bytesRead ] {
+                if (m_state == Open)
+                    m_client.didReceiveSocketStreamData(*this, reinterpret_cast<const char*>(buffer.get()), size);
+            });
+        }
+    }
+
+    m_writeBuffer = nullptr;
+}
+
+void SocketStreamHandleImpl::handleError(CURLcode errorCode)
+{
+    m_running = false;
+    callOnMainThread([this, protectedThis = makeRef(*this), errorCode, localizedDescription = CurlHandle::errorDescription(errorCode).isolatedCopy()] {
+        if (m_state == Closed)
+            return;
+
+        if (errorCode == CURLE_RECV_ERROR)
+            m_client.didFailToReceiveSocketStreamData(*this);
+        else
+            m_client.didFailSocketStream(*this, SocketStreamError(static_cast<int>(errorCode), { }, localizedDescription));
     });
 }
 
@@ -245,41 +191,27 @@ void SocketStreamHandleImpl::stopThread()
 {
     ASSERT(isMainThread());
 
-    if (!m_workerThread)
-        return;
+    m_running = false;
 
-    m_stopThread = true;
-    waitForThreadCompletion(m_workerThread);
-    m_workerThread = 0;
-    deref();
-}
-
-void SocketStreamHandleImpl::didReceiveData()
-{
-    ASSERT(isMainThread());
-
-    m_mutexReceive.lock();
-
-    auto receiveData = WTFMove(m_receiveData);
-
-    m_mutexReceive.unlock();
-
-    for (auto& socketData : receiveData) {
-        if (socketData.size > 0) {
-            if (state() == Open)
-                m_client.didReceiveSocketStreamData(*this, socketData.data.get(), socketData.size);
-        } else
-            platformClose();
+    if (m_workerThread) {
+        m_workerThread->waitForCompletion();
+        m_workerThread = nullptr;
     }
 }
 
-void SocketStreamHandleImpl::didOpenSocket()
+void SocketStreamHandleImpl::callOnWorkerThread(Function<void()>&& task)
 {
     ASSERT(isMainThread());
+    m_taskQueue.append(std::make_unique<Function<void()>>(WTFMove(task)));
+}
 
-    m_state = Open;
+void SocketStreamHandleImpl::executeTasks()
+{
+    ASSERT(!isMainThread());
 
-    m_client.didOpenSocketStream(*this);
+    auto tasks = m_taskQueue.takeAllMessages();
+    for (auto& task : tasks)
+        (*task)();
 }
 
 } // namespace WebCore

@@ -29,20 +29,18 @@
 
 namespace JSC {
 
-class StrictEvalActivation : public JSScope {
+class StrictEvalActivation final : public JSScope {
 public:
-    typedef JSScope Base;
-    static const unsigned StructureFlags = Base::StructureFlags | OverridesToThis;
+    using Base = JSScope;
 
-    static StrictEvalActivation* create(ExecState* exec, JSScope* currentScope)
+    static StrictEvalActivation* create(VM& vm, Structure* structure, JSScope* currentScope)
     {
-        StrictEvalActivation* lexicalEnvironment = new (NotNull, allocateCell<StrictEvalActivation>(*exec->heap())) StrictEvalActivation(exec, currentScope);
-        lexicalEnvironment->finishCreation(exec->vm());
-        return lexicalEnvironment;
+        StrictEvalActivation* scope = new (NotNull, allocateCell<StrictEvalActivation>(vm.heap)) StrictEvalActivation(vm, structure, currentScope);
+        scope->finishCreation(vm);
+        return scope;
     }
 
     static bool deleteProperty(JSCell*, ExecState*, PropertyName);
-    static JSValue toThis(JSCell*, ExecState*, ECMAMode);
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
@@ -52,7 +50,7 @@ public:
     DECLARE_INFO;
 
 private:
-    StrictEvalActivation(ExecState*, JSScope*);
+    StrictEvalActivation(VM&, Structure*, JSScope*);
 };
 
 } // namespace JSC

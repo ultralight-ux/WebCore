@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -56,20 +56,26 @@ inline CapabilityLevel canCompile(Node* node)
     case Phantom:
     case Flush:
     case PhantomLocal:
-    case SetArgument:
+    case SetArgumentDefinitely:
+    case SetArgumentMaybe:
     case Return:
-    case BitAnd:
-    case BitOr:
-    case BitXor:
+    case ArithBitNot:
+    case ArithBitAnd:
+    case ArithBitOr:
+    case ArithBitXor:
     case BitRShift:
-    case BitLShift:
+    case ArithBitLShift:
     case BitURShift:
     case CheckStructure:
+    case CheckStructureOrEmpty:
     case DoubleAsInt32:
+    case Arrayify:
     case ArrayifyToStructure:
     case PutStructure:
     case GetButterfly:
     case NewObject:
+    case NewStringObject:
+    case NewSymbol:
     case NewArray:
     case NewArrayWithSpread:
     case Spread:
@@ -83,7 +89,18 @@ inline CapabilityLevel canCompile(Node* node)
     case GetGlobalVar:
     case GetGlobalLexicalVariable:
     case PutGlobalVariable:
+    case ValueBitAnd:
+    case ValueBitXor:
+    case ValueBitOr:
+    case ValueBitNot:
+    case ValueBitLShift:
+    case ValueNegate:
     case ValueAdd:
+    case ValueSub:
+    case ValueMul:
+    case ValueDiv:
+    case ValueMod:
+    case ValuePow:
     case StrCat:
     case ArithAdd:
     case ArithClz32:
@@ -94,9 +111,6 @@ inline CapabilityLevel canCompile(Node* node)
     case ArithMin:
     case ArithMax:
     case ArithAbs:
-    case ArithSin:
-    case ArithCos:
-    case ArithTan:
     case ArithPow:
     case ArithRandom:
     case ArithRound:
@@ -104,22 +118,27 @@ inline CapabilityLevel canCompile(Node* node)
     case ArithCeil:
     case ArithTrunc:
     case ArithSqrt:
-    case ArithLog:
     case ArithFRound:
     case ArithNegate:
+    case ArithUnary:
     case UInt32ToNumber:
     case Jump:
     case ForceOSRExit:
     case Phi:
     case Upsilon:
     case ExtractOSREntryLocal:
+    case ExtractCatchLocal:
+    case ClearCatchLocals:
     case LoopHint:
     case SkipScope:
     case GetGlobalObject:
+    case GetGlobalThis:
     case CreateActivation:
+    case PushWithScope:
     case NewFunction:
     case NewGeneratorFunction:
     case NewAsyncFunction:
+    case NewAsyncGeneratorFunction:
     case GetClosureVar:
     case PutClosureVar:
     case CreateDirectArguments:
@@ -133,14 +152,16 @@ inline CapabilityLevel canCompile(Node* node)
     case CheckCell:
     case CheckBadCell:
     case CheckNotEmpty:
+    case AssertNotEmpty:
     case CheckStringIdent:
-    case CheckWatchdogTimer:
+    case CheckTraps:
     case StringCharCodeAt:
     case StringFromCharCode:
     case AllocatePropertyStorage:
     case ReallocatePropertyStorage:
     case NukeStructureAndSetButterfly:
     case GetTypedArrayByteOffset:
+    case GetPrototypeOf:
     case NotifyWrite:
     case StoreBarrier:
     case FencedStoreBarrier:
@@ -168,21 +189,32 @@ inline CapabilityLevel canCompile(Node* node)
     case CheckInBounds:
     case ConstantStoragePointer:
     case Check:
+    case CheckVarargs:
+    case CheckArray:
     case CountExecution:
+    case SuperSamplerBegin:
+    case SuperSamplerEnd:
     case GetExecutable:
     case GetScope:
     case GetCallee:
+    case SetCallee:
     case GetArgumentCountIncludingThis:
+    case SetArgumentCountIncludingThis:
     case ToNumber:
     case ToString:
+    case ToObject:
     case CallObjectConstructor:
     case CallStringConstructor:
+    case ObjectCreate:
+    case ObjectKeys:
     case MakeRope:
     case NewArrayWithSize:
     case TryGetById:
     case GetById:
     case GetByIdFlush:
     case GetByIdWithThis:
+    case GetByIdDirect:
+    case GetByIdDirectFlush:
     case ToThis:
     case MultiGetByOffset:
     case MultiPutByOffset:
@@ -190,17 +222,29 @@ inline CapabilityLevel canCompile(Node* node)
     case Throw:
     case ThrowStaticError:
     case Unreachable:
-    case In:
+    case InByVal:
+    case InById:
     case HasOwnProperty:
     case IsCellWithType:
     case MapHash:
+    case NormalizeMapKey:
     case GetMapBucket:
-    case LoadFromJSMapBucket:
-    case IsNonEmptyMapBucket:
+    case GetMapBucketHead:
+    case GetMapBucketNext:
+    case LoadKeyFromMapBucket:
+    case LoadValueFromMapBucket:
+    case ExtractValueFromWeakMapGet:
+    case SetAdd:
+    case MapSet:
+    case WeakMapGet:
+    case WeakSetAdd:
+    case WeakMapSet:
     case IsEmpty:
     case IsUndefined:
+    case IsUndefinedOrNull:
     case IsBoolean:
     case IsNumber:
+    case NumberIsInteger:
     case IsObject:
     case IsObjectOrNull:
     case IsFunction:
@@ -217,6 +261,7 @@ inline CapabilityLevel canCompile(Node* node)
     case BooleanToNumber:
     case HasGenericProperty:
     case HasStructureProperty:
+    case HasIndexedProperty:
     case GetDirectPname:
     case GetEnumerableLength:
     case GetIndexedPropertyStorage:
@@ -228,8 +273,10 @@ inline CapabilityLevel canCompile(Node* node)
     case PhantomNewObject:
     case PhantomNewFunction:
     case PhantomNewGeneratorFunction:
+    case PhantomNewAsyncGeneratorFunction:
     case PhantomNewAsyncFunction:
     case PhantomCreateActivation:
+    case PhantomNewRegexp:
     case PutHint:
     case CheckStructureImmediate:
     case MaterializeNewObject:
@@ -238,10 +285,12 @@ inline CapabilityLevel canCompile(Node* node)
     case PhantomCreateRest:
     case PhantomSpread:
     case PhantomNewArrayWithSpread:
+    case PhantomNewArrayBuffer:
     case PhantomClonedArguments:
     case GetMyArgumentByVal:
     case GetMyArgumentByValOutOfBounds:
     case ForwardVarargs:
+    case EntrySwitch:
     case Switch:
     case TypeOf:
     case PutById:
@@ -253,10 +302,15 @@ inline CapabilityLevel canCompile(Node* node)
     case PutGetterSetterById:
     case PutGetterByVal:
     case PutSetterByVal:
+    case DeleteById:
+    case DeleteByVal:
     case CreateRest:
     case GetRestLength:
     case RegExpExec:
+    case RegExpExecNonGlobalOrSticky:
     case RegExpTest:
+    case RegExpMatchFast:
+    case RegExpMatchFastGlobal:
     case NewRegexp:
     case StringReplace:
     case StringReplaceRegExp: 
@@ -267,6 +321,7 @@ inline CapabilityLevel canCompile(Node* node)
     case LogShadowChickenPrologue:
     case LogShadowChickenTail:
     case ResolveScope:
+    case ResolveScopeForHoistingFuncDeclInEval:
     case GetDynamicVar:
     case PutDynamicVar:
     case CompareEq:
@@ -275,14 +330,54 @@ inline CapabilityLevel canCompile(Node* node)
     case CompareLessEq:
     case CompareGreater:
     case CompareGreaterEq:
+    case CompareBelow:
+    case CompareBelowEq:
     case CompareStrictEq:
+    case SameValue:
     case DefineDataProperty:
     case DefineAccessorProperty:
+    case StringValueOf:
+    case StringSlice:
     case ToLowerCase:
-    case CheckDOM:
+    case NumberToStringWithRadix:
+    case NumberToStringWithValidRadixConstant:
+    case CheckSubClass:
     case CallDOM:
     case CallDOMGetter:
     case ArraySlice:
+    case ArrayIndexOf:
+    case ArrayPop:
+    case ArrayPush:
+    case ParseInt:
+    case AtomicsAdd:
+    case AtomicsAnd:
+    case AtomicsCompareExchange:
+    case AtomicsExchange:
+    case AtomicsLoad:
+    case AtomicsOr:
+    case AtomicsStore:
+    case AtomicsSub:
+    case AtomicsXor:
+    case AtomicsIsLockFree:
+    case InitializeEntrypointArguments:
+    case CPUIntrinsic:
+    case GetArrayLength:
+    case GetVectorLength:
+    case GetByVal:
+    case GetByValWithThis:
+    case PutByVal:
+    case PutByValAlias:
+    case PutByValDirect:
+    case PutByValWithThis:
+    case MatchStructure:
+    case FilterCallLinkStatus:
+    case FilterGetByIdStatus:
+    case FilterPutByIdStatus:
+    case FilterInByIdStatus:
+    case CreateThis:
+    case DataViewGetInt:
+    case DataViewGetFloat:
+    case DataViewSet:
         // These are OK.
         break;
 
@@ -292,98 +387,16 @@ inline CapabilityLevel canCompile(Node* node)
         // case because it would prevent us from catching bugs where the FTL backend
         // pipeline failed to optimize out an Identity.
         break;
-    case CheckArray:
-        switch (node->arrayMode().type()) {
-        case Array::Int32:
-        case Array::Double:
-        case Array::Contiguous:
-        case Array::DirectArguments:
-        case Array::ScopedArguments:
-            break;
-        default:
-            if (isTypedView(node->arrayMode().typedArrayType()))
-                break;
-            return CannotCompile;
-        }
-        break;
-    case GetArrayLength:
-        switch (node->arrayMode().type()) {
-        case Array::Undecided:
-        case Array::Int32:
-        case Array::Double:
-        case Array::Contiguous:
-        case Array::String:
-        case Array::DirectArguments:
-        case Array::ScopedArguments:
-            break;
-        default:
-            if (node->arrayMode().isSomeTypedArrayView())
-                break;
-            return CannotCompile;
-        }
-        break;
-    case HasIndexedProperty:
-        switch (node->arrayMode().type()) {
-        case Array::ForceExit:
-        case Array::Int32:
-        case Array::Double:
-        case Array::Contiguous:
-            break;
-        default:
-            return CannotCompile;
-        }
-        break;
-    case GetByVal:
-        switch (node->arrayMode().type()) {
-        case Array::ForceExit:
-        case Array::Generic:
-        case Array::String:
-        case Array::Int32:
-        case Array::Double:
-        case Array::Contiguous:
-        case Array::Undecided:
-        case Array::DirectArguments:
-        case Array::ScopedArguments:
-            break;
-        default:
-            if (isTypedView(node->arrayMode().typedArrayType()))
-                return CanCompileAndOSREnter;
-            return CannotCompile;
-        }
-        break;
-    case GetByValWithThis:
-        break;
-    case PutByVal:
-    case PutByValAlias:
-    case PutByValDirect:
-        switch (node->arrayMode().type()) {
-        case Array::ForceExit:
-        case Array::Generic:
-        case Array::Int32:
-        case Array::Double:
-        case Array::Contiguous:
-            break;
-        default:
-            if (isTypedView(node->arrayMode().typedArrayType()))
-                return CanCompileAndOSREnter;
-            return CannotCompile;
-        }
-        break;
-    case PutByValWithThis:
-        break;
-    case ArrayPush:
-    case ArrayPop:
-        switch (node->arrayMode().type()) {
-        case Array::Int32:
-        case Array::Contiguous:
-        case Array::Double:
-            break;
-        default:
-            return CannotCompile;
-        }
-        break;
-    default:
-        // Don't know how to handle anything else.
+
+    case IdentityWithProfile:
+    case CheckTierUpInLoop:
+    case CheckTierUpAndOSREnter:
+    case CheckTierUpAtReturn:
+    case FiatInt52:
+    case ArithIMul:
+    case ProfileType:
+    case ProfileControlFlow:
+    case LastNodeType:
         return CannotCompile;
     }
     return CanCompileAndOSREnter;
@@ -391,19 +404,13 @@ inline CapabilityLevel canCompile(Node* node)
 
 CapabilityLevel canCompile(Graph& graph)
 {
-    if (graph.m_codeBlock->instructionCount() > Options::maximumFTLCandidateInstructionCount()) {
+    if (graph.m_codeBlock->bytecodeCost() > Options::maximumFTLCandidateBytecodeCost()) {
         if (verboseCapabilities())
             dataLog("FTL rejecting ", *graph.m_codeBlock, " because it's too big.\n");
         return CannotCompile;
     }
     
-    if (graph.m_codeBlock->codeType() != FunctionCode) {
-        if (verboseCapabilities())
-            dataLog("FTL rejecting ", *graph.m_codeBlock, " because it doesn't belong to a function.\n");
-        return CannotCompile;
-    }
-
-    if (UNLIKELY(graph.m_codeBlock->ownerScriptExecutable()->neverFTLOptimize())) {
+    if (UNLIKELY(graph.m_codeBlock->ownerExecutable()->neverFTLOptimize())) {
         if (verboseCapabilities())
             dataLog("FTL rejecting ", *graph.m_codeBlock, " because it is marked as never FTL compile.\n");
         return CannotCompile;
@@ -452,17 +459,23 @@ CapabilityLevel canCompile(Graph& graph)
                 case StringObjectUse:
                 case StringOrStringObjectUse:
                 case SymbolUse:
+                case BigIntUse:
                 case MapObjectUse:
                 case SetObjectUse:
+                case WeakMapObjectUse:
+                case WeakSetObjectUse:
+                case DataViewObjectUse:
                 case FinalObjectUse:
                 case RegExpObjectUse:
                 case ProxyObjectUse:
                 case DerivedArrayUse:
                 case NotCellUse:
                 case OtherUse:
+                case KnownOtherUse:
                 case MiscUse:
                 case StringIdentUse:
                 case NotStringVarUse:
+                case NotSymbolUse:
                 case AnyIntUse:
                 case DoubleRepAnyIntUse:
                     // These are OK.

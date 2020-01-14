@@ -27,32 +27,87 @@
 #include "DeviceMotionEvent.h"
 
 #include "DeviceMotionData.h"
-#include "EventNames.h"
 
 namespace WebCore {
 
-DeviceMotionEvent::~DeviceMotionEvent()
-{
-}
+DeviceMotionEvent::~DeviceMotionEvent() = default;
 
 DeviceMotionEvent::DeviceMotionEvent()
     : m_deviceMotionData(DeviceMotionData::create())
 {
 }
 
-DeviceMotionEvent::DeviceMotionEvent(const AtomicString& eventType, DeviceMotionData* deviceMotionData)
-    : Event(eventType, false, false) // Can't bubble, not cancelable
+DeviceMotionEvent::DeviceMotionEvent(const AtomString& eventType, DeviceMotionData* deviceMotionData)
+    : Event(eventType, CanBubble::No, IsCancelable::No)
     , m_deviceMotionData(deviceMotionData)
 {
 }
 
-void DeviceMotionEvent::initDeviceMotionEvent(const AtomicString& type, bool bubbles, bool cancelable, DeviceMotionData* deviceMotionData)
+static Optional<DeviceMotionEvent::Acceleration> convert(const DeviceMotionData::Acceleration* acceleration)
 {
-    if (dispatched())
+    if (!acceleration)
+        return WTF::nullopt;
+
+    return DeviceMotionEvent::Acceleration { acceleration->x(), acceleration->y(), acceleration->z() };
+}
+
+static Optional<DeviceMotionEvent::RotationRate> convert(const DeviceMotionData::RotationRate* rotationRate)
+{
+    if (!rotationRate)
+        return WTF::nullopt;
+
+    return DeviceMotionEvent::RotationRate { rotationRate->alpha(), rotationRate->beta(), rotationRate->gamma() };
+}
+
+static RefPtr<DeviceMotionData::Acceleration> convert(Optional<DeviceMotionEvent::Acceleration>&& acceleration)
+{
+    if (!acceleration)
+        return nullptr;
+
+    if (!acceleration->x && !acceleration->y && !acceleration->z)
+        return nullptr;
+
+    return DeviceMotionData::Acceleration::create(acceleration->x, acceleration->y, acceleration->z);
+}
+
+static RefPtr<DeviceMotionData::RotationRate> convert(Optional<DeviceMotionEvent::RotationRate>&& rotationRate)
+{
+    if (!rotationRate)
+        return nullptr;
+
+    if (!rotationRate->alpha && !rotationRate->beta && !rotationRate->gamma)
+        return nullptr;
+
+    return DeviceMotionData::RotationRate::create(rotationRate->alpha, rotationRate->beta, rotationRate->gamma);
+}
+
+Optional<DeviceMotionEvent::Acceleration> DeviceMotionEvent::acceleration() const
+{
+    return convert(m_deviceMotionData->acceleration());
+}
+
+Optional<DeviceMotionEvent::Acceleration> DeviceMotionEvent::accelerationIncludingGravity() const
+{
+    return convert(m_deviceMotionData->accelerationIncludingGravity());
+}
+
+Optional<DeviceMotionEvent::RotationRate> DeviceMotionEvent::rotationRate() const
+{
+    return convert(m_deviceMotionData->rotationRate());
+}
+
+Optional<double> DeviceMotionEvent::interval() const
+{
+    return m_deviceMotionData->interval();
+}
+
+void DeviceMotionEvent::initDeviceMotionEvent(const AtomString& type, bool bubbles, bool cancelable, Optional<DeviceMotionEvent::Acceleration>&& acceleration, Optional<DeviceMotionEvent::Acceleration>&& accelerationIncludingGravity, Optional<DeviceMotionEvent::RotationRate>&& rotationRate, Optional<double> interval)
+{
+    if (isBeingDispatched())
         return;
 
     initEvent(type, bubbles, cancelable);
-    m_deviceMotionData = deviceMotionData;
+    m_deviceMotionData = DeviceMotionData::create(convert(WTFMove(acceleration)), convert(WTFMove(accelerationIncludingGravity)), convert(WTFMove(rotationRate)), interval);
 }
 
 EventInterface DeviceMotionEvent::eventInterface() const

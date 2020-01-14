@@ -31,21 +31,19 @@
 
 namespace JSC {
 
-class JSWebAssemblyRuntimeError : public ErrorInstance {
+class JSWebAssemblyRuntimeError final : public ErrorInstance {
 public:
     typedef ErrorInstance Base;
 
-    static JSWebAssemblyRuntimeError* create(ExecState*, Structure*, const String&, bool useCurrentFrame = true);
-    static JSWebAssemblyRuntimeError* create(ExecState* exec, Structure* structure, JSValue message, bool useCurrentFrame)
-    {
-        return create(exec, structure, message.isUndefined() ? String() : message.toWTFString(exec), useCurrentFrame);
-    }
+    static JSWebAssemblyRuntimeError* create(ExecState*, VM&, Structure*, const String&);
 
     DECLARE_INFO;
 
 protected:
     JSWebAssemblyRuntimeError(VM&, Structure*);
 };
+
+JSObject* createJSWebAssemblyRuntimeError(ExecState*, VM&, const String&);
 
 } // namespace JSC
 

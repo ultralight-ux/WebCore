@@ -38,16 +38,14 @@ CSSNamespaceRule::CSSNamespaceRule(StyleRuleNamespace& namespaceRule, CSSStyleSh
 {
 }
 
-CSSNamespaceRule::~CSSNamespaceRule()
-{
-}
+CSSNamespaceRule::~CSSNamespaceRule() = default;
 
-AtomicString CSSNamespaceRule::namespaceURI() const
+AtomString CSSNamespaceRule::namespaceURI() const
 {
     return m_namespaceRule->uri();
 }
     
-AtomicString CSSNamespaceRule::prefix() const
+AtomString CSSNamespaceRule::prefix() const
 {
     return m_namespaceRule->prefix();
 }

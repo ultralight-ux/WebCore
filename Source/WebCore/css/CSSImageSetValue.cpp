@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,21 +32,19 @@
 #include "CachedResourceLoader.h"
 #include "CachedResourceRequest.h"
 #include "CachedResourceRequestInitiators.h"
-#include "CrossOriginAccessControl.h"
 #include "Document.h"
 #include "Page.h"
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
-CSSImageSetValue::CSSImageSetValue()
+CSSImageSetValue::CSSImageSetValue(LoadedFromOpaqueSource loadedFromOpaqueSource)
     : CSSValueList(ImageSetClass, CommaSeparator)
+    , m_loadedFromOpaqueSource(loadedFromOpaqueSource)
 {
 }
 
-CSSImageSetValue::~CSSImageSetValue()
-{
-}
+CSSImageSetValue::~CSSImageSetValue() = default;
 
 void CSSImageSetValue::fillImageSet()
 {
@@ -54,7 +52,7 @@ void CSSImageSetValue::fillImageSet()
     size_t i = 0;
     while (i < length) {
         CSSValue* imageValue = item(i);
-        String imageURL = downcast<CSSImageValue>(*imageValue).url();
+        URL imageURL = downcast<CSSImageValue>(*imageValue).url();
 
         ++i;
         ASSERT_WITH_SECURITY_IMPLICATION(i < length);
@@ -101,12 +99,15 @@ std::pair<CachedImage*, float> CSSImageSetValue::loadBestFitImage(CachedResource
         // All forms of scale should be included: Page::pageScaleFactor(), Frame::pageZoomFactor(),
         // and any CSS transforms. https://bugs.webkit.org/show_bug.cgi?id=81698
         ImageWithScale image = bestImageForScaleFactor();
-        CachedResourceRequest request(ResourceRequest(document->completeURL(image.imageURL)), options);
+
+        ResourceLoaderOptions loadOptions = options;
+        loadOptions.loadedFromOpaqueSource = m_loadedFromOpaqueSource;
+        CachedResourceRequest request(ResourceRequest(document->completeURL(image.imageURL)), loadOptions);
         request.setInitiator(cachedResourceRequestInitiators().css);
         if (options.mode == FetchOptions::Mode::Cors)
             request.updateForAccessControl(*document);
 
-        m_cachedImage = loader.requestImage(WTFMove(request));
+        m_cachedImage = loader.requestImage(WTFMove(request)).value_or(nullptr);
         m_bestFitImageScaleFactor = image.scaleFactor;
     }
     return { m_cachedImage.get(), m_bestFitImageScaleFactor };
@@ -152,7 +153,7 @@ String CSSImageSetValue::customCSSText() const
     return result.toString();
 }
 
-bool CSSImageSetValue::traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const
+bool CSSImageSetValue::traverseSubresources(const WTF::Function<bool (const CachedResource&)>& handler) const
 {
     if (!m_cachedImage)
         return false;

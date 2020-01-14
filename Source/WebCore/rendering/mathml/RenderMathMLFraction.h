@@ -37,46 +37,44 @@ namespace WebCore {
 class MathMLFractionElement;
 
 class RenderMathMLFraction final : public RenderMathMLBlock {
+    WTF_MAKE_ISO_ALLOCATED(RenderMathMLFraction);
 public:
     RenderMathMLFraction(MathMLFractionElement&, RenderStyle&&);
 
-    float relativeLineThickness() const { return m_defaultLineThickness ? m_lineThickness / m_defaultLineThickness : LayoutUnit(0); }
+    LayoutUnit defaultLineThickness() const;
+    LayoutUnit lineThickness() const;
+    float relativeLineThickness() const;
 
 private:
     bool isRenderMathMLFraction() const final { return true; }
     const char* renderName() const final { return "RenderMathMLFraction"; }
 
     void computePreferredLogicalWidths() final;
-    void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0) final;
-    std::optional<int> firstLineBaseline() const final;
+    void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0_lu) final;
+    Optional<int> firstLineBaseline() const final;
     void paint(PaintInfo&, const LayoutPoint&) final;
-    RenderMathMLOperator* unembellishedOperator() final;
+    RenderMathMLOperator* unembellishedOperator() const final;
 
     MathMLFractionElement& element() const { return static_cast<MathMLFractionElement&>(nodeForNonAnonymous()); }
 
-    bool isStack() const { return !m_lineThickness; }
     bool isValid() const;
     RenderBox& numerator() const;
     RenderBox& denominator() const;
-    LayoutUnit horizontalOffset(RenderBox&, MathMLFractionElement::FractionAlignment);
-    void updateLineThickness();
+    LayoutUnit horizontalOffset(RenderBox&, MathMLFractionElement::FractionAlignment) const;
     struct FractionParameters {
         LayoutUnit numeratorGapMin;
         LayoutUnit denominatorGapMin;
         LayoutUnit numeratorMinShiftUp;
         LayoutUnit denominatorMinShiftDown;
     };
-    FractionParameters fractionParameters();
+    FractionParameters fractionParameters() const;
     struct StackParameters {
         LayoutUnit gapMin;
         LayoutUnit topShiftUp;
         LayoutUnit bottomShiftDown;
     };
-    StackParameters stackParameters();
-
-    LayoutUnit m_ascent;
-    LayoutUnit m_defaultLineThickness { 1 };
-    LayoutUnit m_lineThickness;
+    StackParameters stackParameters() const;
+    LayoutUnit ascentOverHorizontalAxis() const;
 };
 
 } // namespace WebCore

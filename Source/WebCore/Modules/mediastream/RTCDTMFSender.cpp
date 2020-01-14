@@ -26,14 +26,17 @@
 #include "config.h"
 #include "RTCDTMFSender.h"
 
-#if ENABLE(WEB_RTC)
+#if ENABLE(WEB_RTC_DTMF)
 
 #include "MediaStreamTrack.h"
 #include "RTCDTMFSenderHandler.h"
 #include "RTCDTMFToneChangeEvent.h"
 #include "ScriptExecutionContext.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RTCDTMFSender);
 
 static const long minToneDurationMs = 40;
 static const long defaultToneDurationMs = 100;
@@ -51,9 +54,7 @@ RTCDTMFSender::RTCDTMFSender(ScriptExecutionContext& context, RefPtr<MediaStream
 {
 }
 
-RTCDTMFSender::~RTCDTMFSender()
-{
-}
+RTCDTMFSender::~RTCDTMFSender() = default;
 
 bool RTCDTMFSender::canInsertDTMF() const
 {
@@ -70,21 +71,21 @@ String RTCDTMFSender::toneBuffer() const
     return { };
 }
 
-ExceptionOr<void> RTCDTMFSender::insertDTMF(const String&, std::optional<int> duration, std::optional<int> interToneGap)
+ExceptionOr<void> RTCDTMFSender::insertDTMF(const String&, Optional<int> duration, Optional<int> interToneGap)
 {
     if (!canInsertDTMF())
-        return Exception { NOT_SUPPORTED_ERR };
+        return Exception { NotSupportedError };
 
     if (duration && (duration.value() > maxToneDurationMs || duration.value() < minToneDurationMs))
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
     if (interToneGap && interToneGap.value() < minInterToneGapMs)
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
-    m_duration = duration.value_or(defaultToneDurationMs);
-    m_interToneGap = interToneGap.value_or(defaultInterToneGapMs);
+    m_duration = duration.valueOr(defaultToneDurationMs);
+    m_interToneGap = interToneGap.valueOr(defaultInterToneGapMs);
 
-    return Exception { SYNTAX_ERR };
+    return Exception { SyntaxError };
 }
 
 void RTCDTMFSender::didPlayTone(const String& tone)
@@ -113,7 +114,7 @@ void RTCDTMFSender::scheduleDispatchEvent(Ref<Event>&& event)
     m_scheduledEvents.append(WTFMove(event));
 
     if (!m_scheduledEventTimer.isActive())
-        m_scheduledEventTimer.startOneShot(0);
+        m_scheduledEventTimer.startOneShot(0_s);
 }
 
 void RTCDTMFSender::scheduledEventTimerFired()

@@ -28,9 +28,11 @@
 
 #include "JSCInlines.h"
 
+#include <algorithm>
+
 namespace JSC {
 
-void ArrayAllocationProfile::updateIndexingType()
+void ArrayAllocationProfile::updateProfile()
 {
     // This is awkwardly racy but totally sound even when executed concurrently. The
     // worst cases go something like this:
@@ -45,12 +47,28 @@ void ArrayAllocationProfile::updateIndexingType()
     //   it's possible for that array to no longer be reachable, it cannot actually
     //   be freed, since we require the GC to wait until all concurrent JITing
     //   finishes.
+    //
+    // But one exception is vector length. We access vector length to get the vector
+    // length hint. However vector length can be accessible only from the main
+    // thread because large butterfly can be realloced in the main thread.
+    // So for now, we update the allocation profile only from the main thread.
     
+    ASSERT(!isCompilationThread());
     JSArray* lastArray = m_lastArray;
     if (!lastArray)
         return;
-    m_currentIndexingType = leastUpperBoundOfIndexingTypes(m_currentIndexingType, lastArray->indexingType());
-    m_lastArray = 0;
+    if (LIKELY(Options::useArrayAllocationProfiling())) {
+        // The basic model here is that we will upgrade ourselves to whatever the CoW version of lastArray is except ArrayStorage since we don't have CoW ArrayStorage.
+        IndexingType indexingType = leastUpperBoundOfIndexingTypes(m_currentIndexingType & IndexingTypeMask, lastArray->indexingType());
+        if (isCopyOnWrite(m_currentIndexingType)) {
+            if (indexingType > ArrayWithContiguous)
+                indexingType = ArrayWithContiguous;
+            indexingType |= CopyOnWrite;
+        }
+        m_currentIndexingType = indexingType;
+        m_largestSeenVectorLength = std::min(std::max(m_largestSeenVectorLength, lastArray->getVectorLength()), BASE_CONTIGUOUS_VECTOR_LEN_MAX);
+    }
+    m_lastArray = nullptr;
 }
 
 } // namespace JSC

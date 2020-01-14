@@ -29,6 +29,7 @@
 #include "RuntimeType.h"
 #include "StructureSet.h"
 #include <wtf/HashSet.h>
+#include <wtf/JSONValues.h>
 #include <wtf/RefCounted.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/text/WTFString.h>
@@ -36,7 +37,6 @@
 
 namespace Inspector {
 namespace Protocol  {
-template<typename T> class Array;
 
 namespace Runtime {
 class StructureDescription;
@@ -61,23 +61,23 @@ public:
     String stringRepresentation();
     String toJSONString() const;
     Ref<Inspector::Protocol::Runtime::StructureDescription> inspectorRepresentation();
-    void setConstructorName(String name) { m_constructorName = (name.isEmpty() ? ASCIILiteral("Object") : name); }
+    void setConstructorName(String name) { m_constructorName = (name.isEmpty() ? "Object"_s : name); }
     String constructorName() { return m_constructorName; }
-    void setProto(PassRefPtr<StructureShape> shape) { m_proto = shape; }
+    void setProto(Ref<StructureShape>&& shape) { m_proto = WTFMove(shape); }
     void enterDictionaryMode();
 
 private:
-    static String leastCommonAncestor(const Vector<RefPtr<StructureShape>>);
-    static PassRefPtr<StructureShape> merge(const PassRefPtr<StructureShape>, const PassRefPtr<StructureShape>);
-    bool hasSamePrototypeChain(PassRefPtr<StructureShape>);
+    static String leastCommonAncestor(const Vector<Ref<StructureShape>>&);
+    static Ref<StructureShape> merge(Ref<StructureShape>&&, Ref<StructureShape>&&);
+    bool hasSamePrototypeChain(const StructureShape&);
 
+    bool m_final;
+    bool m_isInDictionaryMode;
     HashSet<RefPtr<UniquedStringImpl>, IdentifierRepHash> m_fields;
     HashSet<RefPtr<UniquedStringImpl>, IdentifierRepHash> m_optionalFields;
     RefPtr<StructureShape> m_proto;
     std::unique_ptr<String> m_propertyHash;
     String m_constructorName;
-    bool m_final;
-    bool m_isInDictionaryMode;
 };
 
 class TypeSet : public ThreadSafeRefCounted<TypeSet> {
@@ -85,11 +85,11 @@ class TypeSet : public ThreadSafeRefCounted<TypeSet> {
 public:
     static Ref<TypeSet> create() { return adoptRef(*new TypeSet); }
     TypeSet();
-    void addTypeInformation(RuntimeType, PassRefPtr<StructureShape>, Structure*);
-    void invalidateCache();
+    void addTypeInformation(RuntimeType, RefPtr<StructureShape>&&, Structure*, bool sawPolyProtoStructure);
+    void invalidateCache(VM&);
     String dumpTypes() const;
     String displayName() const;
-    Ref<Inspector::Protocol::Array<Inspector::Protocol::Runtime::StructureDescription>> allStructureRepresentations() const;
+    Ref<JSON::ArrayOf<Inspector::Protocol::Runtime::StructureDescription>> allStructureRepresentations() const;
     String toJSONString() const;
     bool isOverflown() const { return m_isOverflown; }
     String leastCommonAncestor() const;
@@ -103,7 +103,7 @@ public:
 private:
     bool m_isOverflown;
     RuntimeTypeMask m_seenTypes;
-    Vector<RefPtr<StructureShape>> m_structureHistory;
+    Vector<Ref<StructureShape>> m_structureHistory;
     StructureSet m_structureSet;
 };
 

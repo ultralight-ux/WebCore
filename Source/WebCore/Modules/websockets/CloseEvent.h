@@ -48,7 +48,7 @@ public:
         String reason;
     };
 
-    static Ref<CloseEvent> create(const AtomicString& type, const Init& initializer, IsTrusted isTrusted = IsTrusted::No)
+    static Ref<CloseEvent> create(const AtomString& type, const Init& initializer, IsTrusted isTrusted = IsTrusted::No)
     {
         return adoptRef(*new CloseEvent(type, initializer, isTrusted));
     }
@@ -62,14 +62,14 @@ public:
 
 private:
     CloseEvent(bool wasClean, int code, const String& reason)
-        : Event(eventNames().closeEvent, false, false)
+        : Event(eventNames().closeEvent, CanBubble::No, IsCancelable::No)
         , m_wasClean(wasClean)
         , m_code(code)
         , m_reason(reason)
     {
     }
 
-    CloseEvent(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+    CloseEvent(const AtomString& type, const Init& initializer, IsTrusted isTrusted)
         : Event(type, initializer, isTrusted)
         , m_wasClean(initializer.wasClean)
         , m_code(initializer.code)

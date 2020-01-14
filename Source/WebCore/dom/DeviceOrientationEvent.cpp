@@ -27,33 +27,75 @@
 #include "DeviceOrientationEvent.h"
 
 #include "DeviceOrientationData.h"
-#include "EventNames.h"
 
 namespace WebCore {
 
-DeviceOrientationEvent::~DeviceOrientationEvent()
-{
-}
+DeviceOrientationEvent::~DeviceOrientationEvent() = default;
 
 DeviceOrientationEvent::DeviceOrientationEvent()
     : m_orientation(DeviceOrientationData::create())
 {
 }
 
-DeviceOrientationEvent::DeviceOrientationEvent(const AtomicString& eventType, DeviceOrientationData* orientation)
-    : Event(eventType, false, false) // Can't bubble, not cancelable
+DeviceOrientationEvent::DeviceOrientationEvent(const AtomString& eventType, DeviceOrientationData* orientation)
+    : Event(eventType, CanBubble::No, IsCancelable::No)
     , m_orientation(orientation)
 {
 }
 
-void DeviceOrientationEvent::initDeviceOrientationEvent(const AtomicString& type, bool bubbles, bool cancelable, DeviceOrientationData* orientation)
+Optional<double> DeviceOrientationEvent::alpha() const
 {
-    if (dispatched())
+    return m_orientation->alpha();
+}
+
+Optional<double> DeviceOrientationEvent::beta() const
+{
+    return m_orientation->beta();
+}
+
+Optional<double> DeviceOrientationEvent::gamma() const
+{
+    return m_orientation->gamma();
+}
+
+#if PLATFORM(IOS_FAMILY)
+
+Optional<double> DeviceOrientationEvent::compassHeading() const
+{
+    return m_orientation->compassHeading();
+}
+
+Optional<double> DeviceOrientationEvent::compassAccuracy() const
+{
+    return m_orientation->compassAccuracy();
+}
+
+void DeviceOrientationEvent::initDeviceOrientationEvent(const AtomString& type, bool bubbles, bool cancelable, Optional<double> alpha, Optional<double> beta, Optional<double> gamma, Optional<double> compassHeading, Optional<double> compassAccuracy)
+{
+    if (isBeingDispatched())
         return;
 
     initEvent(type, bubbles, cancelable);
-    m_orientation = orientation;
+    m_orientation = DeviceOrientationData::create(alpha, beta, gamma, compassHeading, compassAccuracy);
 }
+
+#else
+
+Optional<bool> DeviceOrientationEvent::absolute() const
+{
+    return m_orientation->absolute();
+}
+
+void DeviceOrientationEvent::initDeviceOrientationEvent(const AtomString& type, bool bubbles, bool cancelable, Optional<double> alpha, Optional<double> beta, Optional<double> gamma, Optional<bool> absolute)
+{
+    if (isBeingDispatched())
+        return;
+
+    initEvent(type, bubbles, cancelable);
+    m_orientation = DeviceOrientationData::create(alpha, beta, gamma, absolute);
+}
+
+#endif
 
 EventInterface DeviceOrientationEvent::eventInterface() const
 {

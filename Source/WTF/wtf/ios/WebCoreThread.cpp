@@ -24,11 +24,11 @@
  */
 
 #include "config.h"
-#include "WebCoreThread.h"
+#include <wtf/ios/WebCoreThread.h>
 
 #if USE(WEB_THREAD)
+WTF_EXPORT_PRIVATE void (*WebCoreWebThreadLock)(void);
 WTF_EXPORT_PRIVATE bool (*WebCoreWebThreadIsLockedOrDisabled)(void);
 WTF_EXPORT_PRIVATE bool (*WebCoreWebThreadIsEnabled)(void);
 WTF_EXPORT_PRIVATE void (*WebCoreWebThreadRun)(void (^block)());
-WTF_EXPORT_PRIVATE void (*WebCoreWebThreadRunSync)(void (^block)());
 #endif

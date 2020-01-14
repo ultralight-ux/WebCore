@@ -31,29 +31,35 @@
 
 #pragma once
 
-#include "SessionID.h"
 #include "SocketStreamHandle.h"
+#include <pal/SessionID.h>
 #include <wtf/RetainPtr.h>
+#include <wtf/StreamBuffer.h>
 
 typedef struct __CFHTTPMessage* CFHTTPMessageRef;
 
 namespace WebCore {
 
 class Credential;
+class StorageSessionProvider;
 class ProtectionSpace;
 class SocketStreamHandleClient;
 
 class SocketStreamHandleImpl : public SocketStreamHandle {
 public:
-    static Ref<SocketStreamHandleImpl> create(const URL& url, SocketStreamHandleClient& client, SessionID sessionID) { return adoptRef(*new SocketStreamHandleImpl(url, client, sessionID)); }
+    static Ref<SocketStreamHandleImpl> create(const URL& url, SocketStreamHandleClient& client, PAL::SessionID sessionID, const String& credentialPartition, SourceApplicationAuditToken&& auditData, const StorageSessionProvider* provider) { return adoptRef(*new SocketStreamHandleImpl(url, client, sessionID, credentialPartition, WTFMove(auditData), provider)); }
 
     virtual ~SocketStreamHandleImpl();
 
+    WEBCORE_EXPORT void platformSend(const uint8_t* data, size_t length, Function<void(bool)>&&) final;
+    WEBCORE_EXPORT void platformSendHandshake(const uint8_t* data, size_t length, const Optional<CookieRequestHeaderFieldProxy>&, Function<void(bool, bool)>&&) final;
+    WEBCORE_EXPORT void platformClose() final;
 private:
-    virtual std::optional<size_t> platformSend(const char* data, size_t length);
-    virtual void platformClose();
+    size_t bufferedAmount() final;
+    Optional<size_t> platformSendInternal(const uint8_t*, size_t);
+    bool sendPendingData();
 
-    WEBCORE_EXPORT SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&, SessionID);
+    WEBCORE_EXPORT SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&, PAL::SessionID, const String& credentialPartition, SourceApplicationAuditToken&&, const StorageSessionProvider*);
     void createStreams();
     void scheduleStreams();
     void chooseProxy();
@@ -95,7 +101,13 @@ private:
     RetainPtr<CFWriteStreamRef> m_writeStream;
 
     RetainPtr<CFURLRef> m_httpsURL; // ws(s): replaced with https:
-    SessionID m_sessionID;
+    PAL::SessionID m_sessionID;
+    String m_credentialPartition;
+    SourceApplicationAuditToken m_auditData;
+    RefPtr<const StorageSessionProvider> m_storageSessionProvider;
+
+    StreamBuffer<uint8_t, 1024 * 1024> m_buffer;
+    static const unsigned maxBufferSize = 100 * 1024 * 1024;
 };
 
 } // namespace WebCore

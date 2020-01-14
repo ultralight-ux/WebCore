@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,6 @@
 #include "TypedArrayType.h"
 #include <algorithm>
 #include <limits.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -48,16 +47,16 @@ public:
         return !m_buffer || m_buffer->isNeutered();
     }
     
-    PassRefPtr<ArrayBuffer> possiblySharedBuffer() const
+    RefPtr<ArrayBuffer> possiblySharedBuffer() const
     {
         if (isNeutered())
-            return 0;
+            return nullptr;
         return m_buffer;
     }
     
-    PassRefPtr<ArrayBuffer> unsharedBuffer() const
+    RefPtr<ArrayBuffer> unsharedBuffer() const
     {
-        PassRefPtr<ArrayBuffer> result = possiblySharedBuffer();
+        RefPtr<ArrayBuffer> result = possiblySharedBuffer();
         RELEASE_ASSERT(!result->isShared());
         return result;
     }
@@ -72,8 +71,8 @@ public:
     void* baseAddress() const
     {
         if (isNeutered())
-            return 0;
-        return m_baseAddress;
+            return nullptr;
+        return m_baseAddress.getMayBeNull(byteLength());
     }
 
     void* data() const { return baseAddress(); }
@@ -85,7 +84,7 @@ public:
         return m_byteOffset;
     }
 
-    virtual unsigned byteLength() const = 0;
+    unsigned byteLength() const { return m_byteLength; }
 
     JS_EXPORT_PRIVATE void setNeuterable(bool flag);
     bool isNeuterable() const { return m_isNeuterable; }
@@ -100,9 +99,9 @@ public:
 
     // Helper to verify that a given sub-range of an ArrayBuffer is
     // within range.
-    static bool verifySubRangeLength(PassRefPtr<ArrayBuffer> buffer, unsigned byteOffset, unsigned numElements, size_t size)
+    static bool verifySubRangeLength(const ArrayBuffer& buffer, unsigned byteOffset, unsigned numElements, size_t size)
     {
-        unsigned byteLength = buffer->byteLength();
+        unsigned byteLength = buffer.byteLength();
         if (byteOffset > byteLength)
             return false;
         unsigned remainingElements = (byteLength - byteOffset) / size;
@@ -114,11 +113,12 @@ public:
     virtual JSArrayBufferView* wrap(ExecState*, JSGlobalObject*) = 0;
     
 protected:
-    JS_EXPORT_PRIVATE ArrayBufferView(PassRefPtr<ArrayBuffer>, unsigned byteOffset);
+    JS_EXPORT_PRIVATE ArrayBufferView(RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned byteLength);
 
     inline bool setImpl(ArrayBufferView*, unsigned byteOffset);
 
-    inline bool setRangeImpl(const char* data, size_t dataByteLength, unsigned byteOffset);
+    inline bool setRangeImpl(const void* data, size_t dataByteLength, unsigned byteOffset);
+    inline bool getRangeImpl(void* destination, size_t dataByteLength, unsigned byteOffset);
 
     inline bool zeroRangeImpl(unsigned byteOffset, size_t rangeByteLength);
 
@@ -130,28 +130,30 @@ protected:
     // output offset is in number of bytes from the underlying buffer's view.
     template <typename T>
     static void clampOffsetAndNumElements(
-        PassRefPtr<ArrayBuffer> buffer,
+        const ArrayBuffer& buffer,
         unsigned arrayByteOffset,
         unsigned *offset,
         unsigned *numElements)
     {
         unsigned maxOffset = (UINT_MAX - arrayByteOffset) / sizeof(T);
         if (*offset > maxOffset) {
-            *offset = buffer->byteLength();
+            *offset = buffer.byteLength();
             *numElements = 0;
             return;
         }
         *offset = arrayByteOffset + *offset * sizeof(T);
-        *offset = std::min(buffer->byteLength(), *offset);
-        unsigned remainingElements = (buffer->byteLength() - *offset) / sizeof(T);
+        *offset = std::min(buffer.byteLength(), *offset);
+        unsigned remainingElements = (buffer.byteLength() - *offset) / sizeof(T);
         *numElements = std::min(remainingElements, *numElements);
     }
 
-    // This is the address of the ArrayBuffer's storage, plus the byte offset.
-    void* m_baseAddress;
-
     unsigned m_byteOffset : 31;
     bool m_isNeuterable : 1;
+    unsigned m_byteLength;
+
+    using BaseAddress = CagedPtr<Gigacage::Primitive, void, tagCagedPtr>;
+    // This is the address of the ArrayBuffer's storage, plus the byte offset.
+    BaseAddress m_baseAddress;
 
 private:
     friend class ArrayBuffer;
@@ -167,12 +169,12 @@ bool ArrayBufferView::setImpl(ArrayBufferView* array, unsigned byteOffset)
         return false;
     }
     
-    char* base = static_cast<char*>(baseAddress());
+    uint8_t* base = static_cast<uint8_t*>(baseAddress());
     memmove(base + byteOffset, array->baseAddress(), array->byteLength());
     return true;
 }
 
-bool ArrayBufferView::setRangeImpl(const char* data, size_t dataByteLength, unsigned byteOffset)
+bool ArrayBufferView::setRangeImpl(const void* data, size_t dataByteLength, unsigned byteOffset)
 {
     if (byteOffset > byteLength()
         || byteOffset + dataByteLength > byteLength()
@@ -180,9 +182,23 @@ bool ArrayBufferView::setRangeImpl(const char* data, size_t dataByteLength, unsi
         // Out of range offset or overflow
         return false;
     }
-    
-    char* base = static_cast<char*>(baseAddress());
+
+    uint8_t* base = static_cast<uint8_t*>(baseAddress());
     memmove(base + byteOffset, data, dataByteLength);
+    return true;
+}
+
+bool ArrayBufferView::getRangeImpl(void* destination, size_t dataByteLength, unsigned byteOffset)
+{
+    if (byteOffset > byteLength()
+        || byteOffset + dataByteLength > byteLength()
+        || byteOffset + dataByteLength < byteOffset) {
+        // Out of range offset or overflow
+        return false;
+    }
+
+    const uint8_t* base = static_cast<const uint8_t*>(baseAddress());
+    memmove(destination, base + byteOffset, dataByteLength);
     return true;
 }
 
@@ -195,7 +211,7 @@ bool ArrayBufferView::zeroRangeImpl(unsigned byteOffset, size_t rangeByteLength)
         return false;
     }
     
-    char* base = static_cast<char*>(baseAddress());
+    uint8_t* base = static_cast<uint8_t*>(baseAddress());
     memset(base + byteOffset, 0, rangeByteLength);
     return true;
 }

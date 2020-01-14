@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2018 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -54,6 +54,10 @@ public:
         : ResourceErrorBase(domain, errorCode, failingURL, localizedDescription, type)
         , m_dataIsUpToDate(true)
     {
+#if PLATFORM(COCOA)
+        ASSERT(domain != getNSURLErrorDomain());
+        ASSERT(domain != getCFErrorDomainCFNetwork());
+#endif
     }
 
     WEBCORE_EXPORT ResourceError(CFErrorRef error);
@@ -62,14 +66,14 @@ public:
     WEBCORE_EXPORT operator CFErrorRef() const;
 
 #if USE(CFURLCONNECTION)
-#if PLATFORM(WIN)
     ResourceError(const String& domain, int errorCode, const URL& failingURL, const String& localizedDescription, CFDataRef certificate);
     PCCERT_CONTEXT certificate() const;
     void setCertificate(CFDataRef);
-#endif
     ResourceError(CFStreamError error);
     CFStreamError cfStreamError() const;
     operator CFStreamError() const;
+    static const void* getSSLPeerCertificateDataBytePtr(CFDictionaryRef);
+
 #endif
 
 #if PLATFORM(COCOA)
@@ -83,6 +87,11 @@ public:
 private:
     friend class ResourceErrorBase;
 
+#if PLATFORM(COCOA)
+    WEBCORE_EXPORT const String& getNSURLErrorDomain() const;
+    WEBCORE_EXPORT const String& getCFErrorDomainCFNetwork() const;
+    WEBCORE_EXPORT void mapPlatformError();
+#endif
     void platformLazyInit();
 
     void doPlatformIsolatedCopy(const ResourceError&);
@@ -90,9 +99,6 @@ private:
     bool m_dataIsUpToDate;
 #if USE(CFURLCONNECTION)
     mutable RetainPtr<CFErrorRef> m_platformError;
-#if PLATFORM(COCOA)
-    mutable RetainPtr<NSError> m_platformNSError;
-#endif
 #if PLATFORM(WIN)
     RetainPtr<CFDataRef> m_certificate;
 #endif

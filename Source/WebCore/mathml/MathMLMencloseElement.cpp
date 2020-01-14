@@ -32,8 +32,11 @@
 #include "HTMLParserIdioms.h"
 #include "MathMLNames.h"
 #include "RenderMathMLMenclose.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(MathMLMencloseElement);
 
 using namespace MathMLNames;
 
@@ -129,10 +132,10 @@ bool MathMLMencloseElement::hasNotation(MencloseNotationFlag notationFlag)
     return m_notationFlags.value() & notationFlag;
 }
 
-void MathMLMencloseElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void MathMLMencloseElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     if (name == notationAttr)
-        m_notationFlags = std::nullopt;
+        m_notationFlags = WTF::nullopt;
 
     MathMLRowElement::parseAttribute(name, value);
 }

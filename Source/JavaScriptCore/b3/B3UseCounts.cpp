@@ -29,6 +29,7 @@
 #if ENABLE(B3_JIT)
 
 #include "B3Procedure.h"
+#include "B3ValueInlines.h"
 
 namespace JSC { namespace B3 {
 
@@ -37,7 +38,7 @@ UseCounts::UseCounts(Procedure& procedure)
 {
     Vector<Value*, 64> children;
     for (Value* value : procedure.values()) {
-        children.resize(0);
+        children.shrink(0);
         for (Value* child : value->children()) {
             m_counts[child].numUses++;
             children.append(child);

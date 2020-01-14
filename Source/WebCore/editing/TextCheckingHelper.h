@@ -33,12 +33,11 @@ struct TextCheckingResult;
 
 class TextCheckingParagraph {
 public:
-    explicit TextCheckingParagraph(PassRefPtr<Range> checkingRange);
-    TextCheckingParagraph(PassRefPtr<Range> checkingRange, PassRefPtr<Range> paragraphRange);
-    ~TextCheckingParagraph();
+    explicit TextCheckingParagraph(Ref<Range>&& checkingAndAutomaticReplacementRange);
+    explicit TextCheckingParagraph(Ref<Range>&& checkingRange, Ref<Range>&& automaticReplacementRange, RefPtr<Range>&& paragraphRange);
 
     int rangeLength() const;
-    PassRefPtr<Range> subrange(int characterOffset, int characterCount) const;
+    Ref<Range> subrange(int characterOffset, int characterCount) const;
     ExceptionOr<int> offsetTo(const Position&) const;
     void expandRangeToNextEnd();
 
@@ -57,28 +56,36 @@ public:
     int checkingLength() const;
     String checkingSubstring() const { return textSubstring(checkingStart(), checkingLength()); }
 
+    // Determines the range in which we allow automatic text replacement. If an automatic replacement range is not passed to the
+    // text checking paragraph, this defaults to the spell checking range.
+    int automaticReplacementStart() const;
+    int automaticReplacementLength() const;
+
     bool checkingRangeMatches(int location, int length) const { return location == checkingStart() && length == checkingLength(); }
     bool isCheckingRangeCoveredBy(int location, int length) const { return location <= checkingStart() && location + length >= checkingStart() + checkingLength(); }
     bool checkingRangeCovers(int location, int length) const { return location < checkingEnd() && location + length > checkingStart(); }
-    PassRefPtr<Range> paragraphRange() const;
+    Range& paragraphRange() const;
 
 private:
     void invalidateParagraphRangeValues();
-    PassRefPtr<Range> offsetAsRange() const;
+    Range& offsetAsRange() const;
 
-    RefPtr<Range> m_checkingRange;
+    Ref<Range> m_checkingRange;
+    Ref<Range> m_automaticReplacementRange;
     mutable RefPtr<Range> m_paragraphRange;
     mutable RefPtr<Range> m_offsetAsRange;
     mutable String m_text;
-    mutable int m_checkingStart;
-    mutable int m_checkingEnd;
-    mutable int m_checkingLength;
+    mutable Optional<int> m_checkingStart;
+    mutable Optional<int> m_checkingEnd;
+    mutable Optional<int> m_checkingLength;
+    mutable Optional<int> m_automaticReplacementStart;
+    mutable Optional<int> m_automaticReplacementLength;
 };
 
 class TextCheckingHelper {
     WTF_MAKE_NONCOPYABLE(TextCheckingHelper);
 public:
-    TextCheckingHelper(EditorClient*, PassRefPtr<Range>);
+    TextCheckingHelper(EditorClient&, Range&);
     ~TextCheckingHelper();
 
     String findFirstMisspelling(int& firstMisspellingOffset, bool markAll, RefPtr<Range>& firstMisspellingRange);
@@ -92,8 +99,8 @@ public:
     Vector<String> guessesForMisspelledOrUngrammaticalRange(bool checkGrammar, bool& misspelled, bool& ungrammatical) const;
 
 private:
-    EditorClient* m_client;
-    RefPtr<Range> m_range;
+    EditorClient& m_client;
+    Ref<Range> m_range;
 
     bool unifiedTextCheckerEnabled() const;
 #if USE(GRAMMAR_CHECKING)
@@ -101,8 +108,9 @@ private:
 #endif
 };
 
-void checkTextOfParagraph(TextCheckerClient&, StringView, TextCheckingTypeMask, Vector<TextCheckingResult>&, const VisibleSelection& currentSelection);
+void checkTextOfParagraph(TextCheckerClient&, StringView, OptionSet<TextCheckingType>, Vector<TextCheckingResult>&, const VisibleSelection& currentSelection);
 
 bool unifiedTextCheckerEnabled(const Frame*);
+bool platformDrivenTextCheckerEnabled();
 
 } // namespace WebCore

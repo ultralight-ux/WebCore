@@ -94,8 +94,11 @@ private:
                         continue;
                     }
                     switch (node->child1()->op()) {
+                    case SetArgumentMaybe:
+                        DFG_CRASH(m_graph, node, "Invalid Phantom(@SetArgumentMaybe)");
+                        break;
                     case Phi:
-                    case SetArgument:
+                    case SetArgumentDefinitely:
                     case SetLocal:
                         node->convertPhantomToPhantomLocal();
                         break;
@@ -169,16 +172,18 @@ private:
                     m_block->variablesAtTail.atFor<operandKind>(idx) = node;
                     return;
                 }
-                ASSERT(otherNode->op() == SetLocal || otherNode->op() == SetArgument);
+                ASSERT(otherNode->op() != SetArgumentMaybe);
+                ASSERT(otherNode->op() == SetLocal || otherNode->op() == SetArgumentDefinitely);
                 break;
             default:
                 break;
             }
             
-            ASSERT(otherNode->op() == SetLocal || otherNode->op() == SetArgument || otherNode->op() == GetLocal);
+            ASSERT(otherNode->op() != SetArgumentMaybe);
+            ASSERT(otherNode->op() == SetLocal || otherNode->op() == SetArgumentDefinitely || otherNode->op() == GetLocal);
             ASSERT(otherNode->variableAccessData() == variable);
             
-            if (otherNode->op() == SetArgument) {
+            if (otherNode->op() == SetArgumentDefinitely) {
                 variable->setIsLoadedFrom(true);
                 node->children.setChild1(Edge(otherNode));
                 m_block->variablesAtTail.atFor<operandKind>(idx) = node;
@@ -187,12 +192,12 @@ private:
             
             if (otherNode->op() == GetLocal) {
                 // Replace all references to this GetLocal with otherNode.
-                node->replaceWith(otherNode);
+                node->replaceWith(m_graph, otherNode);
                 return;
             }
             
             ASSERT(otherNode->op() == SetLocal);
-            node->replaceWith(otherNode->child1().node());
+            node->replaceWith(m_graph, otherNode->child1().node());
             return;
         }
         
@@ -230,7 +235,7 @@ private:
                 break;
             }
             
-            ASSERT(otherNode->op() == Phi || otherNode->op() == SetLocal || otherNode->op() == SetArgument);
+            ASSERT(otherNode->op() == Phi || otherNode->op() == SetLocal || otherNode->op() == SetArgumentDefinitely || otherNode->op() == SetArgumentMaybe);
             
             if (nodeType == PhantomLocal && otherNode->op() == SetLocal) {
                 // PhantomLocal(SetLocal) doesn't make sense. PhantomLocal means: at this
@@ -240,7 +245,7 @@ private:
                 // redundant and inefficient, since really it just means that we want to
                 // keep the last MovHinted value of that local alive.
                 
-                node->remove();
+                node->remove(m_graph);
                 return;
             }
             
@@ -291,20 +296,18 @@ private:
         // but not logicalRefCount == actualRefCount). Assumes that it can break ref
         // counts.
         
-        for (unsigned nodeIndex = 0; nodeIndex < m_block->size(); ++nodeIndex) {
-            Node* node = m_block->at(nodeIndex);
-            
+        for (auto* node : *m_block) {
             m_graph.performSubstitution(node);
             
             // The rules for threaded CPS form:
             // 
             // Head variable: describes what is live at the head of the basic block.
-            // Head variable links may refer to Flush, PhantomLocal, Phi, or SetArgument.
-            // SetArgument may only appear in the root block.
+            // Head variable links may refer to Flush, PhantomLocal, Phi, or SetArgumentDefinitely/SetArgumentMaybe.
+            // SetArgumentDefinitely/SetArgumentMaybe may only appear in the root block.
             //
             // Tail variable: the last thing that happened to the variable in the block.
-            // It may be a Flush, PhantomLocal, GetLocal, SetLocal, SetArgument, or Phi.
-            // SetArgument may only appear in the root block. Note that if there ever
+            // It may be a Flush, PhantomLocal, GetLocal, SetLocal, SetArgumentDefinitely/SetArgumentMaybe, or Phi.
+            // SetArgumentDefinitely/SetArgumentMaybe may only appear in the root block. Note that if there ever
             // was a GetLocal to the variable, and it was followed by PhantomLocals and
             // Flushes but not SetLocals, then the tail variable will be the GetLocal.
             // This reflects the fact that you only care that the tail variable is a
@@ -313,22 +316,23 @@ private:
             // variable will be a SetLocal and not those subsequent Flushes.
             //
             // Child of GetLocal: the operation that the GetLocal keeps alive. It may be
-            // a Phi from the current block. For arguments, it may be a SetArgument.
+            // a Phi from the current block. For arguments, it may be a SetArgumentDefinitely
+            // but it can't be a SetArgumentMaybe.
             //
             // Child of SetLocal: must be a value producing node.
             //
             // Child of Flush: it may be a Phi from the current block or a SetLocal. For
-            // arguments it may also be a SetArgument.
+            // arguments it may also be a SetArgumentDefinitely/SetArgumentMaybe.
             //
             // Child of PhantomLocal: it may be a Phi from the current block. For
-            // arguments it may also be a SetArgument.
+            // arguments it may also be a SetArgumentDefinitely/SetArgumentMaybe.
             //
             // Children of Phi: other Phis in the same basic block, or any of the
-            // following from predecessor blocks: SetLocal, Phi, or SetArgument. These
-            // are computed by looking at the tail variables of the predecessor  blocks
-            // and either using it directly (if it's a SetLocal, Phi, or SetArgument) or
+            // following from predecessor blocks: SetLocal, Phi, or SetArgumentDefinitely/SetArgumentMaybe.
+            // These are computed by looking at the tail variables of the predecessor blocks
+            // and either using it directly (if it's a SetLocal, Phi, or SetArgumentDefinitely/SetArgumentMaybe) or
             // loading that nodes child (if it's a GetLocal, PhanomLocal, or Flush - all
-            // of these will have children that are SetLocal, Phi, or SetArgument).
+            // of these will have children that are SetLocal, Phi, or SetArgumentDefinitely/SetArgumentMaybe).
             
             switch (node->op()) {
             case GetLocal:
@@ -347,7 +351,8 @@ private:
                 canonicalizeFlushOrPhantomLocal<PhantomLocal>(node);
                 break;
                 
-            case SetArgument:
+            case SetArgumentDefinitely:
+            case SetArgumentMaybe:
                 canonicalizeSet(node);
                 break;
                 
@@ -367,12 +372,17 @@ private:
     
     void specialCaseArguments()
     {
-        // Normally, a SetArgument denotes the start of a live range for a local's value on the stack.
+        // Normally, a SetArgumentDefinitely denotes the start of a live range for a local's value on the stack.
         // But those SetArguments used for the actual arguments to the machine CodeBlock get
         // special-cased. We could have instead used two different node types - one for the arguments
         // at the prologue case, and another for the other uses. But this seemed like IR overkill.
-        for (unsigned i = m_graph.m_arguments.size(); i--;)
-            m_graph.block(0)->variablesAtHead.setArgumentFirstTime(i, m_graph.m_arguments[i]);
+
+        for (auto& pair : m_graph.m_rootToArguments) {
+            BasicBlock* entrypoint = pair.key;
+            const ArgumentsVector& arguments = pair.value;
+            for (unsigned i = arguments.size(); i--;)
+                entrypoint->variablesAtHead.setArgumentFirstTime(i, arguments[i]);
+        }
     }
     
     template<OperandKind operandKind>
@@ -417,7 +427,8 @@ private:
                 ASSERT(
                     variableInPrevious->op() == SetLocal
                     || variableInPrevious->op() == Phi
-                    || variableInPrevious->op() == SetArgument);
+                    || variableInPrevious->op() == SetArgumentDefinitely
+                    || variableInPrevious->op() == SetArgumentMaybe);
           
                 if (!currentPhi->child1()) {
                     currentPhi->children.setChild1(Edge(variableInPrevious));
@@ -479,7 +490,8 @@ private:
             Node* node = m_flushedLocalOpWorklist.takeLast();
             switch (node->op()) {
             case SetLocal:
-            case SetArgument:
+            case SetArgumentDefinitely:
+            case SetArgumentMaybe:
                 break;
                 
             case Flush:

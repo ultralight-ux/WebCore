@@ -29,7 +29,6 @@
 
 #include "CSSSelector.h"
 #include "Element.h"
-#include "SpaceSplitString.h"
 #include "StyleRelations.h"
 
 namespace WebCore {
@@ -80,7 +79,7 @@ public:
         { }
 
         const SelectorChecker::Mode resolvingMode;
-        PseudoId pseudoId { NOPSEUDO };
+        PseudoId pseudoId { PseudoId::None };
         RenderScrollbar* scrollbar { nullptr };
         ScrollbarPart scrollbarPart { NoPart };
         const ContainerNode* scope { nullptr };
@@ -97,7 +96,7 @@ public:
 
     static bool isCommonPseudoClassSelector(const CSSSelector*);
     static bool matchesFocusPseudoClass(const Element&);
-    static bool attributeSelectorMatches(const Element&, const QualifiedName&, const AtomicString& attributeValue, const CSSSelector&);
+    static bool attributeSelectorMatches(const Element&, const QualifiedName&, const AtomString& attributeValue, const CSSSelector&);
 
     enum LinkMatchMask { MatchDefault = 0, MatchLink = 1, MatchVisited = 2, MatchAll = MatchLink | MatchVisited };
     static unsigned determineLinkMatchType(const CSSSelector*);

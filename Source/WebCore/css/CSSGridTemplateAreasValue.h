@@ -31,8 +31,6 @@
 
 #pragma once
 
-#if ENABLE(CSS_GRID_LAYOUT)
-
 #include "CSSValue.h"
 #include "GridArea.h"
 
@@ -45,7 +43,7 @@ public:
         return adoptRef(*new CSSGridTemplateAreasValue(gridAreaMap, rowCount, columnCount));
     }
 
-    ~CSSGridTemplateAreasValue() { }
+    ~CSSGridTemplateAreasValue() = default;
 
     String customCSSText() const;
 
@@ -66,5 +64,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSGridTemplateAreasValue, isGridTemplateAreasValue())
-
-#endif // ENABLE(CSS_GRID_LAYOUT)

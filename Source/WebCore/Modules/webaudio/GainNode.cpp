@@ -31,20 +31,23 @@
 #include "AudioBus.h"
 #include "AudioNodeInput.h"
 #include "AudioNodeOutput.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(GainNode);
 
 GainNode::GainNode(AudioContext& context, float sampleRate)
     : AudioNode(context, sampleRate)
     , m_lastGain(1.0)
     , m_sampleAccurateGainValues(AudioNode::ProcessingSizeInFrames) // FIXME: can probably share temp buffer in context
 {
+    setNodeType(NodeTypeGain);
+
     m_gain = AudioParam::create(context, "gain", 1.0, 0.0, 1.0);
 
     addInput(std::make_unique<AudioNodeInput>(this));
     addOutput(std::make_unique<AudioNodeOutput>(this, 1));
-
-    setNodeType(NodeTypeGain);
 
     initialize();
 }
@@ -73,7 +76,12 @@ void GainNode::process(size_t framesToProcess)
             }
         } else {
             // Apply the gain with de-zippering into the output bus.
-            outputBus->copyWithGainFrom(*inputBus, &m_lastGain, gain()->value());
+            if (!m_lastGain && m_lastGain == m_gain->value()) {
+                // If the gain is 0 (and we've converged on dezippering), just zero the bus and set
+                // the silence hint.
+                outputBus->zero();
+            } else
+                outputBus->copyWithGainFrom(*inputBus, &m_lastGain, gain()->value());
         }
     }
 }

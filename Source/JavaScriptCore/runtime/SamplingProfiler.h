@@ -35,6 +35,7 @@
 #include <wtf/Lock.h>
 #include <wtf/Stopwatch.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakRandom.h>
 
 namespace JSC {
 
@@ -46,26 +47,29 @@ class SamplingProfiler : public ThreadSafeRefCounted<SamplingProfiler> {
 public:
 
     struct UnprocessedStackFrame {
-        UnprocessedStackFrame(CodeBlock* codeBlock, EncodedJSValue callee, CallSiteIndex callSiteIndex)
+        UnprocessedStackFrame(CodeBlock* codeBlock, CalleeBits callee, CallSiteIndex callSiteIndex)
             : unverifiedCallee(callee)
             , verifiedCodeBlock(codeBlock)
             , callSiteIndex(callSiteIndex)
         { }
-        UnprocessedStackFrame()
-        {
-            unverifiedCallee = JSValue::encode(JSValue());
-            verifiedCodeBlock = nullptr;
-        }
 
-        EncodedJSValue unverifiedCallee;
-        CodeBlock* verifiedCodeBlock;
+        UnprocessedStackFrame(const void* pc)
+            : cCodePC(pc)
+        { }
+
+        UnprocessedStackFrame() = default;
+
+        const void* cCodePC { nullptr };
+        CalleeBits unverifiedCallee;
+        CodeBlock* verifiedCodeBlock { nullptr };
         CallSiteIndex callSiteIndex;
     };
 
     enum class FrameType { 
         Executable,
         Host,
-        Unknown 
+        C,
+        Unknown
     };
 
     struct StackFrame {
@@ -78,29 +82,48 @@ public:
         { }
 
         FrameType frameType { FrameType::Unknown };
+        const void* cCodePC { nullptr };
         ExecutableBase* executable { nullptr };
         JSObject* callee { nullptr };
-        // These attempt to be expression-level line and column number.
-        unsigned lineNumber { std::numeric_limits<unsigned>::max() };
-        unsigned columnNumber { std::numeric_limits<unsigned>::max() };
-        unsigned bytecodeIndex { std::numeric_limits<unsigned>::max() };
-        CodeBlockHash codeBlockHash;
-        JITCode::JITType jitType { JITCode::None };
 
-        bool hasExpressionInfo() const
+        struct CodeLocation {
+            bool hasCodeBlockHash() const
+            {
+                return codeBlockHash.isSet();
+            }
+
+            bool hasBytecodeIndex() const
+            {
+                return bytecodeIndex != std::numeric_limits<unsigned>::max();
+            }
+
+            bool hasExpressionInfo() const
+            {
+                return lineNumber != std::numeric_limits<unsigned>::max()
+                    && columnNumber != std::numeric_limits<unsigned>::max();
+            }
+
+            // These attempt to be expression-level line and column number.
+            unsigned lineNumber { std::numeric_limits<unsigned>::max() };
+            unsigned columnNumber { std::numeric_limits<unsigned>::max() };
+            unsigned bytecodeIndex { std::numeric_limits<unsigned>::max() };
+            CodeBlockHash codeBlockHash;
+            JITType jitType { JITType::None };
+        };
+
+        CodeLocation semanticLocation;
+        Optional<std::pair<CodeLocation, CodeBlock*>> machineLocation; // This is non-null if we were inlined. It represents the machine frame we were inlined into.
+
+        bool hasExpressionInfo() const { return semanticLocation.hasExpressionInfo(); }
+        unsigned lineNumber() const
         {
-            return lineNumber != std::numeric_limits<unsigned>::max()
-                && columnNumber != std::numeric_limits<unsigned>::max();
+            ASSERT(hasExpressionInfo());
+            return semanticLocation.lineNumber;
         }
-
-        bool hasBytecodeIndex() const
+        unsigned columnNumber() const
         {
-            return bytecodeIndex != std::numeric_limits<unsigned>::max();
-        }
-
-        bool hasCodeBlockHash() const
-        {
-            return codeBlockHash.isSet();
+            ASSERT(hasExpressionInfo());
+            return semanticLocation.columnNumber;
         }
 
         // These are function-level data.
@@ -114,7 +137,7 @@ public:
     };
 
     struct UnprocessedStackTrace {
-        double timestamp;
+        Seconds timestamp;
         void* topPC;
         bool topFrameIsLLInt;
         void* llintPC;
@@ -122,7 +145,7 @@ public:
     };
 
     struct StackTrace {
-        double timestamp;
+        Seconds timestamp;
         Vector<StackFrame> frames;
         StackTrace()
         { }
@@ -139,17 +162,17 @@ public:
     void shutdown();
     void visit(SlotVisitor&);
     Lock& getLock() { return m_lock; }
-    void setTimingInterval(std::chrono::microseconds interval) { m_timingInterval = interval; }
+    void setTimingInterval(Seconds interval) { m_timingInterval = interval; }
     JS_EXPORT_PRIVATE void start();
-    void start(const LockHolder&);
-    Vector<StackTrace> releaseStackTraces(const LockHolder&);
+    void start(const AbstractLocker&);
+    Vector<StackTrace> releaseStackTraces(const AbstractLocker&);
     JS_EXPORT_PRIVATE String stackTracesAsJSON();
     JS_EXPORT_PRIVATE void noticeCurrentThreadAsJSCExecutionThread();
-    void noticeCurrentThreadAsJSCExecutionThread(const LockHolder&);
+    void noticeCurrentThreadAsJSCExecutionThread(const AbstractLocker&);
     void processUnverifiedStackTraces(); // You should call this only after acquiring the lock.
-    void setStopWatch(const LockHolder&, Ref<Stopwatch>&& stopwatch) { m_stopwatch = WTFMove(stopwatch); }
-    void pause(const LockHolder&);
-    void clearData(const LockHolder&);
+    void setStopWatch(const AbstractLocker&, Ref<Stopwatch>&& stopwatch) { m_stopwatch = WTFMove(stopwatch); }
+    void pause(const AbstractLocker&);
+    void clearData(const AbstractLocker&);
 
     // Used for debugging in the JSC shell/DRT.
     void registerForReportAtExit();
@@ -159,23 +182,28 @@ public:
     JS_EXPORT_PRIVATE void reportTopBytecodes();
     JS_EXPORT_PRIVATE void reportTopBytecodes(PrintStream&);
 
-private:
-    void createThreadIfNecessary(const LockHolder&);
-    void timerLoop();
-    void takeSample(const LockHolder&, std::chrono::microseconds& stackTraceProcessingTime);
+#if OS(DARWIN)
+    JS_EXPORT_PRIVATE mach_port_t machThread();
+#endif
 
-    VM& m_vm;
-    RefPtr<Stopwatch> m_stopwatch;
-    Vector<StackTrace> m_stackTraces;
-    Vector<UnprocessedStackTrace> m_unprocessedStackTraces;
-    std::chrono::microseconds m_timingInterval;
-    double m_lastTime;
+private:
+    void createThreadIfNecessary(const AbstractLocker&);
+    void timerLoop();
+    void takeSample(const AbstractLocker&, Seconds& stackTraceProcessingTime);
+
     Lock m_lock;
-    ThreadIdentifier m_threadIdentifier;
-    MachineThreads::Thread* m_jscExecutionThread;
     bool m_isPaused;
     bool m_isShutDown;
     bool m_needsReportAtExit { false };
+    VM& m_vm;
+    WeakRandom m_weakRandom;
+    RefPtr<Stopwatch> m_stopwatch;
+    Vector<StackTrace> m_stackTraces;
+    Vector<UnprocessedStackTrace> m_unprocessedStackTraces;
+    Seconds m_timingInterval;
+    Seconds m_lastTime;
+    RefPtr<Thread> m_thread;
+    RefPtr<Thread> m_jscExecutionThread;
     HashSet<JSCell*> m_liveCellPointers;
     Vector<UnprocessedStackFrame> m_currentFrames;
 };

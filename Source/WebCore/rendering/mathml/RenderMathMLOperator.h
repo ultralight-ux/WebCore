@@ -27,7 +27,6 @@
 
 #if ENABLE(MATHML)
 
-#include "MathMLElement.h"
 #include "MathMLOperatorDictionary.h"
 #include "MathOperator.h"
 #include "RenderMathMLToken.h"
@@ -37,6 +36,7 @@ namespace WebCore {
 class MathMLOperatorElement;
 
 class RenderMathMLOperator : public RenderMathMLToken {
+    WTF_MAKE_ISO_ALLOCATED(RenderMathMLOperator);
 public:
     RenderMathMLOperator(MathMLOperatorElement&, RenderStyle&&);
     RenderMathMLOperator(Document&, RenderStyle&&);
@@ -46,10 +46,12 @@ public:
     void stretchTo(LayoutUnit width);
     LayoutUnit stretchSize() const { return isVertical() ? m_stretchHeightAboveBaseline + m_stretchDepthBelowBaseline : m_stretchWidth; }
     void resetStretchSize();
+    void setStretchWidthLocked(bool stretchWidthLocked) { m_isStretchWidthLocked = stretchWidthLocked; }
+    bool isStretchWidthLocked() const { return m_isStretchWidthLocked; }
 
     virtual bool hasOperatorFlag(MathMLOperatorDictionary::Flag) const;
-    bool isLargeOperatorInDisplayStyle() const { return !hasOperatorFlag(MathMLOperatorDictionary::Stretchy) && hasOperatorFlag(MathMLOperatorDictionary::LargeOp) && mathMLStyle()->displayStyle(); }
-    bool shouldMoveLimits() const { return hasOperatorFlag(MathMLOperatorDictionary::MovableLimits) && !mathMLStyle()->displayStyle(); }
+    bool isLargeOperatorInDisplayStyle() const { return !hasOperatorFlag(MathMLOperatorDictionary::Stretchy) && hasOperatorFlag(MathMLOperatorDictionary::LargeOp) && mathMLStyle().displayStyle(); }
+    bool shouldMoveLimits() const { return hasOperatorFlag(MathMLOperatorDictionary::MovableLimits) && !mathMLStyle().displayStyle(); }
     virtual bool isVertical() const;
     LayoutUnit italicCorrection() const { return m_mathOperator.italicCorrection(); }
 
@@ -69,7 +71,7 @@ protected:
 private:
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) final;
     void computePreferredLogicalWidths() final;
-    void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0) final;
+    void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0_lu) final;
     void paint(PaintInfo&, const LayoutPoint&) final;
 
     const char* renderName() const final { return isAnonymous() ? "RenderMathMLOperator (anonymous)" : "RenderMathMLOperator"; }
@@ -77,14 +79,15 @@ private:
     bool isRenderMathMLOperator() const final { return true; }
     bool isInvisibleOperator() const;
 
-    std::optional<int> firstLineBaseline() const final;
-    RenderMathMLOperator* unembellishedOperator() final { return this; }
+    Optional<int> firstLineBaseline() const final;
+    RenderMathMLOperator* unembellishedOperator() const final { return const_cast<RenderMathMLOperator*>(this); }
 
     LayoutUnit verticalStretchedOperatorShift() const;
 
     LayoutUnit m_stretchHeightAboveBaseline { 0 };
     LayoutUnit m_stretchDepthBelowBaseline { 0 };
     LayoutUnit m_stretchWidth;
+    bool m_isStretchWidthLocked { false };
 
     MathOperator m_mathOperator;
 };

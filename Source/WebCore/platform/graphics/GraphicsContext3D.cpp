@@ -36,6 +36,7 @@
 #include "Image.h"
 #include "ImageData.h"
 #include "ImageObserver.h"
+#include <wtf/UniqueArray.h>
 
 namespace WebCore {
 
@@ -146,7 +147,7 @@ GraphicsContext3D::DataFormat getDataFormat(GC3Denum destinationFormat, GC3Denum
 bool GraphicsContext3D::texImage2DResourceSafe(GC3Denum target, GC3Dint level, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height, GC3Dint border, GC3Denum format, GC3Denum type, GC3Dint unpackAlignment)
 {
     ASSERT(unpackAlignment == 1 || unpackAlignment == 2 || unpackAlignment == 4 || unpackAlignment == 8);
-    std::unique_ptr<unsigned char[]> zero;
+    UniqueArray<unsigned char> zero;
     if (width > 0 && height > 0) {
         unsigned int size;
         GC3Denum error = computeImageSizeInBytes(format, type, width, height, unpackAlignment, &size, nullptr);
@@ -154,7 +155,7 @@ bool GraphicsContext3D::texImage2DResourceSafe(GC3Denum target, GC3Dint level, G
             synthesizeGLError(error);
             return false;
         }
-        zero = std::make_unique<unsigned char[]>(size);
+        zero = makeUniqueArray<unsigned char>(size);
         if (!zero) {
             synthesizeGLError(GraphicsContext3D::INVALID_VALUE);
             return false;
@@ -368,7 +369,7 @@ GraphicsContext3D::ImageExtractor::ImageExtractor(Image* image, ImageHtmlDomSour
 
 bool GraphicsContext3D::packImageData(Image* image, const void* pixels, GC3Denum format, GC3Denum type, bool flipY, AlphaOp alphaOp, DataFormat sourceFormat, unsigned width, unsigned height, unsigned sourceUnpackAlignment, Vector<uint8_t>& data)
 {
-    if (!pixels)
+    if (!image || !pixels)
         return false;
 
     unsigned packedSize;
@@ -380,7 +381,7 @@ bool GraphicsContext3D::packImageData(Image* image, const void* pixels, GC3Denum
     if (!packPixels(reinterpret_cast<const uint8_t*>(pixels), sourceFormat, width, height, sourceUnpackAlignment, format, type, alphaOp, data.data(), flipY))
         return false;
     if (ImageObserver* observer = image->imageObserver())
-        observer->didDraw(image);
+        observer->didDraw(*image);
     return true;
 }
 
@@ -655,7 +656,7 @@ unsigned GraphicsContext3D::getChannelBitsByFormat(GC3Denum format)
     }
 }
 
-#if !PLATFORM(MAC)
+#if !(PLATFORM(COCOA) && USE(OPENGL))
 void GraphicsContext3D::setContextVisibility(bool)
 {
 }

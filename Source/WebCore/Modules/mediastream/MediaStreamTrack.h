@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
  * Copyright (C) 2011, 2015 Ericsson AB. All rights reserved.
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
  * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,84 +32,117 @@
 #include "ActiveDOMObject.h"
 #include "DoubleRange.h"
 #include "EventTarget.h"
-#include "JSDOMPromise.h"
+#include "GenericTaskQueue.h"
+#include "JSDOMPromiseDeferred.h"
 #include "LongRange.h"
+#include "MediaProducer.h"
 #include "MediaStreamTrackPrivate.h"
 #include "MediaTrackConstraints.h"
+#include <wtf/LoggerHelper.h>
 
 namespace WebCore {
 
 class AudioSourceProvider;
+class Document;
 
 struct MediaTrackConstraints;
 
-class MediaStreamTrack final : public RefCounted<MediaStreamTrack>, public ActiveDOMObject, public EventTargetWithInlineData, private MediaStreamTrackPrivate::Observer {
+class MediaStreamTrack
+    : public RefCounted<MediaStreamTrack>
+    , public ActiveDOMObject
+    , public EventTargetWithInlineData
+    , public MediaProducer
+    , private MediaStreamTrackPrivate::Observer
+#if !RELEASE_LOG_DISABLED
+    , private LoggerHelper
+#endif
+{
+    WTF_MAKE_ISO_ALLOCATED(MediaStreamTrack);
 public:
     class Observer {
     public:
-        virtual ~Observer() { }
+        virtual ~Observer() = default;
         virtual void trackDidEnd() = 0;
     };
 
     static Ref<MediaStreamTrack> create(ScriptExecutionContext&, Ref<MediaStreamTrackPrivate>&&);
     virtual ~MediaStreamTrack();
 
-    const AtomicString& kind() const;
-    const String& id() const;
+#if PLATFORM(IOS_FAMILY)
+    static MediaProducer::MediaStateFlags captureState();
+    static void muteCapture();
+#endif
+
+    virtual bool isCanvas() const { return false; }
+
+    const AtomString& kind() const;
+    WEBCORE_EXPORT const String& id() const;
     const String& label() const;
 
+    const AtomString& contentHint() const;
+    void setContentHint(const String&);
+        
     bool enabled() const;
     void setEnabled(bool);
 
     bool muted() const;
-    bool readonly() const;
-    bool remote() const;
+    void setMuted(MediaProducer::MutedStateFlags);
 
-    enum class State { New, Live, Ended };
+    enum class State { Live, Ended };
     State readyState() const;
 
     bool ended() const;
 
-    Ref<MediaStreamTrack> clone();
-    void stopProducingData();
+    virtual RefPtr<MediaStreamTrack> clone();
+
+    enum class StopMode { Silently, PostEvent };
+    void stopTrack(StopMode = StopMode::Silently);
+
+    bool isCaptureTrack() const { return m_isCaptureTrack; }
 
     struct TrackSettings {
-        std::optional<int> width;
-        std::optional<int> height;
-        std::optional<double> aspectRatio;
-        std::optional<double> frameRate;
+        Optional<int> width;
+        Optional<int> height;
+        Optional<double> aspectRatio;
+        Optional<double> frameRate;
         String facingMode;
-        std::optional<double> volume;
-        std::optional<int> sampleRate;
-        std::optional<int> sampleSize;
-        std::optional<bool> echoCancellation;
+        Optional<double> volume;
+        Optional<int> sampleRate;
+        Optional<int> sampleSize;
+        Optional<bool> echoCancellation;
+        Optional<bool> displaySurface;
+        String logicalSurface;
         String deviceId;
         String groupId;
     };
     TrackSettings getSettings() const;
 
     struct TrackCapabilities {
-        std::optional<LongRange> width;
-        std::optional<LongRange> height;
-        std::optional<DoubleRange> aspectRatio;
-        std::optional<DoubleRange> frameRate;
-        std::optional<Vector<String>> facingMode;
-        std::optional<DoubleRange> volume;
-        std::optional<LongRange> sampleRate;
-        std::optional<LongRange> sampleSize;
-        std::optional<Vector<bool>> echoCancellation;
+        Optional<LongRange> width;
+        Optional<LongRange> height;
+        Optional<DoubleRange> aspectRatio;
+        Optional<DoubleRange> frameRate;
+        Optional<Vector<String>> facingMode;
+        Optional<DoubleRange> volume;
+        Optional<LongRange> sampleRate;
+        Optional<LongRange> sampleSize;
+        Optional<Vector<bool>> echoCancellation;
         String deviceId;
         String groupId;
     };
     TrackCapabilities getCapabilities() const;
 
     const MediaTrackConstraints& getConstraints() const { return m_constraints; }
-    void applyConstraints(const std::optional<MediaTrackConstraints>&, DOMPromise<void>&&);
+    void applyConstraints(const Optional<MediaTrackConstraints>&, DOMPromiseDeferred<void>&&);
 
-    RealtimeMediaSource& source() { return m_private->source(); }
+    RealtimeMediaSource& source() const { return m_private->source(); }
     MediaStreamTrackPrivate& privateTrack() { return m_private.get(); }
 
     AudioSourceProvider* audioSourceProvider();
+
+    // MediaProducer
+    void pageMutedStateDidChange() final;
+    MediaProducer::MediaStateFlags mediaState() const final;
 
     void addObserver(Observer&);
     void removeObserver(Observer&);
@@ -117,11 +150,29 @@ public:
     using RefCounted::ref;
     using RefCounted::deref;
 
-private:
+    // ActiveDOMObject API.
+    bool hasPendingActivity() const final;
+
+    void setIdForTesting(String&& id) { m_private->setIdForTesting(WTFMove(id)); }
+
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const final { return m_private->logger(); }
+    const void* logIdentifier() const final { return m_private->logIdentifier(); }
+#endif
+
+protected:
     MediaStreamTrack(ScriptExecutionContext&, Ref<MediaStreamTrackPrivate>&&);
+
+    ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
+        
+    Ref<MediaStreamTrackPrivate> m_private;
+        
+private:
     explicit MediaStreamTrack(MediaStreamTrack&);
 
     void configureTrackRendering();
+
+    Document* document() const;
 
     // ActiveDOMObject API.
     void stop() final;
@@ -132,24 +183,28 @@ private:
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
     EventTargetInterface eventTargetInterface() const final { return MediaStreamTrackEventTargetInterfaceType; }
-    ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
 
     // MediaStreamTrackPrivate::Observer
-    void trackEnded(MediaStreamTrackPrivate&) override;
-    void trackMutedChanged(MediaStreamTrackPrivate&) override;
-    void trackSettingsChanged(MediaStreamTrackPrivate&) override;
-    void trackEnabledChanged(MediaStreamTrackPrivate&) override;
+    void trackStarted(MediaStreamTrackPrivate&) final;
+    void trackEnded(MediaStreamTrackPrivate&) final;
+    void trackMutedChanged(MediaStreamTrackPrivate&) final;
+    void trackSettingsChanged(MediaStreamTrackPrivate&) final;
+    void trackEnabledChanged(MediaStreamTrackPrivate&) final;
 
-    WeakPtr<MediaStreamTrack> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
+#if !RELEASE_LOG_DISABLED
+    const char* logClassName() const final { return "MediaStreamTrack"; }
+    WTFLogChannel& logChannel() const final;
+#endif
 
     Vector<Observer*> m_observers;
-    Ref<MediaStreamTrackPrivate> m_private;
 
     MediaTrackConstraints m_constraints;
-    std::optional<DOMPromise<void>> m_promise;
-    WeakPtrFactory<MediaStreamTrack> m_weakPtrFactory;
+    Optional<DOMPromiseDeferred<void>> m_promise;
+    GenericTaskQueue<ScriptExecutionContext> m_taskQueue;
+    GenericTaskQueue<Timer> m_eventTaskQueue;
 
     bool m_ended { false };
+    const bool m_isCaptureTrack { false };
 };
 
 typedef Vector<RefPtr<MediaStreamTrack>> MediaStreamTrackVector;

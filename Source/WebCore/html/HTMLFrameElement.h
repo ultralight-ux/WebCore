@@ -30,6 +30,7 @@ namespace WebCore {
 class RenderFrame;
 
 class HTMLFrameElement final : public HTMLFrameElementBase {
+    WTF_MAKE_ISO_ALLOCATED(HTMLFrameElement);
 public:
     static Ref<HTMLFrameElement> create(const QualifiedName&, Document&);
 
@@ -44,7 +45,7 @@ private:
     void didAttachRenderers() final;
     bool rendererIsNeeded(const RenderStyle&) final;
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
 
     bool m_frameBorder { true };
     bool m_frameBorderSet { false };

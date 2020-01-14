@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,14 +21,15 @@
 
 #pragma once
 
+#include "ExceptionOr.h"
 #include "QualifiedName.h"
 #include "SVGNames.h"
+#include "SVGZoomAndPanType.h"
 
 namespace WebCore {
 
-enum SVGZoomAndPanType { SVGZoomAndPanUnknown, SVGZoomAndPanDisable, SVGZoomAndPanMagnify };
-
 class SVGZoomAndPan {
+    WTF_MAKE_NONCOPYABLE(SVGZoomAndPan);
 public:
     // Forward declare enumerations in the W3C naming scheme, for IDL generation.
     enum {
@@ -36,33 +38,20 @@ public:
         SVG_ZOOMANDPAN_MAGNIFY = SVGZoomAndPanMagnify
     };
 
-    static bool isKnownAttribute(const QualifiedName&);
+    SVGZoomAndPanType zoomAndPan() const { return m_zoomAndPan; }
+    void setZoomAndPan(SVGZoomAndPanType zoomAndPan) { m_zoomAndPan = zoomAndPan; }
+    ExceptionOr<void> setZoomAndPan(unsigned) { return Exception { NoModificationAllowedError }; }
+    void reset() { m_zoomAndPan = SVGPropertyTraits<SVGZoomAndPanType>::initialValue(); }
 
-    static SVGZoomAndPanType parseFromNumber(unsigned short);
+    void parseAttribute(const QualifiedName&, const AtomString&);
 
-    static bool parse(const UChar*& start, const UChar* end, SVGZoomAndPanType&);
-    template<class DerivedClass> static void parseAttribute(DerivedClass&, const QualifiedName&, const AtomicString& value);
+protected:
+    SVGZoomAndPan() = default;
+
+    bool parseZoomAndPan(const UChar*&, const UChar*);
 
 private:
-    static SVGZoomAndPanType parseAttributeValue(const AtomicString&);
+    SVGZoomAndPanType m_zoomAndPan { SVGPropertyTraits<SVGZoomAndPanType>::initialValue() };
 };
-
-inline bool SVGZoomAndPan::isKnownAttribute(const QualifiedName& name)
-{
-    return name == SVGNames::zoomAndPanAttr;
-}
-
-inline SVGZoomAndPanType SVGZoomAndPan::parseFromNumber(unsigned short number)
-{
-    if (number > SVGZoomAndPanMagnify)
-        return SVGZoomAndPanUnknown;
-    return static_cast<SVGZoomAndPanType>(number);
-}
-
-template<class DerivedClass> void SVGZoomAndPan::parseAttribute(DerivedClass& element, const QualifiedName& name, const AtomicString& value)
-{
-    if (name == SVGNames::zoomAndPanAttr)
-        element.setZoomAndPan(parseAttributeValue(value));
-}
 
 } // namespace WebCore

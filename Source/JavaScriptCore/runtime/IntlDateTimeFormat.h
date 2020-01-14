@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Andy VanWagoner (thetalecrafter@gmail.com)
+ * Copyright (C) 2015 Andy VanWagoner (andy@vanwagoner.family)
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,13 +29,16 @@
 
 #include "JSDestructibleObject.h"
 #include <unicode/udat.h>
+#include <unicode/uvernum.h>
+
+#define JSC_ICU_HAS_UFIELDPOSITER (U_ICU_VERSION_MAJOR_NUM >= 55)
 
 namespace JSC {
 
 class IntlDateTimeFormatConstructor;
 class JSBoundFunction;
 
-class IntlDateTimeFormat : public JSDestructibleObject {
+class IntlDateTimeFormat final : public JSDestructibleObject {
 public:
     typedef JSDestructibleObject Base;
 
@@ -46,6 +49,9 @@ public:
 
     void initializeDateTimeFormat(ExecState&, JSValue locales, JSValue options);
     JSValue format(ExecState&, double value);
+#if JSC_ICU_HAS_UFIELDPOSITER
+    JSValue formatToParts(ExecState&, double value);
+#endif
     JSObject* resolvedOptions(ExecState&);
 
     JSBoundFunction* boundFormat() const { return m_boundFormat.get(); }
@@ -58,32 +64,31 @@ protected:
     static void visitChildren(JSCell*, SlotVisitor&);
 
 private:
-    enum class Weekday { None, Narrow, Short, Long };
-    enum class Era { None, Narrow, Short, Long };
-    enum class Year { None, TwoDigit, Numeric };
-    enum class Month { None, TwoDigit, Numeric, Narrow, Short, Long };
-    enum class Day { None, TwoDigit, Numeric };
-    enum class Hour { None, TwoDigit, Numeric };
-    enum class Minute { None, TwoDigit, Numeric };
-    enum class Second { None, TwoDigit, Numeric };
-    enum class TimeZoneName { None, Short, Long };
+    enum class Weekday : uint8_t { None, Narrow, Short, Long };
+    enum class Era : uint8_t { None, Narrow, Short, Long };
+    enum class Year : uint8_t { None, TwoDigit, Numeric };
+    enum class Month : uint8_t { None, TwoDigit, Numeric, Narrow, Short, Long };
+    enum class Day : uint8_t { None, TwoDigit, Numeric };
+    enum class Hour : uint8_t { None, TwoDigit, Numeric };
+    enum class Minute : uint8_t { None, TwoDigit, Numeric };
+    enum class Second : uint8_t { None, TwoDigit, Numeric };
+    enum class TimeZoneName : uint8_t { None, Short, Long };
 
     struct UDateFormatDeleter {
         void operator()(UDateFormat*) const;
     };
 
     void setFormatsFromPattern(const StringView&);
-    static const char* weekdayString(Weekday);
-    static const char* eraString(Era);
-    static const char* yearString(Year);
-    static const char* monthString(Month);
-    static const char* dayString(Day);
-    static const char* hourString(Hour);
-    static const char* minuteString(Minute);
-    static const char* secondString(Second);
-    static const char* timeZoneNameString(TimeZoneName);
+    static ASCIILiteral weekdayString(Weekday);
+    static ASCIILiteral eraString(Era);
+    static ASCIILiteral yearString(Year);
+    static ASCIILiteral monthString(Month);
+    static ASCIILiteral dayString(Day);
+    static ASCIILiteral hourString(Hour);
+    static ASCIILiteral minuteString(Minute);
+    static ASCIILiteral secondString(Second);
+    static ASCIILiteral timeZoneNameString(TimeZoneName);
 
-    bool m_initializedDateTimeFormat { false };
     WriteBarrier<JSBoundFunction> m_boundFormat;
     std::unique_ptr<UDateFormat, UDateFormatDeleter> m_dateFormat;
 
@@ -91,7 +96,7 @@ private:
     String m_calendar;
     String m_numberingSystem;
     String m_timeZone;
-    bool m_hour12 { true };
+    String m_hourCycle;
     Weekday m_weekday { Weekday::None };
     Era m_era { Era::None };
     Year m_year { Year::None };
@@ -101,6 +106,15 @@ private:
     Minute m_minute { Minute::None };
     Second m_second { Second::None };
     TimeZoneName m_timeZoneName { TimeZoneName::None };
+    bool m_initializedDateTimeFormat { false };
+
+#if JSC_ICU_HAS_UFIELDPOSITER
+    struct UFieldPositionIteratorDeleter {
+        void operator()(UFieldPositionIterator*) const;
+    };
+
+    static ASCIILiteral partTypeString(UDateFormatField);
+#endif
 };
 
 } // namespace JSC

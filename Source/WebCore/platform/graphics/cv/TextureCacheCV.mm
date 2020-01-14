@@ -26,6 +26,8 @@
 #include "config.h"
 #include "TextureCacheCV.h"
 
+#if HAVE(CORE_VIDEO)
+
 #include "GraphicsContext3D.h"
 
 #include "CoreVideoSoftLink.h"
@@ -35,10 +37,14 @@ namespace WebCore {
 std::unique_ptr<TextureCacheCV> TextureCacheCV::create(GraphicsContext3D& context)
 {
     TextureCacheType cache = nullptr;
-#if PLATFORM(IOS)
+#if USE(OPENGL_ES)
     CVReturn error = CVOpenGLESTextureCacheCreate(kCFAllocatorDefault, nullptr, context.platformGraphicsContext3D(), nullptr, &cache);
-#else
+#elif USE(OPENGL)
     CVReturn error = CVOpenGLTextureCacheCreate(kCFAllocatorDefault, nullptr, context.platformGraphicsContext3D(), CGLGetPixelFormat(context.platformGraphicsContext3D()), nullptr, &cache);
+#elif USE(ANGLE)
+    // FIXME: figure out how to do this integrating via ANGLE.
+    UNUSED_PARAM(context);
+    CVReturn error = kCVReturnSuccess + 1;
 #endif
     if (error != kCVReturnSuccess)
         return nullptr;
@@ -50,19 +56,18 @@ std::unique_ptr<TextureCacheCV> TextureCacheCV::create(GraphicsContext3D& contex
 TextureCacheCV::TextureCacheCV(GraphicsContext3D& context, RetainPtr<TextureCacheType>&& cache)
     : m_context(context)
     , m_cache(cache)
-    , m_weakPtrFactory(this)
 {
 }
 
-RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVImageBufferRef image, GC3Denum outputTarget, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type)
+RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVPixelBufferRef image, GC3Denum outputTarget, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type)
 {
     TextureType bareVideoTexture = nullptr;
-#if PLATFORM(IOS)
+#if USE(OPENGL_ES)
     size_t width = CVPixelBufferGetWidth(image);
     size_t height = CVPixelBufferGetHeight(image);
     if (kCVReturnSuccess != CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault, m_cache.get(), image, nullptr, outputTarget, internalFormat, width, height, format, type, level, &bareVideoTexture))
         return nullptr;
-#else
+#elif USE(OPENGL)
     UNUSED_PARAM(outputTarget);
     UNUSED_PARAM(level);
     UNUSED_PARAM(internalFormat);
@@ -70,13 +75,25 @@ RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVImageB
     UNUSED_PARAM(type);
     if (kCVReturnSuccess != CVOpenGLTextureCacheCreateTextureFromImage(kCFAllocatorDefault, m_cache.get(), image, nullptr, &bareVideoTexture))
         return nullptr;
+#elif USE(ANGLE)
+    // FIXME: figure out how to do this integrating via ANGLE.
+    UNUSED_PARAM(image);
+    UNUSED_PARAM(outputTarget);
+    UNUSED_PARAM(level);
+    UNUSED_PARAM(internalFormat);
+    UNUSED_PARAM(format);
+    UNUSED_PARAM(type);
+    return nullptr;
 #endif
     RetainPtr<TextureType> videoTexture = adoptCF(bareVideoTexture);
 
-    auto weakThis = m_weakPtrFactory.createWeakPtr();
+    auto weakThis = makeWeakPtr(*this);
     dispatch_async(dispatch_get_main_queue(), [weakThis] {
+        if (!weakThis)
+            return;
+        
         if (auto cache = weakThis->m_cache.get())
-#if PLATFORM(IOS)
+#if USE(OPENGL_ES)
             CVOpenGLESTextureCacheFlush(cache, 0);
 #else
             CVOpenGLTextureCacheFlush(cache, 0);
@@ -87,3 +104,5 @@ RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVImageB
 }
 
 }
+
+#endif // HAVE(CORE_VIDEO)

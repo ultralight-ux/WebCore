@@ -30,7 +30,7 @@
 
 [
     Conditional=MEDIA_STREAM,
-    EnabledAtRuntime=mediaStream,
+    EnabledAtRuntime=MediaDevices,
 ] partial interface Navigator {
-    readonly attribute MediaDevices mediaDevices;
+    [SameObject, SecureContext, ContextAllowsMediaDevices] readonly attribute MediaDevices mediaDevices;
 };

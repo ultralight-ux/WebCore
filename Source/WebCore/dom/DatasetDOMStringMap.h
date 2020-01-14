@@ -33,7 +33,7 @@ namespace WebCore {
 class Element;
 
 class DatasetDOMStringMap final : public ScriptWrappable {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_ISO_ALLOCATED(DatasetDOMStringMap);
 public:
     explicit DatasetDOMStringMap(Element& element)
         : m_element(element)
@@ -43,14 +43,18 @@ public:
     void ref();
     void deref();
 
-    Vector<String> names() const;
-    const AtomicString& item(const String& name, bool& isValid) const;
-    ExceptionOr<void> setItem(const String& name, const String& value);
-    bool deleteItem(const String& name);
+    bool isSupportedPropertyName(const String& name) const;
+    Vector<String> supportedPropertyNames() const;
+
+    String namedItem(const AtomString& name) const;
+    ExceptionOr<void> setNamedItem(const String& name, const String& value);
+    bool deleteNamedProperty(const String& name);
 
     Element& element() { return m_element; }
 
 private:
+    const AtomString* item(const String& name) const;
+
     Element& m_element;
 };
 

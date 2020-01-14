@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011 Ericsson AB. All rights reserved.
  * Copyright (C) 2012 Google Inc. All rights reserved.
+ * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,51 +30,96 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef RealtimeMediaSourceCenter_h
-#define RealtimeMediaSourceCenter_h
+#pragma once
 
 #if ENABLE(MEDIA_STREAM)
 
+#include "ExceptionOr.h"
+#include "MediaStreamRequest.h"
 #include "RealtimeMediaSource.h"
+#include "RealtimeMediaSourceFactory.h"
 #include "RealtimeMediaSourceSupportedConstraints.h"
-#include <wtf/PassRefPtr.h>
+#include <wtf/Function.h>
+#include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class CaptureDevice;
-class MediaConstraints;
+class CaptureDeviceManager;
 class RealtimeMediaSourceSettings;
 class RealtimeMediaSourceSupportedConstraints;
 class TrackSourceInfo;
 
+struct MediaConstraints;
+    
 class RealtimeMediaSourceCenter {
 public:
-    virtual ~RealtimeMediaSourceCenter();
+    ~RealtimeMediaSourceCenter();
 
     WEBCORE_EXPORT static RealtimeMediaSourceCenter& singleton();
-    static void setSharedStreamCenterOverride(RealtimeMediaSourceCenter*);
 
-    using ValidConstraintsHandler = std::function<void(const Vector<String>&& audioDeviceUIDs, const Vector<String>&& videoDeviceUIDs)>;
-    using InvalidConstraintsHandler = std::function<void(const String& invalidConstraint)>;
-    virtual void validateRequestConstraints(ValidConstraintsHandler, InvalidConstraintsHandler, const MediaConstraints& audioConstraints, const MediaConstraints& videoConstraints) = 0;
+    using ValidConstraintsHandler = Function<void(Vector<CaptureDevice>&& audioDeviceUIDs, Vector<CaptureDevice>&& videoDeviceUIDs, String&&)>;
+    using InvalidConstraintsHandler = Function<void(const String& invalidConstraint)>;
+    WEBCORE_EXPORT void validateRequestConstraints(ValidConstraintsHandler&&, InvalidConstraintsHandler&&, const MediaStreamRequest&, String&&);
 
-    using NewMediaStreamHandler = std::function<void(RefPtr<MediaStreamPrivate>&&)>;
-    virtual void createMediaStream(NewMediaStreamHandler, const String& audioDeviceID, const String& videoDeviceID, const MediaConstraints* audioConstraints, const MediaConstraints* videoConstraints) = 0;
+    using NewMediaStreamHandler = Function<void(RefPtr<MediaStreamPrivate>&&)>;
+    void createMediaStream(Ref<const Logger>&&, NewMediaStreamHandler&&, String&&, CaptureDevice&& audioDevice, CaptureDevice&& videoDevice, const MediaStreamRequest&);
 
-    virtual Vector<CaptureDevice> getMediaStreamDevices() = 0;
-    
-    virtual const RealtimeMediaSourceSupportedConstraints& supportedConstraints() { return m_supportedConstraints; }
+    WEBCORE_EXPORT Vector<CaptureDevice> getMediaStreamDevices();
 
-protected:
+    const RealtimeMediaSourceSupportedConstraints& supportedConstraints() { return m_supportedConstraints; }
+
+    WEBCORE_EXPORT AudioCaptureFactory& audioCaptureFactory();
+    WEBCORE_EXPORT void setAudioCaptureFactory(AudioCaptureFactory&);
+    WEBCORE_EXPORT void unsetAudioCaptureFactory(AudioCaptureFactory&);
+
+    WEBCORE_EXPORT VideoCaptureFactory& videoCaptureFactory();
+    WEBCORE_EXPORT void setVideoCaptureFactory(VideoCaptureFactory&);
+    WEBCORE_EXPORT void unsetVideoCaptureFactory(VideoCaptureFactory&);
+
+    WEBCORE_EXPORT DisplayCaptureFactory& displayCaptureFactory();
+    WEBCORE_EXPORT void setDisplayCaptureFactory(DisplayCaptureFactory&);
+    WEBCORE_EXPORT void unsetDisplayCaptureFactory(DisplayCaptureFactory&);
+
+    WEBCORE_EXPORT String hashStringWithSalt(const String& id, const String& hashSalt);
+
+    WEBCORE_EXPORT void setDevicesChangedObserver(std::function<void()>&&);
+
+    void setCapturePageState(bool interrupted, bool pageMuted);
+
+    void captureDevicesChanged();
+
+    WEBCORE_EXPORT static bool shouldInterruptAudioOnPageVisibilityChange();
+
+private:
     RealtimeMediaSourceCenter();
+    friend class NeverDestroyed<RealtimeMediaSourceCenter>;
 
-    static RealtimeMediaSourceCenter& platformCenter();
+    AudioCaptureFactory& defaultAudioCaptureFactory();
+    VideoCaptureFactory& defaultVideoCaptureFactory();
+    DisplayCaptureFactory& defaultDisplayCaptureFactory();
+
+    struct DeviceInfo {
+        unsigned fitnessScore;
+        CaptureDevice device;
+    };
+
+    void getDisplayMediaDevices(const MediaStreamRequest&, Vector<DeviceInfo>&, String&);
+    void getUserMediaDevices(const MediaStreamRequest&, String&&, Vector<DeviceInfo>& audioDevices, Vector<DeviceInfo>& videoDevices, String&);
+
     RealtimeMediaSourceSupportedConstraints m_supportedConstraints;
+
+    WTF::Function<void()> m_deviceChangedObserver;
+
+    AudioCaptureFactory* m_audioCaptureFactoryOverride { nullptr };
+    VideoCaptureFactory* m_videoCaptureFactoryOverride { nullptr };
+    DisplayCaptureFactory* m_displayCaptureFactoryOverride { nullptr };
+
+    bool m_shouldInterruptAudioOnPageVisibilityChange { false };
 };
 
 } // namespace WebCore
 
 #endif // ENABLE(MEDIA_STREAM)
 
-#endif // RealtimeMediaSourceCenter_h

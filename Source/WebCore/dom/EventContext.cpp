@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 Google Inc. All Rights Reserved.
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,24 +35,26 @@
 
 namespace WebCore {
 
-EventContext::EventContext(Node* node, EventTarget* currentTarget, EventTarget* target)
-    : m_node(node)
-    , m_currentTarget(currentTarget)
-    , m_target(target)
+EventContext::EventContext(Node* node, EventTarget* currentTarget, EventTarget* target, int closedShadowDepth)
+    : m_node { node }
+    , m_currentTarget { currentTarget }
+    , m_target { target }
+    , m_closedShadowDepth { closedShadowDepth }
 {
-    ASSERT(m_node);
     ASSERT(!isUnreachableNode(m_target.get()));
 }
 
-EventContext::~EventContext()
-{
-}
+EventContext::~EventContext() = default;
 
-void EventContext::handleLocalEvents(Event& event) const
+void EventContext::handleLocalEvents(Event& event, EventInvokePhase phase) const
 {
     event.setTarget(m_target.get());
     event.setCurrentTarget(m_currentTarget.get());
-    m_node->handleLocalEvents(event);
+    // FIXME: Consider merging handleLocalEvents and fireEventListeners.
+    if (m_node)
+        m_node->handleLocalEvents(event, phase);
+    else
+        m_currentTarget->fireEventListeners(event, phase);
 }
 
 bool EventContext::isMouseOrFocusEventContext() const
@@ -64,25 +67,18 @@ bool EventContext::isTouchEventContext() const
     return false;
 }
 
-MouseOrFocusEventContext::MouseOrFocusEventContext(Node* node, EventTarget* currentTarget, EventTarget* target)
-    : EventContext(node, currentTarget, target)
+MouseOrFocusEventContext::MouseOrFocusEventContext(Node& node, EventTarget* currentTarget, EventTarget* target, int closedShadowDepth)
+    : EventContext(&node, currentTarget, target, closedShadowDepth)
 {
 }
 
-MouseOrFocusEventContext::~MouseOrFocusEventContext()
-{
-}
+MouseOrFocusEventContext::~MouseOrFocusEventContext() = default;
 
-void MouseOrFocusEventContext::handleLocalEvents(Event& event) const
+void MouseOrFocusEventContext::handleLocalEvents(Event& event, EventInvokePhase phase) const
 {
-    ASSERT(is<MouseEvent>(event) || is<FocusEvent>(event));
-    if (m_relatedTarget) {
-        if (is<MouseEvent>(event))
-            downcast<MouseEvent>(event).setRelatedTarget(m_relatedTarget.get());
-        else if (is<FocusEvent>(event))
-            downcast<FocusEvent>(event).setRelatedTarget(m_relatedTarget.get());
-    }
-    EventContext::handleLocalEvents(event);
+    if (m_relatedTarget)
+        event.setRelatedTarget(*m_relatedTarget);
+    EventContext::handleLocalEvents(event, phase);
 }
 
 bool MouseOrFocusEventContext::isMouseOrFocusEventContext() const
@@ -91,31 +87,27 @@ bool MouseOrFocusEventContext::isMouseOrFocusEventContext() const
 }
 
 #if ENABLE(TOUCH_EVENTS)
-TouchEventContext::TouchEventContext(Node* node, EventTarget* currentTarget, EventTarget* target)
-    : EventContext(node, currentTarget, target)
+
+TouchEventContext::TouchEventContext(Node& node, EventTarget* currentTarget, EventTarget* target, int closedShadowDepth)
+    : EventContext(&node, currentTarget, target, closedShadowDepth)
     , m_touches(TouchList::create())
     , m_targetTouches(TouchList::create())
     , m_changedTouches(TouchList::create())
 {
 }
 
-TouchEventContext::~TouchEventContext()
-{
-}
+TouchEventContext::~TouchEventContext() = default;
 
-void TouchEventContext::handleLocalEvents(Event& event) const
+void TouchEventContext::handleLocalEvents(Event& event, EventInvokePhase phase) const
 {
-#if !ASSERT_DISABLED
-    checkReachability(m_touches.get());
-    checkReachability(m_targetTouches.get());
-    checkReachability(m_changedTouches.get());
-#endif
-    ASSERT(is<TouchEvent>(event));
-    TouchEvent& touchEvent = downcast<TouchEvent>(event);
-    touchEvent.setTouches(m_touches.get());
-    touchEvent.setTargetTouches(m_targetTouches.get());
-    touchEvent.setChangedTouches(m_changedTouches.get());
-    EventContext::handleLocalEvents(event);
+    checkReachability(m_touches);
+    checkReachability(m_targetTouches);
+    checkReachability(m_changedTouches);
+    auto& touchEvent = downcast<TouchEvent>(event);
+    touchEvent.setTouches(m_touches.ptr());
+    touchEvent.setTargetTouches(m_targetTouches.ptr());
+    touchEvent.setChangedTouches(m_changedTouches.ptr());
+    EventContext::handleLocalEvents(event, phase);
 }
 
 bool TouchEventContext::isTouchEventContext() const
@@ -124,14 +116,16 @@ bool TouchEventContext::isTouchEventContext() const
 }
 
 #if !ASSERT_DISABLED
-void TouchEventContext::checkReachability(TouchList* touchList) const
+
+void TouchEventContext::checkReachability(const Ref<TouchList>& touchList) const
 {
     size_t length = touchList->length();
     for (size_t i = 0; i < length; ++i)
-        ASSERT(!isUnreachableNode(touchList->item(i)->target()->toNode()));
+        ASSERT(!isUnreachableNode(downcast<Node>(touchList->item(i)->target())));
 }
+
 #endif
 
-#endif // ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
+#endif // ENABLE(TOUCH_EVENTS)
 
 }

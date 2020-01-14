@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2011, 2012, 2013, 2014 Apple Inc.  All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,10 +28,9 @@
 
 #if ENABLE(VIDEO_TRACK)
 
+#include "ContextDestructionObserver.h"
 #include "TextTrackCue.h"
 #include "TrackBase.h"
-#include "VTTCue.h"
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -43,35 +42,36 @@ class VTTRegionList;
 
 class TextTrackClient {
 public:
-    virtual ~TextTrackClient() { }
-    virtual void textTrackKindChanged(TextTrack*) = 0;
-    virtual void textTrackModeChanged(TextTrack*) = 0;
-    virtual void textTrackAddCues(TextTrack*, const TextTrackCueList*) = 0;
-    virtual void textTrackRemoveCues(TextTrack*, const TextTrackCueList*) = 0;
-    virtual void textTrackAddCue(TextTrack*, TextTrackCue&) = 0;
-    virtual void textTrackRemoveCue(TextTrack*, TextTrackCue&) = 0;
+    virtual ~TextTrackClient() = default;
+    virtual void textTrackKindChanged(TextTrack&) = 0;
+    virtual void textTrackModeChanged(TextTrack&) = 0;
+    virtual void textTrackAddCues(TextTrack&, const TextTrackCueList&) = 0;
+    virtual void textTrackRemoveCues(TextTrack&, const TextTrackCueList&) = 0;
+    virtual void textTrackAddCue(TextTrack&, TextTrackCue&) = 0;
+    virtual void textTrackRemoveCue(TextTrack&, TextTrackCue&) = 0;
 };
 
-class TextTrack : public TrackBase, public EventTargetWithInlineData {
+class TextTrack : public TrackBase, public EventTargetWithInlineData, public ContextDestructionObserver {
+    WTF_MAKE_ISO_ALLOCATED(TextTrack);
 public:
-    static Ref<TextTrack> create(ScriptExecutionContext* context, TextTrackClient* client, const AtomicString& kind, const AtomicString& id, const AtomicString& label, const AtomicString& language)
+    static Ref<TextTrack> create(ScriptExecutionContext* context, TextTrackClient* client, const AtomString& kind, const AtomString& id, const AtomString& label, const AtomString& language)
     {
         return adoptRef(*new TextTrack(context, client, kind, id, label, language, AddTrack));
     }
     virtual ~TextTrack();
 
     EventTargetInterface eventTargetInterface() const final { return TextTrackEventTargetInterfaceType; }
-    ScriptExecutionContext* scriptExecutionContext() const final { return m_scriptExecutionContext; }
+    ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
 
     static TextTrack* captionMenuOffItem();
     static TextTrack* captionMenuAutomaticItem();
 
-    static const AtomicString& subtitlesKeyword();
-    static bool isValidKindKeyword(const AtomicString&);
+    static const AtomString& subtitlesKeyword();
+    static bool isValidKindKeyword(const AtomString&);
 
-    static const AtomicString& disabledKeyword();
-    static const AtomicString& hiddenKeyword();
-    static const AtomicString& showingKeyword();
+    static const AtomString& disabledKeyword();
+    static const AtomString& hiddenKeyword();
+    static const AtomString& showingKeyword();
 
     enum class Kind { Subtitles, Captions, Descriptions, Chapters, Metadata, Forced };
     Kind kind() const;
@@ -80,10 +80,10 @@ public:
     Kind kindForBindings() const;
     void setKindForBindings(Kind);
 
-    const AtomicString& kindKeyword() const;
+    const AtomString& kindKeyword() const;
     void setKindKeywordIgnoringASCIICase(StringView);
 
-    virtual AtomicString inBandMetadataTrackDispatchType() const { return emptyString(); }
+    virtual AtomString inBandMetadataTrackDispatchType() const { return emptyString(); }
 
     enum class Mode { Disabled, Hidden, Showing };
     Mode mode() const;
@@ -135,7 +135,7 @@ public:
     void removeAllCues();
 
 #if ENABLE(MEDIA_SOURCE)
-    void setLanguage(const AtomicString&) override;
+    void setLanguage(const AtomString&) override;
 #endif
 
     virtual bool isInband() const { return false; }
@@ -145,10 +145,17 @@ public:
     using RefCounted<TrackBase>::ref;
     using RefCounted<TrackBase>::deref;
 
+    const Optional<Vector<String>>& styleSheets() const { return m_styleSheets; }
+
 protected:
-    TextTrack(ScriptExecutionContext*, TextTrackClient*, const AtomicString& kind, const AtomicString& id, const AtomicString& label, const AtomicString& language, TextTrackType);
+    TextTrack(ScriptExecutionContext*, TextTrackClient*, const AtomString& kind, const AtomString& id, const AtomString& label, const AtomString& language, TextTrackType);
+
+#if !RELEASE_LOG_DISABLED
+    const char* logClassName() const override { return "TextTrack"; }
+#endif
 
     RefPtr<TextTrackCueList> m_cues;
+    Optional<Vector<String>> m_styleSheets;
 
 private:
     bool enabled() const override;
@@ -161,14 +168,13 @@ private:
 
     TextTrackCueList& ensureTextTrackCueList();
 
-    ScriptExecutionContext* m_scriptExecutionContext;
     Mode m_mode { Mode::Disabled };
     Kind m_kind { Kind::Subtitles };
     TextTrackClient* m_client;
     TextTrackType m_trackType;
     ReadinessState m_readinessState { NotLoaded };
-    int m_trackIndex;
-    int m_renderedTrackIndex;
+    Optional<int> m_trackIndex;
+    Optional<int> m_renderedTrackIndex;
     bool m_hasBeenConfigured { false };
 };
 

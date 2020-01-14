@@ -28,11 +28,11 @@
 
 #if USE(CURL)
 
-#include "URL.h"
+#include <wtf/URL.h>
 
 namespace WebCore {
 
-Vector<ProxyServer> proxyServersForURL(const URL&, const NetworkingContext*)
+Vector<ProxyServer> proxyServersForURL(const URL&)
 {
     // FIXME: Implement.
     return Vector<ProxyServer>();

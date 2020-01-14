@@ -28,7 +28,6 @@
 #if ENABLE(INDEXED_DATABASE)
 
 #include "IDBKeyData.h"
-#include <set>
 
 namespace WebCore {
 
@@ -39,6 +38,7 @@ enum class CursorDuplicity;
 namespace IDBServer {
 
 class IndexValueEntry {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     IndexValueEntry(bool unique);
     ~IndexValueEntry();
@@ -59,8 +59,8 @@ public:
         }
 
         Iterator(IndexValueEntry&);
-        Iterator(IndexValueEntry&, std::set<IDBKeyData>::iterator);
-        Iterator(IndexValueEntry&, std::set<IDBKeyData>::reverse_iterator);
+        Iterator(IndexValueEntry&, IDBKeyDataSet::iterator);
+        Iterator(IndexValueEntry&, IDBKeyDataSet::reverse_iterator);
 
         bool isValid() const;
         void invalidate();
@@ -73,8 +73,8 @@ public:
     private:
         IndexValueEntry* m_entry { nullptr };
         bool m_forward { true };
-        std::set<IDBKeyData>::iterator m_forwardIterator;
-        std::set<IDBKeyData>::reverse_iterator m_reverseIterator;
+        IDBKeyDataSet::iterator m_forwardIterator;
+        IDBKeyDataSet::reverse_iterator m_reverseIterator;
     };
 
     Iterator begin();
@@ -89,7 +89,7 @@ public:
 
 private:
     union {
-        std::set<IDBKeyData>* m_orderedKeys;
+        IDBKeyDataSet* m_orderedKeys;
         IDBKeyData* m_key;
     };
 

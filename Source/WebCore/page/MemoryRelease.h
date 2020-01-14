@@ -25,15 +25,17 @@
 
 #pragma once
 
-#include "MemoryPressureHandler.h"
+#include <wtf/MemoryPressureHandler.h>
 
 namespace WebCore {
 
-WEBCORE_EXPORT void releaseMemory(Critical, Synchronous);
+enum class MaintainPageCache : bool { No, Yes };
+enum class MaintainMemoryCache : bool { No, Yes };
+
+WEBCORE_EXPORT void releaseMemory(Critical, Synchronous, MaintainPageCache = MaintainPageCache::No, MaintainMemoryCache = MaintainMemoryCache::No);
 void platformReleaseMemory(Critical);
 void jettisonExpensiveObjectsOnTopLevelNavigation();
 WEBCORE_EXPORT void registerMemoryReleaseNotifyCallbacks();
 WEBCORE_EXPORT void logMemoryStatisticsAtTimeOfDeath();
-WEBCORE_EXPORT bool processIsEligibleForMemoryKill();
 
 } // namespace WebCore

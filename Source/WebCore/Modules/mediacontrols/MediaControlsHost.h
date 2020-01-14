@@ -27,7 +27,6 @@
 
 #if ENABLE(MEDIA_CONTROLS_SCRIPT)
 
-#include <bindings/ScriptObject.h>
 #include <wtf/RefCounted.h>
 #include <wtf/Variant.h>
 #include <wtf/Vector.h>
@@ -48,20 +47,20 @@ public:
     static Ref<MediaControlsHost> create(HTMLMediaElement*);
     ~MediaControlsHost();
 
-    static const AtomicString& automaticKeyword();
-    static const AtomicString& forcedOnlyKeyword();
-    static const AtomicString& alwaysOnKeyword();
-    static const AtomicString& manualKeyword();
+    static const AtomString& automaticKeyword();
+    static const AtomString& forcedOnlyKeyword();
+    static const AtomString& alwaysOnKeyword();
+    static const AtomString& manualKeyword();
 
     Vector<RefPtr<TextTrack>> sortedTrackListForMenu(TextTrackList&);
     Vector<RefPtr<AudioTrack>> sortedTrackListForMenu(AudioTrackList&);
 
     using TextOrAudioTrack = WTF::Variant<RefPtr<TextTrack>, RefPtr<AudioTrack>>;
-    String displayNameForTrack(const std::optional<TextOrAudioTrack>&);
+    String displayNameForTrack(const Optional<TextOrAudioTrack>&);
 
     TextTrack* captionMenuOffItem();
     TextTrack* captionMenuAutomaticItem();
-    AtomicString captionDisplayMode() const;
+    AtomString captionDisplayMode() const;
     void setSelectedTextTrack(TextTrack*);
     Element* textTrackContainer();
     void updateTextTrackContainer();
@@ -70,6 +69,7 @@ public:
     bool isVideoLayerInline() const;
     bool isInMediaDocument() const;
     bool userGestureRequired() const;
+    bool shouldForceControlsDisplay() const;
     void setPreparedToReturnVideoLayerToInline(bool);
 
     void updateCaptionDisplaySizes();
@@ -81,19 +81,24 @@ public:
     enum class DeviceType { None, Airplay, Tvout };
     DeviceType externalDeviceType() const;
 
+    bool compactMode() const;
+    void setSimulateCompactMode(bool value) { m_simulateCompactMode = value; }
+
     bool controlsDependOnPageScaleFactor() const;
     void setControlsDependOnPageScaleFactor(bool v);
 
     String generateUUID() const;
 
     String shadowRootCSSText() const;
-    String base64StringForIconAndPlatform(const String& iconName, const String& platform) const;
+    String base64StringForIconNameAndType(const String& iconName, const String& iconType) const;
+    String formattedStringForDuration(double) const;
 
 private:
     MediaControlsHost(HTMLMediaElement*);
 
     HTMLMediaElement* m_mediaElement;
     RefPtr<MediaControlTextTrackContainerElement> m_textTrackContainer;
+    bool m_simulateCompactMode { false };
 };
 
 }

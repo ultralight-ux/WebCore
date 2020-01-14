@@ -30,12 +30,13 @@
 
 #include "FormData.h"
 #include "HTTPHeaderMap.h"
-#include "URL.h"
+#include "IntRect.h"
 #include "ResourceLoadPriority.h"
+#include <wtf/URL.h>
 
 namespace WebCore {
 
-enum ResourceRequestCachePolicy {
+enum class ResourceRequestCachePolicy : uint8_t {
     UseProtocolCachePolicy, // normal load, equivalent to fetch "default" cache mode.
     ReloadIgnoringCacheData, // reload, equivalent to fetch "reload"cache mode.
     ReturnCacheDataElseLoad, // back/forward or encoding change - allow stale data, equivalent to fetch "force-cache" cache mode.
@@ -44,18 +45,19 @@ enum ResourceRequestCachePolicy {
     RefreshAnyCacheData, // Serve cache data only if revalidated, equivalent to fetch "no-cache" mode.
 };
 
-enum HTTPBodyUpdatePolicy {
+enum HTTPBodyUpdatePolicy : uint8_t {
     DoNotUpdateHTTPBody,
     UpdateHTTPBody
 };
 
 class ResourceRequest;
+class ResourceResponse;
 
 // Do not use this type directly.  Use ResourceRequest instead.
 class ResourceRequestBase {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    ResourceRequest isolatedCopy() const;
+    WEBCORE_EXPORT ResourceRequest isolatedCopy() const;
     WEBCORE_EXPORT void setAsIsolatedCopy(const ResourceRequest&);
 
     WEBCORE_EXPORT bool isNull() const;
@@ -63,6 +65,8 @@ public:
 
     WEBCORE_EXPORT const URL& url() const;
     WEBCORE_EXPORT void setURL(const URL& url);
+
+    WEBCORE_EXPORT ResourceRequest redirectedRequest(const ResourceResponse&, bool shouldClearReferrerOnHTTPSToHTTPRedirect) const;
 
     WEBCORE_EXPORT void removeCredentials();
 
@@ -74,7 +78,18 @@ public:
     
     WEBCORE_EXPORT const URL& firstPartyForCookies() const;
     WEBCORE_EXPORT void setFirstPartyForCookies(const URL&);
-    
+
+    // Same-Site cookies; see <https://tools.ietf.org/html/draft-ietf-httpbis-cookie-same-site-00#section-2.1>
+    // and <https://tools.ietf.org/html/draft-ietf-httpbis-cookie-same-site-00#section-5.2>.
+    // FIXME: For some reason the main resource request may be updated more than once. We start off as Unspecified
+    // to detect if we need to compute the same-site and top-site state or not. See FIXME in DocumentLoader::startLoadingMainResource().
+    enum class SameSiteDisposition : uint8_t { Unspecified, SameSite, CrossSite };
+    bool isSameSiteUnspecified() const { return m_sameSiteDisposition == SameSiteDisposition::Unspecified; }
+    WEBCORE_EXPORT bool isSameSite() const; // Whether this request's registrable domain matches the request's initiator's "site for cookies".
+    WEBCORE_EXPORT void setIsSameSite(bool);
+    WEBCORE_EXPORT bool isTopSite() const; // Whether this request is for a top-level navigation.
+    WEBCORE_EXPORT void setIsTopSite(bool);
+
     WEBCORE_EXPORT const String& httpMethod() const;
     WEBCORE_EXPORT void setHTTPMethod(const String& httpMethod);
     
@@ -85,11 +100,11 @@ public:
     WEBCORE_EXPORT String httpHeaderField(HTTPHeaderName) const;
     WEBCORE_EXPORT void setHTTPHeaderField(const String& name, const String& value);
     WEBCORE_EXPORT void setHTTPHeaderField(HTTPHeaderName, const String& value);
-    void addHTTPHeaderField(HTTPHeaderName, const String& value);
-    void addHTTPHeaderField(const String& name, const String& value);
-    void addHTTPHeaderFieldIfNotPresent(HTTPHeaderName, const String&);
+    WEBCORE_EXPORT void addHTTPHeaderField(HTTPHeaderName, const String& value);
+    WEBCORE_EXPORT void addHTTPHeaderField(const String& name, const String& value);
+    WEBCORE_EXPORT void addHTTPHeaderFieldIfNotPresent(HTTPHeaderName, const String&);
 
-    bool hasHTTPHeaderField(HTTPHeaderName) const;
+    WEBCORE_EXPORT bool hasHTTPHeaderField(HTTPHeaderName) const;
 
     // Instead of passing a string literal to any of these functions, just use a HTTPHeaderName instead.
     template<size_t length> String httpHeaderField(const char (&)[length]) const = delete;
@@ -100,16 +115,17 @@ public:
 
     WEBCORE_EXPORT String httpContentType() const;
     WEBCORE_EXPORT void setHTTPContentType(const String&);
-    void clearHTTPContentType();
+    WEBCORE_EXPORT void clearHTTPContentType();
 
     bool hasHTTPHeader(HTTPHeaderName) const;
 
     WEBCORE_EXPORT String httpReferrer() const;
     bool hasHTTPReferrer() const;
     WEBCORE_EXPORT void setHTTPReferrer(const String&);
+    WEBCORE_EXPORT void setExistingHTTPReferrerToOriginString();
     WEBCORE_EXPORT void clearHTTPReferrer();
 
-    String httpOrigin() const;
+    WEBCORE_EXPORT String httpOrigin() const;
     bool hasHTTPOrigin() const;
     void setHTTPOrigin(const String&);
     WEBCORE_EXPORT void clearHTTPOrigin();
@@ -124,10 +140,13 @@ public:
 
     void clearHTTPAcceptEncoding();
 
+    WEBCORE_EXPORT void clearPurpose();
+
     const Vector<String>& responseContentDispositionEncodingFallbackArray() const { return m_responseContentDispositionEncodingFallbackArray; }
     WEBCORE_EXPORT void setResponseContentDispositionEncodingFallbackArray(const String& encoding1, const String& encoding2 = String(), const String& encoding3 = String());
 
     WEBCORE_EXPORT FormData* httpBody() const;
+    WEBCORE_EXPORT bool hasUpload() const;
     WEBCORE_EXPORT void setHTTPBody(RefPtr<FormData>&&);
 
     bool allowCookies() const;
@@ -136,37 +155,37 @@ public:
     WEBCORE_EXPORT ResourceLoadPriority priority() const;
     WEBCORE_EXPORT void setPriority(ResourceLoadPriority);
 
+    WEBCORE_EXPORT static String partitionName(const String& domain);
+    const String& cachePartition() const { return m_cachePartition; }
+    WEBCORE_EXPORT void setCachePartition(const String&);
+    void setDomainForCachePartition(const String& domain) { setCachePartition(partitionName(domain)); }
+
     WEBCORE_EXPORT bool isConditional() const;
     WEBCORE_EXPORT void makeUnconditional();
-
-    // Whether the associated ResourceHandleClient needs to be notified of
-    // upload progress made for that resource.
-    bool reportUploadProgress() const { return m_reportUploadProgress; }
-    void setReportUploadProgress(bool reportUploadProgress) { m_reportUploadProgress = reportUploadProgress; }
-
-    // Whether the timing information should be collected for the request.
-    bool reportLoadTiming() const { return m_reportLoadTiming; }
-    void setReportLoadTiming(bool reportLoadTiming) { m_reportLoadTiming = reportLoadTiming; }
-
-    // Whether actual headers being sent/received should be collected and reported for the request.
-    bool reportRawHeaders() const { return m_reportRawHeaders; }
-    void setReportRawHeaders(bool reportRawHeaders) { m_reportRawHeaders = reportRawHeaders; }
 
     // Whether this request should be hidden from the Inspector.
     bool hiddenFromInspector() const { return m_hiddenFromInspector; }
     void setHiddenFromInspector(bool hiddenFromInspector) { m_hiddenFromInspector = hiddenFromInspector; }
 
-    // Whether this request should impact request counting and delay window.onload.
-    bool ignoreForRequestCount() const { return m_ignoreForRequestCount; }
-    void setIgnoreForRequestCount(bool ignoreForRequestCount) { m_ignoreForRequestCount = ignoreForRequestCount; }
-
-    enum class Requester { Unspecified, Main, XHR, Fetch, Media };
+    enum class Requester : uint8_t { Unspecified, Main, XHR, Fetch, Media, ImportScripts };
     Requester requester() const { return m_requester; }
     void setRequester(Requester requester) { m_requester = requester; }
 
     // Who initiated the request so the Inspector can associate it with a context. E.g. a Web Worker.
     String initiatorIdentifier() const { return m_initiatorIdentifier; }
     void setInitiatorIdentifier(const String& identifier) { m_initiatorIdentifier = identifier; }
+
+    // Additional information for the Inspector to be able to identify the node that initiated this request.
+    const Optional<int>& inspectorInitiatorNodeIdentifier() const { return m_inspectorInitiatorNodeIdentifier; }
+    void setInspectorInitiatorNodeIdentifier(int inspectorInitiatorNodeIdentifier) { m_inspectorInitiatorNodeIdentifier = inspectorInitiatorNodeIdentifier; }
+
+#if USE(SYSTEM_PREVIEW)
+    WEBCORE_EXPORT bool isSystemPreview() const;
+    WEBCORE_EXPORT void setSystemPreview(bool);
+
+    WEBCORE_EXPORT const IntRect& systemPreviewRect() const;
+    WEBCORE_EXPORT void setSystemPreviewRect(const IntRect&);
+#endif
 
 #if !PLATFORM(COCOA)
     bool encodingRequiresPlatformData() const { return true; }
@@ -177,12 +196,7 @@ public:
     WEBCORE_EXPORT static double defaultTimeoutInterval(); // May return 0 when using platform default.
     WEBCORE_EXPORT static void setDefaultTimeoutInterval(double);
 
-#if PLATFORM(IOS)
-    WEBCORE_EXPORT static bool defaultAllowCookies();
-    WEBCORE_EXPORT static void setDefaultAllowCookies(bool);
-#endif
-
-    static bool compare(const ResourceRequest&, const ResourceRequest&);
+    WEBCORE_EXPORT static bool equal(const ResourceRequest&, const ResourceRequest&);
 
 protected:
     // Used when ResourceRequest is initialized from a platform representation of the request
@@ -195,20 +209,16 @@ protected:
     ResourceRequestBase(const URL& url, ResourceRequestCachePolicy policy)
         : m_url(url)
         , m_timeoutInterval(s_defaultTimeoutInterval)
-        , m_httpMethod(ASCIILiteral("GET"))
+        , m_httpMethod("GET"_s)
         , m_cachePolicy(policy)
-#if !PLATFORM(IOS)
         , m_allowCookies(true)
-#else
-        , m_allowCookies(ResourceRequestBase::defaultAllowCookies())
-#endif
         , m_resourceRequestUpdated(true)
         , m_resourceRequestBodyUpdated(true)
     {
     }
 
-    void updatePlatformRequest(HTTPBodyUpdatePolicy = DoNotUpdateHTTPBody) const;
-    void updateResourceRequest(HTTPBodyUpdatePolicy = DoNotUpdateHTTPBody) const;
+    void updatePlatformRequest(HTTPBodyUpdatePolicy = HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) const;
+    void updateResourceRequest(HTTPBodyUpdatePolicy = HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) const;
 
     template<class Encoder> void encodeBase(Encoder&) const;
     template<class Decoder> bool decodeBase(Decoder&);
@@ -220,40 +230,41 @@ protected:
     double m_timeoutInterval; // 0 is a magic value for platform default on platforms that have one.
     URL m_firstPartyForCookies;
     String m_httpMethod;
+    String m_initiatorIdentifier;
+    String m_cachePartition { emptyString() };
     HTTPHeaderMap m_httpHeaderFields;
     Vector<String> m_responseContentDispositionEncodingFallbackArray;
     RefPtr<FormData> m_httpBody;
-    ResourceRequestCachePolicy m_cachePolicy { UseProtocolCachePolicy };
+    ResourceRequestCachePolicy m_cachePolicy { ResourceRequestCachePolicy::UseProtocolCachePolicy };
+    SameSiteDisposition m_sameSiteDisposition { SameSiteDisposition::Unspecified };
+    ResourceLoadPriority m_priority { ResourceLoadPriority::Low };
+    Requester m_requester { Requester::Unspecified };
+    Optional<int> m_inspectorInitiatorNodeIdentifier;
     bool m_allowCookies { false };
     mutable bool m_resourceRequestUpdated { false };
     mutable bool m_platformRequestUpdated { false };
     mutable bool m_resourceRequestBodyUpdated { false };
     mutable bool m_platformRequestBodyUpdated { false };
-    bool m_reportUploadProgress { false };
-    bool m_reportLoadTiming { false };
-    bool m_reportRawHeaders { false };
     bool m_hiddenFromInspector { false };
-    bool m_ignoreForRequestCount { false };
-    ResourceLoadPriority m_priority { ResourceLoadPriority::Low };
-    Requester m_requester { Requester::Unspecified };
-    String m_initiatorIdentifier;
+    bool m_isTopSite { false };
+#if USE(SYSTEM_PREVIEW)
+    bool m_isSystemPreview { false };
+    IntRect m_systemPreviewRect;
+#endif
 
 private:
     const ResourceRequest& asResourceRequest() const;
 
     WEBCORE_EXPORT static double s_defaultTimeoutInterval;
-#if PLATFORM(IOS)
-    static bool s_defaultAllowCookies;
-#endif
 };
 
 bool equalIgnoringHeaderFields(const ResourceRequestBase&, const ResourceRequestBase&);
 
-inline bool operator==(const ResourceRequest& a, const ResourceRequest& b) { return ResourceRequestBase::compare(a, b); }
+inline bool operator==(const ResourceRequest& a, const ResourceRequest& b) { return ResourceRequestBase::equal(a, b); }
 inline bool operator!=(ResourceRequest& a, const ResourceRequest& b) { return !(a == b); }
 
 WEBCORE_EXPORT unsigned initializeMaximumHTTPConnectionCountPerHost();
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 WEBCORE_EXPORT void initializeHTTPConnectionSettingsOnStartup();
 #endif
 
@@ -268,6 +279,8 @@ ALWAYS_INLINE void ResourceRequestBase::encodeBase(Encoder& encoder) const
     encoder << m_responseContentDispositionEncodingFallbackArray;
     encoder.encodeEnum(m_cachePolicy);
     encoder << m_allowCookies;
+    encoder.encodeEnum(m_sameSiteDisposition);
+    encoder << m_isTopSite;
     encoder.encodeEnum(m_priority);
     encoder.encodeEnum(m_requester);
 }
@@ -284,7 +297,7 @@ ALWAYS_INLINE bool ResourceRequestBase::decodeBase(Decoder& decoder)
     String firstPartyForCookies;
     if (!decoder.decode(firstPartyForCookies))
         return false;
-    m_firstPartyForCookies = URL(ParsedURLString, firstPartyForCookies);
+    m_firstPartyForCookies = URL({ }, firstPartyForCookies);
 
     if (!decoder.decode(m_httpMethod))
         return false;
@@ -304,6 +317,16 @@ ALWAYS_INLINE bool ResourceRequestBase::decodeBase(Decoder& decoder)
     if (!decoder.decode(allowCookies))
         return false;
     m_allowCookies = allowCookies;
+
+    SameSiteDisposition sameSiteDisposition;
+    if (!decoder.decodeEnum(sameSiteDisposition))
+        return false;
+    m_sameSiteDisposition = sameSiteDisposition;
+
+    bool isTopSite;
+    if (!decoder.decode(isTopSite))
+        return false;
+    m_isTopSite = isTopSite;
 
     ResourceLoadPriority priority;
     if (!decoder.decodeEnum(priority))

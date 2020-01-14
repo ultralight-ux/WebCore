@@ -30,29 +30,29 @@
 
 #include "ExceptionOr.h"
 #include "IntSize.h"
-#include <runtime/Uint8ClampedArray.h>
+#include <JavaScriptCore/Uint8ClampedArray.h>
 
 namespace WebCore {
 
 class ImageData : public RefCounted<ImageData> {
 public:
-    static ExceptionOr<Ref<ImageData>> create(unsigned sw, unsigned sh);
-    static RefPtr<ImageData> create(const IntSize&);
-    static RefPtr<ImageData> create(const IntSize&, Ref<Uint8ClampedArray>&&);
-    static ExceptionOr<RefPtr<ImageData>> create(Ref<Uint8ClampedArray>&&, unsigned sw, unsigned sh);
+    WEBCORE_EXPORT static ExceptionOr<Ref<ImageData>> create(unsigned sw, unsigned sh);
+    WEBCORE_EXPORT static RefPtr<ImageData> create(const IntSize&);
+    WEBCORE_EXPORT static RefPtr<ImageData> create(const IntSize&, Ref<Uint8ClampedArray>&&);
+    WEBCORE_EXPORT static ExceptionOr<RefPtr<ImageData>> create(Ref<Uint8ClampedArray>&&, unsigned sw, Optional<unsigned> sh);
 
     IntSize size() const { return m_size; }
     int width() const { return m_size.width(); }
     int height() const { return m_size.height(); }
 
-    Uint8ClampedArray* data() const { return m_data.get(); }
+    Uint8ClampedArray* data() const { return m_data.ptr(); }
 
 private:
     explicit ImageData(const IntSize&);
     ImageData(const IntSize&, Ref<Uint8ClampedArray>&&);
 
     IntSize m_size;
-    RefPtr<Uint8ClampedArray> m_data;
+    Ref<Uint8ClampedArray> m_data;
 };
 
 } // namespace WebCore

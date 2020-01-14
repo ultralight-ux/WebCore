@@ -20,14 +20,12 @@
 
 #pragma once
 
-#include "CSSParserMode.h"
 #include "ExceptionOr.h"
 #include "StyleSheet.h"
 #include <memory>
-#include <wtf/HashMap.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/TypeCasts.h>
-#include <wtf/text/AtomicStringHash.h>
+#include <wtf/text/AtomStringHash.h>
 #include <wtf/text/TextPosition.h>
 
 namespace WebCore {
@@ -41,7 +39,6 @@ class CachedCSSStyleSheet;
 class Document;
 class Element;
 class MediaQuerySet;
-class SecurityOrigin;
 class StyleRuleKeyframes;
 class StyleSheetContents;
 
@@ -52,7 +49,7 @@ class Scope;
 class CSSStyleSheet final : public StyleSheet {
 public:
     static Ref<CSSStyleSheet> create(Ref<StyleSheetContents>&&, CSSImportRule* ownerRule = 0);
-    static Ref<CSSStyleSheet> create(Ref<StyleSheetContents>&&, Node& ownerNode, const std::optional<bool>& isOriginClean = std::nullopt);
+    static Ref<CSSStyleSheet> create(Ref<StyleSheetContents>&&, Node& ownerNode, const Optional<bool>& isOriginClean = WTF::nullopt);
     static Ref<CSSStyleSheet> createInline(Ref<StyleSheetContents>&&, Element& owner, const TextPosition& startPosition);
 
     virtual ~CSSStyleSheet();
@@ -67,11 +64,10 @@ public:
     
     WEBCORE_EXPORT RefPtr<CSSRuleList> cssRules();
     WEBCORE_EXPORT ExceptionOr<unsigned> insertRule(const String& rule, unsigned index);
-    ExceptionOr<unsigned> deprecatedInsertRule(const String& rule);
     WEBCORE_EXPORT ExceptionOr<void> deleteRule(unsigned index);
     
     WEBCORE_EXPORT RefPtr<CSSRuleList> rules();
-    WEBCORE_EXPORT ExceptionOr<int> addRule(const String& selector, const String& style, std::optional<unsigned> index);
+    WEBCORE_EXPORT ExceptionOr<int> addRule(const String& selector, const String& style, Optional<unsigned> index);
     ExceptionOr<void> removeRule(unsigned index) { return deleteRule(index); }
     
     // For CSSRuleList.
@@ -129,21 +125,21 @@ public:
 
     void detachFromDocument() { m_ownerNode = nullptr; }
 
+    bool canAccessRules() const;
+
 private:
     CSSStyleSheet(Ref<StyleSheetContents>&&, CSSImportRule* ownerRule);
     CSSStyleSheet(Ref<StyleSheetContents>&&, Node* ownerNode, const TextPosition& startPosition, bool isInlineStylesheet);
-    CSSStyleSheet(Ref<StyleSheetContents>&&, Node& ownerNode, const TextPosition& startPosition, bool isInlineStylesheet, const std::optional<bool>&);
+    CSSStyleSheet(Ref<StyleSheetContents>&&, Node& ownerNode, const TextPosition& startPosition, bool isInlineStylesheet, const Optional<bool>&);
 
     bool isCSSStyleSheet() const final { return true; }
-    String type() const final { return ASCIILiteral("text/css"); }
-
-    bool canAccessRules() const;
+    String type() const final { return "text/css"_s; }
 
     Ref<StyleSheetContents> m_contents;
     bool m_isInlineStylesheet;
     bool m_isDisabled;
     bool m_mutatedRules;
-    std::optional<bool> m_isOriginClean;
+    Optional<bool> m_isOriginClean;
     String m_title;
     RefPtr<MediaQuerySet> m_mediaQueries;
 

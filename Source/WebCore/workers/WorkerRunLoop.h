@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2009 Google Inc. All rights reserved.
- * 
+ * Copyright (C) 2017 Apple Inc.  All rights reserved.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -52,6 +53,7 @@ namespace WebCore {
 
         // Waits for a single task and returns.
         MessageQueueWaitResult runInMode(WorkerGlobalScope*, const String& mode, WaitMode = WaitForMessage);
+        MessageQueueWaitResult runInDebuggerMode(WorkerGlobalScope&);
 
         void terminate();
         bool terminated() const { return m_messageQueue.killed(); }
@@ -59,22 +61,24 @@ namespace WebCore {
         void postTask(ScriptExecutionContext::Task&&);
         void postTaskAndTerminate(ScriptExecutionContext::Task&&);
         void postTaskForMode(ScriptExecutionContext::Task&&, const String& mode);
+        void postDebuggerTask(ScriptExecutionContext::Task&&);
 
         unsigned long createUniqueId() { return ++m_uniqueId; }
 
         static String defaultMode();
-        static String debuggerMode();
-
         class Task {
             WTF_MAKE_NONCOPYABLE(Task); WTF_MAKE_FAST_ALLOCATED;
         public:
             Task(ScriptExecutionContext::Task&&, const String& mode);
             const String& mode() const { return m_mode; }
-            void performTask(const WorkerRunLoop&, WorkerGlobalScope*);
 
         private:
+            void performTask(WorkerGlobalScope*);
+
             ScriptExecutionContext::Task m_task;
             String m_mode;
+
+            friend class WorkerRunLoop;
         };
 
     private:
@@ -85,12 +89,13 @@ namespace WebCore {
         // This should only be called when the context is closed or loop has been terminated.
         void runCleanupTasks(WorkerGlobalScope*);
 
-        bool isNested() const { return m_nestedCount > 1; }
+        bool isBeingDebugged() const { return m_debugCount >= 1; }
 
         MessageQueue<Task> m_messageQueue;
         std::unique_ptr<WorkerSharedTimer> m_sharedTimer;
-        int m_nestedCount;
-        unsigned long m_uniqueId;
+        int m_nestedCount { 0 };
+        int m_debugCount { 0 };
+        unsigned long m_uniqueId { 0 };
     };
 
 } // namespace WebCore

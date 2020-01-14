@@ -27,7 +27,8 @@
 
 #pragma once
 
-#include "MediaQueryExp.h"
+#include "MediaQueryExpression.h"
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -67,12 +68,14 @@ public:
     // Evaluates media query subexpression, ie "and (media-feature: value)" part.
     bool evaluate(const MediaQueryExpression&) const;
 
-    // Evaluates a list of media queries and fills in a vector with any viewport-dependent results found.
-    bool evaluate(const MediaQuerySet&, Vector<MediaQueryResult>&) const;
+    // Evaluates a list of media queries and fills in vectors with any viewport or dark mode dependent results found.
+    bool evaluate(const MediaQuerySet&, Vector<MediaQueryResult>& viewportDependentResults, Vector<MediaQueryResult>& appearanceDependentResults) const;
+
+    static bool mediaAttributeMatches(Document&, const String& attributeValue);
 
 private:
     String m_mediaType;
-    Frame* m_frame { nullptr }; // not owned
+    WeakPtr<const Document> m_document;
     const RenderStyle* m_style { nullptr };
     bool m_fallbackResult { false };
 };

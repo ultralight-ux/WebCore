@@ -20,12 +20,12 @@
 #include "DOMParser.h"
 
 #include "DOMImplementation.h"
-#include "ExceptionCode.h"
+#include "SecurityOriginPolicy.h"
 
 namespace WebCore {
 
 inline DOMParser::DOMParser(Document& contextDocument)
-    : m_contextDocument(contextDocument.createWeakPtr())
+    : m_contextDocument(makeWeakPtr(contextDocument))
 {
 }
 
@@ -42,7 +42,11 @@ ExceptionOr<Ref<Document>> DOMParser::parseFromString(const String& string, cons
     if (m_contextDocument)
         document->setContextDocument(*m_contextDocument.get());
     document->setContent(string);
-    return WTFMove(document);
+    if (m_contextDocument) {
+        document->setURL(m_contextDocument->url());
+        document->setSecurityOriginPolicy(m_contextDocument->securityOriginPolicy());
+    }
+    return document;
 }
 
 } // namespace WebCore

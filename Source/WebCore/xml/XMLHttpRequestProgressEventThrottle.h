@@ -49,13 +49,13 @@ public:
 
     void dispatchThrottledProgressEvent(bool lengthComputable, unsigned long long loaded, unsigned long long total);
     void dispatchReadyStateChangeEvent(Event&, ProgressEventAction = DoNotFlushProgressEvent);
-    void dispatchProgressEvent(const AtomicString&);
+    void dispatchProgressEvent(const AtomString&);
 
     void suspend();
     void resume();
 
 private:
-    static const double minimumProgressEventDispatchingIntervalInSeconds;
+    static const Seconds minimumProgressEventDispatchingInterval;
 
     void fired() override;
     void dispatchDeferredEvents();
@@ -67,15 +67,16 @@ private:
     // Weak pointer to our XMLHttpRequest object as it is the one holding us.
     EventTarget* m_target;
 
-    bool m_hasThrottledProgressEvent;
-    bool m_lengthComputable;
-    unsigned long long m_loaded;
-    unsigned long long m_total;
+    unsigned long long m_loaded { 0 };
+    unsigned long long m_total { 0 };
 
-    bool m_deferEvents;
     RefPtr<Event> m_deferredProgressEvent;
     Vector<Ref<Event>> m_deferredEvents;
     Timer m_dispatchDeferredEventsTimer;
+
+    bool m_hasThrottledProgressEvent { false };
+    bool m_lengthComputable { false };
+    bool m_deferEvents { false };
 };
 
 } // namespace WebCore

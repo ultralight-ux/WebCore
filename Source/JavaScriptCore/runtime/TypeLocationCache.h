@@ -26,8 +26,9 @@
 #pragma once
 
 #include "TypeLocation.h"
-#include <unordered_map>
+#include <wtf/FastMalloc.h>
 #include <wtf/HashMethod.h>
+#include <wtf/StdUnorderedMap.h>
 
 namespace JSC {
 
@@ -56,9 +57,9 @@ public:
         unsigned m_end;
     };
 
-    std::pair<TypeLocation*, bool> getTypeLocation(GlobalVariableID, intptr_t, unsigned start, unsigned end, PassRefPtr<TypeSet>, VM*);
-private:     
-    typedef std::unordered_map<LocationKey, TypeLocation*, HashMethod<LocationKey>> LocationMap;
+    std::pair<TypeLocation*, bool> getTypeLocation(GlobalVariableID, intptr_t, unsigned start, unsigned end, RefPtr<TypeSet>&&, VM*);
+private:
+    using LocationMap = StdUnorderedMap<LocationKey, TypeLocation*, HashMethod<LocationKey>>;
     LocationMap m_locationMap;
 };
 

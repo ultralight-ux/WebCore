@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006, 2007, 2008, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,10 +28,11 @@
 
 #import "BridgeJSC.h"
 #import "Frame.h"
+#import "JSDOMBindingSecurity.h"
 #import "JSDOMWindow.h"
 #import "JSDOMWindowCustom.h"
+#import "JSExecState.h"
 #import "JSHTMLElement.h"
-#import "JSMainThreadExecState.h"
 #import "JSPluginElementFunctions.h"
 #import "ObjCRuntimeObject.h"
 #import "WebCoreObjCExtras.h"
@@ -39,14 +40,14 @@
 #import "runtime_object.h"
 #import "runtime_root.h"
 #import <JavaScriptCore/APICast.h>
+#import <JavaScriptCore/CallFrame.h>
+#import <JavaScriptCore/CatchScope.h>
+#import <JavaScriptCore/Completion.h>
+#import <JavaScriptCore/InitializeThreading.h>
 #import <JavaScriptCore/JSContextInternal.h>
+#import <JavaScriptCore/JSGlobalObject.h>
+#import <JavaScriptCore/JSLock.h>
 #import <JavaScriptCore/JSValueInternal.h>
-#import <interpreter/CallFrame.h>
-#import <runtime/CatchScope.h>
-#import <runtime/Completion.h>
-#import <runtime/InitializeThreading.h>
-#import <runtime/JSGlobalObject.h>
-#import <runtime/JSLock.h>
 #import <wtf/HashMap.h>
 #import <wtf/Lock.h>
 #import <wtf/NeverDestroyed.h>
@@ -70,7 +71,7 @@ using JSC::makeSource;
 
 namespace WebCore {
 
-static StaticLock spinLock;
+static Lock spinLock;
 static CreateWrapperFunction createDOMWrapperFunction;
 static DisconnectWindowWrapperFunction disconnectWindowWrapperFunction;
 
@@ -112,16 +113,17 @@ static void removeJSWrapperIfRetainCountOne(NSObject* wrapper, JSObject* impl)
         wrapperCache().remove(impl);
 }
 
-id createJSWrapper(JSC::JSObject* object, PassRefPtr<JSC::Bindings::RootObject> origin, PassRefPtr<JSC::Bindings::RootObject> root)
+id createJSWrapper(JSC::JSObject* object, RefPtr<JSC::Bindings::RootObject>&& origin, RefPtr<JSC::Bindings::RootObject>&& root)
 {
     if (id wrapper = getJSWrapper(object))
         return wrapper;
-    return [[[WebScriptObject alloc] _initWithJSObject:object originRootObject:origin rootObject:root] autorelease];
+    return [[[WebScriptObject alloc] _initWithJSObject:object originRootObject:WTFMove(origin) rootObject:WTFMove(root)] autorelease];
 }
 
 static void addExceptionToConsole(ExecState* exec, JSC::Exception* exception)
 {
-    JSDOMWindow* window = asJSDOMWindow(exec->vmEntryGlobalObject());
+    JSC::VM& vm = exec->vm();
+    JSDOMWindow* window = asJSDOMWindow(vm.vmEntryGlobalObject(exec));
     if (!window || !exception)
         return;
     reportException(exec, exception);
@@ -185,7 +187,7 @@ void disconnectWindowWrapper(WebScriptObject *windowWrapper)
     return WebCore::createJSWrapper(&wrapped, originRootObject, rootObject);
 }
 
-- (void)_setImp:(JSObject*)imp originRootObject:(PassRefPtr<RootObject>)originRootObject rootObject:(PassRefPtr<RootObject>)rootObject
+- (void)_setImp:(JSObject*)imp originRootObject:(RefPtr<RootObject>&&)originRootObject rootObject:(RefPtr<RootObject>&&)rootObject
 {
     // This function should only be called once, as a (possibly lazy) initializer.
     ASSERT(!_private->imp);
@@ -203,7 +205,7 @@ void disconnectWindowWrapper(WebScriptObject *windowWrapper)
         _private->rootObject->gcProtect(imp);
 }
 
-- (void)_setOriginRootObject:(PassRefPtr<RootObject>)originRootObject andRootObject:(PassRefPtr<RootObject>)rootObject
+- (void)_setOriginRootObject:(RefPtr<RootObject>&&)originRootObject andRootObject:(RefPtr<RootObject>&&)rootObject
 {
     ASSERT(_private->imp);
 
@@ -223,13 +225,13 @@ void disconnectWindowWrapper(WebScriptObject *windowWrapper)
     _private->originRootObject = originRootObject.leakRef();
 }
 
-- (id)_initWithJSObject:(JSC::JSObject*)imp originRootObject:(PassRefPtr<JSC::Bindings::RootObject>)originRootObject rootObject:(PassRefPtr<JSC::Bindings::RootObject>)rootObject
+- (id)_initWithJSObject:(JSC::JSObject*)imp originRootObject:(RefPtr<JSC::Bindings::RootObject>&&)originRootObject rootObject:(RefPtr<JSC::Bindings::RootObject>&&)rootObject
 {
     ASSERT(imp);
 
     self = [super init];
     _private = [[WebScriptObjectPrivate alloc] init];
-    [self _setImp:imp originRootObject:originRootObject rootObject:rootObject];
+    [self _setImp:imp originRootObject:WTFMove(originRootObject) rootObject:WTFMove(rootObject)];
     
     return self;
 }
@@ -275,7 +277,9 @@ void disconnectWindowWrapper(WebScriptObject *windowWrapper)
     // It's not actually correct to call shouldAllowAccessToFrame in this way because
     // JSDOMWindowBase* isn't the right object to represent the currently executing
     // JavaScript. Instead, we should use ExecState, like we do elsewhere.
-    JSDOMWindowBase* target = jsCast<JSDOMWindowBase*>(root->globalObject());
+    auto* target = JSC::jsDynamicCast<JSDOMWindowBase*>(root->globalObject()->vm(), root->globalObject());
+    if (!target)
+        return false;
     return BindingSecurity::shouldAllowAccessToDOMWindow(_private->originRootObject->globalObject()->globalExec(), target->wrapped());
 }
 
@@ -345,18 +349,19 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
 
     JSC::JSValue function = [self _imp]->get(exec, Identifier::fromString(exec, String(name)));
     CallData callData;
-    CallType callType = getCallData(function, callData);
+    CallType callType = getCallData(vm, function, callData);
     if (callType == CallType::None)
         return nil;
 
     MarkedArgumentBuffer argList;
+    ASSERT(!argList.hasOverflowed());
     getListFromNSArray(exec, args, [self _rootObject], argList);
 
     if (![self _isSafeScript])
         return nil;
 
     NakedPtr<JSC::Exception> exception;
-    JSC::JSValue result = JSMainThreadExecState::profiledCall(exec, JSC::ProfilingReason::Other, function, callType, callData, [self _imp], argList, exception);
+    JSC::JSValue result = JSExecState::profiledCall(exec, JSC::ProfilingReason::Other, function, callType, callData, [self _imp], argList, exception);
 
     if (exception) {
         addExceptionToConsole(exec, exception);
@@ -381,7 +386,7 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
     ExecState* exec = globalObject->globalExec();
     UNUSED_PARAM(scope);
     
-    JSC::JSValue returnValue = JSMainThreadExecState::profiledEvaluate(exec, JSC::ProfilingReason::Other, makeSource(String(script)), JSC::JSValue());
+    JSC::JSValue returnValue = JSExecState::profiledEvaluate(exec, JSC::ProfilingReason::Other, makeSource(String(script), { }), JSC::JSValue());
 
     id resultObj = [WebScriptObject _convertValueToObjcValue:returnValue originRootObject:[self _originRootObject] rootObject:[self _rootObject]];
     
@@ -399,9 +404,9 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
     auto scope = DECLARE_CATCH_SCOPE(vm);
     ExecState* exec = globalObject->globalExec();
 
-    JSObject* object = jsDynamicDowncast<JSObject*>([self _imp]);
+    JSObject* object = JSC::jsDynamicCast<JSObject*>(vm, [self _imp]);
     PutPropertySlot slot(object);
-    object->methodTable()->put(object, exec, Identifier::fromString(exec, String(key)), convertObjcValueToValue(exec, &value, ObjcObjectType, [self _rootObject]), slot);
+    object->methodTable(vm)->put(object, exec, Identifier::fromString(exec, String(key)), convertObjcValueToValue(exec, &value, ObjcObjectType, [self _rootObject]), slot);
 
     if (UNLIKELY(scope.exception())) {
         addExceptionToConsole(exec);
@@ -455,7 +460,7 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
     auto scope = DECLARE_CATCH_SCOPE(vm);
     ExecState* exec = globalObject->globalExec();
 
-    [self _imp]->methodTable()->deleteProperty([self _imp], exec, Identifier::fromString(exec, String(key)));
+    [self _imp]->methodTable(vm)->deleteProperty([self _imp], exec, Identifier::fromString(exec, String(key)));
 
     if (UNLIKELY(scope.exception())) {
         addExceptionToConsole(exec);
@@ -494,11 +499,7 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
     ExecState* exec = [self _rootObject]->globalObject()->globalExec();
     JSLockHolder lock(exec);
 
-    id result = convertValueToObjcValue(exec, [self _imp], ObjcObjectType).objectValue;
-
-    NSString *description = [result description];
-
-    return description;
+    return [(__bridge id)convertValueToObjcValue(exec, [self _imp], ObjcObjectType).objectValue description];
 }
 
 - (id)webScriptValueAtIndex:(unsigned)index
@@ -536,7 +537,7 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
     auto scope = DECLARE_CATCH_SCOPE(vm);
     ExecState* exec = globalObject->globalExec();
 
-    [self _imp]->methodTable()->putByIndex([self _imp], exec, index, convertObjcValueToValue(exec, &value, ObjcObjectType, [self _rootObject]), false);
+    [self _imp]->methodTable(vm)->putByIndex([self _imp], exec, index, convertObjcValueToValue(exec, &value, ObjcObjectType, [self _rootObject]), false);
 
     if (UNLIKELY(scope.exception())) {
         addExceptionToConsole(exec);
@@ -565,13 +566,14 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
 {
     if (value.isObject()) {
         JSObject* object = asObject(value);
-        JSLockHolder lock(rootObject->globalObject()->vm());
+        JSC::VM& vm = rootObject->globalObject()->vm();
+        JSLockHolder lock(vm);
 
-        if (object->inherits(JSHTMLElement::info())) {
+        if (object->inherits<JSHTMLElement>(vm)) {
             // Plugin elements cache the instance internally.
             if (ObjcInstance* instance = static_cast<ObjcInstance*>(pluginInstance(jsCast<JSHTMLElement*>(object)->wrapped())))
                 return instance->getObject();
-        } else if (object->inherits(ObjCRuntimeObject::info())) {
+        } else if (object->inherits<ObjCRuntimeObject>(vm)) {
             ObjCRuntimeObject* runtimeObject = static_cast<ObjCRuntimeObject*>(object);
             ObjcInstance* instance = runtimeObject->getInternalObjCInstance();
             if (instance)
@@ -651,10 +653,10 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
 {
     UNUSED_PARAM(unusedZone);
 
-    static WebUndefined *sharedUndefined = 0;
-    if (!sharedUndefined)
-        sharedUndefined = [super allocWithZone:NULL];
-    return sharedUndefined;
+    static NeverDestroyed<RetainPtr<WebUndefined>> sharedUndefined;
+    if (!sharedUndefined.get())
+        sharedUndefined.get() = adoptNS([super allocWithZone:nullptr]);
+    return [sharedUndefined.get() retain];
 }
 
 - (NSString *)description
@@ -700,17 +702,16 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
     return self;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wobjc-missing-super-calls"
+IGNORE_WARNINGS_BEGIN("objc-missing-super-calls")
 - (void)dealloc
 {
-    return;
+    // Intentionally not calling [super dealloc] since we never want to deallocate our single instance.
 }
-#pragma clang diagnostic pop
+IGNORE_WARNINGS_END
 
 + (WebUndefined *)undefined
 {
-    return [WebUndefined allocWithZone:NULL];
+    return [[WebUndefined allocWithZone:NULL] autorelease];
 }
 
 @end

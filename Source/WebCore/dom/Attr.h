@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "ContainerNode.h"
+#include "Node.h"
 #include "QualifiedName.h"
 
 namespace WebCore {
@@ -33,45 +33,34 @@ class Attribute;
 class CSSStyleDeclaration;
 class MutableStyleProperties;
 
-// Attr can have Text children
-// therefore it has to be a fullblown Node. The plan
-// is to dynamically allocate a textchild and store the
-// resulting nodevalue in the attribute upon
-// destruction. however, this is not yet implemented.
-
-class Attr final : public ContainerNode {
+class Attr final : public Node {
+    WTF_MAKE_ISO_ALLOCATED(Attr);
 public:
     static Ref<Attr> create(Element&, const QualifiedName&);
-    static Ref<Attr> create(Document&, const QualifiedName&, const AtomicString& value);
+    static Ref<Attr> create(Document&, const QualifiedName&, const AtomString& value);
     virtual ~Attr();
 
     String name() const { return qualifiedName().toString(); }
     bool specified() const { return true; }
     Element* ownerElement() const { return m_element; }
 
-    WEBCORE_EXPORT const AtomicString& value() const;
-    void setValue(const AtomicString&);
-    const AtomicString& valueForBindings() const { return value(); }
-    WEBCORE_EXPORT void setValueForBindings(const AtomicString&);
+    WEBCORE_EXPORT const AtomString& value() const;
+    WEBCORE_EXPORT void setValue(const AtomString&);
 
     const QualifiedName& qualifiedName() const { return m_name; }
-
-    WEBCORE_EXPORT bool isId() const;
 
     WEBCORE_EXPORT CSSStyleDeclaration* style();
 
     void attachToElement(Element&);
-    void detachFromElementWithValue(const AtomicString&);
+    void detachFromElementWithValue(const AtomString&);
 
-    const AtomicString& namespaceURI() const final { return m_name.namespaceURI(); }
-    const AtomicString& localName() const final { return m_name.localName(); }
-    const AtomicString& prefix() const final { return m_name.prefix(); }
+    const AtomString& namespaceURI() const final { return m_name.namespaceURI(); }
+    const AtomString& localName() const final { return m_name.localName(); }
+    const AtomString& prefix() const final { return m_name.prefix(); }
 
 private:
     Attr(Element&, const QualifiedName&);
-    Attr(Document&, const QualifiedName&, const AtomicString& value);
-
-    void createTextChild();
+    Attr(Document&, const QualifiedName&, const AtomString& value);
 
     String nodeName() const final { return name(); }
     NodeType nodeType() const final { return ATTRIBUTE_NODE; }
@@ -79,14 +68,11 @@ private:
     String nodeValue() const final { return value(); }
     ExceptionOr<void> setNodeValue(const String&) final;
 
-    ExceptionOr<void> setPrefix(const AtomicString&) final;
+    ExceptionOr<void> setPrefix(const AtomString&) final;
 
     Ref<Node> cloneNodeInternal(Document&, CloningOperation) final;
 
     bool isAttributeNode() const final { return true; }
-    bool childTypeAllowed(NodeType) const final;
-
-    void childrenChanged(const ChildChange&) final;
 
     Attribute& elementAttribute();
 
@@ -94,10 +80,9 @@ private:
     // Note that m_name is always set, but m_element/m_standaloneValue may be null.
     Element* m_element { nullptr };
     QualifiedName m_name;
-    AtomicString m_standaloneValue;
+    AtomString m_standaloneValue;
 
     RefPtr<MutableStyleProperties> m_style;
-    unsigned m_ignoreChildrenChanged { 0 };
 };
 
 } // namespace WebCore

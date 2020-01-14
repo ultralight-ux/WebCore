@@ -34,48 +34,37 @@
 
 namespace JSC {
 
-StructureStubClearingWatchpoint::~StructureStubClearingWatchpoint()
+void StructureStubClearingWatchpoint::fireInternal(VM& vm, const FireDetail&)
 {
-    for (auto current = WTFMove(m_next); current; current = WTFMove(current->m_next)) { }
-}
+    if (!m_holder->isValid())
+        return;
 
-StructureStubClearingWatchpoint* StructureStubClearingWatchpoint::push(
-    const ObjectPropertyCondition& key,
-    WatchpointsOnStructureStubInfo& holder,
-    std::unique_ptr<StructureStubClearingWatchpoint>& head)
-{
-    head = std::make_unique<StructureStubClearingWatchpoint>(key, holder, WTFMove(head));
-    return head.get();
-}
-
-void StructureStubClearingWatchpoint::fireInternal(const FireDetail&)
-{
     if (!m_key || !m_key.isWatchable(PropertyCondition::EnsureWatchability)) {
         // This will implicitly cause my own demise: stub reset removes all watchpoints.
         // That works, because deleting a watchpoint removes it from the set's list, and
         // the set's list traversal for firing is robust against the set changing.
-        ConcurrentJSLocker locker(m_holder.codeBlock()->m_lock);
-        m_holder.stubInfo()->reset(m_holder.codeBlock());
+        ConcurrentJSLocker locker(m_holder->codeBlock()->m_lock);
+        m_holder->stubInfo()->reset(m_holder->codeBlock());
         return;
     }
 
     if (m_key.kind() == PropertyCondition::Presence) {
         // If this was a presence condition, let's watch the property for replacements. This is profitable
         // for the DFG, which will want the replacement set to be valid in order to do constant folding.
-        VM& vm = *Heap::heap(m_key.object())->vm();
-        m_key.object()->structure()->startWatchingPropertyForReplacements(vm, m_key.offset());
+        m_key.object()->structure(vm)->startWatchingPropertyForReplacements(vm, m_key.offset());
     }
 
-    m_key.object()->structure()->addTransitionWatchpoint(this);
+    m_key.object()->structure(vm)->addTransitionWatchpoint(this);
 }
 
-WatchpointsOnStructureStubInfo::~WatchpointsOnStructureStubInfo()
+inline bool WatchpointsOnStructureStubInfo::isValid() const
 {
+    return m_codeBlock->isLive();
 }
 
 StructureStubClearingWatchpoint* WatchpointsOnStructureStubInfo::addWatchpoint(const ObjectPropertyCondition& key)
 {
-    return StructureStubClearingWatchpoint::push(key, *this, m_head);
+    return m_watchpoints.add(key, *this);
 }
 
 StructureStubClearingWatchpoint* WatchpointsOnStructureStubInfo::ensureReferenceAndAddWatchpoint(

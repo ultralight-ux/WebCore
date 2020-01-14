@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -65,11 +65,19 @@ public:
         // As an input representation, this means that B3 should pick some register. It could be a
         // register that this claims to clobber!
         SomeRegister,
+        
+        // As an input representation, this means that B3 should pick some register but that this
+        // register is then cobbered with garbage. This only works for patchpoints.
+        SomeRegisterWithClobber,
 
         // As an input representation, this tells us that B3 should pick some register, but implies
         // that the def happens before any of the effects of the stackmap. This is only valid for
         // the result constraint of a Patchpoint.
         SomeEarlyRegister,
+
+        // As an input representation, this tells us that B3 should pick some register, but implies
+        // the use happens after any defs. This is only works for patchpoints.
+        SomeLateRegister,
 
         // As an input representation, this forces a particular register. As an output
         // representation, this tells us what register B3 picked.
@@ -107,7 +115,7 @@ public:
     ValueRep(Kind kind)
         : m_kind(kind)
     {
-        ASSERT(kind == WarmAny || kind == ColdAny || kind == LateColdAny || kind == SomeRegister || kind == SomeEarlyRegister);
+        ASSERT(kind == WarmAny || kind == ColdAny || kind == LateColdAny || kind == SomeRegister || kind == SomeRegisterWithClobber || kind == SomeEarlyRegister || kind == SomeLateRegister);
     }
 
     static ValueRep reg(Reg reg)
@@ -181,7 +189,7 @@ public:
 
     bool isAny() const { return kind() == WarmAny || kind() == ColdAny || kind() == LateColdAny; }
 
-    bool isReg() const { return kind() == Register || kind() == LateRegister; }
+    bool isReg() const { return kind() == Register || kind() == LateRegister || kind() == SomeLateRegister; }
     
     Reg reg() const
     {
@@ -272,7 +280,7 @@ private:
 
         U()
         {
-            memset(this, 0, sizeof(*this));
+            memset(static_cast<void*>(this), 0, sizeof(*this));
         }
     } u;
 };

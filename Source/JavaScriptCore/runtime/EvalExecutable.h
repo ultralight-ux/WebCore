@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2010, 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,25 +25,26 @@
 
 #pragma once
 
-#include "ScriptExecutable.h"
+#include "ExecutableToCodeBlockEdge.h"
+#include "GlobalExecutable.h"
 #include "UnlinkedEvalCodeBlock.h"
 
 namespace JSC {
 
-class EvalExecutable : public ScriptExecutable {
+class EvalExecutable : public GlobalExecutable {
     friend class LLIntOffsetsExtractor;
 public:
-    typedef ScriptExecutable Base;
+    using Base = GlobalExecutable;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
 
     static void destroy(JSCell*);
-
+    
     EvalCodeBlock* codeBlock()
     {
-        return m_evalCodeBlock.get();
+        return bitwise_cast<EvalCodeBlock*>(ExecutableToCodeBlockEdge::unwrap(m_evalCodeBlock.get()));
     }
 
-    PassRefPtr<JITCode> generatedJITCode()
+    Ref<JITCode> generatedJITCode()
     {
         return generatedJITCodeForCall();
     }
@@ -53,12 +54,22 @@ public:
         return Structure::create(vm, globalObject, proto, TypeInfo(EvalExecutableType, StructureFlags), info());
     }
 
+    template<typename CellType, SubspaceAccess mode>
+    static IsoSubspace* subspaceFor(VM& vm)
+    {
+        return vm.evalExecutableSpace<mode>();
+    }
+
     DECLARE_INFO;
 
     ExecutableInfo executableInfo() const { return ExecutableInfo(usesEval(), isStrictMode(), false, false, ConstructorKind::None, JSParserScriptMode::Classic, SuperBinding::NotNeeded, SourceParseMode::ProgramMode, derivedContextType(), isArrowFunctionContext(), false, evalContextType()); }
 
     unsigned numVariables() { return m_unlinkedEvalCodeBlock->numVariables(); }
-    unsigned numberOfFunctionDecls() { return m_unlinkedEvalCodeBlock->numberOfFunctionDecls(); }
+    unsigned numFunctionHoistingCandidates() { return m_unlinkedEvalCodeBlock->numFunctionHoistingCandidates(); }
+    unsigned numTopLevelFunctionDecls() { return m_unlinkedEvalCodeBlock->numberOfFunctionDecls(); }
+    bool allowDirectEvalCache() const { return m_unlinkedEvalCodeBlock->allowDirectEvalCache(); }
+
+    TemplateObjectMap& ensureTemplateObjectMap(VM&);
 
 protected:
     friend class ExecutableBase;
@@ -69,8 +80,9 @@ protected:
 
     static void visitChildren(JSCell*, SlotVisitor&);
 
-    WriteBarrier<EvalCodeBlock> m_evalCodeBlock;
+    WriteBarrier<ExecutableToCodeBlockEdge> m_evalCodeBlock;
     WriteBarrier<UnlinkedEvalCodeBlock> m_unlinkedEvalCodeBlock;
+    std::unique_ptr<TemplateObjectMap> m_templateObjectMap;
 };
 
 } // namespace JSC

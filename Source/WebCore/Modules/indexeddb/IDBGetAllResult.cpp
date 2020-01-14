@@ -28,66 +28,47 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
+#include <wtf/CrossThreadCopier.h>
 #include <wtf/HashSet.h>
 
 namespace WebCore {
 
-template<typename T> void isolatedCopyOfVariant(const WTF::Variant<Vector<IDBKeyData>, Vector<IDBValue>, std::nullptr_t>& source, WTF::Variant<Vector<IDBKeyData>, Vector<IDBValue>, std::nullptr_t>& target)
+IDBGetAllResult::IDBGetAllResult(const IDBGetAllResult& that, IsolatedCopyTag)
 {
-    target = Vector<T>();
-    auto& sourceVector = WTF::get<Vector<T>>(source);
-    auto& targetVector = WTF::get<Vector<T>>(target);
-    targetVector.reserveInitialCapacity(sourceVector.size());
-    for (auto& element : sourceVector)
-        targetVector.uncheckedAppend(element.isolatedCopy());
+    isolatedCopy(that, *this);
 }
 
 IDBGetAllResult IDBGetAllResult::isolatedCopy() const
 {
-    IDBGetAllResult result;
-    result.m_type = m_type;
+    return { *this, IsolatedCopy };
+}
 
-    if (WTF::holds_alternative<std::nullptr_t>(m_results))
-        return result;
-
-    switch (m_type) {
-    case IndexedDB::GetAllType::Keys:
-        isolatedCopyOfVariant<IDBKeyData>(m_results, result.m_results);
-        break;
-    case IndexedDB::GetAllType::Values:
-        isolatedCopyOfVariant<IDBValue>(m_results, result.m_results);
-        break;
-    }
-
-    return result;
+void IDBGetAllResult::isolatedCopy(const IDBGetAllResult& source, IDBGetAllResult& destination)
+{
+    destination.m_type = source.m_type;
+    destination.m_keys = crossThreadCopy(source.m_keys);
+    destination.m_values = crossThreadCopy(source.m_values);
+    destination.m_keyPath = WebCore::isolatedCopy(source.m_keyPath);
 }
 
 void IDBGetAllResult::addKey(IDBKeyData&& key)
 {
-    ASSERT(m_type == IndexedDB::GetAllType::Keys);
-    ASSERT(WTF::holds_alternative<Vector<IDBKeyData>>(m_results));
-    WTF::get<Vector<IDBKeyData>>(m_results).append(WTFMove(key));
+    m_keys.append(WTFMove(key));
 }
 
 void IDBGetAllResult::addValue(IDBValue&& value)
 {
-    ASSERT(m_type == IndexedDB::GetAllType::Values);
-    ASSERT(WTF::holds_alternative<Vector<IDBValue>>(m_results));
-    WTF::get<Vector<IDBValue>>(m_results).append(WTFMove(value));
+    m_values.append(WTFMove(value));
 }
 
 const Vector<IDBKeyData>& IDBGetAllResult::keys() const
 {
-    ASSERT(m_type == IndexedDB::GetAllType::Keys);
-    ASSERT(WTF::holds_alternative<Vector<IDBKeyData>>(m_results));
-    return WTF::get<Vector<IDBKeyData>>(m_results);
+    return m_keys;
 }
 
 const Vector<IDBValue>& IDBGetAllResult::values() const
 {
-    ASSERT(m_type == IndexedDB::GetAllType::Values);
-    ASSERT(WTF::holds_alternative<Vector<IDBValue>>(m_results));
-    return WTF::get<Vector<IDBValue>>(m_results);
+    return m_values;
 }
 
 Vector<String> IDBGetAllResult::allBlobFilePaths() const
@@ -95,15 +76,12 @@ Vector<String> IDBGetAllResult::allBlobFilePaths() const
     ASSERT(m_type == IndexedDB::GetAllType::Values);
 
     HashSet<String> pathSet;
-    for (auto& value : WTF::get<Vector<IDBValue>>(m_results)) {
+    for (auto& value : m_values) {
         for (auto& path : value.blobFilePaths())
             pathSet.add(path);
     }
 
-    Vector<String> paths;
-    copyToVector(pathSet, paths);
-
-    return paths;
+    return copyToVector(pathSet);
 }
 
 } // namespace WebCore

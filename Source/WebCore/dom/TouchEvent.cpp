@@ -31,31 +31,21 @@
 #include "TouchEvent.h"
 
 #include "EventDispatcher.h"
-#include <wtf/CurrentTime.h>
 
 namespace WebCore {
 
-TouchEvent::TouchEvent()
-{
-}
+TouchEvent::TouchEvent() = default;
 
-TouchEvent::TouchEvent(TouchList* touches, TouchList* targetTouches,
-        TouchList* changedTouches, const AtomicString& type, 
-        DOMWindow* view, int screenX, int screenY, int pageX, int pageY,
-        bool ctrlKey, bool altKey, bool shiftKey, bool metaKey)
-    : MouseRelatedEvent(type, true, true, currentTime(), view, 0, IntPoint(screenX, screenY),
-                        IntPoint(pageX, pageY),
-#if ENABLE(POINTER_LOCK)
-                        IntPoint(0, 0),
-#endif
-                        ctrlKey, altKey, shiftKey, metaKey)
+TouchEvent::TouchEvent(TouchList* touches, TouchList* targetTouches, TouchList* changedTouches, const AtomString& type,
+    RefPtr<WindowProxy>&& view, const IntPoint& globalLocation, OptionSet<Modifier> modifiers)
+    : MouseRelatedEvent(type, IsCancelable::Yes, MonotonicTime::now(), WTFMove(view), globalLocation, modifiers)
     , m_touches(touches)
     , m_targetTouches(targetTouches)
     , m_changedTouches(changedTouches)
 {
 }
 
-TouchEvent::TouchEvent(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+TouchEvent::TouchEvent(const AtomString& type, const Init& initializer, IsTrusted isTrusted)
     : MouseRelatedEvent(type, initializer, isTrusted)
     , m_touches(initializer.touches ? initializer.touches : TouchList::create())
     , m_targetTouches(initializer.targetTouches ? initializer.targetTouches : TouchList::create())
@@ -63,28 +53,23 @@ TouchEvent::TouchEvent(const AtomicString& type, const Init& initializer, IsTrus
 {
 }
 
-TouchEvent::~TouchEvent()
-{
-}
+TouchEvent::~TouchEvent() = default;
 
 void TouchEvent::initTouchEvent(TouchList* touches, TouchList* targetTouches,
-        TouchList* changedTouches, const AtomicString& type, 
-        DOMWindow* view, int screenX, int screenY, int clientX, int clientY,
+        TouchList* changedTouches, const AtomString& type, 
+        RefPtr<WindowProxy>&& view, int screenX, int screenY, int clientX, int clientY,
         bool ctrlKey, bool altKey, bool shiftKey, bool metaKey)
 {
-    if (dispatched())
+    if (isBeingDispatched())
         return;
 
-    initUIEvent(type, true, true, view, 0);
+    initUIEvent(type, true, true, WTFMove(view), 0);
 
     m_touches = touches;
     m_targetTouches = targetTouches;
     m_changedTouches = changedTouches;
     m_screenLocation = IntPoint(screenX, screenY);
-    m_ctrlKey = ctrlKey;
-    m_altKey = altKey;
-    m_shiftKey = shiftKey;
-    m_metaKey = metaKey;
+    setModifierKeys(ctrlKey, altKey, shiftKey, metaKey);
     initCoordinates(IntPoint(clientX, clientY));
 }
 

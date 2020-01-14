@@ -32,12 +32,12 @@
 #include <string.h>
 #include <wtf/CheckedArithmetic.h>
 #include <wtf/FastMalloc.h>
-#include <wtf/Vector.h>
 
 namespace WebCore {
 
 template<typename T>
 class AudioArray {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     AudioArray() : m_allocation(0), m_alignedData(0), m_size(0) { }
     explicit AudioArray(size_t n) : m_allocation(0), m_alignedData(0), m_size(0)

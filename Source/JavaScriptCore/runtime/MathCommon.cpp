@@ -30,7 +30,7 @@
 
 namespace JSC {
 
-#if PLATFORM(IOS) && CPU(ARM_THUMB2)
+#if PLATFORM(IOS_FAMILY) && CPU(ARM_THUMB2)
 
 // The following code is taken from netlib.org:
 //   http://www.netlib.org/fdlibm/fdlibm.h
@@ -179,7 +179,7 @@ static double fdlibmPow(double x, double y)
     int hx,hy,ix,iy;
     unsigned lx,ly;
 
-    i0 = ((*(int*)&one)>>29)^1; i1=1-i0;
+    i0 = ((*(const int*)&one)>>29)^1; i1=1-i0;
     hx = __HI(x); lx = __LO(x);
     hy = __HI(y); ly = __LO(y);
     ix = hx&0x7fffffff;  iy = hy&0x7fffffff;
@@ -437,20 +437,8 @@ double JIT_OPERATION operationMathPow(double x, double y)
     int32_t yAsInt = y;
     if (static_cast<double>(yAsInt) == y && yAsInt >= 0 && yAsInt <= maxExponentForIntegerMathPow) {
         // If the exponent is a small positive int32 integer, we do a fast exponentiation
-
-        // Do not use x87 values for accumulation. x87 values has 80bit precision.
-        // The result produced by x87's 80bit double precision differs from the one calculated with SSE2 in DFG.
-        // Using volatile double is workaround for this problem. By specifying volatile, we expect that `result` and `xd`
-        // are stored in the stack. And at that time, we expect that they are rounded by fst/fstp[1, 2].
-        // [1]: https://gcc.gnu.org/wiki/x87note
-        // [2]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=323
-#if !CPU(X86) || (defined(__SSE2_MATH__) && defined(__SSE2__))
-        typedef double DoubleValue;
-#else
-        typedef volatile double DoubleValue;
-#endif
-        DoubleValue result = 1;
-        DoubleValue xd = x;
+        double result = 1;
+        double xd = x;
         while (yAsInt) {
             if (yAsInt & 1)
                 result *= xd;
@@ -465,6 +453,11 @@ double JIT_OPERATION operationMathPow(double x, double y)
 int32_t JIT_OPERATION operationToInt32(double value)
 {
     return JSC::toInt32(value);
+}
+
+int32_t JIT_OPERATION operationToInt32SensibleSlow(double number)
+{
+    return toInt32Internal<ToInt32Mode::AfterSensibleConversionAttempt>(number);
 }
 
 #if HAVE(ARM_IDIV_INSTRUCTIONS)
@@ -516,4 +509,14 @@ double jsMod(double x, double y)
 #endif
 } // extern "C"
 
+namespace Math {
+
+double JIT_OPERATION log1p(double value)
+{
+    if (value == 0.0)
+        return value;
+    return std::log1p(value);
+}
+
+} // namespace Math
 } // namespace JSC

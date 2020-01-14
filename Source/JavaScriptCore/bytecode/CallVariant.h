@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,8 +25,9 @@
 
 #pragma once
 
+#include "ExecutableBaseInlines.h"
 #include "FunctionExecutable.h"
-#include "JSCell.h"
+#include "JSCast.h"
 #include "JSFunction.h"
 #include "NativeExecutable.h"
 
@@ -71,7 +72,7 @@ public:
     {
     }
     
-    bool operator!() const { return !m_callee; }
+    explicit operator bool() const { return !!m_callee; }
     
     // If this variant refers to a function, change it to refer to its executable.
     ALWAYS_INLINE CallVariant despecifiedClosure() const
@@ -85,21 +86,21 @@ public:
     
     InternalFunction* internalFunction() const
     {
-        return jsDynamicCast<InternalFunction*>(m_callee);
+        return jsDynamicCast<InternalFunction*>(*m_callee->vm(), m_callee);
     }
     
     JSFunction* function() const
     {
-        return jsDynamicCast<JSFunction*>(m_callee);
+        return jsDynamicCast<JSFunction*>(*m_callee->vm(), m_callee);
     }
     
-    bool isClosureCall() const { return !!jsDynamicCast<ExecutableBase*>(m_callee); }
+    bool isClosureCall() const { return !!jsDynamicCast<ExecutableBase*>(*m_callee->vm(), m_callee); }
     
     ExecutableBase* executable() const
     {
         if (JSFunction* function = this->function())
             return function->executable();
-        return jsDynamicCast<ExecutableBase*>(m_callee);
+        return jsDynamicCast<ExecutableBase*>(*m_callee->vm(), m_callee);
     }
     
     JSCell* nonExecutableCallee() const
@@ -118,14 +119,14 @@ public:
     FunctionExecutable* functionExecutable() const
     {
         if (ExecutableBase* executable = this->executable())
-            return jsDynamicCast<FunctionExecutable*>(executable);
+            return jsDynamicCast<FunctionExecutable*>(*m_callee->vm(), executable);
         return nullptr;
     }
 
     NativeExecutable* nativeExecutable() const
     {
         if (ExecutableBase* executable = this->executable())
-            return jsDynamicCast<NativeExecutable*>(executable);
+            return jsDynamicCast<NativeExecutable*>(*m_callee->vm(), executable);
         return nullptr;
     }
 
@@ -135,6 +136,12 @@ public:
             return nativeExecutable->signatureFor(kind);
         return nullptr;
     }
+    
+    bool finalize(VM&);
+    
+    bool merge(const CallVariant&);
+    
+    void filter(VM&, JSValue);
     
     void dump(PrintStream& out) const;
     

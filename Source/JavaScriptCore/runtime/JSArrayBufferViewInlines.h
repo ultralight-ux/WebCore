@@ -50,9 +50,12 @@ inline ArrayBuffer* JSArrayBufferView::possiblySharedBuffer()
         return existingBufferInButterfly();
     case DataViewMode:
         return jsCast<JSDataView*>(this)->possiblySharedBuffer();
-    default:
-        return methodTable()->slowDownAndWasteMemory(this);
+    case FastTypedArray:
+    case OversizeTypedArray:
+        return slowDownAndWasteMemory();
     }
+    ASSERT_NOT_REACHED();
+    return nullptr;
 }
 
 inline ArrayBuffer* JSArrayBufferView::existingBufferInButterfly()
@@ -61,14 +64,9 @@ inline ArrayBuffer* JSArrayBufferView::existingBufferInButterfly()
     return butterfly()->indexingHeader()->arrayBuffer();
 }
 
-inline PassRefPtr<ArrayBufferView> JSArrayBufferView::possiblySharedImpl()
+inline RefPtr<ArrayBufferView> JSArrayBufferView::unsharedImpl()
 {
-    return methodTable()->getTypedArrayImpl(this);
-}
-
-inline PassRefPtr<ArrayBufferView> JSArrayBufferView::unsharedImpl()
-{
-    PassRefPtr<ArrayBufferView> result = possiblySharedImpl();
+    RefPtr<ArrayBufferView> result = possiblySharedImpl();
     RELEASE_ASSERT(!result->isShared());
     return result;
 }
@@ -89,9 +87,9 @@ inline unsigned JSArrayBufferView::byteOffset()
     return result;
 }
 
-inline RefPtr<ArrayBufferView> JSArrayBufferView::toWrapped(JSValue value)
+inline RefPtr<ArrayBufferView> JSArrayBufferView::toWrapped(VM& vm, JSValue value)
 {
-    if (JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(value)) {
+    if (JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(vm, value)) {
         if (!view->isShared())
             return view->unsharedImpl();
     }

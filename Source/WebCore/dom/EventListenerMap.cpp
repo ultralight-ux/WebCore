@@ -39,7 +39,6 @@
 #include <wtf/StdLibExtras.h>
 #include <wtf/Vector.h>
 
-using namespace WTF;
 
 namespace WebCore {
 
@@ -54,7 +53,7 @@ EventListenerMap::EventListenerMap()
 {
 }
 
-bool EventListenerMap::containsCapturing(const AtomicString& eventType) const
+bool EventListenerMap::containsCapturing(const AtomString& eventType) const
 {
     auto* listeners = find(eventType);
     if (!listeners)
@@ -67,7 +66,7 @@ bool EventListenerMap::containsCapturing(const AtomicString& eventType) const
     return false;
 }
 
-bool EventListenerMap::containsActive(const AtomicString& eventType) const
+bool EventListenerMap::containsActive(const AtomString& eventType) const
 {
     auto* listeners = find(eventType);
     if (!listeners)
@@ -86,12 +85,17 @@ void EventListenerMap::clear()
     
     assertNoActiveIterators();
 
+    for (auto& entry : m_entries) {
+        for (auto& listener : *entry.second)
+            listener->markAsRemoved();
+    }
+
     m_entries.clear();
 }
 
-Vector<AtomicString> EventListenerMap::eventTypes() const
+Vector<AtomString> EventListenerMap::eventTypes() const
 {
-    Vector<AtomicString> types;
+    Vector<AtomString> types;
     types.reserveInitialCapacity(m_entries.size());
 
     for (auto& entry : m_entries)
@@ -110,7 +114,7 @@ static inline size_t findListener(const EventListenerVector& listeners, EventLis
     return notFound;
 }
 
-void EventListenerMap::replace(const AtomicString& eventType, EventListener& oldListener, Ref<EventListener>&& newListener, const RegisteredEventListener::Options& options)
+void EventListenerMap::replace(const AtomString& eventType, EventListener& oldListener, Ref<EventListener>&& newListener, const RegisteredEventListener::Options& options)
 {
     auto locker = holdLock(m_lock);
     
@@ -125,7 +129,7 @@ void EventListenerMap::replace(const AtomicString& eventType, EventListener& old
     registeredListener = RegisteredEventListener::create(WTFMove(newListener), options);
 }
 
-bool EventListenerMap::add(const AtomicString& eventType, Ref<EventListener>&& listener, const RegisteredEventListener::Options& options)
+bool EventListenerMap::add(const AtomString& eventType, Ref<EventListener>&& listener, const RegisteredEventListener::Options& options)
 {
     auto locker = holdLock(m_lock);
     
@@ -155,7 +159,7 @@ static bool removeListenerFromVector(EventListenerVector& listeners, EventListen
     return true;
 }
 
-bool EventListenerMap::remove(const AtomicString& eventType, EventListener& listener, bool useCapture)
+bool EventListenerMap::remove(const AtomString& eventType, EventListener& listener, bool useCapture)
 {
     auto locker = holdLock(m_lock);
     
@@ -173,7 +177,7 @@ bool EventListenerMap::remove(const AtomicString& eventType, EventListener& list
     return false;
 }
 
-EventListenerVector* EventListenerMap::find(const AtomicString& eventType) const
+EventListenerVector* EventListenerMap::find(const AtomString& eventType) const
 {
     for (auto& entry : m_entries) {
         if (entry.first == eventType)
@@ -195,7 +199,7 @@ static void removeFirstListenerCreatedFromMarkup(EventListenerVector& listenerVe
     ASSERT_UNUSED(foundListener, foundListener);
 }
 
-void EventListenerMap::removeFirstEventListenerCreatedFromMarkup(const AtomicString& eventType)
+void EventListenerMap::removeFirstEventListenerCreatedFromMarkup(const AtomString& eventType)
 {
     auto locker = holdLock(m_lock);
     
@@ -211,7 +215,7 @@ void EventListenerMap::removeFirstEventListenerCreatedFromMarkup(const AtomicStr
     }
 }
 
-static void copyListenersNotCreatedFromMarkupToTarget(const AtomicString& eventType, EventListenerVector& listenerVector, EventTarget* target)
+static void copyListenersNotCreatedFromMarkupToTarget(const AtomString& eventType, EventListenerVector& listenerVector, EventTarget* target)
 {
     for (auto& registeredListener : listenerVector) {
         // Event listeners created from markup have already been transfered to the shadow tree during cloning.

@@ -21,10 +21,8 @@
 #pragma once
 
 #include "CSSPropertyNames.h"
-#include "DeprecatedCSSOMValue.h"
 #include "ExceptionOr.h"
 #include "ScriptWrappable.h"
-#include <wtf/Forward.h>
 
 namespace WebCore {
 
@@ -32,14 +30,16 @@ class CSSProperty;
 class CSSRule;
 class CSSStyleSheet;
 class CSSValue;
+class DeprecatedCSSOMValue;
 class MutableStyleProperties;
 class StyleProperties;
 class StyledElement;
 
 class CSSStyleDeclaration : public ScriptWrappable {
-    WTF_MAKE_NONCOPYABLE(CSSStyleDeclaration); WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_NONCOPYABLE(CSSStyleDeclaration);
+    WTF_MAKE_ISO_ALLOCATED(CSSStyleDeclaration);
 public:
-    virtual ~CSSStyleDeclaration() { }
+    virtual ~CSSStyleDeclaration() = default;
 
     virtual void ref() = 0;
     virtual void deref() = 0;
@@ -58,6 +58,9 @@ public:
     virtual ExceptionOr<void> setProperty(const String& propertyName, const String& value, const String& priority) = 0;
     virtual ExceptionOr<String> removeProperty(const String& propertyName) = 0;
 
+    String cssFloat();
+    ExceptionOr<void> setCssFloat(const String&);
+
     // CSSPropertyID versions of the CSSOM functions to support bindings and editing.
     // Use the non-virtual methods in the concrete subclasses when possible.
     // The CSSValue returned by this function should not be exposed to the web as it may be used by multiple documents at the same time.
@@ -69,8 +72,14 @@ public:
 
     virtual CSSStyleSheet* parentStyleSheet() const { return nullptr; }
 
+    // Bindings support.
+    Optional<Variant<String, double>> namedItem(const AtomString&);
+    ExceptionOr<void> setNamedItem(const AtomString& name, String value, bool& propertySupported);
+    Vector<AtomString> supportedPropertyNames() const;
+
+    static CSSPropertyID getCSSPropertyIDFromJavaScriptPropertyName(const AtomString&);
 protected:
-    CSSStyleDeclaration() { }
+    CSSStyleDeclaration() = default;
 };
 
 } // namespace WebCore

@@ -30,16 +30,7 @@ class SourceGraphic : public FilterEffect {
 public:        
     static Ref<SourceGraphic> create(Filter&);
 
-    static const AtomicString& effectName();
-
-    void platformApplySoftware() override;
-    void dump() override;
-
-    void determineAbsolutePaintRect() override;
-
-    FilterEffectType filterEffectType() const override { return FilterEffectTypeSourceInput; }
-
-    TextStream& externalRepresentation(TextStream&, int indention) const override;
+    static const AtomString& effectName();
 
 private:
     SourceGraphic(Filter& filter)
@@ -47,6 +38,14 @@ private:
     {
         setOperatingColorSpace(ColorSpaceSRGB);
     }
+
+    const char* filterName() const final { return "SourceGraphic"; }
+
+    void determineAbsolutePaintRect() override;
+    void platformApplySoftware() override;
+    WTF::TextStream& externalRepresentation(WTF::TextStream&, RepresentationType) const override;
+
+    FilterEffectType filterEffectType() const override { return FilterEffectTypeSourceInput; }
 };
 
 } //namespace WebCore

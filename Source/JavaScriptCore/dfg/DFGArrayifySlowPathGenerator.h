@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,6 @@
 #if ENABLE(DFG_JIT)
 
 #include "DFGArrayMode.h"
-#include "DFGCommon.h"
 #include "DFGOSRExitJumpPlaceholder.h"
 #include "DFGOperations.h"
 #include "DFGSlowPathGenerator.h"
@@ -44,8 +43,8 @@ public:
         GPRReg propertyGPR, GPRReg tempGPR, GPRReg structureGPR)
         : JumpingSlowPathGenerator<MacroAssembler::JumpList>(from, jit)
         , m_op(node->op())
-        , m_arrayMode(node->arrayMode())
         , m_structure(node->op() == ArrayifyToStructure ? node->structure() : RegisteredStructure())
+        , m_arrayMode(node->arrayMode())
         , m_baseGPR(baseGPR)
         , m_propertyGPR(propertyGPR)
         , m_tempGPR(tempGPR)
@@ -111,7 +110,7 @@ protected:
             break;
         }
         for (unsigned i = m_plans.size(); i--;)
-            jit->silentFill(m_plans[i], GPRInfo::regT0);
+            jit->silentFill(m_plans[i]);
         jit->m_jit.exceptionCheck();
         
         if (m_op == ArrayifyToStructure) {
@@ -135,8 +134,8 @@ protected:
     
 private:
     NodeType m_op;
-    ArrayMode m_arrayMode;
     RegisteredStructure m_structure;
+    ArrayMode m_arrayMode;
     GPRReg m_baseGPR;
     GPRReg m_propertyGPR;
     GPRReg m_tempGPR;

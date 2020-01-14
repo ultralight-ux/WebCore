@@ -30,15 +30,15 @@
 
 #pragma once
 
-#if ENABLE(WEB_SOCKETS)
-
 #include "ActiveDOMObject.h"
 #include "EventTarget.h"
 #include "ExceptionOr.h"
 #include "Timer.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "WebSocketChannelClient.h"
 #include <wtf/Deque.h>
+#include <wtf/HashSet.h>
+#include <wtf/Lock.h>
 
 namespace JSC {
 class ArrayBuffer;
@@ -51,16 +51,17 @@ class Blob;
 class ThreadableWebSocketChannel;
 
 class WebSocket final : public RefCounted<WebSocket>, public EventTargetWithInlineData, public ActiveDOMObject, private WebSocketChannelClient {
+    WTF_MAKE_ISO_ALLOCATED(WebSocket);
 public:
-    static void setIsAvailable(bool);
-    static bool isAvailable();
-
     static const char* subprotocolSeparator();
 
     static ExceptionOr<Ref<WebSocket>> create(ScriptExecutionContext&, const String& url);
     static ExceptionOr<Ref<WebSocket>> create(ScriptExecutionContext&, const String& url, const String& protocol);
     static ExceptionOr<Ref<WebSocket>> create(ScriptExecutionContext&, const String& url, const Vector<String>& protocols);
     virtual ~WebSocket();
+
+    static HashSet<WebSocket*>& allActiveWebSockets(const LockHolder&);
+    static Lock& allActiveWebSocketsMutex();
 
     enum State {
         CONNECTING = 0,
@@ -78,7 +79,9 @@ public:
     ExceptionOr<void> send(JSC::ArrayBufferView&);
     ExceptionOr<void> send(Blob&);
 
-    ExceptionOr<void> close(std::optional<unsigned short> code, const String& reason);
+    ExceptionOr<void> close(Optional<unsigned short> code, const String& reason);
+
+    RefPtr<ThreadableWebSocketChannel> channel() const;
 
     const URL& url() const;
     State readyState() const;
@@ -89,6 +92,8 @@ public:
 
     String binaryType() const;
     ExceptionOr<void> setBinaryType(const String&);
+
+    ScriptExecutionContext* scriptExecutionContext() const final;
 
     using RefCounted::ref;
     using RefCounted::deref;
@@ -108,7 +113,6 @@ private:
     const char* activeDOMObjectName() const final;
 
     EventTargetInterface eventTargetInterface() const final;
-    ScriptExecutionContext* scriptExecutionContext() const final;
 
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
@@ -123,6 +127,8 @@ private:
     void didUpgradeURL() final;
 
     size_t getFramingOverhead(size_t payloadSize);
+
+    void failAsynchronously();
 
     enum class BinaryType { Blob, ArrayBuffer };
 
@@ -140,8 +146,7 @@ private:
     bool m_shouldDelayEventFiring { false };
     Deque<Ref<Event>> m_pendingEvents;
     bool m_dispatchedErrorEvent { false };
+    RefPtr<PendingActivity<WebSocket>> m_pendingActivity;
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(WEB_SOCKETS)

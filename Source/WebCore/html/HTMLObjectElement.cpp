@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Stefan Schimanski (1Stein@gmx.de)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Nokia Corporation and/or its subsidiary(-ies)
  *
  * This library is free software; you can redistribute it and/or
@@ -27,12 +27,10 @@
 #include "Attribute.h"
 #include "CSSValueKeywords.h"
 #include "CachedImage.h"
-#include "Chrome.h"
-#include "ChromeClient.h"
+#include "DOMFormData.h"
 #include "ElementIterator.h"
-#include "EventNames.h"
-#include "FormDataList.h"
 #include "Frame.h"
+#include "FrameLoader.h"
 #include "HTMLDocument.h"
 #include "HTMLFormElement.h"
 #include "HTMLImageLoader.h"
@@ -51,33 +49,32 @@
 #include "SubframeLoader.h"
 #include "Text.h"
 #include "Widget.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/Ref.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #include "RuntimeApplicationChecks.h"
 #include <wtf/spi/darwin/dyldSPI.h>
 #endif
 
 namespace WebCore {
 
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLObjectElement);
+
 using namespace HTMLNames;
 
-inline HTMLObjectElement::HTMLObjectElement(const QualifiedName& tagName, Document& document, HTMLFormElement* form, bool createdByParser)
-    : HTMLPlugInImageElement(tagName, document, createdByParser)
+inline HTMLObjectElement::HTMLObjectElement(const QualifiedName& tagName, Document& document, HTMLFormElement* form)
+    : HTMLPlugInImageElement(tagName, document)
     , FormAssociatedElement(form)
-    , m_docNamedItem(true)
-    , m_useFallbackContent(false)
 {
     ASSERT(hasTagName(objectTag));
 }
 
-inline HTMLObjectElement::~HTMLObjectElement()
+Ref<HTMLObjectElement> HTMLObjectElement::create(const QualifiedName& tagName, Document& document, HTMLFormElement* form)
 {
-}
-
-Ref<HTMLObjectElement> HTMLObjectElement::create(const QualifiedName& tagName, Document& document, HTMLFormElement* form, bool createdByParser)
-{
-    return adoptRef(*new HTMLObjectElement(tagName, document, form, createdByParser));
+    auto result = adoptRef(*new HTMLObjectElement(tagName, document, form));
+    result->finishCreating();
+    return result;
 }
 
 RenderWidget* HTMLObjectElement::renderWidgetLoadingPlugin() const
@@ -96,7 +93,7 @@ bool HTMLObjectElement::isPresentationAttribute(const QualifiedName& name) const
     return HTMLPlugInImageElement::isPresentationAttribute(name);
 }
 
-void HTMLObjectElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStyleProperties& style)
+void HTMLObjectElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == borderAttr)
         applyBorderAttributeToStyle(value, style);
@@ -104,7 +101,7 @@ void HTMLObjectElement::collectStyleForPresentationAttribute(const QualifiedName
         HTMLPlugInImageElement::collectStyleForPresentationAttribute(name, value, style);
 }
 
-void HTMLObjectElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void HTMLObjectElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     bool invalidateRenderer = false;
 
@@ -116,24 +113,20 @@ void HTMLObjectElement::parseAttribute(const QualifiedName& name, const AtomicSt
         setNeedsWidgetUpdate(true);
     } else if (name == dataAttr) {
         m_url = stripLeadingAndTrailingHTMLSpaces(value);
-        document().updateStyleIfNeeded();
-        if (isImageType() && renderer()) {
-            if (!m_imageLoader)
-                m_imageLoader = std::make_unique<HTMLImageLoader>(*this);
-            m_imageLoader->updateFromElementIgnoringPreviousError();
-        }
         invalidateRenderer = !hasAttributeWithoutSynchronization(classidAttr);
         setNeedsWidgetUpdate(true);
+        updateImageLoaderWithNewURLSoon();
     } else if (name == classidAttr) {
         invalidateRenderer = true;
         setNeedsWidgetUpdate(true);
     } else
         HTMLPlugInImageElement::parseAttribute(name, value);
 
-    if (!invalidateRenderer || !inDocument() || !renderer())
+    if (!invalidateRenderer || !isConnected() || !renderer())
         return;
 
-    clearUseFallbackContent();
+    m_useFallbackContent = false;
+    scheduleUpdateForAfterStyleResolution();
     invalidateStyleAndRenderersForSubtree();
 }
 
@@ -149,18 +142,10 @@ static void mapDataParamToSrc(Vector<String>& paramNames, Vector<String>& paramV
             dataParamValue = paramValues[i];
     }
     if (!foundSrcParam && !dataParamValue.isNull()) {
-        paramNames.append(ASCIILiteral("src"));
+        paramNames.append("src"_s);
         paramValues.append(WTFMove(dataParamValue));
     }
 }
-
-#if PLATFORM(IOS)
-static bool shouldNotPerformURLAdjustment()
-{
-    static bool shouldNotPerformURLAdjustment = IOSApplication::isNASAHD() && dyld_get_program_sdk_version() < DYLD_IOS_VERSION_5_0;
-    return shouldNotPerformURLAdjustment;
-}
-#endif
 
 // FIXME: This function should not deal with url or serviceType!
 void HTMLObjectElement::parametersForPlugin(Vector<String>& paramNames, Vector<String>& paramValues, String& url, String& serviceType)
@@ -205,7 +190,7 @@ void HTMLObjectElement::parametersForPlugin(Vector<String>& paramNames, Vector<S
     // Turn the attributes of the <object> element into arrays, but don't override <param> values.
     if (hasAttributes()) {
         for (const Attribute& attribute : attributesIterator()) {
-            const AtomicString& name = attribute.name().localName();
+            const AtomString& name = attribute.name().localName();
             if (!uniqueParamNames.contains(name.impl())) {
                 paramNames.append(name.string());
                 paramValues.append(attribute.value().string());
@@ -219,10 +204,6 @@ void HTMLObjectElement::parametersForPlugin(Vector<String>& paramNames, Vector<S
     // attribute, not by a param element. However, for compatibility, allow the
     // resource's URL to be given by a param named "src", "movie", "code" or "url"
     // if we know that resource points to a plug-in.
-#if PLATFORM(IOS)
-    if (shouldNotPerformURLAdjustment())
-        return;
-#endif
 
     if (url.isEmpty() && !urlParameter.isEmpty()) {
         SubframeLoader& loader = document().frame()->loader().subframeLoader();
@@ -231,49 +212,22 @@ void HTMLObjectElement::parametersForPlugin(Vector<String>& paramNames, Vector<S
     }
 }
 
-    
 bool HTMLObjectElement::hasFallbackContent() const
 {
-    for (Node* child = firstChild(); child; child = child->nextSibling()) {
+    for (RefPtr<Node> child = firstChild(); child; child = child->nextSibling()) {
         // Ignore whitespace-only text, and <param> tags, any other content is fallback content.
         if (is<Text>(*child)) {
-            if (!downcast<Text>(*child).containsOnlyWhitespace())
+            if (!downcast<Text>(*child).data().isAllSpecialCharacters<isHTMLSpace>())
                 return true;
         } else if (!is<HTMLParamElement>(*child))
             return true;
     }
     return false;
 }
-    
-bool HTMLObjectElement::shouldAllowQuickTimeClassIdQuirk()
-{
-    // This site-specific hack maintains compatibility with Mac OS X Wiki Server,
-    // which embeds QuickTime movies using an object tag containing QuickTime's
-    // ActiveX classid. Treat this classid as valid only if OS X Server's unique
-    // 'generator' meta tag is present. Only apply this quirk if there is no
-    // fallback content, which ensures the quirk will disable itself if Wiki
-    // Server is updated to generate an alternate embed tag as fallback content.
 
-    if (!document().page()
-        || !document().page()->settings().needsSiteSpecificQuirks()
-        || hasFallbackContent()
-        || !equalLettersIgnoringASCIICase(attributeWithoutSynchronization(classidAttr), "clsid:02bf25d5-8c17-4b23-bc80-d3488abddc6b"))
-        return false;
-
-    for (auto& metaElement : descendantsOfType<HTMLMetaElement>(document())) {
-        if (equalLettersIgnoringASCIICase(metaElement.name(), "generator") && metaElement.content().startsWith("Mac OS X Server Web Services Server", false))
-            return true;
-    }
-
-    return false;
-}
-    
 bool HTMLObjectElement::hasValidClassId()
 {
-    if (MIMETypeRegistry::isJavaAppletMIMEType(serviceType()) && attributeWithoutSynchronization(classidAttr).startsWith("java:", false))
-        return true;
-    
-    if (shouldAllowQuickTimeClassIdQuirk())
+    if (MIMETypeRegistry::isJavaAppletMIMEType(serviceType()) && protocolIs(attributeWithoutSynchronization(classidAttr), "java"))
         return true;
 
     // HTML5 says that fallback content should be rendered if a non-empty
@@ -287,16 +241,20 @@ void HTMLObjectElement::updateWidget(CreatePlugins createPlugins)
 {
     ASSERT(!renderEmbeddedObject()->isPluginUnavailable());
     ASSERT(needsWidgetUpdate());
-    setNeedsWidgetUpdate(false);
+
     // FIXME: This should ASSERT isFinishedParsingChildren() instead.
-    if (!isFinishedParsingChildren())
+    if (!isFinishedParsingChildren()) {
+        setNeedsWidgetUpdate(false);
         return;
+    }
 
     // FIXME: I'm not sure it's ever possible to get into updateWidget during a
     // removal, but just in case we should avoid loading the frame to prevent
     // security bugs.
-    if (!SubframeLoadingDisabler::canLoadFrame(*this))
+    if (!SubframeLoadingDisabler::canLoadFrame(*this)) {
+        setNeedsWidgetUpdate(false);
         return;
+    }
 
     String url = this->url();
     String serviceType = this->serviceType();
@@ -307,17 +265,18 @@ void HTMLObjectElement::updateWidget(CreatePlugins createPlugins)
     parametersForPlugin(paramNames, paramValues, url, serviceType);
 
     // Note: url is modified above by parametersForPlugin.
-    if (!allowedToLoadFrameURL(url))
+    if (!allowedToLoadFrameURL(url)) {
+        setNeedsWidgetUpdate(false);
         return;
+    }
 
     // FIXME: It's sadness that we have this special case here.
     //        See http://trac.webkit.org/changeset/25128 and
     //        plugins/netscape-plugin-setwindow-size.html
-    if (createPlugins == CreatePlugins::No && wouldLoadAsPlugIn(url, serviceType)) {
-        // Ensure updateWidget() is called again during layout to create the Netscape plug-in.
-        setNeedsWidgetUpdate(true);
+    if (createPlugins == CreatePlugins::No && wouldLoadAsPlugIn(url, serviceType))
         return;
-    }
+
+    setNeedsWidgetUpdate(false);
 
     Ref<HTMLObjectElement> protectedThis(*this); // beforeload and plugin loading can make arbitrary DOM mutations.
     bool beforeLoadAllowedLoad = guardedDispatchBeforeLoadEvent(url);
@@ -331,29 +290,30 @@ void HTMLObjectElement::updateWidget(CreatePlugins createPlugins)
         renderFallbackContent();
 }
 
-Node::InsertionNotificationRequest HTMLObjectElement::insertedInto(ContainerNode& insertionPoint)
+Node::InsertedIntoAncestorResult HTMLObjectElement::insertedIntoAncestor(InsertionType insertionType, ContainerNode& parentOfInsertedTree)
 {
-    HTMLPlugInImageElement::insertedInto(insertionPoint);
-    FormAssociatedElement::insertedInto(insertionPoint);
-    return InsertionShouldCallFinishedInsertingSubtree;
+    HTMLPlugInImageElement::insertedIntoAncestor(insertionType, parentOfInsertedTree);
+    FormAssociatedElement::insertedIntoAncestor(insertionType, parentOfInsertedTree);
+    return InsertedIntoAncestorResult::NeedsPostInsertionCallback;
 }
 
-void HTMLObjectElement::finishedInsertingSubtree()
+void HTMLObjectElement::didFinishInsertingNode()
 {
     resetFormOwner();
 }
 
-void HTMLObjectElement::removedFrom(ContainerNode& insertionPoint)
+void HTMLObjectElement::removedFromAncestor(RemovalType removalType, ContainerNode& oldParentOfRemovedTree)
 {
-    HTMLPlugInImageElement::removedFrom(insertionPoint);
-    FormAssociatedElement::removedFrom(insertionPoint);
+    HTMLPlugInImageElement::removedFromAncestor(removalType, oldParentOfRemovedTree);
+    FormAssociatedElement::removedFromAncestor(removalType, oldParentOfRemovedTree);
 }
 
 void HTMLObjectElement::childrenChanged(const ChildChange& change)
 {
-    updateDocNamedItem();
-    if (inDocument() && !useFallbackContent()) {
+    updateExposedState();
+    if (isConnected() && !m_useFallbackContent) {
         setNeedsWidgetUpdate(true);
+        scheduleUpdateForAfterStyleResolution();
         invalidateStyleForSubtree();
     }
     HTMLPlugInImageElement::childrenChanged(change);
@@ -364,19 +324,20 @@ bool HTMLObjectElement::isURLAttribute(const Attribute& attribute) const
     return attribute.name() == dataAttr || attribute.name() == codebaseAttr || (attribute.name() == usemapAttr && attribute.value().string()[0] != '#') || HTMLPlugInImageElement::isURLAttribute(attribute);
 }
 
-const AtomicString& HTMLObjectElement::imageSourceURL() const
+const AtomString& HTMLObjectElement::imageSourceURL() const
 {
     return attributeWithoutSynchronization(dataAttr);
 }
 
 void HTMLObjectElement::renderFallbackContent()
 {
-    if (useFallbackContent())
+    if (m_useFallbackContent)
         return;
     
-    if (!inDocument())
+    if (!isConnected())
         return;
 
+    scheduleUpdateForAfterStyleResolution();
     invalidateStyleAndRenderersForSubtree();
 
     // Before we give up and use fallback content, check to see if this is a MIME type issue.
@@ -391,80 +352,83 @@ void HTMLObjectElement::renderFallbackContent()
     }
 
     m_useFallbackContent = true;
-
-    // This was added to keep Acid 2 non-flaky. A style recalc is required to make fallback resources load.
-    // Without forcing, this may happen after all the other resources have been loaded and the document is already
-    // considered complete. FIXME: Would be better to address this with incrementLoadEventDelayCount instead
-    // or disentangle loading from style entirely.
-    document().updateStyleIfNeeded();
 }
 
-// FIXME: This should be removed, all callers are almost certainly wrong.
-static bool isRecognizedTagName(const QualifiedName& tagName)
+static inline bool preventsParentObjectFromExposure(const Element& child)
 {
-    static NeverDestroyed<HashSet<AtomicStringImpl*>> tagList;
-    if (tagList.get().isEmpty()) {
+    static const auto mostKnownTags = makeNeverDestroyed([] {
+        HashSet<QualifiedName> set;
         auto* tags = HTMLNames::getHTMLTags();
         for (size_t i = 0; i < HTMLNames::HTMLTagsCount; i++) {
-            if (*tags[i] == bgsoundTag
-                || *tags[i] == commandTag
-                || *tags[i] == detailsTag
-                || *tags[i] == figcaptionTag
-                || *tags[i] == figureTag
-                || *tags[i] == summaryTag
-                || *tags[i] == trackTag) {
-                // Even though we have atoms for these tags, we don't want to
-                // treat them as "recognized tags" for the purpose of parsing
-                // because that changes how we parse documents.
+            auto& tag = *tags[i];
+            // Only the param element was explicitly mentioned in the HTML specification rule
+            // we were trying to implement, but these are other known HTML elements that we
+            // have decided, over the years, to treat as children that do not prevent object
+            // names from being exposed.
+            if (tag == bgsoundTag
+                || tag == commandTag
+                || tag == detailsTag
+                || tag == figcaptionTag
+                || tag == figureTag
+                || tag == paramTag
+                || tag == summaryTag
+                || tag == trackTag)
                 continue;
-            }
-            tagList.get().add(tags[i]->localName().impl());
+            set.add(tag);
         }
-    }
-    return tagList.get().contains(tagName.localName().impl());
+        return set;
+    }());
+    return mostKnownTags.get().contains(child.tagQName());
 }
 
-void HTMLObjectElement::updateDocNamedItem()
+static inline bool preventsParentObjectFromExposure(const Node& child)
 {
-    // The rule is "<object> elements with no children other than
-    // <param> elements, unknown elements and whitespace can be
-    // found by name in a document, and other <object> elements cannot."
-    bool wasNamedItem = m_docNamedItem;
-    bool isNamedItem = true;
-    Node* child = firstChild();
-    while (child && isNamedItem) {
-        if (is<Element>(*child)) {
-            Element& element = downcast<Element>(*child);
-            // FIXME: Use of isRecognizedTagName is almost certainly wrong here.
-            if (isRecognizedTagName(element.tagQName()) && !element.hasTagName(paramTag))
-                isNamedItem = false;
-        } else if (is<Text>(*child)) {
-            if (!downcast<Text>(*child).containsOnlyWhitespace())
-                isNamedItem = false;
-        } else
-            isNamedItem = false;
-        child = child->nextSibling();
-    }
-    if (isNamedItem != wasNamedItem && inDocument() && !isInShadowTree() && is<HTMLDocument>(document())) {
-        HTMLDocument& document = downcast<HTMLDocument>(this->document());
+    if (is<Element>(child))
+        return preventsParentObjectFromExposure(downcast<Element>(child));
+    if (is<Text>(child))
+        return !downcast<Text>(child).data().isAllSpecialCharacters<isHTMLSpace>();
+    return true;
+}
 
-        const AtomicString& id = getIdAttribute();
+static inline bool shouldBeExposed(const HTMLObjectElement& element)
+{
+    // FIXME: This should be redone to use the concept of an exposed object element,
+    // as documented in the HTML specification section describing DOM tree accessors.
+
+    // The rule we try to implement here, from older HTML specifications, is "object elements
+    // with no children other than param elements, unknown elements and whitespace can be found
+    // by name in a document, and other object elements cannot".
+
+    for (auto child = makeRefPtr(element.firstChild()); child; child = child->nextSibling()) {
+        if (preventsParentObjectFromExposure(*child))
+            return false;
+    }
+    return true;
+}
+
+void HTMLObjectElement::updateExposedState()
+{
+    bool wasExposed = std::exchange(m_isExposed, shouldBeExposed(*this));
+
+    if (m_isExposed != wasExposed && isConnected() && !isInShadowTree() && is<HTMLDocument>(document())) {
+        auto& document = downcast<HTMLDocument>(this->document());
+
+        auto& id = getIdAttribute();
         if (!id.isEmpty()) {
-            if (isNamedItem)
+            if (m_isExposed)
                 document.addDocumentNamedItem(*id.impl(), *this);
             else
                 document.removeDocumentNamedItem(*id.impl(), *this);
         }
 
-        const AtomicString& name = getNameAttribute();
+        auto& name = getNameAttribute();
         if (!name.isEmpty() && id != name) {
-            if (isNamedItem)
+            if (m_isExposed)
                 document.addDocumentNamedItem(*name.impl(), *this);
             else
                 document.removeDocumentNamedItem(*name.impl(), *this);
         }
     }
-    m_docNamedItem = isNamedItem;
 }
 
 bool HTMLObjectElement::containsJavaApplet() const
@@ -493,45 +457,39 @@ void HTMLObjectElement::addSubresourceAttributeURLs(ListHashSet<URL>& urls) cons
 
     // FIXME: Passing a string that starts with "#" to the completeURL function does
     // not seem like it would work. The image element has similar but not identical code.
-    const AtomicString& useMap = attributeWithoutSynchronization(usemapAttr);
+    const AtomString& useMap = attributeWithoutSynchronization(usemapAttr);
     if (useMap.startsWith('#'))
         addSubresourceURL(urls, document().completeURL(useMap));
 }
 
-void HTMLObjectElement::didMoveToNewDocument(Document& oldDocument)
+void HTMLObjectElement::didMoveToNewDocument(Document& oldDocument, Document& newDocument)
 {
     FormAssociatedElement::didMoveToNewDocument(oldDocument);
-    HTMLPlugInImageElement::didMoveToNewDocument(oldDocument);
+    HTMLPlugInImageElement::didMoveToNewDocument(oldDocument, newDocument);
 }
 
-bool HTMLObjectElement::appendFormData(FormDataList& encoding, bool)
+bool HTMLObjectElement::appendFormData(DOMFormData& formData, bool)
 {
     if (name().isEmpty())
         return false;
 
     // Use PluginLoadingPolicy::DoNotLoad here or it would fire JS events synchronously
     // which would not be safe here.
-    auto* widget = pluginWidget(PluginLoadingPolicy::DoNotLoad);
+    auto widget = makeRefPtr(pluginWidget(PluginLoadingPolicy::DoNotLoad));
     if (!is<PluginViewBase>(widget))
         return false;
     String value;
     if (!downcast<PluginViewBase>(*widget).getFormValue(value))
         return false;
-    encoding.appendData(name(), value);
+    formData.append(name(), value);
     return true;
-}
-
-HTMLFormElement* HTMLObjectElement::virtualForm() const
-{
-    return FormAssociatedElement::form();
 }
 
 bool HTMLObjectElement::canContainRangeEndPoint() const
 {
-    // Call through to HTMLElement because we need to skip HTMLPlugInElement
-    // when calling through to the derived class since returns false unconditionally.
-    // An object element with fallback content should basically be treated like
-    // a generic HTML element.
+    // Call through to HTMLElement because HTMLPlugInElement::canContainRangeEndPoint
+    // returns false unconditionally. An object element using fallback content is
+    // treated like a generic HTML element.
     return m_useFallbackContent && HTMLElement::canContainRangeEndPoint();
 }
 

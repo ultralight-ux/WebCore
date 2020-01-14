@@ -32,11 +32,13 @@
 #include "HTMLTemplateElement.h"
 
 #include "DocumentFragment.h"
-#include "HTMLDocument.h"
 #include "TemplateContentDocumentFragment.h"
 #include "markup.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLTemplateElement);
 
 using namespace HTMLNames;
 
@@ -54,6 +56,11 @@ HTMLTemplateElement::~HTMLTemplateElement()
 Ref<HTMLTemplateElement> HTMLTemplateElement::create(const QualifiedName& tagName, Document& document)
 {
     return adoptRef(*new HTMLTemplateElement(tagName, document));
+}
+
+DocumentFragment* HTMLTemplateElement::contentIfAvailable() const
+{
+    return m_content.get();
 }
 
 DocumentFragment& HTMLTemplateElement::content() const
@@ -82,12 +89,13 @@ Ref<Node> HTMLTemplateElement::cloneNodeInternal(Document& targetDocument, Cloni
     return clone.releaseNonNull();
 }
 
-void HTMLTemplateElement::didMoveToNewDocument(Document& oldDocument)
+void HTMLTemplateElement::didMoveToNewDocument(Document& oldDocument, Document& newDocument)
 {
-    HTMLElement::didMoveToNewDocument(oldDocument);
+    HTMLElement::didMoveToNewDocument(oldDocument, newDocument);
     if (!m_content)
         return;
-    document().ensureTemplateDocument().adoptIfNeeded(*m_content);
+    ASSERT_WITH_SECURITY_IMPLICATION(&document() == &newDocument);
+    m_content->setTreeScopeRecursively(newDocument.ensureTemplateDocument());
 }
 
 } // namespace WebCore

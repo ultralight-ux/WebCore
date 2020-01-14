@@ -22,10 +22,11 @@
 
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(MEDIA_SOURCE)
 
-#include "GRefPtrGStreamer.h"
+#include "GStreamerCommon.h"
 #include "MediaDescription.h"
 
 #include <gst/gst.h>
+#include <wtf/text/AtomString.h>
 
 namespace WebCore {
 
@@ -38,7 +39,7 @@ public:
 
     virtual ~GStreamerMediaDescription() = default;
 
-    AtomicString codec() const override;
+    AtomString codec() const override;
     bool isVideo() const override;
     bool isAudio() const override;
     bool isText() const override;
@@ -48,9 +49,12 @@ private:
         : MediaDescription()
         , m_caps(caps)
     {
+        m_codecName = extractCodecName();
     }
 
+    AtomString extractCodecName();
     GRefPtr<GstCaps> m_caps;
+    AtomString m_codecName;
 };
 
 } // namespace WebCore.

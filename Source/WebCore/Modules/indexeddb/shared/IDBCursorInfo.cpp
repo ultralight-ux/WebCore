@@ -31,6 +31,7 @@
 #include "IDBDatabase.h"
 #include "IDBTransaction.h"
 #include "IndexedDB.h"
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebCore {
 
@@ -86,12 +87,12 @@ IDBCursorInfo::IDBCursorInfo(const IDBResourceIdentifier& cursorIdentifier, cons
 
 bool IDBCursorInfo::isDirectionForward() const
 {
-    return m_direction == IndexedDB::CursorDirection::Next || m_direction == IndexedDB::CursorDirection::NextNoDuplicate;
+    return m_direction == IndexedDB::CursorDirection::Next || m_direction == IndexedDB::CursorDirection::Nextunique;
 }
 
 CursorDuplicity IDBCursorInfo::duplicity() const
 {
-    return m_direction == IndexedDB::CursorDirection::NextNoDuplicate || m_direction == IndexedDB::CursorDirection::PrevNoDuplicate ? CursorDuplicity::NoDuplicates : CursorDuplicity::Duplicates;
+    return m_direction == IndexedDB::CursorDirection::Nextunique || m_direction == IndexedDB::CursorDirection::Prevunique ? CursorDuplicity::NoDuplicates : CursorDuplicity::Duplicates;
 }
 
 IDBCursorInfo IDBCursorInfo::isolatedCopy() const
@@ -100,13 +101,15 @@ IDBCursorInfo IDBCursorInfo::isolatedCopy() const
 }
 
 #if !LOG_DISABLED
+
 String IDBCursorInfo::loggingString() const
 {
     if (m_source == IndexedDB::CursorSource::Index)
-        return String::format("<Crsr: %s Idx %" PRIu64 ", OS %" PRIu64 ", tx %s>", m_cursorIdentifier.loggingString().utf8().data(), m_sourceIdentifier, m_objectStoreIdentifier, m_transactionIdentifier.loggingString().utf8().data());
+        return makeString("<Crsr: ", m_cursorIdentifier.loggingString(), " Idx ", m_sourceIdentifier, ", OS ", m_objectStoreIdentifier, ", tx ", m_transactionIdentifier.loggingString(), '>');
 
-    return String::format("<Crsr: %s OS %" PRIu64 ", tx %s>", m_cursorIdentifier.loggingString().utf8().data(), m_objectStoreIdentifier, m_transactionIdentifier.loggingString().utf8().data());
+    return makeString("<Crsr: ", m_cursorIdentifier.loggingString(), " OS ", m_objectStoreIdentifier, ", tx ", m_transactionIdentifier.loggingString(), '>');
 }
+
 #endif
 
 } // namespace WebCore

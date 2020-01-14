@@ -2,6 +2,7 @@
  * Copyright (C) 2007 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -23,7 +24,6 @@
 
 #if ENABLE(SVG_FONTS)
 
-#include "SVGAnimatedBoolean.h"
 #include "SVGElement.h"
 #include "SVGExternalResourcesRequired.h"
 #include "SVGParserUtilities.h"
@@ -42,8 +42,8 @@ struct SVGKerningPair {
     float kerning { 0 };
 };
 
-class SVGFontElement final : public SVGElement
-                           , public SVGExternalResourcesRequired {
+class SVGFontElement final : public SVGElement, public SVGExternalResourcesRequired {
+    WTF_MAKE_ISO_ALLOCATED(SVGFontElement);
 public:
     static Ref<SVGFontElement> create(const QualifiedName&, Document&);
 
@@ -52,9 +52,10 @@ private:
 
     bool rendererIsNeeded(const RenderStyle&) final { return false; }
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFontElement)
-        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)
-    END_DECLARE_ANIMATED_PROPERTIES
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFontElement, SVGElement, SVGExternalResourcesRequired>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+
+    PropertyRegistry m_propertyRegistry { *this };
 };
 
 } // namespace WebCore

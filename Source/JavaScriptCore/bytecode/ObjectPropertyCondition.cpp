@@ -142,15 +142,15 @@ bool ObjectPropertyCondition::isWatchable(PropertyCondition::WatchabilityEffort 
     return isWatchable(m_object->structure(), effort);
 }
 
-bool ObjectPropertyCondition::isStillLive() const
+bool ObjectPropertyCondition::isStillLive(VM& vm) const
 {
     if (!*this)
         return false;
     
-    if (!Heap::isMarked(m_object))
+    if (!vm.heap.isMarked(m_object))
         return false;
     
-    return m_condition.isStillLive();
+    return m_condition.isStillLive(vm);
 }
 
 void ObjectPropertyCondition::validateReferences(const TrackedReferences& tracked) const
@@ -162,9 +162,9 @@ void ObjectPropertyCondition::validateReferences(const TrackedReferences& tracke
     m_condition.validateReferences(tracked);
 }
 
-ObjectPropertyCondition ObjectPropertyCondition::attemptToMakeEquivalenceWithoutBarrier() const
+ObjectPropertyCondition ObjectPropertyCondition::attemptToMakeEquivalenceWithoutBarrier(VM& vm) const
 {
-    PropertyCondition result = condition().attemptToMakeEquivalenceWithoutBarrier(object());
+    PropertyCondition result = condition().attemptToMakeEquivalenceWithoutBarrier(vm, object());
     if (!result)
         return ObjectPropertyCondition();
     return ObjectPropertyCondition(object(), result);

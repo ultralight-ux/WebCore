@@ -30,6 +30,7 @@ namespace WebCore {
 class AffineTransform;
 
 class SVGAnimateTransformElement final : public SVGAnimateElementBase {
+    WTF_MAKE_ISO_ALLOCATED(SVGAnimateTransformElement);
 public:
     static Ref<SVGAnimateTransformElement> create(const QualifiedName&, Document&);
 
@@ -38,8 +39,9 @@ public:
 private:
     SVGAnimateTransformElement(const QualifiedName&, Document&);
     
-    bool hasValidAttributeType() final;
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    bool hasValidAttributeType() const final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    String animateRangeString(const String&) const final;
 
     SVGTransformValue::SVGTransformType m_type;
 };

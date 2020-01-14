@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -32,6 +32,7 @@ enum class CreatePlugins { No, Yes };
 // Base class for HTMLAppletElement, HTMLEmbedElement, and HTMLObjectElement.
 // FIXME: Perhaps HTMLAppletElement should inherit from HTMLPlugInElement directly instead.
 class HTMLPlugInImageElement : public HTMLPlugInElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLPlugInImageElement);
 public:
     virtual ~HTMLPlugInImageElement();
 
@@ -42,14 +43,6 @@ public:
     const String& serviceType() const { return m_serviceType; }
     const String& url() const { return m_url; }
     const URL& loadedUrl() const { return m_loadedUrl; }
-
-    String loadedMimeType() const
-    {
-        String mimeType = serviceType();
-        if (mimeType.isEmpty())
-            mimeType = mimeTypeFromURL(m_loadedUrl);
-        return mimeType;
-    }
 
     // Public for FrameView::addWidgetToUpdate()
     bool needsWidgetUpdate() const { return m_needsWidgetUpdate; }
@@ -65,7 +58,7 @@ public:
     void subframeLoaderDidCreatePlugIn(const Widget&);
 
     WEBCORE_EXPORT void setIsPrimarySnapshottedPlugIn(bool);
-    bool partOfSnapshotOverlay(const Node*) const;
+    bool partOfSnapshotOverlay(const EventTarget*) const;
 
     bool needsCheckForSizeChange() const { return m_needsCheckForSizeChange; }
     void setNeedsCheckForSizeChange() { m_needsCheckForSizeChange = true; }
@@ -81,21 +74,24 @@ public:
     SnapshotDecision snapshotDecision() const { return m_snapshotDecision; }
 
 protected:
-    HTMLPlugInImageElement(const QualifiedName& tagName, Document&, bool createdByParser);
+    HTMLPlugInImageElement(const QualifiedName& tagName, Document&);
+    void finishCreating();
 
-    void didMoveToNewDocument(Document& oldDocument) override;
+    void didMoveToNewDocument(Document& oldDocument, Document& newDocument) override;
+
     bool requestObject(const String& url, const String& mimeType, const Vector<String>& paramNames, const Vector<String>& paramValues) final;
 
     bool isImageType();
     HTMLImageLoader* imageLoader() { return m_imageLoader.get(); }
+    void updateImageLoaderWithNewURLSoon();
 
     bool allowedToLoadFrameURL(const String& url);
     bool wouldLoadAsPlugIn(const String& url, const String& serviceType);
 
+    void scheduleUpdateForAfterStyleResolution();
+
     String m_serviceType;
     String m_url;
-
-    std::unique_ptr<HTMLImageLoader> m_imageLoader;
 
 private:
     bool isPlugInImageElement() const final { return true; }
@@ -103,12 +99,12 @@ private:
 
     bool allowedToLoadPluginContent(const String& url, const String& mimeType) const;
 
-    void finishParsingChildren() final;
-    void didAddUserAgentShadowRoot(ShadowRoot*) final;
+    void didAddUserAgentShadowRoot(ShadowRoot&) final;
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) override;
     bool childShouldCreateRenderer(const Node&) const override;
     void willRecalcStyle(Style::Change) final;
+    void didRecalcStyle(Style::Change) final;
     void didAttachRenderers() final;
     void willDetachRenderers() final;
 
@@ -118,10 +114,9 @@ private:
     void defaultEventHandler(Event&) final;
     void dispatchPendingMouseClick() final;
 
-    void updateSnapshot(PassRefPtr<Image>) final;
+    void updateSnapshot(Image*) final;
 
-    void startLoadingImage();
-    void updateWidgetIfNecessary();
+    void updateAfterStyleResolution();
 
     void simulatedMouseClickTimerFired();
 
@@ -146,6 +141,9 @@ private:
     IntSize m_sizeWhenSnapshotted;
     SnapshotDecision m_snapshotDecision { SnapshotNotYetDecided };
     bool m_plugInDimensionsSpecified { false };
+    std::unique_ptr<HTMLImageLoader> m_imageLoader;
+    bool m_needsImageReload { false };
+    bool m_hasUpdateScheduledForAfterStyleResolution { false };
 };
 
 } // namespace WebCore

@@ -41,12 +41,13 @@ class AudioIOCallback;
 // It optionally will pass in local/live audio input when it calls render().
 
 class AudioDestination {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     // Pass in (numberOfInputChannels > 0) if live/local audio input is desired.
     // Port-specific device identification information for live/local input streams can be passed in the inputDeviceId.
     static std::unique_ptr<AudioDestination> create(AudioIOCallback&, const String& inputDeviceId, unsigned numberOfInputChannels, unsigned numberOfOutputChannels, float sampleRate);
 
-    virtual ~AudioDestination() { }
+    virtual ~AudioDestination() = default;
 
     virtual void start() = 0;
     virtual void stop() = 0;

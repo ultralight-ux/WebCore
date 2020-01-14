@@ -35,19 +35,19 @@ public:
     Ref<StyleDeprecatedFlexibleBoxData> copy() const;
 
     bool operator==(const StyleDeprecatedFlexibleBoxData&) const;
-    bool operator!=(const StyleDeprecatedFlexibleBoxData& o) const
+    bool operator!=(const StyleDeprecatedFlexibleBoxData& other) const
     {
-        return !(*this == o);
+        return !(*this == other);
     }
 
     float flex;
-    unsigned int flex_group;
-    unsigned int ordinal_group;
+    unsigned flexGroup;
+    unsigned ordinalGroup;
 
-    unsigned align : 3; // EBoxAlignment
-    unsigned pack: 2; // EBoxPack
-    unsigned orient: 1; // EBoxOrient
-    unsigned lines : 1; // EBoxLines
+    unsigned align : 3; // BoxAlignment
+    unsigned pack: 2; // BoxPack
+    unsigned orient: 1; // BoxOrient
+    unsigned lines : 1; // BoxLines
 
 private:
     StyleDeprecatedFlexibleBoxData();

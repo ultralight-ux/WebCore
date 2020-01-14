@@ -31,7 +31,7 @@
 
 #pragma once
 
-#include <inspector/InspectorEnvironment.h>
+#include <JavaScriptCore/InspectorEnvironment.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RefCounted.h>
@@ -39,23 +39,25 @@
 namespace Inspector {
 class InspectorAgent;
 class InspectorDebuggerAgent;
+class InspectorScriptProfilerAgent;
 }
 
 namespace WebCore {
 
 class InspectorApplicationCacheAgent;
+class InspectorCPUProfilerAgent;
 class InspectorCSSAgent;
+class InspectorCanvasAgent;
 class InspectorDOMAgent;
 class InspectorDOMDebuggerAgent;
 class InspectorDOMStorageAgent;
 class InspectorDatabaseAgent;
 class InspectorLayerTreeAgent;
-class InspectorWorkerAgent;
 class InspectorMemoryAgent;
 class InspectorNetworkAgent;
 class InspectorPageAgent;
-class InspectorReplayAgent;
 class InspectorTimelineAgent;
+class InspectorWorkerAgent;
 class Page;
 class PageDebuggerAgent;
 class PageHeapAgent;
@@ -72,7 +74,7 @@ public:
     {
         return adoptRef(*new InstrumentingAgents(environment));
     }
-    ~InstrumentingAgents() { }
+    ~InstrumentingAgents() = default;
     void reset();
 
     Inspector::InspectorEnvironment& inspectorEnvironment() const { return m_environment; }
@@ -82,6 +84,9 @@ public:
 
     InspectorPageAgent* inspectorPageAgent() const { return m_inspectorPageAgent; }
     void setInspectorPageAgent(InspectorPageAgent* agent) { m_inspectorPageAgent = agent; }
+
+    InspectorCanvasAgent* inspectorCanvasAgent() const { return m_inspectorCanvasAgent; }
+    void setInspectorCanvasAgent(InspectorCanvasAgent* agent) { m_inspectorCanvasAgent = agent; }
 
     InspectorCSSAgent* inspectorCSSAgent() const { return m_inspectorCSSAgent; }
     void setInspectorCSSAgent(InspectorCSSAgent* agent) { m_inspectorCSSAgent = agent; }
@@ -98,6 +103,9 @@ public:
     PageRuntimeAgent* pageRuntimeAgent() const { return m_pageRuntimeAgent; }
     void setPageRuntimeAgent(PageRuntimeAgent* agent) { m_pageRuntimeAgent = agent; }
 
+    Inspector::InspectorScriptProfilerAgent* inspectorScriptProfilerAgent() const { return m_inspectorScriptProfilerAgent; }
+    void setInspectorScriptProfilerAgent(Inspector::InspectorScriptProfilerAgent* agent) { m_inspectorScriptProfilerAgent = agent; }
+
     InspectorTimelineAgent* inspectorTimelineAgent() const { return m_inspectorTimelineAgent; }
     void setInspectorTimelineAgent(InspectorTimelineAgent* agent) { m_inspectorTimelineAgent = agent; }
 
@@ -107,12 +115,10 @@ public:
     InspectorDOMStorageAgent* inspectorDOMStorageAgent() const { return m_inspectorDOMStorageAgent; }
     void setInspectorDOMStorageAgent(InspectorDOMStorageAgent* agent) { m_inspectorDOMStorageAgent = agent; }
 
-#if ENABLE(WEB_REPLAY)
-    InspectorReplayAgent* inspectorReplayAgent() const { return m_inspectorReplayAgent; }
-    void setInspectorReplayAgent(InspectorReplayAgent* agent) { m_inspectorReplayAgent = agent; }
-#endif
-
 #if ENABLE(RESOURCE_USAGE)
+    InspectorCPUProfilerAgent* inspectorCPUProfilerAgent() const { return m_inspectorCPUProfilerAgent; }
+    void setInspectorCPUProfilerAgent(InspectorCPUProfilerAgent* agent) { m_inspectorCPUProfilerAgent = agent; }
+
     InspectorMemoryAgent* inspectorMemoryAgent() const { return m_inspectorMemoryAgent; }
     void setInspectorMemoryAgent(InspectorMemoryAgent* agent) { m_inspectorMemoryAgent = agent; }
 #endif
@@ -155,13 +161,12 @@ private:
     InspectorDOMAgent* m_inspectorDOMAgent { nullptr };
     InspectorNetworkAgent* m_inspectorNetworkAgent { nullptr };
     PageRuntimeAgent* m_pageRuntimeAgent { nullptr };
+    Inspector::InspectorScriptProfilerAgent* m_inspectorScriptProfilerAgent { nullptr };
     InspectorTimelineAgent* m_inspectorTimelineAgent { nullptr };
     InspectorTimelineAgent* m_persistentInspectorTimelineAgent { nullptr };
     InspectorDOMStorageAgent* m_inspectorDOMStorageAgent { nullptr };
-#if ENABLE(WEB_REPLAY)
-    InspectorReplayAgent* m_inspectorReplayAgent { nullptr };
-#endif
 #if ENABLE(RESOURCE_USAGE)
+    InspectorCPUProfilerAgent* m_inspectorCPUProfilerAgent { nullptr };
     InspectorMemoryAgent* m_inspectorMemoryAgent { nullptr };
 #endif
     InspectorDatabaseAgent* m_inspectorDatabaseAgent { nullptr };
@@ -170,6 +175,7 @@ private:
     PageDebuggerAgent* m_pageDebuggerAgent { nullptr };
     PageHeapAgent* m_pageHeapAgent { nullptr };
     InspectorDOMDebuggerAgent* m_inspectorDOMDebuggerAgent { nullptr };
+    InspectorCanvasAgent* m_inspectorCanvasAgent { nullptr };
 };
 
 } // namespace WebCore

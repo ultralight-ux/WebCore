@@ -30,18 +30,22 @@
 #include "config.h"
 #include "FloatPolygon.h"
 
+#include <wtf/HexNumber.h>
 #include <wtf/MathExtras.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebCore {
 
+namespace FloatPolygonInternal {
 static inline float determinant(const FloatSize& a, const FloatSize& b)
 {
     return a.width() * b.height() - a.height() * b.width();
 }
+}
 
 static inline bool areCollinearPoints(const FloatPoint& p0, const FloatPoint& p1, const FloatPoint& p2)
 {
-    return !determinant(p1 - p0, p2 - p0);
+    return !FloatPolygonInternal::determinant(p1 - p0, p2 - p0);
 }
 
 static inline bool areCoincidentPoints(const FloatPoint& p0, const FloatPoint& p1)
@@ -101,7 +105,7 @@ FloatPolygon::FloatPolygon(std::unique_ptr<Vector<FloatPoint>> vertices, WindRul
     }
     FloatPoint nextVertex = vertexAt((minVertexIndex + 1) % nVertices);
     FloatPoint prevVertex = vertexAt((minVertexIndex + nVertices - 1) % nVertices);
-    bool clockwise = determinant(vertexAt(minVertexIndex) - prevVertex, nextVertex - prevVertex) > 0;
+    bool clockwise = FloatPolygonInternal::determinant(vertexAt(minVertexIndex) - prevVertex, nextVertex - prevVertex) > 0;
 
     unsigned edgeIndex = 0;
     unsigned vertexIndex1 = 0;
@@ -196,7 +200,7 @@ bool FloatPolygon::contains(const FloatPoint& point) const
 {
     if (!m_boundingBox.contains(point))
         return false;
-    return fillRule() == RULE_NONZERO ? containsNonZero(point) : containsEvenOdd(point);
+    return fillRule() == WindRule::NonZero ? containsNonZero(point) : containsEvenOdd(point);
 }
 
 bool VertexPair::overlapsRect(const FloatRect& rect) const
@@ -232,7 +236,7 @@ bool VertexPair::intersection(const VertexPair& other, FloatPoint& point) const
 
     const FloatSize& thisDelta = vertex2() - vertex1();
     const FloatSize& otherDelta = other.vertex2() - other.vertex1();
-    float denominator = determinant(thisDelta, otherDelta);
+    float denominator = FloatPolygonInternal::determinant(thisDelta, otherDelta);
     if (!denominator)
         return false;
 
@@ -241,8 +245,8 @@ bool VertexPair::intersection(const VertexPair& other, FloatPoint& point) const
     // when 0 <= u <= 1. We're computing the values of u for each line at their intersection point.
 
     const FloatSize& vertex1Delta = vertex1() - other.vertex1();
-    float uThisLine = determinant(otherDelta, vertex1Delta) / denominator;
-    float uOtherLine = determinant(thisDelta, vertex1Delta) / denominator;
+    float uThisLine = FloatPolygonInternal::determinant(otherDelta, vertex1Delta) / denominator;
+    float uOtherLine = FloatPolygonInternal::determinant(thisDelta, vertex1Delta) / denominator;
 
     if (uThisLine < 0 || uOtherLine < 0 || uThisLine > 1 || uOtherLine > 1)
         return false;
@@ -250,5 +254,14 @@ bool VertexPair::intersection(const VertexPair& other, FloatPoint& point) const
     point = vertex1() + uThisLine * thisDelta;
     return true;
 }
+
+#ifndef NDEBUG
+
+String FloatPolygonEdge::debugString() const
+{
+    return makeString("0x", hex(reinterpret_cast<uintptr_t>(this)), " (", vertex1().x(), ',', vertex1().y(), ' ', vertex2().x(), ',', vertex2().y(), ')');
+}
+
+#endif
 
 } // namespace WebCore

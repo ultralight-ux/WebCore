@@ -30,10 +30,10 @@
 
 #pragma once
 
+#include "NetworkLoadMetrics.h"
 #include "ThreadableLoader.h"
 #include "ThreadableLoaderClient.h"
 #include "ThreadableLoaderClientWrapper.h"
-#include <wtf/Threading.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -41,6 +41,7 @@ namespace WebCore {
     class ContentSecurityPolicy;
     class ResourceError;
     class ResourceRequest;
+    class SecurityOrigin;
     class WorkerGlobalScope;
     class WorkerLoaderProxy;
 
@@ -88,7 +89,7 @@ namespace WebCore {
         class MainThreadBridge : public ThreadableLoaderClient {
         public:
             // All executed on the worker context's thread.
-            MainThreadBridge(ThreadableLoaderClientWrapper&, WorkerLoaderProxy&, const String& taskMode, ResourceRequest&&, const ThreadableLoaderOptions&, const String& outgoingReferrer, const SecurityOrigin*, const ContentSecurityPolicy*);
+            MainThreadBridge(ThreadableLoaderClientWrapper&, WorkerLoaderProxy&, const String& taskMode, ResourceRequest&&, const ThreadableLoaderOptions&, const String& outgoingReferrer, WorkerGlobalScope&);
             void cancel();
             void destroy();
 
@@ -100,8 +101,9 @@ namespace WebCore {
             void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent) override;
             void didReceiveResponse(unsigned long identifier, const ResourceResponse&) override;
             void didReceiveData(const char*, int dataLength) override;
-            void didFinishLoading(unsigned long identifier, double finishTime) override;
+            void didFinishLoading(unsigned long identifier) override;
             void didFail(const ResourceError&) override;
+            void didFinishTiming(const ResourceTiming&) override;
 
             // Only to be used on the main thread.
             RefPtr<ThreadableLoader> m_mainThreadLoader;
@@ -116,6 +118,8 @@ namespace WebCore {
 
             // For use on the main thread.
             String m_taskMode;
+            unsigned long m_workerRequestIdentifier { 0 };
+            NetworkLoadMetrics m_networkLoadMetrics;
         };
 
         WorkerThreadableLoader(WorkerGlobalScope&, ThreadableLoaderClient&, const String& taskMode, ResourceRequest&&, const ThreadableLoaderOptions&, const String& referrer);

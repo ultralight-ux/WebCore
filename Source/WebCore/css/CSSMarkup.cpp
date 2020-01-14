@@ -29,7 +29,6 @@
 
 #include "CSSParserIdioms.h"
 #include <wtf/HexNumber.h>
-#include <wtf/text/StringBuffer.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
@@ -118,53 +117,9 @@ void serializeIdentifier(const String& identifier, StringBuilder& appendTo, bool
     }
 }
 
-template <typename CharacterType>
-static inline bool isCSSTokenizerURL(const CharacterType* characters, unsigned length)
+void serializeString(const String& string, StringBuilder& appendTo)
 {
-    const CharacterType* end = characters + length;
-    
-    for (; characters != end; ++characters) {
-        CharacterType c = characters[0];
-        switch (c) {
-        case '!':
-        case '#':
-        case '$':
-        case '%':
-        case '&':
-            break;
-        default:
-            if (c < '*')
-                return false;
-            if (c <= '~')
-                break;
-            if (c < 128)
-                return false;
-        }
-    }
-    
-    return true;
-}
-
-// "url" from the CSS tokenizer, minus backslash-escape sequences
-static bool isCSSTokenizerURL(const String& string)
-{
-    unsigned length = string.length();
-    
-    if (!length)
-        return true;
-    
-    if (string.is8Bit())
-        return isCSSTokenizerURL(string.characters8(), length);
-    return isCSSTokenizerURL(string.characters16(), length);
-}
-
-void serializeString(const String& string, StringBuilder& appendTo, bool useDoubleQuotes)
-{
-    // FIXME: From the CSS OM draft:
-    // To serialize a string means to create a string represented by '"' (U+0022).
-    // We need to switch to using " instead of ', but this involves patching a large
-    // number of tests and changing editing code to not get confused by double quotes.
-    appendTo.append(useDoubleQuotes ? '\"' : '\'');
+    appendTo.append('"');
 
     unsigned index = 0;
     while (index < string.length()) {
@@ -179,24 +134,19 @@ void serializeString(const String& string, StringBuilder& appendTo, bool useDoub
             appendTo.append(c);
     }
 
-    appendTo.append(useDoubleQuotes ? '\"' : '\'');
+    appendTo.append('"');
 }
 
-String serializeString(const String& string, bool useDoubleQuotes)
+String serializeString(const String& string)
 {
     StringBuilder builder;
-    serializeString(string, builder, useDoubleQuotes);
+    serializeString(string, builder);
     return builder.toString();
 }
 
 String serializeURL(const String& string)
 {
-    // FIXME: URLS must always be double quoted. From the CSS OM draft:
-    // To serialize a URL means to create a string represented by "url(", followed by
-    // the serialization of the URL as a string, followed by ")".
-    // To keep backwards compatibility with existing tests, for now we only quote if needed and
-    // we use a single quote.
-    return "url(" + (isCSSTokenizerURL(string) ? string : serializeString(string)) + ")";
+    return "url(" + serializeString(string) + ")";
 }
 
 String serializeAsStringOrCustomIdent(const String& string)

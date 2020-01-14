@@ -29,8 +29,7 @@
 #include "Heap.h"
 #include "HeapCellInlines.h"
 #include "IndexingHeader.h"
-#include "JSCallee.h"
-#include "JSCell.h"
+#include "JSCast.h"
 #include "Structure.h"
 #include <type_traits>
 #include <wtf/Assertions.h>
@@ -46,13 +45,15 @@ ALWAYS_INLINE VM* Heap::vm() const
 
 ALWAYS_INLINE Heap* Heap::heap(const HeapCell* cell)
 {
+    if (!cell)
+        return nullptr;
     return cell->heap();
 }
 
 inline Heap* Heap::heap(const JSValue v)
 {
     if (!v.isCell())
-        return 0;
+        return nullptr;
     return heap(v.asCell());
 }
 
@@ -61,48 +62,18 @@ inline bool Heap::hasHeapAccess() const
     return m_worldState.load() & hasAccessBit;
 }
 
-inline bool Heap::mutatorIsStopped() const
+inline bool Heap::worldIsStopped() const
 {
-    unsigned state = m_worldState.load();
-    bool shouldStop = state & shouldStopBit;
-    bool stopped = state & stoppedBit;
-    // I only got it right when I considered all four configurations of shouldStop/stopped:
-    // !shouldStop, !stopped: The GC has not requested that we stop and we aren't stopped, so we
-    //     should return false.
-    // !shouldStop, stopped: The mutator is still stopped but the GC is done and the GC has requested
-    //     that we resume, so we should return false.
-    // shouldStop, !stopped: The GC called stopTheWorld() but the mutator hasn't hit a safepoint yet.
-    //     The mutator should be able to do whatever it wants in this state, as if we were not
-    //     stopped. So return false.
-    // shouldStop, stopped: The GC requested stop the world and the mutator obliged. The world is
-    //     stopped, so return true.
-    return shouldStop & stopped;
-}
-
-inline bool Heap::collectorBelievesThatTheWorldIsStopped() const
-{
-    return m_collectorBelievesThatTheWorldIsStopped;
+    return m_worldIsStopped;
 }
 
 ALWAYS_INLINE bool Heap::isMarked(const void* rawCell)
 {
-    ASSERT(mayBeGCThread() != GCThreadType::Helper);
     HeapCell* cell = bitwise_cast<HeapCell*>(rawCell);
     if (cell->isLargeAllocation())
         return cell->largeAllocation().isMarked();
     MarkedBlock& block = cell->markedBlock();
-    return block.isMarked(
-        block.vm()->heap.objectSpace().markingVersion(), cell);
-}
-
-ALWAYS_INLINE bool Heap::isMarkedConcurrently(const void* rawCell)
-{
-    HeapCell* cell = bitwise_cast<HeapCell*>(rawCell);
-    if (cell->isLargeAllocation())
-        return cell->largeAllocation().isMarked();
-    MarkedBlock& block = cell->markedBlock();
-    return block.isMarkedConcurrently(
-        block.vm()->heap.objectSpace().markingVersion(), cell);
+    return block.isMarked(m_objectSpace.markingVersion(), cell);
 }
 
 ALWAYS_INLINE bool Heap::testAndSetMarked(HeapVersion markingVersion, const void* rawCell)
@@ -111,8 +82,8 @@ ALWAYS_INLINE bool Heap::testAndSetMarked(HeapVersion markingVersion, const void
     if (cell->isLargeAllocation())
         return cell->largeAllocation().testAndSetMarked();
     MarkedBlock& block = cell->markedBlock();
-    block.aboutToMark(markingVersion);
-    return block.testAndSetMarked(cell);
+    Dependency dependency = block.aboutToMark(markingVersion);
+    return block.testAndSetMarked(cell, dependency);
 }
 
 ALWAYS_INLINE size_t Heap::cellSize(const void* rawCell)
@@ -170,12 +141,12 @@ inline void Heap::mutatorFence()
 
 template<typename Functor> inline void Heap::forEachCodeBlock(const Functor& func)
 {
-    forEachCodeBlockImpl(scopedLambdaRef<bool(CodeBlock*)>(func));
+    forEachCodeBlockImpl(scopedLambdaRef<void(CodeBlock*)>(func));
 }
 
-template<typename Functor> inline void Heap::forEachCodeBlockIgnoringJITPlans(const Functor& func)
+template<typename Functor> inline void Heap::forEachCodeBlockIgnoringJITPlans(const AbstractLocker& codeBlockSetLocker, const Functor& func)
 {
-    forEachCodeBlockIgnoringJITPlansImpl(scopedLambdaRef<bool(CodeBlock*)>(func));
+    forEachCodeBlockIgnoringJITPlansImpl(codeBlockSetLocker, scopedLambdaRef<void(CodeBlock*)>(func));
 }
 
 template<typename Functor> inline void Heap::forEachProtectedCell(const Functor& functor)
@@ -193,21 +164,28 @@ inline void Heap::releaseSoon(RetainPtr<T>&& object)
 }
 #endif
 
+#ifdef JSC_GLIB_API_ENABLED
+inline void Heap::releaseSoon(std::unique_ptr<JSCGLibWrapperObject>&& object)
+{
+    m_delayedReleaseObjects.append(WTFMove(object));
+}
+#endif
+
 inline void Heap::incrementDeferralDepth()
 {
-    ASSERT(!mayBeGCThread() || m_collectorBelievesThatTheWorldIsStopped);
+    ASSERT(!Thread::mayBeGCThread() || m_worldIsStopped);
     m_deferralDepth++;
 }
 
 inline void Heap::decrementDeferralDepth()
 {
-    ASSERT(!mayBeGCThread() || m_collectorBelievesThatTheWorldIsStopped);
+    ASSERT(!Thread::mayBeGCThread() || m_worldIsStopped);
     m_deferralDepth--;
 }
 
 inline void Heap::decrementDeferralDepthAndGCIfNeeded()
 {
-    ASSERT(!mayBeGCThread() || m_collectorBelievesThatTheWorldIsStopped);
+    ASSERT(!Thread::mayBeGCThread() || m_worldIsStopped);
     m_deferralDepth--;
     
     if (UNLIKELY(m_didDeferGCWork)) {
@@ -257,6 +235,9 @@ inline void Heap::deprecatedReportExtraMemory(size_t size)
 
 inline void Heap::acquireAccess()
 {
+    if (validateDFGDoesGC)
+        RELEASE_ASSERT(expectDoesGC());
+
     if (m_worldState.compareExchangeWeak(0, hasAccessBit))
         return;
     acquireAccessSlow();
@@ -281,8 +262,20 @@ inline bool Heap::mayNeedToStop()
 
 inline void Heap::stopIfNecessary()
 {
+    if (validateDFGDoesGC)
+        RELEASE_ASSERT(expectDoesGC());
+
     if (mayNeedToStop())
         stopIfNecessarySlow();
+}
+
+template<typename Func>
+void Heap::forEachSlotVisitor(const Func& func)
+{
+    func(*m_collectorSlotVisitor);
+    func(*m_mutatorSlotVisitor);
+    for (auto& slotVisitor : m_parallelSlotVisitors)
+        func(*slotVisitor);
 }
 
 } // namespace JSC

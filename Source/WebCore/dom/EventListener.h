@@ -31,6 +31,7 @@ namespace WebCore {
 
 class ScriptExecutionContext;
 class Event;
+class EventTarget;
 
 class EventListener : public RefCounted<EventListener> {
 public:
@@ -43,18 +44,21 @@ public:
         GObjectEventListenerType,
         NativeEventListenerType,
         SVGTRefTargetEventListenerType,
-        MediaControlsAppleEventListenerType 
     };
 
-    virtual ~EventListener() { }
+    virtual ~EventListener() = default;
     virtual bool operator==(const EventListener&) const = 0;
-    virtual void handleEvent(ScriptExecutionContext*, Event*) = 0;
+    virtual void handleEvent(ScriptExecutionContext&, Event&) = 0;
     virtual bool wasCreatedFromMarkup() const { return false; }
 
     virtual void visitJSFunction(JSC::SlotVisitor&) { }
 
-    bool isAttribute() const { return virtualisAttribute(); }
+    virtual bool isAttribute() const { return false; }
     Type type() const { return m_type; }
+
+#if !ASSERT_DISABLED
+    virtual void checkValidityForEventTarget(EventTarget&) { }
+#endif
 
 protected:
     explicit EventListener(Type type)
@@ -63,8 +67,6 @@ protected:
     }
 
 private:
-    virtual bool virtualisAttribute() const { return false; }
-    
     Type m_type;
 };
 

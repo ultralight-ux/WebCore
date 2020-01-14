@@ -32,17 +32,15 @@
 
 namespace WebCore {
 
-UserMessageHandlerDescriptor::UserMessageHandlerDescriptor(const AtomicString& name, DOMWrapperWorld& world)
+UserMessageHandlerDescriptor::UserMessageHandlerDescriptor(const AtomString& name, DOMWrapperWorld& world)
     : m_name(name)
     , m_world(world)
 {
 }
 
-UserMessageHandlerDescriptor::~UserMessageHandlerDescriptor()
-{
-}
+UserMessageHandlerDescriptor::~UserMessageHandlerDescriptor() = default;
 
-const AtomicString& UserMessageHandlerDescriptor::name() const
+const AtomString& UserMessageHandlerDescriptor::name() const
 {
     return m_name;
 }

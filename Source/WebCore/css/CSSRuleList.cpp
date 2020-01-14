@@ -23,26 +23,19 @@
 #include "CSSRuleList.h"
 
 #include "CSSRule.h"
-#include "CSSStyleSheet.h"
 
 namespace WebCore {
 
-CSSRuleList::CSSRuleList()
-{
-}
+CSSRuleList::CSSRuleList() = default;
 
-CSSRuleList::~CSSRuleList()
-{
-}
+CSSRuleList::~CSSRuleList() = default;
 
 StaticCSSRuleList::StaticCSSRuleList() 
     : m_refCount(1)
 { 
 }
 
-StaticCSSRuleList::~StaticCSSRuleList()
-{
-}
+StaticCSSRuleList::~StaticCSSRuleList() = default;
 
 void StaticCSSRuleList::deref()
 { 

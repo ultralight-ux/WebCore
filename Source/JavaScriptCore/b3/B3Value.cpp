@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #if ENABLE(B3_JIT)
 
 #include "B3ArgumentRegValue.h"
+#include "B3AtomicValue.h"
 #include "B3BasicBlockInlines.h"
 #include "B3BottomProvider.h"
 #include "B3CCallValue.h"
@@ -42,16 +43,27 @@
 #include "B3ValueInlines.h"
 #include "B3ValueKeyInlines.h"
 #include "B3VariableValue.h"
+#include "B3WasmBoundsCheckValue.h"
 #include <wtf/CommaPrinter.h>
 #include <wtf/ListDump.h>
 #include <wtf/StringPrintStream.h>
+#include <wtf/Vector.h>
 
 namespace JSC { namespace B3 {
 
 const char* const Value::dumpPrefix = "@";
+void DeepValueDump::dump(PrintStream& out) const
+{
+    if (m_value)
+        m_value->deepDump(m_proc, out);
+    else
+        out.print("<null>");
+}
 
 Value::~Value()
 {
+    if (m_numChildren == VarArgs)
+        bitwise_cast<Vector<Value*, 3> *>(childrenAlloc())->Vector<Value*, 3>::~Vector();
 }
 
 void Value::replaceWithIdentity(Value* value)
@@ -60,26 +72,13 @@ void Value::replaceWithIdentity(Value* value)
     // a plain Identity Value. We first collect all of the information we need, then we destruct the
     // previous value in place, and then we construct the Identity Value in place.
 
-    ASSERT(m_type == value->m_type);
+    RELEASE_ASSERT(m_type == value->m_type);
+    ASSERT(value != this);
 
-    if (m_type == Void) {
+    if (m_type == Void)
         replaceWithNopIgnoringType();
-        return;
-    }
-
-    unsigned index = m_index;
-    Type type = m_type;
-    Origin origin = m_origin;
-    BasicBlock* owner = this->owner;
-
-    RELEASE_ASSERT(type == value->type());
-
-    this->~Value();
-
-    new (this) Value(Identity, type, origin, value);
-
-    this->owner = owner;
-    this->m_index = index;
+    else
+        replaceWith(Identity, m_type, this->owner, value);
 }
 
 void Value::replaceWithBottom(InsertionSet& insertionSet, size_t index)
@@ -95,16 +94,7 @@ void Value::replaceWithNop()
 
 void Value::replaceWithNopIgnoringType()
 {
-    unsigned index = m_index;
-    Origin origin = m_origin;
-    BasicBlock* owner = this->owner;
-
-    this->~Value();
-
-    new (this) Value(Nop, Void, origin);
-
-    this->owner = owner;
-    this->m_index = index;
+    replaceWith(Nop, Void, this->owner);
 }
 
 void Value::replaceWithPhi()
@@ -113,51 +103,21 @@ void Value::replaceWithPhi()
         replaceWithNop();
         return;
     }
-    
-    unsigned index = m_index;
-    Origin origin = m_origin;
-    BasicBlock* owner = this->owner;
-    Type type = m_type;
 
-    this->~Value();
-
-    new (this) Value(Phi, type, origin);
-
-    this->owner = owner;
-    this->m_index = index;
+    replaceWith(Phi, m_type, this->owner);
 }
 
 void Value::replaceWithJump(BasicBlock* owner, FrequentedBlock target)
 {
     RELEASE_ASSERT(owner->last() == this);
-    
-    unsigned index = m_index;
-    Origin origin = m_origin;
-    
-    this->~Value();
-    
-    new (this) Value(Jump, Void, origin);
-    
-    this->owner = owner;
-    this->m_index = index;
-    
+    replaceWith(Jump, Void, this->owner);
     owner->setSuccessors(target);
 }
 
 void Value::replaceWithOops(BasicBlock* owner)
 {
     RELEASE_ASSERT(owner->last() == this);
-    
-    unsigned index = m_index;
-    Origin origin = m_origin;
-    
-    this->~Value();
-    
-    new (this) Value(Oops, Void, origin);
-    
-    this->owner = owner;
-    this->m_index = index;
-    
+    replaceWith(Oops, Void, this->owner);
     owner->clearSuccessors();
 }
 
@@ -169,6 +129,30 @@ void Value::replaceWithJump(FrequentedBlock target)
 void Value::replaceWithOops()
 {
     replaceWithOops(owner);
+}
+
+void Value::replaceWith(Kind kind, Type type, BasicBlock* owner)
+{
+    unsigned index = m_index;
+
+    this->~Value();
+
+    new (this) Value(kind, type, m_origin);
+
+    this->m_index = index;
+    this->owner = owner;
+}
+
+void Value::replaceWith(Kind kind, Type type, BasicBlock* owner, Value* value)
+{
+    unsigned index = m_index;
+
+    this->~Value();
+
+    new (this) Value(kind, type, m_origin, value);
+
+    this->m_index = index;
+    this->owner = owner;
 }
 
 void Value::dump(PrintStream& out) const
@@ -202,11 +186,6 @@ void Value::dump(PrintStream& out) const
         out.print(")");
 }
 
-Value* Value::cloneImpl() const
-{
-    return new Value(*this);
-}
-
 void Value::dumpChildren(CommaPrinter& comma, PrintStream& out) const
 {
     for (Value* child : children())
@@ -221,9 +200,6 @@ void Value::deepDump(const Procedure* proc, PrintStream& out) const
     CommaPrinter comma;
     dumpChildren(comma, out);
 
-    if (m_origin)
-        out.print(comma, OriginDump(proc, m_origin));
-
     dumpMeta(comma, out);
 
     {
@@ -231,6 +207,9 @@ void Value::deepDump(const Procedure* proc, PrintStream& out) const
         if (string.length())
             out.print(comma, string);
     }
+
+    if (m_origin)
+        out.print(comma, OriginDump(proc, m_origin));
 
     out.print(")");
 }
@@ -455,11 +434,11 @@ TriState Value::equalOrUnorderedConstant(const Value*) const
 
 Value* Value::invertedCompare(Procedure& proc) const
 {
-    if (!numChildren())
+    if (numChildren() != 2)
         return nullptr;
-    if (std::optional<Opcode> invertedOpcode = B3::invertedCompare(opcode(), child(0)->type())) {
+    if (Optional<Opcode> invertedOpcode = B3::invertedCompare(opcode(), child(0)->type())) {
         ASSERT(!kind().hasExtraBits());
-        return proc.add<Value>(*invertedOpcode, type(), origin(), children());
+        return proc.add<Value>(*invertedOpcode, type(), origin(), child(0), child(1));
     }
     return nullptr;
 }
@@ -493,12 +472,19 @@ bool Value::returnsBool() const
 {
     if (type() != Int32)
         return false;
+
     switch (opcode()) {
     case Const32:
         return asInt32() == 0 || asInt32() == 1;
     case BitAnd:
-        return child(1)->isInt32(1)
-            || (child(0)->returnsBool() && child(1)->hasInt() && child(1)->asInt() & 1);
+        return child(0)->returnsBool() || child(1)->returnsBool();
+    case BitOr:
+    case BitXor:
+        return child(0)->returnsBool() && child(1)->returnsBool();
+    case Select:
+        return child(1)->returnsBool() && child(2)->returnsBool();
+    case Identity:
+        return child(0)->returnsBool();
     case Equal:
     case NotEqual:
     case LessThan:
@@ -510,6 +496,7 @@ bool Value::returnsBool() const
     case AboveEqual:
     case BelowEqual:
     case EqualOrUnordered:
+    case AtomicWeakCAS:
         return true;
     case Phi:
         // FIXME: We should have a story here.
@@ -543,6 +530,7 @@ Effects Value::effects() const
     switch (opcode()) {
     case Nop:
     case Identity:
+    case Opaque:
     case Const32:
     case Const64:
     case ConstDouble:
@@ -589,6 +577,7 @@ Effects Value::effects() const
     case BelowEqual:
     case EqualOrUnordered:
     case Select:
+    case Depend:
         break;
     case Div:
     case UDiv:
@@ -600,16 +589,44 @@ Effects Value::effects() const
     case Load8S:
     case Load16Z:
     case Load16S:
-    case Load:
-        result.reads = as<MemoryValue>()->range();
+    case Load: {
+        const MemoryValue* memory = as<MemoryValue>();
+        result.reads = memory->range();
+        if (memory->hasFence()) {
+            result.writes = memory->fenceRange();
+            result.fence = true;
+        }
         result.controlDependent = true;
         break;
+    }
     case Store8:
     case Store16:
-    case Store:
-        result.writes = as<MemoryValue>()->range();
+    case Store: {
+        const MemoryValue* memory = as<MemoryValue>();
+        result.writes = memory->range();
+        if (memory->hasFence()) {
+            result.reads = memory->fenceRange();
+            result.fence = true;
+        }
         result.controlDependent = true;
         break;
+    }
+    case AtomicWeakCAS:
+    case AtomicStrongCAS:
+    case AtomicXchgAdd:
+    case AtomicXchgAnd:
+    case AtomicXchgOr:
+    case AtomicXchgSub:
+    case AtomicXchgXor:
+    case AtomicXchg: {
+        const AtomicValue* atomic = as<AtomicValue>();
+        result.reads = atomic->range() | atomic->fenceRange();
+        result.writes = atomic->range() | atomic->fenceRange();
+        if (atomic->hasFence())
+            result.fence = true;
+        result.controlDependent = true;
+        break;
+    }
     case WasmAddress:
         result.readsPinned = true;
         break;
@@ -617,18 +634,7 @@ Effects Value::effects() const
         const FenceValue* fence = as<FenceValue>();
         result.reads = fence->read;
         result.writes = fence->write;
-        
-        // Prevent killing of fences that claim not to write anything. It's a bit weird that we use
-        // local state as the way to do this, but it happens to work: we must assume that we cannot
-        // kill writesLocalState unless we understands exactly what the instruction is doing (like
-        // the way that fixSSA understands Set/Get and the way that reduceStrength and others
-        // understand Upsilon). This would only become a problem if we had some analysis that was
-        // looking to use the writesLocalState bit to invalidate a CSE over local state operations.
-        // Then a Fence would look block, say, the elimination of a redundant Get. But it like
-        // that's not at all how our optimizations for Set/Get/Upsilon/Phi work - they grok their
-        // operations deeply enough that they have no need to check this bit - so this cheat is
-        // fine.
-        result.writesLocalState = true;
+        result.fence = true;
         break;
     }
     case CCall:
@@ -644,7 +650,13 @@ Effects Value::effects() const
         result = Effects::forCheck();
         break;
     case WasmBoundsCheck:
-        result.readsPinned = true;
+        switch (as<WasmBoundsCheckValue>()->boundsType()) {
+        case WasmBoundsCheckValue::Type::Pinned:
+            result.readsPinned = true;
+            break;
+        case WasmBoundsCheckValue::Type::Maximum:
+            break;
+        }
         result.exitsSideways = true;
         break;
     case Upsilon:
@@ -673,10 +685,13 @@ Effects Value::effects() const
 
 ValueKey Value::key() const
 {
+    // NOTE: Except for exotic things like CheckAdd and friends, we want every case here to have a
+    // corresponding case in ValueKey::materialize().
     switch (opcode()) {
     case FramePointer:
         return ValueKey(kind(), type());
     case Identity:
+    case Opaque:
     case Abs:
     case Ceil:
     case Floor:
@@ -694,6 +709,7 @@ ValueKey Value::key() const
     case Check:
     case BitwiseCast:
     case Neg:
+    case Depend:
         return ValueKey(kind(), type(), child(0));
     case Add:
     case Sub:
@@ -746,12 +762,24 @@ ValueKey Value::key() const
     }
 }
 
-void Value::performSubstitution()
+Value* Value::foldIdentity() const
 {
+    Value* current = const_cast<Value*>(this);
+    while (current->opcode() == Identity)
+        current = current->child(0);
+    return current;
+}
+
+bool Value::performSubstitution()
+{
+    bool result = false;
     for (Value*& child : children()) {
-        while (child->opcode() == Identity)
-            child = child->child(0);
+        if (child->opcode() == Identity) {
+            result = true;
+            child = child->foldIdentity();
+        }
     }
+    return result;
 }
 
 bool Value::isFree() const
@@ -762,6 +790,7 @@ bool Value::isFree() const
     case ConstDouble:
     case ConstFloat:
     case Identity:
+    case Opaque:
     case Nop:
         return true;
     default:
@@ -777,6 +806,7 @@ Type Value::typeFor(Kind kind, Value* firstChild, Value* secondChild)
 {
     switch (kind.opcode()) {
     case Identity:
+    case Opaque:
     case Add:
     case Sub:
     case Mul:
@@ -801,6 +831,7 @@ Type Value::typeFor(Kind kind, Value* firstChild, Value* secondChild)
     case CheckAdd:
     case CheckSub:
     case CheckMul:
+    case Depend:
         return firstChild->type();
     case FramePointer:
         return pointerType();

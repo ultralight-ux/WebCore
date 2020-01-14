@@ -32,8 +32,8 @@
 
 namespace JSC { namespace DFG {
 
-// Returns the set of nodes live at tail, both due to due DFG and due to bytecode (i.e. OSR exit).
-HashSet<Node*> liveNodesAtHead(Graph&, BasicBlock*);
+// Returns the set of nodes live at head, both due to DFG and due to bytecode (i.e. OSR exit).
+NodeSet liveNodesAtHead(Graph&, BasicBlock*);
 
 // WARNING: This currently does not reason about the liveness of shadow values. The execution
 // semantics of DFG SSA are that an Upsilon stores to the shadow value of a Phi, and the Phi loads
@@ -45,8 +45,8 @@ struct CombinedLiveness {
     
     CombinedLiveness(Graph&);
     
-    BlockMap<HashSet<Node*>> liveAtHead;
-    BlockMap<HashSet<Node*>> liveAtTail;
+    BlockMap<NodeSet> liveAtHead;
+    BlockMap<NodeSet> liveAtTail;
 };
 
 } } // namespace JSC::DFG

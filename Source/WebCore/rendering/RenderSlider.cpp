@@ -24,8 +24,6 @@
 #include "CSSPropertyNames.h"
 #include "Document.h"
 #include "Event.h"
-#include "EventHandler.h"
-#include "EventNames.h"
 #include "Frame.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
@@ -40,10 +38,13 @@
 #include "SliderThumbElement.h"
 #include "StepRange.h"
 #include "StyleResolver.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/MathExtras.h>
 #include <wtf/StackStats.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderSlider);
 
 const int RenderSlider::defaultTrackLength = 129;
 
@@ -54,9 +55,7 @@ RenderSlider::RenderSlider(HTMLInputElement& element, RenderStyle&& style)
     ASSERT(element.isRangeControl());
 }
 
-RenderSlider::~RenderSlider()
-{
-}
+RenderSlider::~RenderSlider() = default;
 
 HTMLInputElement& RenderSlider::element() const
 {

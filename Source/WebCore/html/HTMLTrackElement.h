@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,14 +36,15 @@ namespace WebCore {
 class HTMLMediaElement;
 
 class HTMLTrackElement final : public HTMLElement, public TextTrackClient {
+    WTF_MAKE_ISO_ALLOCATED(HTMLTrackElement);
 public:
     static Ref<HTMLTrackElement> create(const QualifiedName&, Document&);
 
-    const AtomicString& kind();
-    void setKind(const AtomicString&);
+    const AtomString& kind();
+    void setKind(const AtomString&);
 
-    const AtomicString& srclang() const;
-    const AtomicString& label() const;
+    const AtomString& srclang() const;
+    const AtomString& label() const;
     bool isDefault() const;
 
     enum ReadyState { NONE = 0, LOADING = 1, LOADED = 2, TRACK_ERROR = 3 };
@@ -56,30 +58,29 @@ public:
     enum LoadStatus { Failure, Success };
     void didCompleteLoad(LoadStatus);
 
-    const AtomicString& mediaElementCrossOriginAttribute() const;
+    RefPtr<HTMLMediaElement> mediaElement() const;
+    const AtomString& mediaElementCrossOriginAttribute() const;
 
 private:
     HTMLTrackElement(const QualifiedName&, Document&);
     virtual ~HTMLTrackElement();
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
 
-    InsertionNotificationRequest insertedInto(ContainerNode&) final;
-    void removedFrom(ContainerNode&) final;
+    InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
+    void removedFromAncestor(RemovalType, ContainerNode&) final;
 
     bool isURLAttribute(const Attribute&) const final;
 
     void loadTimerFired();
 
-    HTMLMediaElement* mediaElement() const;
-
     // TextTrackClient
-    void textTrackModeChanged(TextTrack*) final;
-    void textTrackKindChanged(TextTrack*) final;
-    void textTrackAddCues(TextTrack*, const TextTrackCueList*) final;
-    void textTrackRemoveCues(TextTrack*, const TextTrackCueList*) final;
-    void textTrackAddCue(TextTrack*, TextTrackCue&) final;
-    void textTrackRemoveCue(TextTrack*, TextTrackCue&) final;
+    void textTrackModeChanged(TextTrack&) final;
+    void textTrackKindChanged(TextTrack&) final;
+    void textTrackAddCues(TextTrack&, const TextTrackCueList&) final;
+    void textTrackRemoveCues(TextTrack&, const TextTrackCueList&) final;
+    void textTrackAddCue(TextTrack&, TextTrackCue&) final;
+    void textTrackRemoveCue(TextTrack&, TextTrackCue&) final;
 
     bool canLoadURL(const URL&);
 

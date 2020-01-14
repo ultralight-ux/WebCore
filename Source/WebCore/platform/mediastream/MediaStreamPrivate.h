@@ -2,7 +2,7 @@
  * Copyright (C) 2011, 2015 Ericsson AB. All rights reserved.
  * Copyright (C) 2012 Google Inc. All rights reserved.
  * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,26 +41,31 @@
 #include "MediaStreamTrackPrivate.h"
 #include <wtf/Function.h>
 #include <wtf/HashMap.h>
+#include <wtf/LoggerHelper.h>
 #include <wtf/MediaTime.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/UUID.h>
 #include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
-
-#if USE(GSTREAMER)
-#include "GRefPtrGStreamer.h"
-#include <owr/owr_gst_video_renderer.h>
-#endif
 
 namespace WebCore {
 
 class MediaStream;
+class OrientationNotifier;
 
-class MediaStreamPrivate : public MediaStreamTrackPrivate::Observer, public RefCounted<MediaStreamPrivate> {
+class MediaStreamPrivate final
+    : public MediaStreamTrackPrivate::Observer
+    , public RefCounted<MediaStreamPrivate>
+    , public CanMakeWeakPtr<MediaStreamPrivate>
+#if !RELEASE_LOG_DISABLED
+    , private LoggerHelper
+#endif
+{
 public:
     class Observer {
     public:
-        virtual ~Observer() { }
+        virtual ~Observer() = default;
 
         virtual void characteristicsChanged() { }
         virtual void activeStatusChanged() { }
@@ -68,8 +73,9 @@ public:
         virtual void didRemoveTrack(MediaStreamTrackPrivate&) { }
     };
 
-    static Ref<MediaStreamPrivate> create(const Vector<Ref<RealtimeMediaSource>>& audioSources, const Vector<Ref<RealtimeMediaSource>>& videoSources);
-    static Ref<MediaStreamPrivate> create(const MediaStreamTrackPrivateVector&);
+    static Ref<MediaStreamPrivate> create(Ref<const Logger>&&, Ref<RealtimeMediaSource>&&);
+    static Ref<MediaStreamPrivate> create(Ref<const Logger>&&, const Vector<Ref<RealtimeMediaSource>>& audioSources, const Vector<Ref<RealtimeMediaSource>>& videoSources);
+    static Ref<MediaStreamPrivate> create(Ref<const Logger>&& logger, const MediaStreamTrackPrivateVector& tracks, String&& id = createCanonicalUUIDString()) { return adoptRef(*new MediaStreamPrivate(WTFMove(logger), tracks, WTFMove(id))); }
 
     virtual ~MediaStreamPrivate();
 
@@ -93,34 +99,27 @@ public:
     void stopProducingData();
     bool isProducingData() const;
 
-    RefPtr<Image> currentFrameImage();
-    void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&);
-
     bool hasVideo() const;
     bool hasAudio() const;
     bool muted() const;
 
-    bool hasLocalVideoSource() const;
-    bool hasLocalAudioSource() const;
+    bool hasCaptureVideoSource() const;
+    bool hasCaptureAudioSource() const;
 
     FloatSize intrinsicSize() const;
 
-    WeakPtr<MediaStreamPrivate> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
+    void monitorOrientation(OrientationNotifier&);
 
-#if USE(GSTREAMER)
-    void setVideoRenderer(OwrGstVideoRenderer* renderer, GstElement* sink) { m_gstVideoRenderer = renderer; m_gstVideoSinkElement = sink; }
-    GRefPtr<GstElement> getVideoSinkElement() const { return m_gstVideoSinkElement; }
-    GRefPtr<OwrGstVideoRenderer> getVideoRenderer() const { return m_gstVideoRenderer; }
-
-private:
-    GRefPtr<GstElement> m_gstVideoSinkElement;
-    GRefPtr<OwrGstVideoRenderer> m_gstVideoRenderer;
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const final { return m_logger; }
+    const void* logIdentifier() const final { return m_logIdentifier; }
 #endif
 
 private:
-    MediaStreamPrivate(const String&, const MediaStreamTrackPrivateVector&);
+    MediaStreamPrivate(Ref<const Logger>&&, const MediaStreamTrackPrivateVector&, String&&);
 
     // MediaStreamTrackPrivate::Observer
+    void trackStarted(MediaStreamTrackPrivate&) override;
     void trackEnded(MediaStreamTrackPrivate&) override;
     void trackMutedChanged(MediaStreamTrackPrivate&) override;
     void trackSettingsChanged(MediaStreamTrackPrivate&) override;
@@ -130,13 +129,22 @@ private:
     void updateActiveVideoTrack();
 
     void scheduleDeferredTask(Function<void ()>&&);
+    void forEachObserver(const WTF::Function<void(Observer&)>&) const;
 
-    WeakPtrFactory<MediaStreamPrivate> m_weakPtrFactory;
-    Vector<Observer*> m_observers;
+#if !RELEASE_LOG_DISABLED
+    const char* logClassName() const final { return "MediaStreamPrivate"; }
+    WTFLogChannel& logChannel() const final;
+#endif
+
+    HashSet<Observer*> m_observers;
     String m_id;
     MediaStreamTrackPrivate* m_activeVideoTrack { nullptr };
     HashMap<String, RefPtr<MediaStreamTrackPrivate>> m_trackSet;
     bool m_isActive { false };
+#if !RELEASE_LOG_DISABLED
+    Ref<const Logger> m_logger;
+    const void* m_logIdentifier;
+#endif
 };
 
 typedef Vector<RefPtr<MediaStreamPrivate>> MediaStreamPrivateVector;

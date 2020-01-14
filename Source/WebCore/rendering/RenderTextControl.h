@@ -30,12 +30,13 @@ class TextControlInnerTextElement;
 class HTMLTextFormControlElement;
 
 class RenderTextControl : public RenderBlockFlow {
+    WTF_MAKE_ISO_ALLOCATED(RenderTextControl);
 public:
     virtual ~RenderTextControl();
 
     WEBCORE_EXPORT HTMLTextFormControlElement& textFormControlElement() const;
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     bool canScroll() const;
 
     // Returns the line height of the inner renderer.
@@ -46,7 +47,7 @@ protected:
     RenderTextControl(HTMLTextFormControlElement&, RenderStyle&&);
 
     // This convenience function should not be made public because innerTextElement may outlive the render tree.
-    TextControlInnerTextElement* innerTextElement() const;
+    RefPtr<TextControlInnerTextElement> innerTextElement() const;
 
     int scrollbarThickness() const;
 
@@ -64,7 +65,7 @@ protected:
     virtual LayoutUnit computeControlLogicalHeight(LayoutUnit lineHeight, LayoutUnit nonContentHeight) const = 0;
 
     LogicalExtentComputedValues computeLogicalHeight(LayoutUnit logicalHeight, LayoutUnit logicalTop) const override;
-    RenderObject* layoutSpecialExcludedChild(bool relayoutChildren) override;
+    void layoutExcludedChildren(bool relayoutChildren) override;
 
 private:
     void element() const = delete;
@@ -73,15 +74,12 @@ private:
     bool isTextControl() const final { return true; }
     void computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const override;
     void computePreferredLogicalWidths() override;
-    void removeLeftoverAnonymousBlock(RenderBlock*) override { }
     bool avoidsFloats() const override { return true; }
     bool canHaveGeneratedChildren() const override { return false; }
     
     void addFocusRingRects(Vector<LayoutRect>&, const LayoutPoint& additionalOffset, const RenderLayerModelObject* paintContainer = 0) override;
 
     bool canBeProgramaticallyScrolled() const override { return true; }
-
-    bool requiresForcedStyleRecalcPropagation() const override { return true; }
 };
 
 // Renderer for our inner container, for <search> and others.
@@ -89,18 +87,19 @@ private:
 // baseline definition, and then inputs of different types wouldn't line up
 // anymore.
 class RenderTextControlInnerContainer final : public RenderFlexibleBox {
+    WTF_MAKE_ISO_ALLOCATED(RenderTextControlInnerContainer);
 public:
     explicit RenderTextControlInnerContainer(Element& element, RenderStyle&& style)
         : RenderFlexibleBox(element, WTFMove(style))
     { }
-    virtual ~RenderTextControlInnerContainer() { }
+    virtual ~RenderTextControlInnerContainer() = default;
 
     int baselinePosition(FontBaseline baseline, bool firstLine, LineDirectionMode direction, LinePositionMode position) const override
     {
         return RenderBlock::baselinePosition(baseline, firstLine, direction, position);
     }
-    std::optional<int> firstLineBaseline() const override { return RenderBlock::firstLineBaseline(); }
-    std::optional<int> inlineBlockBaseline(LineDirectionMode direction) const override { return RenderBlock::inlineBlockBaseline(direction); }
+    Optional<int> firstLineBaseline() const override { return RenderBlock::firstLineBaseline(); }
+    Optional<int> inlineBlockBaseline(LineDirectionMode direction) const override { return RenderBlock::inlineBlockBaseline(direction); }
 
 private:
     bool isFlexibleBoxImpl() const override { return true; }

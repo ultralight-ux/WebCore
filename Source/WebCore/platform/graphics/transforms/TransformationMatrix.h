@@ -23,23 +23,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TransformationMatrix_h
-#define TransformationMatrix_h
+#pragma once
 
 #include "FloatPoint.h"
 #include "FloatPoint3D.h"
 #include "IntPoint.h"
+#include <array>
 #include <string.h> //for memcpy
 #include <wtf/FastMalloc.h>
-#include <wtf/Optional.h>
+#include <wtf/Forward.h>
 
 #if USE(CA)
 typedef struct CATransform3D CATransform3D;
 #endif
 #if USE(CG)
 typedef struct CGAffineTransform CGAffineTransform;
-#elif USE(CAIRO)
-#include <cairo.h>
 #endif
 
 #if PLATFORM(WIN) || (PLATFORM(GTK) && OS(WINDOWS))
@@ -55,6 +53,10 @@ struct D2D_MATRIX_3X2_F;
 typedef D2D_MATRIX_3X2_F D2D1_MATRIX_3X2_F;
 #endif
 
+namespace WTF {
+class TextStream;
+}
+
 namespace WebCore {
 
 class AffineTransform;
@@ -62,7 +64,6 @@ class IntRect;
 class LayoutRect;
 class FloatRect;
 class FloatQuad;
-class TextStream;
 
 #if CPU(X86_64)
 #define TRANSFORMATION_MATRIX_USE_X86_64_SSE2
@@ -72,7 +73,7 @@ class TransformationMatrix {
     WTF_MAKE_FAST_ALLOCATED;
 public:
 
-#if (PLATFORM(IOS) && CPU(ARM_THUMB2)) || defined(TRANSFORMATION_MATRIX_USE_X86_64_SSE2)
+#if (PLATFORM(IOS_FAMILY) && CPU(ARM_THUMB2)) || defined(TRANSFORMATION_MATRIX_USE_X86_64_SSE2)
 #if COMPILER(MSVC)
     __declspec(align(16)) typedef double Matrix4[4][4];
 #else
@@ -82,17 +83,43 @@ public:
     typedef double Matrix4[4][4];
 #endif
 
-    TransformationMatrix() { makeIdentity(); }
-    WEBCORE_EXPORT TransformationMatrix(const AffineTransform&);
-    TransformationMatrix(const TransformationMatrix& t) { *this = t; }
-    TransformationMatrix(double a, double b, double c, double d, double e, double f) { setMatrix(a, b, c, d, e, f); }
-    TransformationMatrix(double m11, double m12, double m13, double m14,
-                         double m21, double m22, double m23, double m24,
-                         double m31, double m32, double m33, double m34,
-                         double m41, double m42, double m43, double m44)
+    constexpr TransformationMatrix()
+        : m_matrix {
+            { 1, 0, 0, 0 },
+            { 0, 1, 0, 0 },
+            { 0, 0, 1, 0 },
+            { 0, 0, 0, 1 },
+        }
     {
-        setMatrix(m11, m12, m13, m14, m21, m22, m23, m24, m31, m32, m33, m34, m41, m42, m43, m44);
     }
+
+    constexpr TransformationMatrix(double a, double b, double c, double d, double e, double f)
+        : m_matrix {
+            { a, b, 0, 0 },
+            { c, d, 0, 0 },
+            { 0, 0, 1, 0 },
+            { e, f, 0, 1 },
+        }
+    {
+    }
+
+    constexpr TransformationMatrix(
+        double m11, double m12, double m13, double m14,
+        double m21, double m22, double m23, double m24,
+        double m31, double m32, double m33, double m34,
+        double m41, double m42, double m43, double m44)
+        : m_matrix {
+            { m11, m12, m13, m14 },
+            { m21, m22, m23, m24 },
+            { m31, m32, m33, m34 },
+            { m41, m42, m43, m44 },
+        }
+    {
+    }
+
+    WEBCORE_EXPORT TransformationMatrix(const AffineTransform&);
+
+    static const TransformationMatrix identity;
 
     void setMatrix(double a, double b, double c, double d, double e, double f)
     {
@@ -112,12 +139,6 @@ public:
         m_matrix[2][0] = m31; m_matrix[2][1] = m32; m_matrix[2][2] = m33; m_matrix[2][3] = m34; 
         m_matrix[3][0] = m41; m_matrix[3][1] = m42; m_matrix[3][2] = m43; m_matrix[3][3] = m44;
     }
-    
-    TransformationMatrix& operator =(const TransformationMatrix &t)
-    {
-        setMatrix(t.m_matrix);
-        return *this;
-    }
 
     TransformationMatrix& makeIdentity()
     {
@@ -135,6 +156,7 @@ public:
 
     // This form preserves the double math from input to output.
     void map(double x, double y, double& x2, double& y2) const { multVecMatrix(x, y, x2, y2); }
+    void map4ComponentPoint(double& x, double& y, double& z, double& w) const;
 
     // Maps a 3D point through the transform, returning a 3D point.
     FloatPoint3D mapPoint(const FloatPoint3D&) const;
@@ -258,7 +280,7 @@ public:
     WEBCORE_EXPORT static TransformationMatrix rectToRect(const FloatRect&, const FloatRect&);
 
     bool isInvertible() const; // If you call this this, you're probably doing it wrong.
-    WEBCORE_EXPORT std::optional<TransformationMatrix> inverse() const;
+    WEBCORE_EXPORT Optional<TransformationMatrix> inverse() const;
 
     // Decompose the matrix into its component parts.
     struct Decomposed2Type {
@@ -357,8 +379,6 @@ public:
 #if USE(CG)
     WEBCORE_EXPORT TransformationMatrix(const CGAffineTransform&);
     WEBCORE_EXPORT operator CGAffineTransform() const;
-#elif USE(CAIRO)
-    operator cairo_matrix_t() const;
 #endif
 
 #if PLATFORM(WIN) || (PLATFORM(GTK) && OS(WINDOWS))
@@ -380,11 +400,13 @@ public:
 
     bool isIntegerTranslation() const;
 
+    bool containsOnlyFiniteValues() const;
+
     // Returns the matrix without 3D components.
     TransformationMatrix to2dTransform() const;
     
-    typedef float FloatMatrix4[16];
-    void toColumnMajorFloatArray(FloatMatrix4& result) const;
+    using FloatMatrix4 = std::array<float, 16>;
+    FloatMatrix4 toColumnMajorFloatArray() const;
 
     // A local-space layer is implicitly defined at the z = 0 plane, with its front side
     // facing the positive z-axis (i.e. a camera looking along the negative z-axis sees
@@ -413,17 +435,9 @@ private:
         return FloatPoint3D(static_cast<float>(resultX), static_cast<float>(resultY), static_cast<float>(resultZ));
     }
 
-    void setMatrix(const Matrix4 m)
-    {
-        if (m && m != m_matrix)
-            memcpy(m_matrix, m, sizeof(Matrix4));
-    }
-
     Matrix4 m_matrix;
 };
 
-WEBCORE_EXPORT TextStream& operator<<(TextStream&, const TransformationMatrix&);
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const TransformationMatrix&);
 
 } // namespace WebCore
-
-#endif // TransformationMatrix_h

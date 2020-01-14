@@ -35,19 +35,19 @@ class SVGFontFaceElement;
 
 class CachedSVGFont final : public CachedFont {
 public:
-    CachedSVGFont(CachedResourceRequest&&, SessionID);
+    CachedSVGFont(CachedResourceRequest&&, const PAL::SessionID&, const CookieJar*);
 
-    bool ensureCustomFontData(const AtomicString& remoteURI) override;
+    bool ensureCustomFontData(const AtomString& remoteURI) override;
 
-    RefPtr<Font> createFont(const FontDescription&, const AtomicString& remoteURI, bool syntheticBold, bool syntheticItalic, const FontFeatureSettings&, const FontVariantSettings&) override;
+    RefPtr<Font> createFont(const FontDescription&, const AtomString& remoteURI, bool syntheticBold, bool syntheticItalic, const FontFeatureSettings&, const FontVariantSettings&, FontSelectionSpecifiedCapabilities) override;
 
 private:
-    FontPlatformData platformDataFromCustomData(const FontDescription&, bool bold, bool italic, const FontFeatureSettings&, const FontVariantSettings&);
+    FontPlatformData platformDataFromCustomData(const FontDescription&, bool bold, bool italic, const FontFeatureSettings&, const FontVariantSettings&, FontSelectionSpecifiedCapabilities);
 
     SVGFontElement* getSVGFontById(const String&) const;
 
-    SVGFontElement* maybeInitializeExternalSVGFontElement(const AtomicString& remoteURI);
-    SVGFontFaceElement* firstFontFace(const AtomicString& remoteURI);
+    SVGFontElement* maybeInitializeExternalSVGFontElement(const AtomString& remoteURI);
+    SVGFontFaceElement* firstFontFace(const AtomString& remoteURI);
 
     RefPtr<SharedBuffer> m_convertedFont;
     RefPtr<SVGDocument> m_externalSVGDocument;
@@ -56,6 +56,6 @@ private:
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_CACHED_RESOURCE(CachedSVGFont, CachedResource::SVGFontResource)
+SPECIALIZE_TYPE_TRAITS_CACHED_RESOURCE(CachedSVGFont, CachedResource::Type::SVGFontResource)
 
 #endif // ENABLE(SVG_FONTS)

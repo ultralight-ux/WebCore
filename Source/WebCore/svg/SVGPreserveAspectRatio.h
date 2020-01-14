@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,47 +25,38 @@
 
 #pragma once
 
-#include "ExceptionCode.h"
 #include "SVGPreserveAspectRatioValue.h"
-#include "SVGPropertyTearOff.h"
+#include "SVGValueProperty.h"
 
 namespace WebCore {
 
-class SVGPreserveAspectRatio : public SVGPropertyTearOff<SVGPreserveAspectRatioValue> {
+class SVGPreserveAspectRatio : public SVGValueProperty<SVGPreserveAspectRatioValue> {
+    using Base = SVGValueProperty<SVGPreserveAspectRatioValue>;
+    using Base::Base;
+    using Base::m_value;
+
 public:
-    static Ref<SVGPreserveAspectRatio> create(SVGAnimatedProperty& animatedProperty, SVGPropertyRole role, SVGPreserveAspectRatioValue& value)
+    static Ref<SVGPreserveAspectRatio> create(SVGPropertyOwner* owner, SVGPropertyAccess access, const SVGPreserveAspectRatioValue& value = { })
     {
-        return adoptRef(*new SVGPreserveAspectRatio(animatedProperty, role, value));
+        return adoptRef(*new SVGPreserveAspectRatio(owner, access, value));
     }
 
-    static Ref<SVGPreserveAspectRatio> create(const SVGPreserveAspectRatioValue& initialValue = { })
+    template<typename T>
+    static ExceptionOr<Ref<SVGPreserveAspectRatio>> create(ExceptionOr<T>&& value)
     {
-        return adoptRef(*new SVGPreserveAspectRatio(initialValue));
+        if (value.hasException())
+            return value.releaseException();
+        return adoptRef(*new SVGPreserveAspectRatio(value.releaseReturnValue()));
     }
 
-    static Ref<SVGPreserveAspectRatio> create(const SVGPreserveAspectRatioValue* initialValue)
-    {
-        return adoptRef(*new SVGPreserveAspectRatio(initialValue));
-    }
-
-    template<typename T> static ExceptionOr<Ref<SVGPreserveAspectRatio>> create(ExceptionOr<T>&& initialValue)
-    {
-        if (initialValue.hasException())
-            return initialValue.releaseException();
-        return create(initialValue.releaseReturnValue());
-    }
-
-    unsigned short align()
-    {
-        return propertyReference().align();
-    }
+    unsigned short align() const { return m_value.align(); }
 
     ExceptionOr<void> setAlign(float value)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        auto result = propertyReference().setAlign(value);
+        auto result = m_value.setAlign(value);
         if (result.hasException())
             return result;
 
@@ -73,17 +64,14 @@ public:
         return result;
     }
 
-    unsigned short meetOrSlice()
-    {
-        return propertyReference().meetOrSlice();
-    }
+    unsigned short meetOrSlice() const { return m_value.meetOrSlice(); }
 
     ExceptionOr<void> setMeetOrSlice(float value)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        auto result = propertyReference().setMeetOrSlice(value);
+        auto result = m_value.setMeetOrSlice(value);
         if (result.hasException())
             return result;
 
@@ -91,20 +79,9 @@ public:
         return result;
     }
 
-private:
-    SVGPreserveAspectRatio(SVGAnimatedProperty& animatedProperty, SVGPropertyRole role, SVGPreserveAspectRatioValue& value)
-        : SVGPropertyTearOff<SVGPreserveAspectRatioValue>(&animatedProperty, role, value)
+    String valueAsString() const override
     {
-    }
-
-    explicit SVGPreserveAspectRatio(const SVGPreserveAspectRatioValue& initialValue)
-        : SVGPropertyTearOff<SVGPreserveAspectRatioValue>(initialValue)
-    {
-    }
-
-    explicit SVGPreserveAspectRatio(const SVGPreserveAspectRatioValue* initialValue)
-        : SVGPropertyTearOff<SVGPreserveAspectRatioValue>(initialValue)
-    {
+        return m_value.valueAsString();
     }
 };
 

@@ -29,53 +29,54 @@
 
 #include "DeviceClient.h"
 #include "Document.h"
-#include "Page.h"
 
 namespace WebCore {
 
-DeviceController::DeviceController(DeviceClient* client)
+DeviceController::DeviceController(DeviceClient& client)
     : m_client(client)
     , m_timer(*this, &DeviceController::fireDeviceEvent)
 {
-    ASSERT(m_client);
 }
 
-void DeviceController::addDeviceEventListener(DOMWindow* window)
+void DeviceController::addDeviceEventListener(DOMWindow& window)
 {
     bool wasEmpty = m_listeners.isEmpty();
-    m_listeners.add(window);
+    m_listeners.add(&window);
 
     if (hasLastData()) {
-        m_lastEventListeners.add(window);
+        m_lastEventListeners.add(&window);
         if (!m_timer.isActive())
-            m_timer.startOneShot(0);
+            m_timer.startOneShot(0_s);
     }
 
     if (wasEmpty)
-        m_client->startUpdating();
+        m_client.startUpdating();
 }
 
-void DeviceController::removeDeviceEventListener(DOMWindow* window)
+void DeviceController::removeDeviceEventListener(DOMWindow& window)
 {
-    m_listeners.remove(window);
-    m_lastEventListeners.remove(window);
+    m_listeners.remove(&window);
+    m_lastEventListeners.remove(&window);
     if (m_listeners.isEmpty())
-        m_client->stopUpdating();
+        m_client.stopUpdating();
 }
 
-void DeviceController::removeAllDeviceEventListeners(DOMWindow* window)
+void DeviceController::removeAllDeviceEventListeners(DOMWindow& window)
 {
-    m_listeners.removeAll(window);
-    m_lastEventListeners.removeAll(window);
+    m_listeners.removeAll(&window);
+    m_lastEventListeners.removeAll(&window);
     if (m_listeners.isEmpty())
-        m_client->stopUpdating();
+        m_client.stopUpdating();
+}
+
+bool DeviceController::hasDeviceEventListener(DOMWindow& window) const
+{
+    return m_listeners.contains(&window);
 }
 
 void DeviceController::dispatchDeviceEvent(Event& event)
 {
-    Vector<RefPtr<DOMWindow>> listenerVector;
-    copyToVector(m_listeners, listenerVector);
-    for (auto& listener : listenerVector) {
+    for (auto& listener : copyToVector(m_listeners.values())) {
         auto document = listener->document();
         if (document && !document->activeDOMObjectsAreSuspended() && !document->activeDOMObjectsAreStopped())
             listener->dispatchEvent(event);
@@ -87,8 +88,7 @@ void DeviceController::fireDeviceEvent()
     ASSERT(hasLastData());
 
     m_timer.stop();
-    Vector<RefPtr<DOMWindow>> listenerVector;
-    copyToVector(m_lastEventListeners, listenerVector);
+    auto listenerVector = copyToVector(m_lastEventListeners.values());
     m_lastEventListeners.clear();
     for (auto& listener : listenerVector) {
         auto document = listener->document();

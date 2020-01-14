@@ -184,10 +184,10 @@ void MathOperator::setGlyphAssembly(const RenderStyle& style, const GlyphAssembl
 
     if (m_operatorType == Type::VerticalOperator) {
         m_width = 0;
-        m_width = std::max<LayoutUnit>(m_width, advanceWidthForGlyph(topOrRight));
-        m_width = std::max<LayoutUnit>(m_width, advanceWidthForGlyph(extension));
-        m_width = std::max<LayoutUnit>(m_width, advanceWidthForGlyph(bottomOrLeft));
-        m_width = std::max<LayoutUnit>(m_width, advanceWidthForGlyph(middle));
+        m_width = std::max(m_width, LayoutUnit(advanceWidthForGlyph(topOrRight)));
+        m_width = std::max(m_width, LayoutUnit(advanceWidthForGlyph(extension)));
+        m_width = std::max(m_width, LayoutUnit(advanceWidthForGlyph(bottomOrLeft)));
+        m_width = std::max(m_width, LayoutUnit(advanceWidthForGlyph(middle)));
     } else {
         m_ascent = 0;
         m_descent = 0;
@@ -401,10 +401,10 @@ void MathOperator::calculateStretchyData(const RenderStyle& style, bool calculat
         for (auto& sizeVariant : sizeVariants) {
             GlyphData glyphData(sizeVariant, baseGlyph.font);
             if (calculateMaxPreferredWidth)
-                m_maxPreferredWidth = std::max<LayoutUnit>(m_maxPreferredWidth, advanceWidthForGlyph(glyphData));
+                m_maxPreferredWidth = std::max(m_maxPreferredWidth, LayoutUnit(advanceWidthForGlyph(glyphData)));
             else {
                 setSizeVariant(glyphData);
-                LayoutUnit size = isVertical ? heightForGlyph(glyphData) : advanceWidthForGlyph(glyphData);
+                LayoutUnit size { isVertical ? heightForGlyph(glyphData) : advanceWidthForGlyph(glyphData) };
                 if (size >= targetSize)
                     return;
             }
@@ -462,10 +462,10 @@ void MathOperator::calculateStretchyData(const RenderStyle& style, bool calculat
 
     // If we are measuring the maximum width, verify each component.
     if (calculateMaxPreferredWidth) {
-        m_maxPreferredWidth = std::max<LayoutUnit>(m_maxPreferredWidth, advanceWidthForGlyph(topOrRight));
-        m_maxPreferredWidth = std::max<LayoutUnit>(m_maxPreferredWidth, advanceWidthForGlyph(extension));
-        m_maxPreferredWidth = std::max<LayoutUnit>(m_maxPreferredWidth, advanceWidthForGlyph(middle));
-        m_maxPreferredWidth = std::max<LayoutUnit>(m_maxPreferredWidth, advanceWidthForGlyph(bottomOrLeft));
+        m_maxPreferredWidth = std::max(m_maxPreferredWidth, LayoutUnit(advanceWidthForGlyph(topOrRight)));
+        m_maxPreferredWidth = std::max(m_maxPreferredWidth, LayoutUnit(advanceWidthForGlyph(extension)));
+        m_maxPreferredWidth = std::max(m_maxPreferredWidth, LayoutUnit(advanceWidthForGlyph(middle)));
+        m_maxPreferredWidth = std::max(m_maxPreferredWidth, LayoutUnit(advanceWidthForGlyph(bottomOrLeft)));
         return;
     }
 
@@ -539,7 +539,7 @@ LayoutRect MathOperator::paintGlyph(const RenderStyle& style, PaintInfo& info, c
 
     GlyphBuffer buffer;
     buffer.add(data.glyph, data.font, advanceWidthForGlyph(data));
-    info.context().drawGlyphs(style.fontCascade(), *data.font, buffer, 0, 1, origin);
+    info.context().drawGlyphs(*data.font, buffer, 0, 1, origin, style.fontCascade().fontDescription().fontSmoothing());
 
     return glyphPaintRect;
 }
@@ -571,7 +571,7 @@ void MathOperator::fillWithVerticalExtensionGlyph(const RenderStyle& style, Pain
 
     // Trimming may remove up to two pixels from the top of the extender glyph, so we move it up by two pixels.
     float offsetToGlyphTop = glyphBounds.y() + 2;
-    LayoutPoint glyphOrigin = LayoutPoint(from.x(), from.y() - offsetToGlyphTop);
+    LayoutPoint glyphOrigin { from.x(), LayoutUnit(from.y() - offsetToGlyphTop) };
     FloatRect lastPaintedGlyphRect(from, FloatSize());
 
     // In practice, only small stretch sizes are requested but we limit the number of glyphs to avoid hangs.
@@ -612,7 +612,7 @@ void MathOperator::fillWithHorizontalExtensionGlyph(const RenderStyle& style, Pa
 
     // Trimming may remove up to two pixels from the left of the extender glyph, so we move it left by two pixels.
     float offsetToGlyphLeft = -2;
-    LayoutPoint glyphOrigin = LayoutPoint(from.x() + offsetToGlyphLeft, from.y());
+    LayoutPoint glyphOrigin { LayoutUnit(from.x() + offsetToGlyphLeft), from.y() };
     FloatRect lastPaintedGlyphRect(from, FloatSize());
 
     // In practice, only small stretch sizes are requested but we limit the number of glyphs to avoid hangs.
@@ -637,15 +637,19 @@ void MathOperator::paintVerticalGlyphAssembly(const RenderStyle& style, PaintInf
 
     ASSERT(topOrRight.font);
     ASSERT(bottomOrLeft.font);
+    if (!topOrRight.font || !bottomOrLeft.font) {
+        LOG_ERROR("MathML: no font can be found for Unicode code point.");
+        return;
+    }
 
     // We are positioning the glyphs so that the edge of the tight glyph bounds line up exactly with the edges of our paint box.
     LayoutPoint operatorTopLeft = paintOffset;
     FloatRect topGlyphBounds = boundsForGlyph(topOrRight);
-    LayoutPoint topGlyphOrigin(operatorTopLeft.x(), operatorTopLeft.y() - topGlyphBounds.y());
+    LayoutPoint topGlyphOrigin { operatorTopLeft.x(), LayoutUnit(operatorTopLeft.y() - topGlyphBounds.y()) };
     LayoutRect topGlyphPaintRect = paintGlyph(style, info, topOrRight, topGlyphOrigin, TrimBottom);
 
     FloatRect bottomGlyphBounds = boundsForGlyph(bottomOrLeft);
-    LayoutPoint bottomGlyphOrigin(operatorTopLeft.x(), operatorTopLeft.y() + stretchSize() - (bottomGlyphBounds.height() + bottomGlyphBounds.y()));
+    LayoutPoint bottomGlyphOrigin { operatorTopLeft.x(), LayoutUnit(operatorTopLeft.y() + stretchSize() - (bottomGlyphBounds.height() + bottomGlyphBounds.y())) };
     LayoutRect bottomGlyphPaintRect = paintGlyph(style, info, bottomOrLeft, bottomGlyphOrigin, TrimTop);
 
     if (m_assembly.hasMiddle()) {
@@ -674,6 +678,10 @@ void MathOperator::paintHorizontalGlyphAssembly(const RenderStyle& style, PaintI
 
     ASSERT(bottomOrLeft.font);
     ASSERT(topOrRight.font);
+    if (!topOrRight.font || !bottomOrLeft.font) {
+        LOG_ERROR("MathML: no font can be found for Unicode code point.");
+        return;
+    }
 
     // We are positioning the glyphs so that the edge of the tight glyph bounds line up exactly with the edges of our paint box.
     LayoutPoint operatorTopLeft = paintOffset;
@@ -682,7 +690,7 @@ void MathOperator::paintHorizontalGlyphAssembly(const RenderStyle& style, PaintI
     LayoutRect leftGlyphPaintRect = paintGlyph(style, info, bottomOrLeft, leftGlyphOrigin, TrimRight);
 
     FloatRect rightGlyphBounds = boundsForGlyph(topOrRight);
-    LayoutPoint rightGlyphOrigin(operatorTopLeft.x() + stretchSize() - rightGlyphBounds.width(), baselineY);
+    LayoutPoint rightGlyphOrigin { LayoutUnit(operatorTopLeft.x() + stretchSize() - rightGlyphBounds.width()), baselineY };
     LayoutRect rightGlyphPaintRect = paintGlyph(style, info, topOrRight, rightGlyphOrigin, TrimLeft);
 
     if (m_assembly.hasMiddle()) {
@@ -700,20 +708,20 @@ void MathOperator::paintHorizontalGlyphAssembly(const RenderStyle& style, PaintI
 
 void MathOperator::paint(const RenderStyle& style, PaintInfo& info, const LayoutPoint& paintOffset)
 {
-    if (info.context().paintingDisabled() || info.phase != PaintPhaseForeground || style.visibility() != VISIBLE)
+    if (info.context().paintingDisabled() || info.phase != PaintPhase::Foreground || style.visibility() != Visibility::Visible)
         return;
 
     // Make a copy of the PaintInfo because applyTransform will modify its rect.
     PaintInfo paintInfo(info);
     GraphicsContextStateSaver stateSaver(paintInfo.context());
-    paintInfo.context().setFillColor(style.visitedDependentColor(CSSPropertyColor));
+    paintInfo.context().setFillColor(style.visitedDependentColorWithColorFilter(CSSPropertyColor));
 
     // For a radical character, we may need some scale transform to stretch it vertically or mirror it.
     if (m_baseCharacter == kRadicalOperator) {
         float radicalHorizontalScale = style.isLeftToRightDirection() ? 1 : -1;
         if (radicalHorizontalScale == -1 || m_radicalVerticalScale > 1) {
             LayoutPoint scaleOrigin = paintOffset;
-            scaleOrigin.move(m_width / 2, 0);
+            scaleOrigin.move(m_width / 2, 0_lu);
             paintInfo.applyTransform(AffineTransform().translate(scaleOrigin).scale(radicalHorizontalScale, m_radicalVerticalScale).translate(-scaleOrigin));
         }
     }
@@ -737,8 +745,8 @@ void MathOperator::paint(const RenderStyle& style, PaintInfo& info, const Layout
     buffer.add(glyphData.glyph, glyphData.font, advanceWidthForGlyph(glyphData));
     LayoutPoint operatorTopLeft = paintOffset;
     FloatRect glyphBounds = boundsForGlyph(glyphData);
-    LayoutPoint operatorOrigin(operatorTopLeft.x(), operatorTopLeft.y() - glyphBounds.y());
-    paintInfo.context().drawGlyphs(style.fontCascade(), *glyphData.font, buffer, 0, 1, operatorOrigin);
+    LayoutPoint operatorOrigin { operatorTopLeft.x(), LayoutUnit(operatorTopLeft.y() - glyphBounds.y()) };
+    paintInfo.context().drawGlyphs(*glyphData.font, buffer, 0, 1, operatorOrigin, style.fontCascade().fontDescription().fontSmoothing());
 }
 
 }

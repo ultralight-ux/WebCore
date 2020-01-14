@@ -35,36 +35,50 @@
 #include "CachedResourceClient.h"
 #include "CachedResourceHandle.h"
 #include "LinkLoaderClient.h"
+#include "LinkRelAttribute.h"
 
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
 class Document;
-class URL;
 class LinkPreloadResourceClient;
 
-struct LinkRelAttribute;
+struct LinkLoadParameters {
+    LinkRelAttribute relAttribute;
+    URL href;
+    String as;
+    String media;
+    String mimeType;
+    String crossOrigin;
+    String imageSrcSet;
+    String imageSizes;
+};
 
-class LinkLoader : private CachedResourceClient {
+class LinkLoader : private CachedResourceClient, public CanMakeWeakPtr<LinkLoader> {
 public:
     explicit LinkLoader(LinkLoaderClient&);
     virtual ~LinkLoader();
 
-    bool loadLink(const LinkRelAttribute&, const URL&, const String& as, const String& crossOrigin, Document&);
-    static std::optional<CachedResource::Type> resourceTypeFromAsAttribute(const String& as);
+    bool loadLink(const LinkLoadParameters&, Document&);
+    static Optional<CachedResource::Type> resourceTypeFromAsAttribute(const String& as);
 
-    WeakPtr<LinkLoader> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
+    enum class MediaAttributeCheck { MediaAttributeEmpty, MediaAttributeNotEmpty, SkipMediaAttributeCheck };
+    static void loadLinksFromHeader(const String& headerValue, const URL& baseURL, Document&, MediaAttributeCheck);
+    static bool isSupportedType(CachedResource::Type, const String& mimeType);
+
     void triggerEvents(const CachedResource&);
+    void cancelLoad();
 
 private:
     void notifyFinished(CachedResource&) override;
-    void preloadIfNeeded(const LinkRelAttribute&, const URL& href, Document&, const String& as, const String& crossOriginMode);
+    static void preconnectIfNeeded(const LinkLoadParameters&, Document&);
+    static std::unique_ptr<LinkPreloadResourceClient> preloadIfNeeded(const LinkLoadParameters&, Document&, LinkLoader*);
+    void prefetchIfNeeded(const LinkLoadParameters&, Document&);
 
     LinkLoaderClient& m_client;
     CachedResourceHandle<CachedResource> m_cachedLinkResource;
     std::unique_ptr<LinkPreloadResourceClient> m_preloadResourceClient;
-    WeakPtrFactory<LinkLoader> m_weakPtrFactory;
 };
 
 }

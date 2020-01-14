@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004 Apple Inc.  All rights reserved.
+ * Copyright (C) 2004-2019 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,14 +23,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef KJS_BINDINGS_OBJC_UTILITY_H
-#define KJS_BINDINGS_OBJC_UTILITY_H
+#pragma once
 
 #include <CoreFoundation/CoreFoundation.h>
 
 #include "objc_header.h"
-#include <runtime/Error.h>
-#include <runtime/JSObject.h>
+#include <JavaScriptCore/Error.h>
+#include <JavaScriptCore/JSObject.h>
 
 OBJC_CLASS NSString;
 
@@ -38,7 +37,7 @@ namespace JSC {
 namespace Bindings {
 
 typedef union {
-    ObjectStructPtr objectValue;
+    CFTypeRef objectValue;
     bool booleanValue;
     char charValue;
     short shortValue;
@@ -75,9 +74,7 @@ JSValue convertNSStringToString(ExecState* exec, NSString *nsstring);
 JSValue convertObjcValueToValue(ExecState*, void* buffer, ObjcValueType, RootObject*);
 ObjcValueType objcValueTypeForType(const char *type);
 
-JSObject *throwError(ExecState*, ThrowScope&, NSString *message);
+Exception *throwError(ExecState*, ThrowScope&, NSString *message);
 
 } // namespace Bindings
 } // namespace JSC
-
-#endif

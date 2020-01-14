@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -124,44 +124,6 @@ static void compileRecovery(
         jit.load64(AssemblyHelpers::addressFor(value.virtualRegister()), GPRInfo::regT0);
         break;
             
-    case ExitValueRecovery:
-        Location::forValueRep(valueReps[value.rightRecoveryArgument()]).restoreInto(
-            jit, registerScratch, GPRInfo::regT1);
-        Location::forValueRep(valueReps[value.leftRecoveryArgument()]).restoreInto(
-            jit, registerScratch, GPRInfo::regT0);
-        switch (value.recoveryOpcode()) {
-        case AddRecovery:
-            switch (value.recoveryFormat()) {
-            case DataFormatInt32:
-                jit.add32(GPRInfo::regT1, GPRInfo::regT0);
-                break;
-            case DataFormatInt52:
-                jit.add64(GPRInfo::regT1, GPRInfo::regT0);
-                break;
-            default:
-                RELEASE_ASSERT_NOT_REACHED();
-                break;
-            }
-            break;
-        case SubRecovery:
-            switch (value.recoveryFormat()) {
-            case DataFormatInt32:
-                jit.sub32(GPRInfo::regT1, GPRInfo::regT0);
-                break;
-            case DataFormatInt52:
-                jit.sub64(GPRInfo::regT1, GPRInfo::regT0);
-                break;
-            default:
-                RELEASE_ASSERT_NOT_REACHED();
-                break;
-            }
-            break;
-        default:
-            RELEASE_ASSERT_NOT_REACHED();
-            break;
-        }
-        break;
-        
     case ExitValueMaterializeNewObject:
         jit.loadPtr(materializationToPointer.get(value.objectMaterialization()), GPRInfo::regT0);
         break;
@@ -181,12 +143,12 @@ static void compileStub(
     // This code requires framePointerRegister is the same as callFrameRegister
     static_assert(MacroAssembler::framePointerRegister == GPRInfo::callFrameRegister, "MacroAssembler::framePointerRegister and GPRInfo::callFrameRegister must be the same");
 
-    CCallHelpers jit(vm, codeBlock);
+    CCallHelpers jit(codeBlock);
 
     // The first thing we need to do is restablish our frame in the case of an exception.
     if (exit.isGenericUnwindHandler()) {
         RELEASE_ASSERT(vm->callFrameForCatch); // The first time we hit this exit, like at all other times, this field should be non-null.
-        jit.restoreCalleeSavesFromVMEntryFrameCalleeSavesBuffer();
+        jit.restoreCalleeSavesFromEntryFrameCalleeSavesBuffer(vm->topEntryFrame);
         jit.loadPtr(vm->addressOfCallFrameForCatch(), MacroAssembler::framePointerRegister);
         jit.addPtr(CCallHelpers::TrustedImm32(codeBlock->stackPointerOffset() * sizeof(Register)),
             MacroAssembler::framePointerRegister, CCallHelpers::stackPointerRegister);
@@ -244,11 +206,23 @@ static void compileStub(
 
     saveAllRegisters(jit, registerScratch);
     
+    if (validateDFGDoesGC) {
+        // We're about to exit optimized code. So, there's no longer any optimized
+        // code running that expects no GC. We need to set this before object
+        // materialization below.
+
+        // Even though we set Heap::m_expectDoesGC in compileFTLOSRExit(), we also need
+        // to set it here because compileFTLOSRExit() is only called on the first time
+        // we exit from this site, but all subsequent exits will take this compiled
+        // ramp without calling compileFTLOSRExit() first.
+        jit.store8(CCallHelpers::TrustedImm32(true), vm->heap.addressOfExpectDoesGC());
+    }
+
     // Bring the stack back into a sane form and assert that it's sane.
     jit.popToRestore(GPRInfo::regT0);
     jit.checkStackPointerAlignment();
     
-    if (vm->m_perBytecodeProfiler && jitCode->dfgCommon()->compilation) {
+    if (UNLIKELY(vm->m_perBytecodeProfiler && jitCode->dfgCommon()->compilation)) {
         Profiler::Database& database = *vm->m_perBytecodeProfiler;
         Profiler::Compilation* compilation = jitCode->dfgCommon()->compilation.get();
         
@@ -274,12 +248,23 @@ static void compileStub(
         
         if (exit.m_kind == BadCache || exit.m_kind == BadIndexingType) {
             CodeOrigin codeOrigin = exit.m_codeOriginForExitProfile;
-            if (ArrayProfile* arrayProfile = jit.baselineCodeBlockFor(codeOrigin)->getArrayProfile(codeOrigin.bytecodeIndex)) {
+            if (ArrayProfile* arrayProfile = jit.baselineCodeBlockFor(codeOrigin)->getArrayProfile(codeOrigin.bytecodeIndex())) {
                 jit.load32(MacroAssembler::Address(GPRInfo::regT0, JSCell::structureIDOffset()), GPRInfo::regT1);
                 jit.store32(GPRInfo::regT1, arrayProfile->addressOfLastSeenStructureID());
+
+                jit.load8(MacroAssembler::Address(GPRInfo::regT0, JSCell::typeInfoTypeOffset()), GPRInfo::regT2);
+                jit.sub32(MacroAssembler::TrustedImm32(FirstTypedArrayType), GPRInfo::regT2);
+                auto notTypedArray = jit.branch32(MacroAssembler::AboveOrEqual, GPRInfo::regT2, MacroAssembler::TrustedImm32(NumberOfTypedArrayTypesExcludingDataView));
+                jit.move(MacroAssembler::TrustedImmPtr(typedArrayModes), GPRInfo::regT1);
+                jit.load32(MacroAssembler::BaseIndex(GPRInfo::regT1, GPRInfo::regT2, MacroAssembler::TimesFour), GPRInfo::regT2);
+                auto storeArrayModes = jit.jump();
+
+                notTypedArray.link(&jit);
                 jit.load8(MacroAssembler::Address(GPRInfo::regT0, JSCell::indexingTypeAndMiscOffset()), GPRInfo::regT1);
+                jit.and32(MacroAssembler::TrustedImm32(IndexingModeMask), GPRInfo::regT1);
                 jit.move(MacroAssembler::TrustedImm32(1), GPRInfo::regT2);
                 jit.lshift32(GPRInfo::regT1, GPRInfo::regT2);
+                storeArrayModes.link(&jit);
                 jit.or32(GPRInfo::regT2, MacroAssembler::AbsoluteAddress(arrayProfile->addressOfArrayModes()));
             }
         }
@@ -334,12 +319,12 @@ static void compileStub(
                 jit.storePtr(GPRInfo::regT0, materializationArguments + propertyIndex);
             }
             
-            // This call assumes that we don't pass arguments on the stack.
-            jit.setupArgumentsWithExecState(
+            static_assert(FunctionTraits<decltype(operationMaterializeObjectInOSR)>::arity < GPRInfo::numberOfArgumentRegisters, "This call assumes that we don't pass arguments on the stack.");
+            jit.setupArguments<decltype(operationMaterializeObjectInOSR)>(
                 CCallHelpers::TrustedImmPtr(materialization),
                 CCallHelpers::TrustedImmPtr(materializationArguments));
-            jit.move(CCallHelpers::TrustedImmPtr(bitwise_cast<void*>(operationMaterializeObjectInOSR)), GPRInfo::nonArgGPR0);
-            jit.call(GPRInfo::nonArgGPR0);
+            jit.move(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationMaterializeObjectInOSR)), GPRInfo::nonArgGPR0);
+            jit.call(GPRInfo::nonArgGPR0, OperationPtrTag);
             jit.storePtr(GPRInfo::returnValueGPR, materializationToPointer.get(materialization));
 
             // Let everyone know that we're done.
@@ -361,13 +346,13 @@ static void compileStub(
             jit.storePtr(GPRInfo::regT0, materializationArguments + propertyIndex);
         }
 
-        // This call assumes that we don't pass arguments on the stack
-        jit.setupArgumentsWithExecState(
+        static_assert(FunctionTraits<decltype(operationPopulateObjectInOSR)>::arity < GPRInfo::numberOfArgumentRegisters, "This call assumes that we don't pass arguments on the stack.");
+        jit.setupArguments<decltype(operationPopulateObjectInOSR)>(
             CCallHelpers::TrustedImmPtr(materialization),
             CCallHelpers::TrustedImmPtr(materializationToPointer.get(materialization)),
             CCallHelpers::TrustedImmPtr(materializationArguments));
-        jit.move(CCallHelpers::TrustedImmPtr(bitwise_cast<void*>(operationPopulateObjectInOSR)), GPRInfo::nonArgGPR0);
-        jit.call(GPRInfo::nonArgGPR0);
+        jit.move(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationPopulateObjectInOSR)), GPRInfo::nonArgGPR0);
+        jit.call(GPRInfo::nonArgGPR0, OperationPtrTag);
     }
 
     // Save all state from wherever the exit data tells us it was, into the appropriate place in
@@ -394,36 +379,6 @@ static void compileStub(
         jit.store64(GPRInfo::regT0, unwindScratch + i);
     }
     
-    jit.load32(CCallHelpers::payloadFor(CallFrameSlot::argumentCount), GPRInfo::regT2);
-    
-    // Let's say that the FTL function had failed its arity check. In that case, the stack will
-    // contain some extra stuff.
-    //
-    // We compute the padded stack space:
-    //
-    //     paddedStackSpace = roundUp(codeBlock->numParameters - regT2 + 1)
-    //
-    // The stack will have regT2 + CallFrameHeaderSize stuff.
-    // We want to make the stack look like this, from higher addresses down:
-    //
-    //     - argument padding
-    //     - actual arguments
-    //     - call frame header
-
-    // This code assumes that we're dealing with FunctionCode.
-    RELEASE_ASSERT(codeBlock->codeType() == FunctionCode);
-    
-    jit.add32(
-        MacroAssembler::TrustedImm32(-codeBlock->numParameters()), GPRInfo::regT2,
-        GPRInfo::regT3);
-    MacroAssembler::Jump arityIntact = jit.branch32(
-        MacroAssembler::GreaterThanOrEqual, GPRInfo::regT3, MacroAssembler::TrustedImm32(0));
-    jit.neg32(GPRInfo::regT3);
-    jit.add32(MacroAssembler::TrustedImm32(1 + stackAlignmentRegisters() - 1), GPRInfo::regT3);
-    jit.and32(MacroAssembler::TrustedImm32(-stackAlignmentRegisters()), GPRInfo::regT3);
-    jit.add32(GPRInfo::regT3, GPRInfo::regT2);
-    arityIntact.link(&jit);
-
     CodeBlock* baselineCodeBlock = jit.baselineCodeBlockFor(exit.m_codeOrigin);
 
     // First set up SP so that our data doesn't get clobbered by signals.
@@ -438,12 +393,12 @@ static void compileStub(
     jit.checkStackPointerAlignment();
 
     RegisterSet allFTLCalleeSaves = RegisterSet::ftlCalleeSaveRegisters();
-    RegisterAtOffsetList* baselineCalleeSaves = baselineCodeBlock->calleeSaveRegisters();
-    RegisterAtOffsetList* vmCalleeSaves = vm->getAllCalleeSaveRegisterOffsets();
+    const RegisterAtOffsetList* baselineCalleeSaves = baselineCodeBlock->calleeSaveRegisters();
+    RegisterAtOffsetList* vmCalleeSaves = RegisterSet::vmCalleeSaveRegisterOffsets();
     RegisterSet vmCalleeSavesToSkip = RegisterSet::stackRegisters();
     if (exit.isExceptionHandler()) {
-        jit.loadPtr(&vm->topVMEntryFrame, GPRInfo::regT1);
-        jit.addPtr(CCallHelpers::TrustedImm32(VMEntryFrame::calleeSaveRegistersBufferOffset()), GPRInfo::regT1);
+        jit.loadPtr(&vm->topEntryFrame, GPRInfo::regT1);
+        jit.addPtr(CCallHelpers::TrustedImm32(EntryFrame::calleeSaveRegistersBufferOffset()), GPRInfo::regT1);
     }
 
     for (Reg reg = Reg::first(); reg <= Reg::last(); reg = reg.next()) {
@@ -453,7 +408,7 @@ static void compileStub(
             continue;
         }
         unsigned unwindIndex = codeBlock->calleeSaveRegisters()->indexOf(reg);
-        RegisterAtOffset* baselineRegisterOffset = baselineCalleeSaves->find(reg);
+        const RegisterAtOffset* baselineRegisterOffset = baselineCalleeSaves->find(reg);
         RegisterAtOffset* vmCalleeSave = nullptr; 
         if (exit.isExceptionHandler())
             vmCalleeSave = vmCalleeSaves->find(reg);
@@ -519,16 +474,16 @@ static void compileStub(
     
     handleExitCounts(jit, exit);
     reifyInlinedCallFrames(jit, exit);
-    adjustAndJumpToTarget(jit, exit);
+    adjustAndJumpToTarget(*vm, jit, exit);
     
-    LinkBuffer patchBuffer(*vm, jit, codeBlock);
+    LinkBuffer patchBuffer(jit, codeBlock);
     exit.m_code = FINALIZE_CODE_IF(
         shouldDumpDisassembly() || Options::verboseOSR() || Options::verboseFTLOSRExit(),
-        patchBuffer,
-        ("FTL OSR exit #%u (%s, %s) from %s, with operands = %s",
+        patchBuffer, OSRExitPtrTag,
+        "FTL OSR exit #%u (%s, %s) from %s, with operands = %s",
             exitID, toCString(exit.m_codeOrigin).data(),
             exitKindToString(exit.m_kind), toCString(*codeBlock).data(),
-            toCString(ignoringContext<DumpContext>(exit.m_descriptor->m_values)).data())
+            toCString(ignoringContext<DumpContext>(exit.m_descriptor->m_values)).data()
         );
 }
 
@@ -537,19 +492,25 @@ extern "C" void* compileFTLOSRExit(ExecState* exec, unsigned exitID)
     if (shouldDumpDisassembly() || Options::verboseOSR() || Options::verboseFTLOSRExit())
         dataLog("Compiling OSR exit with exitID = ", exitID, "\n");
 
-    if (exec->vm().callFrameForCatch)
-        RELEASE_ASSERT(exec->vm().callFrameForCatch == exec);
+    VM& vm = exec->vm();
+
+    if (validateDFGDoesGC) {
+        // We're about to exit optimized code. So, there's no longer any optimized
+        // code running that expects no GC.
+        vm.heap.setExpectDoesGC(true);
+    }
+
+    if (vm.callFrameForCatch)
+        RELEASE_ASSERT(vm.callFrameForCatch == exec);
     
     CodeBlock* codeBlock = exec->codeBlock();
     
     ASSERT(codeBlock);
-    ASSERT(codeBlock->jitType() == JITCode::FTLJIT);
-    
-    VM* vm = &exec->vm();
+    ASSERT(codeBlock->jitType() == JITType::FTLJIT);
     
     // It's sort of preferable that we don't GC while in here. Anyways, doing so wouldn't
     // really be profitable.
-    DeferGCForAWhile deferGC(vm->heap);
+    DeferGCForAWhile deferGC(vm.heap);
 
     JITCode* jitCode = codeBlock->jitCode()->ftl();
     OSRExit& exit = jitCode->osrExit[exitID];
@@ -572,11 +533,11 @@ extern "C" void* compileFTLOSRExit(ExecState* exec, unsigned exitID)
     }
 
     prepareCodeOriginForOSRExit(exec, exit.m_codeOrigin);
-    
-    compileStub(exitID, jitCode, exit, vm, codeBlock);
+
+    compileStub(exitID, jitCode, exit, &vm, codeBlock);
 
     MacroAssembler::repatchJump(
-        exit.codeLocationForRepatch(codeBlock), CodeLocationLabel(exit.m_code.code()));
+        exit.codeLocationForRepatch(codeBlock), CodeLocationLabel<OSRExitPtrTag>(exit.m_code.code()));
     
     return exit.m_code.code().executableAddress();
 }

@@ -22,16 +22,14 @@
  *
  */
 
-#ifndef FontDescription_h
-#define FontDescription_h
+#pragma once
 
-#include "CSSValueKeywords.h"
+#include "FontSelectionAlgorithm.h"
 #include "FontTaggedSettings.h"
 #include "TextFlags.h"
 #include "WebKitFontFamilyNames.h"
 #include <unicode/uscript.h>
 #include <wtf/MathExtras.h>
-#include <wtf/RefCountedArray.h>
 
 namespace WebCore {
 
@@ -45,15 +43,15 @@ public:
     bool operator!=(const FontDescription& other) const { return !(*this == other); }
 
     float computedSize() const { return m_computedSize; }
-    FontItalic italic() const { return static_cast<FontItalic>(m_italic); }
-    int computedPixelSize() const { return int(m_computedSize + 0.5f); }
-    FontWeight weight() const { return static_cast<FontWeight>(m_weight); }
-    FontWeight lighterWeight() const;
-    FontWeight bolderWeight() const;
+    unsigned computedPixelSize() const { return unsigned(m_computedSize + 0.5f); }
+    Optional<FontSelectionValue> italic() const { return m_fontSelectionRequest.slope; }
+    FontSelectionValue stretch() const { return m_fontSelectionRequest.width; }
+    FontSelectionValue weight() const { return m_fontSelectionRequest.weight; }
+    FontSelectionRequest fontSelectionRequest() const { return m_fontSelectionRequest; }
     FontRenderingMode renderingMode() const { return static_cast<FontRenderingMode>(m_renderingMode); }
     TextRenderingMode textRenderingMode() const { return static_cast<TextRenderingMode>(m_textRendering); }
     UScriptCode script() const { return static_cast<UScriptCode>(m_script); }
-    const AtomicString& locale() const { return m_locale; }
+    const AtomString& locale() const { return m_locale; }
 
     FontOrientation orientation() const { return static_cast<FontOrientation>(m_orientation); }
     NonCJKGlyphOrientation nonCJKGlyphOrientation() const { return static_cast<NonCJKGlyphOrientation>(m_nonCJKGlyphOrientation); }
@@ -94,17 +92,22 @@ public:
             variantEastAsianWidth(),
             variantEastAsianRuby() };
     }
+    FontOpticalSizing opticalSizing() const { return static_cast<FontOpticalSizing>(m_opticalSizing); }
+    FontStyleAxis fontStyleAxis() const { return m_fontStyleAxis ? FontStyleAxis::ital : FontStyleAxis::slnt; }
+    AllowUserInstalledFonts shouldAllowUserInstalledFonts() const { return static_cast<AllowUserInstalledFonts>(m_shouldAllowUserInstalledFonts); }
+    bool shouldAllowDesignSystemUIFonts() const { return m_shouldAllowDesignSystemUIFonts; }
 
     void setComputedSize(float s) { m_computedSize = clampToFloat(s); }
-    void setItalic(FontItalic i) { m_italic = i; }
-    void setIsItalic(bool i) { setItalic(i ? FontItalicOn : FontItalicOff); }
-    void setWeight(FontWeight w) { m_weight = w; }
+    void setItalic(Optional<FontSelectionValue> italic) { m_fontSelectionRequest.slope = italic; }
+    void setStretch(FontSelectionValue stretch) { m_fontSelectionRequest.width = stretch; }
+    void setIsItalic(bool isItalic) { setItalic(isItalic ? Optional<FontSelectionValue> { italicValue() } : Optional<FontSelectionValue> { }); }
+    void setWeight(FontSelectionValue weight) { m_fontSelectionRequest.weight = weight; }
     void setRenderingMode(FontRenderingMode mode) { m_renderingMode = static_cast<unsigned>(mode); }
-    void setTextRenderingMode(TextRenderingMode rendering) { m_textRendering = rendering; }
-    void setOrientation(FontOrientation orientation) { m_orientation = orientation; }
+    void setTextRenderingMode(TextRenderingMode rendering) { m_textRendering = static_cast<unsigned>(rendering); }
+    void setOrientation(FontOrientation orientation) { m_orientation = static_cast<unsigned>(orientation); }
     void setNonCJKGlyphOrientation(NonCJKGlyphOrientation orientation) { m_nonCJKGlyphOrientation = static_cast<unsigned>(orientation); }
-    void setWidthVariant(FontWidthVariant widthVariant) { m_widthVariant = widthVariant; } // Make sure new callers of this sync with FontPlatformData::isForTextCombine()!
-    void setLocale(const AtomicString&);
+    void setWidthVariant(FontWidthVariant widthVariant) { m_widthVariant = static_cast<unsigned>(widthVariant); } // Make sure new callers of this sync with FontPlatformData::isForTextCombine()!
+    void setLocale(const AtomString&);
     void setFeatureSettings(FontFeatureSettings&& settings) { m_featureSettings = WTFMove(settings); }
 #if ENABLE(VARIATION_FONTS)
     void setVariationSettings(FontVariationSettings&& settings) { m_variationSettings = WTFMove(settings); }
@@ -125,21 +128,24 @@ public:
     void setVariantEastAsianVariant(FontVariantEastAsianVariant variant) { m_variantEastAsianVariant = static_cast<unsigned>(variant); }
     void setVariantEastAsianWidth(FontVariantEastAsianWidth variant) { m_variantEastAsianWidth = static_cast<unsigned>(variant); }
     void setVariantEastAsianRuby(FontVariantEastAsianRuby variant) { m_variantEastAsianRuby = static_cast<unsigned>(variant); }
+    void setOpticalSizing(FontOpticalSizing sizing) { m_opticalSizing = static_cast<unsigned>(sizing); }
+    void setFontStyleAxis(FontStyleAxis axis) { m_fontStyleAxis = axis == FontStyleAxis::ital; }
+    void setShouldAllowUserInstalledFonts(AllowUserInstalledFonts shouldAllowUserInstalledFonts) { m_shouldAllowUserInstalledFonts = static_cast<unsigned>(shouldAllowUserInstalledFonts); }
+    void setShouldAllowDesignSystemUIFonts(bool allow) { m_shouldAllowDesignSystemUIFonts = allow; }
 
-    FontTraitsMask traitsMask() const;
+    static AtomString platformResolveGenericFamily(UScriptCode, const AtomString& locale, const AtomString& familyName);
 
 private:
     // FIXME: Investigate moving these into their own object on the heap (to save memory).
     FontFeatureSettings m_featureSettings;
     FontVariationSettings m_variationSettings;
-    AtomicString m_locale;
+    AtomString m_locale;
 
+    FontSelectionRequest m_fontSelectionRequest;
     float m_computedSize { 0 }; // Computed size adjusted for the minimum font size and the zoom factor.
     unsigned m_orientation : 1; // FontOrientation - Whether the font is rendering on a horizontal line or a vertical line.
     unsigned m_nonCJKGlyphOrientation : 1; // NonCJKGlyphOrientation - Only used by vertical text. Determines the default orientation for non-ideograph glyphs.
     unsigned m_widthVariant : 2; // FontWidthVariant
-    unsigned m_italic : 1; // FontItalic
-    unsigned m_weight : 8; // FontWeight
     unsigned m_renderingMode : 1; // Used to switch between CG and GDI text on Windows.
     unsigned m_textRendering : 2; // TextRenderingMode
     unsigned m_script : 7; // Used to help choose an appropriate font for generic font families.
@@ -159,13 +165,16 @@ private:
     unsigned m_variantEastAsianVariant : 3; // FontVariantEastAsianVariant
     unsigned m_variantEastAsianWidth : 2; // FontVariantEastAsianWidth
     unsigned m_variantEastAsianRuby : 1; // FontVariantEastAsianRuby
+    unsigned m_opticalSizing : 1; // FontOpticalSizing
+    unsigned m_fontStyleAxis : 1; // Whether "font-style: italic" or "font-style: oblique 20deg" was specified
+    unsigned m_shouldAllowUserInstalledFonts : 1; // AllowUserInstalledFonts: If this description is allowed to match a user-installed font
+    unsigned m_shouldAllowDesignSystemUIFonts : 1; // Whether -apple-system-ui-serif, -apple-system-ui-monospaced, and -apple-system-ui-rounded are supported
 };
 
 inline bool FontDescription::operator==(const FontDescription& other) const
 {
     return m_computedSize == other.m_computedSize
-        && m_italic == other.m_italic
-        && m_weight == other.m_weight
+        && m_fontSelectionRequest == other.m_fontSelectionRequest
         && m_renderingMode == other.m_renderingMode
         && m_textRendering == other.m_textRendering
         && m_orientation == other.m_orientation
@@ -191,115 +200,11 @@ inline bool FontDescription::operator==(const FontDescription& other) const
         && m_variantAlternates == other.m_variantAlternates
         && m_variantEastAsianVariant == other.m_variantEastAsianVariant
         && m_variantEastAsianWidth == other.m_variantEastAsianWidth
-        && m_variantEastAsianRuby == other.m_variantEastAsianRuby;
-}
-
-// FIXME: Move to a file of its own.
-class FontCascadeDescription : public FontDescription {
-public:
-    FontCascadeDescription();
-
-    bool operator==(const FontCascadeDescription&) const;
-    bool operator!=(const FontCascadeDescription& other) const { return !(*this == other); }
-
-    unsigned familyCount() const { return m_families.size(); }
-    const AtomicString& firstFamily() const { return familyAt(0); }
-    const AtomicString& familyAt(unsigned i) const { return m_families[i]; }
-    const RefCountedArray<AtomicString>& families() const { return m_families; }
-
-    float specifiedSize() const { return m_specifiedSize; }
-    bool isAbsoluteSize() const { return m_isAbsoluteSize; }
-    FontWeight lighterWeight() const;
-    FontWeight bolderWeight() const;
-
-    // only use fixed default size when there is only one font family, and that family is "monospace"
-    bool useFixedDefaultSize() const { return familyCount() == 1 && firstFamily() == monospaceFamily; }
-
-    Kerning kerning() const { return static_cast<Kerning>(m_kerning); }
-    unsigned keywordSize() const { return m_keywordSize; }
-    CSSValueID keywordSizeAsIdentifier() const
-    {
-        CSSValueID identifier = m_keywordSize ? static_cast<CSSValueID>(CSSValueXxSmall + m_keywordSize - 1) : CSSValueInvalid;
-        ASSERT(identifier == CSSValueInvalid || (identifier >= CSSValueXxSmall && identifier <= CSSValueWebkitXxxLarge));
-        return identifier;
-    }
-    FontSmoothingMode fontSmoothing() const { return static_cast<FontSmoothingMode>(m_fontSmoothing); }
-    bool isSpecifiedFont() const { return m_isSpecifiedFont; }
-
-    void setOneFamily(const AtomicString& family) { ASSERT(m_families.size() == 1); m_families[0] = family; }
-    void setFamilies(const Vector<AtomicString>& families) { m_families = RefCountedArray<AtomicString>(families); }
-    void setFamilies(const RefCountedArray<AtomicString>& families) { m_families = families; }
-    void setSpecifiedSize(float s) { m_specifiedSize = clampToFloat(s); }
-    void setIsAbsoluteSize(bool s) { m_isAbsoluteSize = s; }
-    void setKerning(Kerning kerning) { m_kerning = static_cast<unsigned>(kerning); }
-    void setKeywordSize(unsigned size)
-    {
-        ASSERT(size <= 8);
-        m_keywordSize = size;
-        ASSERT(m_keywordSize == size); // Make sure it fits in the bitfield.
-    }
-    void setKeywordSizeFromIdentifier(CSSValueID identifier)
-    {
-        ASSERT(!identifier || (identifier >= CSSValueXxSmall && identifier <= CSSValueWebkitXxxLarge));
-        static_assert(CSSValueWebkitXxxLarge - CSSValueXxSmall + 1 == 8, "Maximum keyword size should be 8.");
-        setKeywordSize(identifier ? identifier - CSSValueXxSmall + 1 : 0);
-    }
-    void setFontSmoothing(FontSmoothingMode smoothing) { m_fontSmoothing = smoothing; }
-    void setIsSpecifiedFont(bool isSpecifiedFont) { m_isSpecifiedFont = isSpecifiedFont; }
-
-#if ENABLE(TEXT_AUTOSIZING)
-    bool familiesEqualForTextAutoSizing(const FontCascadeDescription& other) const;
-
-    bool equalForTextAutoSizing(const FontCascadeDescription& other) const
-    {
-        return familiesEqualForTextAutoSizing(other)
-            && m_specifiedSize == other.m_specifiedSize
-            && variantSettings() == other.variantSettings()
-            && m_isAbsoluteSize == other.m_isAbsoluteSize;
-    }
-#endif
-
-    // Initial values for font properties.
-    static FontItalic initialItalic() { return FontItalicOff; }
-    static FontSmallCaps initialSmallCaps() { return FontSmallCapsOff; }
-    static Kerning initialKerning() { return Kerning::Auto; }
-    static FontSmoothingMode initialFontSmoothing() { return AutoSmoothing; }
-    static TextRenderingMode initialTextRenderingMode() { return AutoTextRendering; }
-    static FontSynthesis initialFontSynthesis() { return FontSynthesisWeight | FontSynthesisStyle | FontSynthesisSmallCaps; }
-    static FontVariantPosition initialVariantPosition() { return FontVariantPosition::Normal; }
-    static FontVariantCaps initialVariantCaps() { return FontVariantCaps::Normal; }
-    static FontVariantAlternates initialVariantAlternates() { return FontVariantAlternates::Normal; }
-    static const AtomicString& initialLocale() { return nullAtom; }
-
-private:
-    RefCountedArray<AtomicString> m_families { 1 };
-
-    float m_specifiedSize { 0 };   // Specified CSS value. Independent of rendering issues such as integer
-                             // rounding, minimum font sizes, and zooming.
-    unsigned m_isAbsoluteSize : 1; // Whether or not CSS specified an explicit size
-                                  // (logical sizes like "medium" don't count).
-    unsigned m_kerning : 2; // Kerning
-
-    unsigned m_keywordSize : 4; // We cache whether or not a font is currently represented by a CSS keyword (e.g., medium).  If so,
-                           // then we can accurately translate across different generic families to adjust for different preference settings
-                           // (e.g., 13px monospace vs. 16px everything else).  Sizes are 1-8 (like the HTML size values for <font>).
-
-    unsigned m_fontSmoothing : 2; // FontSmoothingMode
-    unsigned m_isSpecifiedFont : 1; // True if a web page specifies a non-generic font family as the first font family.
-};
-
-inline bool FontCascadeDescription::operator==(const FontCascadeDescription& other) const
-{
-    return FontDescription::operator==(other)
-        && m_families == other.m_families
-        && m_specifiedSize == other.m_specifiedSize
-        && m_isAbsoluteSize == other.m_isAbsoluteSize
-        && m_kerning == other.m_kerning
-        && m_keywordSize == other.m_keywordSize
-        && m_fontSmoothing == other.m_fontSmoothing
-        && m_isSpecifiedFont == other.m_isSpecifiedFont;
+        && m_variantEastAsianRuby == other.m_variantEastAsianRuby
+        && m_opticalSizing == other.m_opticalSizing
+        && m_fontStyleAxis == other.m_fontStyleAxis
+        && m_shouldAllowUserInstalledFonts == other.m_shouldAllowUserInstalledFonts
+        && m_shouldAllowDesignSystemUIFonts == other.m_shouldAllowDesignSystemUIFonts;
 }
 
 }
-
-#endif

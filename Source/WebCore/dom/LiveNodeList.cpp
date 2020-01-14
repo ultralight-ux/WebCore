@@ -27,8 +27,11 @@
 #include "Element.h"
 #include "ElementTraversal.h"
 #include "HTMLCollection.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(LiveNodeList);
 
 LiveNodeList::LiveNodeList(ContainerNode& ownerNode, NodeListInvalidationType invalidationType)
     : m_ownerNode(ownerNode)
@@ -38,13 +41,11 @@ LiveNodeList::LiveNodeList(ContainerNode& ownerNode, NodeListInvalidationType in
     ASSERT(m_invalidationType == static_cast<unsigned>(invalidationType));
 }
 
-LiveNodeList::~LiveNodeList()
-{
-}
+LiveNodeList::~LiveNodeList() = default;
 
 ContainerNode& LiveNodeList::rootNode() const
 {
-    if (isRootedAtDocument() && ownerNode().inDocument())
+    if (isRootedAtDocument() && ownerNode().isConnected())
         return ownerNode().document();
 
     return ownerNode();

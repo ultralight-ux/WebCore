@@ -38,32 +38,40 @@ class InspectorScriptProfilerAgent;
 class JSGlobalObjectConsoleClient final : public JSC::ConsoleClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit JSGlobalObjectConsoleClient(InspectorConsoleAgent*, InspectorDebuggerAgent*, InspectorScriptProfilerAgent*);
+    explicit JSGlobalObjectConsoleClient(InspectorConsoleAgent*);
     virtual ~JSGlobalObjectConsoleClient() { }
 
     static bool logToSystemConsole();
     static void setLogToSystemConsole(bool);
 
+    void setInspectorDebuggerAgent(InspectorDebuggerAgent* agent) { m_debuggerAgent = agent; }
+    void setInspectorScriptProfilerAgent(InspectorScriptProfilerAgent* agent) { m_scriptProfilerAgent = agent; }
+
 protected:
-    void messageWithTypeAndLevel(MessageType, MessageLevel, JSC::ExecState*, RefPtr<ScriptArguments>&&) override;
-    void count(JSC::ExecState*, RefPtr<ScriptArguments>&&) override;
+    void messageWithTypeAndLevel(MessageType, MessageLevel, JSC::ExecState*, Ref<ScriptArguments>&&) override;
+    void count(JSC::ExecState*, const String& label) override;
+    void countReset(JSC::ExecState*, const String& label) override;
     void profile(JSC::ExecState*, const String& title) override;
     void profileEnd(JSC::ExecState*, const String& title) override;
     void takeHeapSnapshot(JSC::ExecState*, const String& title) override;
-    void time(JSC::ExecState*, const String& title) override;
-    void timeEnd(JSC::ExecState*, const String& title) override;
-    void timeStamp(JSC::ExecState*, RefPtr<ScriptArguments>&&) override;
+    void time(JSC::ExecState*, const String& label) override;
+    void timeLog(JSC::ExecState*, const String& label, Ref<ScriptArguments>&&) override;
+    void timeEnd(JSC::ExecState*, const String& label) override;
+    void timeStamp(JSC::ExecState*, Ref<ScriptArguments>&&) override;
+    void record(JSC::ExecState*, Ref<ScriptArguments>&&) override;
+    void recordEnd(JSC::ExecState*, Ref<ScriptArguments>&&) override;
+    void screenshot(JSC::ExecState*, Ref<ScriptArguments>&&) override;
 
 private:
     void warnUnimplemented(const String& method);
-    void internalAddMessage(MessageType, MessageLevel, JSC::ExecState*, RefPtr<ScriptArguments>&&);
+    void internalAddMessage(MessageType, MessageLevel, JSC::ExecState*, Ref<ScriptArguments>&&);
 
     void startConsoleProfile();
     void stopConsoleProfile();
 
     InspectorConsoleAgent* m_consoleAgent;
-    InspectorDebuggerAgent* m_debuggerAgent;
-    InspectorScriptProfilerAgent* m_scriptProfilerAgent;
+    InspectorDebuggerAgent* m_debuggerAgent { nullptr };
+    InspectorScriptProfilerAgent* m_scriptProfilerAgent { nullptr };
     Vector<String> m_profiles;
     bool m_profileRestoreBreakpointActiveValue { false };
 };

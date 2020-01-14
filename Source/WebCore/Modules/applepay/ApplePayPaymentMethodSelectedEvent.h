@@ -34,9 +34,9 @@ namespace WebCore {
 
 class PaymentMethod;
 
-class ApplePayPaymentMethodSelectedEvent final : public Event {
+class ApplePayPaymentMethodSelectedEvent : public Event {
 public:
-    static Ref<ApplePayPaymentMethodSelectedEvent> create(const AtomicString& type, const PaymentMethod& paymentMethod)
+    static Ref<ApplePayPaymentMethodSelectedEvent> create(const AtomString& type, const PaymentMethod& paymentMethod)
     {
         return adoptRef(*new ApplePayPaymentMethodSelectedEvent(type, paymentMethod));
     }
@@ -45,12 +45,13 @@ public:
 
     const ApplePayPaymentMethod& paymentMethod() { return m_paymentMethod; }
 
-private:
-    ApplePayPaymentMethodSelectedEvent(const AtomicString& type, const PaymentMethod&);
+protected:
+    ApplePayPaymentMethodSelectedEvent(const AtomString& type, const PaymentMethod&);
 
     // Event.
     EventInterface eventInterface() const override;
 
+private:
     const ApplePayPaymentMethod m_paymentMethod;
 };
 

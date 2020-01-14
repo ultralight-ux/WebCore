@@ -31,16 +31,20 @@
 namespace JSC {
 
 template<typename Adaptor>
-class GenericTypedArrayView : public ArrayBufferView {
+class GenericTypedArrayView final : public ArrayBufferView {
 protected:
-    GenericTypedArrayView(PassRefPtr<ArrayBuffer>, unsigned byteOffset, unsigned length);
+    GenericTypedArrayView(RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned length);
 
 public:
-    static RefPtr<GenericTypedArrayView> create(unsigned length);
-    static RefPtr<GenericTypedArrayView> create(const typename Adaptor::Type* array, unsigned length);
-    static RefPtr<GenericTypedArrayView> create(PassRefPtr<ArrayBuffer>, unsigned byteOffset, unsigned length);
+    static Ref<GenericTypedArrayView> create(unsigned length);
+    static Ref<GenericTypedArrayView> create(const typename Adaptor::Type* array, unsigned length);
+    static Ref<GenericTypedArrayView> create(RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned length);
+    static RefPtr<GenericTypedArrayView> tryCreate(unsigned length);
+    static RefPtr<GenericTypedArrayView> tryCreate(const typename Adaptor::Type* array, unsigned length);
+    static RefPtr<GenericTypedArrayView> tryCreate(RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned length);
     
-    static RefPtr<GenericTypedArrayView> createUninitialized(unsigned length);
+    static Ref<GenericTypedArrayView> createUninitialized(unsigned length);
+    static RefPtr<GenericTypedArrayView> tryCreateUninitialized(unsigned length);
     
     typename Adaptor::Type* data() const { return static_cast<typename Adaptor::Type*>(baseAddress()); }
     
@@ -49,17 +53,17 @@ public:
         return setImpl(array, offset * sizeof(typename Adaptor::Type));
     }
     
-    bool setRange(const typename Adaptor::Type* data, size_t dataLength, unsigned offset)
+    bool setRange(const typename Adaptor::Type* data, size_t count, unsigned offset)
     {
         return setRangeImpl(
             reinterpret_cast<const char*>(data),
-            dataLength * sizeof(typename Adaptor::Type),
+            count * sizeof(typename Adaptor::Type),
             offset * sizeof(typename Adaptor::Type));
     }
     
-    bool zeroRange(unsigned offset, size_t length)
+    bool zeroRange(unsigned offset, size_t count)
     {
-        return zeroRangeImpl(offset * sizeof(typename Adaptor::Type), length * sizeof(typename Adaptor::Type));
+        return zeroRangeImpl(offset * sizeof(typename Adaptor::Type), count * sizeof(typename Adaptor::Type));
     }
     
     void zeroFill() { zeroRange(0, length()); }
@@ -68,12 +72,7 @@ public:
     {
         if (isNeutered())
             return 0;
-        return m_length;
-    }
-    
-    unsigned byteLength() const override
-    {
-        return length() * sizeof(typename Adaptor::Type);
+        return byteLength() / sizeof(typename Adaptor::Type);
     }
 
     typename Adaptor::Type item(unsigned index) const
@@ -87,14 +86,28 @@ public:
         ASSERT_WITH_SECURITY_IMPLICATION(index < this->length());
         data()[index] = Adaptor::toNativeFromDouble(value);
     }
-    
-    bool checkInboundData(unsigned offset, unsigned pos) const
+
+    void setNative(unsigned index, typename Adaptor::Type value) const
+    {
+        ASSERT_WITH_SECURITY_IMPLICATION(index < this->length());
+        data()[index] = value;
+    }
+
+    bool getRange(typename Adaptor::Type* data, size_t count, unsigned offset)
+    {
+        return getRangeImpl(
+            reinterpret_cast<char*>(data),
+            count * sizeof(typename Adaptor::Type),
+            offset * sizeof(typename Adaptor::Type));
+    }
+
+    bool checkInboundData(unsigned offset, size_t count) const
     {
         unsigned length = this->length();
         return (offset <= length
-            && offset + pos <= length
+            && offset + count <= length
             // check overflow
-            && offset + pos >= offset);
+            && offset + count >= offset);
     }
     
     RefPtr<GenericTypedArrayView> subarray(int start) const;
@@ -106,9 +119,6 @@ public:
     }
 
     JSArrayBufferView* wrap(ExecState*, JSGlobalObject*) override;
-
-private:
-    unsigned m_length;
 };
 
 } // namespace JSC

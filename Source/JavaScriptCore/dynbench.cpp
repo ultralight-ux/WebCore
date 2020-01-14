@@ -34,12 +34,13 @@
 #include "JSObject.h"
 #include "VM.h"
 #include <wtf/MainThread.h>
+#include <wtf/text/StringCommon.h>
 
 using namespace JSC;
 
 namespace {
 
-StaticLock crashLock;
+Lock crashLock;
 const char* nameFilter;
 unsigned requestedIterationCount;
 
@@ -54,16 +55,16 @@ unsigned requestedIterationCount;
 template<typename Callback>
 NEVER_INLINE void benchmarkImpl(const char* name, unsigned iterationCount, const Callback& callback)
 {
-    if (nameFilter && !strcasestr(name, nameFilter))
+    if (nameFilter && WTF::findIgnoringASCIICaseWithoutLength(name, nameFilter) == WTF::notFound)
         return;
 
     if (requestedIterationCount)
         iterationCount = requestedIterationCount;
     
-    double before = monotonicallyIncreasingTimeMS();
+    MonotonicTime before = MonotonicTime::now();
     callback(iterationCount);
-    double after = monotonicallyIncreasingTimeMS();
-    dataLog(name, ": ", after - before, " ms.\n");
+    MonotonicTime after = MonotonicTime::now();
+    dataLog(name, ": ", (after - before).milliseconds(), " ms.\n");
 }
 
 } // anonymous namespace

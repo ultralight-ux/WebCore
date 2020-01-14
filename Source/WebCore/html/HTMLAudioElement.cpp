@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2010, 2011, 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,16 +24,21 @@
  */
 
 #include "config.h"
+
 #if ENABLE(VIDEO)
+
 #include "HTMLAudioElement.h"
 
 #include "HTMLNames.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLAudioElement);
+
 using namespace HTMLNames;
 
-HTMLAudioElement::HTMLAudioElement(const QualifiedName& tagName, Document& document, bool createdByParser)
+inline HTMLAudioElement::HTMLAudioElement(const QualifiedName& tagName, Document& document, bool createdByParser)
     : HTMLMediaElement(tagName, document, createdByParser)
 {
     ASSERT(hasTagName(audioTag));
@@ -41,22 +46,20 @@ HTMLAudioElement::HTMLAudioElement(const QualifiedName& tagName, Document& docum
 
 Ref<HTMLAudioElement> HTMLAudioElement::create(const QualifiedName& tagName, Document& document, bool createdByParser)
 {
-    Ref<HTMLAudioElement> audioElement = adoptRef(*new HTMLAudioElement(tagName, document, createdByParser));
-    audioElement->suspendIfNeeded();
-    return audioElement;
+    auto element = adoptRef(*new HTMLAudioElement(tagName, document, createdByParser));
+    element->finishInitialization();
+    element->suspendIfNeeded();
+    return element;
 }
 
-Ref<HTMLAudioElement> HTMLAudioElement::createForJSConstructor(Document& document, const String& src)
+Ref<HTMLAudioElement> HTMLAudioElement::createForJSConstructor(Document& document, const AtomString& src)
 {
-    Ref<HTMLAudioElement> audio = adoptRef(*new HTMLAudioElement(audioTag, document, false));
-    audio->setPreload("auto");
-    if (!src.isNull()) {
-        audio->setSrc(src);
-        audio->scheduleDelayedAction(HTMLMediaElement::LoadMediaResource);
-    }
-    audio->suspendIfNeeded();
-    return audio;
+    auto element = create(audioTag, document, false);
+    element->setAttributeWithoutSynchronization(preloadAttr, "auto");
+    element->setAttributeWithoutSynchronization(srcAttr, src);
+    return element;
 }
 
 }
+
 #endif

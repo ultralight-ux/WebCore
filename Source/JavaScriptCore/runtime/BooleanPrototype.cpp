@@ -39,7 +39,7 @@ static EncodedJSValue JSC_HOST_CALL booleanProtoFuncValueOf(ExecState*);
 
 namespace JSC {
 
-const ClassInfo BooleanPrototype::s_info = { "Boolean", &BooleanObject::s_info, &booleanPrototypeTable, CREATE_METHOD_TABLE(BooleanPrototype) };
+const ClassInfo BooleanPrototype::s_info = { "Boolean", &BooleanObject::s_info, &booleanPrototypeTable, nullptr, CREATE_METHOD_TABLE(BooleanPrototype) };
 
 /* Source for BooleanPrototype.lut.h
 @begin booleanPrototypeTable
@@ -60,43 +60,46 @@ void BooleanPrototype::finishCreation(VM& vm, JSGlobalObject*)
     Base::finishCreation(vm);
     setInternalValue(vm, jsBoolean(false));
 
-    ASSERT(inherits(info()));
+    ASSERT(inherits(vm, info()));
 }
 
 // ------------------------------ Functions ---------------------------
 
 EncodedJSValue JSC_HOST_CALL booleanProtoFuncToString(ExecState* exec)
 {
-    VM* vm = &exec->vm();
-    auto scope = DECLARE_THROW_SCOPE(*vm);
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = exec->thisValue();
     if (thisValue == jsBoolean(false))
-        return JSValue::encode(vm->smallStrings.falseString());
+        return JSValue::encode(vm.smallStrings.falseString());
 
     if (thisValue == jsBoolean(true))
-        return JSValue::encode(vm->smallStrings.trueString());
+        return JSValue::encode(vm.smallStrings.trueString());
 
-    if (!thisValue.inherits(BooleanObject::info()))
+    auto* thisObject = jsDynamicCast<BooleanObject*>(vm, thisValue);
+    if (UNLIKELY(!thisObject))
         return throwVMTypeError(exec, scope);
 
-    if (asBooleanObject(thisValue)->internalValue() == jsBoolean(false))
-        return JSValue::encode(vm->smallStrings.falseString());
+    if (thisObject->internalValue() == jsBoolean(false))
+        return JSValue::encode(vm.smallStrings.falseString());
 
-    ASSERT(asBooleanObject(thisValue)->internalValue() == jsBoolean(true));
-    return JSValue::encode(vm->smallStrings.trueString());
+    ASSERT(thisObject->internalValue() == jsBoolean(true));
+    return JSValue::encode(vm.smallStrings.trueString());
 }
 
 EncodedJSValue JSC_HOST_CALL booleanProtoFuncValueOf(ExecState* exec)
 {
-    auto scope = DECLARE_THROW_SCOPE(exec->vm());
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue thisValue = exec->thisValue();
     if (thisValue.isBoolean())
         return JSValue::encode(thisValue);
 
-    if (!thisValue.inherits(BooleanObject::info()))
+    auto* thisObject = jsDynamicCast<BooleanObject*>(vm, thisValue);
+    if (UNLIKELY(!thisObject))
         return throwVMTypeError(exec, scope);
 
-    return JSValue::encode(asBooleanObject(thisValue)->internalValue());
+    return JSValue::encode(thisObject->internalValue());
 }
 
 } // namespace JSC

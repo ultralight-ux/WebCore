@@ -33,12 +33,10 @@
 #include "HTMLLinkElement.h"
 #include "HTMLStyleElement.h"
 #include "Page.h"
-#include "PageGroup.h"
 #include "ProcessingInstruction.h"
-#include "SVGNames.h"
 #include "SVGStyleElement.h"
 #include "Settings.h"
-#include "StyleInvalidationAnalysis.h"
+#include "StyleInvalidator.h"
 #include "StyleResolver.h"
 #include "StyleScope.h"
 #include "StyleSheetContents.h"
@@ -49,7 +47,9 @@
 
 namespace WebCore {
 
+#if ENABLE(CONTENT_EXTENSIONS)
 using namespace ContentExtensions;
+#endif
 using namespace HTMLNames;
 
 ExtensionStyleSheets::ExtensionStyleSheets(Document& document)
@@ -81,7 +81,7 @@ CSSStyleSheet* ExtensionStyleSheets::pageUserSheet()
     if (userSheetText.isEmpty())
         return 0;
     
-    m_pageUserSheet = createExtensionsStyleSheet(m_document, m_document.settings()->userStyleSheetLocation(), userSheetText, UserStyleUserLevel);
+    m_pageUserSheet = createExtensionsStyleSheet(m_document, m_document.settings().userStyleSheetLocation(), userSheetText, UserStyleUserLevel);
 
     return m_pageUserSheet.get();
 }
@@ -139,15 +139,6 @@ void ExtensionStyleSheets::updateInjectedStyleSheetCache() const
         else
             m_injectedAuthorStyleSheets.append(WTFMove(sheet));
     });
-    
-    if (!owningPage->captionUserPreferencesStyleSheet().isEmpty()) {
-        // Identify our override style sheet with a unique URL - a new scheme and a UUID.
-        static NeverDestroyed<URL> captionsStyleSheetURL(ParsedURLString, "user-captions-override:01F6AF12-C3B0-4F70-AF5E-A3E00234DC23");
-
-        auto sheet = createExtensionsStyleSheet(const_cast<Document&>(m_document), captionsStyleSheetURL, owningPage->captionUserPreferencesStyleSheet(), UserStyleAuthorLevel);
-
-        m_injectedAuthorStyleSheets.append(WTFMove(sheet));
-    }
 }
 
 void ExtensionStyleSheets::invalidateInjectedStyleSheetCache()

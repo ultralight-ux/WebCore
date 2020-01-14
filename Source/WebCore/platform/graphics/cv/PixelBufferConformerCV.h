@@ -23,8 +23,9 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PixelBufferConformerCV_h
-#define PixelBufferConformerCV_h
+#pragma once
+
+#if HAVE(CORE_VIDEO)
 
 #include <wtf/RetainPtr.h>
 
@@ -37,6 +38,7 @@ namespace WebCore {
 class PixelBufferConformerCV {
 public:
     PixelBufferConformerCV(CFDictionaryRef attributes);
+    RetainPtr<CVPixelBufferRef> convert(CVPixelBufferRef);
     RetainPtr<CGImageRef> createImageFromPixelBuffer(CVPixelBufferRef);
 
 private:
@@ -47,4 +49,4 @@ private:
 
 }
 
-#endif // PixelBufferConformerCV_h
+#endif // HAVE(CORE_VIDEO)

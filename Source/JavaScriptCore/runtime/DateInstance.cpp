@@ -28,29 +28,28 @@
 #include <math.h>
 #include <wtf/MathExtras.h>
 
-using namespace WTF;
-
 namespace JSC {
 
-const ClassInfo DateInstance::s_info = {"Date", &JSWrapperObject::s_info, 0, CREATE_METHOD_TABLE(DateInstance)};
+using namespace WTF;
+
+const ClassInfo DateInstance::s_info = {"Date", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(DateInstance)};
 
 DateInstance::DateInstance(VM& vm, Structure* structure)
-    : JSWrapperObject(vm, structure)
+    : Base(vm, structure)
 {
 }
 
 void DateInstance::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(info()));
-    setInternalValue(vm, jsNaN());
+    ASSERT(inherits(vm, info()));
 }
 
 void DateInstance::finishCreation(VM& vm, double time)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(info()));
-    setInternalValue(vm, jsNumber(timeClip(time)));
+    ASSERT(inherits(vm, info()));
+    m_internalNumber = timeClip(time);
 }
 
 void DateInstance::destroy(JSCell* cell)

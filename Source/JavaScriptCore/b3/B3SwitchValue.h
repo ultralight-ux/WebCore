@@ -50,13 +50,10 @@ public:
     CaseCollection cases(const BasicBlock* owner) const { return CaseCollection(this, owner); }
     CaseCollection cases() const { return cases(owner); }
 
-    // This removes the case and reorders things a bit. If you're iterating the cases from 0 to N,
-    // then you can keep iterating after this so long as you revisit this same index (which will now
-    // contain some other case value). This removes the case that was removed.
-    SwitchCase removeCase(BasicBlock*, unsigned index);
-
     bool hasFallThrough(const BasicBlock*) const;
     bool hasFallThrough() const;
+
+    BasicBlock* fallThrough(const BasicBlock* owner);
 
     // These two functions can be called in any order.
     void setFallThrough(BasicBlock*, const FrequentedBlock&);
@@ -67,14 +64,17 @@ public:
 
     void dumpSuccessors(const BasicBlock*, PrintStream&) const override;
 
+    B3_SPECIALIZE_VALUE_FOR_FIXED_CHILDREN(1)
+    B3_SPECIALIZE_VALUE_FOR_FINAL_SIZE_FIXED_CHILDREN
+
 protected:
     void dumpMeta(CommaPrinter&, PrintStream&) const override;
 
-    Value* cloneImpl() const override;
-
 private:
     friend class Procedure;
+    friend class Value;
 
+    static Opcode opcodeFromConstructor(Origin, Value*) { return Switch; }
     JS_EXPORT_PRIVATE SwitchValue(Origin, Value* child);
 
     Vector<int64_t> m_values;

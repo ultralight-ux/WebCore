@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,63 +34,153 @@
 #include "RealtimeMediaSourceSettings.h"
 
 #include <wtf/NeverDestroyed.h>
+#include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
-static const AtomicString& userFacing()
+String RealtimeMediaSourceSettings::facingMode(RealtimeMediaSourceSettings::VideoFacingMode mode)
 {
-    static NeverDestroyed<AtomicString> userFacing("user", AtomicString::ConstructFromLiteral);
-    return userFacing;
-}
-static const AtomicString& environmentFacing()
-{
-    static NeverDestroyed<AtomicString> environmentFacing("environment", AtomicString::ConstructFromLiteral);
-    return environmentFacing;
-}
-
-static const AtomicString& leftFacing()
-{
-    static NeverDestroyed<AtomicString> leftFacing("left", AtomicString::ConstructFromLiteral);
-    return leftFacing;
-}
-
-static const AtomicString& rightFacing()
-{
-    static NeverDestroyed<AtomicString> rightFacing("right", AtomicString::ConstructFromLiteral);
-    return rightFacing;
-}
-
-const AtomicString& RealtimeMediaSourceSettings::facingMode(RealtimeMediaSourceSettings::VideoFacingMode mode)
-{
-    switch (mode) {
-    case RealtimeMediaSourceSettings::User:
-        return userFacing();
-    case RealtimeMediaSourceSettings::Environment:
-        return environmentFacing();
-    case RealtimeMediaSourceSettings::Left:
-        return leftFacing();
-    case RealtimeMediaSourceSettings::Right:
-        return rightFacing();
-    case RealtimeMediaSourceSettings::Unknown:
-        return emptyAtom;
-    }
-    
-    ASSERT_NOT_REACHED();
-    return emptyAtom;
+    static const NeverDestroyed<String> values[] = {
+        MAKE_STATIC_STRING_IMPL("unknown"),
+        MAKE_STATIC_STRING_IMPL("user"),
+        MAKE_STATIC_STRING_IMPL("environment"),
+        MAKE_STATIC_STRING_IMPL("left"),
+        MAKE_STATIC_STRING_IMPL("right"),
+    };
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::Unknown) == 0, "RealtimeMediaSourceSettings::VideoFacingMode::Unknown is not 0 as expected");
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::User) == 1, "RealtimeMediaSourceSettings::VideoFacingMode::User is not 1 as expected");
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::Environment) == 2, "RealtimeMediaSourceSettings::VideoFacingMode::Environment is not 2 as expected");
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::Left) == 3, "RealtimeMediaSourceSettings::VideoFacingMode::Left is not 3 as expected");
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::Right) == 4, "RealtimeMediaSourceSettings::VideoFacingMode::Right is not 4 as expected");
+    ASSERT(static_cast<size_t>(mode) < WTF_ARRAY_LENGTH(values));
+    return values[static_cast<size_t>(mode)];
 }
 
 RealtimeMediaSourceSettings::VideoFacingMode RealtimeMediaSourceSettings::videoFacingModeEnum(const String& mode)
 {
-    if (mode == userFacing())
-        return RealtimeMediaSourceSettings::User;
-    if (mode == environmentFacing())
-        return RealtimeMediaSourceSettings::Environment;
-    if (mode == leftFacing())
-        return RealtimeMediaSourceSettings::Left;
-    if (mode == rightFacing())
-        return RealtimeMediaSourceSettings::Right;
+    if (mode == "user")
+        return RealtimeMediaSourceSettings::VideoFacingMode::User;
+    if (mode == "environment")
+        return RealtimeMediaSourceSettings::VideoFacingMode::Environment;
+    if (mode == "left")
+        return RealtimeMediaSourceSettings::VideoFacingMode::Left;
+    if (mode == "right")
+        return RealtimeMediaSourceSettings::VideoFacingMode::Right;
 
     return RealtimeMediaSourceSettings::Unknown;
+}
+
+String RealtimeMediaSourceSettings::convertFlagsToString(const OptionSet<RealtimeMediaSourceSettings::Flag> flags)
+{
+    StringBuilder builder;
+
+    builder.append("[ ");
+    for (auto flag : flags) {
+        if (!builder.isEmpty())
+            builder.append(", ");
+
+        switch (flag) {
+        case RealtimeMediaSourceSettings::Width:
+            builder.append("Width");
+            break;
+        case RealtimeMediaSourceSettings::Height:
+            builder.append("Height");
+            break;
+        case RealtimeMediaSourceSettings::AspectRatio:
+            builder.append("AspectRatio");
+            break;
+        case RealtimeMediaSourceSettings::FrameRate:
+            builder.append("FrameRate");
+            break;
+        case RealtimeMediaSourceSettings::FacingMode:
+            builder.append("FacingMode");
+            break;
+        case RealtimeMediaSourceSettings::Volume:
+            builder.append("Volume");
+            break;
+        case RealtimeMediaSourceSettings::SampleRate:
+            builder.append("SampleRate");
+            break;
+        case RealtimeMediaSourceSettings::SampleSize:
+            builder.append("SampleSize");
+            break;
+        case RealtimeMediaSourceSettings::EchoCancellation:
+            builder.append("EchoCancellation");
+            break;
+        case RealtimeMediaSourceSettings::DeviceId:
+            builder.append("DeviceId");
+            break;
+        case RealtimeMediaSourceSettings::GroupId:
+            builder.append("GroupId");
+            break;
+        case RealtimeMediaSourceSettings::Label:
+            builder.append("Label");
+            break;
+        case RealtimeMediaSourceSettings::DisplaySurface:
+            builder.append("DisplaySurface");
+            break;
+        case RealtimeMediaSourceSettings::LogicalSurface:
+            builder.append("LogicalSurface");
+            break;
+        }
+    }
+    builder.append(" ]");
+
+    return builder.toString();
+}
+
+OptionSet<RealtimeMediaSourceSettings::Flag> RealtimeMediaSourceSettings::difference(const RealtimeMediaSourceSettings& that) const
+{
+    OptionSet<RealtimeMediaSourceSettings::Flag> difference;
+
+    if (width() != that.width())
+        difference.add(RealtimeMediaSourceSettings::Width);
+    if (height() != that.height())
+        difference.add(RealtimeMediaSourceSettings::Height);
+    if (aspectRatio() != that.aspectRatio())
+        difference.add(RealtimeMediaSourceSettings::AspectRatio);
+    if (frameRate() != that.frameRate())
+        difference.add(RealtimeMediaSourceSettings::FrameRate);
+    if (facingMode() != that.facingMode())
+        difference.add(RealtimeMediaSourceSettings::FacingMode);
+    if (volume() != that.volume())
+        difference.add(RealtimeMediaSourceSettings::Volume);
+    if (sampleRate() != that.sampleRate())
+        difference.add(RealtimeMediaSourceSettings::SampleRate);
+    if (sampleSize() != that.sampleSize())
+        difference.add(RealtimeMediaSourceSettings::SampleSize);
+    if (echoCancellation() != that.echoCancellation())
+        difference.add(RealtimeMediaSourceSettings::EchoCancellation);
+    if (deviceId() != that.deviceId())
+        difference.add(RealtimeMediaSourceSettings::DeviceId);
+    if (groupId() != that.groupId())
+        difference.add(RealtimeMediaSourceSettings::GroupId);
+    if (label() != that.label())
+        difference.add(RealtimeMediaSourceSettings::Label);
+    if (displaySurface() != that.displaySurface())
+        difference.add(RealtimeMediaSourceSettings::DisplaySurface);
+    if (logicalSurface() != that.logicalSurface())
+        difference.add(RealtimeMediaSourceSettings::LogicalSurface);
+
+    return difference;
+}
+
+String convertEnumerationToString(RealtimeMediaSourceSettings::VideoFacingMode enumerationValue)
+{
+    static const NeverDestroyed<String> values[] = {
+        MAKE_STATIC_STRING_IMPL("Unknown"),
+        MAKE_STATIC_STRING_IMPL("User"),
+        MAKE_STATIC_STRING_IMPL("Environment"),
+        MAKE_STATIC_STRING_IMPL("Left"),
+        MAKE_STATIC_STRING_IMPL("Right"),
+    };
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::Unknown) == 0, "RealtimeMediaSourceSettings::VideoFacingMode::Unknown is not 0 as expected");
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::User) == 1, "RealtimeMediaSourceSettings::VideoFacingMode::User is not 1 as expected");
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::Environment) == 2, "RealtimeMediaSourceSettings::VideoFacingMode::Environment is not 2 as expected");
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::Left) == 3, "RealtimeMediaSourceSettings::VideoFacingMode::Left is not 3 as expected");
+    static_assert(static_cast<size_t>(RealtimeMediaSourceSettings::VideoFacingMode::Right) == 4, "RealtimeMediaSourceSettings::VideoFacingMode::Right is not 4 as expected");
+    ASSERT(static_cast<size_t>(enumerationValue) < WTF_ARRAY_LENGTH(values));
+    return values[static_cast<size_t>(enumerationValue)];
 }
 
 } // namespace WebCore

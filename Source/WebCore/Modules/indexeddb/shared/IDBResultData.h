@@ -88,6 +88,7 @@ public:
     static IDBResultData iterateCursorSuccess(const IDBResourceIdentifier&, const IDBGetResult&);
 
     WEBCORE_EXPORT IDBResultData(const IDBResultData&);
+    IDBResultData& operator=(IDBResultData&&) = default;
 
     enum IsolatedCopyTag { IsolatedCopy };
     IDBResultData(const IDBResultData&, IsolatedCopyTag);
@@ -106,11 +107,12 @@ public:
     uint64_t resultInteger() const { return m_resultInteger; }
 
     WEBCORE_EXPORT const IDBGetResult& getResult() const;
+    WEBCORE_EXPORT IDBGetResult& getResultRef();
     WEBCORE_EXPORT const IDBGetAllResult& getAllResult() const;
 
     WEBCORE_EXPORT IDBResultData();
     template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static bool decode(Decoder&, IDBResultData&);
+    template<class Decoder> static Optional<IDBResultData> decode(Decoder&);
 
 private:
     IDBResultData(const IDBResourceIdentifier&);
@@ -159,71 +161,75 @@ void IDBResultData::encode(Encoder& encoder) const
         encoder << *m_getAllResult;
 }
 
-template<class Decoder> bool IDBResultData::decode(Decoder& decoder, IDBResultData& result)
+template<class Decoder> Optional<IDBResultData> IDBResultData::decode(Decoder& decoder)
 {
+    IDBResultData result;
     if (!decoder.decode(result.m_requestIdentifier))
-        return false;
+        return WTF::nullopt;
 
     if (!decoder.decode(result.m_error))
-        return false;
+        return WTF::nullopt;
 
     if (!decoder.decode(result.m_databaseConnectionIdentifier))
-        return false;
+        return WTF::nullopt;
 
     if (!decoder.decode(result.m_resultInteger))
-        return false;
+        return WTF::nullopt;
 
     if (!decoder.decodeEnum(result.m_type))
-        return false;
+        return WTF::nullopt;
 
     bool hasObject;
 
     if (!decoder.decode(hasObject))
-        return false;
+        return WTF::nullopt;
     if (hasObject) {
         auto object = std::make_unique<IDBDatabaseInfo>();
         if (!decoder.decode(*object))
-            return false;
+            return WTF::nullopt;
         result.m_databaseInfo = WTFMove(object);
     }
 
     if (!decoder.decode(hasObject))
-        return false;
+        return WTF::nullopt;
     if (hasObject) {
         auto object = std::make_unique<IDBTransactionInfo>();
         if (!decoder.decode(*object))
-            return false;
+            return WTF::nullopt;
         result.m_transactionInfo = WTFMove(object);
     }
 
     if (!decoder.decode(hasObject))
-        return false;
+        return WTF::nullopt;
     if (hasObject) {
         auto object = std::make_unique<IDBKeyData>();
-        if (!decoder.decode(*object))
-            return false;
+        Optional<IDBKeyData> optional;
+        decoder >> optional;
+        if (!optional)
+            return WTF::nullopt;
+        *object = WTFMove(*optional);
         result.m_resultKey = WTFMove(object);
     }
 
     if (!decoder.decode(hasObject))
-        return false;
+        return WTF::nullopt;
     if (hasObject) {
         auto object = std::make_unique<IDBGetResult>();
         if (!decoder.decode(*object))
-            return false;
+            return WTF::nullopt;
         result.m_getResult = WTFMove(object);
     }
 
     if (!decoder.decode(hasObject))
-        return false;
+        return WTF::nullopt;
     if (hasObject) {
         auto object = std::make_unique<IDBGetAllResult>();
         if (!decoder.decode(*object))
-            return false;
+            return WTF::nullopt;
         result.m_getAllResult = WTFMove(object);
     }
 
-    return true;
+    return result;
 }
 
 } // namespace WebCore

@@ -30,18 +30,18 @@
 
 namespace WebCore {
 
-IDBVersionChangeEvent::IDBVersionChangeEvent(const IDBResourceIdentifier& requestIdentifier, uint64_t oldVersion, uint64_t newVersion, const AtomicString& name)
-    : Event(name, false /*canBubble*/, false /*cancelable*/)
+IDBVersionChangeEvent::IDBVersionChangeEvent(const IDBResourceIdentifier& requestIdentifier, uint64_t oldVersion, uint64_t newVersion, const AtomString& name)
+    : Event(name, CanBubble::No, IsCancelable::No)
     , m_requestIdentifier(requestIdentifier)
     , m_oldVersion(oldVersion)
 {
     if (newVersion)
         m_newVersion = newVersion;
     else
-        m_newVersion = std::nullopt;
+        m_newVersion = WTF::nullopt;
 }
 
-IDBVersionChangeEvent::IDBVersionChangeEvent(const AtomicString& name, const Init& init, IsTrusted isTrusted)
+IDBVersionChangeEvent::IDBVersionChangeEvent(const AtomString& name, const Init& init, IsTrusted isTrusted)
     : Event(name, init, isTrusted)
     , m_oldVersion(init.oldVersion)
     , m_newVersion(init.newVersion)

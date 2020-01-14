@@ -22,6 +22,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include "config.h"
 #include "GamepadManager.h"
 
@@ -36,16 +37,13 @@
 #include "Logging.h"
 #include "NavigatorGamepad.h"
 #include "PlatformGamepad.h"
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
 static NavigatorGamepad* navigatorGamepadFromDOMWindow(DOMWindow* window)
 {
-    Navigator* navigator = window->navigator();
-    if (!navigator)
-        return nullptr;
-
-    return NavigatorGamepad::from(navigator);
+    return NavigatorGamepad::from(&window->navigator());
 }
 
 GamepadManager& GamepadManager::singleton()
@@ -80,7 +78,7 @@ void GamepadManager::platformGamepadDisconnected(PlatformGamepad& platformGamepa
 {
     Vector<WeakPtr<DOMWindow>> weakWindows;
     for (auto* domWindow : m_domWindows)
-        weakWindows.append(domWindow->createWeakPtr());
+        weakWindows.append(makeWeakPtr(*domWindow));
 
     HashSet<NavigatorGamepad*> notifiedNavigators;
 
@@ -142,7 +140,7 @@ void GamepadManager::makeGamepadVisible(PlatformGamepad& platformGamepad, HashSe
 
     Vector<WeakPtr<DOMWindow>> weakWindows;
     for (auto* domWindow : m_domWindows)
-        weakWindows.append(domWindow->createWeakPtr());
+        weakWindows.append(makeWeakPtr(*domWindow));
 
     for (auto& window : weakWindows) {
         // Event dispatch might have made this window go away.

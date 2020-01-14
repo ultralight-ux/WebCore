@@ -29,6 +29,7 @@
 #include "SQLStatement.h"
 
 #include "Database.h"
+#include "Document.h"
 #include "Logging.h"
 #include "SQLError.h"
 #include "SQLResultSet.h"
@@ -74,18 +75,16 @@
 
 namespace WebCore {
 
-SQLStatement::SQLStatement(Database& database, const String& statement, const Vector<SQLValue>& arguments, RefPtr<SQLStatementCallback>&& callback, RefPtr<SQLStatementErrorCallback>&& errorCallback, int permissions)
+SQLStatement::SQLStatement(Database& database, const String& statement, Vector<SQLValue>&& arguments, RefPtr<SQLStatementCallback>&& callback, RefPtr<SQLStatementErrorCallback>&& errorCallback, int permissions)
     : m_statement(statement.isolatedCopy())
-    , m_arguments(arguments)
-    , m_statementCallbackWrapper(WTFMove(callback), &database.scriptExecutionContext())
-    , m_statementErrorCallbackWrapper(WTFMove(errorCallback), &database.scriptExecutionContext())
+    , m_arguments(WTFMove(arguments))
+    , m_statementCallbackWrapper(WTFMove(callback), &database.document())
+    , m_statementErrorCallbackWrapper(WTFMove(errorCallback), &database.document())
     , m_permissions(permissions)
 {
 }
 
-SQLStatement::~SQLStatement()
-{
-}
+SQLStatement::~SQLStatement() = default;
 
 SQLError* SQLStatement::sqlError() const
 {
@@ -147,7 +146,7 @@ bool SQLStatement::execute(Database& db)
         }
     }
 
-    RefPtr<SQLResultSet> resultSet = SQLResultSet::create();
+    auto resultSet = SQLResultSet::create();
 
     // Step so we can fetch the column names.
     result = statement.step();
@@ -195,31 +194,43 @@ bool SQLStatement::execute(Database& db)
     // For now, this seems sufficient
     resultSet->setRowsAffected(database.lastChanges());
 
-    m_resultSet = resultSet;
+    m_resultSet = WTFMove(resultSet);
     return true;
 }
 
-bool SQLStatement::performCallback(SQLTransaction* transaction)
+bool SQLStatement::performCallback(SQLTransaction& transaction)
 {
-    ASSERT(transaction);
-
-    bool callbackError = false;
-
-    RefPtr<SQLStatementCallback> callback = m_statementCallbackWrapper.unwrap();
-    RefPtr<SQLStatementErrorCallback> errorCallback = m_statementErrorCallbackWrapper.unwrap();
-    RefPtr<SQLError> error = sqlError();
-
     // Call the appropriate statement callback and track if it resulted in an error,
     // because then we need to jump to the transaction error callback.
-    if (error) {
-        if (errorCallback)
-            callbackError = errorCallback->handleEvent(transaction, error.get());
-    } else if (callback) {
-        RefPtr<SQLResultSet> resultSet = sqlResultSet();
-        callbackError = !callback->handleEvent(transaction, resultSet.get());
+
+    if (m_error) {
+        if (auto errorCallback = m_statementErrorCallbackWrapper.unwrap()) {
+            auto result = errorCallback->handleEvent(transaction, *m_error);
+
+            // The spec says:
+            // "If the error callback returns false, then move on to the next statement..."
+            // "Otherwise, the error callback did not return false, or there was no error callback"
+            // Therefore an exception and returning true are the same thing - so, return true on an exception
+
+            switch (result.type()) {
+            case CallbackResultType::Success:
+                return result.releaseReturnValue();
+            case CallbackResultType::ExceptionThrown:
+            case CallbackResultType::UnableToExecute:
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    if (auto callback = m_statementCallbackWrapper.unwrap()) {
+        ASSERT(m_resultSet);
+
+        auto result = callback->handleEvent(transaction, *m_resultSet);
+        return result.type() == CallbackResultType::ExceptionThrown;
     }
 
-    return callbackError;
+    return false;
 }
 
 void SQLStatement::setDatabaseDeletedError()

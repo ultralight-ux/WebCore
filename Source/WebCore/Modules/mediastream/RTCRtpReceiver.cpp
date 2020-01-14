@@ -33,11 +33,42 @@
 
 #if ENABLE(WEB_RTC)
 
+#include "PeerConnectionBackend.h"
+#include "RTCRtpCapabilities.h"
+#include <wtf/IsoMallocInlines.h>
+
 namespace WebCore {
 
-RTCRtpReceiver::RTCRtpReceiver(Ref<MediaStreamTrack>&& track)
-    : RTCRtpSenderReceiverBase(WTFMove(track))
+WTF_MAKE_ISO_ALLOCATED_IMPL(RTCRtpReceiver);
+
+RTCRtpReceiver::RTCRtpReceiver(PeerConnectionBackend& connection, Ref<MediaStreamTrack>&& track, std::unique_ptr<RTCRtpReceiverBackend>&& backend)
+    : m_track(WTFMove(track))
+    , m_backend(WTFMove(backend))
+    , m_connection(makeWeakPtr(&connection))
 {
+}
+
+void RTCRtpReceiver::stop()
+{
+    if (!m_backend)
+        return;
+
+    m_backend = nullptr;
+    m_track->stopTrack(MediaStreamTrack::StopMode::PostEvent);
+}
+
+void RTCRtpReceiver::getStats(Ref<DeferredPromise>&& promise)
+{
+    if (!m_connection) {
+        promise->reject(InvalidStateError);
+        return;
+    }
+    m_connection->getStats(*this, WTFMove(promise));
+}
+
+Optional<RTCRtpCapabilities> RTCRtpReceiver::getCapabilities(ScriptExecutionContext& context, const String& kind)
+{
+    return PeerConnectionBackend::receiverCapabilities(context, kind);
 }
 
 } // namespace WebCore

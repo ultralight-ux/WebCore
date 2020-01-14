@@ -32,6 +32,7 @@
 #include "AudioNodeOutput.h"
 #include "Logging.h"
 #include "MediaPlayer.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/Locker.h>
 
 // These are somewhat arbitrary limits, but we need to do some kind of sanity-checking.
@@ -39,6 +40,8 @@ const unsigned minSampleRate = 8000;
 const unsigned maxSampleRate = 192000;
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(MediaElementAudioSourceNode);
 
 Ref<MediaElementAudioSourceNode> MediaElementAudioSourceNode::create(AudioContext& context, HTMLMediaElement& mediaElement)
 {
@@ -51,10 +54,10 @@ MediaElementAudioSourceNode::MediaElementAudioSourceNode(AudioContext& context, 
     , m_sourceNumberOfChannels(0)
     , m_sourceSampleRate(0)
 {
+    setNodeType(NodeTypeMediaElementAudioSource);
+
     // Default to stereo. This could change depending on what the media element .src is set to.
     addOutput(std::make_unique<AudioNodeOutput>(this, 2));
-
-    setNodeType(NodeTypeMediaElementAudioSource);
 
     initialize();
 }
@@ -67,6 +70,8 @@ MediaElementAudioSourceNode::~MediaElementAudioSourceNode()
 
 void MediaElementAudioSourceNode::setFormat(size_t numberOfChannels, float sourceSampleRate)
 {
+    m_muted = wouldTaintOrigin();
+
     if (numberOfChannels != m_sourceNumberOfChannels || sourceSampleRate != m_sourceSampleRate) {
         if (!numberOfChannels || numberOfChannels > AudioContext::maxNumberOfChannels() || sourceSampleRate < minSampleRate || sourceSampleRate > maxSampleRate) {
             // process() will generate silence for these uninitialized values.
@@ -100,11 +105,25 @@ void MediaElementAudioSourceNode::setFormat(size_t numberOfChannels, float sourc
     }
 }
 
+bool MediaElementAudioSourceNode::wouldTaintOrigin()
+{
+    if (!m_mediaElement->hasSingleSecurityOrigin())
+        return true;
+
+    if (m_mediaElement->didPassCORSAccessCheck())
+        return false;
+
+    if (auto* origin = context().origin())
+        return m_mediaElement->wouldTaintOrigin(*origin);
+
+    return true;
+}
+
 void MediaElementAudioSourceNode::process(size_t numberOfFrames)
 {
     AudioBus* outputBus = output(0)->bus();
 
-    if (!m_sourceNumberOfChannels || !m_sourceSampleRate) {
+    if (m_muted || !m_sourceNumberOfChannels || !m_sourceSampleRate) {
         outputBus->zero();
         return;
     }
@@ -115,6 +134,10 @@ void MediaElementAudioSourceNode::process(size_t numberOfFrames)
     std::unique_lock<Lock> lock(m_processMutex, std::try_to_lock);
     if (!lock.owns_lock()) {
         // We failed to acquire the lock.
+        outputBus->zero();
+        return;
+    }
+    if (m_sourceNumberOfChannels != outputBus->numberOfChannels()) {
         outputBus->zero();
         return;
     }

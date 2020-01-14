@@ -83,7 +83,7 @@ void MediaSession::removeMediaElement(HTMLMediaElement& element)
         m_iteratedActiveParticipatingElements->remove(&element);
 }
 
-void MediaSession::changeActiveMediaElements(std::function<void(void)> worker)
+void MediaSession::changeActiveMediaElements(const WTF::Function<void(void)>& worker)
 {
     if (Page *page = m_document.page()) {
         bool hadActiveMediaElements = MediaSessionManager::singleton().hasActiveMediaElements();
@@ -114,7 +114,7 @@ bool MediaSession::hasActiveMediaElements() const
     return !m_activeParticipatingElements.isEmpty();
 }
 
-void MediaSession::setMetadata(const std::optional<Metadata>& optionalMetadata)
+void MediaSession::setMetadata(const Optional<Metadata>& optionalMetadata)
 {
     if (!optionalMetadata)
         m_metadata = { };
@@ -237,7 +237,7 @@ void MediaSession::togglePlayback()
     });
 }
 
-void MediaSession::safelyIterateActiveMediaElements(std::function<void(HTMLMediaElement*)> handler)
+void MediaSession::safelyIterateActiveMediaElements(const WTF::Function<void(HTMLMediaElement*)>& handler)
 {
     ASSERT(!m_iteratedActiveParticipatingElements);
 
@@ -253,13 +253,13 @@ void MediaSession::safelyIterateActiveMediaElements(std::function<void(HTMLMedia
 void MediaSession::skipToNextTrack()
 {
     if (m_controls && m_controls->nextTrackEnabled())
-        m_controls->dispatchEvent(Event::create(eventNames().nexttrackEvent, false, false));
+        m_controls->dispatchEvent(Event::create(eventNames().nexttrackEvent, Event::CanBubble::No, Event::IsCancelable::No));
 }
 
 void MediaSession::skipToPreviousTrack()
 {
     if (m_controls && m_controls->previousTrackEnabled())
-        m_controls->dispatchEvent(Event::create(eventNames().previoustrackEvent, false, false));
+        m_controls->dispatchEvent(Event::create(eventNames().previoustrackEvent, Event::CanBubble::No, Event::IsCancelable::No));
 }
 
 void MediaSession::controlIsEnabledDidChange()

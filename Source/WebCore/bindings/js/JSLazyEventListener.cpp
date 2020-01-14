@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2003-2016 Apple Inc. All Rights Reserved.
+ *  Copyright (C) 2003-2018 Apple Inc. All Rights Reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -20,48 +20,76 @@
 #include "config.h"
 #include "JSLazyEventListener.h"
 
+#include "CachedScriptFetcher.h"
 #include "ContentSecurityPolicy.h"
+#include "Element.h"
 #include "Frame.h"
 #include "JSNode.h"
+#include "QualifiedName.h"
 #include "ScriptController.h"
-#include <runtime/FunctionConstructor.h>
-#include <runtime/IdentifierInlines.h>
+#include <JavaScriptCore/CatchScope.h>
+#include <JavaScriptCore/FunctionConstructor.h>
+#include <JavaScriptCore/IdentifierInlines.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RefCountedLeakCounter.h>
 #include <wtf/StdLibExtras.h>
-
-using namespace JSC;
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
+using namespace JSC;
 
 DEFINE_DEBUG_ONLY_GLOBAL(WTF::RefCountedLeakCounter, eventListenerCounter, ("JSLazyEventListener"));
 
-JSLazyEventListener::JSLazyEventListener(const String& functionName, const String& eventParameterName, const String& code, ContainerNode* node, const String& sourceURL, const TextPosition& sourcePosition, JSObject* wrapper, DOMWrapperWorld& isolatedWorld)
-    : JSEventListener(0, wrapper, true, isolatedWorld)
-    , m_functionName(functionName)
-    , m_eventParameterName(eventParameterName)
-    , m_code(code)
-    , m_sourceURL(sourceURL)
-    , m_sourcePosition(sourcePosition)
-    , m_originalNode(node)
-{
-    // We don't retain the original node because we assume it
-    // will stay alive as long as this handler object is around
-    // and we need to avoid a reference cycle. If JS transfers
-    // this handler to another node, initializeJSFunction will
-    // be called and then originalNode is no longer needed.
+struct JSLazyEventListener::CreationArguments {
+    const QualifiedName& attributeName;
+    const AtomString& attributeValue;
+    Document& document;
+    WeakPtr<ContainerNode> node;
+    JSObject* wrapper;
+    bool shouldUseSVGEventName;
+};
 
+static const String& eventParameterName(bool shouldUseSVGEventName)
+{
+    static NeverDestroyed<const String> eventString(MAKE_STATIC_STRING_IMPL("event"));
+    static NeverDestroyed<const String> evtString(MAKE_STATIC_STRING_IMPL("evt"));
+    return shouldUseSVGEventName ? evtString : eventString;
+}
+
+static TextPosition convertZeroToOne(const TextPosition& position)
+{
     // A JSLazyEventListener can be created with a line number of zero when it is created with
     // a setAttribute call from JavaScript, so make the line number 1 in that case.
-    if (m_sourcePosition == TextPosition::belowRangePosition())
-        m_sourcePosition = TextPosition();
+    if (position == TextPosition::belowRangePosition())
+        return { };
+    return position;
+}
 
-    ASSERT(m_eventParameterName == "evt" || m_eventParameterName == "event");
-
+JSLazyEventListener::JSLazyEventListener(CreationArguments&& arguments, const String& sourceURL, const TextPosition& sourcePosition)
+    : JSEventListener(nullptr, arguments.wrapper, true, mainThreadNormalWorld())
+    , m_functionName(arguments.attributeName.localName().string())
+    , m_eventParameterName(eventParameterName(arguments.shouldUseSVGEventName))
+    , m_code(arguments.attributeValue)
+    , m_sourceURL(sourceURL)
+    , m_sourcePosition(convertZeroToOne(sourcePosition))
+    , m_originalNode(WTFMove(arguments.node))
+{
 #ifndef NDEBUG
     eventListenerCounter.increment();
 #endif
 }
+
+#if !ASSERT_DISABLED
+// This is to help find the underlying cause of <rdar://problem/24314027>.
+void JSLazyEventListener::checkValidityForEventTarget(EventTarget& eventTarget)
+{
+    if (eventTarget.isNode()) {
+        ASSERT(m_originalNode);
+        ASSERT(static_cast<EventTarget*>(m_originalNode.get()) == &eventTarget);
+    } else
+        ASSERT(!m_originalNode);
+}
+#endif
 
 JSLazyEventListener::~JSLazyEventListener()
 {
@@ -70,30 +98,30 @@ JSLazyEventListener::~JSLazyEventListener()
 #endif
 }
 
-JSObject* JSLazyEventListener::initializeJSFunction(ScriptExecutionContext* executionContext) const
+JSObject* JSLazyEventListener::initializeJSFunction(ScriptExecutionContext& executionContext) const
 {
     ASSERT(is<Document>(executionContext));
-    if (!executionContext)
-        return nullptr;
 
-    ASSERT(!m_code.isNull());
-    ASSERT(!m_eventParameterName.isNull());
-    if (m_code.isNull() || m_eventParameterName.isNull())
-        return nullptr;
+    auto& executionContextDocument = downcast<Document>(executionContext);
 
-    Document& document = downcast<Document>(*executionContext);
-
+    // As per the HTML specification [1], if this is an element's event handler, then document should be the
+    // element's document. The script execution context may be different from the node's document if the
+    // node's document was created by JavaScript.
+    // [1] https://html.spec.whatwg.org/multipage/webappapis.html#getting-the-current-value-of-the-event-handler
+    auto& document = m_originalNode ? m_originalNode->document() : executionContextDocument;
     if (!document.frame())
         return nullptr;
 
     if (!document.contentSecurityPolicy()->allowInlineEventHandlers(m_sourceURL, m_sourcePosition.m_line))
         return nullptr;
 
-    ScriptController& script = document.frame()->script();
-    if (!script.canExecuteScripts(AboutToExecuteScript) || script.isPaused())
+    auto& script = document.frame()->script();
+    if (!script.canExecuteScripts(AboutToCreateEventListener) || script.isPaused())
         return nullptr;
 
-    JSDOMGlobalObject* globalObject = toJSDOMGlobalObject(executionContext, isolatedWorld());
+    if (!executionContextDocument.frame())
+        return nullptr;
+    auto* globalObject = toJSDOMWindow(*executionContextDocument.frame(), isolatedWorld());
     if (!globalObject)
         return nullptr;
 
@@ -105,15 +133,16 @@ JSObject* JSLazyEventListener::initializeJSFunction(ScriptExecutionContext* exec
     MarkedArgumentBuffer args;
     args.append(jsNontrivialString(exec, m_eventParameterName));
     args.append(jsStringWithCache(exec, m_code));
+    ASSERT(!args.hasOverflowed());
 
     // We want all errors to refer back to the line on which our attribute was
     // declared, regardless of any newlines in our JavaScript source text.
     int overrideLineNumber = m_sourcePosition.m_line.oneBasedInt();
 
-    JSObject* jsFunction = constructFunctionSkippingEvalEnabledCheck(
-        exec, exec->lexicalGlobalObject(), args, Identifier::fromString(exec, m_functionName),
+    JSObject* jsFunction = constructFunctionSkippingEvalEnabledCheck(exec,
+        exec->lexicalGlobalObject(), args, Identifier::fromString(exec, m_functionName),
+        SourceOrigin { m_sourceURL, CachedScriptFetcher::create(document.charset()) },
         m_sourceURL, m_sourcePosition, overrideLineNumber);
-
     if (UNLIKELY(scope.exception())) {
         reportCurrentException(exec);
         scope.clearException();
@@ -133,26 +162,11 @@ JSObject* JSLazyEventListener::initializeJSFunction(ScriptExecutionContext* exec
         // (and the document, and the form - see JSHTMLElement::eventHandlerScope)
         listenerAsFunction->setScope(vm, jsCast<JSNode*>(wrapper())->pushEventHandlerScope(exec, listenerAsFunction->scope()));
     }
+
     return jsFunction;
 }
 
-static const String& eventParameterName(bool isSVGEvent)
-{
-    static NeverDestroyed<const String> eventString(ASCIILiteral("event"));
-    static NeverDestroyed<const String> evtString(ASCIILiteral("evt"));
-    return isSVGEvent ? evtString : eventString;
-}
-
-struct JSLazyEventListener::CreationArguments {
-    const QualifiedName& attributeName;
-    const AtomicString& attributeValue;
-    Document& document;
-    ContainerNode* node;
-    JSC::JSObject* wrapper;
-    bool shouldUseSVGEventName;
-};
-
-RefPtr<JSLazyEventListener> JSLazyEventListener::create(const CreationArguments& arguments)
+RefPtr<JSLazyEventListener> JSLazyEventListener::create(CreationArguments&& arguments)
 {
     if (arguments.attributeValue.isNull())
         return nullptr;
@@ -161,30 +175,28 @@ RefPtr<JSLazyEventListener> JSLazyEventListener::create(const CreationArguments&
     TextPosition position;
     String sourceURL;
     if (Frame* frame = arguments.document.frame()) {
-        if (!frame->script().canExecuteScripts(AboutToExecuteScript))
+        if (!frame->script().canExecuteScripts(AboutToCreateEventListener))
             return nullptr;
         position = frame->script().eventHandlerPosition();
         sourceURL = arguments.document.url().string();
     }
 
-    return adoptRef(*new JSLazyEventListener(arguments.attributeName.localName().string(),
-        eventParameterName(arguments.shouldUseSVGEventName), arguments.attributeValue,
-        arguments.node, sourceURL, position, arguments.wrapper, mainThreadNormalWorld()));
+    return adoptRef(*new JSLazyEventListener(WTFMove(arguments), sourceURL, position));
 }
 
-RefPtr<JSLazyEventListener> JSLazyEventListener::create(Element& element, const QualifiedName& attributeName, const AtomicString& attributeValue)
+RefPtr<JSLazyEventListener> JSLazyEventListener::create(Element& element, const QualifiedName& attributeName, const AtomString& attributeValue)
 {
-    return create({ attributeName, attributeValue, element.document(), &element, nullptr, element.isSVGElement() });
+    return create({ attributeName, attributeValue, element.document(), makeWeakPtr(element), nullptr, element.isSVGElement() });
 }
 
-RefPtr<JSLazyEventListener> JSLazyEventListener::create(Document& document, const QualifiedName& attributeName, const AtomicString& attributeValue)
+RefPtr<JSLazyEventListener> JSLazyEventListener::create(Document& document, const QualifiedName& attributeName, const AtomString& attributeValue)
 {
     // FIXME: This always passes false for "shouldUseSVGEventName". Is that correct for events dispatched to SVG documents?
     // This has been this way for a long time, but became more obvious when refactoring to separate the Element and Document code paths.
-    return create({ attributeName, attributeValue, document, &document, nullptr, false });
+    return create({ attributeName, attributeValue, document, makeWeakPtr(document), nullptr, false });
 }
 
-RefPtr<JSLazyEventListener> JSLazyEventListener::create(DOMWindow& window, const QualifiedName& attributeName, const AtomicString& attributeValue)
+RefPtr<JSLazyEventListener> JSLazyEventListener::create(DOMWindow& window, const QualifiedName& attributeName, const AtomString& attributeValue)
 {
     ASSERT(window.document());
     auto& document = *window.document();

@@ -21,7 +21,6 @@
 #define SourceAlpha_h
 
 #include "FilterEffect.h"
-#include "Filter.h"
 
 namespace WebCore {
 
@@ -29,19 +28,17 @@ class SourceAlpha : public FilterEffect {
 public:        
     static Ref<SourceAlpha> create(FilterEffect&);
 
-    static const AtomicString& effectName();
-
-    void platformApplySoftware() override;
-    void dump() override;
-
-    void determineAbsolutePaintRect() override;
-
-    FilterEffectType filterEffectType() const override { return FilterEffectTypeSourceInput; }
-
-    TextStream& externalRepresentation(TextStream&, int indention) const override;
+    static const AtomString& effectName();
 
 private:
     explicit SourceAlpha(FilterEffect&);
+    FilterEffectType filterEffectType() const override { return FilterEffectTypeSourceInput; }
+
+    const char* filterName() const final { return "SourceAlpha"; }
+
+    void platformApplySoftware() override;
+    void determineAbsolutePaintRect() override;
+    WTF::TextStream& externalRepresentation(WTF::TextStream&, RepresentationType) const override;
 };
 
 } //namespace WebCore

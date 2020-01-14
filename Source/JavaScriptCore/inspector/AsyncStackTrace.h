@@ -35,14 +35,14 @@ class ScriptCallStack;
 
 class JS_EXPORT_PRIVATE AsyncStackTrace : public RefCounted<AsyncStackTrace> {
 public:
-    enum class State {
+    enum class State : uint8_t {
         Pending,
         Active,
         Dispatched,
         Canceled,
     };
 
-    static RefPtr<AsyncStackTrace> create(RefPtr<ScriptCallStack>, bool singleShot, RefPtr<AsyncStackTrace> parent);
+    static Ref<AsyncStackTrace> create(Ref<ScriptCallStack>&&, bool singleShot, RefPtr<AsyncStackTrace> parent);
 
     bool isPending() const;
     bool isLocked() const;
@@ -51,17 +51,17 @@ public:
     void didDispatchAsyncCall();
     void didCancelAsyncCall();
 
-    RefPtr<Inspector::Protocol::Console::StackTrace> buildInspectorObject() const;
+    RefPtr<Protocol::Console::StackTrace> buildInspectorObject() const;
 
     ~AsyncStackTrace();
 
 private:
-    AsyncStackTrace(RefPtr<ScriptCallStack>, bool, RefPtr<AsyncStackTrace>);
+    AsyncStackTrace(Ref<ScriptCallStack>&&, bool, RefPtr<AsyncStackTrace>);
 
     void truncate(size_t maxDepth);
     void remove();
 
-    RefPtr<ScriptCallStack> m_callStack;
+    Ref<ScriptCallStack> m_callStack;
     RefPtr<AsyncStackTrace> m_parent;
     unsigned m_childCount { 0 };
     State m_state { State::Pending };

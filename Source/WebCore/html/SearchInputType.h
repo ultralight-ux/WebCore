@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -45,27 +45,27 @@ public:
     void stopSearchEventTimer();
 
 private:
-    void addSearchResult() override;
-    void maxResultsAttributeChanged() override;
-    RenderPtr<RenderElement> createInputRenderer(RenderStyle&&) override;
-    const AtomicString& formControlType() const override;
-    bool isSearchField() const override;
-    bool needsContainer() const override;
-    void createShadowSubtree() override;
-    void destroyShadowSubtree() override;
-    HTMLElement* resultsButtonElement() const override;
-    HTMLElement* cancelButtonElement() const override;
-    void handleKeydownEvent(KeyboardEvent&) override;
-    void didSetValueByUserEdit() override;
-    bool sizeShouldIncludeDecoration(int defaultSize, int& preferredSize) const override;
-    float decorationWidth() const override;
+    void addSearchResult() final;
+    void attributeChanged(const QualifiedName&) final;
+    RenderPtr<RenderElement> createInputRenderer(RenderStyle&&) final;
+    const AtomString& formControlType() const final;
+    bool isSearchField() const final;
+    bool needsContainer() const final;
+    void createShadowSubtree() final;
+    void destroyShadowSubtree() final;
+    HTMLElement* resultsButtonElement() const final;
+    HTMLElement* cancelButtonElement() const final;
+    ShouldCallBaseEventHandler handleKeydownEvent(KeyboardEvent&) final;
+    void didSetValueByUserEdit() final;
+    bool sizeShouldIncludeDecoration(int defaultSize, int& preferredSize) const final;
+    float decorationWidth() const final;
 
     void searchEventTimerFired();
     bool searchEventsShouldBeDispatched() const;
     void startSearchEventTimer();
 
-    SearchFieldResultsButtonElement* m_resultsButton;
-    HTMLElement* m_cancelButton;
+    RefPtr<SearchFieldResultsButtonElement> m_resultsButton;
+    RefPtr<HTMLElement> m_cancelButton;
     Timer m_searchEventTimer;
 };
 

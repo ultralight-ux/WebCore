@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2008 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,13 +21,12 @@
 
 #pragma once
 
-#include "SVGAnimatedBoolean.h"
-#include "SVGAnimatedEnumeration.h"
-#include "SVGAnimatedLength.h"
 #include "SVGExternalResourcesRequired.h"
 #include "SVGGraphicsElement.h"
 
 namespace WebCore {
+
+struct DOMPointInit;
 
 enum SVGLengthAdjustType {
     SVGLengthAdjustUnknown,
@@ -43,9 +43,9 @@ template<> struct SVGPropertyTraits<SVGLengthAdjustType> {
         case SVGLengthAdjustUnknown:
             return emptyString();
         case SVGLengthAdjustSpacing:
-            return ASCIILiteral("spacing");
+            return "spacing"_s;
         case SVGLengthAdjustSpacingAndGlyphs:
-            return ASCIILiteral("spacingAndGlyphs");
+            return "spacingAndGlyphs"_s;
         }
 
         ASSERT_NOT_REACHED();
@@ -63,6 +63,7 @@ template<> struct SVGPropertyTraits<SVGLengthAdjustType> {
 };
 
 class SVGTextContentElement : public SVGGraphicsElement, public SVGExternalResourcesRequired {
+    WTF_MAKE_ISO_ALLOCATED(SVGTextContentElement);
 public:
     enum {
         LENGTHADJUST_UNKNOWN = SVGLengthAdjustUnknown,
@@ -77,25 +78,28 @@ public:
     ExceptionOr<Ref<SVGPoint>> getEndPositionOfChar(unsigned charnum);
     ExceptionOr<Ref<SVGRect>> getExtentOfChar(unsigned charnum);
     ExceptionOr<float> getRotationOfChar(unsigned charnum);
-    int getCharNumAtPosition(SVGPoint&);
+    int getCharNumAtPosition(DOMPointInit&&);
     ExceptionOr<void> selectSubString(unsigned charnum, unsigned nchars);
 
     static SVGTextContentElement* elementFromRenderer(RenderObject*);
 
-    // textLength is not declared using the standard DECLARE_ANIMATED_LENGTH macro
-    // as its getter needs special handling (return getComputedTextLength(), instead of m_textLength).
-    SVGLengthValue& specifiedTextLength() { return m_specifiedTextLength; }
-    Ref<SVGAnimatedLength> textLengthAnimated();
-    static const SVGPropertyInfo* textLengthPropertyInfo();
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGTextContentElement, SVGGraphicsElement, SVGExternalResourcesRequired>;
+
+    const SVGLengthValue& specifiedTextLength() const { return m_specifiedTextLength; }
+    const SVGLengthValue& textLength() const { return m_textLength->currentValue(); }
+    SVGLengthAdjustType lengthAdjust() const { return m_lengthAdjust->currentValue<SVGLengthAdjustType>(); }
+
+    SVGAnimatedLength& textLengthAnimated();
+    SVGAnimatedEnumeration& lengthAdjustAnimated() { return m_lengthAdjust; }
 
 protected:
     SVGTextContentElement(const QualifiedName&, Document&);
 
     bool isValid() const override { return SVGTests::isValid(); }
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     bool isPresentationAttribute(const QualifiedName&) const override;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) override;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) override;
     void svgAttributeChanged(const QualifiedName&) override;
 
     bool selfHasRelativeLengths() const override;
@@ -103,18 +107,9 @@ protected:
 private:
     bool isTextContent() const final { return true; }
 
-    static bool isSupportedAttribute(const QualifiedName&);
-
-    // Custom 'textLength' property
-    static void synchronizeTextLength(SVGElement* contextElement);
-    static Ref<SVGAnimatedProperty> lookupOrCreateTextLengthWrapper(SVGElement* contextElement);
-    mutable SVGSynchronizableAnimatedProperty<SVGLengthValue> m_textLength;
-    SVGLengthValue m_specifiedTextLength;
-  
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGTextContentElement)
-        DECLARE_ANIMATED_ENUMERATION(LengthAdjust, lengthAdjust, SVGLengthAdjustType)
-        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired) 
-    END_DECLARE_ANIMATED_PROPERTIES
+    Ref<SVGAnimatedLength> m_textLength { SVGAnimatedLength::create(this, SVGLengthMode::Other) };
+    Ref<SVGAnimatedEnumeration> m_lengthAdjust { SVGAnimatedEnumeration::create(this, SVGLengthAdjustSpacing) };
+    SVGLengthValue m_specifiedTextLength { SVGLengthMode::Other };
 };
 
 } // namespace WebCore

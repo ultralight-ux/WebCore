@@ -34,44 +34,30 @@ namespace JSC {
 
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(AsyncFunctionConstructor);
 
-const ClassInfo AsyncFunctionConstructor::s_info = { "AsyncFunction", &Base::s_info, nullptr, CREATE_METHOD_TABLE(AsyncFunctionConstructor) };
-
-AsyncFunctionConstructor::AsyncFunctionConstructor(VM& vm, Structure* structure)
-    : InternalFunction(vm, structure)
-{
-}
-
-void AsyncFunctionConstructor::finishCreation(VM& vm, AsyncFunctionPrototype* prototype)
-{
-    Base::finishCreation(vm, "AsyncFunction");
-    putDirectWithoutTransition(vm, vm.propertyNames->prototype, prototype, DontEnum | DontDelete | ReadOnly);
-
-    // Number of arguments for constructor
-    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum);
-}
+const ClassInfo AsyncFunctionConstructor::s_info = { "AsyncFunction", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(AsyncFunctionConstructor) };
 
 static EncodedJSValue JSC_HOST_CALL callAsyncFunctionConstructor(ExecState* exec)
 {
     ArgList args(exec);
-    return JSValue::encode(constructFunction(exec, asInternalFunction(exec->jsCallee())->globalObject(), args, FunctionConstructionMode::Async));
+    return JSValue::encode(constructFunction(exec, jsCast<InternalFunction*>(exec->jsCallee())->globalObject(exec->vm()), args, FunctionConstructionMode::Async));
 }
 
 static EncodedJSValue JSC_HOST_CALL constructAsyncFunctionConstructor(ExecState* exec)
 {
     ArgList args(exec);
-    return JSValue::encode(constructFunction(exec, asInternalFunction(exec->jsCallee())->globalObject(), args, FunctionConstructionMode::Async));
+    return JSValue::encode(constructFunction(exec, jsCast<InternalFunction*>(exec->jsCallee())->globalObject(exec->vm()), args, FunctionConstructionMode::Async));
 }
 
-CallType AsyncFunctionConstructor::getCallData(JSCell*, CallData& callData)
+AsyncFunctionConstructor::AsyncFunctionConstructor(VM& vm, Structure* structure)
+    : InternalFunction(vm, structure, callAsyncFunctionConstructor, constructAsyncFunctionConstructor)
 {
-    callData.native.function = callAsyncFunctionConstructor;
-    return CallType::Host;
 }
 
-ConstructType AsyncFunctionConstructor::getConstructData(JSCell*, ConstructData& constructData)
+void AsyncFunctionConstructor::finishCreation(VM& vm, AsyncFunctionPrototype* prototype)
 {
-    constructData.native.function = constructAsyncFunctionConstructor;
-    return ConstructType::Host;
+    Base::finishCreation(vm, "AsyncFunction"_s, NameVisibility::Visible, NameAdditionMode::WithoutStructureTransition);
+    putDirectWithoutTransition(vm, vm.propertyNames->prototype, prototype, PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly);
+    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), PropertyAttribute::ReadOnly | PropertyAttribute::DontEnum);
 }
 
 } // namespace JSC

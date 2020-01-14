@@ -30,7 +30,7 @@
 
 #include "AudioBuffer.h"
 #include "AudioBufferCallback.h"
-#include <runtime/ArrayBuffer.h>
+#include <JavaScriptCore/ArrayBuffer.h>
 #include <wtf/MainThread.h>
 
 namespace WebCore {
@@ -39,7 +39,9 @@ AsyncAudioDecoder::AsyncAudioDecoder()
 {
     // Start worker thread.
     LockHolder lock(m_threadCreationMutex);
-    m_threadID = createThread(AsyncAudioDecoder::threadEntry, this, "Audio Decoder");
+    m_thread = Thread::create("Audio Decoder", [this] {
+        runLoop();
+    });
 }
 
 AsyncAudioDecoder::~AsyncAudioDecoder()
@@ -47,8 +49,7 @@ AsyncAudioDecoder::~AsyncAudioDecoder()
     m_queue.kill();
     
     // Stop thread.
-    waitForThreadCompletion(m_threadID);
-    m_threadID = 0;
+    m_thread->waitForCompletion();
 }
 
 void AsyncAudioDecoder::decodeAsync(Ref<ArrayBuffer>&& audioData, float sampleRate, RefPtr<AudioBufferCallback>&& successCallback, RefPtr<AudioBufferCallback>&& errorCallback)
@@ -59,20 +60,12 @@ void AsyncAudioDecoder::decodeAsync(Ref<ArrayBuffer>&& audioData, float sampleRa
     m_queue.append(WTFMove(decodingTask)); // note that ownership of the task is effectively taken by the queue.
 }
 
-// Asynchronously decode in this thread.
-void AsyncAudioDecoder::threadEntry(void* threadData)
-{
-    ASSERT(threadData);
-    AsyncAudioDecoder* decoder = reinterpret_cast<AsyncAudioDecoder*>(threadData);
-    decoder->runLoop();
-}
-
 void AsyncAudioDecoder::runLoop()
 {
     ASSERT(!isMainThread());
 
     {
-        // Wait for until we have m_threadID established before starting the run loop.
+        // Wait for until we have m_thread established before starting the run loop.
         LockHolder lock(m_threadCreationMutex);
     }
 

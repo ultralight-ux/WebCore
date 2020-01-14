@@ -26,13 +26,11 @@
  * that all WebKit projects use these definitions so that symbol exports work
  * properly on all platforms and compilers that WebKit builds under.
  */
-#ifndef PlatformExportMacros_h
-#define PlatformExportMacros_h
 
-#include <wtf/Platform.h>
+#pragma once
+
 #include <wtf/ExportMacros.h>
 
-// See note in wtf/Platform.h for more info on EXPORT_MACROS.
 #if USE(EXPORT_MACROS)
 
 #if !PLATFORM(WIN)
@@ -47,5 +45,3 @@
 #define WEBCORE_TESTSUPPORT_EXPORT
 
 #endif // USE(EXPORT_MACROS)
-
-#endif // PlatformExportMacros_h

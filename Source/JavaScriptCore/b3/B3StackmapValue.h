@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -60,8 +60,7 @@ public:
 
     ~StackmapValue();
 
-    // Use this to add children. Note that you could also add children by doing
-    // children().append(). That will work fine, but it's not recommended.
+    // Use this to add children.
     void append(const ConstrainedValue& value)
     {
         append(value.value(), value.rep());
@@ -99,7 +98,8 @@ public:
     // This is a helper for something you might do a lot of: append a value that should be constrained
     // to SomeRegister.
     void appendSomeRegister(Value*);
-
+    void appendSomeRegisterWithClobber(Value*);
+    
     const Vector<ValueRep>& reps() const { return m_reps; }
 
     // Stackmaps allow you to specify that the operation may clobber some registers. Clobbering a register
@@ -220,6 +220,7 @@ public:
 
     class ConstrainedValueCollection {
     public:
+
         ConstrainedValueCollection(const StackmapValue& value)
             : m_value(value)
         {
@@ -233,6 +234,12 @@ public:
 
         class iterator {
         public:
+            using iterator_category = std::forward_iterator_tag;
+            using value_type = ConstrainedValue;
+            using difference_type = int;
+            using pointer = void;
+            using reference = ConstrainedValue;
+
             iterator()
                 : m_collection(nullptr)
                 , m_index(0)
@@ -283,6 +290,8 @@ public:
     {
         return ConstrainedValueCollection(*this);
     }
+
+    B3_SPECIALIZE_VALUE_FOR_VARARGS_CHILDREN
 
 protected:
     void dumpChildren(CommaPrinter&, PrintStream&) const override;

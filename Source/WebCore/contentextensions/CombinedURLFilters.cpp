@@ -46,6 +46,8 @@ struct PrefixTreeEdge {
 typedef Vector<PrefixTreeEdge, 0, WTF::CrashOnOverflow, 1> PrefixTreeEdges;
 
 struct PrefixTreeVertex {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+
     PrefixTreeEdges edges;
 };
 
@@ -137,9 +139,7 @@ CombinedURLFilters::CombinedURLFilters()
 {
 }
 
-CombinedURLFilters::~CombinedURLFilters()
-{
-}
+CombinedURLFilters::~CombinedURLFilters() = default;
 
 bool CombinedURLFilters::isEmpty() const
 {
@@ -446,7 +446,7 @@ static void generateNFAForSubtree(NFA& nfa, ImmutableCharNFANodeBuilder&& subtre
     clearReverseSuffixTree(reverseSuffixTreeRoots);
 }
 
-void CombinedURLFilters::processNFAs(size_t maxNFASize, std::function<void(NFA&&)> handler)
+void CombinedURLFilters::processNFAs(size_t maxNFASize, const WTF::Function<void(NFA&&)>& handler)
 {
 #if CONTENT_EXTENSIONS_STATE_MACHINE_DEBUGGING
     print();

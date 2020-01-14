@@ -25,12 +25,10 @@
  
 #pragma once
 
-#include <wtf/Vector.h>
+#include <wtf/Forward.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
-
-class URL;
 
 class UserContentURLPattern {
 public:

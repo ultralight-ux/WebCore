@@ -30,11 +30,13 @@
 #include "GraphicsLayer.h"
 #include "GraphicsLayerClient.h"
 #include "RenderLayer.h"
+#include "RenderLayerCompositor.h"
 #include "ScrollingCoordinator.h"
 
 namespace WebCore {
 
 class KeyframeList;
+class PaintedContentsInfo;
 class RenderLayerCompositor;
 class TiledBacking;
 class TransformationMatrix;
@@ -42,7 +44,7 @@ class TransformationMatrix;
 enum CompositingLayerType {
     NormalCompositingLayer, // non-tiled layer with backing store
     TiledCompositingLayer, // tiled layer (always has backing store)
-    MediaCompositingLayer, // layer that contains an image, video, webGL or plugin
+    MediaCompositingLayer, // layer that contains an image, video, WebGL or plugin
     ContainerCompositingLayer // layer with no backing store
 };
 
@@ -58,20 +60,26 @@ public:
     explicit RenderLayerBacking(RenderLayer&);
     ~RenderLayerBacking();
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     void layerWillBeDestroyed();
 #endif
 
+    // Do cleanup while layer->backing() is still valid.
+    void willBeDestroyed();
+
     RenderLayer& owningLayer() const { return m_owningLayer; }
 
-    enum UpdateAfterLayoutFlag {
-        CompositingChildrenOnly = 1 << 0,
-        NeedsFullRepaint = 1 << 1,
-        IsUpdateRoot = 1 << 2
-    };
-    typedef unsigned UpdateAfterLayoutFlags;
-    void updateAfterLayout(UpdateAfterLayoutFlags);
-    
+    // Included layers are non-z-order descendant layers that are painted into this backing.
+    const Vector<WeakPtr<RenderLayer>>& backingSharingLayers() const { return m_backingSharingLayers; }
+    void setBackingSharingLayers(Vector<WeakPtr<RenderLayer>>&&);
+
+    bool hasBackingSharingLayers() const { return !m_backingSharingLayers.isEmpty(); }
+
+    void removeBackingSharingLayer(RenderLayer&);
+    void clearBackingSharingLayers();
+
+    void updateConfigurationAfterStyleChange();
+
     // Returns true if layer configuration changed.
     bool updateConfiguration();
 
@@ -84,57 +92,77 @@ public:
     // Update contents and clipping structure.
     void updateDrawsContent();
     
+    void updateAfterLayout(bool needsClippingUpdate, bool needsFullRepaint);
+    
     GraphicsLayer* graphicsLayer() const { return m_graphicsLayer.get(); }
 
     // Layer to clip children
-    bool hasClippingLayer() const { return (m_childContainmentLayer && !m_isMainFrameLayerWithTiledBacking); }
-    GraphicsLayer* clippingLayer() const { return !m_isMainFrameLayerWithTiledBacking ? m_childContainmentLayer.get() : nullptr; }
+    bool hasClippingLayer() const { return (m_childContainmentLayer && !m_isFrameLayerWithTiledBacking); }
+    GraphicsLayer* clippingLayer() const { return !m_isFrameLayerWithTiledBacking ? m_childContainmentLayer.get() : nullptr; }
 
-    // Layer to get clipped by ancestor
-    bool hasAncestorClippingLayer() const { return m_ancestorClippingLayer != nullptr; }
-    GraphicsLayer* ancestorClippingLayer() const { return m_ancestorClippingLayer.get(); }
+    bool hasAncestorClippingLayers() const { return !!m_ancestorClippingStack; }
+    LayerAncestorClippingStack* ancestorClippingStack() const { return m_ancestorClippingStack.get(); }
+    bool updateAncestorClippingStack(Vector<CompositedClipData>&&);
 
     GraphicsLayer* contentsContainmentLayer() const { return m_contentsContainmentLayer.get(); }
 
     GraphicsLayer* foregroundLayer() const { return m_foregroundLayer.get(); }
     GraphicsLayer* backgroundLayer() const { return m_backgroundLayer.get(); }
     bool backgroundLayerPaintsFixedRootBackground() const { return m_backgroundLayerPaintsFixedRootBackground; }
-    
-    bool hasScrollingLayer() const { return m_scrollingLayer != nullptr; }
-    GraphicsLayer* scrollingLayer() const { return m_scrollingLayer.get(); }
-    GraphicsLayer* scrollingContentsLayer() const { return m_scrollingContentsLayer.get(); }
 
-    void detachFromScrollingCoordinator(LayerScrollCoordinationRoles);
-    
-    ScrollingNodeID scrollingNodeIDForRole(LayerScrollCoordinationRole role) const
+    bool requiresBackgroundLayer() const { return m_requiresBackgroundLayer; }
+    void setRequiresBackgroundLayer(bool);
+
+    bool hasScrollingLayer() const { return m_scrollContainerLayer != nullptr; }
+    GraphicsLayer* scrollContainerLayer() const { return m_scrollContainerLayer.get(); }
+    GraphicsLayer* scrolledContentsLayer() const { return m_scrolledContentsLayer.get(); }
+
+    void detachFromScrollingCoordinator(OptionSet<ScrollCoordinationRole>);
+
+    ScrollingNodeID scrollingNodeIDForRole(ScrollCoordinationRole role) const
     {
         switch (role) {
-        case Scrolling:
+        case ScrollCoordinationRole::Scrolling:
             return m_scrollingNodeID;
-        case ViewportConstrained:
+        case ScrollCoordinationRole::ScrollingProxy:
+            // These nodeIDs are stored in m_ancestorClippingStack.
+            ASSERT_NOT_REACHED();
+            return 0;
+        case ScrollCoordinationRole::FrameHosting:
+            return m_frameHostingNodeID;
+        case ScrollCoordinationRole::ViewportConstrained:
             return m_viewportConstrainedNodeID;
+        case ScrollCoordinationRole::Positioning:
+            return m_positioningNodeID;
         }
         return 0;
     }
-    
-    void setScrollingNodeIDForRole(ScrollingNodeID nodeID, LayerScrollCoordinationRole role)
+
+    void setScrollingNodeIDForRole(ScrollingNodeID nodeID, ScrollCoordinationRole role)
     {
         switch (role) {
-        case Scrolling:
+        case ScrollCoordinationRole::Scrolling:
             m_scrollingNodeID = nodeID;
             break;
-        case ViewportConstrained:
+        case ScrollCoordinationRole::ScrollingProxy:
+            // These nodeIDs are stored in m_ancestorClippingStack.
+            ASSERT_NOT_REACHED();
+            break;
+        case ScrollCoordinationRole::FrameHosting:
+            m_frameHostingNodeID = nodeID;
+            break;
+        case ScrollCoordinationRole::ViewportConstrained:
             m_viewportConstrainedNodeID = nodeID;
-            setIsScrollCoordinatedWithViewportConstrainedRole(nodeID);
+            break;
+        case ScrollCoordinationRole::Positioning:
+            m_positioningNodeID = nodeID;
             break;
         }
     }
-    
-    ScrollingNodeID scrollingNodeIDForChildren() const { return m_scrollingNodeID ? m_scrollingNodeID : m_viewportConstrainedNodeID; }
 
-    void setIsScrollCoordinatedWithViewportConstrainedRole(bool);
+    ScrollingNodeID scrollingNodeIDForChildren() const;
 
-    bool hasMaskLayer() const { return m_maskLayer != 0; }
+    bool hasMaskLayer() const { return m_maskLayer; }
     bool hasChildClippingMaskLayer() const { return m_childClippingMaskLayer != nullptr; }
 
     GraphicsLayer* parentForSublayers() const;
@@ -166,36 +194,43 @@ public:
     void transitionPaused(double timeOffset, CSSPropertyID);
     void transitionFinished(CSSPropertyID);
 
-    bool startAnimation(double timeOffset, const Animation* anim, const KeyframeList& keyframes);
+    bool startAnimation(double timeOffset, const Animation&, const KeyframeList&);
     void animationPaused(double timeOffset, const String& name);
+    void animationSeeked(double timeOffset, const String& name);
     void animationFinished(const String& name);
 
-    void suspendAnimations(double time = 0);
+    void suspendAnimations(MonotonicTime = MonotonicTime());
     void resumeAnimations();
 
     LayoutRect compositedBounds() const;
-    void setCompositedBounds(const LayoutRect&);
-    void updateCompositedBounds();
+    // Returns true if changed.
+    bool setCompositedBounds(const LayoutRect&);
+    // Returns true if changed.
+    bool updateCompositedBounds();
+    
+    void updateAllowsBackingStoreDetaching(const LayoutRect& absoluteBounds);
+
+    void updateEventRegion();
     
     void updateAfterWidgetResize();
     void positionOverflowControlsLayers();
-    bool hasUnpositionedOverflowControlsLayers() const;
-
-    bool isMainFrameLayerWithTiledBacking() const { return m_isMainFrameLayerWithTiledBacking; }
+    
+    bool isFrameLayerWithTiledBacking() const { return m_isFrameLayerWithTiledBacking; }
 
     WEBCORE_EXPORT TiledBacking* tiledBacking() const;
     void adjustTiledBackingCoverage();
     void setTiledBackingHasMargins(bool hasExtendedBackgroundOnLeftAndRight, bool hasExtendedBackgroundOnTopAndBottom);
     
     void updateDebugIndicators(bool showBorder, bool showRepaintCounter);
+    bool paintsSubpixelAntialiasedText() const { return m_paintsSubpixelAntialiasedText; }
 
     // GraphicsLayerClient interface
     void tiledBackingUsageChanged(const GraphicsLayer*, bool /*usingTiledBacking*/) override;
-    void notifyAnimationStarted(const GraphicsLayer*, const String& animationKey, double startTime) override;
+    void notifyAnimationStarted(const GraphicsLayer*, const String& animationKey, MonotonicTime startTime) override;
     void notifyFlushRequired(const GraphicsLayer*) override;
     void notifyFlushBeforeDisplayRefresh(const GraphicsLayer*) override;
 
-    void paintContents(const GraphicsLayer*, GraphicsContext&, GraphicsLayerPaintingPhase, const FloatRect& clip) override;
+    void paintContents(const GraphicsLayer*, GraphicsContext&, OptionSet<GraphicsLayerPaintingPhase>, const FloatRect& clip, GraphicsLayerPaintBehavior) override;
 
     float deviceScaleFactor() const override;
     float contentsScaleMultiplierForNewTiles(const GraphicsLayer*) const override;
@@ -204,21 +239,23 @@ public:
 
     float pageScaleFactor() const override;
     float zoomedOutPageScaleFactor() const override;
-    void didCommitChangesForLayer(const GraphicsLayer*) const override;
+
+    void didChangePlatformLayerForLayer(const GraphicsLayer*) override;
     bool getCurrentTransform(const GraphicsLayer*, TransformationMatrix&) const override;
 
     bool isTrackingRepaints() const override;
     bool shouldSkipLayerInDump(const GraphicsLayer*, LayerTreeAsTextBehavior) const override;
-    bool shouldDumpPropertyForLayer(const GraphicsLayer*, const char* propertyName) const override;
+    bool shouldDumpPropertyForLayer(const GraphicsLayer*, const char* propertyName, LayerTreeAsTextBehavior) const override;
 
     bool shouldAggressivelyRetainTiles(const GraphicsLayer*) const override;
     bool shouldTemporarilyRetainTileCohorts(const GraphicsLayer*) const override;
     bool useGiantTiles() const override;
+    void logFilledVisibleFreshTile(unsigned) override;
     bool needsPixelAligment() const override { return !m_isMainFrameRenderViewLayer; }
 
     LayoutSize subpixelOffsetFromRenderer() const { return m_subpixelOffsetFromRenderer; }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     bool needsIOSDumpRenderTreeMainFrameRenderViewLayerIsAlwaysOpaqueHack(const GraphicsLayer&) const override;
 #endif
 
@@ -251,6 +288,8 @@ public:
     WEBCORE_EXPORT String replayDisplayListAsText(DisplayList::AsTextFlags) const;
 
 private:
+    friend class PaintedContentsInfo;
+
     FloatRect backgroundBoxForSimpleContainerPainting() const;
 
     void createPrimaryGraphicsLayer();
@@ -260,35 +299,35 @@ private:
 
     LayoutRect compositedBoundsIncludingMargin() const;
     
-    std::unique_ptr<GraphicsLayer> createGraphicsLayer(const String&, GraphicsLayer::Type = GraphicsLayer::Type::Normal);
+    Ref<GraphicsLayer> createGraphicsLayer(const String&, GraphicsLayer::Type = GraphicsLayer::Type::Normal);
 
     RenderLayerModelObject& renderer() const { return m_owningLayer.renderer(); }
     RenderBox* renderBox() const { return m_owningLayer.renderBox(); }
     RenderLayerCompositor& compositor() const { return m_owningLayer.compositor(); }
 
     void updateInternalHierarchy();
-    bool updateAncestorClippingLayer(bool needsAncestorClip);
+    bool updateAncestorClipping(bool needsAncestorClip, const RenderLayer* compositingAncestor);
     bool updateDescendantClippingLayer(bool needsDescendantClip);
     bool updateOverflowControlsLayers(bool needsHorizontalScrollbarLayer, bool needsVerticalScrollbarLayer, bool needsScrollCornerLayer);
     bool updateForegroundLayer(bool needsForegroundLayer);
     bool updateBackgroundLayer(bool needsBackgroundLayer);
-    void updateMaskingLayer(bool hasMask, bool hasClipPath);
+    bool updateMaskingLayer(bool hasMask, bool hasClipPath);
     bool requiresHorizontalScrollbarLayer() const;
     bool requiresVerticalScrollbarLayer() const;
     bool requiresScrollCornerLayer() const;
     bool updateScrollingLayers(bool scrollingLayers);
-    void updateDrawsContent(bool isSimpleContainer);
-    void updateChildClippingStrategy(bool needsDescendantsClippingLayer);
-
-    void updateMaskingLayerGeometry();
     
+    void updateScrollOffset(ScrollOffset);
+    void setLocationOfScrolledContents(ScrollOffset, ScrollingLayerPositionAction);
+
+    void updateChildClippingStrategy(bool needsDescendantsClippingLayer);
+    void updateMaskingLayerGeometry();
     void updateRootLayerConfiguration();
+    void updatePaintingPhases();
 
     void setBackgroundLayerPaintsFixedRootBackground(bool);
 
-    GraphicsLayerPaintingPhase paintingPhaseForPrimaryLayer() const;
-    
-    LayoutSize contentOffsetInCompostingLayer() const;
+    LayoutSize contentOffsetInCompositingLayer() const;
     // Result is transform origin in device pixels.
     FloatPoint3D computeTransformOriginForPainting(const LayoutRect& borderBox) const;
 
@@ -306,63 +345,69 @@ private:
 
     // Return the opacity value that this layer should use for compositing.
     float compositingOpacity(float rendererOpacity) const;
-    
+    Color rendererBackgroundColor() const;
+
     bool isMainFrameRenderViewLayer() const;
     
-    bool paintsNonDirectCompositedBoxDecoration() const;
-    bool paintsChildren() const;
+    bool paintsBoxDecorations() const;
+    bool paintsContent(RenderLayer::PaintedContentRequest&) const;
+
+    void updateDrawsContent(PaintedContentsInfo&);
 
     // Returns true if this compositing layer has no visible content.
-    bool isSimpleContainerCompositingLayer() const;
+    bool isSimpleContainerCompositingLayer(PaintedContentsInfo&) const;
     // Returns true if this layer has content that needs to be rendered by painting into the backing store.
-    bool containsPaintedContent(bool isSimpleContainer) const;
+    bool containsPaintedContent(PaintedContentsInfo&) const;
     // Returns true if the RenderLayer just contains an image that we can composite directly.
     bool isDirectlyCompositedImage() const;
-    void updateImageContents();
+    void updateImageContents(PaintedContentsInfo&);
 
-    Color rendererBackgroundColor() const;
-    void updateDirectlyCompositedBackgroundColor(bool isSimpleContainer, bool& didUpdateContentsRect);
-    void updateDirectlyCompositedBackgroundImage(bool isSimpleContainer, bool& didUpdateContentsRect);
-    void updateDirectlyCompositedContents(bool isSimpleContainer, bool& didUpdateContentsRect);
+    void updateDirectlyCompositedBoxDecorations(PaintedContentsInfo&, bool& didUpdateContentsRect);
+    void updateDirectlyCompositedBackgroundColor(PaintedContentsInfo&, bool& didUpdateContentsRect);
+    void updateDirectlyCompositedBackgroundImage(PaintedContentsInfo&, bool& didUpdateContentsRect);
 
     void resetContentsRect();
 
-    bool isPaintDestinationForDescendantLayers() const;
+    bool isPaintDestinationForDescendantLayers(RenderLayer::PaintedContentRequest&) const;
+    bool hasVisibleNonCompositedDescendants() const;
 
     bool shouldClipCompositedBounds() const;
 
-    bool hasTiledBackingFlatteningLayer() const { return (m_childContainmentLayer && m_isMainFrameLayerWithTiledBacking); }
-    GraphicsLayer* tileCacheFlatteningLayer() const { return m_isMainFrameLayerWithTiledBacking ? m_childContainmentLayer.get() : nullptr; }
+    bool hasTiledBackingFlatteningLayer() const { return (m_childContainmentLayer && m_isFrameLayerWithTiledBacking); }
+    GraphicsLayer* tileCacheFlatteningLayer() const { return m_isFrameLayerWithTiledBacking ? m_childContainmentLayer.get() : nullptr; }
 
-    void paintIntoLayer(const GraphicsLayer*, GraphicsContext&, const IntRect& paintDirtyRect, PaintBehavior, GraphicsLayerPaintingPhase);
-
-    // Helper function for updateGeometry.
-    void adjustAncestorCompositingBoundsForFlowThread(LayoutRect& ancestorCompositingBounds, const RenderLayer* compositingAncestor) const;
+    void paintIntoLayer(const GraphicsLayer*, GraphicsContext&, const IntRect& paintDirtyRect, OptionSet<PaintBehavior>, OptionSet<GraphicsLayerPaintingPhase>);
+    
+    void paintDebugOverlays(const GraphicsLayer*, GraphicsContext&);
 
     static CSSPropertyID graphicsLayerToCSSProperty(AnimatedPropertyID);
     static AnimatedPropertyID cssToGraphicsLayerProperty(CSSPropertyID);
 
     bool canIssueSetNeedsDisplay() const { return !paintsIntoWindow() && !paintsIntoCompositedAncestor(); }
-    LayoutRect computeParentGraphicsLayerRect(RenderLayer* compositedAncestor, LayoutSize& ancestorClippingLayerOffset) const;
+    LayoutRect computeParentGraphicsLayerRect(const RenderLayer* compositedAncestor) const;
     LayoutRect computePrimaryGraphicsLayerRect(const LayoutRect& parentGraphicsLayerRect) const;
 
     RenderLayer& m_owningLayer;
+    
+    // A list other layers that paint into this backing store, later than m_owningLayer in paint order.
+    Vector<WeakPtr<RenderLayer>> m_backingSharingLayers;
 
-    std::unique_ptr<GraphicsLayer> m_ancestorClippingLayer; // Only used if we are clipped by an ancestor which is not a stacking context.
-    std::unique_ptr<GraphicsLayer> m_contentsContainmentLayer; // Only used if we have a background layer; takes the transform.
-    std::unique_ptr<GraphicsLayer> m_graphicsLayer;
-    std::unique_ptr<GraphicsLayer> m_foregroundLayer; // Only used in cases where we need to draw the foreground separately.
-    std::unique_ptr<GraphicsLayer> m_backgroundLayer; // Only used in cases where we need to draw the background separately.
-    std::unique_ptr<GraphicsLayer> m_childContainmentLayer; // Only used if we have clipping on a stacking context with compositing children, or if the layer has a tile cache.
-    std::unique_ptr<GraphicsLayer> m_maskLayer; // Only used if we have a mask and/or clip-path.
-    std::unique_ptr<GraphicsLayer> m_childClippingMaskLayer; // Only used if we have to clip child layers or accelerated contents with border radius or clip-path.
+    std::unique_ptr<LayerAncestorClippingStack> m_ancestorClippingStack; // Only used if we are clipped by an ancestor which is not a stacking context.
 
-    std::unique_ptr<GraphicsLayer> m_layerForHorizontalScrollbar;
-    std::unique_ptr<GraphicsLayer> m_layerForVerticalScrollbar;
-    std::unique_ptr<GraphicsLayer> m_layerForScrollCorner;
+    RefPtr<GraphicsLayer> m_contentsContainmentLayer; // Only used if we have a background layer; takes the transform.
+    RefPtr<GraphicsLayer> m_graphicsLayer;
+    RefPtr<GraphicsLayer> m_foregroundLayer; // Only used in cases where we need to draw the foreground separately.
+    RefPtr<GraphicsLayer> m_backgroundLayer; // Only used in cases where we need to draw the background separately.
+    RefPtr<GraphicsLayer> m_childContainmentLayer; // Only used if we have clipping on a stacking context with compositing children, or if the layer has a tile cache.
+    RefPtr<GraphicsLayer> m_maskLayer; // Only used if we have a mask and/or clip-path.
+    RefPtr<GraphicsLayer> m_childClippingMaskLayer; // Only used if we have to clip child layers or accelerated contents with border radius or clip-path.
 
-    std::unique_ptr<GraphicsLayer> m_scrollingLayer; // Only used if the layer is using composited scrolling.
-    std::unique_ptr<GraphicsLayer> m_scrollingContentsLayer; // Only used if the layer is using composited scrolling.
+    RefPtr<GraphicsLayer> m_layerForHorizontalScrollbar;
+    RefPtr<GraphicsLayer> m_layerForVerticalScrollbar;
+    RefPtr<GraphicsLayer> m_layerForScrollCorner;
+
+    RefPtr<GraphicsLayer> m_scrollContainerLayer; // Only used if the layer is using composited scrolling.
+    RefPtr<GraphicsLayer> m_scrolledContentsLayer; // Only used if the layer is using composited scrolling.
 
     LayoutRect m_compositedBounds;
     LayoutSize m_subpixelOffsetFromRenderer; // This is the subpixel distance between the primary graphics layer and the associated renderer's bounds.
@@ -370,16 +415,21 @@ private:
 
     ScrollingNodeID m_viewportConstrainedNodeID { 0 };
     ScrollingNodeID m_scrollingNodeID { 0 };
+    ScrollingNodeID m_frameHostingNodeID { 0 };
+    ScrollingNodeID m_positioningNodeID { 0 };
 
     bool m_artificiallyInflatedBounds { false }; // bounds had to be made non-zero to make transform-origin work
     bool m_isMainFrameRenderViewLayer { false };
-    bool m_isMainFrameLayerWithTiledBacking { false };
+    bool m_isFrameLayerWithTiledBacking { false };
     bool m_requiresOwnBackingStore { true };
     bool m_canCompositeFilters { false };
 #if ENABLE(FILTERS_LEVEL_2)
     bool m_canCompositeBackdropFilters { false };
 #endif
     bool m_backgroundLayerPaintsFixedRootBackground { false };
+    bool m_requiresBackgroundLayer { false };
+    bool m_hasSubpixelRounding { false };
+    bool m_paintsSubpixelAntialiasedText { false }; // This is for logging only.
 };
 
 enum CanvasCompositingStrategy {
@@ -388,5 +438,7 @@ enum CanvasCompositingStrategy {
     CanvasAsLayerContents
 };
 CanvasCompositingStrategy canvasCompositingStrategy(const RenderObject&);
+
+WTF::TextStream& operator<<(WTF::TextStream&, const RenderLayerBacking&);
 
 } // namespace WebCore

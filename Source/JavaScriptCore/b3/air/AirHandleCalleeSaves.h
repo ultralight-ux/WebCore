@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,12 +27,17 @@
 
 #if ENABLE(B3_JIT)
 
-namespace JSC { namespace B3 { namespace Air {
+namespace JSC {
+
+class RegisterSet;
+
+namespace B3 { namespace Air {
 
 class Code;
 
-// This phase identifies callee-save registers and adds code to save/restore them in the
-// prologue/epilogue to the code. It's a mandatory phase.
+// This utility identifies callee-save registers and tells Code. It's called from phases that
+// do stack allocation. We don't do it at the end of register allocation because the real end
+// of register allocation is just before stack allocation.
 
 // FIXME: It would be cool to make this more interactive with the Air client and also more
 // powerful.
@@ -40,6 +45,7 @@ class Code;
 // We should make this interact with the client: https://bugs.webkit.org/show_bug.cgi?id=150459
 
 void handleCalleeSaves(Code&);
+void handleCalleeSaves(Code&, RegisterSet);
 
 } } } // namespace JSC::B3::Air
 

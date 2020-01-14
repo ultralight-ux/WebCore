@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,42 +29,19 @@
 
 #include "CaptureDevice.h"
 #include "RealtimeMediaSource.h"
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
-struct CaptureDeviceInfo {
+class WEBCORE_EXPORT CaptureDeviceManager : public CanMakeWeakPtr<CaptureDeviceManager> {
 public:
-    String m_persistentDeviceID;
-    String m_localizedName;
-    String m_groupID;
-
-    String m_sourceId;
-
-    bool m_enabled { false };
-    RealtimeMediaSource::Type m_sourceType { RealtimeMediaSource::None };
-    RealtimeMediaSourceSettings::VideoFacingMode m_position { RealtimeMediaSourceSettings::Unknown };
-};
-
-class CaptureSessionInfo {
-public:
-    virtual ~CaptureSessionInfo() { }
-    virtual bool supportsVideoSize(const String& /* videoSize */) const { return false; }
-    virtual String bestSessionPresetForVideoDimensions(int /* width */, int /* height */) const { return emptyString(); }
-};
-
-class CaptureDeviceManager {
-public:
-    virtual Vector<CaptureDeviceInfo>& captureDeviceList() = 0;
-    virtual void refreshCaptureDeviceList() { }
-    virtual Vector<CaptureDevice> getSourcesInfo();
-    virtual Vector<String> bestSourcesForTypeAndConstraints(RealtimeMediaSource::Type, const MediaConstraints&, String&);
-    virtual RefPtr<RealtimeMediaSource> sourceWithUID(const String&, RealtimeMediaSource::Type, const MediaConstraints*, String&);
+    virtual const Vector<CaptureDevice>& captureDevices() = 0;
+    virtual Optional<CaptureDevice> captureDeviceWithPersistentID(CaptureDevice::DeviceType, const String&) { return WTF::nullopt; }
 
 protected:
     virtual ~CaptureDeviceManager();
-    virtual RefPtr<RealtimeMediaSource> createMediaSourceForCaptureDeviceWithConstraints(const CaptureDeviceInfo&, const MediaConstraints*, String&) = 0;
-
-    bool captureDeviceFromDeviceID(const String& captureDeviceID, CaptureDeviceInfo& source);
+    CaptureDevice captureDeviceFromPersistentID(const String& captureDeviceID);
+    void deviceChanged();
 };
 
 } // namespace WebCore

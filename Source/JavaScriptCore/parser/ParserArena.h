@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 #include "CommonIdentifiers.h"
 #include "Identifier.h"
 #include <array>
+#include <type_traits>
 #include <wtf/SegmentedVector.h>
 
 namespace JSC {
@@ -46,6 +47,7 @@ namespace JSC {
         ALWAYS_INLINE const Identifier& makeIdentifier(VM*, const T* characters, size_t length);
         ALWAYS_INLINE const Identifier& makeEmptyIdentifier(VM*);
         ALWAYS_INLINE const Identifier& makeIdentifierLCharFromUChar(VM*, const UChar* characters, size_t length);
+        ALWAYS_INLINE const Identifier& makeIdentifier(VM*, SymbolImpl*);
 
         const Identifier& makeNumericIdentifier(VM*, double number);
 
@@ -91,6 +93,13 @@ namespace JSC {
         return m_identifiers.last();
     }
 
+    ALWAYS_INLINE const Identifier& IdentifierArena::makeIdentifier(VM*, SymbolImpl* symbol)
+    {
+        ASSERT(symbol);
+        m_identifiers.append(Identifier::fromUid(*symbol));
+        return m_identifiers.last();
+    }
+
     ALWAYS_INLINE const Identifier& IdentifierArena::makeEmptyIdentifier(VM* vm)
     {
         return vm->propertyNames->emptyIdentifier;
@@ -121,7 +130,9 @@ namespace JSC {
     
     inline const Identifier& IdentifierArena::makeNumericIdentifier(VM* vm, double number)
     {
-        m_identifiers.append(Identifier::fromString(vm, String::numberToStringECMAScript(number)));
+        // FIXME: Why doesn't this use the Identifier::from overload that takes a double?
+        // Seems we are missing out on multiple optimizations by not using it.
+        m_identifiers.append(Identifier::fromString(vm, String::number(number)));
         return m_identifiers.last();
     }
 
@@ -153,11 +164,17 @@ namespace JSC {
             return block;
         }
 
+        template<typename T, typename = std::enable_if_t<std::is_base_of<ParserArenaDeletable, T>::value>>
         void* allocateDeletable(size_t size)
         {
-            ParserArenaDeletable* deletable = static_cast<ParserArenaDeletable*>(allocateFreeable(size));
+            // T may extend ParserArenaDeletable via multiple inheritance, but not as T's first
+            // base class. m_deletableObjects is expecting pointers to objects of the shape of
+            // ParserArenaDeletable. We ensure this by allocating T, and casting it to
+            // ParserArenaDeletable to get the correct pointer to append to m_deletableObjects.
+            T* instance = static_cast<T*>(allocateFreeable(size));
+            ParserArenaDeletable* deletable = static_cast<ParserArenaDeletable*>(instance);
             m_deletableObjects.append(deletable);
-            return deletable;
+            return instance;
         }
 
         IdentifierArena& identifierArena()

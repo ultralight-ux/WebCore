@@ -54,8 +54,6 @@ public:
     void adjustRect(const LayoutRect& rect) { m_rect = rect; }
 
 private:
-    FloatWithRect() = default;
-    
     FloatWithRect(RenderBox& renderer)
         : m_renderer(renderer)
         , m_rect(LayoutRect(renderer.x() - renderer.marginLeft(), renderer.y() - renderer.marginTop(), renderer.width() + renderer.horizontalMarginExtent(), renderer.height() + renderer.verticalMarginExtent()))
@@ -100,8 +98,8 @@ public:
         RenderBox* m_lastCleanFloat { nullptr };
     };
 
-    LineLayoutState(const RenderBlockFlow& blockFlow, bool fullLayout, LayoutUnit& repaintLogicalTop, LayoutUnit& repaintLogicalBottom, RenderFlowThread* flowThread)
-        : m_flowThread(flowThread)
+    LineLayoutState(const RenderBlockFlow& blockFlow, bool fullLayout, LayoutUnit& repaintLogicalTop, LayoutUnit& repaintLogicalBottom, RenderFragmentedFlow* fragmentedFlow)
+        : m_fragmentedFlow(fragmentedFlow)
         , m_repaintLogicalTop(repaintLogicalTop)
         , m_repaintLogicalBottom(repaintLogicalBottom)
         , m_marginInfo(blockFlow, blockFlow.borderAndPaddingBefore(), blockFlow.borderAndPaddingAfter() + blockFlow.scrollbarLogicalHeight())
@@ -124,8 +122,8 @@ public:
     LayoutUnit adjustedLogicalLineTop() const { return m_adjustedLogicalLineTop; }
     void setAdjustedLogicalLineTop(LayoutUnit value) { m_adjustedLogicalLineTop = value; }
 
-    RenderFlowThread* flowThread() const { return m_flowThread; }
-    void setFlowThread(RenderFlowThread* thread) { m_flowThread = thread; }
+    RenderFragmentedFlow* fragmentedFlow() const { return m_fragmentedFlow; }
+    void setFragmentedFlow(RenderFragmentedFlow* thread) { m_fragmentedFlow = thread; }
 
     bool endLineMatched() const { return m_endLineMatched; }
     void setEndLineMatched(bool endLineMatched) { m_endLineMatched = endLineMatched; }
@@ -144,7 +142,7 @@ public:
         m_repaintLogicalTop = m_repaintLogicalBottom = logicalHeight;
     }
 
-    void updateRepaintRangeFromBox(RootInlineBox* box, LayoutUnit paginationDelta = 0)
+    void updateRepaintRangeFromBox(RootInlineBox* box, LayoutUnit paginationDelta = 0_lu)
     {
         m_usesRepaintBounds = true;
         m_repaintLogicalTop = std::min(m_repaintLogicalTop, box->logicalTopVisualOverflow() + std::min<LayoutUnit>(paginationDelta, 0));
@@ -152,8 +150,6 @@ public:
     }
 
     RenderBlockFlow::MarginInfo& marginInfo() { return m_marginInfo; }
-    LayoutUnit& prevFloatBottomFromAnonymousInlineBlock() { return m_prevFloatBottomFromAnonymousInlineBlock; }
-    LayoutUnit& maxFloatBottomFromAnonymousInlineBlock() { return m_maxFloatBottomFromAnonymousInlineBlock; }
 
     FloatList& floatList() { return m_floatList; }
 
@@ -164,7 +160,7 @@ private:
 
     LayoutUnit m_adjustedLogicalLineTop;
 
-    RenderFlowThread* m_flowThread { nullptr };
+    RenderFragmentedFlow* m_fragmentedFlow { nullptr };
 
     FloatList m_floatList;
     // FIXME: Should this be a range object instead of two ints?
@@ -172,8 +168,6 @@ private:
     LayoutUnit& m_repaintLogicalBottom;
 
     RenderBlockFlow::MarginInfo m_marginInfo;
-    LayoutUnit m_prevFloatBottomFromAnonymousInlineBlock;
-    LayoutUnit m_maxFloatBottomFromAnonymousInlineBlock;
 
     bool m_endLineMatched : 1;
     bool m_checkForFloatsFromLastLine : 1;

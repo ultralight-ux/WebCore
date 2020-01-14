@@ -19,41 +19,21 @@
  *
  */
 
-#ifndef IntegerToStringConversion_h
-#define IntegerToStringConversion_h
+#pragma once
 
-#include "StringBuilder.h"
+#include <wtf/text/LChar.h>
 
 namespace WTF {
 
-enum PositiveOrNegativeNumber {
-    PositiveNumber,
-    NegativeNumber
-};
+enum PositiveOrNegativeNumber { PositiveNumber, NegativeNumber };
 
-template<typename T> struct IntegerToStringConversionTrait;
-
-template<> struct IntegerToStringConversionTrait<AtomicString> {
-    typedef AtomicString ReturnType;
-    typedef void AdditionalArgumentType;
-    static ReturnType flush(LChar* characters, unsigned length, void*) { return AtomicString(characters, length); }
-};
-template<> struct IntegerToStringConversionTrait<String> {
-    typedef String ReturnType;
-    typedef void AdditionalArgumentType;
-    static ReturnType flush(LChar* characters, unsigned length, void*) { return String(characters, length); }
-};
-template<> struct IntegerToStringConversionTrait<StringBuilder> {
-    typedef void ReturnType;
-    typedef StringBuilder AdditionalArgumentType;
-    static ReturnType flush(LChar* characters, unsigned length, StringBuilder* stringBuilder) { stringBuilder->append(characters, length); }
-};
+template<typename> struct IntegerToStringConversionTrait;
 
 template<typename T, typename UnsignedIntegerType, PositiveOrNegativeNumber NumberType, typename AdditionalArgumentType>
 static typename IntegerToStringConversionTrait<T>::ReturnType numberToStringImpl(UnsignedIntegerType number, AdditionalArgumentType additionalArgument)
 {
     LChar buf[sizeof(UnsignedIntegerType) * 3 + 1];
-    LChar* end = buf + WTF_ARRAY_LENGTH(buf);
+    LChar* end = std::end(buf);
     LChar* p = end;
 
     do {
@@ -81,6 +61,67 @@ inline typename IntegerToStringConversionTrait<T>::ReturnType numberToStringUnsi
     return numberToStringImpl<T, UnsignedIntegerType, PositiveNumber>(number, additionalArgument);
 }
 
-} // namespace WTF
+template<typename CharacterType, typename UnsignedIntegerType, PositiveOrNegativeNumber NumberType>
+static void writeNumberToBufferImpl(UnsignedIntegerType number, CharacterType* destination)
+{
+    LChar buf[sizeof(UnsignedIntegerType) * 3 + 1];
+    LChar* end = std::end(buf);
+    LChar* p = end;
 
-#endif // IntegerToStringConversion_h
+    do {
+        *--p = static_cast<LChar>((number % 10) + '0');
+        number /= 10;
+    } while (number);
+
+    if (NumberType == NegativeNumber)
+        *--p = '-';
+    
+    while (p < end)
+        *destination++ = static_cast<CharacterType>(*p++);
+}
+
+template<typename CharacterType, typename SignedIntegerType>
+inline void writeNumberToBufferSigned(SignedIntegerType number, CharacterType* destination)
+{
+    if (number < 0)
+        return writeNumberToBufferImpl<CharacterType, typename std::make_unsigned<SignedIntegerType>::type, NegativeNumber>(-number, destination);
+    return writeNumberToBufferImpl<CharacterType, typename std::make_unsigned<SignedIntegerType>::type, PositiveNumber>(number, destination);
+}
+
+template<typename CharacterType, typename UnsignedIntegerType>
+inline void writeNumberToBufferUnsigned(UnsignedIntegerType number, CharacterType* destination)
+{
+    return writeNumberToBufferImpl<CharacterType, UnsignedIntegerType, PositiveNumber>(number, destination);
+}
+
+template<typename UnsignedIntegerType, PositiveOrNegativeNumber NumberType>
+static unsigned lengthOfNumberAsStringImpl(UnsignedIntegerType number)
+{
+    unsigned length = 0;
+
+    do {
+        ++length;
+        number /= 10;
+    } while (number);
+
+    if (NumberType == NegativeNumber)
+        ++length;
+
+    return length;
+}
+
+template<typename SignedIntegerType>
+inline unsigned lengthOfNumberAsStringSigned(SignedIntegerType number)
+{
+    if (number < 0)
+        return lengthOfNumberAsStringImpl<typename std::make_unsigned<SignedIntegerType>::type, NegativeNumber>(-number);
+    return lengthOfNumberAsStringImpl<typename std::make_unsigned<SignedIntegerType>::type, PositiveNumber>(number);
+}
+
+template<typename UnsignedIntegerType>
+inline unsigned lengthOfNumberAsStringUnsigned(UnsignedIntegerType number)
+{
+    return lengthOfNumberAsStringImpl<UnsignedIntegerType, PositiveNumber>(number);
+}
+
+} // namespace WTF

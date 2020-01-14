@@ -31,7 +31,7 @@ namespace Inspector {
 
 class InjectedScriptHost;
 
-class JSInjectedScriptHost : public JSC::JSDestructibleObject {
+class JSInjectedScriptHost final : public JSC::JSDestructibleObject {
 public:
     typedef JSC::JSDestructibleObject Base;
     static const unsigned StructureFlags = Base::StructureFlags;
@@ -53,7 +53,7 @@ public:
     static JSC::JSObject* createPrototype(JSC::VM&, JSC::JSGlobalObject*);
     static void destroy(JSC::JSCell*);
 
-    InjectedScriptHost& impl() const { return const_cast<InjectedScriptHost&>(m_wrapped.get()); }
+    InjectedScriptHost& impl() const { return m_wrapped; }
 
     // Attributes.
     JSC::JSValue evaluate(JSC::ExecState*) const;
@@ -62,6 +62,7 @@ public:
     JSC::JSValue evaluateWithScopeExtension(JSC::ExecState*);
     JSC::JSValue internalConstructorName(JSC::ExecState*);
     JSC::JSValue isHTMLAllCollection(JSC::ExecState*);
+    JSC::JSValue isPromiseRejectedWithNativeGetterTypeError(JSC::ExecState*);
     JSC::JSValue subtype(JSC::ExecState*);
     JSC::JSValue functionDetails(JSC::ExecState*);
     JSC::JSValue getInternalProperties(JSC::ExecState*);
@@ -71,6 +72,7 @@ public:
     JSC::JSValue weakSetSize(JSC::ExecState*);
     JSC::JSValue weakSetEntries(JSC::ExecState*);
     JSC::JSValue iteratorEntries(JSC::ExecState*);
+    JSC::JSValue queryObjects(JSC::ExecState*);
 
 protected:
     void finishCreation(JSC::VM&);

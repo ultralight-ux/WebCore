@@ -38,6 +38,8 @@
 !/Source/WebKit/mac/Configurations/
 /Source/WebKit/mac/Configurations/*
 !/Source/WebKit/mac/Configurations/Version.xcconfig
+!/Source/WebKit/Configurations/
+!/Source/WebKit/Configurations/*
 
 
 # Ignore platform-specific folders in WebCore

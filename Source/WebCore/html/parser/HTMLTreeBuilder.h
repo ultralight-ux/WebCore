@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google, Inc. All Rights Reserved.
- * Copyright (C) 2011, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,13 +35,16 @@ namespace WebCore {
 
 class JSCustomElementInterface;
 class HTMLDocumentParser;
+class ScriptElement;
 
 struct CustomElementConstructionData {
-    CustomElementConstructionData(Ref<JSCustomElementInterface>&&, const AtomicString& name, Vector<Attribute>&&);
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+
+    CustomElementConstructionData(Ref<JSCustomElementInterface>&&, const AtomString& name, Vector<Attribute>&&);
     ~CustomElementConstructionData();
 
     Ref<JSCustomElementInterface> elementInterface;
-    AtomicString name;
+    AtomString name;
     Vector<Attribute> attributes;
 };
 
@@ -62,10 +65,10 @@ public:
     bool hasParserBlockingScriptWork() const;
 
     // Must be called to take the parser-blocking script before calling the parser again.
-    RefPtr<Element> takeScriptToProcess(TextPosition& scriptStartPosition);
+    RefPtr<ScriptElement> takeScriptToProcess(TextPosition& scriptStartPosition);
 
     std::unique_ptr<CustomElementConstructionData> takeCustomElementConstructionData() { return WTFMove(m_customElementToConstruct); }
-    void didCreateCustomOrCallbackElement(Ref<Element>&&, CustomElementConstructionData&);
+    void didCreateCustomOrFallbackElement(Ref<Element>&&, CustomElementConstructionData&);
 
     // Done, close any open tags, etc.
     void finished();
@@ -103,7 +106,7 @@ private:
 
     bool isParsingFragmentOrTemplateContents() const;
 
-#if ENABLE(TELEPHONE_NUMBER_DETECTION) && PLATFORM(IOS)
+#if ENABLE(TELEPHONE_NUMBER_DETECTION) && PLATFORM(IOS_FAMILY)
     void insertPhoneNumberLink(const String&);
     void linkifyPhoneNumbers(const String&);
 #endif
@@ -140,7 +143,7 @@ private:
 
     void processFakeStartTag(const QualifiedName&, Vector<Attribute>&& attributes = Vector<Attribute>());
     void processFakeEndTag(const QualifiedName&);
-    void processFakeEndTag(const AtomicString&);
+    void processFakeEndTag(const AtomString&);
     void processFakeCharacters(const String&);
     void processFakePEndTagIfPInButtonScope();
 
@@ -206,7 +209,7 @@ private:
     // https://html.spec.whatwg.org/multipage/syntax.html#concept-pending-table-char-tokens
     StringBuilder m_pendingTableCharacters;
 
-    RefPtr<Element> m_scriptToProcess; // <script> tag which needs processing before resuming the parser.
+    RefPtr<ScriptElement> m_scriptToProcess; // <script> tag which needs processing before resuming the parser.
     TextPosition m_scriptToProcessStartPosition; // Starting line number of the script tag needing processing.
 
     std::unique_ptr<CustomElementConstructionData> m_customElementToConstruct;

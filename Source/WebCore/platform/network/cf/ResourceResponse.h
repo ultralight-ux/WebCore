@@ -29,7 +29,7 @@
 #include <wtf/RetainPtr.h>
 
 #if USE(CFURLCONNECTION)
-#include "CFNetworkSPI.h"
+#include <pal/spi/cf/CFNetworkSPI.h>
 #endif
 
 OBJC_CLASS NSURLResponse;
@@ -50,9 +50,6 @@ public:
     {
         m_isNull = !cfResponse;
     }
-#if PLATFORM(COCOA)
-    WEBCORE_EXPORT ResourceResponse(NSURLResponse *);
-#endif
 #else
     ResourceResponse(NSURLResponse *nsResponse)
         : m_initLevel(Uninitialized)
@@ -102,8 +99,6 @@ private:
     void platformLazyInit(InitLevel);
     String platformSuggestedFilename() const;
     CertificateInfo platformCertificateInfo() const;
-
-    void doPlatformSetAsIsolatedCopy(const ResourceResponse&) const;
 
 #if PLATFORM(COCOA)
     void initNSURLResponse() const;

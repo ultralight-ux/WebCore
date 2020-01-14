@@ -22,9 +22,9 @@
 
 #include "Filter.h"
 #include "GraphicsContext.h"
-#include "TextStream.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/text/TextStream.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -34,9 +34,9 @@ Ref<SourceGraphic> SourceGraphic::create(Filter& filter)
     return adoptRef(*new SourceGraphic(filter));
 }
 
-const AtomicString& SourceGraphic::effectName()
+const AtomString& SourceGraphic::effectName()
 {
-    static NeverDestroyed<const AtomicString> s_effectName("SourceGraphic", AtomicString::ConstructFromLiteral);
+    static NeverDestroyed<const AtomString> s_effectName("SourceGraphic", AtomString::ConstructFromLiteral);
     return s_effectName;
 }
 
@@ -60,14 +60,9 @@ void SourceGraphic::platformApplySoftware()
     resultImage->context().drawImageBuffer(*sourceImage, IntPoint());
 }
 
-void SourceGraphic::dump()
+TextStream& SourceGraphic::externalRepresentation(TextStream& ts, RepresentationType) const
 {
-}
-
-TextStream& SourceGraphic::externalRepresentation(TextStream& ts, int indent) const
-{
-    writeIndent(ts, indent);
-    ts << "[SourceGraphic]\n";
+    ts << indent << "[SourceGraphic]\n";
     return ts;
 }
 

@@ -28,14 +28,13 @@
 
 #include "ActiveDOMCallback.h"
 #include "QualifiedName.h"
-#include <heap/Weak.h>
-#include <heap/WeakInlines.h>
-#include <runtime/JSObject.h>
+#include <JavaScriptCore/JSObject.h>
+#include <JavaScriptCore/Weak.h>
+#include <JavaScriptCore/WeakInlines.h>
 #include <wtf/Forward.h>
 #include <wtf/Function.h>
 #include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
-#include <wtf/text/AtomicStringHash.h>
+#include <wtf/text/AtomStringHash.h>
 
 namespace JSC {
 class JSObject;
@@ -58,7 +57,7 @@ public:
         return adoptRef(*new JSCustomElementInterface(name, callback, globalObject));
     }
 
-    Ref<Element> constructElementWithFallback(Document&, const AtomicString&);
+    Ref<Element> constructElementWithFallback(Document&, const AtomString&);
     Ref<Element> constructElementWithFallback(Document&, const QualifiedName&);
 
     void upgradeElement(Element&);
@@ -76,8 +75,8 @@ public:
     void invokeAdoptedCallback(Element&, Document& oldDocument, Document& newDocument);
 
     void setAttributeChangedCallback(JSC::JSObject* callback, const Vector<String>& observedAttributes);
-    bool observesAttribute(const AtomicString& name) const { return m_observedAttributes.contains(name); }
-    void invokeAttributeChangedCallback(Element&, const QualifiedName&, const AtomicString& oldValue, const AtomicString& newValue);
+    bool observesAttribute(const AtomString& name) const { return m_observedAttributes.contains(name); }
+    void invokeAttributeChangedCallback(Element&, const QualifiedName&, const AtomString& oldValue, const AtomString& newValue);
 
     ScriptExecutionContext* scriptExecutionContext() const { return ContextDestructionObserver::scriptExecutionContext(); }
     JSC::JSObject* constructor() { return m_constructor.get(); }
@@ -93,9 +92,9 @@ public:
 private:
     JSCustomElementInterface(const QualifiedName&, JSC::JSObject* callback, JSDOMGlobalObject*);
 
-    RefPtr<Element> tryToConstructCustomElement(Document&, const AtomicString&);
+    RefPtr<Element> tryToConstructCustomElement(Document&, const AtomString&);
 
-    void invokeCallback(Element&, JSC::JSObject* callback, const WTF::Function<void(JSC::ExecState*, JSDOMGlobalObject*, JSC::MarkedArgumentBuffer&)>& addArguments = { });
+    void invokeCallback(Element&, JSC::JSObject* callback, const WTF::Function<void(JSC::ExecState*, JSDOMGlobalObject*, JSC::MarkedArgumentBuffer&)>& addArguments = [](JSC::ExecState*, JSDOMGlobalObject*, JSC::MarkedArgumentBuffer&) { });
 
     QualifiedName m_name;
     JSC::Weak<JSC::JSObject> m_constructor;
@@ -103,9 +102,9 @@ private:
     JSC::Weak<JSC::JSObject> m_disconnectedCallback;
     JSC::Weak<JSC::JSObject> m_adoptedCallback;
     JSC::Weak<JSC::JSObject> m_attributeChangedCallback;
-    RefPtr<DOMWrapperWorld> m_isolatedWorld;
+    Ref<DOMWrapperWorld> m_isolatedWorld;
     Vector<RefPtr<Element>, 1> m_constructionStack;
-    HashSet<AtomicString> m_observedAttributes;
+    HashSet<AtomString> m_observedAttributes;
 };
 
 } // namespace WebCore

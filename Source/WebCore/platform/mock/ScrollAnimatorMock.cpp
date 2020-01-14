@@ -36,15 +36,13 @@
 
 namespace WebCore {
 
-ScrollAnimatorMock::ScrollAnimatorMock(ScrollableArea& scrollableArea, std::function<void(const String&)>&& logger)
+ScrollAnimatorMock::ScrollAnimatorMock(ScrollableArea& scrollableArea, WTF::Function<void(const String&)>&& logger)
     : ScrollAnimator(scrollableArea)
     , m_logger(WTFMove(logger))
 {
 }
 
-ScrollAnimatorMock::~ScrollAnimatorMock()
-{
-}
+ScrollAnimatorMock::~ScrollAnimatorMock() = default;
 
 void ScrollAnimatorMock::didAddVerticalScrollbar(Scrollbar* scrollbar)
 {

@@ -28,6 +28,7 @@ class HTMLInputElement;
 class MouseEvent;
 
 class RenderSlider final : public RenderFlexibleBox {
+    WTF_MAKE_ISO_ALLOCATED(RenderSlider);
 public:
     static const int defaultTrackLength;
 
@@ -45,7 +46,6 @@ private:
     int baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const override;
     void computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const override;
     void computePreferredLogicalWidths() override;
-    bool requiresForcedStyleRecalcPropagation() const override { return true; }
     void layout() override;
 
     bool isFlexibleBoxImpl() const override { return true; }

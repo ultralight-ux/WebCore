@@ -33,14 +33,18 @@
 #include "Event.h"
 #include "EventNames.h"
 #include "ScriptController.h"
+#include "ScriptExecutionContext.h"
 #include <algorithm>
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/MathExtras.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #include "ScriptController.h"
 #endif
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(AudioScheduledSourceNode);
 
 const double AudioScheduledSourceNode::UnknownTime = -1;
 
@@ -52,6 +56,9 @@ AudioScheduledSourceNode::AudioScheduledSourceNode(AudioContext& context, float 
 
 void AudioScheduledSourceNode::updateSchedulingInfo(size_t quantumFrameSize, AudioBus& outputBus, size_t& quantumFrameOffset, size_t& nonSilentFramesToProcess)
 {
+    nonSilentFramesToProcess = 0;
+    quantumFrameOffset = 0;
+
     ASSERT(quantumFrameSize == AudioNode::ProcessingSizeInFrames);
     if (quantumFrameSize != AudioNode::ProcessingSizeInFrames)
         return;
@@ -74,7 +81,6 @@ void AudioScheduledSourceNode::updateSchedulingInfo(size_t quantumFrameSize, Aud
     if (m_playbackState == UNSCHEDULED_STATE || m_playbackState == FINISHED_STATE || startFrame >= quantumEndFrame) {
         // Output silence.
         outputBus.zero();
-        nonSilentFramesToProcess = 0;
         return;
     }
 
@@ -129,13 +135,14 @@ void AudioScheduledSourceNode::updateSchedulingInfo(size_t quantumFrameSize, Aud
 ExceptionOr<void> AudioScheduledSourceNode::start(double when)
 {
     ASSERT(isMainThread());
+    ALWAYS_LOG(LOGIDENTIFIER, when);
 
     context().nodeWillBeginPlayback();
 
     if (m_playbackState != UNSCHEDULED_STATE)
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
     if (!std::isfinite(when) || when < 0)
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
 
     m_startTime = when;
     m_playbackState = SCHEDULED_STATE;
@@ -146,11 +153,12 @@ ExceptionOr<void> AudioScheduledSourceNode::start(double when)
 ExceptionOr<void> AudioScheduledSourceNode::stop(double when)
 {
     ASSERT(isMainThread());
+    ALWAYS_LOG(LOGIDENTIFIER, when);
 
     if (m_playbackState == UNSCHEDULED_STATE || m_endTime != UnknownTime)
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
     if (!std::isfinite(when) || when < 0)
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
 
     m_endTime = when;
 
@@ -166,14 +174,17 @@ void AudioScheduledSourceNode::finish()
         context().decrementActiveSourceCount();
     }
 
-    if (m_hasEndedListener) {
-        callOnMainThread([strongThis = makeRef(*this)] () mutable {
-            strongThis->dispatchEvent(Event::create(eventNames().endedEvent, false, false));
-        });
-    }
+    if (!m_hasEndedListener)
+        return;
+
+    context().postTask([this, protectedThis = makeRef(*this)] {
+        if (context().isStopped())
+            return;
+        this->dispatchEvent(Event::create(eventNames().endedEvent, Event::CanBubble::No, Event::IsCancelable::No));
+    });
 }
 
-bool AudioScheduledSourceNode::addEventListener(const AtomicString& eventType, Ref<EventListener>&& listener, const AddEventListenerOptions& options)
+bool AudioScheduledSourceNode::addEventListener(const AtomString& eventType, Ref<EventListener>&& listener, const AddEventListenerOptions& options)
 {
     bool success = AudioNode::addEventListener(eventType, WTFMove(listener), options);
     if (success && eventType == eventNames().endedEvent)
@@ -181,7 +192,7 @@ bool AudioScheduledSourceNode::addEventListener(const AtomicString& eventType, R
     return success;
 }
 
-bool AudioScheduledSourceNode::removeEventListener(const AtomicString& eventType, EventListener& listener, const ListenerOptions& options)
+bool AudioScheduledSourceNode::removeEventListener(const AtomString& eventType, EventListener& listener, const ListenerOptions& options)
 {
     bool success = AudioNode::removeEventListener(eventType, listener, options);
     if (success && eventType == eventNames().endedEvent)

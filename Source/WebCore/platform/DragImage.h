@@ -28,10 +28,13 @@
 #include "FloatSize.h"
 #include "ImageOrientation.h"
 #include "IntSize.h"
+#include "Path.h"
 #include "TextFlags.h"
+#include "TextIndicator.h"
 #include <wtf/Forward.h>
+#include <wtf/Optional.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #include <wtf/RetainPtr.h>
 typedef struct CGImage *CGImageRef;
 #elif PLATFORM(MAC)
@@ -39,8 +42,8 @@ typedef struct CGImage *CGImageRef;
 OBJC_CLASS NSImage;
 #elif PLATFORM(WIN)
 typedef struct HBITMAP__* HBITMAP;
-#elif PLATFORM(GTK)
-typedef struct _cairo_surface cairo_surface_t;
+#elif USE(CAIRO)
+#include "RefPtrCairo.h"
 #endif
 
 // We need to #define YOffset as it needs to be shared with WebKit
@@ -48,23 +51,27 @@ typedef struct _cairo_surface cairo_surface_t;
 
 namespace WebCore {
 
+class Element;
 class Frame;
 class Image;
 class IntRect;
 class Node;
 class Range;
-class URL;
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 typedef RetainPtr<CGImageRef> DragImageRef;
 #elif PLATFORM(MAC)
 typedef RetainPtr<NSImage> DragImageRef;
 #elif PLATFORM(WIN)
 typedef HBITMAP DragImageRef;
-#elif PLATFORM(GTK)
-typedef cairo_surface_t* DragImageRef;
-#elif PLATFORM(EFL)
-typedef void* DragImageRef;
+#elif USE(CAIRO)
+typedef RefPtr<cairo_surface_t> DragImageRef;
+#endif
+
+#if PLATFORM(COCOA)
+extern const float ColorSwatchCornerRadius;
+extern const float ColorSwatchStrokeSize;
+extern const float ColorSwatchWidth;
 #endif
 
 IntSize dragImageSize(DragImageRef);
@@ -74,16 +81,47 @@ IntSize dragImageSize(DragImageRef);
 // the input image ref will still be valid after they have been called.
 DragImageRef fitDragImageToMaxSize(DragImageRef, const IntSize& srcSize, const IntSize& dstSize);
 DragImageRef scaleDragImage(DragImageRef, FloatSize scale);
+DragImageRef platformAdjustDragImageForDeviceScaleFactor(DragImageRef, float deviceScaleFactor);
 DragImageRef dissolveDragImageToFraction(DragImageRef, float delta);
 
 DragImageRef createDragImageFromImage(Image*, ImageOrientationDescription);
 DragImageRef createDragImageIconForCachedImageFilename(const String&);
 
 WEBCORE_EXPORT DragImageRef createDragImageForNode(Frame&, Node&);
-WEBCORE_EXPORT DragImageRef createDragImageForSelection(Frame&, bool forceBlackText = false);
+WEBCORE_EXPORT DragImageRef createDragImageForSelection(Frame&, TextIndicatorData&, bool forceBlackText = false);
 WEBCORE_EXPORT DragImageRef createDragImageForRange(Frame&, Range&, bool forceBlackText = false);
+DragImageRef createDragImageForColor(const Color&, const FloatRect&, float, Path&);
 DragImageRef createDragImageForImage(Frame&, Node&, IntRect& imageRect, IntRect& elementRect);
-DragImageRef createDragImageForLink(URL&, const String& label, FontRenderingMode);
+DragImageRef createDragImageForLink(Element&, URL&, const String& label, TextIndicatorData&, FontRenderingMode, float deviceScaleFactor);
 void deleteDragImage(DragImageRef);
+
+IntPoint dragOffsetForLinkDragImage(DragImageRef);
+FloatPoint anchorPointForLinkDragImage(DragImageRef);
+
+class DragImage final {
+public:
+    WEBCORE_EXPORT DragImage();
+    explicit DragImage(DragImageRef);
+    WEBCORE_EXPORT DragImage(DragImage&&);
+    WEBCORE_EXPORT ~DragImage();
+
+    WEBCORE_EXPORT DragImage& operator=(DragImage&&);
+
+    void setIndicatorData(const TextIndicatorData& data) { m_indicatorData = data; }
+    bool hasIndicatorData() const { return !!m_indicatorData; }
+    Optional<TextIndicatorData> indicatorData() const { return m_indicatorData; }
+
+    void setVisiblePath(const Path& path) { m_visiblePath = path; }
+    bool hasVisiblePath() const { return !!m_visiblePath; }
+    Optional<Path> visiblePath() const { return m_visiblePath; }
+
+    explicit operator bool() const { return !!m_dragImageRef; }
+    DragImageRef get() const { return m_dragImageRef; }
+
+private:
+    DragImageRef m_dragImageRef;
+    Optional<TextIndicatorData> m_indicatorData;
+    Optional<Path> m_visiblePath;
+};
 
 }

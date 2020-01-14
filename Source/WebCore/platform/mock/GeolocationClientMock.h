@@ -29,20 +29,18 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef GeolocationClientMock_h
-#define GeolocationClientMock_h
+#pragma once
 
 #include "GeolocationClient.h"
+#include "GeolocationPosition.h"
 #include "Timer.h"
 #include <wtf/HashSet.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class GeolocationController;
-class GeolocationPosition;
 
 // FIXME: this should not be in WebCore. It should be moved to WebKit.
 // Provides a mock object for the geolocation client.
@@ -54,7 +52,7 @@ public:
     void reset();
     void setController(GeolocationController*);
 
-    void setPosition(PassRefPtr<GeolocationPosition>);
+    void setPosition(GeolocationPosition&&);
     void setPositionUnavailableError(const String& errorMessage);
     void setPermission(bool allowed);
     int numberOfPendingPermissionRequests() const;
@@ -64,9 +62,9 @@ public:
     void startUpdating() override;
     void stopUpdating() override;
     void setEnableHighAccuracy(bool) override;
-    GeolocationPosition* lastPosition() override;
-    void requestPermission(Geolocation*) override;
-    void cancelPermissionRequest(Geolocation*) override;
+    Optional<GeolocationPosition> lastPosition() override;
+    void requestPermission(Geolocation&) override;
+    void cancelPermissionRequest(Geolocation&) override;
 
 private:
     void asyncUpdateController();
@@ -78,7 +76,7 @@ private:
     void clearError();
 
     GeolocationController* m_controller;
-    RefPtr<GeolocationPosition> m_lastPosition;
+    Optional<GeolocationPosition> m_lastPosition;
     bool m_hasError;
     String m_errorMessage;
     Timer m_controllerTimer;
@@ -95,5 +93,3 @@ private:
 };
 
 }
-
-#endif

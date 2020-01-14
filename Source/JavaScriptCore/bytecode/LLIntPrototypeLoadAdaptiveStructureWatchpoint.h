@@ -25,24 +25,30 @@
 
 #pragma once
 
-#include "Instruction.h"
+#include "BytecodeStructs.h"
 #include "ObjectPropertyCondition.h"
+#include "PackedCellPtr.h"
 #include "Watchpoint.h"
 
 namespace JSC {
 
-class LLIntPrototypeLoadAdaptiveStructureWatchpoint : public Watchpoint {
+class LLIntPrototypeLoadAdaptiveStructureWatchpoint final : public Watchpoint {
 public:
-    LLIntPrototypeLoadAdaptiveStructureWatchpoint(const ObjectPropertyCondition&, Instruction*);
+    LLIntPrototypeLoadAdaptiveStructureWatchpoint(CodeBlock*, const ObjectPropertyCondition&, unsigned bytecodeOffset);
 
-    void install();
+    void install(VM&);
 
-protected:
-    void fireInternal(const FireDetail&) override;
+    static void clearLLIntGetByIdCache(OpGetById::Metadata&);
+
+    const ObjectPropertyCondition& key() const { return m_key; }
+
+    void fireInternal(VM&, const FireDetail&);
 
 private:
-    ObjectPropertyCondition m_key;
-    Instruction* m_getByIdInstruction;
+    // Own destructor may not be called. Keep members trivially destructible.
+    JSC_WATCHPOINT_FIELD(PackedCellPtr<CodeBlock>, m_owner);
+    JSC_WATCHPOINT_FIELD(Packed<unsigned>, m_bytecodeOffset);
+    JSC_WATCHPOINT_FIELD(ObjectPropertyCondition, m_key);
 };
 
 } // namespace JSC

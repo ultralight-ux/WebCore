@@ -50,9 +50,7 @@ AccessibilityListBoxOption::AccessibilityListBoxOption()
 {
 }
 
-AccessibilityListBoxOption::~AccessibilityListBoxOption()
-{
-}    
+AccessibilityListBoxOption::~AccessibilityListBoxOption() = default;
     
 Ref<AccessibilityListBoxOption> AccessibilityListBoxOption::create()
 {
@@ -143,7 +141,7 @@ String AccessibilityListBoxOption::stringValue() const
     if (!m_optionElement)
         return String();
     
-    const AtomicString& ariaLabel = getAttribute(aria_labelAttr);
+    const AtomString& ariaLabel = getAttribute(aria_labelAttr);
     if (!ariaLabel.isNull())
         return ariaLabel;
     

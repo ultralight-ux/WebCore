@@ -24,7 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include <wtf/Platform.h>
+#include "config.h"
 
 #include "JSContextRef.h"
 #include "JSNode.h"
@@ -91,6 +91,7 @@ static JSValueRef print(JSContextRef context, JSObjectRef object, JSObjectRef th
         char stringUTF8[numChars];
         JSStringGetUTF8CString(string, stringUTF8, numChars);
         printf("%s\n", stringUTF8);
+        JSStringRelease(string);
     }
     
     return JSValueMakeUndefined(context);

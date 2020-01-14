@@ -31,43 +31,13 @@
 
 #include "JSTrackCustom.h"
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
 void JSAudioTrack::visitAdditionalChildren(SlotVisitor& visitor)
 {
     visitor.addOpaqueRoot(root(&wrapped()));
-}
-
-void JSAudioTrack::setKind(ExecState& state, JSValue value)
-{
-#if ENABLE(MEDIA_SOURCE)
-    VM& vm = state.vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    auto string = value.toWTFString(&state);
-    RETURN_IF_EXCEPTION(scope, void());
-    wrapped().setKind(string);
-#else
-    UNUSED_PARAM(state);
-    UNUSED_PARAM(value);
-#endif
-}
-
-void JSAudioTrack::setLanguage(ExecState& state, JSValue value)
-{
-#if ENABLE(MEDIA_SOURCE)
-    VM& vm = state.vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    auto string = value.toWTFString(&state);
-    RETURN_IF_EXCEPTION(scope, void());
-    wrapped().setLanguage(string);
-#else
-    UNUSED_PARAM(state);
-    UNUSED_PARAM(value);
-#endif
 }
 
 } // namespace WebCore

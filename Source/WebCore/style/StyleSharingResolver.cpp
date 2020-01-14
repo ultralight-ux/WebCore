@@ -28,6 +28,7 @@
 
 #include "DocumentRuleSets.h"
 #include "ElementRuleCollector.h"
+#include "FullscreenManager.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "NodeRenderStyle.h"
@@ -50,7 +51,7 @@ struct SharingResolver::Context {
     const Update& update;
     const StyledElement& element;
     bool elementAffectedByClassRules;
-    EInsideLink elementLinkState;
+    InsideLink elementLinkState;
 };
 
 SharingResolver::SharingResolver(const Document& document, const DocumentRuleSets& ruleSets, const SelectorFilter& selectorFilter)
@@ -90,7 +91,7 @@ std::unique_ptr<RenderStyle> SharingResolver::resolve(const Element& searchEleme
         return nullptr;
     // Ids stop style sharing if they show up in the stylesheets.
     auto& id = element.idForStyleResolution();
-    if (!id.isNull() && m_ruleSets.features().idsInRules.contains(id.impl()))
+    if (!id.isNull() && m_ruleSets.features().idsInRules.contains(id))
         return nullptr;
     if (parentElementPreventsSharing(parentElement))
         return nullptr;
@@ -236,7 +237,7 @@ bool SharingResolver::canShareStyleWithElement(const Context& context, const Sty
         return false;
 
     auto& candidateElementId = candidateElement.idForStyleResolution();
-    if (!candidateElementId.isNull() && m_ruleSets.features().idsInRules.contains(candidateElementId.impl()))
+    if (!candidateElementId.isNull() && m_ruleSets.features().idsInRules.contains(candidateElementId))
         return false;
 
     bool isControl = is<HTMLFormControlElement>(candidateElement);
@@ -292,7 +293,7 @@ bool SharingResolver::canShareStyleWithElement(const Context& context, const Sty
         return false;
 
 #if ENABLE(FULLSCREEN_API)
-    if (&element == m_document.webkitCurrentFullScreenElement() || &element == m_document.webkitCurrentFullScreenElement())
+    if (&candidateElement == m_document.fullscreenManager().currentFullscreenElement() || &element == m_document.fullscreenManager().currentFullscreenElement())
         return false;
 #endif
     return true;
@@ -340,7 +341,7 @@ bool SharingResolver::sharingCandidateHasIdenticalStyleAffectingAttributes(const
 bool SharingResolver::classNamesAffectedByRules(const SpaceSplitString& classNames) const
 {
     for (unsigned i = 0; i < classNames.size(); ++i) {
-        if (m_ruleSets.features().classesInRules.contains(classNames[i].impl()))
+        if (m_ruleSets.features().classRules.contains(classNames[i]))
             return true;
     }
     return false;

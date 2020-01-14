@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 Apple Inc.
+ * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -19,9 +19,12 @@
 
 #pragma once
 
-#include <wtf/text/AtomicString.h>
+#include <wtf/text/AtomString.h>
 
 namespace WebCore {
+
+enum class CanWrap : bool { No, Yes };
+enum class DidWrap : bool { No, Yes };
 
 class Frame;
 class TreeScope;
@@ -42,12 +45,11 @@ public:
 
     ~FrameTree();
 
-    const AtomicString& name() const { return m_name; }
-    const AtomicString& uniqueName() const { return m_uniqueName; }
-    WEBCORE_EXPORT void setName(const AtomicString&);
+    const AtomString& name() const { return m_name; }
+    const AtomString& uniqueName() const { return m_uniqueName; }
+    WEBCORE_EXPORT void setName(const AtomString&);
     WEBCORE_EXPORT void clearName();
     WEBCORE_EXPORT Frame* parent() const;
-    void setParent(Frame* parent) { m_parent = parent; }
     
     Frame* nextSibling() const { return m_nextSibling.get(); }
     Frame* previousSibling() const { return m_previousSibling; }
@@ -62,53 +64,51 @@ public:
     WEBCORE_EXPORT Frame* traverseNext(const Frame* stayWithin = nullptr) const;
     // Rendered means being the main frame or having an ownerRenderer. It may not have been parented in the Widget tree yet (see WidgetHierarchyUpdatesSuspensionScope).
     WEBCORE_EXPORT Frame* traverseNextRendered(const Frame* stayWithin = nullptr) const;
-    WEBCORE_EXPORT Frame* traverseNextWithWrap(bool) const;
-    WEBCORE_EXPORT Frame* traversePreviousWithWrap(bool) const;
-    
-    WEBCORE_EXPORT void appendChild(PassRefPtr<Frame>);
-    bool transferChild(PassRefPtr<Frame>);
+    WEBCORE_EXPORT Frame* traverseNext(CanWrap, DidWrap* = nullptr) const;
+    WEBCORE_EXPORT Frame* traversePrevious(CanWrap, DidWrap* = nullptr) const;
 
-    Frame* traverseNextInPostOrderWithWrap(bool) const;
+    Frame* traverseNextInPostOrder(CanWrap) const;
 
+    WEBCORE_EXPORT void appendChild(Frame&);
     void detachFromParent() { m_parent = nullptr; }
-    void removeChild(Frame*);
+    void removeChild(Frame&);
 
     Frame* child(unsigned index) const;
-    Frame* child(const AtomicString& name) const;
-    WEBCORE_EXPORT Frame* find(const AtomicString& name) const;
+    Frame* child(const AtomString& name) const;
+    WEBCORE_EXPORT Frame* find(const AtomString& name, Frame& activeFrame) const;
     WEBCORE_EXPORT unsigned childCount() const;
-
-    AtomicString uniqueChildName(const AtomicString& requestedName) const;
-
     WEBCORE_EXPORT Frame& top() const;
 
     WEBCORE_EXPORT Frame* scopedChild(unsigned index) const;
-    WEBCORE_EXPORT Frame* scopedChild(const AtomicString& name) const;
+    WEBCORE_EXPORT Frame* scopedChild(const AtomString& name) const;
     unsigned scopedChildCount() const;
 
-    unsigned indexInParent() const;
+    void resetFrameIdentifiers() { m_frameIDGenerator = 0; }
 
 private:
     Frame* deepFirstChild() const;
     Frame* deepLastChild() const;
-    void actuallyAppendChild(PassRefPtr<Frame>);
 
     bool scopedBy(TreeScope*) const;
     Frame* scopedChild(unsigned index, TreeScope*) const;
-    Frame* scopedChild(const AtomicString& name, TreeScope*) const;
+    Frame* scopedChild(const AtomString& name, TreeScope*) const;
     unsigned scopedChildCount(TreeScope*) const;
+
+    AtomString uniqueChildName(const AtomString& requestedName) const;
+    AtomString generateUniqueName() const;
 
     Frame& m_thisFrame;
 
     Frame* m_parent;
-    AtomicString m_name; // The actual frame name (may be empty).
-    AtomicString m_uniqueName;
+    AtomString m_name; // The actual frame name (may be empty).
+    AtomString m_uniqueName;
 
     RefPtr<Frame> m_nextSibling;
     Frame* m_previousSibling;
     RefPtr<Frame> m_firstChild;
     Frame* m_lastChild;
     mutable unsigned m_scopedChildCount;
+    mutable uint64_t m_frameIDGenerator { 0 };
 };
 
 } // namespace WebCore

@@ -30,24 +30,18 @@ namespace WebCore {
 
 class FormAssociatedElement;
 class HTMLFormControlsCollection;
-class RenderFieldSet;
 
 class HTMLFieldSetElement final : public HTMLFormControlElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLFieldSetElement);
 public:
     static Ref<HTMLFieldSetElement> create(const QualifiedName&, Document&, HTMLFormElement*);
 
     HTMLLegendElement* legend() const;
 
-    Ref<HTMLFormControlsCollection> elements();
-    Ref<HTMLCollection> elementsForNativeBindings();
-
-    const Vector<FormAssociatedElement*>& associatedElements() const;
-    unsigned length() const;
+    Ref<HTMLCollection> elements();
 
     void addInvalidDescendant(const HTMLFormControlElement&);
     void removeInvalidDescendant(const HTMLFormControlElement&);
-
-    RenderFieldSet* renderer() const;
 
 private:
     HTMLFieldSetElement(const QualifiedName&, Document&, HTMLFormElement*);
@@ -56,21 +50,16 @@ private:
     bool isEnumeratable() const final { return true; }
     bool supportsFocus() const final;
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
-    const AtomicString& formControlType() const final;
+    const AtomString& formControlType() const final;
     bool computeWillValidate() const final { return false; }
     void disabledAttributeChanged() final;
     void disabledStateChanged() final;
     void childrenChanged(const ChildChange&) final;
-    void didMoveToNewDocument(Document& oldDocument) final;
+    void didMoveToNewDocument(Document& oldDocument, Document& newDocument) final;
 
     bool matchesValidPseudoClass() const final;
     bool matchesInvalidPseudoClass() const final;
 
-    void updateAssociatedElements() const;
-
-    mutable Vector<FormAssociatedElement*> m_associatedElements;
-    // When the DOM tree is modified, we have to refresh the m_associatedElements array.
-    mutable uint64_t m_documentVersion { 0 };
     HashSet<const HTMLFormControlElement*> m_invalidDescendants;
     bool m_hasDisabledAttribute { false };
 };

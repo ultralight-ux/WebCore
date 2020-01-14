@@ -32,19 +32,18 @@
 #include "Settings.h"
 #include "Text.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #include "RenderText.h"
 #endif
 
 namespace WebCore {
 
-InsertIntoTextNodeCommand::InsertIntoTextNodeCommand(RefPtr<Text>&& node, unsigned offset, const String& text, EditAction editingAction)
+InsertIntoTextNodeCommand::InsertIntoTextNodeCommand(Ref<Text>&& node, unsigned offset, const String& text, EditAction editingAction)
     : SimpleEditCommand(node->document(), editingAction)
     , m_node(WTFMove(node))
     , m_offset(offset)
     , m_text(text)
 {
-    ASSERT(m_node);
     ASSERT(m_offset <= m_node->length());
     ASSERT(!m_text.isEmpty());
 }
@@ -66,18 +65,14 @@ void InsertIntoTextNodeCommand::doApply()
     m_node->insertData(m_offset, m_text);
 }
 
-#if PLATFORM(IOS)
-
-// FIXME: Why would reapply be iOS-specific?
 void InsertIntoTextNodeCommand::doReapply()
 {
-    // FIXME: Shouldn't this have a hasEditableStyle check?
+    if (!m_node->hasEditableStyle())
+        return;
 
     m_node->insertData(m_offset, m_text);
 }
 
-#endif
-    
 void InsertIntoTextNodeCommand::doUnapply()
 {
     if (!m_node->hasEditableStyle())
@@ -90,7 +85,7 @@ void InsertIntoTextNodeCommand::doUnapply()
 
 void InsertIntoTextNodeCommand::getNodesInCommand(HashSet<Node*>& nodes)
 {
-    addNodeAndDescendants(m_node.get(), nodes);
+    addNodeAndDescendants(m_node.ptr(), nodes);
 }
 
 #endif

@@ -19,8 +19,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef FESpecularLighting_h
-#define FESpecularLighting_h
+#pragma once
 
 #include "FELighting.h"
 
@@ -28,39 +27,20 @@ namespace WebCore {
 
 class FESpecularLighting : public FELighting {
 public:
-    static Ref<FESpecularLighting> create(Filter&, const Color&, float, float,
-        float, float, float, PassRefPtr<LightSource>);
+    static Ref<FESpecularLighting> create(Filter&, const Color&, float, float, float, float, float, Ref<LightSource>&&);
     virtual ~FESpecularLighting();
 
-    const Color& lightingColor() const;
-    bool setLightingColor(const Color&);
-
-    float surfaceScale() const;
-    bool setSurfaceScale(float);
-
-    float specularConstant() const;
+    float specularConstant() const { return m_specularConstant; }
     bool setSpecularConstant(float);
 
-    float specularExponent() const;
+    float specularExponent() const { return m_specularExponent; }
     bool setSpecularExponent(float);
 
-    float kernelUnitLengthX() const;
-    bool setKernelUnitLengthX(float);
-
-    float kernelUnitLengthY() const;
-    bool setKernelUnitLengthY(float);
-
-    const LightSource* lightSource() const;
-    void setLightSource(PassRefPtr<LightSource>);
-
-    void dump() override;
-
-    TextStream& externalRepresentation(TextStream&, int indention) const override;
+    WTF::TextStream& externalRepresentation(WTF::TextStream&, RepresentationType) const override;
 
 private:
-    FESpecularLighting(Filter&, const Color&, float, float, float, float, float, PassRefPtr<LightSource>);
+    FESpecularLighting(Filter&, const Color&, float, float, float, float, float, Ref<LightSource>&&);
 };
 
 } // namespace WebCore
 
-#endif // FESpecularLighting_h

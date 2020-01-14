@@ -31,7 +31,7 @@
 #include "config.h"
 #include "WebKitAccessibleInterfaceTable.h"
 
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
 
 #include "AccessibilityListBox.h"
 #include "AccessibilityObject.h"
@@ -40,9 +40,9 @@
 #include "HTMLTableCaptionElement.h"
 #include "HTMLTableElement.h"
 #include "RenderElement.h"
+#include "WebKitAccessible.h"
 #include "WebKitAccessibleInterfaceText.h"
 #include "WebKitAccessibleUtil.h"
-#include "WebKitAccessibleWrapperAtk.h"
 
 using namespace WebCore;
 
@@ -51,7 +51,7 @@ static AccessibilityObject* core(AtkTable* table)
     if (!WEBKIT_IS_ACCESSIBLE(table))
         return nullptr;
 
-    return webkitAccessibleGetAccessibilityObject(WEBKIT_ACCESSIBLE(table));
+    return &webkitAccessibleGetAccessibilityObject(WEBKIT_ACCESSIBLE(table));
 }
 
 static AccessibilityTableCell* cell(AtkTable* table, guint row, guint column)
@@ -96,7 +96,7 @@ static AtkObject* webkitAccessibleTableRefAt(AtkTable* table, gint row, gint col
     if (!axCell)
         return 0;
 
-    AtkObject* cell = axCell->wrapper();
+    auto* cell = axCell->wrapper();
     if (!cell)
         return 0;
 
@@ -149,9 +149,13 @@ static gint webkitAccessibleTableGetNColumns(AtkTable* table)
     returnValIfWebKitAccessibleIsInvalid(WEBKIT_ACCESSIBLE(table), 0);
 
     AccessibilityObject* accTable = core(table);
-    if (is<AccessibilityTable>(*accTable))
-        return downcast<AccessibilityTable>(*accTable).columnCount();
-    return 0;
+    if (!is<AccessibilityTable>(*accTable))
+        return 0;
+
+    if (int columnCount = downcast<AccessibilityTable>(*accTable).axColumnCount())
+        return columnCount;
+
+    return downcast<AccessibilityTable>(*accTable).columnCount();
 }
 
 static gint webkitAccessibleTableGetNRows(AtkTable* table)
@@ -160,9 +164,13 @@ static gint webkitAccessibleTableGetNRows(AtkTable* table)
     returnValIfWebKitAccessibleIsInvalid(WEBKIT_ACCESSIBLE(table), 0);
 
     AccessibilityObject* accTable = core(table);
-    if (is<AccessibilityTable>(*accTable))
-        return downcast<AccessibilityTable>(*accTable).rowCount();
-    return 0;
+    if (!is<AccessibilityTable>(*accTable))
+        return 0;
+
+    if (int rowCount = downcast<AccessibilityTable>(*accTable).axRowCount())
+        return rowCount;
+
+    return downcast<AccessibilityTable>(*accTable).rowCount();
 }
 
 static gint webkitAccessibleTableGetColumnExtentAt(AtkTable* table, gint row, gint column)
@@ -207,7 +215,7 @@ static AtkObject* webkitAccessibleTableGetColumnHeader(AtkTable* table, gint col
             std::pair<unsigned, unsigned> columnRange;
             downcast<AccessibilityTableCell>(*columnHeader).columnIndexRange(columnRange);
             if (columnRange.first <= static_cast<unsigned>(column) && static_cast<unsigned>(column) < columnRange.first + columnRange.second)
-                return columnHeader->wrapper();
+                return ATK_OBJECT(columnHeader->wrapper());
         }
     }
     return nullptr;
@@ -227,7 +235,7 @@ static AtkObject* webkitAccessibleTableGetRowHeader(AtkTable* table, gint row)
             std::pair<unsigned, unsigned> rowRange;
             downcast<AccessibilityTableCell>(*rowHeader).rowIndexRange(rowRange);
             if (rowRange.first <= static_cast<unsigned>(row) && static_cast<unsigned>(row) < rowRange.first + rowRange.second)
-                return rowHeader->wrapper();
+                return ATK_OBJECT(rowHeader->wrapper());
         }
     }
     return nullptr;
@@ -242,9 +250,9 @@ static AtkObject* webkitAccessibleTableGetCaption(AtkTable* table)
     if (accTable->isAccessibilityRenderObject()) {
         Node* node = accTable->node();
         if (is<HTMLTableElement>(node)) {
-            HTMLTableCaptionElement* caption = downcast<HTMLTableElement>(*node).caption();
+            auto caption = downcast<HTMLTableElement>(*node).caption();
             if (caption)
-                return AccessibilityObject::firstAccessibleObjectFromNode(caption->renderer()->element())->wrapper();
+                return ATK_OBJECT(AccessibilityObject::firstAccessibleObjectFromNode(caption->renderer()->element())->wrapper());
         }
     }
     return nullptr;

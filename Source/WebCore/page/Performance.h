@@ -32,31 +32,35 @@
 
 #pragma once
 
-#if ENABLE(WEB_TIMING)
-
-#include "DOMWindowProperty.h"
+#include "ContextDestructionObserver.h"
+#include "DOMHighResTimeStamp.h"
 #include "EventTarget.h"
 #include "ExceptionOr.h"
+#include "GenericTaskQueue.h"
+#include <wtf/ListHashSet.h>
 
 namespace WebCore {
 
-class Document;
 class LoadTiming;
 class PerformanceEntry;
 class PerformanceNavigation;
+class PerformanceObserver;
 class PerformanceTiming;
 class ResourceResponse;
-class URL;
+class ResourceTiming;
+class ScriptExecutionContext;
 class UserTiming;
 
-class Performance final : public RefCounted<Performance>, public DOMWindowProperty, public EventTargetWithInlineData {
+class Performance final : public RefCounted<Performance>, public ContextDestructionObserver, public EventTargetWithInlineData {
+    WTF_MAKE_ISO_ALLOCATED(Performance);
 public:
-    static Ref<Performance> create(Frame& frame) { return adoptRef(*new Performance(frame)); }
+    static Ref<Performance> create(ScriptExecutionContext* context, MonotonicTime timeOrigin) { return adoptRef(*new Performance(context, timeOrigin)); }
     ~Performance();
 
-    PerformanceNavigation& navigation();
-    PerformanceTiming& timing();
-    double now() const;
+    DOMHighResTimeStamp now() const;
+
+    PerformanceNavigation* navigation();
+    PerformanceTiming* timing();
 
     Vector<RefPtr<PerformanceEntry>> getEntries() const;
     Vector<RefPtr<PerformanceEntry>> getEntriesByType(const String& entryType) const;
@@ -65,31 +69,41 @@ public:
     void clearResourceTimings();
     void setResourceTimingBufferSize(unsigned);
 
-    void addResourceTiming(const String& initiatorName, Document*, const URL& originalURL, const ResourceResponse&, const LoadTiming&);
+    ExceptionOr<void> mark(const String& markName);
+    void clearMarks(const String& markName);
+
+    ExceptionOr<void> measure(const String& measureName, const String& startMark, const String& endMark);
+    void clearMeasures(const String& measureName);
+
+    void addResourceTiming(ResourceTiming&&);
+
+    void removeAllObservers();
+    void registerPerformanceObserver(PerformanceObserver&);
+    void unregisterPerformanceObserver(PerformanceObserver&);
+
+    static Seconds reduceTimeResolution(Seconds);
+
+    DOMHighResTimeStamp relativeTimeFromTimeOriginInReducedResolution(MonotonicTime) const;
+
+    ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
 
     using RefCounted::ref;
     using RefCounted::deref;
 
-#if ENABLE(USER_TIMING)
-    ExceptionOr<void> webkitMark(const String& markName);
-    void webkitClearMarks(const String& markName);
-
-    ExceptionOr<void> webkitMeasure(const String& measureName, const String& startMark, const String& endMark);
-    void webkitClearMeasures(const String& measureName);
-#endif
-
-    static double reduceTimeResolution(double seconds);
-
 private:
-    explicit Performance(Frame&);
+    Performance(ScriptExecutionContext*, MonotonicTime timeOrigin);
+
+    void contextDestroyed() override;
 
     EventTargetInterface eventTargetInterface() const final { return PerformanceEventTargetInterfaceType; }
-    ScriptExecutionContext* scriptExecutionContext() const final;
 
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
 
-    bool isResourceTimingBufferFull();
+    bool isResourceTimingBufferFull() const;
+    void resourceTimingBufferFullTimerFired();
+
+    void queueEntry(PerformanceEntry&);
 
     mutable RefPtr<PerformanceNavigation> m_navigation;
     mutable RefPtr<PerformanceTiming> m_timing;
@@ -98,13 +112,19 @@ private:
     Vector<RefPtr<PerformanceEntry>> m_resourceTimingBuffer;
     unsigned m_resourceTimingBufferSize { 150 };
 
-    double m_referenceTime;
+    Timer m_resourceTimingBufferFullTimer;
+    Vector<RefPtr<PerformanceEntry>> m_backupResourceTimingBuffer;
 
-#if ENABLE(USER_TIMING)
+    // https://w3c.github.io/resource-timing/#dfn-resource-timing-buffer-full-flag
+    bool m_resourceTimingBufferFullFlag { false };
+    bool m_waitingForBackupBufferToBeProcessed { false };
+
+    MonotonicTime m_timeOrigin;
+
     std::unique_ptr<UserTiming> m_userTiming;
-#endif
+
+    GenericTaskQueue<ScriptExecutionContext> m_performanceTimelineTaskQueue;
+    ListHashSet<RefPtr<PerformanceObserver>> m_observers;
 };
 
 }
-
-#endif // ENABLE(WEB_TIMING)

@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004, 2006, 2007, 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -30,11 +30,11 @@ namespace WebCore {
 class HTMLFormElement;
 
 class HTMLObjectElement final : public HTMLPlugInImageElement, public FormAssociatedElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLObjectElement);
 public:
-    static Ref<HTMLObjectElement> create(const QualifiedName&, Document&, HTMLFormElement*, bool createdByParser);
-    virtual ~HTMLObjectElement();
+    static Ref<HTMLObjectElement> create(const QualifiedName&, Document&, HTMLFormElement*);
 
-    bool isDocNamedItem() const { return m_docNamedItem; }
+    bool isExposed() const { return m_isExposed; }
     bool containsJavaApplet() const;
 
     bool hasFallbackContent() const;
@@ -54,58 +54,56 @@ public:
     using HTMLPlugInImageElement::ref;
     using HTMLPlugInImageElement::deref;
 
-    using FormAssociatedElement::form;
+    HTMLFormElement* form() const final { return FormAssociatedElement::form(); }
 
 private:
-    HTMLObjectElement(const QualifiedName&, Document&, HTMLFormElement*, bool createdByParser);
+    HTMLObjectElement(const QualifiedName&, Document&, HTMLFormElement*);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
     bool isPresentationAttribute(const QualifiedName&) const final;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
 
-    InsertionNotificationRequest insertedInto(ContainerNode&) final;
-    void finishedInsertingSubtree() final;
-    void removedFrom(ContainerNode&) final;
+    InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
+    void didFinishInsertingNode() final;
+    void removedFromAncestor(RemovalType, ContainerNode&) final;
 
-    void didMoveToNewDocument(Document& oldDocument) final;
+    void didMoveToNewDocument(Document& oldDocument, Document& newDocument) final;
 
     void childrenChanged(const ChildChange&) final;
 
     bool isURLAttribute(const Attribute&) const final;
-    const AtomicString& imageSourceURL() const final;
+    const AtomString& imageSourceURL() const final;
 
     RenderWidget* renderWidgetLoadingPlugin() const final;
 
     void addSubresourceAttributeURLs(ListHashSet<URL>&) const final;
 
     void updateWidget(CreatePlugins) final;
-    void updateDocNamedItem();
+    void updateExposedState();
 
     // FIXME: This function should not deal with url or serviceType
     // so that we can better share code between <object> and <embed>.
     void parametersForPlugin(Vector<String>& paramNames, Vector<String>& paramValues, String& url, String& serviceType);
-    
-    bool shouldAllowQuickTimeClassIdQuirk();
+
     bool hasValidClassId();
-    void clearUseFallbackContent() { m_useFallbackContent = false; }
 
     void refFormAssociatedElement() final { ref(); }
     void derefFormAssociatedElement() final { deref(); }
-    HTMLFormElement* virtualForm() const final;
 
     FormNamedItem* asFormNamedItem() final { return this; }
+    FormAssociatedElement* asFormAssociatedElement() final { return this; }
     HTMLObjectElement& asHTMLElement() final { return *this; }
     const HTMLObjectElement& asHTMLElement() const final { return *this; }
 
     bool isFormControlElement() const final { return false; }
 
     bool isEnumeratable() const final { return true; }
-    bool appendFormData(FormDataList&, bool) final;
+    bool appendFormData(DOMFormData&, bool) final;
 
     bool canContainRangeEndPoint() const final;
 
-    bool m_docNamedItem : 1;
-    bool m_useFallbackContent : 1;
+    bool m_isExposed { true };
+    bool m_useFallbackContent { false };
 };
 
 } // namespace WebCore

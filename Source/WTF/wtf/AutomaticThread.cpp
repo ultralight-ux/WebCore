@@ -24,17 +24,18 @@
  */
 
 #include "config.h"
-#include "AutomaticThread.h"
+#include <wtf/AutomaticThread.h>
 
-#include "DataLog.h"
+#include <wtf/DataLog.h>
+#include <wtf/Threading.h>
 
 namespace WTF {
 
 static const bool verbose = false;
 
-RefPtr<AutomaticThreadCondition> AutomaticThreadCondition::create()
+Ref<AutomaticThreadCondition> AutomaticThreadCondition::create()
 {
-    return adoptRef(new AutomaticThreadCondition());
+    return adoptRef(*new AutomaticThreadCondition);
 }
 
 AutomaticThreadCondition::AutomaticThreadCondition()
@@ -45,7 +46,7 @@ AutomaticThreadCondition::~AutomaticThreadCondition()
 {
 }
 
-void AutomaticThreadCondition::notifyOne(const LockHolder& locker)
+void AutomaticThreadCondition::notifyOne(const AbstractLocker& locker)
 {
     for (AutomaticThread* thread : m_threads) {
         if (thread->isWaiting(locker)) {
@@ -64,7 +65,7 @@ void AutomaticThreadCondition::notifyOne(const LockHolder& locker)
     m_condition.notifyOne();
 }
 
-void AutomaticThreadCondition::notifyAll(const LockHolder& locker)
+void AutomaticThreadCondition::notifyAll(const AbstractLocker& locker)
 {
     m_condition.notifyAll();
 
@@ -81,26 +82,32 @@ void AutomaticThreadCondition::wait(Lock& lock)
     m_condition.wait(lock);
 }
 
-void AutomaticThreadCondition::add(const LockHolder&, AutomaticThread* thread)
+bool AutomaticThreadCondition::waitFor(Lock& lock, Seconds time)
+{
+    return m_condition.waitFor(lock, time);
+}
+
+void AutomaticThreadCondition::add(const AbstractLocker&, AutomaticThread* thread)
 {
     ASSERT(!m_threads.contains(thread));
     m_threads.append(thread);
 }
 
-void AutomaticThreadCondition::remove(const LockHolder&, AutomaticThread* thread)
+void AutomaticThreadCondition::remove(const AbstractLocker&, AutomaticThread* thread)
 {
     m_threads.removeFirst(thread);
     ASSERT(!m_threads.contains(thread));
 }
 
-bool AutomaticThreadCondition::contains(const LockHolder&, AutomaticThread* thread)
+bool AutomaticThreadCondition::contains(const AbstractLocker&, AutomaticThread* thread)
 {
     return m_threads.contains(thread);
 }
 
-AutomaticThread::AutomaticThread(const LockHolder& locker, Box<Lock> lock, RefPtr<AutomaticThreadCondition> condition)
+AutomaticThread::AutomaticThread(const AbstractLocker& locker, Box<Lock> lock, Ref<AutomaticThreadCondition>&& condition, Seconds timeout)
     : m_lock(lock)
-    , m_condition(condition)
+    , m_condition(WTFMove(condition))
+    , m_timeout(timeout)
 {
     if (verbose)
         dataLog(RawPointer(this), ": Allocated AutomaticThread.\n");
@@ -118,7 +125,7 @@ AutomaticThread::~AutomaticThread()
     m_condition->remove(locker, this);
 }
 
-bool AutomaticThread::tryStop(const LockHolder&)
+bool AutomaticThread::tryStop(const AbstractLocker&)
 {
     if (!m_isRunning)
         return true;
@@ -128,12 +135,12 @@ bool AutomaticThread::tryStop(const LockHolder&)
     return true;
 }
 
-bool AutomaticThread::isWaiting(const LockHolder& locker)
+bool AutomaticThread::isWaiting(const AbstractLocker& locker)
 {
     return hasUnderlyingThread(locker) && m_isWaiting;
 }
 
-bool AutomaticThread::notify(const LockHolder& locker)
+bool AutomaticThread::notify(const AbstractLocker& locker)
 {
     ASSERT_UNUSED(locker, hasUnderlyingThread(locker));
     m_isWaiting = false;
@@ -147,7 +154,7 @@ void AutomaticThread::join()
         m_isRunningCondition.wait(*m_lock);
 }
 
-void AutomaticThread::start(const LockHolder&)
+void AutomaticThread::start(const AbstractLocker&)
 {
     RELEASE_ASSERT(m_isRunning);
     
@@ -155,8 +162,8 @@ void AutomaticThread::start(const LockHolder&)
     
     m_hasUnderlyingThread = true;
     
-    ThreadIdentifier thread = createThread(
-        "WTF::AutomaticThread",
+    Thread::create(
+        name(),
         [=] () {
             if (verbose)
                 dataLog(RawPointer(this), ": Running automatic thread!\n");
@@ -169,18 +176,18 @@ void AutomaticThread::start(const LockHolder&)
                 ASSERT(m_condition->contains(locker, this));
             }
             
-            auto stopImpl = [&] (const LockHolder& locker) {
+            auto stopImpl = [&] (const AbstractLocker& locker) {
                 thread->threadIsStopping(locker);
                 thread->m_hasUnderlyingThread = false;
             };
             
-            auto stopPermanently = [&] (const LockHolder& locker) {
+            auto stopPermanently = [&] (const AbstractLocker& locker) {
                 m_isRunning = false;
                 m_isRunningCondition.notifyAll();
                 stopImpl(locker);
             };
             
-            auto stopForTimeout = [&] (const LockHolder& locker) {
+            auto stopForTimeout = [&] (const AbstractLocker& locker) {
                 stopImpl(locker);
             };
             
@@ -194,13 +201,14 @@ void AutomaticThread::start(const LockHolder&)
                         if (result == PollResult::Stop)
                             return stopPermanently(locker);
                         RELEASE_ASSERT(result == PollResult::Wait);
-                        // Shut the thread down after one second.
+
+                        // Shut the thread down after a timeout.
                         m_isWaiting = true;
                         bool awokenByNotify =
-                            m_waitCondition.waitFor(*m_lock, 1_s);
+                            m_waitCondition.waitFor(*m_lock, m_timeout);
                         if (verbose && !awokenByNotify && !m_isWaiting)
                             dataLog(RawPointer(this), ": waitFor timed out, but notified via m_isWaiting flag!\n");
-                        if (m_isWaiting) {
+                        if (m_isWaiting && shouldSleep(locker)) {
                             m_isWaiting = false;
                             if (verbose)
                                 dataLog(RawPointer(this), ": Going to sleep!\n");
@@ -219,15 +227,14 @@ void AutomaticThread::start(const LockHolder&)
                 }
                 RELEASE_ASSERT(result == WorkResult::Continue);
             }
-        });
-    detachThread(thread);
+        })->detach();
 }
 
 void AutomaticThread::threadDidStart()
 {
 }
 
-void AutomaticThread::threadIsStopping(const LockHolder&)
+void AutomaticThread::threadIsStopping(const AbstractLocker&)
 {
 }
 

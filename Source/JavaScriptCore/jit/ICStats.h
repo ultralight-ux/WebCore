@@ -28,7 +28,6 @@
 #include "ClassInfo.h"
 #include "Identifier.h"
 #include <wtf/Condition.h>
-#include <wtf/HashTable.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
@@ -44,13 +43,17 @@ namespace JSC {
     macro(GetByIdSelfPatch) \
     macro(InAddAccessCase) \
     macro(InReplaceWithJump) \
+    macro(InstanceOfAddAccessCase) \
+    macro(InstanceOfReplaceWithJump) \
     macro(OperationGetById) \
     macro(OperationGetByIdGeneric) \
     macro(OperationGetByIdBuildList) \
     macro(OperationGetByIdOptimize) \
-    macro(OperationInOptimize) \
-    macro(OperationIn) \
+    macro(OperationGetByIdWithThisOptimize) \
     macro(OperationGenericIn) \
+    macro(OperationInById) \
+    macro(OperationInByIdGeneric) \
+    macro(OperationInByIdOptimize) \
     macro(OperationPutByIdStrict) \
     macro(OperationPutByIdNonStrict) \
     macro(OperationPutByIdDirectStrict) \
@@ -65,7 +68,8 @@ namespace JSC {
     macro(OperationPutByIdDirectNonStrictBuildList) \
     macro(PutByIdAddAccessCase) \
     macro(PutByIdReplaceWithJump) \
-    macro(PutByIdSelfPatch)
+    macro(PutByIdSelfPatch) \
+    macro(InByIdSelfPatch)
 
 class ICEvent {
 public:
@@ -74,7 +78,13 @@ public:
         FOR_EACH_ICEVENT_KIND(ICEVENT_KIND_DECLARATION)
 #undef ICEVENT_KIND_DECLARATION
     };
-    
+
+    enum PropertyLocation {
+        Unknown,
+        BaseObject,
+        ProtoLookup
+    };
+
     ICEvent()
     {
     }
@@ -83,9 +93,18 @@ public:
         : m_kind(kind)
         , m_classInfo(classInfo)
         , m_propertyName(propertyName)
+        , m_propertyLocation(Unknown)
     {
     }
 
+    ICEvent(Kind kind, const ClassInfo* classInfo, const Identifier propertyName, bool isBaseProperty)
+        : m_kind(kind)
+        , m_classInfo(classInfo)
+        , m_propertyName(propertyName)
+        , m_propertyLocation(isBaseProperty ? BaseObject : ProtoLookup)
+    {
+    }
+    
     ICEvent(WTF::HashTableDeletedValueType)
         : m_kind(OperationGetById)
     {
@@ -119,7 +138,9 @@ public:
     
     unsigned hash() const
     {
-        return m_kind + WTF::PtrHash<const ClassInfo*>::hash(m_classInfo) + StringHash::hash(m_propertyName.string());
+        if (m_propertyName.isNull())
+            return m_kind + m_propertyLocation + WTF::PtrHash<const ClassInfo*>::hash(m_classInfo);
+        return m_kind + m_propertyLocation + WTF::PtrHash<const ClassInfo*>::hash(m_classInfo) + StringHash::hash(m_propertyName.string());
     }
     
     bool isHashTableDeletedValue() const
@@ -136,6 +157,7 @@ private:
     Kind m_kind { InvalidKind };
     const ClassInfo* m_classInfo { nullptr };
     Identifier m_propertyName;
+    PropertyLocation m_propertyLocation;
 };
 
 struct ICEventHash {
@@ -178,7 +200,7 @@ public:
 private:
 
     Spectrum<ICEvent, uint64_t> m_spectrum;
-    ThreadIdentifier m_thread;
+    RefPtr<Thread> m_thread;
     Lock m_lock;
     Condition m_condition;
     bool m_shouldStop { false };

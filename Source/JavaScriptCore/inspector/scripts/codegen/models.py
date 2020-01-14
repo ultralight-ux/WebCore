@@ -35,7 +35,7 @@ def ucfirst(str):
 
 
 def find_duplicates(l):
-    return [key for key, count in collections.Counter(l).items() if count > 1]
+    return [key for key, count in list(collections.Counter(l).items()) if count > 1]
 
 
 _FRAMEWORK_CONFIG_MAP = {
@@ -54,6 +54,8 @@ _FRAMEWORK_CONFIG_MAP = {
     "WebInspector": {
         "objc_protocol_group": "RWI",
         "objc_prefix": "RWI",
+    },
+    "WebInspectorUI": {
     },
     # Used for code generator tests.
     "Test": {
@@ -95,6 +97,9 @@ class Framework:
         if frameworkString == "WebInspector":
             return Frameworks.WebInspector
 
+        if frameworkString == "WebInspectorUI":
+            return Frameworks.WebInspectorUI
+
         if frameworkString == "Test":
             return Frameworks.Test
 
@@ -106,8 +111,44 @@ class Frameworks:
     JavaScriptCore = Framework("JavaScriptCore")
     WebKit = Framework("WebKit")
     WebInspector = Framework("WebInspector")
+    WebInspectorUI = Framework("WebInspectorUI")
     Test = Framework("Test")
 
+
+class Platform:
+    def __init__(self, name):
+        self.name = name
+
+    @staticmethod
+    def fromString(platformString):
+        platformString = platformString.lower()
+        if platformString == "ios":
+            return Platforms.iOS
+
+        if platformString == "macos":
+            return Platforms.macOS
+
+        if platformString == "all":
+            return Platforms.All
+
+        if platformString == "generic" or not platformString:
+            return Platforms.Generic
+
+        raise ParseException("Unknown platform: %s" % platformString)
+
+
+class Platforms:
+    All = Platform("all")
+    Generic = Platform("generic")
+    iOS = Platform("ios")
+    macOS = Platform("macos")
+
+    # Allow iteration over all platforms. See <http://stackoverflow.com/questions/5434400/>.
+    class __metaclass__(type):
+        def __iter__(self):
+            for attr in dir(Platforms):
+                if not attr.startswith("__"):
+                    yield getattr(Platforms, attr)
 
 class TypeReference:
     def __init__(self, type_kind, referenced_type_name, enum_values, array_items):
@@ -223,7 +264,7 @@ class EnumType(Type):
         self.is_anonymous = is_anonymous
 
     def __repr__(self):
-        return 'EnumType[value_type=%s; values=%s]' % (self.qualified_name(), ', '.join(map(str, self.enum_values())))
+        return 'EnumType[primitive_type=%s; enum_values=%s]' % (self.qualified_name(), ', '.join(map(str, self.enum_values())))
 
     def is_enum(self):
         return True
@@ -327,9 +368,15 @@ class Protocol:
         check_for_required_properties(['domain'], json, "domain")
         log.debug("parse domain " + json['domain'])
 
+        version = None
         types = []
         commands = []
         events = []
+
+        if 'version' in json:
+            if not isinstance(json['version'], int):
+                raise ParseException("Malformed domain specification: version is not a number or string")
+            version = json['version']
 
         if 'types' in json:
             if not isinstance(json['types'], list):
@@ -347,13 +394,14 @@ class Protocol:
             events.extend([self.parse_event(event) for event in json['events']])
 
         if 'availability' in json:
-            if not commands and not events:
-                raise ParseException("Malformed domain specification: availability should only be included if there are commands or events.")
-            allowed_activation_strings = set(['web'])
-            if json['availability'] not in allowed_activation_strings:
-                raise ParseException('Malformed domain specification: availability is an unsupported string. Was: "%s", Allowed values: %s' % (json['availability'], ', '.join(allowed_activation_strings)))
+            if not isinstance(json['availability'], list):
+                raise ParseException("Malformed domain specification: availability is not an array")
+            allowed_activation_strings = set(['javascript', 'web', 'worker', 'service-worker'])
+            for availability_type in json['availability']:
+                if availability_type not in allowed_activation_strings:
+                    raise ParseException('Malformed domain specification: availability is an unsupported string. Was: "%s", Allowed values: %s' % (json['availability'], ', '.join(allowed_activation_strings)))
 
-        self.domains.append(Domain(json['domain'], json.get('description', ''), json.get('featureGuard'), json.get('availability'), isSupplemental, types, commands, events))
+        self.domains.append(Domain(json['domain'], json.get('description', ''), json.get('featureGuard'), json.get('availability'), isSupplemental, version, types, commands, events))
 
     def parse_type_declaration(self, json):
         check_for_required_properties(['id', 'type'], json, "type")
@@ -371,7 +419,8 @@ class Protocol:
             raise ParseException("Malformed domain specification: type declaration for %s has duplicate member names" % json['id'])
 
         type_ref = TypeReference(json['type'], json.get('$ref'), json.get('enum'), json.get('items'))
-        return TypeDeclaration(json['id'], type_ref, json.get("description", ""), type_members)
+        platform = Platform.fromString(json.get('platform', 'generic'))
+        return TypeDeclaration(json['id'], type_ref, json.get("description", ""), platform, type_members)
 
     def parse_type_member(self, json):
         check_for_required_properties(['name'], json, "type member")
@@ -405,7 +454,8 @@ class Protocol:
             if len(duplicate_names) > 0:
                 raise ParseException("Malformed domain specification: return parameter list for command %s has duplicate parameter names" % json['name'])
 
-        return Command(json['name'], call_parameters, return_parameters, json.get('description', ""), json.get('async', False))
+        platform = Platform.fromString(json.get('platform', 'generic'))
+        return Command(json['name'], call_parameters, return_parameters, json.get('description', ""), platform, json.get('async', False))
 
     def parse_event(self, json):
         check_for_required_properties(['name'], json, "event")
@@ -422,7 +472,8 @@ class Protocol:
             if len(duplicate_names) > 0:
                 raise ParseException("Malformed domain specification: parameter list for event %s has duplicate parameter names" % json['name'])
 
-        return Event(json['name'], event_parameters, json.get('description', ""))
+        platform = Platform.fromString(json.get('platform', 'generic'))
+        return Event(json['name'], event_parameters, json.get('description', ""), platform)
 
     def parse_call_or_return_parameter(self, json):
         check_for_required_properties(['name'], json, "parameter")
@@ -442,7 +493,7 @@ class Protocol:
 
         # Gather qualified type names from type declarations in each domain.
         for domain in self.domains:
-            for declaration in domain.type_declarations:
+            for declaration in domain.all_type_declarations():
                 # Basic sanity checking.
                 if declaration.type_ref.referenced_type_name is not None:
                     raise TypecheckException("Type declarations must name a base type, not a type reference.")
@@ -520,39 +571,53 @@ class Protocol:
 
 
 class Domain:
-    def __init__(self, domain_name, description, feature_guard, availability, isSupplemental, type_declarations, commands, events):
+    def __init__(self, domain_name, description, feature_guard, availability, isSupplemental, version, type_declarations, commands, events):
         self.domain_name = domain_name
         self.description = description
         self.feature_guard = feature_guard
         self.availability = availability
         self.is_supplemental = isSupplemental
-        self.type_declarations = type_declarations
-        self.commands = commands
-        self.events = events
+        self._version = version
+        self._type_declarations = type_declarations
+        self._commands = commands
+        self._events = events
+
+    def version(self):
+        return self._version
+
+    def all_type_declarations(self):
+        return self._type_declarations
+
+    def all_commands(self):
+        return self._commands
+
+    def all_events(self):
+        return self._events
 
     def resolve_type_references(self, protocol):
         log.debug("> Resolving type declarations for domain: %s" % self.domain_name)
-        for declaration in self.type_declarations:
+        for declaration in self._type_declarations:
             declaration.resolve_type_references(protocol, self)
 
         log.debug("> Resolving types in commands for domain: %s" % self.domain_name)
-        for command in self.commands:
+        for command in self._commands:
             command.resolve_type_references(protocol, self)
 
         log.debug("> Resolving types in events for domain: %s" % self.domain_name)
-        for event in self.events:
+        for event in self._events:
             event.resolve_type_references(protocol, self)
 
 
 class Domains:
-    GLOBAL = Domain("", "The global domain, in which primitive types are implicitly declared.", None, None, True, [], [], [])
+    GLOBAL = Domain("", "The global domain, in which primitive types are implicitly declared.", None, None, False, None, [], [], [])
 
 
 class TypeDeclaration:
-    def __init__(self, type_name, type_ref, description, type_members):
+    def __init__(self, type_name, type_ref, description, platform, type_members):
         self.type_name = type_name
         self.type_ref = type_ref
         self.description = description
+        self.platform = platform
         self.type_members = type_members
 
         if self.type_name != ucfirst(self.type_name):
@@ -596,11 +661,12 @@ class Parameter:
 
 
 class Command:
-    def __init__(self, command_name, call_parameters, return_parameters, description, is_async):
+    def __init__(self, command_name, call_parameters, return_parameters, description, platform, is_async):
         self.command_name = command_name
         self.call_parameters = call_parameters
         self.return_parameters = return_parameters
         self.description = description
+        self.platform = platform
         self.is_async = is_async
 
     def resolve_type_references(self, protocol, domain):
@@ -614,10 +680,11 @@ class Command:
 
 
 class Event:
-    def __init__(self, event_name, event_parameters, description):
+    def __init__(self, event_name, event_parameters, description, platform):
         self.event_name = event_name
         self.event_parameters = event_parameters
         self.description = description
+        self.platform = platform
 
     def resolve_type_references(self, protocol, domain):
         log.debug(">> Resolving type references for parameters in event: %s" % self.event_name)

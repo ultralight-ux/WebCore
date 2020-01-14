@@ -27,8 +27,11 @@
 #include "YouTubeEmbedShadowElement.h"
 
 #include "RenderBlockFlow.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(YouTubeEmbedShadowElement);
 
 Ref<YouTubeEmbedShadowElement> YouTubeEmbedShadowElement::create(Document& doc)
 {
@@ -38,7 +41,7 @@ Ref<YouTubeEmbedShadowElement> YouTubeEmbedShadowElement::create(Document& doc)
 YouTubeEmbedShadowElement::YouTubeEmbedShadowElement(Document& document)
     : HTMLDivElement(HTMLNames::divTag, document)
 {
-    setPseudo(AtomicString("-webkit-plugin-replacement", AtomicString::ConstructFromLiteral));
+    setPseudo(AtomString("-webkit-plugin-replacement", AtomString::ConstructFromLiteral));
 }
 
 RenderPtr<RenderElement> YouTubeEmbedShadowElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)

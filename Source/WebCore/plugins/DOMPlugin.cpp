@@ -21,9 +21,12 @@
 
 #include "PluginData.h"
 #include "Frame.h"
-#include <wtf/text/AtomicString.h>
+#include <wtf/IsoMallocInlines.h>
+#include <wtf/text/AtomString.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(DOMPlugin);
 
 DOMPlugin::DOMPlugin(PluginData* pluginData, Frame* frame, PluginInfo pluginInfo)
     : FrameDestructionObserver(frame)
@@ -32,9 +35,7 @@ DOMPlugin::DOMPlugin(PluginData* pluginData, Frame* frame, PluginInfo pluginInfo
 {
 }
 
-DOMPlugin::~DOMPlugin()
-{
-}
+DOMPlugin::~DOMPlugin() = default;
 
 String DOMPlugin::name() const
 {
@@ -58,7 +59,7 @@ unsigned DOMPlugin::length() const
 
 RefPtr<DOMMimeType> DOMPlugin::item(unsigned index)
 {
-    if (index >= m_pluginInfo.mimes.size())
+    if (index >= m_pluginInfo.mimes.size() || !m_frame || !m_frame->page())
         return nullptr;
 
     MimeClassInfo mime = m_pluginInfo.mimes[index];
@@ -74,8 +75,11 @@ RefPtr<DOMMimeType> DOMPlugin::item(unsigned index)
     return nullptr;
 }
 
-RefPtr<DOMMimeType> DOMPlugin::namedItem(const AtomicString& propertyName)
+RefPtr<DOMMimeType> DOMPlugin::namedItem(const AtomString& propertyName)
 {
+    if (!m_frame || !m_frame->page())
+        return nullptr;
+
     Vector<MimeClassInfo> mimes;
     Vector<size_t> mimePluginIndices;
     m_pluginData->getWebVisibleMimesAndPluginIndices(mimes, mimePluginIndices);
@@ -85,10 +89,10 @@ RefPtr<DOMMimeType> DOMPlugin::namedItem(const AtomicString& propertyName)
     return nullptr;
 }
 
-Vector<AtomicString> DOMPlugin::supportedPropertyNames()
+Vector<AtomString> DOMPlugin::supportedPropertyNames()
 {
     // FIXME: Should be implemented.
-    return Vector<AtomicString>();
+    return Vector<AtomString>();
 }
 
 } // namespace WebCore

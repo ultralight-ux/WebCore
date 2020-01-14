@@ -2,6 +2,7 @@
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005 Rob Buis <buis@kde.org>
  * Copyright (C) 2007 Eric Seidel <eric@webkit.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,52 +22,53 @@
 
 #pragma once
 
-#include "SVGAnimatedBoolean.h"
 #include "SVGExternalResourcesRequired.h"
 #include "SVGGraphicsElement.h"
 #include "SVGURIReference.h"
+#include "SharedStringHash.h"
 
 namespace WebCore {
 
-class SVGAElement final : public SVGGraphicsElement,
-                          public SVGURIReference,
-                          public SVGExternalResourcesRequired {
+class SVGAElement final : public SVGGraphicsElement, public SVGExternalResourcesRequired, public SVGURIReference {
+    WTF_MAKE_ISO_ALLOCATED(SVGAElement);
 public:
     static Ref<SVGAElement> create(const QualifiedName&, Document&);
+
+    String target() const final { return m_target->currentValue(); }
+    Ref<SVGAnimatedString>& targetAnimated() { return m_target; }
+
+    SharedStringHash visitedLinkHash() const;
 
 private:
     SVGAElement(const QualifiedName&, Document&);
 
-    bool isValid() const final { return SVGTests::isValid(); }
-    
-    String title() const final;
-    String target() const final { return svgTarget(); }
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGAElement, SVGGraphicsElement, SVGExternalResourcesRequired, SVGURIReference>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
     void svgAttributeChanged(const QualifiedName&) final;
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
     bool childShouldCreateRenderer(const Node&) const final;
 
+    bool isValid() const final { return SVGTests::isValid(); }
+    String title() const final;
     void defaultEventHandler(Event&) final;
     
     bool supportsFocus() const final;
     bool isMouseFocusable() const final;
-    bool isKeyboardFocusable(KeyboardEvent&) const final;
-    bool isFocusable() const final;
+    bool isKeyboardFocusable(KeyboardEvent*) const final;
     bool isURLAttribute(const Attribute&) const final;
     bool canStartSelection() const final;
     int tabIndex() const final;
 
     bool willRespondToMouseClickEvents() final;
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGAElement)
-        // This declaration used to define a non-virtual "String& target() const" method, that clashes with "virtual String Element::target() const".
-        // That's why it has been renamed to "svgTarget", the CodeGenerators take care of calling svgTargetAnimated() instead of targetAnimated(), see CodeGenerator.pm.
-        DECLARE_ANIMATED_STRING(SVGTarget, svgTarget)
-        DECLARE_ANIMATED_STRING_OVERRIDE(Href, href)
-        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)
-    END_DECLARE_ANIMATED_PROPERTIES
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedString> m_target { SVGAnimatedString::create(this) };
+
+    // This is computed only once and must not be affected by subsequent URL changes.
+    mutable Optional<SharedStringHash> m_storedVisitedLinkHash;
 };
 
 } // namespace WebCore

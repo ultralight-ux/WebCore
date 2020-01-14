@@ -33,27 +33,16 @@ namespace JSC {
 
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(StrictEvalActivation);
 
-const ClassInfo StrictEvalActivation::s_info = { "Object", &Base::s_info, 0, CREATE_METHOD_TABLE(StrictEvalActivation) };
+const ClassInfo StrictEvalActivation::s_info = { "Object", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(StrictEvalActivation) };
 
-StrictEvalActivation::StrictEvalActivation(ExecState* exec, JSScope* currentScope)
-    : Base(
-        exec->vm(),
-        exec->lexicalGlobalObject()->strictEvalActivationStructure(),
-        currentScope
-    )
+StrictEvalActivation::StrictEvalActivation(VM& vm, Structure* structure, JSScope* currentScope)
+    : Base(vm, structure, currentScope)
 {
 }
 
 bool StrictEvalActivation::deleteProperty(JSCell*, ExecState*, PropertyName)
 {
     return false;
-}
-
-JSValue StrictEvalActivation::toThis(JSCell*, ExecState* exec, ECMAMode ecmaMode)
-{
-    if (ecmaMode == StrictMode)
-        return jsUndefined();
-    return exec->globalThisValue();
 }
 
 }

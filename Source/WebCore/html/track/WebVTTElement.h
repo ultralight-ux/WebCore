@@ -45,6 +45,7 @@ enum WebVTTNodeType {
 };
 
 class WebVTTElement final : public Element {
+    WTF_MAKE_ISO_ALLOCATED(WebVTTElement);
 public:
     static Ref<WebVTTElement> create(const WebVTTNodeType, Document&);
     Ref<HTMLElement> createEquivalentHTMLElement(Document&);
@@ -57,18 +58,18 @@ public:
     bool isPastNode() const { return m_isPastNode; }
     void setIsPastNode(bool value) { m_isPastNode = value; }
 
-    AtomicString language() const { return m_language; }
-    void setLanguage(const AtomicString& value) { m_language = value; }
+    AtomString language() const { return m_language; }
+    void setLanguage(const AtomString& value) { m_language = value; }
 
     static const QualifiedName& voiceAttributeName()
     {
-        static NeverDestroyed<QualifiedName> voiceAttr(nullAtom, "voice", nullAtom);
+        static NeverDestroyed<QualifiedName> voiceAttr(nullAtom(), "voice", nullAtom());
         return voiceAttr;
     }
     
     static const QualifiedName& langAttributeName()
     {
-        static NeverDestroyed<QualifiedName> voiceAttr(nullAtom, "lang", nullAtom);
+        static NeverDestroyed<QualifiedName> voiceAttr(nullAtom(), "lang", nullAtom());
         return voiceAttr;
     }
 
@@ -80,7 +81,7 @@ private:
     unsigned m_isPastNode : 1;
     unsigned m_webVTTNodeType : 4;
     
-    AtomicString m_language;
+    AtomString m_language;
 };
 
 } // namespace WebCore

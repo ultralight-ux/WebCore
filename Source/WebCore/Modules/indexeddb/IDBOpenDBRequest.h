@@ -35,6 +35,7 @@ namespace WebCore {
 class IDBResultData;
 
 class IDBOpenDBRequest final : public IDBRequest {
+    WTF_MAKE_ISO_ALLOCATED(IDBOpenDBRequest);
 public:
     static Ref<IDBOpenDBRequest> createDeleteRequest(ScriptExecutionContext&, IDBClient::IDBConnectionProxy&, const IDBDatabaseIdentifier&);
     static Ref<IDBOpenDBRequest> createOpenRequest(ScriptExecutionContext&, IDBClient::IDBConnectionProxy&, const IDBDatabaseIdentifier&, uint64_t version);
@@ -54,7 +55,7 @@ public:
 private:
     IDBOpenDBRequest(ScriptExecutionContext&, IDBClient::IDBConnectionProxy&, const IDBDatabaseIdentifier&, uint64_t version, IndexedDB::RequestType);
 
-    bool dispatchEvent(Event&) final;
+    void dispatchEvent(Event&) final;
 
     void cancelForStop() final;
 

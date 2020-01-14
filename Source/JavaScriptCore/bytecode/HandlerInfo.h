@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,14 +26,14 @@
 #pragma once
 
 #include "CodeLocation.h"
-#include <wtf/Vector.h>
+#include <wtf/Forward.h>
 
 namespace JSC {
 
 enum class HandlerType {
-    Illegal = 0,
-    Catch = 1,
-    Finally = 2,
+    Catch = 0,
+    Finally = 1,
+    SynthesizedCatch = 2,
     SynthesizedFinally = 3
 };
 
@@ -46,13 +46,15 @@ struct HandlerInfoBase {
     HandlerType type() const { return static_cast<HandlerType>(typeBits); }
     void setType(HandlerType type) { typeBits = static_cast<uint32_t>(type); }
 
-    const char* typeName()
+    const char* typeName() const
     {
         switch (type()) {
         case HandlerType::Catch:
             return "catch";
         case HandlerType::Finally:
             return "finally";
+        case HandlerType::SynthesizedCatch:
+            return "synthesized catch";
         case HandlerType::SynthesizedFinally:
             return "synthesized finally";
         default:
@@ -87,6 +89,10 @@ struct HandlerInfoBase {
 };
 
 struct UnlinkedHandlerInfo : public HandlerInfoBase {
+    UnlinkedHandlerInfo()
+    {
+    }
+
     UnlinkedHandlerInfo(uint32_t start, uint32_t end, uint32_t target, HandlerType handlerType)
     {
         this->start = start;
@@ -107,13 +113,13 @@ struct HandlerInfo : public HandlerInfoBase {
     }
 
 #if ENABLE(JIT)
-    void initialize(const UnlinkedHandlerInfo& unlinkedInfo, CodeLocationLabel label)
+    void initialize(const UnlinkedHandlerInfo& unlinkedInfo, CodeLocationLabel<ExceptionHandlerPtrTag> label)
     {
         initialize(unlinkedInfo);
         nativeCode = label;
     }
 
-    CodeLocationLabel nativeCode;
+    CodeLocationLabel<ExceptionHandlerPtrTag> nativeCode;
 #endif
 };
 

@@ -26,6 +26,8 @@
 #pragma once
 
 #include "Color.h"
+#include "GraphicsTypes.h"
+#include "RenderStyleConstants.h"
 
 namespace WebCore {
 
@@ -40,6 +42,9 @@ struct TextPaintStyle {
     TextPaintStyle() { }
     TextPaintStyle(const Color&);
 
+    bool operator==(const TextPaintStyle&) const;
+    bool operator!=(const TextPaintStyle& other) const { return !(*this == other); }
+
     Color fillColor;
     Color strokeColor;
     Color emphasisMarkColor;
@@ -47,10 +52,18 @@ struct TextPaintStyle {
 #if ENABLE(LETTERPRESS)
     bool useLetterpressEffect { false };
 #endif
+#if HAVE(OS_DARK_MODE_SUPPORT)
+    bool useDarkAppearance { false };
+#endif
+    PaintOrder paintOrder { PaintOrder::Normal };
+    LineJoin lineJoin { MiterJoin };
+    LineCap lineCap { ButtCap };
+    float miterLimit { defaultMiterLimit };
 };
 
+bool textColorIsLegibleAgainstBackgroundColor(const Color& textColor, const Color& backgroundColor);
 TextPaintStyle computeTextPaintStyle(const Frame&, const RenderStyle&, const PaintInfo&);
-TextPaintStyle computeTextSelectionPaintStyle(const TextPaintStyle&, const RenderText&, const RenderStyle&, const PaintInfo&, bool& paintSelectedTextOnly, bool& paintSelectedTextSeparately, const ShadowData*& selectionShadow);
+TextPaintStyle computeTextSelectionPaintStyle(const TextPaintStyle&, const RenderText&, const RenderStyle&, const PaintInfo&, Optional<ShadowData>& selectionShadow);
 
 enum FillColorType { UseNormalFillColor, UseEmphasisMarkColor };
 void updateGraphicsContext(GraphicsContext&, const TextPaintStyle&, FillColorType = UseNormalFillColor);

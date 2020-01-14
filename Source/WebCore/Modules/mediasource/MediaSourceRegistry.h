@@ -34,12 +34,10 @@
 
 #include "URLRegistry.h"
 #include <wtf/HashMap.h>
-#include <wtf/NeverDestroyed.h>
 #include <wtf/text/StringHash.h>
 
 namespace WebCore {
 
-class URL;
 class MediaSource;
 
 class MediaSourceRegistry final : public URLRegistry {

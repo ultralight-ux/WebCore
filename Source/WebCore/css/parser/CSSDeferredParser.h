@@ -25,16 +25,17 @@
 
 #pragma once
 
-#include "CSSParserMode.h"
-#include "CSSTokenizer.h"
+#include "CSSParserContext.h"
 #include <wtf/RefCounted.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
+class CSSParserTokenRange;
 class ImmutableStyleProperties;
 class StyleRuleKeyframes;
 class StyleRuleBase;
+class StyleSheetContents;
 
 class CSSDeferredParser : public RefCounted<CSSDeferredParser> {
 public:
@@ -46,7 +47,7 @@ public:
     CSSParserMode mode() const { return m_context.mode; }
 
     const CSSParserContext& context() const { return m_context; }
-    StyleSheetContents* styleSheet() const { return m_styleSheet.get(); }
+    StyleSheetContents* styleSheet() const;
 
     Ref<ImmutableStyleProperties> parseDeclaration(const CSSParserTokenRange&);
     void parseRuleList(const CSSParserTokenRange&, Vector<RefPtr<StyleRuleBase>>&);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,17 +29,16 @@
 
 #include "CallEdge.h"
 #include "CallVariant.h"
-#include "CodeOrigin.h"
 #include "GCAwareJITStubRoutine.h"
-#include <wtf/FastMalloc.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/UniqueArray.h>
 #include <wtf/Vector.h>
 
 namespace JSC {
 
 class CallLinkInfo;
 
-class PolymorphicCallNode : public BasicRawSentinelNode<PolymorphicCallNode> {
+class PolymorphicCallNode : public PackedRawSentinelNode<PolymorphicCallNode> {
     WTF_MAKE_NONCOPYABLE(PolymorphicCallNode);
 public:
     PolymorphicCallNode(CallLinkInfo* info)
@@ -51,11 +50,11 @@ public:
     
     void unlink(VM&);
 
-    bool hasCallLinkInfo(CallLinkInfo* info) { return m_callLinkInfo == info; }
+    bool hasCallLinkInfo(CallLinkInfo* info) { return m_callLinkInfo.get() == info; }
     void clearCallLinkInfo();
     
 private:
-    CallLinkInfo* m_callLinkInfo;
+    PackedPtr<CallLinkInfo> m_callLinkInfo;
 };
 
 class PolymorphicCallCase {
@@ -84,13 +83,14 @@ private:
 class PolymorphicCallStubRoutine : public GCAwareJITStubRoutine {
 public:
     PolymorphicCallStubRoutine(
-        const MacroAssemblerCodeRef&, VM&, const JSCell* owner,
+        const MacroAssemblerCodeRef<JITStubRoutinePtrTag>&, VM&, const JSCell* owner,
         ExecState* callerFrame, CallLinkInfo&, const Vector<PolymorphicCallCase>&,
-        std::unique_ptr<uint32_t[]> fastCounts);
+        UniqueArray<uint32_t>&& fastCounts);
     
     virtual ~PolymorphicCallStubRoutine();
     
     CallVariantList variants() const;
+    bool hasEdges() const;
     CallEdgeList edges() const;
 
     void clearCallNodesFor(CallLinkInfo*);
@@ -102,7 +102,7 @@ protected:
 
 private:
     Vector<WriteBarrier<JSCell>, 2> m_variants;
-    std::unique_ptr<uint32_t[]> m_fastCounts;
+    UniqueArray<uint32_t> m_fastCounts;
     Bag<PolymorphicCallNode> m_callNodes;
 };
 

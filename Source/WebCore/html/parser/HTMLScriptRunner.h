@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 Google, Inc. All Rights Reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,18 +28,18 @@
 
 #include "PendingScript.h"
 #include <wtf/Deque.h>
+#include <wtf/WeakPtr.h>
 #include <wtf/text/TextPosition.h>
 
 namespace WebCore {
 
 class Document;
-class Element;
 class Frame;
 class HTMLScriptRunnerHost;
 class ScriptSourceCode;
 
 class HTMLScriptRunner {
-    WTF_MAKE_NONCOPYABLE(HTMLScriptRunner); WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     HTMLScriptRunner(Document&, HTMLScriptRunnerHost&);
     ~HTMLScriptRunner();
@@ -46,7 +47,7 @@ public:
     void detach();
 
     // Processes the passed in script and any pending scripts if possible.
-    void execute(PassRefPtr<Element> scriptToProcess, const TextPosition& scriptStartPosition);
+    void execute(Ref<ScriptElement>&&, const TextPosition& scriptStartPosition);
 
     void executeScriptsWaitingForLoad(PendingScript&);
     bool hasScriptsWaitingForStylesheets() const { return m_hasScriptsWaitingForStylesheets; }
@@ -59,21 +60,19 @@ public:
 private:
     Frame* frame() const;
 
-    void executeParsingBlockingScript();
-    void executePendingScriptAndDispatchEvent(RefPtr<PendingScript>);
+    void executePendingScriptAndDispatchEvent(PendingScript&);
     void executeParsingBlockingScripts();
 
-    void requestParsingBlockingScript(Element*);
-    void requestDeferredScript(Element*);
+    void requestParsingBlockingScript(ScriptElement&);
+    void requestDeferredScript(ScriptElement&);
 
-    void runScript(Element*, const TextPosition& scriptStartPosition);
+    void runScript(ScriptElement&, const TextPosition& scriptStartPosition);
 
-    // Helpers for dealing with HTMLScriptRunnerHost
     void watchForLoad(PendingScript&);
     void stopWatchingForLoad(PendingScript&);
     bool isPendingScriptReady(const PendingScript&);
 
-    Document* m_document;
+    WeakPtr<Document> m_document;
     HTMLScriptRunnerHost& m_host;
     RefPtr<PendingScript> m_parserBlockingScript;
     Deque<Ref<PendingScript>> m_scriptsToExecuteAfterParsing; // http://www.whatwg.org/specs/web-apps/current-work/#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing

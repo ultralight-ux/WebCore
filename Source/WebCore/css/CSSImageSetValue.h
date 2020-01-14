@@ -26,20 +26,21 @@
 #pragma once
 
 #include "CSSValueList.h"
-#include "CachedImageClient.h"
 #include "CachedResourceHandle.h"
+#include "ResourceLoaderOptions.h"
+#include <wtf/Function.h>
 
 namespace WebCore {
 
+class CachedImage;
 class CachedResourceLoader;
 class Document;
-struct ResourceLoaderOptions;
 
 class CSSImageSetValue final : public CSSValueList {
 public:
-    static Ref<CSSImageSetValue> create()
+    static Ref<CSSImageSetValue> create(LoadedFromOpaqueSource loadedFromOpaqueSource)
     {
-        return adoptRef(*new CSSImageSetValue());
+        return adoptRef(*new CSSImageSetValue(loadedFromOpaqueSource));
     }
     ~CSSImageSetValue();
 
@@ -49,19 +50,21 @@ public:
     String customCSSText() const;
 
     struct ImageWithScale {
-        String imageURL;
+        URL imageURL;
         float scaleFactor;
     };
 
-    bool traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const;
+    bool traverseSubresources(const WTF::Function<bool (const CachedResource&)>& handler) const;
 
     void updateDeviceScaleFactor(const Document&);
+
+    URL bestImageForScaleFactorURL() { return bestImageForScaleFactor().imageURL; }
 
 protected:
     ImageWithScale bestImageForScaleFactor();
 
 private:
-    CSSImageSetValue();
+    explicit CSSImageSetValue(LoadedFromOpaqueSource);
 
     void fillImageSet();
     static inline bool compareByScaleFactor(ImageWithScale first, ImageWithScale second) { return first.scaleFactor < second.scaleFactor; }
@@ -72,6 +75,7 @@ private:
     float m_deviceScaleFactor { 1 };
 
     Vector<ImageWithScale> m_imagesInSet;
+    LoadedFromOpaqueSource m_loadedFromOpaqueSource { LoadedFromOpaqueSource::No };
 };
 
 } // namespace WebCore

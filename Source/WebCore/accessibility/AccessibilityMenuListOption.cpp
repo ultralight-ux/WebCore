@@ -82,7 +82,7 @@ void AccessibilityMenuListOption::setSelected(bool selected)
 {
     if (!canSetSelectedAttribute())
         return;
-
+    
     downcast<HTMLOptionElement>(*m_element).setSelected(selected);
 }
 

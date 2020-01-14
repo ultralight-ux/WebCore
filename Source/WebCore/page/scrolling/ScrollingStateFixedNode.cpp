@@ -29,9 +29,9 @@
 #include "GraphicsLayer.h"
 #include "Logging.h"
 #include "ScrollingStateTree.h"
-#include "TextStream.h"
+#include <wtf/text/TextStream.h>
 
-#if ENABLE(ASYNC_SCROLLING) || USE(COORDINATED_GRAPHICS)
+#if ENABLE(ASYNC_SCROLLING)
 
 namespace WebCore {
 
@@ -41,7 +41,7 @@ Ref<ScrollingStateFixedNode> ScrollingStateFixedNode::create(ScrollingStateTree&
 }
 
 ScrollingStateFixedNode::ScrollingStateFixedNode(ScrollingStateTree& tree, ScrollingNodeID nodeID)
-    : ScrollingStateNode(FixedNode, tree, nodeID)
+    : ScrollingStateNode(ScrollingNodeType::Fixed, tree, nodeID)
 {
 }
 
@@ -51,19 +51,25 @@ ScrollingStateFixedNode::ScrollingStateFixedNode(const ScrollingStateFixedNode& 
 {
 }
 
-ScrollingStateFixedNode::~ScrollingStateFixedNode()
-{
-}
+ScrollingStateFixedNode::~ScrollingStateFixedNode() = default;
 
 Ref<ScrollingStateNode> ScrollingStateFixedNode::clone(ScrollingStateTree& adoptiveTree)
 {
     return adoptRef(*new ScrollingStateFixedNode(*this, adoptiveTree));
 }
 
+void ScrollingStateFixedNode::setPropertyChangedBitsAfterReattach()
+{
+    setPropertyChangedBit(ViewportConstraints);
+    ScrollingStateNode::setPropertyChangedBitsAfterReattach();
+}
+
 void ScrollingStateFixedNode::updateConstraints(const FixedPositionViewportConstraints& constraints)
 {
     if (m_constraints == constraints)
         return;
+
+    LOG_WITH_STREAM(Scrolling, stream << "ScrollingStateFixedNode " << scrollingNodeID() << " updateConstraints with viewport rect " << constraints.viewportRectAtLastLayout() << " layer pos at last layout " << constraints.layerPositionAtLastLayout() << " offset from top " << (constraints.layerPositionAtLastLayout().y() - constraints.viewportRectAtLastLayout().y()));
 
     m_constraints = constraints;
     setPropertyChanged(ViewportConstraints);
@@ -73,9 +79,9 @@ void ScrollingStateFixedNode::reconcileLayerPositionForViewportRect(const Layout
 {
     FloatPoint position = m_constraints.layerPositionForViewportRect(viewportRect);
     if (layer().representsGraphicsLayer()) {
-        GraphicsLayer* graphicsLayer = static_cast<GraphicsLayer*>(layer());
+        auto* graphicsLayer = static_cast<GraphicsLayer*>(layer());
 
-        LOG_WITH_STREAM(Compositing, stream << "ScrollingStateFixedNode::reconcileLayerPositionForViewportRect setting position of layer " << graphicsLayer->primaryLayerID() << " to " << position);
+        LOG_WITH_STREAM(Scrolling, stream << "ScrollingStateFixedNode " << scrollingNodeID() <<" reconcileLayerPositionForViewportRect " << action << " position of layer " << graphicsLayer->primaryLayerID() << " to " << position);
         
         switch (action) {
         case ScrollingLayerPositionAction::Set:
@@ -93,13 +99,14 @@ void ScrollingStateFixedNode::reconcileLayerPositionForViewportRect(const Layout
     }
 }
 
-void ScrollingStateFixedNode::dumpProperties(TextStream& ts, int indent, ScrollingStateTreeAsTextBehavior) const
+void ScrollingStateFixedNode::dumpProperties(TextStream& ts, ScrollingStateTreeAsTextBehavior behavior) const
 {
-    ts << "(" << "Fixed node" << "\n";
+    ts << "Fixed node";
+    ScrollingStateNode::dumpProperties(ts, behavior);
 
     if (m_constraints.anchorEdges()) {
-        writeIndent(ts, indent + 1);
-        ts << "(anchor edges: ";
+        TextStream::GroupScope scope(ts);
+        ts << "anchor edges: ";
         if (m_constraints.hasAnchorEdge(ViewportConstraints::AnchorEdgeLeft))
             ts << "AnchorEdgeLeft ";
         if (m_constraints.hasAnchorEdge(ViewportConstraints::AnchorEdgeRight))
@@ -108,26 +115,18 @@ void ScrollingStateFixedNode::dumpProperties(TextStream& ts, int indent, Scrolli
             ts << "AnchorEdgeTop";
         if (m_constraints.hasAnchorEdge(ViewportConstraints::AnchorEdgeBottom))
             ts << "AnchorEdgeBottom";
-        ts << ")\n";
     }
 
-    if (!m_constraints.alignmentOffset().isEmpty()) {
-        writeIndent(ts, indent + 1);
-        ts << "(alignment offset " << m_constraints.alignmentOffset().width() << " " << m_constraints.alignmentOffset().height() << ")\n";
-    }
+    if (!m_constraints.alignmentOffset().isEmpty())
+        ts.dumpProperty("alignment offset", m_constraints.alignmentOffset());
 
-    if (!m_constraints.viewportRectAtLastLayout().isEmpty()) {
-        writeIndent(ts, indent + 1);
-        FloatRect viewportRect = m_constraints.viewportRectAtLastLayout();
-        ts << "(viewport rect at last layout: " << viewportRect.x() << " " << viewportRect.y() << " " << viewportRect.width() << " " << viewportRect.height() << ")\n";
-    }
+    if (!m_constraints.viewportRectAtLastLayout().isEmpty())
+        ts.dumpProperty("viewport rect at last layout", m_constraints.viewportRectAtLastLayout());
 
-    if (m_constraints.layerPositionAtLastLayout() != FloatPoint()) {
-        writeIndent(ts, indent + 1);
-        ts << "(layer position at last layout " << m_constraints.layerPositionAtLastLayout().x() << " " << m_constraints.layerPositionAtLastLayout().y() << ")\n";
-    }
+    if (m_constraints.layerPositionAtLastLayout() != FloatPoint())
+        ts.dumpProperty("layer position at last layout", m_constraints.layerPositionAtLastLayout());
 }
 
 } // namespace WebCore
 
-#endif // ENABLE(ASYNC_SCROLLING) || USE(COORDINATED_GRAPHICS)
+#endif // ENABLE(ASYNC_SCROLLING)

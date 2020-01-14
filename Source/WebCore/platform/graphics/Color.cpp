@@ -28,12 +28,11 @@
 
 #include "AnimationUtilities.h"
 #include "HashTools.h"
-#include "TextStream.h"
 #include <wtf/Assertions.h>
-#include <wtf/DecimalNumber.h>
 #include <wtf/HexNumber.h>
 #include <wtf/MathExtras.h>
 #include <wtf/text/StringBuilder.h>
+#include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
@@ -49,9 +48,9 @@ const RGBA32 Color::transparent;
 static const RGBA32 lightenedBlack = 0xFF545454;
 static const RGBA32 darkenedWhite = 0xFFABABAB;
 
-static inline unsigned premultipliedChannel(unsigned c, unsigned a)
+static inline unsigned premultipliedChannel(unsigned c, unsigned a, bool ceiling = true)
 {
-    return fastDivideBy255(c * a + 254);
+    return fastDivideBy255(ceiling ? c * a + 254 : c * a);
 }
 
 static inline unsigned unpremultipliedChannel(unsigned c, unsigned a)
@@ -69,9 +68,9 @@ RGBA32 makeRGBA(int r, int g, int b, int a)
     return std::max(0, std::min(a, 255)) << 24 | std::max(0, std::min(r, 255)) << 16 | std::max(0, std::min(g, 255)) << 8 | std::max(0, std::min(b, 255));
 }
 
-RGBA32 makePremultipliedRGBA(int r, int g, int b, int a)
+RGBA32 makePremultipliedRGBA(int r, int g, int b, int a, bool ceiling)
 {
-    return makeRGBA(premultipliedChannel(r, a), premultipliedChannel(g, a), premultipliedChannel(b, a), a);
+    return makeRGBA(premultipliedChannel(r, a, ceiling), premultipliedChannel(g, a, ceiling), premultipliedChannel(b, a, ceiling), a);
 }
 
 RGBA32 makeUnPremultipliedRGBA(int r, int g, int b, int a)
@@ -100,23 +99,24 @@ RGBA32 colorWithOverrideAlpha(RGBA32 color, float overrideAlpha)
 static double calcHue(double temp1, double temp2, double hueVal)
 {
     if (hueVal < 0.0)
-        hueVal++;
-    else if (hueVal > 1.0)
-        hueVal--;
-    if (hueVal * 6.0 < 1.0)
-        return temp1 + (temp2 - temp1) * hueVal * 6.0;
-    if (hueVal * 2.0 < 1.0)
+        hueVal += 6.0;
+    else if (hueVal >= 6.0)
+        hueVal -= 6.0;
+    if (hueVal < 1.0)
+        return temp1 + (temp2 - temp1) * hueVal;
+    if (hueVal < 3.0)
         return temp2;
-    if (hueVal * 3.0 < 2.0)
-        return temp1 + (temp2 - temp1) * (2.0 / 3.0 - hueVal) * 6.0;
+    if (hueVal < 4.0)
+        return temp1 + (temp2 - temp1) * (4.0 - hueVal);
     return temp1;
 }
 
-// Explanation of this algorithm can be found in the CSS3 Color Module
-// specification at http://www.w3.org/TR/css3-color/#hsl-color with further
-// explanation available at http://en.wikipedia.org/wiki/HSL_color_space 
+// Explanation of this algorithm can be found in the CSS Color 4 Module
+// specification at https://drafts.csswg.org/css-color-4/#hsl-to-rgb with
+// further explanation available at http://en.wikipedia.org/wiki/HSL_color_space
 
-// all values are in the range of 0 to 1.0
+// Hue is in the range of 0 to 6.0, the remainder are in the range 0 to 1.0
+// FIXME: Use HSLToSRGB().
 RGBA32 makeRGBAFromHSLA(double hue, double saturation, double lightness, double alpha)
 {
     const double scaleFactor = nextafter(256.0, 0.0);
@@ -126,12 +126,12 @@ RGBA32 makeRGBAFromHSLA(double hue, double saturation, double lightness, double 
         return makeRGBA(greyValue, greyValue, greyValue, static_cast<int>(alpha * scaleFactor));
     }
 
-    double temp2 = lightness < 0.5 ? lightness * (1.0 + saturation) : lightness + saturation - lightness * saturation;
+    double temp2 = lightness <= 0.5 ? lightness * (1.0 + saturation) : lightness + saturation - lightness * saturation;
     double temp1 = 2.0 * lightness - temp2;
     
-    return makeRGBA(static_cast<int>(calcHue(temp1, temp2, hue + 1.0 / 3.0) * scaleFactor), 
+    return makeRGBA(static_cast<int>(calcHue(temp1, temp2, hue + 2.0) * scaleFactor), 
                     static_cast<int>(calcHue(temp1, temp2, hue) * scaleFactor),
-                    static_cast<int>(calcHue(temp1, temp2, hue - 1.0 / 3.0) * scaleFactor),
+                    static_cast<int>(calcHue(temp1, temp2, hue - 2.0) * scaleFactor),
                     static_cast<int>(alpha * scaleFactor));
 }
 
@@ -307,12 +307,6 @@ Color::Color(float r, float g, float b, float a, ColorSpace colorSpace)
     ASSERT(isExtended());
 }
 
-Color::~Color()
-{
-    if (isExtended())
-        m_colorData.extendedColor->deref();
-}
-
 Color& Color::operator=(const Color& other)
 {
     if (*this == other)
@@ -332,6 +326,9 @@ Color& Color::operator=(Color&& other)
 {
     if (*this == other)
         return *this;
+
+    if (isExtended())
+        m_colorData.extendedColor->deref();
 
     m_colorData = other.m_colorData;
     other.m_colorData.rgbaAndFlags = invalidRGBAColor;
@@ -380,10 +377,7 @@ String Color::cssText() const
     builder.appendNumber(static_cast<unsigned char>(blue()));
     if (colorHasAlpha) {
         builder.appendLiteral(", ");
-
-        NumberToStringBuffer buffer;
-        bool shouldTruncateTrailingZeros = true;
-        builder.append(numberToFixedPrecisionString(alpha() / 255.0f, 6, buffer, shouldTruncateTrailingZeros));
+        builder.appendFixedPrecisionNumber(alpha() / 255.0f);
     }
         
     builder.append(')');
@@ -394,8 +388,8 @@ String Color::nameForRenderTreeAsText() const
 {
     // FIXME: Handle ExtendedColors.
     if (alpha() < 0xFF)
-        return String::format("#%02X%02X%02X%02X", red(), green(), blue(), alpha());
-    return String::format("#%02X%02X%02X", red(), green(), blue());
+        return makeString('#', hex(red(), 2), hex(green(), 2), hex(blue(), 2), hex(alpha(), 2));
+    return makeString('#', hex(red(), 2), hex(green(), 2), hex(blue(), 2));
 }
 
 Color Color::light() const
@@ -502,6 +496,9 @@ Color Color::blendWithWhite() const
         if (r >= 0 && g >= 0 && b >= 0)
             break;
     }
+
+    if (isSemantic())
+        newColor.setIsSemantic();
     return newColor;
 }
 
@@ -516,8 +513,12 @@ Color Color::colorWithAlpha(float alpha) const
     if (isExtended())
         return Color { m_colorData.extendedColor->red(), m_colorData.extendedColor->green(), m_colorData.extendedColor->blue(), alpha, m_colorData.extendedColor->colorSpace() };
 
-    int newAlpha = alpha * 255;
-    return Color { red(), green(), blue(), newAlpha };
+    int newAlpha = alpha * 255; // Why doesn't this use colorFloatToRGBAByte() like colorWithOverrideAlpha()?
+
+    Color result = { red(), green(), blue(), newAlpha };
+    if (isSemantic())
+        result.setIsSemantic();
+    return result;
 }
 
 void Color::getRGBA(float& r, float& g, float& b, float& a) const
@@ -536,11 +537,12 @@ void Color::getRGBA(double& r, double& g, double& b, double& a) const
     a = alpha() / 255.0;
 }
 
+// FIXME: Use sRGBToHSL().
 void Color::getHSL(double& hue, double& saturation, double& lightness) const
 {
     // http://en.wikipedia.org/wiki/HSL_color_space. This is a direct copy of
     // the algorithm therein, although it's 360^o based and we end up wanting
-    // [0...1) based. It's clearer if we stick to 360^o until the end.
+    // [0...6) based. It's clearer if we stick to 360^o until the end.
     double r = static_cast<double>(red()) / 255.0;
     double g = static_cast<double>(green()) / 255.0;
     double b = static_cast<double>(blue()) / 255.0;
@@ -560,8 +562,8 @@ void Color::getHSL(double& hue, double& saturation, double& lightness) const
     if (hue >= 360.0)
         hue -= 360.0;
 
-    // makeRGBAFromHSLA assumes that hue is in [0...1).
-    hue /= 360.0;
+    // makeRGBAFromHSLA assumes that hue is in [0...6).
+    hue /= 60.0;
 
     lightness = 0.5 * (max + min);
     if (!chroma)
@@ -613,15 +615,16 @@ Color colorFromPremultipliedARGB(RGBA32 pixelColor)
 
 RGBA32 premultipliedARGBFromColor(const Color& color)
 {
-    unsigned pixelColor;
+    if (color.isOpaque()) {
+        if (color.isExtended())
+            return makeRGB(color.asExtended().red() * 255, color.asExtended().green() * 255, color.asExtended().blue() * 255);
+        return color.rgb();
+    }
 
-    unsigned alpha = color.alpha();
-    if (alpha < 255)
-        pixelColor = makePremultipliedRGBA(color.red(), color.green(), color.blue(), alpha);
-    else
-        pixelColor = color.rgb();
+    if (color.isExtended())
+        return makePremultipliedRGBA(color.asExtended().red() * 255, color.asExtended().green() * 255, color.asExtended().blue() * 255, color.asExtended().alpha() * 255);
 
-    return pixelColor;
+    return makePremultipliedRGBA(color.red(), color.green(), color.blue(), color.alpha());
 }
 
 Color blend(const Color& from, const Color& to, double progress, bool blendPremultiplied)
@@ -651,25 +654,36 @@ Color blend(const Color& from, const Color& to, double progress, bool blendPremu
         blend(from.alpha(), to.alpha(), progress));
 }
 
-TextStream& operator<<(TextStream& ts, const Color& color)
-{
-    return ts << color.nameForRenderTreeAsText();
-}
-
 void Color::tagAsValid()
 {
     m_colorData.rgbaAndFlags |= validRGBAColor;
-}
-
-bool Color::isExtended() const
-{
-    return !(m_colorData.rgbaAndFlags & invalidRGBAColor);
 }
 
 ExtendedColor& Color::asExtended() const
 {
     ASSERT(isExtended());
     return *m_colorData.extendedColor;
+}
+
+TextStream& operator<<(TextStream& ts, const Color& color)
+{
+    return ts << color.nameForRenderTreeAsText();
+}
+
+TextStream& operator<<(TextStream& ts, ColorSpace colorSpace)
+{
+    switch (colorSpace) {
+    case ColorSpaceSRGB:
+        ts << "sRGB";
+        break;
+    case ColorSpaceLinearRGB:
+        ts << "LinearRGB";
+        break;
+    case ColorSpaceDisplayP3:
+        ts << "DisplayP3";
+        break;
+    }
+    return ts;
 }
 
 } // namespace WebCore

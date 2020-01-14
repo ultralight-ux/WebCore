@@ -37,8 +37,9 @@ namespace WebCore {
 class Color;
 
 class ColorChooser {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
-    virtual ~ColorChooser() { }
+    virtual ~ColorChooser() = default;
 
     virtual void reattachColorChooser(const Color&) { }
     virtual void setSelectedColor(const Color&) { }

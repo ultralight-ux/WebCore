@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,10 +25,11 @@
 
 #pragma once
 
+#include "CanvasBase.h"
 #include "GraphicsLayer.h"
-#include "HTMLCanvasElement.h"
 #include "ScriptWrappable.h"
-#include <wtf/HashSet.h>
+#include <wtf/Forward.h>
+#include <wtf/IsoMalloc.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/text/StringHash.h>
 
@@ -38,44 +39,65 @@ class CanvasPattern;
 class HTMLCanvasElement;
 class HTMLImageElement;
 class HTMLVideoElement;
-class URL;
+class ImageBitmap;
+class TypedOMCSSImageValue;
 class WebGLObject;
 
 class CanvasRenderingContext : public ScriptWrappable {
-    WTF_MAKE_NONCOPYABLE(CanvasRenderingContext); WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_NONCOPYABLE(CanvasRenderingContext);
+    WTF_MAKE_ISO_ALLOCATED(CanvasRenderingContext);
 public:
-    virtual ~CanvasRenderingContext() { }
+    virtual ~CanvasRenderingContext();
 
-    void ref() { m_canvas.ref(); }
-    void deref() { m_canvas.deref(); }
-    HTMLCanvasElement& canvas() const { return m_canvas; }
+    static HashSet<CanvasRenderingContext*>& instances(const LockHolder&);
+    static Lock& instancesMutex();
+
+    void ref();
+    WEBCORE_EXPORT void deref();
+
+    CanvasBase& canvasBase() const { return m_canvas; }
 
     virtual bool is2d() const { return false; }
     virtual bool isWebGL1() const { return false; }
     virtual bool isWebGL2() const { return false; }
-    bool is3d() const { return isWebGL1() || isWebGL2(); }
+    bool isWebGL() const { return isWebGL1() || isWebGL2(); }
+#if ENABLE(WEBGPU)
+    virtual bool isWebGPU() const { return false; }
+#endif
+    virtual bool isGPUBased() const { return false; }
     virtual bool isAccelerated() const { return false; }
+    virtual bool isBitmapRenderer() const { return false; }
+    virtual bool isPlaceholder() const { return false; }
+    virtual bool isOffscreen2d() const { return false; }
+    virtual bool isPaint() const { return false; }
 
     virtual void paintRenderingResultsToCanvas() {}
     virtual PlatformLayer* platformLayer() const { return 0; }
 
+    bool callTracingActive() const { return m_callTracingActive; }
+    void setCallTracingActive(bool callTracingActive) { m_callTracingActive = callTracingActive; }
+
 protected:
-    CanvasRenderingContext(HTMLCanvasElement&);
+    explicit CanvasRenderingContext(CanvasBase&);
     bool wouldTaintOrigin(const CanvasPattern*);
-    bool wouldTaintOrigin(const HTMLCanvasElement*);
+    bool wouldTaintOrigin(const CanvasBase*);
     bool wouldTaintOrigin(const HTMLImageElement*);
     bool wouldTaintOrigin(const HTMLVideoElement*);
+    bool wouldTaintOrigin(const ImageBitmap*);
     bool wouldTaintOrigin(const URL&);
 
     template<class T> void checkOrigin(const T* arg)
     {
         if (wouldTaintOrigin(arg))
-            canvas().setOriginTainted();
+            m_canvas.setOriginTainted();
     }
     void checkOrigin(const URL&);
+    void checkOrigin(const TypedOMCSSImageValue&);
+
+    bool m_callTracingActive { false };
 
 private:
-    HTMLCanvasElement& m_canvas;
+    CanvasBase& m_canvas;
 };
 
 } // namespace WebCore

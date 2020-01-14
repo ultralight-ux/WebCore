@@ -28,6 +28,7 @@
 #if ENABLE(MEDIA_STREAM)
 
 #include "URLRegistry.h"
+#include <wtf/Function.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/StringHash.h>
 
@@ -35,7 +36,6 @@ namespace WebCore {
 
 class MediaStream;
 class MediaStreamPrivate;
-class URL;
 
 class MediaStreamRegistry final : public URLRegistry {
 public:
@@ -54,10 +54,11 @@ public:
     void unregisterStream(MediaStream&);
 
     MediaStream* lookUp(const URL&) const;
-    MediaStream* lookUp(const MediaStreamPrivate&) const;
+
+    void forEach(const WTF::Function<void(MediaStream&)>&) const;
 
 private:
-    MediaStreamRegistry();
+    MediaStreamRegistry() = default;
     HashMap<String, RefPtr<MediaStream>> m_mediaStreams;
 };
 

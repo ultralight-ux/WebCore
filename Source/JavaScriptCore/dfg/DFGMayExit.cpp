@@ -47,17 +47,21 @@ ExitMode mayExitImpl(Graph& graph, Node* node, StateType& state)
     // This is a carefully curated list of nodes that definitely do not exit. We try to be very
     // conservative when maintaining this list, because adding new node types to it doesn't
     // generally make things a lot better but it might introduce subtle bugs.
-    case SetArgument:
+    case SetArgumentDefinitely:
+    case SetArgumentMaybe:
     case JSConstant:
     case DoubleConstant:
     case LazyJSConstant:
     case Int52Constant:
     case MovHint:
+    case InitializeEntrypointArguments:
     case SetLocal:
     case Flush:
     case Phantom:
     case Check:
+    case CheckVarargs:
     case Identity:
+    case IdentityWithProfile:
     case GetLocal:
     case LoopHint:
     case Phi:
@@ -71,18 +75,25 @@ ExitMode mayExitImpl(Graph& graph, Node* node, StateType& state)
     case KillStack:
     case GetStack:
     case GetCallee:
+    case SetCallee:
     case GetArgumentCountIncludingThis:
+    case SetArgumentCountIncludingThis:
     case GetRestLength:
     case GetScope:
     case PhantomLocal:
     case CountExecution:
+    case SuperSamplerBegin:
+    case SuperSamplerEnd:
     case Jump:
+    case EntrySwitch:
     case Branch:
     case Unreachable:
     case DoubleRep:
     case Int52Rep:
     case ValueRep:
     case ExtractOSREntryLocal:
+    case ExtractCatchLocal:
+    case ClearCatchLocals:
     case LogicalNot:
     case NotifyWrite:
     case PutStructure:
@@ -92,6 +103,10 @@ ExitMode mayExitImpl(Graph& graph, Node* node, StateType& state)
     case PutClosureVar:
     case RecordRegExpCachedResult:
     case NukeStructureAndSetButterfly:
+    case FilterCallLinkStatus:
+    case FilterGetByIdStatus:
+    case FilterPutByIdStatus:
+    case FilterInByIdStatus:
         break;
 
     case StrCat:
@@ -108,10 +123,20 @@ ExitMode mayExitImpl(Graph& graph, Node* node, StateType& state)
     case NewFunction:
     case NewGeneratorFunction:
     case NewAsyncFunction:
+    case NewAsyncGeneratorFunction:
     case NewStringObject:
+    case NewSymbol:
+    case NewRegexp:
     case ToNumber:
+    case RegExpExecNonGlobalOrSticky:
+    case RegExpMatchFastGlobal:
         result = ExitsForExceptions;
         break;
+
+    case SetRegExpObjectLastIndex:
+        if (node->ignoreLastIndexIsWritable())
+            break;
+        return Exits;
 
     default:
         // If in doubt, return true.
@@ -148,13 +173,6 @@ ExitMode mayExitImpl(Graph& graph, Node* node, StateType& state)
             // ObjectUse then it will.
             case ObjectUse:
             case ObjectOrOtherUse:
-                result = Exits;
-                break;
-                
-            // These are shady because they check the structure even if the type of the child node
-            // passes the StringObject type filter.
-            case StringObjectUse:
-            case StringOrStringObjectUse:
                 result = Exits;
                 break;
                 

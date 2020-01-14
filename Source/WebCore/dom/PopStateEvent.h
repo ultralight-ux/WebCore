@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,7 +27,7 @@
 #pragma once
 
 #include "Event.h"
-#include <bindings/ScriptValue.h>
+#include "JSValueInWrappedObject.h"
 
 namespace WebCore {
 
@@ -37,30 +37,30 @@ class SerializedScriptValue;
 class PopStateEvent final : public Event {
 public:
     virtual ~PopStateEvent();
-    static Ref<PopStateEvent> create(RefPtr<SerializedScriptValue>&&, PassRefPtr<History>);
+    static Ref<PopStateEvent> create(RefPtr<SerializedScriptValue>&&, History*);
 
     struct Init : EventInit {
         JSC::JSValue state;
     };
 
-    static Ref<PopStateEvent> create(JSC::ExecState&, const AtomicString&, const Init&, IsTrusted = IsTrusted::No);
+    static Ref<PopStateEvent> create(const AtomString&, const Init&, IsTrusted = IsTrusted::No);
     static Ref<PopStateEvent> createForBindings();
 
-    JSC::JSValue state() const { return m_state; }
+    const JSValueInWrappedObject& state() const { return m_state; }
     SerializedScriptValue* serializedState() const { return m_serializedState.get(); }
 
-    RefPtr<SerializedScriptValue> trySerializeState(JSC::ExecState*);
+    RefPtr<SerializedScriptValue> trySerializeState(JSC::ExecState&);
     
     History* history() const { return m_history.get(); }
 
-    EventInterface eventInterface() const override;
-
 private:
     PopStateEvent() = default;
-    PopStateEvent(JSC::ExecState&, const AtomicString&, const Init&, IsTrusted);
-    explicit PopStateEvent(PassRefPtr<SerializedScriptValue>, PassRefPtr<History>);
+    PopStateEvent(const AtomString&, const Init&, IsTrusted);
+    PopStateEvent(RefPtr<SerializedScriptValue>&&, History*);
 
-    Deprecated::ScriptValue m_state;
+    EventInterface eventInterface() const final;
+
+    JSValueInWrappedObject m_state;
     RefPtr<SerializedScriptValue> m_serializedState;
     bool m_triedToSerialize { false };
     RefPtr<History> m_history;

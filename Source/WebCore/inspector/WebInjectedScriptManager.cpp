@@ -29,29 +29,39 @@
 #include "CommandLineAPIModule.h"
 #include "ScriptState.h"
 
-using namespace Inspector;
 
 namespace WebCore {
 
-WebInjectedScriptManager::WebInjectedScriptManager(InspectorEnvironment& environment, RefPtr<InjectedScriptHost>&& host)
+using namespace Inspector;
+
+WebInjectedScriptManager::WebInjectedScriptManager(InspectorEnvironment& environment, Ref<InjectedScriptHost>&& host)
     : InjectedScriptManager(environment, WTFMove(host))
-    , m_commandLineAPIHost(CommandLineAPIHost::create())
 {
+}
+
+void WebInjectedScriptManager::connect()
+{
+    InjectedScriptManager::connect();
+
+    m_commandLineAPIHost = CommandLineAPIHost::create();
 }
 
 void WebInjectedScriptManager::disconnect()
 {
     InjectedScriptManager::disconnect();
 
-    m_commandLineAPIHost->disconnect();
-    m_commandLineAPIHost = nullptr;
+    if (m_commandLineAPIHost) {
+        m_commandLineAPIHost->disconnect();
+        m_commandLineAPIHost = nullptr;
+    }
 }
 
 void WebInjectedScriptManager::discardInjectedScripts()
 {
     InjectedScriptManager::discardInjectedScripts();
 
-    m_commandLineAPIHost->clearAllWrappers();
+    if (m_commandLineAPIHost)
+        m_commandLineAPIHost->clearAllWrappers();
 }
 
 void WebInjectedScriptManager::didCreateInjectedScript(const Inspector::InjectedScript& injectedScript)

@@ -2,7 +2,7 @@
  * Copyright (C) 2000 Lars Knoll (knoll@kde.org)
  *           (C) 2000 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2006 Graham Dennis (graham.dennis@gmail.com)
  *
  * This library is free software; you can redistribute it and/or
@@ -22,21 +22,12 @@
  *
  */
 
-#ifndef Animation_h
-#define Animation_h
+#pragma once
 
-#include "PlatformExportMacros.h"
-
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-#include "AnimationTrigger.h"
-#endif
 #include "CSSPropertyNames.h"
 #include "RenderStyleConstants.h"
 #include "StyleScope.h"
 #include "TimingFunction.h"
-#include <wtf/PassRefPtr.h>
-#include <wtf/RefCounted.h>
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -56,26 +47,19 @@ public:
     bool isPlayStateSet() const { return m_playStateSet; }
     bool isPropertySet() const { return m_propertySet; }
     bool isTimingFunctionSet() const { return m_timingFunctionSet; }
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    bool isTriggerSet() const { return m_triggerSet; }
-#endif
 
     // Flags this to be the special "none" animation (animation-name: none)
     bool isNoneAnimation() const { return m_isNone; }
+
     // We can make placeholder Animation objects to keep the comma-separated lists
     // of properties in sync. isValidAnimation means this is not a placeholder.
     bool isValidAnimation() const { return !m_isNone && !m_name.isEmpty(); }
 
     bool isEmpty() const
     {
-        return (!m_directionSet && !m_durationSet && !m_fillModeSet
-                && !m_nameSet && !m_playStateSet && !m_iterationCountSet
-                && !m_delaySet && !m_timingFunctionSet && !m_propertySet
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-                && !m_triggerSet);
-#else
-                );
-#endif
+        return !m_directionSet && !m_durationSet && !m_fillModeSet
+            && !m_nameSet && !m_playStateSet && !m_iterationCountSet
+            && !m_delaySet && !m_timingFunctionSet && !m_propertySet;
     }
 
     bool isEmptyOrZeroDuration() const
@@ -89,12 +73,9 @@ public:
     void clearFillMode() { m_fillModeSet = false; }
     void clearIterationCount() { m_iterationCountSet = false; }
     void clearName() { m_nameSet = false; }
-    void clearPlayState() { m_playStateSet = AnimPlayStatePlaying; }
+    void clearPlayState() { m_playStateSet = false; }
     void clearProperty() { m_propertySet = false; }
     void clearTimingFunction() { m_timingFunctionSet = false; }
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    void clearTrigger() { m_triggerSet = false; }
-#endif
 
     void clearAll()
     {
@@ -107,9 +88,6 @@ public:
         clearPlayState();
         clearProperty();
         clearTimingFunction();
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-        clearTrigger();
-#endif
     }
 
     double delay() const { return m_delay; }
@@ -117,7 +95,8 @@ public:
     enum AnimationMode {
         AnimateAll,
         AnimateNone,
-        AnimateSingleProperty
+        AnimateSingleProperty,
+        AnimateUnknownProperty
     };
 
     enum AnimationDirection {
@@ -126,10 +105,11 @@ public:
         AnimationDirectionReverse,
         AnimationDirectionAlternateReverse
     };
+
     AnimationDirection direction() const { return static_cast<AnimationDirection>(m_direction); }
     bool directionIsForwards() const { return m_direction == AnimationDirectionNormal || m_direction == AnimationDirectionAlternate; }
 
-    unsigned fillMode() const { return m_fillMode; }
+    AnimationFillMode fillMode() const { return static_cast<AnimationFillMode>(m_fillMode); }
 
     double duration() const { return m_duration; }
 
@@ -137,18 +117,16 @@ public:
     double iterationCount() const { return m_iterationCount; }
     const String& name() const { return m_name; }
     Style::ScopeOrdinal nameStyleScopeOrdinal() const { return m_nameStyleScopeOrdinal; }
-    EAnimPlayState playState() const { return static_cast<EAnimPlayState>(m_playState); }
+    AnimationPlayState playState() const { return static_cast<AnimationPlayState>(m_playState); }
     CSSPropertyID property() const { return m_property; }
-    PassRefPtr<TimingFunction> timingFunction() const { return m_timingFunction; }
-    AnimationMode animationMode() const { return m_mode; }
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    PassRefPtr<AnimationTrigger> trigger() const { return m_trigger; }
-#endif
+    const String& unknownProperty() const { return m_unknownProperty; }
+    TimingFunction* timingFunction() const { return m_timingFunction.get(); }
+    AnimationMode animationMode() const { return static_cast<AnimationMode>(m_mode); }
 
     void setDelay(double c) { m_delay = c; m_delaySet = true; }
     void setDirection(AnimationDirection d) { m_direction = d; m_directionSet = true; }
     void setDuration(double d) { ASSERT(d >= 0); m_duration = d; m_durationSet = true; }
-    void setFillMode(unsigned f) { m_fillMode = f; m_fillModeSet = true; }
+    void setFillMode(AnimationFillMode f) { m_fillMode = static_cast<unsigned>(f); m_fillModeSet = true; }
     void setIterationCount(double c) { m_iterationCount = c; m_iterationCountSet = true; }
     void setName(const String& name, Style::ScopeOrdinal scope = Style::ScopeOrdinal::Element)
     {
@@ -156,79 +134,69 @@ public:
         m_nameStyleScopeOrdinal = scope;
         m_nameSet = true;
     }
-    void setPlayState(EAnimPlayState d) { m_playState = d; m_playStateSet = true; }
+    void setPlayState(AnimationPlayState d) { m_playState = static_cast<unsigned>(d); m_playStateSet = true; }
     void setProperty(CSSPropertyID t) { m_property = t; m_propertySet = true; }
-    void setTimingFunction(PassRefPtr<TimingFunction> f) { m_timingFunction = f; m_timingFunctionSet = true; }
-    void setAnimationMode(AnimationMode mode) { m_mode = mode; }
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    void setTrigger(PassRefPtr<AnimationTrigger> t) { m_trigger = t; m_triggerSet = true; }
-#endif
+    void setUnknownProperty(const String& property) { m_unknownProperty = property; }
+    void setTimingFunction(RefPtr<TimingFunction>&& function) { m_timingFunction = WTFMove(function); m_timingFunctionSet = true; }
+    void setAnimationMode(AnimationMode mode) { m_mode = static_cast<unsigned>(mode); }
 
     void setIsNoneAnimation(bool n) { m_isNone = n; }
 
     Animation& operator=(const Animation& o);
 
     // return true if all members of this class match (excluding m_next)
-    bool animationsMatch(const Animation&, bool matchPlayStates = true) const;
+    bool animationsMatch(const Animation&, bool matchProperties = true) const;
 
     // return true every Animation in the chain (defined by m_next) match 
     bool operator==(const Animation& o) const { return animationsMatch(o); }
     bool operator!=(const Animation& o) const { return !(*this == o); }
 
-    bool fillsBackwards() const { return m_fillModeSet && (m_fillMode == AnimationFillModeBackwards || m_fillMode == AnimationFillModeBoth); }
-    bool fillsForwards() const { return m_fillModeSet && (m_fillMode == AnimationFillModeForwards || m_fillMode == AnimationFillModeBoth); }
+    bool fillsBackwards() const { return m_fillModeSet && (fillMode() == AnimationFillMode::Backwards || fillMode() == AnimationFillMode::Both); }
+    bool fillsForwards() const { return m_fillModeSet && (fillMode() == AnimationFillMode::Forwards || fillMode() == AnimationFillMode::Both); }
 
 private:
     WEBCORE_EXPORT Animation();
     Animation(const Animation& o);
     
+    // Packs with m_refCount from the base class.
+    CSSPropertyID m_property { CSSPropertyInvalid };
+
     String m_name;
-    Style::ScopeOrdinal m_nameStyleScopeOrdinal { Style::ScopeOrdinal::Element };
-    CSSPropertyID m_property;
-    AnimationMode m_mode;
+    String m_unknownProperty;
     double m_iterationCount;
     double m_delay;
     double m_duration;
     RefPtr<TimingFunction> m_timingFunction;
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    RefPtr<AnimationTrigger> m_trigger;
-#endif
+
+    Style::ScopeOrdinal m_nameStyleScopeOrdinal { Style::ScopeOrdinal::Element };
+
+    unsigned m_mode : 2; // AnimationMode
     unsigned m_direction : 2; // AnimationDirection
-    unsigned m_fillMode : 2;
+    unsigned m_fillMode : 2; // AnimationFillMode
+    unsigned m_playState : 2; // AnimationPlayState
 
-
-    unsigned m_playState     : 2;
-
-    bool m_delaySet          : 1;
-    bool m_directionSet      : 1;
-    bool m_durationSet       : 1;
-    bool m_fillModeSet       : 1;
+    bool m_delaySet : 1;
+    bool m_directionSet : 1;
+    bool m_durationSet : 1;
+    bool m_fillModeSet : 1;
     bool m_iterationCountSet : 1;
-    bool m_nameSet           : 1;
-    bool m_playStateSet      : 1;
-    bool m_propertySet       : 1;
+    bool m_nameSet : 1;
+    bool m_playStateSet : 1;
+    bool m_propertySet : 1;
     bool m_timingFunctionSet : 1;
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    bool m_triggerSet        : 1;
-#endif
 
-    bool m_isNone            : 1;
+    bool m_isNone : 1;
 
 public:
     static double initialDelay() { return 0; }
     static AnimationDirection initialDirection() { return AnimationDirectionNormal; }
     static double initialDuration() { return 0; }
-    static unsigned initialFillMode() { return AnimationFillModeNone; }
+    static AnimationFillMode initialFillMode() { return AnimationFillMode::None; }
     static double initialIterationCount() { return 1.0; }
     static const String& initialName();
-    static EAnimPlayState initialPlayState() { return AnimPlayStatePlaying; }
+    static AnimationPlayState initialPlayState() { return AnimationPlayState::Playing; }
     static CSSPropertyID initialProperty() { return CSSPropertyInvalid; }
-    static const PassRefPtr<TimingFunction> initialTimingFunction() { return CubicBezierTimingFunction::create(); }
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    static const PassRefPtr<AnimationTrigger> initialTrigger() { return AutoAnimationTrigger::create(); }
-#endif
+    static Ref<TimingFunction> initialTimingFunction() { return CubicBezierTimingFunction::create(); }
 };
 
 } // namespace WebCore
-
-#endif // Animation_h

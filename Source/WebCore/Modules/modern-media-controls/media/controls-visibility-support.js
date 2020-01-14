@@ -30,22 +30,31 @@ class ControlsVisibilitySupport extends MediaControllerSupport
     {
         super(mediaController);
 
-        this._controlsAttributeObserver = new MutationObserver(this._updateControls.bind(this));
-        this._controlsAttributeObserver.observe(mediaController.media, { attributes: true, attributeFilter: ["controls"] });
-
         this._updateControls();
     }
 
     // Protected
 
-    destroy()
+    enable()
     {
-        this._controlsAttributeObserver.disconnect();
+        super.enable();
+        this._updateControls();
+    }
+
+    disable()
+    {
+        super.disable();
+        this.mediaController.controls.autoHideController.fadesWhileIdle = false;
     }
 
     get mediaEvents()
     {
-        return ["loadedmetadata", "play", "pause"];
+        return ["loadedmetadata", "play", "pause", "webkitcurrentplaybacktargetiswirelesschanged", this.mediaController.fullscreenChangeEventType];
+    }
+
+    get tracksToMonitor()
+    {
+        return [this.mediaController.media.videoTracks];
     }
 
     handleEvent()
@@ -58,15 +67,8 @@ class ControlsVisibilitySupport extends MediaControllerSupport
     _updateControls()
     {
         const media = this.mediaController.media;
-        const isVideo = media instanceof HTMLVideoElement;
-        let shouldShowControls = this.mediaController.media.controls;
-        if (isVideo)
-            shouldShowControls = shouldShowControls && media.readyState > HTMLMediaElement.HAVE_NOTHING;
-
-        const controls = this.mediaController.controls;
-        controls.startButton.visible = shouldShowControls;
-        controls.controlsBar.visible = shouldShowControls;
-        controls.controlsBar.fadesWhileIdle = isVideo ? !media.paused : false;
+        const isVideo = media instanceof HTMLVideoElement && media.videoTracks.length > 0;
+        this.mediaController.controls.autoHideController.fadesWhileIdle = isVideo ? !media.paused && !media.webkitCurrentPlaybackTargetIsWireless : false;
     }
 
 }

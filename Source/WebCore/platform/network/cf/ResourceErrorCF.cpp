@@ -28,14 +28,11 @@
 
 #if USE(CFURLCONNECTION)
 
-#include "URL.h"
 #include <CoreFoundation/CFError.h>
 #include <CFNetwork/CFNetworkErrors.h>
+#include <pal/spi/cf/CFNetworkSPI.h>
 #include <wtf/RetainPtr.h>
-
-#if PLATFORM(WIN)
-#include <WebKitSystemInterface/WebKitSystemInterface.h>
-#endif
+#include <wtf/URL.h>
 
 namespace WebCore {
 
@@ -48,7 +45,6 @@ ResourceError::ResourceError(CFErrorRef cfError)
         setType((CFErrorGetCode(m_platformError.get()) == kCFURLErrorTimedOut) ? Type::Timeout : Type::General);
 }
 
-#if PLATFORM(WIN)
 ResourceError::ResourceError(const String& domain, int errorCode, const URL& failingURL, const String& localizedDescription, CFDataRef certificate)
     : ResourceErrorBase(domain, errorCode, failingURL, localizedDescription, Type::General)
     , m_dataIsUpToDate(true)
@@ -68,10 +64,33 @@ void ResourceError::setCertificate(CFDataRef certificate)
 {
     m_certificate = certificate;
 }
-#endif // PLATFORM(WIN)
 
 const CFStringRef failingURLStringKey = CFSTR("NSErrorFailingURLStringKey");
 const CFStringRef failingURLKey = CFSTR("NSErrorFailingURLKey");
+
+static CFDataRef getSSLPeerCertificateData(CFDictionaryRef dict)
+{
+    if (!dict)
+        return nullptr;
+    return reinterpret_cast<CFDataRef>(CFDictionaryGetValue(dict, _kCFWindowsSSLPeerCert));
+}
+
+static void setSSLPeerCertificateData(CFMutableDictionaryRef dict, CFDataRef data)
+{
+    if (!dict)
+        return;
+    
+    if (!data)
+        CFDictionaryRemoveValue(dict, _kCFWindowsSSLPeerCert);
+    else
+        CFDictionarySetValue(dict, _kCFWindowsSSLPeerCert, data);
+}
+
+const void* ResourceError::getSSLPeerCertificateDataBytePtr(CFDictionaryRef dict)
+{
+    CFDataRef data = getSSLPeerCertificateData(dict);
+    return data ? reinterpret_cast<const void*>(CFDataGetBytePtr(data)) : nullptr;
+}
 
 void ResourceError::platformLazyInit()
 {
@@ -111,9 +130,7 @@ void ResourceError::platformLazyInit()
         }
         m_localizedDescription = (CFStringRef) CFDictionaryGetValue(userInfo.get(), kCFErrorLocalizedDescriptionKey);
         
-#if PLATFORM(WIN)
-        m_certificate = wkGetSSLPeerCertificateData(userInfo.get());
-#endif
+        m_certificate = getSSLPeerCertificateData(userInfo.get());
     }
 
     m_dataIsUpToDate = true;
@@ -122,11 +139,7 @@ void ResourceError::platformLazyInit()
 
 void ResourceError::doPlatformIsolatedCopy(const ResourceError& other)
 {
-#if PLATFORM(WIN)
     m_certificate = other.m_certificate;
-#else
-    UNUSED_PARAM(other);
-#endif
 }
 
 bool ResourceError::platformCompare(const ResourceError& a, const ResourceError& b)
@@ -154,10 +167,8 @@ CFErrorRef ResourceError::cfError() const
                 CFDictionarySetValue(userInfo.get(), failingURLKey, url.get());
         }
 
-#if PLATFORM(WIN)
         if (m_certificate)
-            wkSetSSLPeerCertificateData(userInfo.get(), m_certificate.get());
-#endif
+            setSSLPeerCertificateData(userInfo.get(), m_certificate.get());
         
         m_platformError = adoptCF(CFErrorCreate(0, m_domain.createCFString().get(), m_errorCode, userInfo.get()));
     }

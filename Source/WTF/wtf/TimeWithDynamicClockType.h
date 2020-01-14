@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef WTF_TimeWithDynamicClockType_h
-#define WTF_TimeWithDynamicClockType_h
+#pragma once
 
 #include <wtf/ClockType.h>
 #include <wtf/MonotonicTime.h>
@@ -138,8 +137,25 @@ WTF_EXPORT_PRIVATE bool hasElapsed(const TimeWithDynamicClockType&);
 
 } // namespace WTF
 
+namespace std {
+
+inline bool isnan(WTF::TimeWithDynamicClockType time)
+{
+    return std::isnan(time.secondsSinceEpoch().value());
+}
+
+inline bool isinf(WTF::TimeWithDynamicClockType time)
+{
+    return std::isinf(time.secondsSinceEpoch().value());
+}
+
+inline bool isfinite(WTF::TimeWithDynamicClockType time)
+{
+    return std::isfinite(time.secondsSinceEpoch().value());
+}
+
+} // namespace std
+
 using WTF::TimeWithDynamicClockType;
 using WTF::hasElapsed;
 using WTF::sleep;
-
-#endif // WTF_TimeWithDynamicClockType_h

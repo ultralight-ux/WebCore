@@ -223,14 +223,14 @@ IDBKeyPath isolatedCopy(const IDBKeyPath& keyPath)
     return WTF::visit(visitor, keyPath);
 }
 
-#ifndef NDEBUG
+#if !LOG_DISABLED
 String loggingString(const IDBKeyPath& path)
 {
     auto visitor = WTF::makeVisitor([](const String& string) {
         return makeString("< ", string, " >");
     }, [](const Vector<String>& strings) {
         if (strings.isEmpty())
-            return String("< >");
+            return "< >"_str;
 
         StringBuilder builder;
         builder.append("< ");

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,42 +28,71 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
+#include "IDBBindingUtilities.h"
+#include "JSDOMConvertInterface.h"
 #include "JSIDBCursor.h"
 #include "JSIDBDatabase.h"
-#include "JSIDBIndex.h"
-#include "JSIDBObjectStore.h"
-
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
-JSValue JSIDBRequest::result(ExecState& state) const
+JSC::JSValue JSIDBRequest::result(JSC::ExecState& state) const
 {
-    auto& request = wrapped();
+    return cachedPropertyValue(state, *this, wrapped().resultWrapper(), [&] {
+        auto result = wrapped().result();
+        if (UNLIKELY(result.hasException())) {
+            auto throwScope = DECLARE_THROW_SCOPE(state.vm());
+            propagateException(state, throwScope, result.releaseException());
+            return jsNull();
+        }
 
-    if (!request.isDone()) {
-        propagateException(state, Exception { IDBDatabaseException::InvalidStateError, ASCIILiteral("Failed to read the 'result' property from 'IDBRequest': The request has not finished.") });
-        return { };
-    }
-    if (auto* cursor = request.cursorResult())
-        return toJS(&state, globalObject(), *cursor);
-    if (auto* database = request.databaseResult())
-        return toJS(&state, globalObject(), *database);
-    if (auto result = request.scriptResult())
-        return result;
-    return jsNull();
+        IDBRequest::Result resultValue = result.releaseReturnValue();
+        return WTF::switchOn(resultValue, [&state] (RefPtr<IDBCursor>& cursor) {
+            auto throwScope = DECLARE_THROW_SCOPE(state.vm());
+            return toJS<IDLInterface<IDBCursor>>(state, *jsCast<JSDOMGlobalObject*>(state.lexicalGlobalObject()), throwScope, cursor.get());
+        }, [&state] (RefPtr<IDBDatabase>& database) {
+            auto throwScope = DECLARE_THROW_SCOPE(state.vm());
+            return toJS<IDLInterface<IDBDatabase>>(state, *jsCast<JSDOMGlobalObject*>(state.lexicalGlobalObject()), throwScope, database.get());
+        }, [&state] (IDBKeyData keyData) {
+            return toJS<IDLIDBKeyData>(state, *jsCast<JSDOMGlobalObject*>(state.lexicalGlobalObject()), keyData);
+        }, [&state] (Vector<IDBKeyData> keyDatas) {
+            return toJS<IDLSequence<IDLIDBKeyData>>(state, *jsCast<JSDOMGlobalObject*>(state.lexicalGlobalObject()), keyDatas);
+        }, [&state] (IDBGetResult getResult) {
+            auto result = deserializeIDBValueWithKeyInjection(state, getResult.value(), getResult.keyData(), getResult.keyPath());
+            return result ? result.value() : jsNull();
+        }, [&state] (IDBGetAllResult getAllResult) {
+            auto& keys = getAllResult.keys();
+            auto& values = getAllResult.values();
+            auto& keyPath = getAllResult.keyPath();
+            auto scope = DECLARE_THROW_SCOPE(state.vm());
+            JSC::MarkedArgumentBuffer list;
+            for (unsigned i = 0; i < values.size(); i ++) {
+                auto result = deserializeIDBValueWithKeyInjection(state, values[i], keys[i], keyPath);
+                if (!result)
+                    return jsNull();
+                list.append(result.value());
+                if (UNLIKELY(list.hasOverflowed())) {
+                    propagateException(state, scope, Exception(UnknownError));
+                    return jsNull();
+                }
+            }
+            return JSValue(JSC::constructArray(&state, nullptr, state.lexicalGlobalObject(), list));
+        }, [] (uint64_t number) {
+            return toJS<IDLUnsignedLongLong>(number);
+        }, [] (IDBRequest::NullResultType other) {
+            if (other == IDBRequest::NullResultType::Empty)
+                return JSC::jsNull();
+            return JSC::jsUndefined();
+        });
+    });
 }
 
-JSValue JSIDBRequest::source(ExecState& state) const
+void JSIDBRequest::visitAdditionalChildren(SlotVisitor& visitor)
 {
     auto& request = wrapped();
-    if (auto* cursor = request.cursorSource())
-        return toJS(&state, globalObject(), *cursor);
-    if (auto* index = request.indexSource())
-        return toJS(&state, globalObject(), *index);
-    return toJS(&state, globalObject(), request.objectStoreSource());
+    request.resultWrapper().visit(visitor);
+    request.cursorWrapper().visit(visitor);
 }
 
-} // namespace WebCore
-
+}
 #endif // ENABLE(INDEXED_DATABASE)

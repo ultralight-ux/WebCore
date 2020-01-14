@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 Google Inc. All rights reserved.
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,7 +25,9 @@
 #include "Event.h"
 #include "EventContext.h"
 #include "EventNames.h"
+#include "FullscreenManager.h"
 #include "HTMLSlotElement.h"
+#include "MouseEvent.h"
 #include "Node.h"
 #include "PseudoElement.h"
 #include "ShadowRoot.h"
@@ -35,30 +37,30 @@ namespace WebCore {
 
 class WindowEventContext final : public EventContext {
 public:
-    WindowEventContext(Node&, DOMWindow&, EventTarget*);
-    void handleLocalEvents(Event&) const final;
+    WindowEventContext(Node&, DOMWindow&, EventTarget&, int closedShadowDepth);
+private:
+    void handleLocalEvents(Event&, EventInvokePhase) const final;
 };
 
-WindowEventContext::WindowEventContext(Node& node, DOMWindow& currentTarget, EventTarget* target)
-    : EventContext(&node, &currentTarget, target)
-{ }
+inline WindowEventContext::WindowEventContext(Node& node, DOMWindow& currentTarget, EventTarget& target, int closedShadowDepth)
+    : EventContext(&node, &currentTarget, &target, closedShadowDepth)
+{
+}
 
-void WindowEventContext::handleLocalEvents(Event& event) const
+void WindowEventContext::handleLocalEvents(Event& event, EventInvokePhase phase) const
 {
     event.setTarget(m_target.get());
     event.setCurrentTarget(m_currentTarget.get());
-    m_currentTarget->fireEventListeners(event);
+    m_currentTarget->fireEventListeners(event, phase);
 }
 
 static inline bool shouldEventCrossShadowBoundary(Event& event, ShadowRoot& shadowRoot, EventTarget& target)
 {
-    Node* targetNode = target.toNode();
-
 #if ENABLE(FULLSCREEN_API) && ENABLE(VIDEO)
     // Video-only full screen is a mode where we use the shadow DOM as an implementation
     // detail that should not be detectable by the web content.
-    if (targetNode) {
-        if (Element* element = targetNode->document().webkitCurrentFullScreenElement()) {
+    if (is<Node>(target)) {
+        if (auto* element = downcast<Node>(target).document().fullscreenManager().currentFullscreenElement()) {
             // FIXME: We assume that if the full screen element is a media element that it's
             // the video-only full screen. Both here and elsewhere. But that is probably wrong.
             if (element->isMediaElement() && shadowRoot.host() == element)
@@ -67,7 +69,7 @@ static inline bool shouldEventCrossShadowBoundary(Event& event, ShadowRoot& shad
     }
 #endif
 
-    bool targetIsInShadowRoot = targetNode && &targetNode->treeScope().rootNode() == &shadowRoot;
+    bool targetIsInShadowRoot = is<Node>(target) && &downcast<Node>(target).treeScope().rootNode() == &shadowRoot;
     return !targetIsInShadowRoot || event.composed();
 }
 
@@ -84,15 +86,10 @@ public:
     void moveToNewTreeScope(TreeScope* previousTreeScope, TreeScope& newTreeScope);
 
 private:
-
     Node* nodeInLowestCommonAncestor();
     void collectTreeScopes();
 
-#if ASSERT_DISABLED
-    void checkConsistency(Node&) { }
-#else
     void checkConsistency(Node& currentTarget);
-#endif
 
     Node& m_relatedNode;
     Node* m_retargetedRelatedNode;
@@ -103,24 +100,44 @@ private:
 
 EventPath::EventPath(Node& originalTarget, Event& event)
 {
-    bool isMouseOrFocusEvent = event.isMouseEvent() || event.isFocusEvent();
+    buildPath(originalTarget, event);
+
+    if (auto* relatedTarget = event.relatedTarget())
+        setRelatedTarget(originalTarget, *relatedTarget);
+
 #if ENABLE(TOUCH_EVENTS)
-    bool isTouchEvent = event.isTouchEvent();
+    if (is<TouchEvent>(event))
+        retargetTouchLists(downcast<TouchEvent>(event));
 #endif
+}
+
+void EventPath::buildPath(Node& originalTarget, Event& event)
+{
+    using MakeEventContext = std::unique_ptr<EventContext> (*)(Node&, EventTarget*, EventTarget*, int closedShadowDepth);
+    MakeEventContext makeEventContext = [] (Node& node, EventTarget* currentTarget, EventTarget* target, int closedShadowDepth) {
+        return std::make_unique<EventContext>(&node, currentTarget, target, closedShadowDepth);
+    };
+    if (is<MouseEvent>(event) || event.isFocusEvent()) {
+        makeEventContext = [] (Node& node, EventTarget* currentTarget, EventTarget* target, int closedShadowDepth) -> std::unique_ptr<EventContext> {
+            return std::make_unique<MouseOrFocusEventContext>(node, currentTarget, target, closedShadowDepth);
+        };
+    }
+#if ENABLE(TOUCH_EVENTS)
+    if (is<TouchEvent>(event)) {
+        makeEventContext = [] (Node& node, EventTarget* currentTarget, EventTarget* target, int closedShadowDepth) -> std::unique_ptr<EventContext> {
+            return std::make_unique<TouchEventContext>(node, currentTarget, target, closedShadowDepth);
+        };
+    }
+#endif
+
     Node* node = nodeOrHostIfPseudoElement(&originalTarget);
     Node* target = node ? eventTargetRespectingTargetRules(*node) : nullptr;
+    int closedShadowDepth = 0;
+    // Depths are used to decided which nodes are excluded in event.composedPath when the tree is mutated during event dispatching.
+    // They could be negative for nodes outside the shadow tree of the target node.
     while (node) {
         while (node) {
-            EventTarget* currentTarget = eventTargetRespectingTargetRules(*node);
-
-            if (isMouseOrFocusEvent)
-                m_path.append(std::make_unique<MouseOrFocusEventContext>(node, currentTarget, target));
-#if ENABLE(TOUCH_EVENTS)
-            else if (isTouchEvent)
-                m_path.append(std::make_unique<TouchEventContext>(node, currentTarget, target));
-#endif
-            else
-                m_path.append(std::make_unique<EventContext>(node, currentTarget, target));
+            m_path.append(makeEventContext(*node, eventTargetRespectingTargetRules(*node), target, closedShadowDepth));
 
             if (is<ShadowRoot>(*node))
                 break;
@@ -130,8 +147,10 @@ EventPath::EventPath(Node& originalTarget, Event& event)
                 // https://dom.spec.whatwg.org/#interface-document
                 if (is<Document>(*node) && event.type() != eventNames().loadEvent) {
                     ASSERT(target);
-                    if (auto* window = downcast<Document>(*node).domWindow())
-                        m_path.append(std::make_unique<WindowEventContext>(*node, *window, target));
+                    if (target) {
+                        if (auto* window = downcast<Document>(*node).domWindow())
+                            m_path.append(std::make_unique<WindowEventContext>(*node, *window, *target, closedShadowDepth));
+                    }
                 }
                 return;
             }
@@ -139,6 +158,8 @@ EventPath::EventPath(Node& originalTarget, Event& event)
             auto* shadowRootOfParent = parent->shadowRoot();
             if (UNLIKELY(shadowRootOfParent)) {
                 if (auto* assignedSlot = shadowRootOfParent->findAssignedSlot(*node)) {
+                    if (shadowRootOfParent->mode() != ShadowRootMode::Open)
+                        closedShadowDepth++;
                     // node is assigned to a slot. Continue dispatching the event at this slot.
                     parent = assignedSlot;
                 }
@@ -151,21 +172,22 @@ EventPath::EventPath(Node& originalTarget, Event& event)
         if (!shouldEventCrossShadowBoundary(event, shadowRoot, originalTarget))
             return;
         node = shadowRoot.host();
+        if (shadowRoot.mode() != ShadowRootMode::Open)
+            closedShadowDepth--;
         if (exitingShadowTreeOfTarget)
             target = eventTargetRespectingTargetRules(*node);
-
     }
 }
 
 void EventPath::setRelatedTarget(Node& origin, EventTarget& relatedTarget)
 {
-    Node* relatedNode = relatedTarget.toNode();
-    if (!relatedNode || m_path.isEmpty())
+    if (!is<Node>(relatedTarget) || m_path.isEmpty())
         return;
 
-    RelatedNodeRetargeter retargeter(*relatedNode, *m_path[0]->node());
+    auto& relatedNode = downcast<Node>(relatedTarget);
+    RelatedNodeRetargeter retargeter(relatedNode, *m_path[0]->node());
 
-    bool originIsRelatedTarget = &origin == relatedNode;
+    bool originIsRelatedTarget = &origin == &relatedNode;
     Node& rootNodeInOriginTreeScope = origin.treeScope().rootNode();
     TreeScope* previousTreeScope = nullptr;
     size_t originalEventPathSize = m_path.size();
@@ -198,17 +220,14 @@ void EventPath::setRelatedTarget(Node& origin, EventTarget& relatedTarget)
 }
 
 #if ENABLE(TOUCH_EVENTS)
-void EventPath::retargetTouch(TouchEventContext::TouchListType touchListType, const Touch& touch)
+
+void EventPath::retargetTouch(TouchEventContext::TouchListType type, const Touch& touch)
 {
-    EventTarget* eventTarget = touch.target();
-    if (!eventTarget)
+    auto* eventTarget = touch.target();
+    if (!is<Node>(eventTarget))
         return;
 
-    Node* targetNode = eventTarget->toNode();
-    if (!targetNode)
-        return;
-
-    RelatedNodeRetargeter retargeter(*targetNode, *m_path[0]->node());
+    RelatedNodeRetargeter retargeter(downcast<Node>(*eventTarget), *m_path[0]->node());
     TreeScope* previousTreeScope = nullptr;
     for (auto& context : m_path) {
         Node& currentTarget = *context->node();
@@ -218,64 +237,88 @@ void EventPath::retargetTouch(TouchEventContext::TouchListType touchListType, co
 
         if (is<TouchEventContext>(*context)) {
             Node* currentRelatedNode = retargeter.currentNode(currentTarget);
-            downcast<TouchEventContext>(*context).touchList(touchListType)->append(touch.cloneWithNewTarget(currentRelatedNode));
+            downcast<TouchEventContext>(*context).touchList(type).append(touch.cloneWithNewTarget(currentRelatedNode));
         }
 
         previousTreeScope = &currentTreeScope;
     }
 }
 
-void EventPath::retargetTouchLists(const TouchEvent& touchEvent)
+void EventPath::retargetTouchList(TouchEventContext::TouchListType type, const TouchList* list)
 {
-    if (touchEvent.touches()) {
-        for (size_t i = 0; i < touchEvent.touches()->length(); ++i)
-            retargetTouch(TouchEventContext::Touches, *touchEvent.touches()->item(i));
-    }
-
-    if (touchEvent.targetTouches()) {
-        for (size_t i = 0; i < touchEvent.targetTouches()->length(); ++i)
-            retargetTouch(TouchEventContext::TargetTouches, *touchEvent.targetTouches()->item(i));
-    }
-
-    if (touchEvent.changedTouches()) {
-        for (size_t i = 0; i < touchEvent.changedTouches()->length(); ++i)
-            retargetTouch(TouchEventContext::ChangedTouches, *touchEvent.changedTouches()->item(i));
-    }
+    for (unsigned i = 0, length = list ? list->length() : 0; i < length; ++i)
+        retargetTouch(type, *list->item(i));
 }
+
+void EventPath::retargetTouchLists(const TouchEvent& event)
+{
+    retargetTouchList(TouchEventContext::Touches, event.touches());
+    retargetTouchList(TouchEventContext::TargetTouches, event.targetTouches());
+    retargetTouchList(TouchEventContext::ChangedTouches, event.changedTouches());
+}
+
 #endif
 
-bool EventPath::hasEventListeners(const AtomicString& eventType) const
-{
-    for (auto& context : m_path) {
-        if (context->node()->hasEventListeners(eventType))
-            return true;
-    }
-
-    return false;
-}
-
 // https://dom.spec.whatwg.org/#dom-event-composedpath
+// Any node whose depth computed in EventPath::buildPath is greater than the context object is excluded.
+// Because we can exit out of a closed shadow tree and re-enter another closed shadow tree via a slot,
+// we decrease the *allowed depth* whenever we moved to a "shallower" (closer-to-document) tree.
 Vector<EventTarget*> EventPath::computePathUnclosedToTarget(const EventTarget& target) const
 {
     Vector<EventTarget*> path;
-    const Node* targetNode = const_cast<EventTarget&>(target).toNode();
-    if (!targetNode) {
-        const DOMWindow* domWindow = const_cast<EventTarget&>(target).toDOMWindow();
-        if (!domWindow)
-            return path;
-        targetNode = domWindow->document();
-        ASSERT(targetNode);
-    }
+    auto pathSize = m_path.size();
+    RELEASE_ASSERT(pathSize);
+    path.reserveInitialCapacity(pathSize);
 
-    for (auto& context : m_path) {
-        if (Node* nodeInPath = context->currentTarget()->toNode()) {
-            if (!targetNode->isClosedShadowHidden(*nodeInPath))
-                path.append(context->currentTarget());
-        } else
-            path.append(context->currentTarget());
-    }
+    auto currentTargetIndex = m_path.findMatching([&target] (auto& context) {
+        return context->currentTarget() == &target;
+    });
+    RELEASE_ASSERT(currentTargetIndex != notFound);
+    auto currentTargetDepth = m_path[currentTargetIndex]->closedShadowDepth();
 
+    auto appendTargetWithLesserDepth = [&path] (const EventContext& currentContext, int& currentDepthAllowed) {
+        auto depth = currentContext.closedShadowDepth();
+        bool contextIsInsideInnerShadowTree = depth > currentDepthAllowed;
+        if (contextIsInsideInnerShadowTree)
+            return;
+        bool movedOutOfShadowTree = depth < currentDepthAllowed;
+        if (movedOutOfShadowTree)
+            currentDepthAllowed = depth;
+        path.uncheckedAppend(currentContext.currentTarget());
+    };
+
+    auto currentDepthAllowed = currentTargetDepth;
+    auto i = currentTargetIndex;
+    do {
+        appendTargetWithLesserDepth(*m_path[i], currentDepthAllowed);
+    } while (i--);
+    path.reverse();
+
+    currentDepthAllowed = currentTargetDepth;
+    for (auto i = currentTargetIndex + 1; i < pathSize; ++i)
+        appendTargetWithLesserDepth(*m_path[i], currentDepthAllowed);
+    
     return path;
+}
+
+EventPath::EventPath(const Vector<Element*>& targets)
+{
+    // FIXME: This function seems wrong. Why are we not firing events in the closed shadow trees?
+    for (auto* target : targets) {
+        ASSERT(target);
+        Node* origin = *targets.begin();
+        if (!target->isClosedShadowHidden(*origin))
+            m_path.append(std::make_unique<EventContext>(target, target, origin, 0));
+    }
+}
+
+EventPath::EventPath(const Vector<EventTarget*>& targets)
+{
+    for (auto* target : targets) {
+        ASSERT(target);
+        ASSERT(!is<Node>(target));
+        m_path.append(std::make_unique<EventContext>(nullptr, target, *targets.begin(), 0));
+    }
 }
 
 static Node* moveOutOfAllShadowRoots(Node& startingNode)
@@ -292,7 +335,7 @@ RelatedNodeRetargeter::RelatedNodeRetargeter(Node& relatedNode, Node& target)
 {
     auto& targetTreeScope = target.treeScope();
     TreeScope* currentTreeScope = &m_relatedNode.treeScope();
-    if (LIKELY(currentTreeScope == &targetTreeScope && target.inDocument() && m_relatedNode.inDocument()))
+    if (LIKELY(currentTreeScope == &targetTreeScope && target.isConnected() && m_relatedNode.isConnected()))
         return;
 
     if (&currentTreeScope->documentScope() != &targetTreeScope.documentScope()) {
@@ -300,7 +343,7 @@ RelatedNodeRetargeter::RelatedNodeRetargeter(Node& relatedNode, Node& target)
         m_retargetedRelatedNode = nullptr;
         return;
     }
-    if (relatedNode.inDocument() != target.inDocument()) {
+    if (relatedNode.isConnected() != target.isConnected()) {
         m_hasDifferentTreeRoot = true;
         m_retargetedRelatedNode = moveOutOfAllShadowRoots(relatedNode);
         return;
@@ -325,7 +368,7 @@ RelatedNodeRetargeter::RelatedNodeRetargeter(Node& relatedNode, Node& target)
     }
 
     bool lowestCommonAncestorIsDocumentScope = i + 1 == m_ancestorTreeScopes.size();
-    if (lowestCommonAncestorIsDocumentScope && !relatedNode.inDocument() && !target.inDocument()) {
+    if (lowestCommonAncestorIsDocumentScope && !relatedNode.isConnected() && !target.isConnected()) {
         Node& relatedNodeAncestorInDocumentScope = i ? *downcast<ShadowRoot>(m_ancestorTreeScopes[i - 1]->rootNode()).shadowHost() : relatedNode;
         Node& targetAncestorInDocumentScope = j ? *downcast<ShadowRoot>(targetTreeScopeAncestors[j - 1]->rootNode()).shadowHost() : target;
         if (&targetAncestorInDocumentScope.rootNode() != &relatedNodeAncestorInDocumentScope.rootNode()) {
@@ -395,7 +438,14 @@ void RelatedNodeRetargeter::collectTreeScopes()
     ASSERT_WITH_SECURITY_IMPLICATION(!m_ancestorTreeScopes.isEmpty());
 }
 
-#if !ASSERT_DISABLED
+#if ASSERT_DISABLED
+
+inline void RelatedNodeRetargeter::checkConsistency(Node&)
+{
+}
+
+#else
+
 void RelatedNodeRetargeter::checkConsistency(Node& currentTarget)
 {
     if (!m_retargetedRelatedNode)
@@ -403,6 +453,7 @@ void RelatedNodeRetargeter::checkConsistency(Node& currentTarget)
     ASSERT(!currentTarget.isClosedShadowHidden(*m_retargetedRelatedNode));
     ASSERT(m_retargetedRelatedNode == &currentTarget.treeScope().retargetToScope(m_relatedNode));
 }
+
 #endif
 
 }

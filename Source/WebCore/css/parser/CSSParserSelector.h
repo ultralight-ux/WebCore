@@ -21,23 +21,13 @@
 #pragma once
 
 #include "CSSSelector.h"
-#include "CSSValueKeywords.h"
-#include "CSSValueList.h"
-#include <wtf/text/AtomicString.h>
-#include <wtf/text/AtomicStringHash.h>
-#include <wtf/text/WTFString.h>
+#include <wtf/text/AtomStringHash.h>
 
 namespace WebCore {
-
-class CSSValue;
-class QualifiedName;
 
 enum class CSSParserSelectorCombinator {
     Child,
     DescendantSpace,
-#if ENABLE(CSS_SELECTORS_LEVEL4)
-    DescendantDoubleChild,
-#endif
     DirectAdjacent,
     IndirectAdjacent
 };
@@ -45,25 +35,21 @@ enum class CSSParserSelectorCombinator {
 class CSSParserSelector {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static CSSParserSelector* parsePseudoClassSelectorFromStringView(StringView&);
-    static CSSParserSelector* parsePseudoElementSelectorFromStringView(StringView&);
-    static CSSParserSelector* parsePagePseudoSelector(const AtomicString&);
-    
+    static std::unique_ptr<CSSParserSelector> parsePseudoClassSelector(StringView);
+    static std::unique_ptr<CSSParserSelector> parsePseudoElementSelector(StringView);
+    static std::unique_ptr<CSSParserSelector> parsePagePseudoSelector(StringView);
+
     CSSParserSelector();
     explicit CSSParserSelector(const QualifiedName&);
     ~CSSParserSelector();
 
     std::unique_ptr<CSSSelector> releaseSelector() { return WTFMove(m_selector); }
 
-    void setValue(const AtomicString& value, bool matchLowerCase = false) { m_selector->setValue(value, matchLowerCase); }
-    
-    // FIXME-NEWPARSER: These two methods can go away once old parser is gone.
-    void setAttribute(const QualifiedName& value, bool isCaseInsensitive) { m_selector->setAttribute(value, isCaseInsensitive); }
-    void setAttributeValueMatchingIsCaseInsensitive(bool isCaseInsensitive) { m_selector->setAttributeValueMatchingIsCaseInsensitive(isCaseInsensitive); }
-    
+    void setValue(const AtomString& value, bool matchLowerCase = false) { m_selector->setValue(value, matchLowerCase); }
+
     void setAttribute(const QualifiedName& value, bool convertToLowercase, CSSSelector::AttributeMatchType type) { m_selector->setAttribute(value, convertToLowercase, type); }
     
-    void setArgument(const AtomicString& value) { m_selector->setArgument(value); }
+    void setArgument(const AtomString& value) { m_selector->setArgument(value); }
     void setNth(int a, int b) { m_selector->setNth(a, b); }
     void setMatch(CSSSelector::Match value) { m_selector->setMatch(value); }
     void setRelation(CSSSelector::RelationType value) { m_selector->setRelation(value); }
@@ -75,21 +61,14 @@ public:
     
     void setPseudoElementType(CSSSelector::PseudoElementType type) { m_selector->setPseudoElementType(type); }
 
-    void adoptSelectorVector(Vector<std::unique_ptr<CSSParserSelector>>& selectorVector);
-    void setLangArgumentList(std::unique_ptr<Vector<AtomicString>>);
+    void adoptSelectorVector(Vector<std::unique_ptr<CSSParserSelector>>&&);
+    void setLangArgumentList(std::unique_ptr<Vector<AtomString>>);
     void setSelectorList(std::unique_ptr<CSSSelectorList>);
 
     CSSSelector::PseudoClassType pseudoClassType() const { return m_selector->pseudoClassType(); }
     bool isCustomPseudoElement() const { return m_selector->isCustomPseudoElement(); }
 
-    bool isPseudoElementCueFunction() const
-    {
-#if ENABLE(VIDEO_TRACK)
-        return m_selector->match() == CSSSelector::PseudoElement && m_selector->pseudoElementType() == CSSSelector::PseudoElementCue;
-#else
-        return false;
-#endif
-    }
+    bool isPseudoElementCueFunction() const;
 
     bool hasShadowDescendant() const;
     bool matchesPseudoElement() const;
@@ -125,11 +104,19 @@ inline bool CSSParserSelector::needsImplicitShadowCombinatorForMatching() const
 {
     return match() == CSSSelector::PseudoElement
         && (pseudoElementType() == CSSSelector::PseudoElementWebKitCustom
-            || pseudoElementType() == CSSSelector::PseudoElementUserAgentCustom
 #if ENABLE(VIDEO_TRACK)
             || pseudoElementType() == CSSSelector::PseudoElementCue
 #endif
             || pseudoElementType() == CSSSelector::PseudoElementWebKitCustomLegacyPrefixed);
+}
+
+inline bool CSSParserSelector::isPseudoElementCueFunction() const
+{
+#if ENABLE(VIDEO_TRACK)
+    return m_selector->match() == CSSSelector::PseudoElement && m_selector->pseudoElementType() == CSSSelector::PseudoElementCue;
+#else
+    return false;
+#endif
 }
 
 }

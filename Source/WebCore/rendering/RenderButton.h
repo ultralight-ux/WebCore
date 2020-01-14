@@ -21,7 +21,6 @@
 #pragma once
 
 #include "RenderFlexibleBox.h"
-#include "Timer.h"
 #include <memory>
 
 namespace WebCore {
@@ -33,6 +32,7 @@ class RenderTextFragment;
 // For inputs, they will also generate an anonymous RenderText and keep its style and content up
 // to date as the button changes.
 class RenderButton final : public RenderFlexibleBox {
+    WTF_MAKE_ISO_ALLOCATED(RenderButton);
 public:
     RenderButton(HTMLFormControlElement&, RenderStyle&&);
     virtual ~RenderButton();
@@ -41,24 +41,27 @@ public:
 
     bool canBeSelectionLeaf() const override;
 
-    void addChild(RenderObject* newChild, RenderObject *beforeChild = 0) override;
-    void removeChild(RenderObject&) override;
-    void removeLeftoverAnonymousBlock(RenderBlock*) override { }
     bool createsAnonymousWrapper() const override { return true; }
 
-    void setupInnerStyle(RenderStyle*);
     void updateFromElement() override;
 
     bool canHaveGeneratedChildren() const override;
     bool hasControlClip() const override { return true; }
     LayoutRect controlClipRect(const LayoutPoint&) const override;
 
+    void updateAnonymousChildStyle(RenderStyle&) const override;
+
     void setText(const String&);
     String text() const;
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     void layout() override;
 #endif
+
+    RenderBlock* innerRenderer() const { return m_inner.get(); }
+    void setInnerRenderer(RenderBlock&);
+
+    int baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const override;
 
 private:
     void element() const = delete;
@@ -66,17 +69,12 @@ private:
     const char* renderName() const override { return "RenderButton"; }
     bool isRenderButton() const override { return true; }
 
-    void styleWillChange(StyleDifference, const RenderStyle& newStyle) override;
-    void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
-
     bool hasLineIfEmpty() const override;
-
-    bool requiresForcedStyleRecalcPropagation() const override { return true; }
 
     bool isFlexibleBoxImpl() const override { return true; }
 
-    RenderTextFragment* m_buttonText;
-    RenderBlock* m_inner;
+    WeakPtr<RenderTextFragment> m_buttonText;
+    WeakPtr<RenderBlock> m_inner;
 };
 
 } // namespace WebCore

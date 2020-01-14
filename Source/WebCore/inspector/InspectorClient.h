@@ -27,6 +27,7 @@
 #pragma once
 
 #include <wtf/Forward.h>
+#include <wtf/Optional.h>
 
 namespace Inspector {
 class FrontendChannel;
@@ -41,9 +42,10 @@ class Page;
 
 class InspectorClient {
 public:
-    virtual ~InspectorClient() { }
+    virtual ~InspectorClient() = default;
 
     virtual void inspectedPageDestroyed() = 0;
+    virtual void frontendCountChanged(unsigned) { }
 
     virtual Inspector::FrontendChannel* openLocalFrontend(InspectorController*) = 0;
     virtual void bringFrontendToFront() = 0;
@@ -60,6 +62,12 @@ public:
     virtual void showPaintRect(const FloatRect&) { }
     virtual void didSetSearchingForNode(bool) { }
     virtual void elementSelectionChanged(bool) { }
+
+    virtual void setMockCaptureDevicesEnabledOverride(Optional<bool>) { }
+
+#if ENABLE(REMOTE_INSPECTOR)
+    virtual bool allowRemoteInspectionToPageDirectly() const { return false; }
+#endif
 
     WEBCORE_EXPORT static void doDispatchMessageOnFrontendPage(Page* frontendPage, const String& message);
 };

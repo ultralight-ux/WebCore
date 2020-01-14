@@ -33,19 +33,6 @@ class HTMLMediaElementEnums : public MediaPlayerEnums {
 public:
     using MediaPlayerEnums::VideoFullscreenMode;
 
-    enum DelayedActionType {
-        LoadMediaResource = 1 << 0,
-        ConfigureTextTracks = 1 << 1,
-        TextTrackChangesNotification = 1 << 2,
-        ConfigureTextTrackDisplay = 1 << 3,
-        CheckPlaybackTargetCompatablity = 1 << 4,
-        CheckMediaState = 1 << 5,
-        MediaEngineUpdated = 1 << 6,
-        UpdatePlayState = 1 << 7,
-
-        EveryDelayedAction = LoadMediaResource | ConfigureTextTracks | TextTrackChangesNotification | ConfigureTextTrackDisplay | CheckPlaybackTargetCompatablity | CheckMediaState | UpdatePlayState,
-    };
-
     enum ReadyState { HAVE_NOTHING, HAVE_METADATA, HAVE_CURRENT_DATA, HAVE_FUTURE_DATA, HAVE_ENOUGH_DATA };
     enum NetworkState { NETWORK_EMPTY, NETWORK_IDLE, NETWORK_LOADING, NETWORK_NO_SOURCE };
     enum TextTrackVisibilityCheckType { CheckTextTrackVisibility, AssumeTextTrackVisibilityChanged };
@@ -58,4 +45,31 @@ public:
     } SeekType;
 };
 
+String convertEnumerationToString(HTMLMediaElementEnums::ReadyState);
+String convertEnumerationToString(HTMLMediaElementEnums::NetworkState);
+
 } // namespace WebCore
+
+namespace WTF {
+
+template<typename Type>
+struct LogArgument;
+
+template <>
+struct LogArgument<WebCore::HTMLMediaElementEnums::ReadyState> {
+    static String toString(const WebCore::HTMLMediaElementEnums::ReadyState state)
+    {
+        return convertEnumerationToString(state);
+    }
+};
+
+template <>
+struct LogArgument<WebCore::HTMLMediaElementEnums::NetworkState> {
+    static String toString(const WebCore::HTMLMediaElementEnums::NetworkState state)
+    {
+        return convertEnumerationToString(state);
+    }
+};
+
+}; // namespace WTF
+

@@ -27,27 +27,29 @@
 #include "Storage.h"
 
 #include "Document.h"
-#include "ExceptionCode.h"
 #include "Frame.h"
 #include "Page.h"
 #include "SchemeRegistry.h"
 #include "SecurityOrigin.h"
 #include "StorageArea.h"
+#include "StorageType.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-Ref<Storage> Storage::create(Frame* frame, RefPtr<StorageArea>&& storageArea)
+WTF_MAKE_ISO_ALLOCATED_IMPL(Storage);
+
+Ref<Storage> Storage::create(DOMWindow& window, Ref<StorageArea>&& storageArea)
 {
-    return adoptRef(*new Storage(frame, WTFMove(storageArea)));
+    return adoptRef(*new Storage(window, WTFMove(storageArea)));
 }
 
-Storage::Storage(Frame* frame, RefPtr<StorageArea>&& storageArea)
-    : DOMWindowProperty(frame)
+Storage::Storage(DOMWindow& window, Ref<StorageArea>&& storageArea)
+    : DOMWindowProperty(&window)
     , m_storageArea(WTFMove(storageArea))
 {
-    ASSERT(m_frame);
-    ASSERT(m_storageArea);
+    ASSERT(frame());
 
     m_storageArea->incrementAccessCount();
 }
@@ -57,100 +59,80 @@ Storage::~Storage()
     m_storageArea->decrementAccessCount();
 }
 
-ExceptionOr<unsigned> Storage::length() const
+unsigned Storage::length() const
 {
-    if (!m_storageArea->canAccessStorage(m_frame))
-        return Exception { SECURITY_ERR };
-
-    if (isDisabledByPrivateBrowsing())
-        return 0;
-
     return m_storageArea->length();
 }
 
-ExceptionOr<String> Storage::key(unsigned index) const
+String Storage::key(unsigned index) const
 {
-    if (!m_storageArea->canAccessStorage(m_frame))
-        return Exception { SECURITY_ERR };
-
-    if (isDisabledByPrivateBrowsing())
-        return String();
-
     return m_storageArea->key(index);
 }
 
-ExceptionOr<String> Storage::getItem(const String& key) const
+String Storage::getItem(const String& key) const
 {
-    if (!m_storageArea->canAccessStorage(m_frame))
-        return Exception { SECURITY_ERR };
-
-    if (isDisabledByPrivateBrowsing())
-        return String();
-
     return m_storageArea->item(key);
 }
 
 ExceptionOr<void> Storage::setItem(const String& key, const String& value)
 {
-    if (!m_storageArea->canAccessStorage(m_frame))
-        return Exception { SECURITY_ERR };
-
-    if (isDisabledByPrivateBrowsing())
-        return Exception { QUOTA_EXCEEDED_ERR };
+    auto* frame = this->frame();
+    if (!frame)
+        return Exception { InvalidAccessError };
 
     bool quotaException = false;
-    m_storageArea->setItem(m_frame, key, value, quotaException);
+    m_storageArea->setItem(frame, key, value, quotaException);
     if (quotaException)
-        return Exception { QUOTA_EXCEEDED_ERR };
+        return Exception { QuotaExceededError };
     return { };
 }
 
 ExceptionOr<void> Storage::removeItem(const String& key)
 {
-    if (!m_storageArea->canAccessStorage(m_frame))
-        return Exception { SECURITY_ERR };
+    auto* frame = this->frame();
+    if (!frame)
+        return Exception { InvalidAccessError };
 
-    if (isDisabledByPrivateBrowsing())
-        return { };
-
-    m_storageArea->removeItem(m_frame, key);
+    m_storageArea->removeItem(frame, key);
     return { };
+}
+
+bool Storage::prewarm()
+{
+    return m_storageArea->prewarm();
 }
 
 ExceptionOr<void> Storage::clear()
 {
-    if (!m_storageArea->canAccessStorage(m_frame))
-        return Exception { SECURITY_ERR };
+    auto* frame = this->frame();
+    if (!frame)
+        return Exception { InvalidAccessError };
 
-    if (isDisabledByPrivateBrowsing())
-        return { };
-
-    m_storageArea->clear(m_frame);
+    m_storageArea->clear(frame);
     return { };
 }
 
-ExceptionOr<bool> Storage::contains(const String& key) const
+bool Storage::contains(const String& key) const
 {
-    if (!m_storageArea->canAccessStorage(m_frame))
-        return Exception { SECURITY_ERR };
-
-    if (isDisabledByPrivateBrowsing())
-        return false;
-
     return m_storageArea->contains(key);
 }
 
-bool Storage::isDisabledByPrivateBrowsing() const
+bool Storage::isSupportedPropertyName(const String& propertyName) const
 {
-    if (!m_frame->page()->usesEphemeralSession())
-        return false;
+    return m_storageArea->contains(propertyName);
+}
 
-    if (m_storageArea->storageType() == LocalStorage) {
-        if (SchemeRegistry::allowsLocalStorageAccessInPrivateBrowsing(m_frame->document()->securityOrigin()->protocol()))
-            return false;
-    }
+Vector<AtomString> Storage::supportedPropertyNames() const
+{
+    unsigned length = m_storageArea->length();
 
-    return true;
+    Vector<AtomString> result;
+    result.reserveInitialCapacity(length);
+
+    for (unsigned i = 0; i < length; ++i)
+        result.uncheckedAppend(m_storageArea->key(i));
+
+    return result;
 }
 
 } // namespace WebCore

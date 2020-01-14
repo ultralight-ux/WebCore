@@ -24,9 +24,11 @@
  */
 
 #include "config.h"
+#include "TextCombinerGStreamer.h"
+
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(VIDEO_TRACK)
 
-#include "TextCombinerGStreamer.h"
+#include "GStreamerCommon.h"
 
 static GstStaticPadTemplate sinkTemplate =
     GST_STATIC_PAD_TEMPLATE("sink_%u", GST_PAD_SINK, GST_PAD_REQUEST,
@@ -76,24 +78,22 @@ static gboolean webkitTextCombinerPadEvent(GstPad*, GstObject* parent, GstEvent*
 
 static void webkit_text_combiner_init(WebKitTextCombiner* combiner)
 {
-    combiner->funnel = gst_element_factory_make("funnel", NULL);
+    combiner->funnel = gst_element_factory_make("funnel", nullptr);
     ASSERT(combiner->funnel);
 
     gboolean ret = gst_bin_add(GST_BIN(combiner), combiner->funnel);
     UNUSED_PARAM(ret);
     ASSERT(ret);
 
-    GstPad* pad = gst_element_get_static_pad(combiner->funnel, "src");
+    GRefPtr<GstPad> pad = adoptGRef(gst_element_get_static_pad(combiner->funnel, "src"));
     ASSERT(pad);
 
-    ret = gst_element_add_pad(GST_ELEMENT(combiner), gst_ghost_pad_new("src", pad));
+    ret = gst_element_add_pad(GST_ELEMENT(combiner), gst_ghost_pad_new("src", pad.get()));
     ASSERT(ret);
 }
 
 static void webkit_text_combiner_pad_init(WebKitTextCombinerPad* pad)
 {
-    pad->tags = 0;
-
     gst_pad_set_event_function(GST_PAD(pad), webkitTextCombinerPadEvent);
 }
 
@@ -135,19 +135,19 @@ static gboolean webkitTextCombinerPadEvent(GstPad* pad, GstObject* parent, GstEv
         gst_event_parse_caps(event, &caps);
         ASSERT(caps);
 
-        GstPad* target = gst_ghost_pad_get_target(GST_GHOST_PAD(pad));
+        GRefPtr<GstPad> target = adoptGRef(gst_ghost_pad_get_target(GST_GHOST_PAD(pad)));
         ASSERT(target);
 
-        GstElement* targetParent = gst_pad_get_parent_element(target);
+        GRefPtr<GstElement> targetParent = adoptGRef(gst_pad_get_parent_element(target.get()));
         ASSERT(targetParent);
 
-        GstCaps* textCaps = gst_caps_new_empty_simple("text/x-raw");
-        if (gst_caps_can_intersect(textCaps, caps)) {
+        GRefPtr<GstCaps> textCaps = adoptGRef(gst_caps_new_empty_simple("text/x-raw"));
+        if (gst_caps_can_intersect(textCaps.get(), caps)) {
             /* Caps are plain text, put a WebVTT encoder between the ghostpad and
              * the funnel */
-            if (targetParent == combiner->funnel) {
+            if (targetParent.get() == combiner->funnel) {
                 /* Setup a WebVTT encoder */
-                GstElement* encoder = gst_element_factory_make("webvttenc", NULL);
+                GstElement* encoder = gst_element_factory_make("webvttenc", nullptr);
                 ASSERT(encoder);
 
                 ret = gst_bin_add(GST_BIN(combiner), encoder);
@@ -157,45 +157,38 @@ static gboolean webkitTextCombinerPadEvent(GstPad* pad, GstObject* parent, GstEv
                 ASSERT(ret);
 
                 /* Switch the ghostpad to target the WebVTT encoder */
-                GstPad* sinkPad = gst_element_get_static_pad(encoder, "sink");
+                GRefPtr<GstPad> sinkPad = adoptGRef(gst_element_get_static_pad(encoder, "sink"));
                 ASSERT(sinkPad);
 
-                ret = gst_ghost_pad_set_target(GST_GHOST_PAD(pad), sinkPad);
+                ret = gst_ghost_pad_set_target(GST_GHOST_PAD(pad), sinkPad.get());
                 ASSERT(ret);
-                gst_object_unref(sinkPad);
 
                 /* Connect the WebVTT encoder to the funnel */
-                GstPad* srcPad = gst_element_get_static_pad(encoder, "src");
+                GRefPtr<GstPad> srcPad = adoptGRef(gst_element_get_static_pad(encoder, "src"));
                 ASSERT(srcPad);
 
-                ret = GST_PAD_LINK_SUCCESSFUL(gst_pad_link(srcPad, target));
+                ret = GST_PAD_LINK_SUCCESSFUL(gst_pad_link(srcPad.get(), target.get()));
                 ASSERT(ret);
-                gst_object_unref(srcPad);
             } /* else: pipeline is already correct */
         } else {
             /* Caps are not plain text, remove the WebVTT encoder */
-            if (targetParent != combiner->funnel) {
+            if (targetParent.get() != combiner->funnel) {
                 /* Get the funnel sink pad */
-                GstPad* srcPad = gst_element_get_static_pad(targetParent, "src");
+                GRefPtr<GstPad> srcPad = adoptGRef(gst_element_get_static_pad(targetParent.get(), "src"));
                 ASSERT(srcPad);
 
-                GstPad* sinkPad = gst_pad_get_peer(srcPad);
+                GRefPtr<GstPad> sinkPad = adoptGRef(gst_pad_get_peer(srcPad.get()));
                 ASSERT(sinkPad);
-                gst_object_unref(srcPad);
 
                 /* Switch the ghostpad to target the funnel */
-                ret = gst_ghost_pad_set_target(GST_GHOST_PAD(pad), sinkPad);
+                ret = gst_ghost_pad_set_target(GST_GHOST_PAD(pad), sinkPad.get());
                 ASSERT(ret);
-                gst_object_unref(sinkPad);
 
                 /* Remove the WebVTT encoder */
-                ret = gst_bin_remove(GST_BIN(combiner), targetParent);
+                ret = gst_bin_remove(GST_BIN(combiner), targetParent.get());
                 ASSERT(ret);
             } /* else: pipeline is already correct */
         }
-        gst_caps_unref(textCaps);
-        gst_object_unref(targetParent);
-        gst_object_unref(target);
         break;
     }
     case GST_EVENT_TAG: {
@@ -232,7 +225,7 @@ static GstPad* webkitTextCombinerRequestNewPad(GstElement * element,
     GstPad* pad = gst_element_request_pad(combiner->funnel, templ, name, caps);
     ASSERT(pad);
 
-    GstPad* ghostPad = GST_PAD(g_object_new(WEBKIT_TYPE_TEXT_COMBINER_PAD, "direction", gst_pad_get_direction(pad), NULL));
+    GstPad* ghostPad = GST_PAD(g_object_new(WEBKIT_TYPE_TEXT_COMBINER_PAD, "direction", gst_pad_get_direction(pad), nullptr));
     ASSERT(ghostPad);
 
     ret = gst_ghost_pad_construct(GST_GHOST_PAD(ghostPad));
@@ -252,13 +245,12 @@ static GstPad* webkitTextCombinerRequestNewPad(GstElement * element,
 static void webkitTextCombinerReleasePad(GstElement *element, GstPad *pad)
 {
     WebKitTextCombiner* combiner = WEBKIT_TEXT_COMBINER(element);
-    GstPad* peer = gst_pad_get_peer(pad);
-    if (peer) {
-        GstElement* parent = gst_pad_get_parent_element(peer);
+    if (GRefPtr<GstPad> peer = adoptGRef(gst_pad_get_peer(pad))) {
+        GRefPtr<GstElement> parent = adoptGRef(gst_pad_get_parent_element(peer.get()));
         ASSERT(parent);
-        gst_element_release_request_pad(parent, peer);
-        if (parent != combiner->funnel)
-            gst_bin_remove(GST_BIN(combiner), parent);
+        gst_element_release_request_pad(parent.get(), peer.get());
+        if (parent.get() != combiner->funnel)
+            gst_bin_remove(GST_BIN(combiner), parent.get());
     }
 
     gst_element_remove_pad(element, pad);
@@ -295,7 +287,7 @@ static void webkit_text_combiner_pad_class_init(WebKitTextCombinerPadClass* klas
 
 GstElement* webkitTextCombinerNew()
 {
-    return GST_ELEMENT(g_object_new(WEBKIT_TYPE_TEXT_COMBINER, 0));
+    return GST_ELEMENT(g_object_new(WEBKIT_TYPE_TEXT_COMBINER, nullptr));
 }
 
 #endif // ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(VIDEO_TRACK)

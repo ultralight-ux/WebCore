@@ -19,15 +19,14 @@
  *
  */
 
-#ifndef ASCIIFastPath_h
-#define ASCIIFastPath_h
+#pragma once
 
 #include <stdint.h>
 #include <unicode/utypes.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/LChar.h>
 
-#if OS(DARWIN) && (CPU(X86) || CPU(X86_64))
+#if CPU(X86_SSE2)
 #include <emmintrin.h>
 #endif
 
@@ -109,7 +108,7 @@ inline bool charactersAreAllASCII(const CharacterType* characters, size_t length
 
 inline void copyLCharsFromUCharSource(LChar* destination, const UChar* source, size_t length)
 {
-#if OS(DARWIN) && (CPU(X86) || CPU(X86_64))
+#if CPU(X86_SSE2)
     const uintptr_t memoryAccessSize = 16; // Memory accesses on 16 byte (128 bit) alignment
     const uintptr_t memoryAccessMask = memoryAccessSize - 1;
 
@@ -139,7 +138,7 @@ inline void copyLCharsFromUCharSource(LChar* destination, const UChar* source, s
         ASSERT(!(source[i] & 0xff00));
         destination[i] = static_cast<LChar>(source[i]);
     }
-#elif COMPILER(GCC_OR_CLANG) && CPU(ARM64) && defined(NDEBUG)
+#elif COMPILER(GCC_COMPATIBLE) && CPU(ARM64) && !defined(__ILP32__) && defined(NDEBUG)
     const LChar* const end = destination + length;
     const uintptr_t memoryAccessSize = 16;
 
@@ -160,7 +159,7 @@ inline void copyLCharsFromUCharSource(LChar* destination, const UChar* source, s
 
     while (destination != end)
         *destination++ = static_cast<LChar>(*source++);
-#elif COMPILER(GCC_OR_CLANG) && CPU(ARM_NEON) && !(CPU(BIG_ENDIAN) || CPU(MIDDLE_ENDIAN)) && defined(NDEBUG)
+#elif COMPILER(GCC_COMPATIBLE) && CPU(ARM_NEON) && !(CPU(BIG_ENDIAN) || CPU(MIDDLE_ENDIAN)) && defined(NDEBUG)
     const LChar* const end = destination + length;
     const uintptr_t memoryAccessSize = 8;
 
@@ -194,4 +193,4 @@ inline void copyLCharsFromUCharSource(LChar* destination, const UChar* source, s
 
 } // namespace WTF
 
-#endif // ASCIIFastPath_h
+using WTF::charactersAreAllASCII;

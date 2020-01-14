@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2011, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,21 +28,21 @@
 
 #include "CSSFontFaceSource.h"
 #include "CSSFontFaceSrcValue.h"
-#include "CSSFontFamily.h"
 #include "CSSFontFeatureValue.h"
 #include "CSSFontSelector.h"
+#include "CSSFontStyleRangeValue.h"
 #include "CSSPrimitiveValueMappings.h"
-#include "CSSSegmentedFontFace.h"
 #include "CSSUnicodeRangeValue.h"
 #include "CSSValue.h"
 #include "CSSValueList.h"
 #include "Document.h"
 #include "Font.h"
+#include "FontCache.h"
 #include "FontDescription.h"
 #include "FontFace.h"
 #include "FontVariantBuilder.h"
-#include "RuntimeEnabledFeatures.h"
 #include "Settings.h"
+#include "StyleBuilderConverter.h"
 #include "StyleProperties.h"
 #include "StyleRule.h"
 
@@ -73,7 +73,7 @@ void CSSFontFace::appendSources(CSSFontFace& fontFace, CSSValueList& srcList, Do
         fontFaceElement = item.svgFontFaceElement();
 #endif
         if (!item.isLocal()) {
-            Settings* settings = document ? document->settings() : nullptr;
+            const Settings* settings = document ? &document->settings() : nullptr;
             bool allowDownloading = foundSVGFont || (settings && settings->downloadableBinaryFontsEnabled());
             if (allowDownloading && item.isSupportedFormat() && document) {
                 if (CachedFont* cachedFont = item.cachedFont(document, foundSVGFont, isInitiatingElementInUserAgentShadowTree))
@@ -89,18 +89,16 @@ void CSSFontFace::appendSources(CSSFontFace& fontFace, CSSValueList& srcList, Do
 }
 
 CSSFontFace::CSSFontFace(CSSFontSelector* fontSelector, StyleRuleFontFace* cssConnection, FontFace* wrapper, bool isLocalFallback)
-    : m_timeoutTimer(*this, &CSSFontFace::timeoutFired)
-    , m_fontSelector(fontSelector)
+    : m_fontSelector(fontSelector)
     , m_cssConnection(cssConnection)
-    , m_wrapper(wrapper ? wrapper->createWeakPtr() : WeakPtr<FontFace>())
+    , m_wrapper(makeWeakPtr(wrapper))
     , m_isLocalFallback(isLocalFallback)
     , m_mayBePurged(!wrapper)
+    , m_timeoutTimer(*this, &CSSFontFace::timeoutFired)
 {
 }
 
-CSSFontFace::~CSSFontFace()
-{
-}
+CSSFontFace::~CSSFontFace() = default;
 
 bool CSSFontFace::setFamilies(CSSValue& family)
 {
@@ -124,92 +122,133 @@ bool CSSFontFace::setFamilies(CSSValue& family)
     return true;
 }
 
-std::optional<FontTraitsMask> CSSFontFace::calculateStyleMask(CSSValue& style)
+FontFace* CSSFontFace::existingWrapper()
 {
-    if (!is<CSSPrimitiveValue>(style))
-        return std::nullopt;
-
-    switch (downcast<CSSPrimitiveValue>(style).valueID()) {
-    case CSSValueNormal:
-        return FontStyleNormalMask;
-    case CSSValueItalic:
-    case CSSValueOblique:
-        return FontStyleItalicMask;
-    default:
-        return FontStyleNormalMask;
-    }
-
-    return FontStyleNormalMask;
+    return m_wrapper.get();
 }
 
-bool CSSFontFace::setStyle(CSSValue& style)
+static FontSelectionRange calculateWeightRange(CSSValue& value)
 {
-    if (auto mask = calculateStyleMask(style)) {
-        m_traitsMask = static_cast<FontTraitsMask>((static_cast<unsigned>(m_traitsMask) & (~FontStyleMask)) | mask.value());
-
-        if (m_cssConnection)
-            m_cssConnection->mutableProperties().setProperty(CSSPropertyFontStyle, &style);
-
-        iterateClients(m_clients, [&](Client& client) {
-            client.fontPropertyChanged(*this);
-        });
-
-        return true;
+    if (value.isValueList()) {
+        auto& valueList = downcast<CSSValueList>(value);
+        ASSERT(valueList.length() == 2);
+        if (valueList.length() != 2)
+            return { normalWeightValue(), normalWeightValue() };
+        ASSERT(valueList.item(0)->isPrimitiveValue());
+        ASSERT(valueList.item(1)->isPrimitiveValue());
+        auto& value0 = downcast<CSSPrimitiveValue>(*valueList.item(0));
+        auto& value1 = downcast<CSSPrimitiveValue>(*valueList.item(1));
+        auto result0 = StyleBuilderConverter::convertFontWeightFromValue(value0);
+        auto result1 = StyleBuilderConverter::convertFontWeightFromValue(value1);
+        return { result0, result1 };
     }
-    return false;
+
+    ASSERT(is<CSSPrimitiveValue>(value));
+    auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
+    FontSelectionValue result = StyleBuilderConverter::convertFontWeightFromValue(primitiveValue);
+    return { result, result };
 }
 
-std::optional<FontTraitsMask> CSSFontFace::calculateWeightMask(CSSValue& weight)
+void CSSFontFace::setWeight(CSSValue& weight)
 {
-    if (!is<CSSPrimitiveValue>(weight))
-        return std::nullopt;
+    auto range = calculateWeightRange(weight);
+    if (m_fontSelectionCapabilities.weight == range)
+        return;
 
-    switch (downcast<CSSPrimitiveValue>(weight).valueID()) {
-    case CSSValueBold:
-    case CSSValueBolder:
-    case CSSValue700:
-        return FontWeight700Mask;
-    case CSSValueNormal:
-    case CSSValue400:
-        return FontWeight400Mask;
-    case CSSValue900:
-        return FontWeight900Mask;
-    case CSSValue800:
-        return FontWeight800Mask;
-    case CSSValue600:
-        return FontWeight600Mask;
-    case CSSValue500:
-        return FontWeight500Mask;
-    case CSSValue300:
-        return FontWeight300Mask;
-    case CSSValueLighter:
-    case CSSValue200:
-        return FontWeight200Mask;
-    case CSSValue100:
-        return FontWeight100Mask;
-    default:
-        return FontWeight400Mask;
-    }
+    setWeight(range);
 
-    return FontWeight400Mask;
+    if (m_cssConnection)
+        m_cssConnection->mutableProperties().setProperty(CSSPropertyFontWeight, &weight);
+
+    iterateClients(m_clients, [&](Client& client) {
+        client.fontPropertyChanged(*this);
+    });
 }
 
-bool CSSFontFace::setWeight(CSSValue& weight)
+static FontSelectionRange calculateStretchRange(CSSValue& value)
 {
-    if (auto mask = calculateWeightMask(weight)) {
-        m_traitsMask = static_cast<FontTraitsMask>((static_cast<unsigned>(m_traitsMask) & (~FontWeightMask)) | mask.value());
-
-        if (m_cssConnection)
-            m_cssConnection->mutableProperties().setProperty(CSSPropertyFontWeight, &weight);
-
-        iterateClients(m_clients, [&](Client& client) {
-            client.fontPropertyChanged(*this);
-        });
-
-        return true;
+    if (value.isValueList()) {
+        auto& valueList = downcast<CSSValueList>(value);
+        ASSERT(valueList.length() == 2);
+        if (valueList.length() != 2)
+            return { normalStretchValue(), normalStretchValue() };
+        ASSERT(valueList.item(0)->isPrimitiveValue());
+        ASSERT(valueList.item(1)->isPrimitiveValue());
+        auto& value0 = downcast<CSSPrimitiveValue>(*valueList.item(0));
+        auto& value1 = downcast<CSSPrimitiveValue>(*valueList.item(1));
+        auto result0 = StyleBuilderConverter::convertFontStretchFromValue(value0);
+        auto result1 = StyleBuilderConverter::convertFontStretchFromValue(value1);
+        return { result0, result1 };
     }
 
-    return false;
+    ASSERT(is<CSSPrimitiveValue>(value));
+    const auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
+    FontSelectionValue result = StyleBuilderConverter::convertFontStretchFromValue(primitiveValue);
+    return { result, result };
+}
+
+void CSSFontFace::setStretch(CSSValue& style)
+{
+    auto range = calculateStretchRange(style);
+    if (m_fontSelectionCapabilities.width == range)
+        return;
+
+    setStretch(range);
+
+    if (m_cssConnection)
+        m_cssConnection->mutableProperties().setProperty(CSSPropertyFontStretch, &style);
+
+    iterateClients(m_clients, [&](Client& client) {
+        client.fontPropertyChanged(*this);
+    });
+}
+
+static FontSelectionRange calculateItalicRange(CSSValue& value)
+{
+    if (value.isFontStyleValue()) {
+        auto result = StyleBuilderConverter::convertFontStyleFromValue(value);
+        return { result.valueOr(normalItalicValue()), result.valueOr(normalItalicValue()) };
+    }
+
+    ASSERT(value.isFontStyleRangeValue());
+    auto& rangeValue = downcast<CSSFontStyleRangeValue>(value);
+    ASSERT(rangeValue.fontStyleValue->isValueID());
+    auto valueID = rangeValue.fontStyleValue->valueID();
+    if (!rangeValue.obliqueValues) {
+        if (valueID == CSSValueNormal)
+            return { normalItalicValue(), normalItalicValue() };
+        ASSERT(valueID == CSSValueItalic || valueID == CSSValueOblique);
+        return { italicValue(), italicValue() };
+    }
+    ASSERT(valueID == CSSValueOblique);
+    auto length = rangeValue.obliqueValues->length();
+    if (length == 1) {
+        auto& primitiveValue = downcast<CSSPrimitiveValue>(*rangeValue.obliqueValues->item(0));
+        FontSelectionValue result(primitiveValue.value<float>(CSSPrimitiveValue::CSS_DEG));
+        return { result, result };
+    }
+    ASSERT(length == 2);
+    auto& primitiveValue1 = downcast<CSSPrimitiveValue>(*rangeValue.obliqueValues->item(0));
+    auto& primitiveValue2 = downcast<CSSPrimitiveValue>(*rangeValue.obliqueValues->item(1));
+    FontSelectionValue result1(primitiveValue1.value<float>(CSSPrimitiveValue::CSS_DEG));
+    FontSelectionValue result2(primitiveValue2.value<float>(CSSPrimitiveValue::CSS_DEG));
+    return { result1, result2 };
+}
+
+void CSSFontFace::setStyle(CSSValue& style)
+{
+    auto range = calculateItalicRange(style);
+    if (m_fontSelectionCapabilities.slope == range)
+        return;
+
+    setStyle(range);
+
+    if (m_cssConnection)
+        m_cssConnection->mutableProperties().setProperty(CSSPropertyFontStyle, &style);
+
+    iterateClients(m_clients, [&](Client& client) {
+        client.fontPropertyChanged(*this);
+    });
 }
 
 bool CSSFontFace::setUnicodeRange(CSSValue& unicodeRange)
@@ -217,12 +256,17 @@ bool CSSFontFace::setUnicodeRange(CSSValue& unicodeRange)
     if (!is<CSSValueList>(unicodeRange))
         return false;
 
-    m_ranges.clear();
+    Vector<UnicodeRange> ranges;
     auto& list = downcast<CSSValueList>(unicodeRange);
     for (auto& rangeValue : list) {
         auto& range = downcast<CSSUnicodeRangeValue>(rangeValue.get());
-        m_ranges.append({ range.from(), range.to() });
+        ranges.append({ range.from(), range.to() });
     }
+
+    if (ranges == m_ranges)
+        return true;
+
+    m_ranges = WTFMove(ranges);
 
     if (m_cssConnection)
         m_cssConnection->mutableProperties().setProperty(CSSPropertyUnicodeRange, &unicodeRange);
@@ -237,6 +281,12 @@ bool CSSFontFace::setUnicodeRange(CSSValue& unicodeRange)
 bool CSSFontFace::setVariantLigatures(CSSValue& variantLigatures)
 {
     auto ligatures = extractFontVariantLigatures(variantLigatures);
+
+    if (m_variantSettings.commonLigatures == ligatures.commonLigatures
+        && m_variantSettings.discretionaryLigatures == ligatures.discretionaryLigatures
+        && m_variantSettings.historicalLigatures == ligatures.historicalLigatures
+        && m_variantSettings.contextualAlternates == ligatures.contextualAlternates)
+        return true;
 
     m_variantSettings.commonLigatures = ligatures.commonLigatures;
     m_variantSettings.discretionaryLigatures = ligatures.discretionaryLigatures;
@@ -258,7 +308,12 @@ bool CSSFontFace::setVariantPosition(CSSValue& variantPosition)
     if (!is<CSSPrimitiveValue>(variantPosition))
         return false;
 
-    m_variantSettings.position = downcast<CSSPrimitiveValue>(variantPosition);
+    FontVariantPosition position = downcast<CSSPrimitiveValue>(variantPosition);
+
+    if (m_variantSettings.position == position)
+        return true;
+
+    m_variantSettings.position = position;
 
     if (m_cssConnection)
         m_cssConnection->mutableProperties().setProperty(CSSPropertyFontVariantPosition, &variantPosition);
@@ -275,7 +330,12 @@ bool CSSFontFace::setVariantCaps(CSSValue& variantCaps)
     if (!is<CSSPrimitiveValue>(variantCaps))
         return false;
 
-    m_variantSettings.caps = downcast<CSSPrimitiveValue>(variantCaps);
+    FontVariantCaps caps = downcast<CSSPrimitiveValue>(variantCaps);
+
+    if (m_variantSettings.caps == caps)
+        return true;
+
+    m_variantSettings.caps = caps;
 
     if (m_cssConnection)
         m_cssConnection->mutableProperties().setProperty(CSSPropertyFontVariantCaps, &variantCaps);
@@ -290,6 +350,13 @@ bool CSSFontFace::setVariantCaps(CSSValue& variantCaps)
 bool CSSFontFace::setVariantNumeric(CSSValue& variantNumeric)
 {
     auto numeric = extractFontVariantNumeric(variantNumeric);
+
+    if (m_variantSettings.numericFigure == numeric.figure
+        && m_variantSettings.numericSpacing == numeric.spacing
+        && m_variantSettings.numericFraction == numeric.fraction
+        && m_variantSettings.numericOrdinal == numeric.ordinal
+        && m_variantSettings.numericSlashedZero == numeric.slashedZero)
+        return true;
 
     m_variantSettings.numericFigure = numeric.figure;
     m_variantSettings.numericSpacing = numeric.spacing;
@@ -312,7 +379,12 @@ bool CSSFontFace::setVariantAlternates(CSSValue& variantAlternates)
     if (!is<CSSPrimitiveValue>(variantAlternates))
         return false;
 
-    m_variantSettings.alternates = downcast<CSSPrimitiveValue>(variantAlternates);
+    FontVariantAlternates alternates = downcast<CSSPrimitiveValue>(variantAlternates);
+
+    if (m_variantSettings.alternates == alternates)
+        return true;
+
+    m_variantSettings.alternates = alternates;
 
     if (m_cssConnection)
         m_cssConnection->mutableProperties().setProperty(CSSPropertyFontVariantAlternates, &variantAlternates);
@@ -327,6 +399,11 @@ bool CSSFontFace::setVariantAlternates(CSSValue& variantAlternates)
 bool CSSFontFace::setVariantEastAsian(CSSValue& variantEastAsian)
 {
     auto eastAsian = extractFontVariantEastAsian(variantEastAsian);
+
+    if (m_variantSettings.eastAsianVariant == eastAsian.variant
+        && m_variantSettings.eastAsianWidth == eastAsian.width
+        && m_variantSettings.eastAsianRuby == eastAsian.ruby)
+        return true;
 
     m_variantSettings.eastAsianVariant = eastAsian.variant;
     m_variantSettings.eastAsianWidth = eastAsian.width;
@@ -370,6 +447,23 @@ void CSSFontFace::setFeatureSettings(CSSValue& featureSettings)
     });
 }
 
+void CSSFontFace::setLoadingBehavior(CSSValue& loadingBehaviorValue)
+{
+    auto loadingBehavior = static_cast<FontLoadingBehavior>(downcast<CSSPrimitiveValue>(loadingBehaviorValue));
+
+    if (m_loadingBehavior == loadingBehavior)
+        return;
+
+    m_loadingBehavior = loadingBehavior;
+
+    if (m_cssConnection)
+        m_cssConnection->mutableProperties().setProperty(CSSPropertyFontDisplay, &loadingBehaviorValue);
+
+    iterateClients(m_clients, [&](Client& client) {
+        client.fontPropertyChanged(*this);
+    });
+}
+
 bool CSSFontFace::rangesMatchCodePoint(UChar32 character) const
 {
     if (m_ranges.isEmpty())
@@ -384,13 +478,11 @@ bool CSSFontFace::rangesMatchCodePoint(UChar32 character) const
 
 void CSSFontFace::fontLoadEventOccurred()
 {
-    Ref<CSSFontFace> protectedThis(*this);
-
     // If the font is already in the cache, CSSFontFaceSource may report it's loaded before it is added here as a source.
     // Let's not pump the state machine until we've got all our sources. font() and load() are smart enough to act correctly
     // when a source is failed or succeeded before we have asked it to load.
     if (m_sourcesPopulated)
-        pump();
+        pump(ExternalResourceDownloadPolicy::Forbid);
 
     ASSERT(m_fontSelector);
     m_fontSelector->fontLoaded();
@@ -402,13 +494,32 @@ void CSSFontFace::fontLoadEventOccurred()
 
 void CSSFontFace::timeoutFired()
 {
-    setStatus(Status::TimedOut);
+    Ref<CSSFontFace> protectedThis(*this);
+    
+    switch (status()) {
+    case Status::Loading:
+        setStatus(Status::TimedOut);
+        break;
+    case Status::TimedOut:
+        // Cancelling the network request here could lead to a situation where a site's font never gets
+        // shown as the user navigates around to different pages on the site. This would occur if the
+        // download always takes longer than the timeout (even though the user may spend substantial time
+        // on each page). Therefore, we shouldn't cancel the network request here, but should use the
+        // loading infrastructure's timeout policies instead.
+        setStatus(Status::Failure);
+        break;
+    default:
+        ASSERT_NOT_REACHED();
+        break;
+    }
 
     fontLoadEventOccurred();
 }
 
-bool CSSFontFace::allSourcesFailed() const
+bool CSSFontFace::computeFailureState() const
 {
+    if (status() == Status::Failure)
+        return true;
     for (auto& source : m_sources) {
         if (source->status() != CSSFontFaceSource::Status::Failure)
             return false;
@@ -457,14 +568,14 @@ Ref<FontFace> CSSFontFace::wrapper()
         return *m_wrapper.get();
 
     auto wrapper = FontFace::create(*this);
-    m_wrapper = wrapper->createWeakPtr();
+    m_wrapper = makeWeakPtr(wrapper.get());
     initializeWrapper();
     return wrapper;
 }
 
 void CSSFontFace::setWrapper(FontFace& newWrapper)
 {
-    m_wrapper = newWrapper.createWeakPtr();
+    m_wrapper = makeWeakPtr(newWrapper);
     initializeWrapper();
 }
 
@@ -474,6 +585,54 @@ void CSSFontFace::adoptSource(std::unique_ptr<CSSFontFaceSource>&& source)
 
     // We should never add sources in the middle of loading.
     ASSERT(!m_sourcesPopulated);
+}
+
+AllowUserInstalledFonts CSSFontFace::allowUserInstalledFonts() const
+{
+    if (m_fontSelector && m_fontSelector->document())
+        return m_fontSelector->document()->settings().shouldAllowUserInstalledFonts() ? AllowUserInstalledFonts::Yes : AllowUserInstalledFonts::No;
+    return AllowUserInstalledFonts::Yes;
+}
+
+bool CSSFontFace::shouldAllowDesignSystemUIFonts() const
+{
+    if (m_fontSelector && m_fontSelector->document())
+        return m_fontSelector->document()->settings().shouldAllowDesignSystemUIFonts();
+    return false;
+}
+
+static Settings::FontLoadTimingOverride fontLoadTimingOverride(CSSFontSelector* fontSelector)
+{
+    auto overrideValue = Settings::FontLoadTimingOverride::None;
+    if (fontSelector && fontSelector->document())
+        overrideValue = fontSelector->document()->settings().fontLoadTimingOverride();
+    return overrideValue;
+}
+
+auto CSSFontFace::fontLoadTiming() const -> FontLoadTiming
+{
+    switch (fontLoadTimingOverride(m_fontSelector.get())) {
+    case Settings::FontLoadTimingOverride::None:
+        switch (m_loadingBehavior) {
+        case FontLoadingBehavior::Auto:
+        case FontLoadingBehavior::Block:
+            return { 3_s, Seconds::infinity() };
+        case FontLoadingBehavior::Swap:
+            return { 0_s, Seconds::infinity() };
+        case FontLoadingBehavior::Fallback:
+            return { 0.1_s, 3_s };
+        case FontLoadingBehavior::Optional:
+            return { 0.1_s, 0_s };
+        }
+        RELEASE_ASSERT_NOT_REACHED();
+    case Settings::FontLoadTimingOverride::Block:
+        return { Seconds::infinity(), 0_s };
+    case Settings::FontLoadTimingOverride::Swap:
+        return { 0_s, Seconds::infinity() };
+    case Settings::FontLoadTimingOverride::Failure:
+        return { 0_s, 0_s };
+    }
+    RELEASE_ASSERT_NOT_REACHED();
 }
 
 void CSSFontFace::setStatus(Status newStatus)
@@ -496,55 +655,105 @@ void CSSFontFace::setStatus(Status newStatus)
         break;
     }
 
-    if (newStatus == Status::Loading)
-        m_timeoutTimer.startOneShot(webFontsShouldAlwaysFallBack() ? 0 : 3);
-    else if (newStatus == Status::Success || newStatus == Status::Failure)
-        m_timeoutTimer.stop();
-
     iterateClients(m_clients, [&](Client& client) {
         client.fontStateChanged(*this, m_status, newStatus);
     });
 
     m_status = newStatus;
+
+    Seconds blockPeriodTimeout;
+    Seconds swapPeriodTimeout;
+    auto timeouts = fontLoadTiming();
+    blockPeriodTimeout = timeouts.blockPeriod;
+    swapPeriodTimeout = timeouts.swapPeriod;
+
+    // Transfer across 0-delay timers synchronously. Layouts/script may
+    // take arbitrarily long time, and we shouldn't be in a 0-duration
+    // state for an arbitrarily long time. Also it's necessary for
+    // testing so we don't have a race with the font load.
+    switch (newStatus) {
+    case Status::Pending:
+        ASSERT_NOT_REACHED();
+        break;
+    case Status::Loading:
+        if (blockPeriodTimeout == 0_s)
+            setStatus(Status::TimedOut);
+        else if (std::isfinite(blockPeriodTimeout.value()))
+            m_timeoutTimer.startOneShot(blockPeriodTimeout);
+        break;
+    case Status::TimedOut:
+        if (swapPeriodTimeout == 0_s)
+            setStatus(Status::Failure);
+        else if (std::isfinite(swapPeriodTimeout.value()))
+            m_timeoutTimer.startOneShot(swapPeriodTimeout);
+        break;
+    case Status::Success:
+    case Status::Failure:
+        m_timeoutTimer.stop();
+        break;
+    }
 }
 
 void CSSFontFace::fontLoaded(CSSFontFaceSource&)
 {
-    ASSERT(!webFontsShouldAlwaysFallBack());
-
+    Ref<CSSFontFace> protectedThis(*this);
+    
     fontLoadEventOccurred();
 }
 
-bool CSSFontFace::webFontsShouldAlwaysFallBack() const
+bool CSSFontFace::shouldIgnoreFontLoadCompletions() const
 {
-    return m_fontSelector && m_fontSelector->document() && m_fontSelector->document()->settings() && m_fontSelector->document()->settings()->webFontsAlwaysFallBack();
+    if (m_fontSelector && m_fontSelector->document())
+        return m_fontSelector->document()->settings().shouldIgnoreFontLoadCompletions();
+    return false;
 }
 
-size_t CSSFontFace::pump()
+void CSSFontFace::opportunisticallyStartFontDataURLLoading(CSSFontSelector& fontSelector)
 {
+    // We don't want to go crazy here and blow the cache. Usually these data URLs are the first item in the src: list, so let's just check that one.
+    if (!m_sources.isEmpty())
+        m_sources[0]->opportunisticallyStartFontDataURLLoading(fontSelector);
+}
+
+size_t CSSFontFace::pump(ExternalResourceDownloadPolicy policy)
+{
+    if (status() == Status::Failure)
+        return 0;
+
     size_t i;
     for (i = 0; i < m_sources.size(); ++i) {
         auto& source = m_sources[i];
 
         if (source->status() == CSSFontFaceSource::Status::Pending) {
             ASSERT(m_status == Status::Pending || m_status == Status::Loading || m_status == Status::TimedOut);
-            ASSERT(m_fontSelector);
-            if (m_status == Status::Pending)
-                setStatus(Status::Loading);
-            source->load(*m_fontSelector);
+            // This is a little tricky. After calling CSSFontFace::font(Forbid), a font must never fail later in
+            // this turn of the runloop because the return value of CSSFontFace::font() shouldn't get nulled out
+            // from under an existing FontRanges object. Remote fonts are all downloaded asynchronously, so this
+            // isn't a problem for them because CSSFontFace::font() will always return the interstitial font.
+            // However, local fonts may synchronously fail when you call load() on them. Therefore, we have to call
+            // load() here in order to guarantee that, if the font synchronously fails, it happens now during the
+            // first call to CSSFontFace::font() and the FontRanges object sees a consistent view of the
+            // CSSFontFace. This means we eagerly create some internal font objects when they may not be needed,
+            // but it seems that this behavior is a requirement of the design of FontRanges. FIXME: Perhaps rethink
+            // this design.
+            if (policy == ExternalResourceDownloadPolicy::Allow || !source->requiresExternalResource()) {
+                if (m_status == Status::Pending)
+                    setStatus(Status::Loading);
+                source->load(m_fontSelector.get());
+            }
         }
 
         switch (source->status()) {
         case CSSFontFaceSource::Status::Pending:
-            ASSERT_NOT_REACHED();
-            break;
+            ASSERT(policy == ExternalResourceDownloadPolicy::Forbid);
+            return i;
         case CSSFontFaceSource::Status::Loading:
-            ASSERT(m_status == Status::Pending || m_status == Status::Loading || m_status == Status::TimedOut);
+            ASSERT(m_status == Status::Pending || m_status == Status::Loading || m_status == Status::TimedOut || m_status == Status::Failure);
             if (m_status == Status::Pending)
                 setStatus(Status::Loading);
             return i;
         case CSSFontFaceSource::Status::Success:
-            ASSERT(m_status == Status::Pending || m_status == Status::Loading || m_status == Status::TimedOut || m_status == Status::Success);
+            ASSERT(m_status == Status::Pending || m_status == Status::Loading || m_status == Status::TimedOut || m_status == Status::Success || m_status == Status::Failure);
             if (m_status == Status::Pending)
                 setStatus(Status::Loading);
             if (m_status == Status::Loading || m_status == Status::TimedOut)
@@ -565,41 +774,53 @@ size_t CSSFontFace::pump()
 
 void CSSFontFace::load()
 {
-    pump();
+    pump(ExternalResourceDownloadPolicy::Allow);
 }
 
-RefPtr<Font> CSSFontFace::font(const FontDescription& fontDescription, bool syntheticBold, bool syntheticItalic)
+static Font::Visibility visibility(CSSFontFace::Status status, CSSFontFace::FontLoadTiming timing)
 {
-    if (allSourcesFailed())
+    switch (status) {
+    case CSSFontFace::Status::Pending:
+        return timing.blockPeriod == 0_s ? Font::Visibility::Visible : Font::Visibility::Invisible;
+    case CSSFontFace::Status::Loading:
+        return Font::Visibility::Invisible;
+    case CSSFontFace::Status::TimedOut:
+    case CSSFontFace::Status::Failure:
+    case CSSFontFace::Status::Success:
+    default:
+        return Font::Visibility::Visible;
+    }
+}
+
+RefPtr<Font> CSSFontFace::font(const FontDescription& fontDescription, bool syntheticBold, bool syntheticItalic, ExternalResourceDownloadPolicy policy)
+{
+    if (computeFailureState())
         return nullptr;
 
+    Ref<CSSFontFace> protectedThis(*this);
+    
     // Our status is derived from the first non-failed source. However, this source may
     // return null from font(), which means we need to continue looping through the remainder
     // of the sources to try to find a font to use. These subsequent tries should not affect
     // our own state, though.
-    size_t startIndex = pump();
-    bool fontIsLoading = false;
+    size_t startIndex = pump(policy);
+
+    if (computeFailureState())
+        return nullptr;
+
     for (size_t i = startIndex; i < m_sources.size(); ++i) {
         auto& source = m_sources[i];
-        if (source->status() == CSSFontFaceSource::Status::Pending) {
-            ASSERT(m_fontSelector);
-            if (fontIsLoading)
-                continue;
-            source->load(*m_fontSelector);
-        }
+        if (source->status() == CSSFontFaceSource::Status::Pending && (policy == ExternalResourceDownloadPolicy::Allow || !source->requiresExternalResource()))
+            source->load(m_fontSelector.get());
 
         switch (source->status()) {
         case CSSFontFaceSource::Status::Pending:
-            ASSERT_NOT_REACHED();
-            break;
-        case CSSFontFaceSource::Status::Loading:
-            ASSERT(!fontIsLoading);
-            fontIsLoading = true;
-            if (status() == Status::TimedOut)
-                continue;
-            return Font::create(FontCache::singleton().lastResortFallbackFontForEveryCharacter(fontDescription)->platformData(), true, true);
+        case CSSFontFaceSource::Status::Loading: {
+            Font::Visibility visibility = WebCore::visibility(status(), fontLoadTiming());
+            return Font::create(FontCache::singleton().lastResortFallbackFont(fontDescription)->platformData(), Font::Origin::Local, Font::Interstitial::Yes, visibility);
+        }
         case CSSFontFaceSource::Status::Success:
-            if (RefPtr<Font> result = source->font(fontDescription, syntheticBold, syntheticItalic, m_featureSettings, m_variantSettings))
+            if (RefPtr<Font> result = source->font(fontDescription, syntheticBold, syntheticItalic, m_featureSettings, m_variantSettings, m_fontSelectionCapabilities))
                 return result;
             break;
         case CSSFontFaceSource::Status::Failure:

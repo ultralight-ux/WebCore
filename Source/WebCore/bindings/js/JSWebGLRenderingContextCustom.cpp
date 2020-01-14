@@ -26,16 +26,12 @@
 #include "config.h"
 
 #if ENABLE(WEBGL)
-#include "JSWebGLRenderingContext.h"
-#include "DOMWrapperWorld.h"
-#include <JavaScriptCore/JSCellInlines.h>
-#include <JavaScriptCore/StructureInlines.h>
-#include <heap/HeapInlines.h>
-#include <heap/SlotVisitorInlines.h>
 
-using namespace JSC;
+#include "JSWebGLRenderingContext.h"
+
 
 namespace WebCore {
+using namespace JSC;
 
 void JSWebGLRenderingContext::visitAdditionalChildren(SlotVisitor& visitor)
 {

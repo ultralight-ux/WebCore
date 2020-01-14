@@ -28,14 +28,14 @@
 
 #include "JSDOMBinding.h"
 #include "runtime_method.h"
-#include <runtime/Error.h>
+#include <JavaScriptCore/Error.h>
 
 using namespace WebCore;
 
 namespace JSC {
 namespace Bindings {
 
-WEBCORE_EXPORT const ClassInfo RuntimeObject::s_info = { "RuntimeObject", &Base::s_info, 0, CREATE_METHOD_TABLE(RuntimeObject) };
+WEBCORE_EXPORT const ClassInfo RuntimeObject::s_info = { "RuntimeObject", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(RuntimeObject) };
 
 RuntimeObject::RuntimeObject(VM& vm, Structure* structure, RefPtr<Instance>&& instance)
     : JSDestructibleObject(vm, structure)
@@ -46,7 +46,7 @@ RuntimeObject::RuntimeObject(VM& vm, Structure* structure, RefPtr<Instance>&& in
 void RuntimeObject::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(info()));
+    ASSERT(inherits(vm, info()));
 }
 
 void RuntimeObject::destroy(JSCell* cell)
@@ -146,14 +146,14 @@ bool RuntimeObject::getOwnPropertySlot(JSObject* object, ExecState *exec, Proper
         // See if the instance has a field with the specified name.
         Field *aField = aClass->fieldNamed(propertyName, instance.get());
         if (aField) {
-            slot.setCustom(thisObject, DontDelete, thisObject->fieldGetter);
+            slot.setCustom(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::DontDelete), thisObject->fieldGetter);
             instance->end();
             return true;
         } else {
             // Now check if a method with specified name exists, if so return a function object for
             // that method.
             if (aClass->methodNamed(propertyName, instance.get())) {
-                slot.setCustom(thisObject, DontDelete | ReadOnly, thisObject->methodGetter);
+                slot.setCustom(thisObject, PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly, thisObject->methodGetter);
                 
                 instance->end();
                 return true;
@@ -162,7 +162,7 @@ bool RuntimeObject::getOwnPropertySlot(JSObject* object, ExecState *exec, Proper
 
         // Try a fallback object.
         if (!aClass->fallbackObject(exec, instance.get(), propertyName).isUndefined()) {
-            slot.setCustom(thisObject, DontDelete | ReadOnly | DontEnum, thisObject->fallbackObjectGetter);
+            slot.setCustom(thisObject, PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly | PropertyAttribute::DontEnum, thisObject->fallbackObjectGetter);
             instance->end();
             return true;
         }
@@ -224,7 +224,7 @@ JSValue RuntimeObject::defaultValue(const JSObject* object, ExecState* exec, Pre
 
 static EncodedJSValue JSC_HOST_CALL callRuntimeObject(ExecState* exec)
 {
-    ASSERT(exec->jsCallee()->inherits(RuntimeObject::info()));
+    ASSERT(exec->jsCallee()->inherits<RuntimeObject>(exec->vm()));
     RefPtr<Instance> instance(static_cast<RuntimeObject*>(exec->jsCallee())->getInternalInstance());
     instance->begin();
     JSValue result = instance->invokeDefaultMethod(exec);
@@ -249,7 +249,7 @@ CallType RuntimeObject::getCallData(JSCell* cell, CallData& callData)
 static EncodedJSValue JSC_HOST_CALL callRuntimeConstructor(ExecState* exec)
 {
     JSObject* constructor = exec->jsCallee();
-    ASSERT(constructor->inherits(RuntimeObject::info()));
+    ASSERT(constructor->inherits<RuntimeObject>(exec->vm()));
     RefPtr<Instance> instance(static_cast<RuntimeObject*>(exec->jsCallee())->getInternalInstance());
     instance->begin();
     ArgList args(exec);
@@ -292,7 +292,7 @@ void RuntimeObject::getOwnPropertyNames(JSObject* object, ExecState* exec, Prope
     instance->end();
 }
 
-JSObject* RuntimeObject::throwInvalidAccessError(ExecState* exec, ThrowScope& scope)
+Exception* RuntimeObject::throwInvalidAccessError(ExecState* exec, ThrowScope& scope)
 {
     return throwException(exec, scope, createReferenceError(exec, "Trying to access object from destroyed plug-in."));
 }

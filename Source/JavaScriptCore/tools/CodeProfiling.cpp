@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,13 +27,14 @@
 #include "CodeProfiling.h"
 
 #include "CodeProfile.h"
+#include "MachineContext.h"
 #include <wtf/MetaAllocator.h>
 
 #if HAVE(SIGNAL_H)
 #include <signal.h>
 #endif
 
-#if OS(LINUX) || OS(DARWIN)
+#if HAVE(MACHINE_CONTEXT)
 #include <sys/time.h>
 #endif
 
@@ -43,12 +44,9 @@ volatile CodeProfile* CodeProfiling::s_profileStack = 0;
 CodeProfiling::Mode CodeProfiling::s_mode = CodeProfiling::Disabled;
 WTF::MetaAllocatorTracker* CodeProfiling::s_tracker = 0;
 
-#if COMPILER(CLANG)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-noreturn"
-#endif
+IGNORE_WARNINGS_BEGIN("missing-noreturn")
 
-#if (OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK) && CPU(X86_64)) || (OS(LINUX) && CPU(X86))
+#if HAVE(MACHINE_CONTEXT)
 // Helper function to start & stop the timer.
 // Presently we're using the wall-clock timer, since this seems to give the best results.
 static void setProfileTimer(unsigned usec)
@@ -62,23 +60,17 @@ static void setProfileTimer(unsigned usec)
 }
 #endif
 
-#if COMPILER(CLANG)
-#pragma clang diagnostic pop
-#endif
+IGNORE_WARNINGS_END
 
-#if OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK) && CPU(X86_64)
+#if HAVE(MACHINE_CONTEXT)
 static void profilingTimer(int, siginfo_t*, void* uap)
 {
-    mcontext_t context = static_cast<ucontext_t*>(uap)->uc_mcontext;
-    CodeProfiling::sample(reinterpret_cast<void*>(context->__ss.__rip),
-                          reinterpret_cast<void**>(context->__ss.__rbp));
-}
-#elif OS(LINUX) && CPU(X86)
-static void profilingTimer(int, siginfo_t*, void* uap)
-{
-    mcontext_t context = static_cast<ucontext_t*>(uap)->uc_mcontext;
-    CodeProfiling::sample(reinterpret_cast<void*>(context.gregs[REG_EIP]),
-                          reinterpret_cast<void**>(context.gregs[REG_EBP]));
+    PlatformRegisters& platformRegisters = WTF::registersFromUContext(static_cast<ucontext_t*>(uap));
+    if (auto instructionPointer = MachineContext::instructionPointer(platformRegisters)) {
+        CodeProfiling::sample(
+            instructionPointer->untaggedExecutableAddress(),
+            reinterpret_cast<void**>(MachineContext::framePointer(platformRegisters)));
+    }
 }
 #endif
 
@@ -141,7 +133,7 @@ void CodeProfiling::begin(const SourceCode& source)
     if (alreadyProfiling)
         return;
 
-#if (OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK) && CPU(X86_64)) || (OS(LINUX) && CPU(X86))
+#if HAVE(MACHINE_CONTEXT)
     // Regsiter a signal handler & itimer.
     struct sigaction action;
     action.sa_sigaction = reinterpret_cast<void (*)(int, siginfo_t *, void *)>(profilingTimer);
@@ -165,7 +157,7 @@ void CodeProfiling::end()
     if (s_profileStack)
         return;
 
-#if (OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK) && CPU(X86_64)) || (OS(LINUX) && CPU(X86))
+#if HAVE(MACHINE_CONTEXT)
     // Stop profiling
     setProfileTimer(0);
 #endif

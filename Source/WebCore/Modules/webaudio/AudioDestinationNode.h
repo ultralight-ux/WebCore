@@ -24,11 +24,9 @@
 
 #pragma once
 
-#include "AudioBuffer.h"
 #include "AudioBus.h"
 #include "AudioIOCallback.h"
 #include "AudioNode.h"
-#include "AudioSourceProvider.h"
 #include <wtf/Function.h>
 
 namespace WebCore {
@@ -36,6 +34,7 @@ namespace WebCore {
 class AudioContext;
 
 class AudioDestinationNode : public AudioNode, public AudioIOCallback {
+    WTF_MAKE_ISO_ALLOCATED(AudioDestinationNode);
 public:
     AudioDestinationNode(AudioContext&, float sampleRate);
     virtual ~AudioDestinationNode();

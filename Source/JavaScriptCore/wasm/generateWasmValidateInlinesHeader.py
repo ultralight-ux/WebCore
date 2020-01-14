@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2016 Apple Inc. All rights reserved.
+# Copyright (C) 2016-2017 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -63,7 +63,7 @@ def unaryMacro(name):
 template<> auto Validate::addOp<OpType::""" + toCpp(name) + """>(ExpressionType value, ExpressionType& result) -> Result
 {
     if (UNLIKELY(value != """ + cppType(op["parameter"][0]) + """))
-        return UnexpectedType<Result::ErrorType>("validation failed: """ + name + """ value type mismatch");
+        return Unexpected<Result::error_type>("validation failed: """ + name + """ value type mismatch");
 
     result = """ + cppType(op["return"][0]) + """;
     return { };
@@ -77,10 +77,10 @@ def binaryMacro(name):
 template<> auto Validate::addOp<OpType::""" + toCpp(name) + """>(ExpressionType left, ExpressionType right, ExpressionType& result) -> Result
 {
     if (UNLIKELY(left != """ + cppType(op["parameter"][0]) + """))
-        return UnexpectedType<Result::ErrorType>("validation failed: """ + name + """ left value type mismatch");
+        return Unexpected<Result::error_type>("validation failed: """ + name + """ left value type mismatch");
 
     if (UNLIKELY(right != """ + cppType(op["parameter"][1]) + """))
-        return UnexpectedType<Result::ErrorType>("validation failed: """ + name + """ right value type mismatch");
+        return Unexpected<Result::error_type>("validation failed: """ + name + """ right value type mismatch");
 
     result = """ + cppType(op["return"][0]) + """;
     return { };
@@ -92,7 +92,7 @@ def loadMacro(name):
     return """
     case LoadOpType::""" + toCpp(name) + """: {
         if (UNLIKELY(pointer != """ + cppType(op["parameter"][0]) + """))
-            return UnexpectedType<Result::ErrorType>("validation failed: """ + name + """ pointer type mismatch");
+            return Unexpected<Result::error_type>("validation failed: """ + name + """ pointer type mismatch");
 
         result = """ + cppType(op["return"][0]) + """;
         return { };
@@ -104,10 +104,10 @@ def storeMacro(name):
     return """
     case StoreOpType::""" + toCpp(name) + """: {
         if (UNLIKELY(pointer != """ + cppType(op["parameter"][0]) + """))
-            return UnexpectedType<Result::ErrorType>("validation failed: """ + name + """ pointer type mismatch");
+            return Unexpected<Result::error_type>("validation failed: """ + name + """ pointer type mismatch");
 
         if (UNLIKELY(value != """ + cppType(op["parameter"][1]) + """))
-            return UnexpectedType<Result::ErrorType>("validation failed: """ + name + """ value type mismatch");
+            return Unexpected<Result::error_type>("validation failed: """ + name + """ value type mismatch");
 
         return { };
     }"""
@@ -125,6 +125,12 @@ contents = wasm.header + """
 
 #if ENABLE(WEBASSEMBLY)
 
+#include <wtf/StdLibExtras.h>
+
+#if ASSERT_DISABLED
+IGNORE_RETURN_TYPE_WARNINGS_BEGIN
+#endif
+
 namespace JSC { namespace Wasm {
 
 """ + unarySpecializations + binarySpecializations + """
@@ -132,24 +138,30 @@ namespace JSC { namespace Wasm {
 auto Validate::load(LoadOpType op, ExpressionType pointer, ExpressionType& result, uint32_t) -> Result
 {
     if (UNLIKELY(!hasMemory()))
-        return UnexpectedType<Result::ErrorType>("validation failed: load instruction without memory");
+        return Unexpected<Result::error_type>("validation failed: load instruction without memory");
 
     switch (op) {
 """ + loadCases + """
     }
+    ASSERT_NOT_REACHED();
 }
 
 auto Validate::store(StoreOpType op, ExpressionType pointer, ExpressionType value, uint32_t) -> Result
 {
     if (UNLIKELY(!hasMemory()))
-        return UnexpectedType<Result::ErrorType>("validation failed: store instruction without memory");
+        return Unexpected<Result::error_type>("validation failed: store instruction without memory");
 
     switch (op) {
 """ + storeCases + """
     }
+    ASSERT_NOT_REACHED();
 }
 
 } } // namespace JSC::Wasm
+
+#if ASSERT_DISABLED
+IGNORE_RETURN_TYPE_WARNINGS_END
+#endif
 
 #endif // ENABLE(WEBASSEMBLY)
 

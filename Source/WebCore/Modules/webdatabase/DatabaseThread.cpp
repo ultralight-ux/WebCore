@@ -56,16 +56,16 @@ DatabaseThread::~DatabaseThread()
     ASSERT(terminationRequested());
 }
 
-bool DatabaseThread::start()
+void DatabaseThread::start()
 {
     LockHolder lock(m_threadCreationMutex);
 
-    if (m_threadID)
-        return true;
+    if (m_thread)
+        return;
 
-    m_threadID = createThread(DatabaseThread::databaseThreadStart, this, "WebCore: Database");
-
-    return m_threadID;
+    m_thread = Thread::create("WebCore: Database", [this] {
+        databaseThread();
+    });
 }
 
 void DatabaseThread::requestTermination(DatabaseTaskSynchronizer* cleanupSync)
@@ -87,12 +87,6 @@ bool DatabaseThread::terminationRequested(DatabaseTaskSynchronizer* taskSynchron
     return m_queue.killed();
 }
 
-void DatabaseThread::databaseThreadStart(void* vDatabaseThread)
-{
-    DatabaseThread* dbThread = static_cast<DatabaseThread*>(vDatabaseThread);
-    dbThread->databaseThread();
-}
-
 void DatabaseThread::databaseThread()
 {
     {
@@ -110,7 +104,7 @@ void DatabaseThread::databaseThread()
     // Clean up the list of all pending transactions on this database thread
     m_transactionCoordinator->shutdown();
 
-    LOG(StorageAPI, "About to detach thread %i and clear the ref to DatabaseThread %p, which currently has %i ref(s)", m_threadID, this, refCount());
+    LOG(StorageAPI, "About to detach thread %p and clear the ref to DatabaseThread %p, which currently has %i ref(s)", m_thread.get(), this, refCount());
 
     // Close the databases that we ran transactions on. This ensures that if any transactions are still open, they are rolled back and we don't leave the database in an
     // inconsistent or locked state.
@@ -127,7 +121,7 @@ void DatabaseThread::databaseThread()
         openDatabase->performClose();
 
     // Detach the thread so its resources are no longer of any concern to anyone else
-    detachThread(m_threadID);
+    m_thread->detach();
 
     DatabaseTaskSynchronizer* cleanupSync = m_cleanupSync;
 
@@ -142,7 +136,7 @@ void DatabaseThread::recordDatabaseOpen(Database& database)
 {
     LockHolder lock(m_openDatabaseSetMutex);
 
-    ASSERT(currentThread() == m_threadID);
+    ASSERT(m_thread == &Thread::current());
     ASSERT(!m_openDatabaseSet.contains(&database));
     m_openDatabaseSet.add(&database);
 }
@@ -151,7 +145,7 @@ void DatabaseThread::recordDatabaseClosed(Database& database)
 {
     LockHolder lock(m_openDatabaseSetMutex);
 
-    ASSERT(currentThread() == m_threadID);
+    ASSERT(m_thread == &Thread::current());
     ASSERT(m_queue.killed() || m_openDatabaseSet.contains(&database));
     m_openDatabaseSet.remove(&database);
 }

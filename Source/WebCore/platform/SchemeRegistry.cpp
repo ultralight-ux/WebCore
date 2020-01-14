@@ -25,220 +25,352 @@
  */
 #include "config.h"
 #include "SchemeRegistry.h"
+
+#include <wtf/Lock.h>
+#include <wtf/Locker.h>
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/URLParser.h>
+
+#if ENABLE(CONTENT_FILTERING)
+#include "ContentFilter.h"
+#endif
+#if USE(QUICK_LOOK)
+#include "QuickLook.h"
+#endif
 
 namespace WebCore {
 
+// FIXME: URLSchemesMap is a peculiar type name given that it is a set.
+
+static const URLSchemesMap& builtinLocalURLSchemes();
+static const Vector<String>& builtinSecureSchemes();
+static const Vector<String>& builtinSchemesWithUniqueOrigins();
+static const Vector<String>& builtinEmptyDocumentSchemes();
+static const Vector<String>& builtinCanDisplayOnlyIfCanRequestSchemes();
+static const Vector<String>& builtinCORSEnabledSchemes();
+
+using StringVectorFunction = const Vector<String>& (*)();
+
+static void add(URLSchemesMap& set, StringVectorFunction function)
+{
+    for (auto& scheme : function())
+        set.add(scheme);
+}
+
+static NeverDestroyed<URLSchemesMap> makeNeverDestroyedSchemeSet(const Vector<String>& (*function)())
+{
+    URLSchemesMap set;
+    add(set, function);
+    return set;
+}
+
+static Lock schemeRegistryLock;
+
+static const URLSchemesMap& allBuiltinSchemes()
+{
+    static const auto schemes = makeNeverDestroyed([] {
+        static const StringVectorFunction functions[] {
+            builtinSecureSchemes,
+            builtinSchemesWithUniqueOrigins,
+            builtinEmptyDocumentSchemes,
+            builtinCanDisplayOnlyIfCanRequestSchemes,
+            builtinCORSEnabledSchemes,
+        };
+
+        // Other misc schemes that the SchemeRegistry doesn't know about.
+        static const char* const otherSchemes[] = {
+            "webkit-fake-url",
+#if PLATFORM(MAC)
+            "safari-extension",
+#endif
+#if USE(QUICK_LOOK)
+            QLPreviewProtocol,
+#endif
+#if ENABLE(CONTENT_FILTERING)
+            ContentFilter::urlScheme(),
+#endif
+        };
+
+        URLSchemesMap set;
+        {
+            Locker<Lock> locker(schemeRegistryLock);
+            for (auto& scheme : builtinLocalURLSchemes())
+                set.add(scheme);
+
+            for (auto& function : functions)
+                add(set, function);
+        }
+        for (auto& scheme : otherSchemes)
+            set.add(scheme);
+        return set;
+    }());
+    return schemes;
+}
+
+static const URLSchemesMap& builtinLocalURLSchemes()
+{
+    ASSERT(schemeRegistryLock.isHeld());
+    static const auto schemes = makeNeverDestroyed(URLSchemesMap {
+        "file",
+#if PLATFORM(COCOA)
+        "applewebdata",
+#endif
+    });
+    return schemes;
+}
+
 static URLSchemesMap& localURLSchemes()
 {
-    static NeverDestroyed<URLSchemesMap> localSchemes;
-
-    if (localSchemes.get().isEmpty()) {
-        localSchemes.get().add("file");
-#if PLATFORM(COCOA)
-        localSchemes.get().add("applewebdata");
-#endif
-    }
-
+    ASSERT(schemeRegistryLock.isHeld());
+    static NeverDestroyed<URLSchemesMap> localSchemes = builtinLocalURLSchemes();
     return localSchemes;
 }
 
 static URLSchemesMap& displayIsolatedURLSchemes()
 {
+    ASSERT(schemeRegistryLock.isHeld());
     static NeverDestroyed<URLSchemesMap> displayIsolatedSchemes;
     return displayIsolatedSchemes;
 }
 
+const Vector<String>& builtinSecureSchemes()
+{
+    ASSERT(schemeRegistryLock.isHeld());
+    static const auto schemes = makeNeverDestroyed(Vector<String> {
+        "https",
+        "about",
+        "data",
+        "wss",
+#if PLATFORM(GTK) || PLATFORM(WPE)
+        "resource",
+#endif
+    });
+    return schemes;
+}
+
 static URLSchemesMap& secureSchemes()
 {
-    static NeverDestroyed<URLSchemesMap> secureSchemes;
-
-    if (secureSchemes.get().isEmpty()) {
-        secureSchemes.get().add("https");
-        secureSchemes.get().add("about");
-        secureSchemes.get().add("data");
-        secureSchemes.get().add("wss");
-#if PLATFORM(GTK)
-        secureSchemes.get().add("resource");
-#endif
-    }
-
+    ASSERT(schemeRegistryLock.isHeld());
+    static auto secureSchemes = makeNeverDestroyedSchemeSet(builtinSecureSchemes);
     return secureSchemes;
+}
+
+const Vector<String>& builtinSchemesWithUniqueOrigins()
+{
+    ASSERT(schemeRegistryLock.isHeld());
+    static const auto schemes = makeNeverDestroyed(Vector<String> {
+        "about",
+        "javascript",
+        // This is an intentional difference from the behavior the HTML specification calls for.
+        // See https://bugs.webkit.org/show_bug.cgi?id=11885
+        "data",
+    });
+    return schemes;
 }
 
 static URLSchemesMap& schemesWithUniqueOrigins()
 {
-    static NeverDestroyed<URLSchemesMap> schemesWithUniqueOrigins;
-
-    if (schemesWithUniqueOrigins.get().isEmpty()) {
-        schemesWithUniqueOrigins.get().add("about");
-        schemesWithUniqueOrigins.get().add("javascript");
-        // This is a willful violation of HTML5.
-        // See https://bugs.webkit.org/show_bug.cgi?id=11885
-        schemesWithUniqueOrigins.get().add("data");
-    }
-
+    ASSERT(schemeRegistryLock.isHeld());
+    static auto schemesWithUniqueOrigins = makeNeverDestroyedSchemeSet(builtinSchemesWithUniqueOrigins);
     return schemesWithUniqueOrigins;
+}
+
+const Vector<String>& builtinEmptyDocumentSchemes()
+{
+    ASSERT(isMainThread());
+    static const auto schemes = makeNeverDestroyed(Vector<String> { "about" });
+    return schemes;
 }
 
 static URLSchemesMap& emptyDocumentSchemes()
 {
-    static NeverDestroyed<URLSchemesMap> emptyDocumentSchemes;
-
-    if (emptyDocumentSchemes.get().isEmpty())
-        emptyDocumentSchemes.get().add("about");
-
+    ASSERT(isMainThread());
+    static auto emptyDocumentSchemes = makeNeverDestroyedSchemeSet(builtinEmptyDocumentSchemes);
     return emptyDocumentSchemes;
 }
 
-static HashSet<String, ASCIICaseInsensitiveHash>& schemesForbiddenFromDomainRelaxation()
+static URLSchemesMap& schemesForbiddenFromDomainRelaxation()
 {
-    static NeverDestroyed<HashSet<String, ASCIICaseInsensitiveHash>> schemes;
+    ASSERT(isMainThread());
+    static NeverDestroyed<URLSchemesMap> schemes;
+    return schemes;
+}
+
+const Vector<String>& builtinCanDisplayOnlyIfCanRequestSchemes()
+{
+    ASSERT(schemeRegistryLock.isHeld());
+    static const auto schemes = makeNeverDestroyed(Vector<String> { "blob" });
     return schemes;
 }
 
 static URLSchemesMap& canDisplayOnlyIfCanRequestSchemes()
 {
-    static NeverDestroyed<URLSchemesMap> canDisplayOnlyIfCanRequestSchemes;
-
-    if (canDisplayOnlyIfCanRequestSchemes.get().isEmpty()) {
-        canDisplayOnlyIfCanRequestSchemes.get().add("blob");
-    }
-
+    ASSERT(schemeRegistryLock.isHeld());
+    static auto canDisplayOnlyIfCanRequestSchemes = makeNeverDestroyedSchemeSet(builtinCanDisplayOnlyIfCanRequestSchemes);
     return canDisplayOnlyIfCanRequestSchemes;
 }
 
 static URLSchemesMap& notAllowingJavascriptURLsSchemes()
 {
+    ASSERT(isMainThread());
     static NeverDestroyed<URLSchemesMap> notAllowingJavascriptURLsSchemes;
     return notAllowingJavascriptURLsSchemes;
 }
 
 void SchemeRegistry::registerURLSchemeAsLocal(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
     localURLSchemes().add(scheme);
 }
 
 void SchemeRegistry::removeURLSchemeRegisteredAsLocal(const String& scheme)
 {
-    if (equalLettersIgnoringASCIICase(scheme, "file"))
+    Locker<Lock> locker(schemeRegistryLock);
+    if (builtinLocalURLSchemes().contains(scheme))
         return;
-#if PLATFORM(COCOA)
-    if (equalLettersIgnoringASCIICase(scheme, "applewebdata"))
-        return;
-#endif
-    localURLSchemes().remove(scheme);
-}
 
-const URLSchemesMap& SchemeRegistry::localSchemes()
-{
-    return localURLSchemes();
+    localURLSchemes().remove(scheme);
 }
 
 static URLSchemesMap& schemesAllowingLocalStorageAccessInPrivateBrowsing()
 {
+    ASSERT(isMainThread());
     static NeverDestroyed<URLSchemesMap> schemesAllowingLocalStorageAccessInPrivateBrowsing;
     return schemesAllowingLocalStorageAccessInPrivateBrowsing;
 }
 
 static URLSchemesMap& schemesAllowingDatabaseAccessInPrivateBrowsing()
 {
+    ASSERT(isMainThread());
     static NeverDestroyed<URLSchemesMap> schemesAllowingDatabaseAccessInPrivateBrowsing;
     return schemesAllowingDatabaseAccessInPrivateBrowsing;
 }
 
+const Vector<String>& builtinCORSEnabledSchemes()
+{
+    ASSERT(isMainThread());
+    static const auto schemes = makeNeverDestroyed(Vector<String> { "http", "https" });
+    return schemes;
+}
+
 static URLSchemesMap& CORSEnabledSchemes()
 {
+    ASSERT(isMainThread());
     // FIXME: http://bugs.webkit.org/show_bug.cgi?id=77160
-    static NeverDestroyed<URLSchemesMap> CORSEnabledSchemes;
-
-    if (CORSEnabledSchemes.get().isEmpty()) {
-        CORSEnabledSchemes.get().add("http");
-        CORSEnabledSchemes.get().add("https");
-    }
-
-    return CORSEnabledSchemes;
+    static auto schemes = makeNeverDestroyedSchemeSet(builtinCORSEnabledSchemes);
+    return schemes;
 }
 
 static URLSchemesMap& ContentSecurityPolicyBypassingSchemes()
 {
+    ASSERT(schemeRegistryLock.isHeld());
     static NeverDestroyed<URLSchemesMap> schemes;
     return schemes;
 }
 
-#if ENABLE(CACHE_PARTITIONING)
 static URLSchemesMap& cachePartitioningSchemes()
 {
+    ASSERT(schemeRegistryLock.isHeld());
     static NeverDestroyed<URLSchemesMap> schemes;
     return schemes;
 }
-#endif
+
+static URLSchemesMap& serviceWorkerSchemes()
+{
+    ASSERT(schemeRegistryLock.isHeld());
+    static NeverDestroyed<URLSchemesMap> schemes;
+    return schemes;
+}
 
 static URLSchemesMap& alwaysRevalidatedSchemes()
 {
+    ASSERT(isMainThread());
     static NeverDestroyed<URLSchemesMap> schemes;
     return schemes;
 }
 
 bool SchemeRegistry::shouldTreatURLSchemeAsLocal(const String& scheme)
 {
-    if (scheme.isEmpty())
+    if (scheme.isNull())
         return false;
+
+    Locker<Lock> locker(schemeRegistryLock);
     return localURLSchemes().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsNoAccess(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
     schemesWithUniqueOrigins().add(scheme);
 }
 
 bool SchemeRegistry::shouldTreatURLSchemeAsNoAccess(const String& scheme)
 {
-    if (scheme.isEmpty())
+    if (scheme.isNull())
         return false;
+
+    Locker<Lock> locker(schemeRegistryLock);
     return schemesWithUniqueOrigins().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsDisplayIsolated(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
     displayIsolatedURLSchemes().add(scheme);
 }
 
 bool SchemeRegistry::shouldTreatURLSchemeAsDisplayIsolated(const String& scheme)
 {
-    if (scheme.isEmpty())
+    if (scheme.isNull())
         return false;
+
+    Locker<Lock> locker(schemeRegistryLock);
     return displayIsolatedURLSchemes().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsSecure(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
     secureSchemes().add(scheme);
 }
 
 bool SchemeRegistry::shouldTreatURLSchemeAsSecure(const String& scheme)
 {
-    if (scheme.isEmpty())
+    if (scheme.isNull())
         return false;
+
+    Locker<Lock> locker(schemeRegistryLock);
     return secureSchemes().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsEmptyDocument(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
     emptyDocumentSchemes().add(scheme);
 }
 
 bool SchemeRegistry::shouldLoadURLSchemeAsEmptyDocument(const String& scheme)
 {
-    if (scheme.isEmpty())
-        return false;
-    return emptyDocumentSchemes().contains(scheme);
+    return !scheme.isNull() && emptyDocumentSchemes().contains(scheme);
 }
 
 void SchemeRegistry::setDomainRelaxationForbiddenForURLScheme(bool forbidden, const String& scheme)
 {
-    if (scheme.isEmpty())
+    if (scheme.isNull())
         return;
 
     if (forbidden)
@@ -249,122 +381,177 @@ void SchemeRegistry::setDomainRelaxationForbiddenForURLScheme(bool forbidden, co
 
 bool SchemeRegistry::isDomainRelaxationForbiddenForURLScheme(const String& scheme)
 {
-    if (scheme.isEmpty())
-        return false;
-    return schemesForbiddenFromDomainRelaxation().contains(scheme);
+    return !scheme.isNull() && schemesForbiddenFromDomainRelaxation().contains(scheme);
 }
 
 bool SchemeRegistry::canDisplayOnlyIfCanRequest(const String& scheme)
 {
-    if (scheme.isEmpty())
+    if (scheme.isNull())
         return false;
+
+    Locker<Lock> locker(schemeRegistryLock);
     return canDisplayOnlyIfCanRequestSchemes().contains(scheme);
 }
 
 void SchemeRegistry::registerAsCanDisplayOnlyIfCanRequest(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
     canDisplayOnlyIfCanRequestSchemes().add(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsNotAllowingJavascriptURLs(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
     notAllowingJavascriptURLsSchemes().add(scheme);
 }
 
 bool SchemeRegistry::shouldTreatURLSchemeAsNotAllowingJavascriptURLs(const String& scheme)
 {
-    if (scheme.isEmpty())
-        return false;
-    return notAllowingJavascriptURLsSchemes().contains(scheme);
+    return !scheme.isNull() && notAllowingJavascriptURLsSchemes().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsAllowingLocalStorageAccessInPrivateBrowsing(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
     schemesAllowingLocalStorageAccessInPrivateBrowsing().add(scheme);
 }
 
 bool SchemeRegistry::allowsLocalStorageAccessInPrivateBrowsing(const String& scheme)
 {
-    if (scheme.isEmpty())
-        return false;
-    return schemesAllowingLocalStorageAccessInPrivateBrowsing().contains(scheme);
+    return !scheme.isNull() && schemesAllowingLocalStorageAccessInPrivateBrowsing().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsAllowingDatabaseAccessInPrivateBrowsing(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
     schemesAllowingDatabaseAccessInPrivateBrowsing().add(scheme);
 }
 
 bool SchemeRegistry::allowsDatabaseAccessInPrivateBrowsing(const String& scheme)
 {
-    if (scheme.isEmpty())
-        return false;
-    return schemesAllowingDatabaseAccessInPrivateBrowsing().contains(scheme);
+    return !scheme.isNull() && schemesAllowingDatabaseAccessInPrivateBrowsing().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsCORSEnabled(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
     CORSEnabledSchemes().add(scheme);
 }
 
 bool SchemeRegistry::shouldTreatURLSchemeAsCORSEnabled(const String& scheme)
 {
-    if (scheme.isEmpty())
-        return false;
-    return CORSEnabledSchemes().contains(scheme);
+    return !scheme.isNull() && CORSEnabledSchemes().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsBypassingContentSecurityPolicy(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
     ContentSecurityPolicyBypassingSchemes().add(scheme);
 }
 
 void SchemeRegistry::removeURLSchemeRegisteredAsBypassingContentSecurityPolicy(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
     ContentSecurityPolicyBypassingSchemes().remove(scheme);
 }
 
 bool SchemeRegistry::schemeShouldBypassContentSecurityPolicy(const String& scheme)
 {
-    if (scheme.isEmpty())
+    if (scheme.isNull())
         return false;
+
+    Locker<Lock> locker(schemeRegistryLock);
     return ContentSecurityPolicyBypassingSchemes().contains(scheme);
 }
 
 void SchemeRegistry::registerURLSchemeAsAlwaysRevalidated(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
     alwaysRevalidatedSchemes().add(scheme);
 }
 
 bool SchemeRegistry::shouldAlwaysRevalidateURLScheme(const String& scheme)
 {
-    if (scheme.isEmpty())
-        return false;
-    return alwaysRevalidatedSchemes().contains(scheme);
+    return !scheme.isNull() && alwaysRevalidatedSchemes().contains(scheme);
 }
 
-#if ENABLE(CACHE_PARTITIONING)
 void SchemeRegistry::registerURLSchemeAsCachePartitioned(const String& scheme)
 {
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
     cachePartitioningSchemes().add(scheme);
 }
 
 bool SchemeRegistry::shouldPartitionCacheForURLScheme(const String& scheme)
 {
-    if (scheme.isEmpty())
+    if (scheme.isNull())
         return false;
+
+    Locker<Lock> locker(schemeRegistryLock);
     return cachePartitioningSchemes().contains(scheme);
 }
-#endif
+
+void SchemeRegistry::registerURLSchemeServiceWorkersCanHandle(const String& scheme)
+{
+    if (scheme.isNull())
+        return;
+
+    Locker<Lock> locker(schemeRegistryLock);
+    serviceWorkerSchemes().add(scheme);
+}
+
+bool SchemeRegistry::canServiceWorkersHandleURLScheme(const String& scheme)
+{
+    if (scheme.isNull())
+        return false;
+
+    if (scheme.startsWithIgnoringASCIICase("http"_s)) {
+        if (scheme.length() == 4)
+            return true;
+        if (scheme.length() == 5 && isASCIIAlphaCaselessEqual(scheme[4], 's'))
+            return true;
+    }
+
+    Locker<Lock> locker(schemeRegistryLock);
+    return serviceWorkerSchemes().contains(scheme);
+}
+
+bool SchemeRegistry::isServiceWorkerContainerCustomScheme(const String& scheme)
+{
+    Locker<Lock> locker(schemeRegistryLock);
+    return !scheme.isNull() && serviceWorkerSchemes().contains(scheme);
+}
 
 bool SchemeRegistry::isUserExtensionScheme(const String& scheme)
 {
-    UNUSED_PARAM(scheme);
 #if PLATFORM(MAC)
     if (scheme == "safari-extension")
         return true;
+#else
+    UNUSED_PARAM(scheme);
 #endif
     return false;
+}
+
+bool SchemeRegistry::isBuiltinScheme(const String& scheme)
+{
+    return !scheme.isNull() && (allBuiltinSchemes().contains(scheme) || WTF::URLParser::isSpecialScheme(scheme));
 }
 
 } // namespace WebCore

@@ -47,7 +47,7 @@ class CachedFont;
 class Document;
 class StyleRuleFontFace;
 
-class CSSFontSelector final : public FontSelector, public CSSFontFaceSetClient {
+class CSSFontSelector final : public FontSelector, public CSSFontFaceSetClient, public CanMakeWeakPtr<CSSFontSelector> {
 public:
     static Ref<CSSFontSelector> create(Document& document)
     {
@@ -58,11 +58,12 @@ public:
     unsigned version() const final { return m_version; }
     unsigned uniqueId() const final { return m_uniqueId; }
 
-    FontRanges fontRangesForFamily(const FontDescription&, const AtomicString&) final;
+    FontRanges fontRangesForFamily(const FontDescription&, const AtomString&) final;
     size_t fallbackFontCount() final;
     RefPtr<Font> fallbackFontAt(const FontDescription&, size_t) final;
 
     void clearDocument();
+    void emptyCaches();
     void buildStarted();
     void buildCompleted();
 
@@ -76,18 +77,21 @@ public:
     void registerForInvalidationCallbacks(FontSelectorClient&) final;
     void unregisterForInvalidationCallbacks(FontSelectorClient&) final;
 
-    Document* document() const { return m_document; }
+    Document* document() const { return m_document.get(); }
 
     void beginLoadingFontSoon(CachedFont&);
 
     FontFaceSet& fontFaceSet();
 
-    void setIsComputingRootStyleFont(bool value) { m_isComputingRootStyleFont = value; }
+    void incrementIsComputingRootStyleFont() { ++m_computingRootStyleFontCount; }
+    void decrementIsComputingRootStyleFont() { --m_computingRootStyleFontCount; }
 
 private:
     explicit CSSFontSelector(Document&);
 
     void dispatchInvalidationCallbacks();
+
+    void opportunisticallyStartFontDataURLLoading(const FontCascadeDescription&, const AtomString& family) final;
 
     void fontModified() final;
 
@@ -99,7 +103,7 @@ private:
     };
     Vector<PendingFontFaceRule> m_stagingArea;
 
-    Document* m_document;
+    WeakPtr<Document> m_document;
     RefPtr<FontFaceSet> m_fontFaceSet;
     Ref<CSSFontFaceSet> m_cssFontFaceSet;
     HashSet<FontSelectorClient*> m_clients;
@@ -111,9 +115,9 @@ private:
 
     unsigned m_uniqueId;
     unsigned m_version;
+    unsigned m_computingRootStyleFontCount { 0 };
     bool m_creatingFont { false };
     bool m_buildIsUnderway { false };
-    bool m_isComputingRootStyleFont { false };
 };
 
 } // namespace WebCore

@@ -26,13 +26,12 @@
 #include "config.h"
 #include "JSWorkerGlobalScope.h"
 
-#include "JSDOMConvert.h"
-#include "ScheduledAction.h"
 #include "WorkerGlobalScope.h"
+#include <JavaScriptCore/JSMicrotask.h>
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
 void JSWorkerGlobalScope::visitAdditionalChildren(SlotVisitor& visitor)
 {
@@ -49,55 +48,21 @@ void JSWorkerGlobalScope::visitAdditionalChildren(SlotVisitor& visitor)
     wrapped().visitJSEventListeners(visitor);
 }
 
-JSValue JSWorkerGlobalScope::importScripts(ExecState& state)
+JSValue JSWorkerGlobalScope::queueMicrotask(ExecState& state)
 {
     VM& vm = state.vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (!state.argumentCount())
-        return jsUndefined();
+    if (UNLIKELY(state.argumentCount() < 1))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
 
-    Vector<String> urls;
-    urls.reserveInitialCapacity(state.argumentCount());
-    for (unsigned i = 0; i < state.argumentCount(); ++i) {
-        urls.uncheckedAppend(convert<IDLUSVString>(state, state.uncheckedArgument(i)));
-        RETURN_IF_EXCEPTION(scope, JSValue());
-    }
+    JSValue functionValue = state.uncheckedArgument(0);
+    if (UNLIKELY(!functionValue.isFunction(vm)))
+        return JSValue::decode(throwArgumentMustBeFunctionError(state, scope, 0, "callback", "WorkerGlobalScope", "queueMicrotask"));
 
-    propagateException(state, scope, wrapped().importScripts(urls));
+    scope.release();
+    Base::queueMicrotask(JSC::createJSMicrotask(vm, functionValue));
     return jsUndefined();
-}
-
-JSValue JSWorkerGlobalScope::setTimeout(ExecState& state)
-{
-    VM& vm = state.vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    if (UNLIKELY(state.argumentCount() < 1))
-        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
-
-    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), wrapped().contentSecurityPolicy());
-    RETURN_IF_EXCEPTION(scope, JSValue());
-    if (!action)
-        return jsNumber(0);
-    int delay = state.argument(1).toInt32(&state);
-    return jsNumber(wrapped().setTimeout(WTFMove(action), delay));
-}
-
-JSValue JSWorkerGlobalScope::setInterval(ExecState& state)
-{
-    VM& vm = state.vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    if (UNLIKELY(state.argumentCount() < 1))
-        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
-
-    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), wrapped().contentSecurityPolicy());
-    RETURN_IF_EXCEPTION(scope, JSValue());
-    if (!action)
-        return jsNumber(0);
-    int delay = state.argument(1).toInt32(&state);
-    return jsNumber(wrapped().setInterval(WTFMove(action), delay));
 }
 
 } // namespace WebCore

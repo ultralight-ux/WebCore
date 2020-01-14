@@ -23,21 +23,18 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CDMSession_h
-#define CDMSession_h
+#pragma once
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
-#include <runtime/Uint8Array.h>
+#include <JavaScriptCore/Uint8Array.h>
 #include <wtf/Forward.h>
-#include <wtf/PassRefPtr.h>
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-class CDMSessionClient {
+class LegacyCDMSessionClient {
 public:
-    virtual ~CDMSessionClient() { };
+    virtual ~LegacyCDMSessionClient() = default;
     virtual void sendMessage(Uint8Array*, String destinationURL) = 0;
 
     enum {
@@ -54,7 +51,7 @@ public:
     virtual String mediaKeysStorageDirectory() const = 0;
 };
 
-enum CDMSessionType {
+enum LegacyCDMSessionType {
     CDMSessionTypeUnknown,
     CDMSessionTypeClearKey,
     CDMSessionTypeAVFoundationObjC,
@@ -62,13 +59,12 @@ enum CDMSessionType {
     CDMSessionTypeAVContentKeySession,
 };
 
-class CDMSession {
+class LegacyCDMSession {
 public:
-    CDMSession() { }
-    virtual ~CDMSession() { }
+    virtual ~LegacyCDMSession() = default;
 
-    virtual CDMSessionType type() { return CDMSessionTypeUnknown; }
-    virtual void setClient(CDMSessionClient*) = 0;
+    virtual LegacyCDMSessionType type() { return CDMSessionTypeUnknown; }
+    virtual void setClient(LegacyCDMSessionClient*) = 0;
     virtual const String& sessionId() const = 0;
     virtual RefPtr<Uint8Array> generateKeyRequest(const String& mimeType, Uint8Array* initData, String& destinationURL, unsigned short& errorCode, uint32_t& systemCode) = 0;
     virtual void releaseKeys() = 0;
@@ -79,5 +75,3 @@ public:
 }
 
 #endif // ENABLE(LEGACY_ENCRYPTED_MEDIA)
-
-#endif // CDMSession_h

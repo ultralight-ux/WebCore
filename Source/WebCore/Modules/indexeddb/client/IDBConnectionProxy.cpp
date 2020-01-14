@@ -316,7 +316,8 @@ void IDBConnectionProxy::didStartTransaction(const IDBResourceIdentifier& transa
         transaction = m_pendingTransactions.take(transactionIdentifier);
     }
 
-    ASSERT(transaction);
+    if (!transaction)
+        return;
 
     transaction->performCallbackOnOriginThread(*transaction, &IDBTransaction::didStart, error);
 }
@@ -422,7 +423,7 @@ void IDBConnectionProxy::connectionToServerLost(const IDBError& error)
     Vector<uint64_t> databaseConnectionIdentifiers;
     {
         Locker<Lock> locker(m_databaseConnectionMapLock);
-        copyKeysToVector(m_databaseConnectionMap, databaseConnectionIdentifiers);
+        databaseConnectionIdentifiers = copyToVector(m_databaseConnectionMap.keys());
     }
 
     for (auto connectionIdentifier : databaseConnectionIdentifiers) {
@@ -441,7 +442,7 @@ void IDBConnectionProxy::connectionToServerLost(const IDBError& error)
     Vector<IDBResourceIdentifier> openDBRequestIdentifiers;
     {
         Locker<Lock> locker(m_openDBRequestMapLock);
-        copyKeysToVector(m_openDBRequestMap, openDBRequestIdentifiers);
+        openDBRequestIdentifiers = copyToVector(m_openDBRequestMap.keys());
     }
 
     for (auto& requestIdentifier : openDBRequestIdentifiers) {
@@ -484,12 +485,12 @@ void IDBConnectionProxy::handleMainThreadTasks()
         task->performTask();
 }
 
-void IDBConnectionProxy::getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, std::function<void (const Vector<String>&)> callback)
+void IDBConnectionProxy::getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, Function<void (const Vector<String>&)>&& callback)
 {
     // This method is only meant to be called by the web inspector on the main thread.
     RELEASE_ASSERT(isMainThread());
 
-    m_connectionToServer.getAllDatabaseNames(mainFrameOrigin, openingOrigin, callback);
+    m_connectionToServer.getAllDatabaseNames(mainFrameOrigin, openingOrigin, WTFMove(callback));
 }
 
 void IDBConnectionProxy::registerDatabaseConnection(IDBDatabase& database)
@@ -516,15 +517,24 @@ void IDBConnectionProxy::forgetActiveOperations(const Vector<RefPtr<TransactionO
         m_activeOperations.remove(operation->identifier());
 }
 
+void IDBConnectionProxy::forgetTransaction(IDBTransaction& transaction)
+{
+    Locker<Lock> locker(m_transactionMapLock);
+
+    m_pendingTransactions.remove(transaction.info().identifier());
+    m_committingTransactions.remove(transaction.info().identifier());
+    m_abortingTransactions.remove(transaction.info().identifier());
+}
+
 template<typename KeyType, typename ValueType>
 void removeItemsMatchingCurrentThread(HashMap<KeyType, ValueType>& map)
 {
-    auto currentThreadID = currentThread();
+    auto& currentThread = Thread::current();
 
     Vector<KeyType> keys;
     keys.reserveInitialCapacity(map.size());
     for (auto& iterator : map) {
-        if (iterator.value->originThreadID() == currentThreadID)
+        if (&iterator.value->originThread() == &currentThread)
             keys.uncheckedAppend(iterator.key);
     }
 

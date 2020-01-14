@@ -30,25 +30,19 @@
 #include "CachedResourceClient.h"
 #include "CachedResourceClientWalker.h"
 #include "CachedResourceRequest.h"
-#include "HTTPHeaderNames.h"
-#include "HTTPParsers.h"
-#include "MIMETypeRegistry.h"
-#include "MemoryCache.h"
 #include "RuntimeApplicationChecks.h"
 #include "SharedBuffer.h"
 #include "TextResourceDecoder.h"
 
 namespace WebCore {
 
-CachedScript::CachedScript(CachedResourceRequest&& request, SessionID sessionID)
-    : CachedResource(WTFMove(request), Script, sessionID)
-    , m_decoder(TextResourceDecoder::create(ASCIILiteral("application/javascript"), request.charset()))
+CachedScript::CachedScript(CachedResourceRequest&& request, const PAL::SessionID& sessionID, const CookieJar* cookieJar)
+    : CachedResource(WTFMove(request), Type::Script, sessionID, cookieJar)
+    , m_decoder(TextResourceDecoder::create("text/javascript"_s, request.charset()))
 {
 }
 
-CachedScript::~CachedScript()
-{
-}
+CachedScript::~CachedScript() = default;
 
 void CachedScript::setEncoding(const String& chs)
 {
@@ -58,11 +52,6 @@ void CachedScript::setEncoding(const String& chs)
 String CachedScript::encoding() const
 {
     return m_decoder->encoding().name();
-}
-
-String CachedScript::mimeType() const
-{
-    return extractMIMETypeFromMediaType(m_response.httpHeaderField(HTTPHeaderName::ContentType)).convertToASCIILowercase();
 }
 
 StringView CachedScript::script()
@@ -85,7 +74,7 @@ StringView CachedScript::script()
     }
 
     if (m_decodingState == DataAndDecodedStringHaveSameBytes)
-        return { reinterpret_cast<const LChar*>(m_data->data()), m_data->size() };
+        return { reinterpret_cast<const LChar*>(m_data->data()), static_cast<unsigned>(m_data->size()) };
 
     if (!m_script) {
         m_script = m_decoder->decodeAndFlush(m_data->data(), encodedSize());
@@ -132,13 +121,6 @@ void CachedScript::setBodyDataFrom(const CachedResource& resource)
     m_decodingState = script.m_decodingState;
     m_decoder = script.m_decoder;
 }
-
-#if ENABLE(NOSNIFF)
-bool CachedScript::mimeTypeAllowedByNosniff() const
-{
-    return parseContentTypeOptionsHeader(m_response.httpHeaderField(HTTPHeaderName::XContentTypeOptions)) != ContentTypeOptionsNosniff || MIMETypeRegistry::isSupportedJavaScriptMIMEType(mimeType());
-}
-#endif
 
 bool CachedScript::shouldIgnoreHTTPStatusCodeErrors() const
 {

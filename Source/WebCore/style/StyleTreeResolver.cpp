@@ -26,20 +26,27 @@
 #include "config.h"
 #include "StyleTreeResolver.h"
 
+#include "CSSAnimationController.h"
 #include "CSSFontSelector.h"
 #include "ComposedTreeAncestorIterator.h"
 #include "ComposedTreeIterator.h"
+#include "DocumentTimeline.h"
 #include "ElementIterator.h"
+#include "Frame.h"
 #include "HTMLBodyElement.h"
 #include "HTMLMeterElement.h"
 #include "HTMLNames.h"
 #include "HTMLProgressElement.h"
 #include "HTMLSlotElement.h"
 #include "LoaderStrategy.h"
-#include "MainFrame.h"
 #include "NodeRenderStyle.h"
 #include "Page.h"
 #include "PlatformStrategies.h"
+#include "Quirks.h"
+#include "RenderElement.h"
+#include "RenderStyle.h"
+#include "RenderView.h"
+#include "RuntimeEnabledFeatures.h"
 #include "Settings.h"
 #include "ShadowRoot.h"
 #include "StyleFontSizeFunctions.h"
@@ -51,41 +58,18 @@ namespace WebCore {
 
 namespace Style {
 
-static RenderStyle* placeholderStyle;
-
-static void ensurePlaceholderStyle(Document& document)
-{
-    if (placeholderStyle)
-        return;
-    placeholderStyle = RenderStyle::createPtr().release();
-    placeholderStyle->setDisplay(NONE);
-    placeholderStyle->setIsPlaceholderStyle();
-
-    FontCascadeDescription fontDescription;
-    fontDescription.setOneFamily(standardFamily);
-    fontDescription.setKeywordSizeFromIdentifier(CSSValueMedium);
-    float size = Style::fontSizeForKeyword(CSSValueMedium, false, document);
-    fontDescription.setSpecifiedSize(size);
-    fontDescription.setComputedSize(size);
-    placeholderStyle->setFontDescription(fontDescription);
-
-    placeholderStyle->fontCascade().update(&document.fontSelector());
-}
-
 TreeResolver::TreeResolver(Document& document)
     : m_document(document)
 {
-    ensurePlaceholderStyle(document);
 }
 
-TreeResolver::~TreeResolver()
-{
-}
+TreeResolver::~TreeResolver() = default;
 
 TreeResolver::Scope::Scope(Document& document)
     : styleResolver(document.styleScope().resolver())
     , sharingResolver(document, styleResolver.ruleSets(), selectorFilter)
 {
+    document.setIsResolvingTreeStyle(true);
 }
 
 TreeResolver::Scope::Scope(ShadowRoot& shadowRoot, Scope& enclosingScope)
@@ -94,48 +78,49 @@ TreeResolver::Scope::Scope(ShadowRoot& shadowRoot, Scope& enclosingScope)
     , shadowRoot(&shadowRoot)
     , enclosingScope(&enclosingScope)
 {
+    styleResolver.setOverrideDocumentElementStyle(enclosingScope.styleResolver.overrideDocumentElementStyle());
 }
 
-TreeResolver::Parent::Parent(Document& document, Change change)
+TreeResolver::Scope::~Scope()
+{
+    if (!shadowRoot)
+        styleResolver.document().setIsResolvingTreeStyle(false);
+
+    styleResolver.setOverrideDocumentElementStyle(nullptr);
+}
+
+TreeResolver::Parent::Parent(Document& document)
     : element(nullptr)
     , style(*document.renderStyle())
-    , change(change)
 {
 }
 
-TreeResolver::Parent::Parent(Element& element, const RenderStyle& style, Change change)
+TreeResolver::Parent::Parent(Element& element, const RenderStyle& style, Change change, DescendantsToResolve descendantsToResolve)
     : element(&element)
     , style(style)
     , change(change)
+    , descendantsToResolve(descendantsToResolve)
 {
 }
 
 void TreeResolver::pushScope(ShadowRoot& shadowRoot)
 {
     m_scopeStack.append(adoptRef(*new Scope(shadowRoot, scope())));
-    scope().styleResolver.setOverrideDocumentElementStyle(m_documentElementStyle.get());
 }
 
 void TreeResolver::pushEnclosingScope()
 {
     ASSERT(scope().enclosingScope);
     m_scopeStack.append(*scope().enclosingScope);
-    scope().styleResolver.setOverrideDocumentElementStyle(m_documentElementStyle.get());
 }
 
 void TreeResolver::popScope()
 {
-    scope().styleResolver.setOverrideDocumentElementStyle(nullptr);
     return m_scopeStack.removeLast();
 }
 
 std::unique_ptr<RenderStyle> TreeResolver::styleForElement(Element& element, const RenderStyle& inheritedStyle)
 {
-    if (!m_document.haveStylesheetsLoaded() && !element.renderer()) {
-        m_document.setHasNodesWithPlaceholderStyle();
-        return RenderStyle::clonePtr(*placeholderStyle);
-    }
-
     if (element.hasCustomStyleResolveCallbacks()) {
         RenderStyle* shadowHostStyle = scope().shadowRoot ? m_update->elementStyle(*scope().shadowRoot->host()) : nullptr;
         if (auto customStyle = element.resolveCustomStyle(inheritedStyle, shadowHostStyle)) {
@@ -149,7 +134,7 @@ std::unique_ptr<RenderStyle> TreeResolver::styleForElement(Element& element, con
     if (auto style = scope().sharingResolver.resolve(element, *m_update))
         return style;
 
-    auto elementStyle = scope().styleResolver.styleForElement(element, &inheritedStyle, parentBoxStyle(), MatchAllRules, nullptr, &scope().selectorFilter);
+    auto elementStyle = scope().styleResolver.styleForElement(element, &inheritedStyle, parentBoxStyle(), RuleMatchingBehavior::MatchAllRules, &scope().selectorFilter);
 
     if (elementStyle.relations)
         commitRelations(WTFMove(elementStyle.relations), *m_update);
@@ -159,60 +144,81 @@ std::unique_ptr<RenderStyle> TreeResolver::styleForElement(Element& element, con
 
 static void resetStyleForNonRenderedDescendants(Element& current)
 {
-    // FIXME: This is not correct with shadow trees. This should be done with ComposedTreeIterator.
-    bool elementNeedingStyleRecalcAffectsNextSiblingElementStyle = false;
     for (auto& child : childrenOfType<Element>(current)) {
-        bool affectedByPreviousSibling = child.styleIsAffectedByPreviousSibling() && elementNeedingStyleRecalcAffectsNextSiblingElementStyle;
-        if (child.needsStyleRecalc() || elementNeedingStyleRecalcAffectsNextSiblingElementStyle)
-            elementNeedingStyleRecalcAffectsNextSiblingElementStyle = child.affectsNextSiblingElementStyle();
-
-        if (child.needsStyleRecalc() || affectedByPreviousSibling) {
+        if (child.needsStyleRecalc()) {
             child.resetComputedStyle();
+            child.resetStyleRelations();
             child.setHasValidStyle();
         }
 
-        if (child.childNeedsStyleRecalc()) {
+        if (child.childNeedsStyleRecalc())
             resetStyleForNonRenderedDescendants(child);
-            child.clearChildNeedsStyleRecalc();
-        }
     }
+    current.clearChildNeedsStyleRecalc();
 }
 
 static bool affectsRenderedSubtree(Element& element, const RenderStyle& newStyle)
 {
-    if (element.renderer())
+    if (newStyle.display() != DisplayType::None)
         return true;
-    if (newStyle.display() != NONE)
+    if (element.renderOrDisplayContentsStyle())
         return true;
     if (element.rendererIsNeeded(newStyle))
         return true;
-#if ENABLE(CSS_REGIONS)
-    if (element.shouldMoveToFlowThread(newStyle))
-        return true;
-#endif
     return false;
 }
 
-ElementUpdate TreeResolver::resolveElement(Element& element)
+static DescendantsToResolve computeDescendantsToResolve(Change change, Validity validity, DescendantsToResolve parentDescendantsToResolve)
 {
+    if (parentDescendantsToResolve == DescendantsToResolve::All)
+        return DescendantsToResolve::All;
+    if (validity >= Validity::SubtreeInvalid)
+        return DescendantsToResolve::All;
+    switch (change) {
+    case NoChange:
+        return DescendantsToResolve::None;
+    case NoInherit:
+        return DescendantsToResolve::ChildrenWithExplicitInherit;
+    case Inherit:
+        return DescendantsToResolve::Children;
+    case Detach:
+        return DescendantsToResolve::All;
+    };
+    ASSERT_NOT_REACHED();
+    return DescendantsToResolve::None;
+};
+
+ElementUpdates TreeResolver::resolveElement(Element& element)
+{
+    if (m_didSeePendingStylesheet && !element.renderer() && !m_document.isIgnoringPendingStylesheets()) {
+        m_document.setHasNodesWithMissingStyle();
+        return { };
+    }
+
     auto newStyle = styleForElement(element, parent().style);
 
     if (!affectsRenderedSubtree(element, *newStyle))
         return { };
 
-    auto update = createAnimatedElementUpdate(WTFMove(newStyle), element, parent().change);
+    auto* existingStyle = element.renderOrDisplayContentsStyle();
 
-    auto* existingStyle = element.renderStyle();
+    if (m_didSeePendingStylesheet && (!existingStyle || existingStyle->isNotFinal())) {
+        newStyle->setIsNotFinal();
+        m_document.setHasNodesWithNonFinalStyle();
+    }
+
+    auto update = createAnimatedElementUpdate(WTFMove(newStyle), element, parent().change);
+    auto descendantsToResolve = computeDescendantsToResolve(update.change, element.styleValidity(), parent().descendantsToResolve);
 
     if (&element == m_document.documentElement()) {
         m_documentElementStyle = RenderStyle::clonePtr(*update.style);
         scope().styleResolver.setOverrideDocumentElementStyle(m_documentElementStyle.get());
 
-        if (update.change != NoChange && existingStyle && existingStyle->fontSize() != update.style->fontSize()) {
+        if (update.change != NoChange && existingStyle && existingStyle->computedFontPixelSize() != update.style->computedFontPixelSize()) {
             // "rem" units are relative to the document element's font size so we need to recompute everything.
             // In practice this is rare.
             scope().styleResolver.invalidateMatchedPropertiesCache();
-            update.change = std::max(update.change, Force);
+            descendantsToResolve = DescendantsToResolve::All;
         }
     }
 
@@ -223,11 +229,46 @@ ElementUpdate TreeResolver::resolveElement(Element& element)
 
     // FIXME: These elements should not change renderer based on appearance property.
     if (element.hasTagName(HTMLNames::meterTag) || is<HTMLProgressElement>(element)) {
-        if (existingStyle && update.style->appearance() != existingStyle->appearance())
+        if (existingStyle && update.style->appearance() != existingStyle->appearance()) {
             update.change = Detach;
+            descendantsToResolve = DescendantsToResolve::All;
+        }
     }
 
-    return update;
+    auto beforeUpdate = resolvePseudoStyle(element, update, PseudoId::Before);
+    auto afterUpdate = resolvePseudoStyle(element, update, PseudoId::After);
+
+#if ENABLE(POINTER_EVENTS) && PLATFORM(IOS_FAMILY)
+    // FIXME: Track this exactly.
+    if (update.style->touchActions() != TouchAction::Auto && !m_document.quirks().shouldDisablePointerEventsQuirk() && RuntimeEnabledFeatures::sharedFeatures().pointerEventsEnabled())
+        m_document.setMayHaveElementsWithNonAutoTouchAction();
+#endif
+
+    return { WTFMove(update), descendantsToResolve, WTFMove(beforeUpdate), WTFMove(afterUpdate) };
+}
+
+ElementUpdate TreeResolver::resolvePseudoStyle(Element& element, const ElementUpdate& elementUpdate, PseudoId pseudoId)
+{
+    if (elementUpdate.style->display() == DisplayType::None)
+        return { };
+    if (!elementUpdate.style->hasPseudoStyle(pseudoId))
+        return { };
+
+    auto pseudoStyle = scope().styleResolver.pseudoStyleForElement(element, { pseudoId }, *elementUpdate.style, &scope().selectorFilter);
+    if (!pseudoElementRendererIsNeeded(pseudoStyle.get()))
+        return { };
+
+    PseudoElement* pseudoElement = pseudoId == PseudoId::Before ? element.beforePseudoElement() : element.afterPseudoElement();
+    if (!pseudoElement) {
+        auto newPseudoElement = PseudoElement::create(element, pseudoId);
+        pseudoElement = newPseudoElement.ptr();
+        if (pseudoId == PseudoId::Before)
+            element.setBeforePseudoElement(WTFMove(newPseudoElement));
+        else
+            element.setAfterPseudoElement(WTFMove(newPseudoElement));
+    }
+
+    return createAnimatedElementUpdate(WTFMove(pseudoStyle), *pseudoElement, elementUpdate.change);
 }
 
 const RenderStyle* TreeResolver::parentBoxStyle() const
@@ -235,9 +276,9 @@ const RenderStyle* TreeResolver::parentBoxStyle() const
     // 'display: contents' doesn't generate boxes.
     for (unsigned i = m_parentStack.size(); i; --i) {
         auto& parent = m_parentStack[i - 1];
-        if (parent.style.display() == NONE)
+        if (parent.style.display() == DisplayType::None)
             return nullptr;
-        if (parent.style.display() != CONTENTS)
+        if (parent.style.display() != DisplayType::Contents)
             return &parent.style;
     }
     ASSERT_NOT_REACHED();
@@ -246,58 +287,59 @@ const RenderStyle* TreeResolver::parentBoxStyle() const
 
 ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderStyle> newStyle, Element& element, Change parentChange)
 {
-    auto validity = element.styleValidity();
-    bool recompositeLayer = element.styleResolutionShouldRecompositeLayer();
+    auto* oldStyle = element.renderOrDisplayContentsStyle();
 
-    auto makeUpdate = [&] (std::unique_ptr<RenderStyle> style, Change change) {
-        if (validity >= Validity::SubtreeInvalid)
-            change = std::max(change, validity == Validity::SubtreeAndRenderersInvalid ? Detach : Force);
-        if (parentChange >= Force)
-            change = std::max(change, parentChange);
-        return ElementUpdate { WTFMove(style), change, recompositeLayer };
-    };
+    bool shouldRecompositeLayer = false;
 
-    auto* renderer = element.renderer();
+    // New code path for CSS Animations and CSS Transitions.
+    if (RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled()) {
+        // First, we need to make sure that any new CSS animation occuring on this element has a matching WebAnimation
+        // on the document timeline. Note that we get timeline() on the Document here because we need a timeline created
+        // in case no Web Animations have been created through the JS API.
+        if (element.document().pageCacheState() == Document::NotInPageCache && !element.document().renderView()->printing()) {
+            if (oldStyle && (oldStyle->hasTransitions() || newStyle->hasTransitions()))
+                m_document.timeline().updateCSSTransitionsForElement(element, *oldStyle, *newStyle);
 
-    bool shouldReconstruct = validity >= Validity::SubtreeAndRenderersInvalid || parentChange == Detach;
-    if (shouldReconstruct)
-        return makeUpdate(WTFMove(newStyle), Detach);
-
-    if (!renderer) {
-        auto keepsDisplayContents = newStyle->display() == CONTENTS && element.hasDisplayContents();
-        // Some inherited property might have changed.
-        return makeUpdate(WTFMove(newStyle), keepsDisplayContents ? Inherit : Detach);
-    }
-
-    std::unique_ptr<RenderStyle> animatedStyle;
-    if (element.document().frame()->animation().updateAnimations(*renderer, *newStyle, animatedStyle))
-        recompositeLayer = true;
-
-    if (animatedStyle) {
-        auto change = determineChange(renderer->style(), *animatedStyle);
-        if (renderer->hasInitialAnimatedStyle()) {
-            renderer->setHasInitialAnimatedStyle(false);
-            // When we initialize a newly created renderer with initial animated style we don't inherit it to descendants.
-            // The first animation frame needs to correct this.
-            // FIXME: We should compute animated style correctly during initial style resolution when we don't have renderers yet.
-            //        https://bugs.webkit.org/show_bug.cgi?id=171926
-            change = std::max(change, Inherit);
+            if ((oldStyle && oldStyle->hasAnimations()) || newStyle->hasAnimations())
+                m_document.timeline().updateCSSAnimationsForElement(element, oldStyle, *newStyle);
         }
-        // If animation forces render tree reconstruction pass the original style. The animation will be applied on renderer construction.
-        // FIXME: We should always use the animated style here.
-        auto style = change == Detach ? WTFMove(newStyle) : WTFMove(animatedStyle);
-        return makeUpdate(WTFMove(style), change);
     }
 
-    auto change = determineChange(renderer->style(), *newStyle);
-    return makeUpdate(WTFMove(newStyle), change);
+    if (auto timeline = m_document.existingTimeline()) {
+        // Now we can update all Web animations, which will include CSS Animations as well
+        // as animations created via the JS API.
+        auto animatedStyle = RenderStyle::clonePtr(*newStyle);
+        shouldRecompositeLayer = timeline->resolveAnimationsForElement(element, *animatedStyle);
+        newStyle = WTFMove(animatedStyle);
+    }
+
+    // Old code path for CSS Animations and CSS Transitions.
+    if (!RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled()) {
+        auto& animationController = m_document.frame()->animation();
+
+        auto animationUpdate = animationController.updateAnimations(element, *newStyle, oldStyle);
+        shouldRecompositeLayer = animationUpdate.animationChangeRequiresRecomposite;
+
+        if (animationUpdate.style)
+            newStyle = WTFMove(animationUpdate.style);
+    }
+
+    auto change = oldStyle ? determineChange(*oldStyle, *newStyle) : Detach;
+
+    auto validity = element.styleValidity();
+    if (validity >= Validity::SubtreeAndRenderersInvalid || parentChange == Detach)
+        change = Detach;
+
+    shouldRecompositeLayer |= element.styleResolutionShouldRecompositeLayer();
+
+    return { WTFMove(newStyle), change, shouldRecompositeLayer };
 }
 
-void TreeResolver::pushParent(Element& element, const RenderStyle& style, Change change)
+void TreeResolver::pushParent(Element& element, const RenderStyle& style, Change change, DescendantsToResolve descendantsToResolve)
 {
     scope().selectorFilter.pushParent(&element);
 
-    Parent parent(element, style, change);
+    Parent parent(element, style, change, descendantsToResolve);
 
     if (auto* shadowRoot = element.shadowRoot()) {
         pushScope(*shadowRoot);
@@ -342,24 +384,26 @@ static bool shouldResolvePseudoElement(const PseudoElement* pseudoElement)
     return pseudoElement->needsStyleRecalc();
 }
 
-static bool shouldResolveElement(const Element& element, Style::Change parentChange)
+static bool shouldResolveElement(const Element& element, DescendantsToResolve parentDescendantsToResolve)
 {
-    if (parentChange >= Inherit)
-        return true;
-    if (parentChange == NoInherit) {
-        auto* existingStyle = element.renderStyle();
-        if (existingStyle && existingStyle->hasExplicitlyInheritedProperties())
-            return true;
-    }
-    if (element.needsStyleRecalc())
-        return true;
-    if (element.hasDisplayContents())
+    if (element.styleValidity() != Validity::Valid)
         return true;
     if (shouldResolvePseudoElement(element.beforePseudoElement()))
         return true;
     if (shouldResolvePseudoElement(element.afterPseudoElement()))
         return true;
 
+    switch (parentDescendantsToResolve) {
+    case DescendantsToResolve::None:
+        return false;
+    case DescendantsToResolve::Children:
+    case DescendantsToResolve::All:
+        return true;
+    case DescendantsToResolve::ChildrenWithExplicitInherit:
+        auto* existingStyle = element.renderOrDisplayContentsStyle();
+        return existingStyle && existingStyle->hasExplicitlyInheritedProperties();
+    };
+    ASSERT_NOT_REACHED();
     return false;
 }
 
@@ -372,6 +416,33 @@ static void clearNeedsStyleResolution(Element& element)
         after->setHasValidStyle();
 }
 
+static bool hasLoadingStylesheet(const Style::Scope& styleScope, const Element& element, bool checkDescendants)
+{
+    if (!styleScope.hasPendingSheetsInBody())
+        return false;
+    if (styleScope.hasPendingSheetInBody(element))
+        return true;
+    if (!checkDescendants)
+        return false;
+    for (auto& descendant : descendantsOfType<Element>(element)) {
+        if (styleScope.hasPendingSheetInBody(descendant))
+            return true;
+    };
+    return false;
+}
+
+static std::unique_ptr<RenderStyle> createInheritedDisplayContentsStyleIfNeeded(const RenderStyle& parentElementStyle, const RenderStyle* parentBoxStyle)
+{
+    if (parentElementStyle.display() != DisplayType::Contents)
+        return nullptr;
+    if (parentBoxStyle && !parentBoxStyle->inheritedNotEqual(&parentElementStyle))
+        return nullptr;
+    // Compute style for imaginary unstyled <span> around the text node.
+    auto style = RenderStyle::createPtr();
+    style->inheritFrom(parentElementStyle);
+    return style;
+}
+
 void TreeResolver::resolveComposedTree()
 {
     ASSERT(m_parentStack.size() == 1);
@@ -381,23 +452,25 @@ void TreeResolver::resolveComposedTree()
     auto it = descendants.begin();
     auto end = descendants.end();
 
-    // FIXME: SVG <use> element may cause tree mutations during style recalc.
-    it.dropAssertions();
-
     while (it != end) {
         popParentsToDepth(it.depth());
 
         auto& node = *it;
         auto& parent = this->parent();
 
-        ASSERT(node.inDocument());
+        ASSERT(node.isConnected());
         ASSERT(node.containingShadowRoot() == scope().shadowRoot);
         ASSERT(node.parentElement() == parent.element || is<ShadowRoot>(node.parentNode()) || node.parentElement()->shadowRoot());
 
         if (is<Text>(node)) {
             auto& text = downcast<Text>(node);
-            if (text.styleValidity() >= Validity::SubtreeAndRenderersInvalid && parent.change != Detach)
-                m_update->addText(text, parent.element);
+            
+            if ((text.styleValidity() >= Validity::SubtreeAndRenderersInvalid && parent.change != Detach) || parent.style.display() == DisplayType::Contents) {
+                TextUpdate textUpdate;
+                textUpdate.inheritedDisplayContentsStyle = createInheritedDisplayContentsStyleIfNeeded(parent.style, parentBoxStyle());
+
+                m_update->addText(text, parent.element, WTFMove(textUpdate));
+            }
 
             text.setHasValidStyle();
             it.traverseNextSkippingChildren();
@@ -408,55 +481,52 @@ void TreeResolver::resolveComposedTree()
 
         if (it.depth() > Settings::defaultMaximumRenderTreeDepth) {
             resetStyleForNonRenderedDescendants(element);
-            element.clearChildNeedsStyleRecalc();
             it.traverseNextSkippingChildren();
             continue;
         }
 
-        // FIXME: We should deal with this during style invalidation.
-        bool affectedByPreviousSibling = element.styleIsAffectedByPreviousSibling() && parent.elementNeedingStyleRecalcAffectsNextSiblingElementStyle;
-        if (element.needsStyleRecalc() || parent.elementNeedingStyleRecalcAffectsNextSiblingElementStyle)
-            parent.elementNeedingStyleRecalcAffectsNextSiblingElementStyle = element.affectsNextSiblingElementStyle();
-
-        auto* style = element.renderStyle();
+        auto* style = element.renderOrDisplayContentsStyle();
         auto change = NoChange;
+        auto descendantsToResolve = DescendantsToResolve::None;
 
-        bool shouldResolve = shouldResolveElement(element, parent.change) || affectedByPreviousSibling;
+        bool shouldResolve = shouldResolveElement(element, parent.descendantsToResolve);
         if (shouldResolve) {
-            element.resetComputedStyle();
+            if (!element.hasDisplayContents())
+                element.resetComputedStyle();
+            element.resetStyleRelations();
 
             if (element.hasCustomStyleResolveCallbacks())
                 element.willRecalcStyle(parent.change);
 
-            auto elementUpdate = resolveElement(element);
+            auto elementUpdates = resolveElement(element);
 
             if (element.hasCustomStyleResolveCallbacks())
-                element.didRecalcStyle(elementUpdate.change);
+                element.didRecalcStyle(elementUpdates.update.change);
 
-            style = elementUpdate.style.get();
-            change = elementUpdate.change;
+            style = elementUpdates.update.style.get();
+            change = elementUpdates.update.change;
+            descendantsToResolve = elementUpdates.descendantsToResolve;
 
-            if (affectedByPreviousSibling && change != Detach)
-                change = Force;
-
-            if (elementUpdate.style)
-                m_update->addElement(element, parent.element, WTFMove(elementUpdate));
+            if (elementUpdates.update.style)
+                m_update->addElement(element, parent.element, WTFMove(elementUpdates));
 
             clearNeedsStyleResolution(element);
         }
 
-        if (!style) {
+        if (!style)
             resetStyleForNonRenderedDescendants(element);
-            element.clearChildNeedsStyleRecalc();
-        }
 
-        bool shouldIterateChildren = style && (element.childNeedsStyleRecalc() || change != NoChange);
+        bool shouldIterateChildren = style && (element.childNeedsStyleRecalc() || descendantsToResolve != DescendantsToResolve::None);
+
+        if (!m_didSeePendingStylesheet)
+            m_didSeePendingStylesheet = hasLoadingStylesheet(m_document.styleScope(), element, !shouldIterateChildren);
+
         if (!shouldIterateChildren) {
             it.traverseNextSkippingChildren();
             continue;
         }
 
-        pushParent(element, *style, change);
+        pushParent(element, *style, change, descendantsToResolve);
 
         it.traverseNext();
     }
@@ -464,7 +534,7 @@ void TreeResolver::resolveComposedTree()
     popParentsToDepth(1);
 }
 
-std::unique_ptr<Update> TreeResolver::resolve(Change change)
+std::unique_ptr<Update> TreeResolver::resolve()
 {
     auto& renderView = *m_document.renderView();
 
@@ -473,12 +543,14 @@ std::unique_ptr<Update> TreeResolver::resolve(Change change)
         m_document.styleScope().resolver();
         return nullptr;
     }
-    if (change != Force && !documentElement->childNeedsStyleRecalc() && !documentElement->needsStyleRecalc())
+    if (!documentElement->childNeedsStyleRecalc() && !documentElement->needsStyleRecalc())
         return nullptr;
+
+    m_didSeePendingStylesheet = m_document.styleScope().hasPendingSheetsBeforeBody();
 
     m_update = std::make_unique<Update>(m_document);
     m_scopeStack.append(adoptRef(*new Scope(m_document)));
-    m_parentStack.append(Parent(m_document, change));
+    m_parentStack.append(Parent(m_document));
 
     // Pseudo element removal and similar may only work with these flags still set. Reset them after the style recalc.
     renderView.setUsesFirstLineRules(renderView.usesFirstLineRules() || scope().styleResolver.usesFirstLineRules());
@@ -506,6 +578,12 @@ static Vector<Function<void ()>>& postResolutionCallbackQueue()
     return vector;
 }
 
+static Vector<RefPtr<Frame>>& memoryCacheClientCallsResumeQueue()
+{
+    static NeverDestroyed<Vector<RefPtr<Frame>>> vector;
+    return vector;
+}
+
 void queuePostResolutionCallback(Function<void ()>&& callback)
 {
     postResolutionCallbackQueue().append(WTFMove(callback));
@@ -519,15 +597,13 @@ static void suspendMemoryCacheClientCalls(Document& document)
 
     page->setMemoryCacheClientCallsEnabled(false);
 
-    postResolutionCallbackQueue().append([protectedMainFrame = Ref<MainFrame>(page->mainFrame())] {
-        if (Page* page = protectedMainFrame->page())
-            page->setMemoryCacheClientCallsEnabled(true);
-    });
+    memoryCacheClientCallsResumeQueue().append(&page->mainFrame());
 }
 
 static unsigned resolutionNestingDepth;
 
-PostResolutionCallbackDisabler::PostResolutionCallbackDisabler(Document& document)
+PostResolutionCallbackDisabler::PostResolutionCallbackDisabler(Document& document, DrainCallbacks drainCallbacks)
+    : m_drainCallbacks(drainCallbacks)
 {
     ++resolutionNestingDepth;
 
@@ -541,10 +617,19 @@ PostResolutionCallbackDisabler::PostResolutionCallbackDisabler(Document& documen
 PostResolutionCallbackDisabler::~PostResolutionCallbackDisabler()
 {
     if (resolutionNestingDepth == 1) {
-        // Get size each time through the loop because a callback can add more callbacks to the end of the queue.
-        auto& queue = postResolutionCallbackQueue();
-        for (size_t i = 0; i < queue.size(); ++i)
-            queue[i]();
+        if (m_drainCallbacks == DrainCallbacks::Yes) {
+            // Get size each time through the loop because a callback can add more callbacks to the end of the queue.
+            auto& queue = postResolutionCallbackQueue();
+            for (size_t i = 0; i < queue.size(); ++i)
+                queue[i]();
+            queue.clear();
+        }
+
+        auto& queue = memoryCacheClientCallsResumeQueue();
+        for (size_t i = 0; i < queue.size(); ++i) {
+            if (auto* page = queue[i]->page())
+                page->setMemoryCacheClientCallsEnabled(true);
+        }
         queue.clear();
 
         platformStrategies()->loaderStrategy()->resumePendingRequests();
@@ -556,11 +641,6 @@ PostResolutionCallbackDisabler::~PostResolutionCallbackDisabler()
 bool postResolutionCallbacksAreSuspended()
 {
     return resolutionNestingDepth;
-}
-
-bool isPlaceholderStyle(const RenderStyle& style)
-{
-    return &style == placeholderStyle;
 }
 
 }

@@ -28,6 +28,7 @@
 namespace WebCore {
 
 class HTMLFontElement final : public HTMLElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLFontElement);
 public:
     static Ref<HTMLFontElement> create(const QualifiedName&, Document&);
     
@@ -37,7 +38,7 @@ private:
     HTMLFontElement(const QualifiedName&, Document&);
 
     bool isPresentationAttribute(const QualifiedName&) const final;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
 };
 
 } // namespace WebCore

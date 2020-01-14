@@ -27,30 +27,40 @@
  */
 
 #include "config.h"
+#include "ImplicitAnimation.h"
 
-#include "AnimationControllerPrivate.h"
+#include "CSSAnimationControllerPrivate.h"
 #include "CSSPropertyAnimation.h"
 #include "CompositeAnimation.h"
+#if PLATFORM(IOS_FAMILY)
+#include "ContentChangeObserver.h"
+#endif
 #include "EventNames.h"
 #include "GeometryUtilities.h"
-#include "ImplicitAnimation.h"
 #include "KeyframeAnimation.h"
 #include "RenderBox.h"
 #include "StylePendingResources.h"
 
 namespace WebCore {
 
-ImplicitAnimation::ImplicitAnimation(const Animation& transition, CSSPropertyID animatingProperty, RenderElement* renderer, CompositeAnimation* compAnim, const RenderStyle* fromStyle)
-    : AnimationBase(transition, renderer, compAnim)
-    , m_fromStyle(RenderStyle::clonePtr(*fromStyle))
+ImplicitAnimation::ImplicitAnimation(const Animation& transition, CSSPropertyID animatingProperty, Element& element, CompositeAnimation& compositeAnimation, const RenderStyle& fromStyle)
+    : AnimationBase(transition, element, compositeAnimation)
+    , m_fromStyle(RenderStyle::clonePtr(fromStyle))
     , m_transitionProperty(transition.property())
     , m_animatingProperty(animatingProperty)
 {
+#if PLATFORM(IOS_FAMILY)
+    element.document().contentChangeObserver().didAddTransition(element, transition);
+#endif
     ASSERT(animatingProperty != CSSPropertyInvalid);
 }
 
 ImplicitAnimation::~ImplicitAnimation()
 {
+#if PLATFORM(IOS_FAMILY)
+    if (auto* element = this->element())
+        element->document().contentChangeObserver().didRemoveTransition(*element, m_animatingProperty);
+#endif
     // // Make sure to tell the renderer that we are ending. This will make sure any accelerated animations are removed.
     if (!postActive())
         endAnimation();
@@ -58,26 +68,26 @@ ImplicitAnimation::~ImplicitAnimation()
 
 bool ImplicitAnimation::shouldSendEventForListener(Document::ListenerType inListenerType) const
 {
-    return m_object->document().hasListenerType(inListenerType);
+    return element()->document().hasListenerType(inListenerType);
 }
 
-bool ImplicitAnimation::animate(CompositeAnimation*, RenderElement*, const RenderStyle*, const RenderStyle* targetStyle, std::unique_ptr<RenderStyle>& animatedStyle, bool& didBlendStyle)
+OptionSet<AnimateChange> ImplicitAnimation::animate(CompositeAnimation& compositeAnimation, const RenderStyle& targetStyle, std::unique_ptr<RenderStyle>& animatedStyle)
 {
     // If we get this far and the animation is done, it means we are cleaning up a just finished animation.
     // So just return. Everything is already all cleaned up.
     if (postActive())
-        return false;
+        return { };
 
     AnimationState oldState = state();
 
     // Reset to start the transition if we are new
     if (isNew())
-        reset(targetStyle);
+        reset(targetStyle, compositeAnimation);
 
     // Run a cycle of animation.
     // We know we will need a new render style, so make one if needed
     if (!animatedStyle)
-        animatedStyle = RenderStyle::clonePtr(*targetStyle);
+        animatedStyle = RenderStyle::clonePtr(targetStyle);
 
     CSSPropertyAnimation::blendProperties(this, m_animatingProperty, animatedStyle.get(), m_fromStyle.get(), m_toStyle.get(), progress());
     // FIXME: we also need to detect cases where we have to software animate for other reasons,
@@ -85,9 +95,15 @@ bool ImplicitAnimation::animate(CompositeAnimation*, RenderElement*, const Rende
 
     // Fire the start timeout if needed
     fireAnimationEventsIfNeeded();
-    
-    didBlendStyle = true;
-    return state() != oldState;
+
+    OptionSet<AnimateChange> change(AnimateChange::StyleBlended);
+    if (state() != oldState)
+        change.add(AnimateChange::StateChange);
+
+    if ((isPausedState(oldState) || isRunningState(oldState)) != (isPausedState(state()) || isRunningState(state())))
+        change.add(AnimateChange::RunningStateChange);
+
+    return change;
 }
 
 void ImplicitAnimation::getAnimatedStyle(std::unique_ptr<RenderStyle>& animatedStyle)
@@ -102,12 +118,12 @@ bool ImplicitAnimation::computeExtentOfTransformAnimation(LayoutRect& bounds) co
 {
     ASSERT(hasStyle());
 
-    if (!is<RenderBox>(m_object))
+    if (!is<RenderBox>(renderer()))
         return true; // Non-boxes don't get transformed;
 
     ASSERT(m_animatingProperty == CSSPropertyTransform);
 
-    RenderBox& box = downcast<RenderBox>(*m_object);
+    RenderBox& box = downcast<RenderBox>(*renderer());
     FloatRect rendererBox = snapRectToDevicePixels(box.borderBoxRect(), box.document().deviceScaleFactor());
 
     LayoutRect startBounds = bounds;
@@ -131,47 +147,61 @@ bool ImplicitAnimation::computeExtentOfTransformAnimation(LayoutRect& bounds) co
     return true;
 }
 
+bool ImplicitAnimation::affectsAcceleratedProperty() const
+{
+    return CSSPropertyAnimation::animationOfPropertyIsAccelerated(m_animatingProperty);
+}
+
 bool ImplicitAnimation::startAnimation(double timeOffset)
 {
-    if (m_object && m_object->isComposited())
-        return downcast<RenderBoxModelObject>(*m_object).startTransition(timeOffset, m_animatingProperty, m_fromStyle.get(), m_toStyle.get());
+    if (auto* renderer = this->renderer())
+        return renderer->startTransition(timeOffset, m_animatingProperty, m_fromStyle.get(), m_toStyle.get());
     return false;
 }
 
 void ImplicitAnimation::pauseAnimation(double timeOffset)
 {
-    if (!m_object)
-        return;
-
-    if (m_object->isComposited())
-        downcast<RenderBoxModelObject>(*m_object).transitionPaused(timeOffset, m_animatingProperty);
+    if (auto* renderer = this->renderer())
+        renderer->transitionPaused(timeOffset, m_animatingProperty);
     // Restore the original (unanimated) style
     if (!paused())
-        setNeedsStyleRecalc(m_object->element());
+        setNeedsStyleRecalc(element());
 }
 
-void ImplicitAnimation::endAnimation()
+void ImplicitAnimation::clear()
 {
-    if (m_object && m_object->isComposited())
-        downcast<RenderBoxModelObject>(*m_object).transitionFinished(m_animatingProperty);
+#if PLATFORM(IOS_FAMILY)
+    if (auto* element = this->element())
+        element->document().contentChangeObserver().didRemoveTransition(*element, m_animatingProperty);
+#endif
+    AnimationBase::clear();
+}
+
+void ImplicitAnimation::endAnimation(bool)
+{
+    if (auto* renderer = this->renderer())
+        renderer->transitionFinished(m_animatingProperty);
 }
 
 void ImplicitAnimation::onAnimationEnd(double elapsedTime)
 {
+#if PLATFORM(IOS_FAMILY)
+    if (auto* element = this->element())
+        element->document().contentChangeObserver().didFinishTransition(*element, m_animatingProperty);
+#endif
     // If we have a keyframe animation on this property, this transition is being overridden. The keyframe
     // animation keeps an unanimated style in case a transition starts while the keyframe animation is
     // running. But now that the transition has completed, we need to update this style with its new
     // destination. If we didn't, the next time through we would think a transition had started
     // (comparing the old unanimated style with the new final style of the transition).
-    RefPtr<KeyframeAnimation> keyframeAnim = m_compositeAnimation->getAnimationForProperty(m_animatingProperty);
-    if (keyframeAnim)
-        keyframeAnim->setUnanimatedStyle(RenderStyle::clonePtr(*m_toStyle));
-    
+    if (auto* animation = m_compositeAnimation->animationForProperty(m_animatingProperty))
+        animation->setUnanimatedStyle(RenderStyle::clonePtr(*m_toStyle));
+
     sendTransitionEvent(eventNames().transitionendEvent, elapsedTime);
     endAnimation();
 }
 
-bool ImplicitAnimation::sendTransitionEvent(const AtomicString& eventType, double elapsedTime)
+bool ImplicitAnimation::sendTransitionEvent(const AtomString& eventType, double elapsedTime)
 {
     if (eventType == eventNames().transitionendEvent) {
         Document::ListenerType listenerType = Document::TRANSITIONEND_LISTENER;
@@ -180,14 +210,14 @@ bool ImplicitAnimation::sendTransitionEvent(const AtomicString& eventType, doubl
             String propertyName = getPropertyNameString(m_animatingProperty);
                 
             // Dispatch the event
-            RefPtr<Element> element = m_object->element();
+            auto element = makeRefPtr(this->element());
 
             ASSERT(!element || element->document().pageCacheState() == Document::NotInPageCache);
             if (!element)
                 return false;
 
             // Schedule event handling
-            m_compositeAnimation->animationController().addEventToDispatch(element, eventType, propertyName, elapsedTime);
+            m_compositeAnimation->animationController().addEventToDispatch(*element, eventType, propertyName, elapsedTime);
 
             // Restore the original (unanimated) style
             if (eventType == eventNames().transitionendEvent && element->renderer())
@@ -200,26 +230,26 @@ bool ImplicitAnimation::sendTransitionEvent(const AtomicString& eventType, doubl
     return false; // Didn't dispatch an event
 }
 
-void ImplicitAnimation::reset(const RenderStyle* to)
+void ImplicitAnimation::reset(const RenderStyle& to, CompositeAnimation& compositeAnimation)
 {
-    ASSERT(to);
     ASSERT(m_fromStyle);
 
-    m_toStyle = RenderStyle::clonePtr(*to);
+    m_toStyle = RenderStyle::clonePtr(to);
 
-    if (m_object && m_object->element())
-        Style::loadPendingResources(*m_toStyle, m_object->element()->document(), m_object->element());
+    if (element())
+        Style::loadPendingResources(*m_toStyle, element()->document(), element());
 
-    // Restart the transition
-    if (m_fromStyle && m_toStyle)
+    // Restart the transition.
+    if (m_fromStyle && m_toStyle && !compositeAnimation.isSuspended())
         updateStateMachine(AnimationStateInput::RestartAnimation, -1);
-        
-    // set the transform animation list
+
+    // Set the transform animation list.
     validateTransformFunctionList();
     checkForMatchingFilterFunctionLists();
 #if ENABLE(FILTERS_LEVEL_2)
     checkForMatchingBackdropFilterFunctionLists();
 #endif
+    checkForMatchingColorFilterFunctionLists();
 }
 
 void ImplicitAnimation::setOverridden(bool b)
@@ -316,17 +346,27 @@ void ImplicitAnimation::checkForMatchingBackdropFilterFunctionLists()
 }
 #endif
 
-double ImplicitAnimation::timeToNextService()
+void ImplicitAnimation::checkForMatchingColorFilterFunctionLists()
 {
-    double t = AnimationBase::timeToNextService();
-    if (t != 0 || preActive())
+    m_filterFunctionListsMatch = false;
+
+    if (!m_fromStyle || !m_toStyle)
+        return;
+
+    m_colorFilterFunctionListsMatch = filterOperationsMatch(&m_fromStyle->appleColorFilter(), m_toStyle->appleColorFilter());
+}
+
+Optional<Seconds> ImplicitAnimation::timeToNextService()
+{
+    Optional<Seconds> t = AnimationBase::timeToNextService();
+    if (!t || t.value() != 0_s || preActive())
         return t;
-        
+
     // A return value of 0 means we need service. But if this is an accelerated animation we 
     // only need service at the end of the transition.
     if (CSSPropertyAnimation::animationOfPropertyIsAccelerated(m_animatingProperty) && isAccelerated()) {
         bool isLooping;
-        getTimeToNextEvent(t, isLooping);
+        getTimeToNextEvent(t.value(), isLooping);
     }
     return t;
 }

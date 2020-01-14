@@ -29,10 +29,16 @@ import logging
 import string
 from string import Template
 
-from generator import Generator, ucfirst
-from models import ObjectType, Frameworks
-from objc_generator import ObjCGenerator
-from objc_generator_templates import ObjCGeneratorTemplates as ObjCTemplates
+try:
+    from .generator import Generator, ucfirst
+    from .models import ObjectType, EnumType, Frameworks
+    from .objc_generator import ObjCTypeCategory, ObjCGenerator
+    from .objc_generator_templates import ObjCGeneratorTemplates as ObjCTemplates
+except ValueError:
+    from generator import Generator, ucfirst
+    from models import ObjectType, EnumType, Frameworks
+    from objc_generator import ObjCTypeCategory, ObjCGenerator
+    from objc_generator_templates import ObjCGeneratorTemplates as ObjCTemplates
 
 log = logging.getLogger('global')
 
@@ -44,21 +50,21 @@ def add_newline(lines):
 
 
 class ObjCProtocolTypesImplementationGenerator(ObjCGenerator):
-    def __init__(self, model, input_filepath):
-        ObjCGenerator.__init__(self, model, input_filepath)
+    def __init__(self, *args, **kwargs):
+        ObjCGenerator.__init__(self, *args, **kwargs)
 
     def output_filename(self):
         return '%sTypes.mm' % self.protocol_name()
 
     def domains_to_generate(self):
-        return filter(ObjCGenerator.should_generate_domain_types_filter(self.model()), Generator.domains_to_generate(self))
+        return list(filter(self.should_generate_types_for_domain, Generator.domains_to_generate(self)))
 
     def generate_output(self):
         secondary_headers = [
             '"%sTypeConversions.h"' % self.protocol_name(),
             Generator.string_for_file_include('%sJSONObjectPrivate.h' % ObjCGenerator.OBJC_STATIC_PREFIX, Frameworks.WebInspector, self.model().framework),
-            '<JavaScriptCore/InspectorValues.h>',
             '<wtf/Assertions.h>',
+            '<wtf/JSONValues.h>',
         ]
 
         # The FooProtocolInternal.h header is only needed to declare the backend-side event dispatcher bindings.
@@ -75,13 +81,13 @@ class ObjCProtocolTypesImplementationGenerator(ObjCGenerator):
         sections = []
         sections.append(self.generate_license())
         sections.append(Template(ObjCTemplates.ImplementationPrelude).substitute(None, **header_args))
-        sections.extend(map(self.generate_type_implementations, domains))
+        sections.extend(list(map(self.generate_type_implementations, domains)))
         sections.append(Template(ObjCTemplates.ImplementationPostlude).substitute(None, **header_args))
         return '\n\n'.join(sections)
 
     def generate_type_implementations(self, domain):
         lines = []
-        for declaration in domain.type_declarations:
+        for declaration in self.type_declarations_for_domain(domain):
             if (isinstance(declaration.type, ObjectType)):
                 add_newline(lines)
                 lines.append(self.generate_type_implementation(domain, declaration))
@@ -94,8 +100,8 @@ class ObjCProtocolTypesImplementationGenerator(ObjCGenerator):
         if self.get_generator_setting('generate_frontend', False):
             lines.append('')
             lines.append(self._generate_init_method_for_payload(domain, declaration))
-            lines.append(self._generate_init_method_for_json_object(domain, declaration))
-        required_members = filter(lambda member: not member.is_optional, declaration.type_members)
+            lines.append(self._generate_init_method_for_protocol_object(domain, declaration))
+        required_members = [member for member in declaration.type_members if not member.is_optional]
         if required_members:
             lines.append('')
             lines.append(self._generate_init_method_for_required_members(domain, declaration, required_members))
@@ -108,11 +114,11 @@ class ObjCProtocolTypesImplementationGenerator(ObjCGenerator):
         lines.append('@end')
         return '\n'.join(lines)
 
-    def _generate_init_method_for_json_object(self, domain, declaration):
+    def _generate_init_method_for_protocol_object(self, domain, declaration):
         lines = []
-        lines.append('- (instancetype)initWithJSONObject:(RWIProtocolJSONObject *)jsonObject')
+        lines.append('- (instancetype)initWithProtocolObject:(RWIProtocolJSONObject *)object')
         lines.append('{')
-        lines.append('    if (!(self = [super initWithInspectorObject:[jsonObject toInspectorObject].get()]))')
+        lines.append('    if (!(self = [super initWithJSONObject:[object toJSONObject].get()]))')
         lines.append('        return nil;')
         lines.append('')
         lines.append('    return self;')
@@ -128,11 +134,25 @@ class ObjCProtocolTypesImplementationGenerator(ObjCGenerator):
         lines.append('')
 
         for member in declaration.type_members:
-            var_name = ObjCGenerator.identifier_to_objc_identifier(member.member_name)
+            member_name = member.member_name
+
             if not member.is_optional:
-                lines.append('    THROW_EXCEPTION_FOR_REQUIRED_PROPERTY(payload[@"%s"], @"%s");' % (var_name, var_name))
+                lines.append('    THROW_EXCEPTION_FOR_REQUIRED_PROPERTY(payload[@"%s"], @"%s");' % (member_name, member_name))
+
+            objc_type = self.objc_type_for_member(declaration, member)
+            var_name = ObjCGenerator.identifier_to_objc_identifier(member_name)
             conversion_expression = self.payload_to_objc_expression_for_member(declaration, member)
-            lines.append('    self.%s = %s;' % (var_name, conversion_expression))
+            if isinstance(member.type, EnumType):
+                lines.append('    Optional<%s> %s = %s;' % (objc_type, var_name, conversion_expression))
+                if not member.is_optional:
+                    lines.append('    THROW_EXCEPTION_FOR_BAD_ENUM_VALUE(%s, @"%s");' % (var_name, member_name))
+                    lines.append('    self.%s = %s.value();' % (var_name, var_name))
+                else:
+                    lines.append('    if (%s)' % var_name)
+                    lines.append('        self.%s = %s.value();' % (var_name, var_name))
+            else:
+                lines.append('    self.%s = %s;' % (var_name, conversion_expression))
+
             lines.append('')
 
         lines.append('    return self;')
@@ -153,7 +173,7 @@ class ObjCProtocolTypesImplementationGenerator(ObjCGenerator):
         lines.append('        return nil;')
         lines.append('')
 
-        required_pointer_members = filter(lambda member: ObjCGenerator.is_type_objc_pointer_type(member.type), required_members)
+        required_pointer_members = [member for member in required_members if ObjCGenerator.is_type_objc_pointer_type(member.type)]
         if required_pointer_members:
             for member in required_pointer_members:
                 var_name = ObjCGenerator.identifier_to_objc_identifier(member.member_name)
@@ -192,10 +212,18 @@ class ObjCProtocolTypesImplementationGenerator(ObjCGenerator):
         var_name = ObjCGenerator.identifier_to_objc_identifier(member.member_name)
         getter_method = ObjCGenerator.objc_getter_method_for_member(declaration, member)
         basic_expression = '[super %s:@"%s"]' % (getter_method, member.member_name)
-        conversion_expression = self.protocol_to_objc_expression_for_member(declaration, member, basic_expression)
-        lines = []
-        lines.append('- (%s)%s' % (objc_type, var_name))
-        lines.append('{')
-        lines.append('    return %s;' % conversion_expression)
-        lines.append('}')
+        category = ObjCTypeCategory.category_for_type(member.type)
+        if category is ObjCTypeCategory.Object:
+            lines = []
+            lines.append('- (%s)%s' % (objc_type, var_name))
+            lines.append('{')
+            lines.append(self.protocol_to_objc_code_block_for_object_member(declaration, member, basic_expression))
+            lines.append('}')
+        else:
+            conversion_expression = self.protocol_to_objc_expression_for_member(declaration, member, basic_expression)
+            lines = []
+            lines.append('- (%s)%s' % (objc_type, var_name))
+            lines.append('{')
+            lines.append('    return %s;' % conversion_expression)
+            lines.append('}')
         return '\n'.join(lines)

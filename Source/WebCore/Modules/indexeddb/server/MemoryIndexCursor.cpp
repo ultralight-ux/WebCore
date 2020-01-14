@@ -62,9 +62,7 @@ MemoryIndexCursor::MemoryIndexCursor(MemoryIndex& index, const IDBCursorInfo& in
         m_currentIterator.invalidate();
 }
 
-MemoryIndexCursor::~MemoryIndexCursor()
-{
-}
+MemoryIndexCursor::~MemoryIndexCursor() = default;
 
 void MemoryIndexCursor::currentData(IDBGetResult& getResult)
 {
@@ -76,8 +74,8 @@ void MemoryIndexCursor::currentData(IDBGetResult& getResult)
     if (m_info.cursorType() == IndexedDB::CursorType::KeyOnly)
         getResult = { m_currentKey, m_currentPrimaryKey };
     else {
-        IDBValue value = { m_index.objectStore().valueForKey(m_currentPrimaryKey), { }, { } };
-        getResult = { m_currentKey, m_currentPrimaryKey, WTFMove(value) };
+        IDBValue value = { m_index.objectStore().valueForKey(m_currentPrimaryKey), { }, { }, { } };
+        getResult = { m_currentKey, m_currentPrimaryKey, WTFMove(value), m_index.objectStore().info().keyPath() };
     }
 }
 
@@ -151,13 +149,13 @@ void MemoryIndexCursor::iterate(const IDBKeyData& key, const IDBKeyData& primary
         case IndexedDB::CursorDirection::Next:
             m_currentIterator = valueStore->find(m_currentKey, m_currentPrimaryKey);
             break;
-        case IndexedDB::CursorDirection::NextNoDuplicate:
+        case IndexedDB::CursorDirection::Nextunique:
             m_currentIterator = valueStore->find(m_currentKey, true);
             break;
         case IndexedDB::CursorDirection::Prev:
             m_currentIterator = valueStore->reverseFind(m_currentKey, m_currentPrimaryKey, m_info.duplicity());
             break;
-        case IndexedDB::CursorDirection::PrevNoDuplicate:
+        case IndexedDB::CursorDirection::Prevunique:
             m_currentIterator = valueStore->reverseFind(m_currentKey, m_info.duplicity(), true);
             break;
         }

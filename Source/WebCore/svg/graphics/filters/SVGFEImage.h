@@ -30,31 +30,32 @@ namespace WebCore {
 class Document;
 class Image;
 class RenderElement;
+class TreeScope;
 
 class FEImage final : public FilterEffect {
 public:
     static Ref<FEImage> createWithImage(Filter&, RefPtr<Image>, const SVGPreserveAspectRatioValue&);
-    static Ref<FEImage> createWithIRIReference(Filter&, Document&, const String&, const SVGPreserveAspectRatioValue&);
+    static Ref<FEImage> createWithIRIReference(Filter&, TreeScope&, const String&, const SVGPreserveAspectRatioValue&);
 
-    void platformApplySoftware() final;
-    void dump() final;
+private:
+    virtual ~FEImage() = default;
+    FEImage(Filter&, RefPtr<Image>, const SVGPreserveAspectRatioValue&);
+    FEImage(Filter&, TreeScope&, const String&, const SVGPreserveAspectRatioValue&);
 
-    void determineAbsolutePaintRect() final;
+    const char* filterName() const final { return "FEImage"; }
 
     FilterEffectType filterEffectType() const final { return FilterEffectTypeImage; }
 
-    TextStream& externalRepresentation(TextStream&, int indention) const final;
-    
-private:
-    virtual ~FEImage() { }
-    FEImage(Filter&, RefPtr<Image>, const SVGPreserveAspectRatioValue&);
-    FEImage(Filter&, Document&, const String&, const SVGPreserveAspectRatioValue&);
     RenderElement* referencedRenderer() const;
+
+    void platformApplySoftware() final;
+    void determineAbsolutePaintRect() final;
+    WTF::TextStream& externalRepresentation(WTF::TextStream&, RepresentationType) const final;
 
     RefPtr<Image> m_image;
 
-    // m_document will never be a dangling reference. See https://bugs.webkit.org/show_bug.cgi?id=99243
-    Document* m_document;
+    // m_treeScope will never be a dangling reference. See https://bugs.webkit.org/show_bug.cgi?id=99243
+    TreeScope* m_treeScope { nullptr };
     String m_href;
     SVGPreserveAspectRatioValue m_preserveAspectRatio;
 };

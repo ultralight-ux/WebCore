@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,7 @@
 #include "JSGenericTypedArrayView.h"
 #include "TypeError.h"
 #include "TypedArrays.h"
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace JSC {
 
@@ -76,8 +77,7 @@ JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::createWithFa
 }
 
 template<typename Adaptor>
-JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::createUninitialized(
-    ExecState* exec, Structure* structure, unsigned length)
+JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::createUninitialized(ExecState* exec, Structure* structure, unsigned length)
 {
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -97,14 +97,14 @@ JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::createUninit
 
 template<typename Adaptor>
 JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::create(
-    ExecState* exec, Structure* structure, PassRefPtr<ArrayBuffer> passedBuffer,
+    ExecState* exec, Structure* structure, RefPtr<ArrayBuffer>&& buffer,
     unsigned byteOffset, unsigned length)
 {
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    RefPtr<ArrayBuffer> buffer = passedBuffer;
     size_t size = sizeof(typename Adaptor::Type);
-    if (!ArrayBufferView::verifySubRangeLength(buffer, byteOffset, length, size)) {
+    ASSERT(buffer);
+    if (!ArrayBufferView::verifySubRangeLength(*buffer, byteOffset, length, size)) {
         throwException(exec, scope, createRangeError(exec, "Length out of range of buffer"));
         return nullptr;
     }
@@ -112,7 +112,7 @@ JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::create(
         throwException(exec, scope, createRangeError(exec, "Byte offset is not aligned"));
         return nullptr;
     }
-    ConstructionContext context(vm, structure, buffer, byteOffset, length);
+    ConstructionContext context(vm, structure, WTFMove(buffer), byteOffset, length);
     ASSERT(context);
     JSGenericTypedArrayView* result =
         new (NotNull, allocateCell<JSGenericTypedArrayView>(vm.heap))
@@ -123,10 +123,9 @@ JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::create(
 
 template<typename Adaptor>
 JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::create(
-    VM& vm, Structure* structure, PassRefPtr<typename Adaptor::ViewType> impl)
+    VM& vm, Structure* structure, RefPtr<typename Adaptor::ViewType>&& impl)
 {
-    RefPtr<ArrayBuffer> buffer = impl->possiblySharedBuffer();
-    ConstructionContext context(vm, structure, buffer, impl->byteOffset(), impl->length());
+    ConstructionContext context(vm, structure, impl->possiblySharedBuffer(), impl->byteOffset(), impl->length());
     ASSERT(context);
     JSGenericTypedArrayView* result =
         new (NotNull, allocateCell<JSGenericTypedArrayView>(vm.heap))
@@ -138,9 +137,9 @@ JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::create(
 template<typename Adaptor>
 JSGenericTypedArrayView<Adaptor>* JSGenericTypedArrayView<Adaptor>::create(
     Structure* structure, JSGlobalObject* globalObject,
-    PassRefPtr<typename Adaptor::ViewType> impl)
+    RefPtr<typename Adaptor::ViewType>&& impl)
 {
-    return create(globalObject->vm(), structure, impl);
+    return create(globalObject->vm(), structure, WTFMove(impl));
 }
 
 template<typename Adaptor>
@@ -245,7 +244,7 @@ bool JSGenericTypedArrayView<Adaptor>::set(
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    const ClassInfo* ci = object->classInfo();
+    const ClassInfo* ci = object->classInfo(vm);
     if (ci->typedArrayStorageType == Adaptor::typeValue) {
         // The super fast case: we can just memcpy since we're the same type.
         JSGenericTypedArrayView* other = jsCast<JSGenericTypedArrayView*>(object);
@@ -253,7 +252,7 @@ bool JSGenericTypedArrayView<Adaptor>::set(
         
         RELEASE_ASSERT(other->canAccessRangeQuickly(objectOffset, length));
         bool success = validateRange(exec, offset, length);
-        ASSERT(!scope.exception() == success);
+        EXCEPTION_ASSERT(!scope.exception() == success);
         if (!success)
             return false;
 
@@ -263,45 +262,36 @@ bool JSGenericTypedArrayView<Adaptor>::set(
     
     switch (ci->typedArrayStorageType) {
     case TypeInt8:
-        scope.release();
-        return setWithSpecificType<Int8Adaptor>(
-            exec, offset, jsCast<JSInt8Array*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Int8Adaptor>(
+            exec, offset, jsCast<JSInt8Array*>(object), objectOffset, length, type));
     case TypeInt16:
-        scope.release();
-        return setWithSpecificType<Int16Adaptor>(
-            exec, offset, jsCast<JSInt16Array*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Int16Adaptor>(
+            exec, offset, jsCast<JSInt16Array*>(object), objectOffset, length, type));
     case TypeInt32:
-        scope.release();
-        return setWithSpecificType<Int32Adaptor>(
-            exec, offset, jsCast<JSInt32Array*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Int32Adaptor>(
+            exec, offset, jsCast<JSInt32Array*>(object), objectOffset, length, type));
     case TypeUint8:
-        scope.release();
-        return setWithSpecificType<Uint8Adaptor>(
-            exec, offset, jsCast<JSUint8Array*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Uint8Adaptor>(
+            exec, offset, jsCast<JSUint8Array*>(object), objectOffset, length, type));
     case TypeUint8Clamped:
-        scope.release();
-        return setWithSpecificType<Uint8ClampedAdaptor>(
-            exec, offset, jsCast<JSUint8ClampedArray*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Uint8ClampedAdaptor>(
+            exec, offset, jsCast<JSUint8ClampedArray*>(object), objectOffset, length, type));
     case TypeUint16:
-        scope.release();
-        return setWithSpecificType<Uint16Adaptor>(
-            exec, offset, jsCast<JSUint16Array*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Uint16Adaptor>(
+            exec, offset, jsCast<JSUint16Array*>(object), objectOffset, length, type));
     case TypeUint32:
-        scope.release();
-        return setWithSpecificType<Uint32Adaptor>(
-            exec, offset, jsCast<JSUint32Array*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Uint32Adaptor>(
+            exec, offset, jsCast<JSUint32Array*>(object), objectOffset, length, type));
     case TypeFloat32:
-        scope.release();
-        return setWithSpecificType<Float32Adaptor>(
-            exec, offset, jsCast<JSFloat32Array*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Float32Adaptor>(
+            exec, offset, jsCast<JSFloat32Array*>(object), objectOffset, length, type));
     case TypeFloat64:
-        scope.release();
-        return setWithSpecificType<Float64Adaptor>(
-            exec, offset, jsCast<JSFloat64Array*>(object), objectOffset, length, type);
+        RELEASE_AND_RETURN(scope, setWithSpecificType<Float64Adaptor>(
+            exec, offset, jsCast<JSFloat64Array*>(object), objectOffset, length, type));
     case NotTypedArray:
     case TypeDataView: {
         bool success = validateRange(exec, offset, length);
-        ASSERT(!scope.exception() == success);
+        EXCEPTION_ASSERT(!scope.exception() == success);
         if (!success)
             return false;
 
@@ -310,7 +300,7 @@ bool JSGenericTypedArrayView<Adaptor>::set(
             JSValue value = object->get(exec, i + objectOffset);
             RETURN_IF_EXCEPTION(scope, false);
             bool success = setIndex(exec, offset + i, value);
-            ASSERT(!scope.exception() || !success);
+            EXCEPTION_ASSERT(!scope.exception() || !success);
             if (!success)
                 return false;
         }
@@ -322,15 +312,15 @@ bool JSGenericTypedArrayView<Adaptor>::set(
 }
 
 template<typename Adaptor>
-PassRefPtr<typename Adaptor::ViewType> JSGenericTypedArrayView<Adaptor>::possiblySharedTypedImpl()
+RefPtr<typename Adaptor::ViewType> JSGenericTypedArrayView<Adaptor>::possiblySharedTypedImpl()
 {
-    return Adaptor::ViewType::create(possiblySharedBuffer(), byteOffset(), length());
+    return Adaptor::ViewType::tryCreate(possiblySharedBuffer(), byteOffset(), length());
 }
 
 template<typename Adaptor>
-PassRefPtr<typename Adaptor::ViewType> JSGenericTypedArrayView<Adaptor>::unsharedTypedImpl()
+RefPtr<typename Adaptor::ViewType> JSGenericTypedArrayView<Adaptor>::unsharedTypedImpl()
 {
-    return Adaptor::ViewType::create(unsharedBuffer(), byteOffset(), length());
+    return Adaptor::ViewType::tryCreate(unsharedBuffer(), byteOffset(), length());
 }
 
 template<typename Adaptor>
@@ -354,19 +344,29 @@ bool JSGenericTypedArrayView<Adaptor>::getOwnPropertySlot(
 {
     JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(object);
 
-    if (std::optional<uint32_t> index = parseIndex(propertyName)) {
+    if (Optional<uint32_t> index = parseIndex(propertyName)) {
         if (thisObject->isNeutered()) {
-            slot.setCustom(thisObject, None, throwNeuteredTypedArrayTypeError);
+            slot.setCustom(thisObject, static_cast<unsigned>(PropertyAttribute::None), throwNeuteredTypedArrayTypeError);
             return true;
         }
 
-        if (thisObject->canGetIndexQuickly(index.value()))
-            slot.setValue(thisObject, DontDelete | ReadOnly, thisObject->getIndexQuickly(index.value()));
-        else
-            slot.setValue(thisObject, DontDelete | ReadOnly, jsUndefined());
-        return true;
+        if (thisObject->canGetIndexQuickly(index.value())) {
+            slot.setValue(thisObject, static_cast<unsigned>(PropertyAttribute::DontDelete), thisObject->getIndexQuickly(index.value()));
+            return true;
+        }
+
+        return false;
     }
-    
+
+    if (isCanonicalNumericIndexString(propertyName)) {
+        if (thisObject->isNeutered()) {
+            slot.setCustom(thisObject, static_cast<unsigned>(PropertyAttribute::None), throwNeuteredTypedArrayTypeError);
+            return true;
+        }
+
+        return false;
+    }
+
     return Base::getOwnPropertySlot(thisObject, exec, propertyName, slot);
 }
 
@@ -375,15 +375,24 @@ bool JSGenericTypedArrayView<Adaptor>::put(
     JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value,
     PutPropertySlot& slot)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(cell);
 
     // https://tc39.github.io/ecma262/#sec-integer-indexed-exotic-objects-set-p-v-receiver
     // Ignore the receiver even if the receiver is altered to non base value.
     // 9.4.5.5-2-b-i Return ? IntegerIndexedElementSet(O, numericIndex, V).
-    if (std::optional<uint32_t> index = parseIndex(propertyName))
-        return putByIndex(thisObject, exec, index.value(), value, slot.isStrictMode());
-    
-    return Base::put(thisObject, exec, propertyName, value, slot);
+    if (Optional<uint32_t> index = parseIndex(propertyName))
+        RELEASE_AND_RETURN(scope, putByIndex(thisObject, exec, index.value(), value, slot.isStrictMode()));
+
+    if (isCanonicalNumericIndexString(propertyName)) {
+        if (thisObject->isNeutered())
+            throwTypeError(exec, scope, typedArrayBufferHasBeenDetachedErrorMessage);
+        return false;
+    }
+
+    RELEASE_AND_RETURN(scope, Base::put(thisObject, exec, propertyName, value, slot));
 }
 
 template<typename Adaptor>
@@ -395,12 +404,15 @@ bool JSGenericTypedArrayView<Adaptor>::defineOwnProperty(
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(object);
 
-    if (std::optional<uint32_t> index = parseIndex(propertyName)) {
+    if (Optional<uint32_t> index = parseIndex(propertyName)) {
         auto throwTypeErrorIfNeeded = [&] (const char* errorMessage) -> bool {
             if (shouldThrow)
-                throwTypeError(exec, scope, makeString(errorMessage, String::number(*index)));
+                throwTypeError(exec, scope, makeString(errorMessage, *index));
             return false;
         };
+
+        if (index.value() >= thisObject->m_length)
+            return false;
 
         if (descriptor.isAccessorDescriptor())
             return throwTypeErrorIfNeeded("Attempting to store accessor property on a typed array at index: ");
@@ -411,16 +423,16 @@ bool JSGenericTypedArrayView<Adaptor>::defineOwnProperty(
         if (!descriptor.enumerable() || !descriptor.writable())
             return throwTypeErrorIfNeeded("Attempting to store non-enumerable or non-writable property on a typed array at index: ");
 
-        if (descriptor.value()) {
-            PutPropertySlot unused(JSValue(thisObject), shouldThrow);
-            scope.release();
-            return thisObject->put(thisObject, exec, propertyName, descriptor.value(), unused);
-        }
+        if (descriptor.value())
+            RELEASE_AND_RETURN(scope, thisObject->putByIndex(thisObject, exec, index.value(), descriptor.value(), shouldThrow));
+
         return true;
     }
-    
-    scope.release();
-    return Base::defineOwnProperty(thisObject, exec, propertyName, descriptor, shouldThrow);
+
+    if (isCanonicalNumericIndexString(propertyName))
+        return false;
+
+    RELEASE_AND_RETURN(scope, Base::defineOwnProperty(thisObject, exec, propertyName, descriptor, shouldThrow));
 }
 
 template<typename Adaptor>
@@ -432,7 +444,7 @@ bool JSGenericTypedArrayView<Adaptor>::deleteProperty(
     JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(cell);
 
     if (thisObject->isNeutered())
-        return typeError(exec, scope, true, ASCIILiteral(typedArrayBufferHasBeenDetachedErrorMessage));
+        return typeError(exec, scope, true, typedArrayBufferHasBeenDetachedErrorMessage);
 
     if (parseIndex(propertyName))
         return false;
@@ -442,38 +454,27 @@ bool JSGenericTypedArrayView<Adaptor>::deleteProperty(
 
 template<typename Adaptor>
 bool JSGenericTypedArrayView<Adaptor>::getOwnPropertySlotByIndex(
-    JSObject* object, ExecState* exec, unsigned propertyName, PropertySlot& slot)
+    JSObject* object, ExecState*, unsigned propertyName, PropertySlot& slot)
 {
     JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(object);
 
     if (thisObject->isNeutered()) {
-        slot.setCustom(thisObject, None, throwNeuteredTypedArrayTypeError);
+        slot.setCustom(thisObject, static_cast<unsigned>(PropertyAttribute::None), throwNeuteredTypedArrayTypeError);
         return true;
     }
 
-    if (propertyName > MAX_ARRAY_INDEX) {
-        return thisObject->methodTable()->getOwnPropertySlot(
-            thisObject, exec, Identifier::from(exec, propertyName), slot);
-    }
-    
     if (!thisObject->canGetIndexQuickly(propertyName))
         return false;
     
-    slot.setValue(thisObject, None, thisObject->getIndexQuickly(propertyName));
+    slot.setValue(thisObject, static_cast<unsigned>(PropertyAttribute::DontDelete), thisObject->getIndexQuickly(propertyName));
     return true;
 }
 
 template<typename Adaptor>
 bool JSGenericTypedArrayView<Adaptor>::putByIndex(
-    JSCell* cell, ExecState* exec, unsigned propertyName, JSValue value, bool shouldThrow)
+    JSCell* cell, ExecState* exec, unsigned propertyName, JSValue value, bool)
 {
     JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(cell);
-
-    if (propertyName > MAX_ARRAY_INDEX) {
-        PutPropertySlot slot(JSValue(thisObject), shouldThrow);
-        return thisObject->methodTable()->put(thisObject, exec, Identifier::from(exec, propertyName), value, slot);
-    }
-    
     return thisObject->setIndex(exec, propertyName, value);
 }
 
@@ -481,7 +482,7 @@ template<typename Adaptor>
 bool JSGenericTypedArrayView<Adaptor>::deletePropertyByIndex(
     JSCell* cell, ExecState* exec, unsigned propertyName)
 {
-    return cell->methodTable()->deleteProperty(cell, exec, Identifier::from(exec, propertyName));
+    return cell->methodTable(exec->vm())->deleteProperty(cell, exec, Identifier::from(exec, propertyName));
 }
 
 template<typename Adaptor>
@@ -499,32 +500,44 @@ void JSGenericTypedArrayView<Adaptor>::getOwnPropertyNames(
 }
 
 template<typename Adaptor>
-size_t JSGenericTypedArrayView<Adaptor>::estimatedSize(JSCell* cell)
+size_t JSGenericTypedArrayView<Adaptor>::estimatedSize(JSCell* cell, VM& vm)
 {
     JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(cell);
 
     if (thisObject->m_mode == OversizeTypedArray)
-        return Base::estimatedSize(thisObject) + thisObject->byteSize();
-    if (thisObject->m_mode == FastTypedArray && thisObject->m_vector)
-        return Base::estimatedSize(thisObject) + thisObject->byteSize();
+        return Base::estimatedSize(thisObject, vm) + thisObject->byteSize();
+    if (thisObject->m_mode == FastTypedArray && thisObject->hasVector())
+        return Base::estimatedSize(thisObject, vm) + thisObject->byteSize();
 
-    return Base::estimatedSize(thisObject);
+    return Base::estimatedSize(thisObject, vm);
 }
 
 template<typename Adaptor>
 void JSGenericTypedArrayView<Adaptor>::visitChildren(JSCell* cell, SlotVisitor& visitor)
 {
     JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(cell);
+    Base::visitChildren(thisObject, visitor);
+
+    TypedArrayMode mode;
+    void* vector;
+    size_t byteSize;
     
-    switch (thisObject->m_mode) {
+    {
+        auto locker = holdLock(thisObject->cellLock());
+        mode = thisObject->m_mode;
+        vector = thisObject->vector();
+        byteSize = thisObject->byteSize();
+    }
+    
+    switch (mode) {
     case FastTypedArray: {
-        if (void* vector = thisObject->m_vector.get())
+        if (vector)
             visitor.markAuxiliary(vector);
         break;
     }
         
     case OversizeTypedArray: {
-        visitor.reportExtraMemoryVisited(thisObject->byteSize());
+        visitor.reportExtraMemoryVisited(byteSize);
         break;
     }
         
@@ -535,72 +548,6 @@ void JSGenericTypedArrayView<Adaptor>::visitChildren(JSCell* cell, SlotVisitor& 
         RELEASE_ASSERT_NOT_REACHED();
         break;
     }
-    
-    Base::visitChildren(thisObject, visitor);
-}
-
-template<typename Adaptor>
-ArrayBuffer* JSGenericTypedArrayView<Adaptor>::slowDownAndWasteMemory(JSArrayBufferView* object)
-{
-    JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(object);
-    
-    // We play this game because we want this to be callable even from places that
-    // don't have access to ExecState* or the VM, and we only allocate so little
-    // memory here that it's not necessary to trigger a GC - just accounting what
-    // we have done is good enough. The sort of bizarro exception to the "allocating
-    // little memory" is when we transfer a backing buffer into the C heap; this
-    // will temporarily get counted towards heap footprint (incorrectly, in the case
-    // of adopting an oversize typed array) but we don't GC here anyway. That's
-    // almost certainly fine. The worst case is if you created a ton of fast typed
-    // arrays, and did nothing but caused all of them to slow down and waste memory.
-    // In that case, your memory footprint will double before the GC realizes what's
-    // up. But if you do *anything* to trigger a GC watermark check, it will know
-    // that you *had* done those allocations and it will GC appropriately.
-    Heap* heap = Heap::heap(thisObject);
-    VM& vm = *heap->vm();
-    DeferGCForAWhile deferGC(*heap);
-    
-    ASSERT(!thisObject->hasIndexingHeader());
-    
-    RELEASE_ASSERT(!thisObject->hasIndexingHeader());
-    thisObject->m_butterfly.set(vm, thisObject, Butterfly::createOrGrowArrayRight(
-        thisObject->butterfly(), vm, thisObject, thisObject->structure(),
-        thisObject->structure()->outOfLineCapacity(), false, 0, 0));
-
-    RefPtr<ArrayBuffer> buffer;
-    
-    switch (thisObject->m_mode) {
-    case FastTypedArray:
-        buffer = ArrayBuffer::create(thisObject->vector(), thisObject->byteLength());
-        break;
-        
-    case OversizeTypedArray:
-        // FIXME: consider doing something like "subtracting" from extra memory
-        // cost, since right now this case will cause the GC to think that we reallocated
-        // the whole buffer.
-        buffer = ArrayBuffer::createAdopted(thisObject->vector(), thisObject->byteLength());
-        break;
-        
-    default:
-        RELEASE_ASSERT_NOT_REACHED();
-        break;
-    }
-
-    thisObject->butterfly()->indexingHeader()->setArrayBuffer(buffer.get());
-    thisObject->m_vector.setWithoutBarrier(buffer->data());
-    WTF::storeStoreFence();
-    thisObject->m_mode = WastefulTypedArray;
-    heap->addReference(thisObject, buffer.get());
-    
-    return buffer.get();
-}
-
-template<typename Adaptor>
-PassRefPtr<ArrayBufferView>
-JSGenericTypedArrayView<Adaptor>::getTypedArrayImpl(JSArrayBufferView* object)
-{
-    JSGenericTypedArrayView* thisObject = jsCast<JSGenericTypedArrayView*>(object);
-    return thisObject->possiblySharedTypedImpl();
 }
 
 } // namespace JSC

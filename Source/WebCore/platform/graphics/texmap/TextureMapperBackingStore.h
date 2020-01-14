@@ -17,34 +17,25 @@
  Boston, MA 02110-1301, USA.
  */
 
-#ifndef TextureMapperBackingStore_h
-#define TextureMapperBackingStore_h
+#pragma once
 
-#include "FloatRect.h"
-#include "Image.h"
-#include "TextureMapper.h"
 #include "TextureMapperPlatformLayer.h"
 #include <wtf/RefPtr.h>
 
-#if USE(GRAPHICS_SURFACE)
-#include "GraphicsSurface.h"
-#endif
-
 namespace WebCore {
 
-class GraphicsLayer;
+class FloatRect;
+class TextureMapper;
 
-class TextureMapperBackingStore : public TextureMapperPlatformLayer, public RefCounted<TextureMapperBackingStore> {
+class TextureMapperBackingStore : public TextureMapperPlatformLayer {
 public:
-    virtual RefPtr<BitmapTexture> texture() const = 0;
+    virtual ~TextureMapperBackingStore() = default;
+
     void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix&, float) override = 0;
-    virtual void drawRepaintCounter(TextureMapper&, int /* repaintCount */, const Color&, const FloatRect&, const TransformationMatrix&) { }
-    virtual ~TextureMapperBackingStore() { }
+    virtual void drawRepaintCounter(TextureMapper&, int, const Color&, const FloatRect&, const TransformationMatrix&) { }
 
 protected:
-    static unsigned calculateExposedTileEdges(const FloatRect& totalRect, const FloatRect& tileRect);
+    WEBCORE_EXPORT static unsigned calculateExposedTileEdges(const FloatRect& totalRect, const FloatRect& tileRect);
 };
 
-}
-
-#endif // TextureMapperBackingStore_h
+} // namespace WebCore

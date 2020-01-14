@@ -60,7 +60,7 @@ void LazyClassStructure::Initializer::setStructure(Structure* structure)
         prototype = structure->storedPrototypeObject();
 }
 
-void LazyClassStructure::Initializer::setConstructor(PropertyName propertyName, JSObject* constructor)
+void LazyClassStructure::Initializer::setConstructor(JSObject* constructor)
 {
     RELEASE_ASSERT(structure);
     RELEASE_ASSERT(prototype);
@@ -68,23 +68,8 @@ void LazyClassStructure::Initializer::setConstructor(PropertyName propertyName, 
     
     this->constructor = constructor;
 
-    prototype->putDirectWithoutTransition(vm, vm.propertyNames->constructor, constructor, DontEnum);
-    if (!propertyName.isNull())
-        global->putDirect(vm, propertyName, constructor, DontEnum);
+    prototype->putDirectWithoutTransition(vm, vm.propertyNames->constructor, constructor, static_cast<unsigned>(PropertyAttribute::DontEnum));
     classStructure.m_constructor.set(vm, global, constructor);
-}
-
-void LazyClassStructure::Initializer::setConstructor(JSObject* constructor)
-{
-    String name;
-    if (InternalFunction* internalFunction = jsDynamicCast<InternalFunction*>(constructor))
-        name = internalFunction->name();
-    else if (JSFunction* function = jsDynamicCast<JSFunction*>(constructor))
-        name = function->name(vm);
-    else
-        RELEASE_ASSERT_NOT_REACHED();
-    
-    setConstructor(Identifier::fromString(&vm, name), constructor);
 }
 
 void LazyClassStructure::visit(SlotVisitor& visitor)

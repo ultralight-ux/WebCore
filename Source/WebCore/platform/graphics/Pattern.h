@@ -25,14 +25,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef Pattern_h
-#define Pattern_h
+#pragma once
 
 #include "AffineTransform.h"
 
-#include <wtf/PassRefPtr.h>
+#include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
 
 #if USE(CG)
 typedef struct CGPattern* CGPatternRef;
@@ -41,7 +39,7 @@ typedef CGPatternRef PlatformPatternPtr;
 interface ID2D1BitmapBrush;
 typedef ID2D1BitmapBrush* PlatformPatternPtr;
 #elif USE(CAIRO)
-#include <cairo.h>
+typedef struct _cairo_pattern cairo_pattern_t;
 typedef cairo_pattern_t* PlatformPatternPtr;
 #elif USE(WINGDI)
 typedef void* PlatformPatternPtr;
@@ -55,12 +53,10 @@ class Image;
 
 class Pattern final : public RefCounted<Pattern> {
 public:
-    static Ref<Pattern> create(PassRefPtr<Image> tileImage, bool repeatX, bool repeatY);
+    static Ref<Pattern> create(Ref<Image>&& tileImage, bool repeatX, bool repeatY);
     ~Pattern();
 
-    Image* tileImage() const { return m_tileImage.get(); }
-
-    void platformDestroy();
+    Image& tileImage() const { return m_tileImage.get(); }
 
     // Pattern space is an abstract space that maps to the default user space by the transformation 'userSpaceTransformation'
 #if !USE(DIRECT2D)
@@ -69,22 +65,18 @@ public:
     PlatformPatternPtr createPlatformPattern(const GraphicsContext&, float alpha, const AffineTransform& userSpaceTransformation) const;
 #endif
     void setPatternSpaceTransform(const AffineTransform& patternSpaceTransformation);
-    const AffineTransform& getPatternSpaceTransform() { return m_patternSpaceTransformation; };
-    void setPlatformPatternSpaceTransform();
-
+    const AffineTransform& patternSpaceTransform() const { return m_patternSpaceTransformation; };
     bool repeatX() const { return m_repeatX; }
     bool repeatY() const { return m_repeatY; }
 
 private:
-    Pattern(PassRefPtr<Image>, bool repeatX, bool repeatY);
+    Pattern(Ref<Image>&&, bool repeatX, bool repeatY);
 
-    RefPtr<Image> m_tileImage;
+    Ref<Image> m_tileImage;
+    AffineTransform m_patternSpaceTransformation;
     bool m_repeatX;
     bool m_repeatY;
-    AffineTransform m_patternSpaceTransformation;
-    PlatformPatternPtr m_pattern;
 };
 
 } //namespace
 
-#endif

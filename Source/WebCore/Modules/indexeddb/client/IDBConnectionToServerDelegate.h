@@ -27,6 +27,7 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
+#include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -53,9 +54,9 @@ struct IDBKeyRangeData;
 
 namespace IDBClient {
 
-class IDBConnectionToServerDelegate {
+class IDBConnectionToServerDelegate : public CanMakeWeakPtr<IDBConnectionToServerDelegate> {
 public:
-    virtual ~IDBConnectionToServerDelegate() { }
+    virtual ~IDBConnectionToServerDelegate() = default;
 
     virtual uint64_t identifier() const = 0;
     virtual void deleteDatabase(const IDBRequestData&) = 0;
