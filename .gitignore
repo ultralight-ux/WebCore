@@ -43,31 +43,31 @@
 
 
 # Ignore platform-specific folders in WebCore
-/Source/WebCore/**/cocoa/
-/Source/WebCore/**/efl/
-/Source/WebCore/**/glib/
-/Source/WebCore/**/gtk/
-/Source/WebCore/**/ios/
-/Source/WebCore/**/linux/
-/Source/WebCore/**/mac/
-/Source/WebCore/**/posix/
-/Source/WebCore/**/spi/
-/Source/WebCore/**/win/
-/Source/WebCore/**/unix/
+#/Source/WebCore/**/cocoa/
+#/Source/WebCore/**/efl/
+#/Source/WebCore/**/glib/
+#/Source/WebCore/**/gtk/
+#/Source/WebCore/**/ios/
+#/Source/WebCore/**/linux/
+#/Source/WebCore/**/mac/
+#/Source/WebCore/**/posix/
+#/Source/WebCore/**/spi/
+#/Source/WebCore/**/win/
+#/Source/WebCore/**/unix/
 
 # Ignore graphics platform-specific folders in WebCore
-/Source/WebCore/**/avfoundation/
-/Source/WebCore/**/ca/
-/Source/WebCore/**/cairo/
-/Source/WebCore/**/cg/
-/Source/WebCore/**/egl/
-/Source/WebCore/**/glx/
-/Source/WebCore/**/opengl/
-/Source/WebCore/**/wayland/
-/Source/WebCore/**/x11/
+#/Source/WebCore/**/avfoundation/
+#/Source/WebCore/**/ca/
+#/Source/WebCore/**/cairo/
+#/Source/WebCore/**/cg/
+#/Source/WebCore/**/egl/
+#/Source/WebCore/**/glx/
+#/Source/WebCore/**/opengl/
+#/Source/WebCore/**/wayland/
+#/Source/WebCore/**/x11/
 
 # Ignore network platform-specific folders in WebCore
-/Source/WebCore/**/soup/
+#/Source/WebCore/**/soup/
 
 # Ignore all Changelogs
 Changelog*
