@@ -29,8 +29,6 @@
 #include "CachedResourceHandle.h"
 #include "CachedScript.h"
 #include "LoadableScript.h"
-#include "LoadableScriptClient.h"
-#include "SecurityOrigin.h"
 #include <wtf/TypeCasts.h>
 
 namespace WebCore {
@@ -42,23 +40,32 @@ class LoadableClassicScript final : public LoadableScript, private CachedResourc
 public:
     virtual ~LoadableClassicScript();
 
-    static Ref<LoadableClassicScript> create(CachedResourceHandle<CachedScript>&&);
+    static Ref<LoadableClassicScript> create(const String& nonce, const String& integrity, const String& crossOriginMode, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree);
     bool isLoaded() const final;
-    std::optional<Error> error() const final;
+    Optional<Error> error() const final;
     bool wasCanceled() const final;
 
     CachedScript& cachedScript() { return *m_cachedScript; }
+
     bool isClassicScript() const final { return true; }
+    bool isModuleScript() const final { return false; }
 
     void execute(ScriptElement&) final;
 
+    bool load(Document&, const URL&);
+
 private:
-    LoadableClassicScript(CachedResourceHandle<CachedScript>&& cachedScript) : m_cachedScript(WTFMove(cachedScript)) { }
+    LoadableClassicScript(const String& nonce, const String& integrity, const String& crossOriginMode, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree)
+        : LoadableScript(nonce, crossOriginMode, charset, initiatorName, isInUserAgentShadowTree)
+        , m_integrity(integrity)
+    {
+    }
 
     void notifyFinished(CachedResource&) final;
 
-    CachedResourceHandle<CachedScript> m_cachedScript;
-    std::optional<Error> m_error { std::nullopt };
+    CachedResourceHandle<CachedScript> m_cachedScript { };
+    Optional<Error> m_error { WTF::nullopt };
+    String m_integrity;
 };
 
 }

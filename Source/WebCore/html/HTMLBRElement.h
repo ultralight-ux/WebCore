@@ -28,6 +28,7 @@
 namespace WebCore {
 
 class HTMLBRElement final : public HTMLElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLBRElement);
 public:
     static Ref<HTMLBRElement> create(Document&);
     static Ref<HTMLBRElement> create(const QualifiedName&, Document&);
@@ -38,7 +39,7 @@ private:
     HTMLBRElement(const QualifiedName&, Document&);
 
     bool isPresentationAttribute(const QualifiedName&) const final;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 };

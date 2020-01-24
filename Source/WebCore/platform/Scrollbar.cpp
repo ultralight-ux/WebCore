@@ -59,25 +59,8 @@ Scrollbar::Scrollbar(ScrollableArea& scrollableArea, ScrollbarOrientation orient
     , m_orientation(orientation)
     , m_controlSize(controlSize)
     , m_theme(customTheme ? *customTheme : ScrollbarTheme::theme())
-    , m_visibleSize(0)
-    , m_totalSize(0)
-    , m_currentPos(0)
-    , m_dragOrigin(0)
-    , m_lineStep(0)
-    , m_pageStep(0)
-    , m_pixelStep(1)
-    , m_hoveredPart(NoPart)
-    , m_pressedPart(NoPart)
-    , m_pressedPos(0)
-    , m_scrollPos(0)
-    , m_draggingDocument(false)
-    , m_documentDragPos(0)
-    , m_enabled(true)
-    , m_scrollTimer(*this, &Scrollbar::autoscrollTimerFired)
-    , m_suppressInvalidation(false)
-    , m_isAlphaLocked(false)
     , m_isCustomScrollbar(isCustomScrollbar)
-    , m_weakPtrFactory(this)
+    , m_scrollTimer(*this, &Scrollbar::autoscrollTimerFired)
 {
     theme().registerScrollbar(*this);
 
@@ -87,7 +70,7 @@ Scrollbar::Scrollbar(ScrollableArea& scrollableArea, ScrollbarOrientation orient
     int thickness = theme().scrollbarThickness(controlSize);
     Widget::setFrameRect(IntRect(0, 0, thickness, thickness));
 
-    m_currentPos = static_cast<float>(m_scrollableArea.scrollOffset(m_orientation));
+    m_currentPos = static_cast<float>(offsetForOrientation(m_scrollableArea.scrollOffset(), m_orientation));
 }
 
 Scrollbar::~Scrollbar()
@@ -109,7 +92,7 @@ int Scrollbar::occupiedHeight() const
 
 void Scrollbar::offsetDidChange()
 {
-    float position = static_cast<float>(m_scrollableArea.scrollOffset(m_orientation));
+    float position = static_cast<float>(offsetForOrientation(m_scrollableArea.scrollOffset(), m_orientation));
     if (position == m_currentPos)
         return;
 
@@ -159,7 +142,7 @@ void Scrollbar::updateThumbProportion()
 
 void Scrollbar::paint(GraphicsContext& context, const IntRect& damageRect, Widget::SecurityOriginPaintPolicy)
 {
-    if (context.updatingControlTints() && theme().supportsControlTints()) {
+    if (context.invalidatingControlTints() && theme().supportsControlTints()) {
         invalidate();
         return;
     }
@@ -183,7 +166,7 @@ static bool thumbUnderMouse(Scrollbar* scrollbar)
     return scrollbar->pressedPos() >= thumbPos && scrollbar->pressedPos() < thumbPos + thumbLength;
 }
 
-void Scrollbar::autoscrollPressedPart(double delay)
+void Scrollbar::autoscrollPressedPart(Seconds delay)
 {
     // Don't do anything for the thumb or if nothing was pressed.
     if (m_pressedPart == ThumbPart || m_pressedPart == NoPart)
@@ -201,7 +184,7 @@ void Scrollbar::autoscrollPressedPart(double delay)
         startTimerIfNeeded(delay);
 }
 
-void Scrollbar::startTimerIfNeeded(double delay)
+void Scrollbar::startTimerIfNeeded(Seconds delay)
 {
     // Don't do anything for the thumb.
     if (m_pressedPart == ThumbPart)
@@ -319,7 +302,7 @@ void Scrollbar::setPressedPart(ScrollbarPart part)
         theme().invalidatePart(*this, m_hoveredPart);
 }
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
 bool Scrollbar::mouseMoved(const PlatformMouseEvent& evt)
 {
     if (m_pressedPart == ThumbPart) {

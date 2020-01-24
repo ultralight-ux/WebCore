@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Ericsson AB. All rights reserved.
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +31,15 @@
 
 [
     Conditional=WEB_RTC,
-    EnabledAtRuntime=peerConnection,
+    EnabledAtRuntime=PeerConnection,
+    ImplementationLacksVTable
 ] interface RTCRtpReceiver {
     readonly attribute MediaStreamTrack track;
+    // FIXME 169662: missing transport
+    // FIXME 169662: missing rtcpTransport
+    [CallWith=ScriptExecutionContext] static RTCRtpCapabilities? getCapabilities(DOMString kind);
+    RTCRtpParameters getParameters();
+    sequence<RTCRtpContributingSource> getContributingSources();
+    sequence<RTCRtpSynchronizationSource> getSynchronizationSources();
+    Promise<RTCStatsReport> getStats();
 };

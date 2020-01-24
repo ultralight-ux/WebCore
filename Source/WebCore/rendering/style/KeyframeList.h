@@ -25,11 +25,9 @@
 #pragma once
 
 #include "CSSPropertyNames.h"
-#include "StyleInheritedData.h"
 #include <wtf/Vector.h>
 #include <wtf/HashSet.h>
-#include <wtf/RefPtr.h>
-#include <wtf/text/AtomicString.h>
+#include <wtf/text/AtomString.h>
 
 namespace WebCore {
 
@@ -54,28 +52,29 @@ public:
     const RenderStyle* style() const { return m_style.get(); }
     void setStyle(std::unique_ptr<RenderStyle> style) { m_style = WTFMove(style); }
 
-    TimingFunction* timingFunction(const AtomicString& name) const;
-
+    TimingFunction* timingFunction() const { return m_timingFunction.get(); }
+    void setTimingFunction(const RefPtr<TimingFunction>& timingFunction) { m_timingFunction = timingFunction; }
+    
 private:
     double m_key;
     HashSet<CSSPropertyID> m_properties; // The properties specified in this keyframe.
     std::unique_ptr<RenderStyle> m_style;
+    RefPtr<TimingFunction> m_timingFunction;
 };
 
 class KeyframeList {
 public:
-    explicit KeyframeList(const AtomicString& animationName)
+    explicit KeyframeList(const AtomString& animationName)
         : m_animationName(animationName)
     {
-        insert(KeyframeValue(0, 0));
-        insert(KeyframeValue(1, 0));
     }
     ~KeyframeList();
         
+    KeyframeList& operator=(KeyframeList&&) = default;
     bool operator==(const KeyframeList& o) const;
     bool operator!=(const KeyframeList& o) const { return !(*this == o); }
-    
-    const AtomicString& animationName() const { return m_animationName; }
+
+    const AtomString& animationName() const { return m_animationName; }
     
     void insert(KeyframeValue&&);
     
@@ -90,7 +89,7 @@ public:
     const Vector<KeyframeValue>& keyframes() const { return m_keyframes; }
 
 private:
-    AtomicString m_animationName;
+    AtomString m_animationName;
     Vector<KeyframeValue> m_keyframes; // Kept sorted by key.
     HashSet<CSSPropertyID> m_properties; // The properties being animated.
 };

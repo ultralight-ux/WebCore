@@ -31,7 +31,7 @@
 #include "PlatformContentFilter.h"
 #include "ResourceError.h"
 #include <functional>
-#include <wtf/Vector.h>
+#include <wtf/Forward.h>
 
 namespace WebCore {
 
@@ -62,6 +62,7 @@ public:
     bool continueAfterNotifyFinished(CachedResource&);
 
     static bool continueAfterSubstituteDataRequest(const DocumentLoader& activeLoader, const SubstituteData&);
+    bool willHandleProvisionalLoadFailure(const ResourceError&) const;
     void handleProvisionalLoadFailure(const ResourceError&);
 
 private:
@@ -75,7 +76,7 @@ private:
 
     using Container = Vector<std::unique_ptr<PlatformContentFilter>>;
     friend std::unique_ptr<ContentFilter> std::make_unique<ContentFilter>(Container&&, DocumentLoader&);
-    ContentFilter(Container, DocumentLoader&);
+    ContentFilter(Container&&, DocumentLoader&);
 
     template <typename Function> void forEachContentFilterUntilBlocked(Function&&);
     void didDecide(State);

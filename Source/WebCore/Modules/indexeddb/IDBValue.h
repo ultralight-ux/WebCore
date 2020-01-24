@@ -24,9 +24,11 @@
  */
 
 #pragma once
+
 #if ENABLE(INDEXED_DATABASE)
 
 #include "ThreadSafeDataBuffer.h"
+#include <pal/SessionID.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -34,27 +36,30 @@ namespace WebCore {
 class SerializedScriptValue;
 
 class IDBValue {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WEBCORE_EXPORT IDBValue();
     IDBValue(const SerializedScriptValue&);
     IDBValue(const ThreadSafeDataBuffer&);
-    IDBValue(const SerializedScriptValue&, const Vector<String>& blobURLs, const Vector<String>& blobFilePaths);
-    IDBValue(const ThreadSafeDataBuffer&, Vector<String>&& blobURLs, Vector<String>&& blobFilePaths);
-    IDBValue(const ThreadSafeDataBuffer&, const Vector<String>& blobURLs, const Vector<String>& blobFilePaths);
+    IDBValue(const SerializedScriptValue&, const Vector<String>& blobURLs, const PAL::SessionID&, const Vector<String>& blobFilePaths);
+    IDBValue(const ThreadSafeDataBuffer&, Vector<String>&& blobURLs, const PAL::SessionID&, Vector<String>&& blobFilePaths);
+    IDBValue(const ThreadSafeDataBuffer&, const Vector<String>& blobURLs, const PAL::SessionID&, const Vector<String>& blobFilePaths);
 
     void setAsIsolatedCopy(const IDBValue&);
     IDBValue isolatedCopy() const;
 
     const ThreadSafeDataBuffer& data() const { return m_data; }
     const Vector<String>& blobURLs() const { return m_blobURLs; }
+    const PAL::SessionID& sessionID() const { return m_sessionID; }
     const Vector<String>& blobFilePaths() const { return m_blobFilePaths; }
 
     template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static bool decode(Decoder&, IDBValue&);
+    template<class Decoder> static Optional<IDBValue> decode(Decoder&);
 
 private:
     ThreadSafeDataBuffer m_data;
     Vector<String> m_blobURLs;
+    PAL::SessionID m_sessionID;
     Vector<String> m_blobFilePaths;
 };
 
@@ -64,22 +69,27 @@ void IDBValue::encode(Encoder& encoder) const
 {
     encoder << m_data;
     encoder << m_blobURLs;
+    encoder << m_sessionID;
     encoder << m_blobFilePaths;
 }
 
 template<class Decoder>
-bool IDBValue::decode(Decoder& decoder, IDBValue& result)
+Optional<IDBValue> IDBValue::decode(Decoder& decoder)
 {
+    IDBValue result;
     if (!decoder.decode(result.m_data))
-        return false;
+        return WTF::nullopt;
 
     if (!decoder.decode(result.m_blobURLs))
-        return false;
+        return WTF::nullopt;
+
+    if (!decoder.decode(result.m_sessionID))
+        return WTF::nullopt;
 
     if (!decoder.decode(result.m_blobFilePaths))
-        return false;
+        return WTF::nullopt;
 
-    return true;
+    return result;
 }
 
 } // namespace WebCore

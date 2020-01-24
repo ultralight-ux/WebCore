@@ -83,30 +83,27 @@ private:
 };
 #endif
 
-SpellingCorrectionCommand::SpellingCorrectionCommand(PassRefPtr<Range> rangeToBeCorrected, const String& correction)
-    : CompositeEditCommand(rangeToBeCorrected->startContainer().document(), EditActionInsertReplacement)
+SpellingCorrectionCommand::SpellingCorrectionCommand(Range& rangeToBeCorrected, const String& correction)
+    : CompositeEditCommand(rangeToBeCorrected.startContainer().document(), EditAction::InsertReplacement)
     , m_rangeToBeCorrected(rangeToBeCorrected)
-    , m_selectionToBeCorrected(*m_rangeToBeCorrected)
+    , m_selectionToBeCorrected(m_rangeToBeCorrected)
     , m_correction(correction)
 {
 }
 
 bool SpellingCorrectionCommand::willApplyCommand()
 {
-    m_correctionFragment = createFragmentFromText(*m_rangeToBeCorrected, m_correction);
+    m_correctionFragment = createFragmentFromText(m_rangeToBeCorrected, m_correction);
     return CompositeEditCommand::willApplyCommand();
 }
 
 void SpellingCorrectionCommand::doApply()
 {
-    m_corrected = plainText(m_rangeToBeCorrected.get());
+    m_corrected = plainText(m_rangeToBeCorrected.ptr());
     if (!m_corrected.length())
         return;
 
     if (!frame().selection().shouldChangeSelection(m_selectionToBeCorrected))
-        return;
-
-    if (!m_rangeToBeCorrected)
         return;
 
     applyCommandToComposite(SetSelectionCommand::create(m_selectionToBeCorrected, FrameSelection::defaultSetSelectionOptions() | FrameSelection::SpellCorrectionTriggered));
@@ -114,7 +111,7 @@ void SpellingCorrectionCommand::doApply()
     applyCommandToComposite(SpellingCorrectionRecordUndoCommand::create(document(), m_corrected, m_correction));
 #endif
 
-    applyCommandToComposite(ReplaceSelectionCommand::create(document(), WTFMove(m_correctionFragment), ReplaceSelectionCommand::MatchStyle, EditActionPaste));
+    applyCommandToComposite(ReplaceSelectionCommand::create(document(), WTFMove(m_correctionFragment), ReplaceSelectionCommand::MatchStyle, EditAction::Paste));
 }
 
 String SpellingCorrectionCommand::inputEventData() const
@@ -127,14 +124,13 @@ String SpellingCorrectionCommand::inputEventData() const
 
 Vector<RefPtr<StaticRange>> SpellingCorrectionCommand::targetRanges() const
 {
-    RefPtr<StaticRange> range = StaticRange::createFromRange(*m_rangeToBeCorrected);
-    return { 1, range };
+    return { 1, StaticRange::createFromRange(m_rangeToBeCorrected) };
 }
 
 RefPtr<DataTransfer> SpellingCorrectionCommand::inputEventDataTransfer() const
 {
     if (!isEditingTextAreaOrTextInput())
-        return DataTransfer::createForInputEvent(m_correction, createMarkup(*m_correctionFragment));
+        return DataTransfer::createForInputEvent(m_correction, serializeFragment(*m_correctionFragment, SerializedNodes::SubtreeIncludingNode));
 
     return CompositeEditCommand::inputEventDataTransfer();
 }

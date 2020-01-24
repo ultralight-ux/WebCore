@@ -29,6 +29,7 @@
 
 #include "MediaRemoteControls.h"
 #include "MediaSessionMetadata.h"
+#include <wtf/Function.h>
 #include <wtf/HashSet.h>
 
 namespace WebCore {
@@ -61,7 +62,7 @@ public:
     WEBCORE_EXPORT State currentState() const { return m_currentState; }
     bool hasActiveMediaElements() const;
 
-    void setMetadata(const std::optional<Metadata>&);
+    void setMetadata(const Optional<Metadata>&);
 
     void deactivate();
 
@@ -88,8 +89,8 @@ private:
     void addMediaElement(HTMLMediaElement&);
     void removeMediaElement(HTMLMediaElement&);
 
-    void safelyIterateActiveMediaElements(std::function<void(HTMLMediaElement*)>);
-    void changeActiveMediaElements(std::function<void(void)>);
+    void safelyIterateActiveMediaElements(const WTF::Function<void(HTMLMediaElement*)>&);
+    void changeActiveMediaElements(const WTF::Function<void(void)>&);
     void addActiveMediaElement(HTMLMediaElement&);
     bool isMediaElementActive(HTMLMediaElement&);
 

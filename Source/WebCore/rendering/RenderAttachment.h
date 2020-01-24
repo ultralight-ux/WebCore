@@ -33,10 +33,14 @@
 namespace WebCore {
 
 class RenderAttachment final : public RenderReplaced {
+    WTF_MAKE_ISO_ALLOCATED(RenderAttachment);
 public:
     RenderAttachment(HTMLAttachmentElement&, RenderStyle&&);
 
     HTMLAttachmentElement& attachmentElement() const;
+
+    void setShouldDrawBorder(bool drawBorder) { m_shouldDrawBorder = drawBorder; }
+    bool shouldDrawBorder() const;
 
     void invalidate();
 
@@ -46,12 +50,14 @@ private:
     const char* renderName() const override { return "RenderAttachment"; }
 
     bool shouldDrawSelectionTint() const override { return false; }
+    void paintReplaced(PaintInfo&, const LayoutPoint& offset) final;
 
     void layout() override;
 
     int baselinePosition(FontBaseline, bool, LineDirectionMode, LinePositionMode) const override;
 
     LayoutUnit m_minimumIntrinsicWidth;
+    bool m_shouldDrawBorder { true };
 };
 
 inline RenderAttachment* HTMLAttachmentElement::renderer() const

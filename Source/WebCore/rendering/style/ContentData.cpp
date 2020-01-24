@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -36,30 +36,27 @@ namespace WebCore {
 std::unique_ptr<ContentData> ContentData::clone() const
 {
     auto result = cloneInternal();
-    
-    ContentData* lastNewData = result.get();
-    for (const ContentData* contentData = next(); contentData; contentData = contentData->next()) {
-        auto newData = contentData->cloneInternal();
-        lastNewData->setNext(WTFMove(newData));
+    auto* lastNewData = result.get();
+    for (auto* contentData = next(); contentData; contentData = contentData->next()) {
+        lastNewData->setNext(contentData->cloneInternal());
         lastNewData = lastNewData->next();
     }
-        
     return result;
 }
 
 RenderPtr<RenderObject> ImageContentData::createContentRenderer(Document& document, const RenderStyle& pseudoStyle) const
 {
-    auto image = createRenderer<RenderImage>(document, RenderStyle::createStyleInheritingFromPseudoStyle(pseudoStyle), m_image.get());
+    auto image = createRenderer<RenderImage>(document, RenderStyle::createStyleInheritingFromPseudoStyle(pseudoStyle), const_cast<StyleImage*>(m_image.ptr()));
     image->initializeStyle();
     image->setAltText(altText());
-    return WTFMove(image);
+    return image;
 }
 
 RenderPtr<RenderObject> TextContentData::createContentRenderer(Document& document, const RenderStyle&) const
 {
     auto fragment = createRenderer<RenderTextFragment>(document, m_text);
     fragment->setAltText(altText());
-    return WTFMove(fragment);
+    return fragment;
 }
 
 RenderPtr<RenderObject> CounterContentData::createContentRenderer(Document& document, const RenderStyle&) const
@@ -71,7 +68,7 @@ RenderPtr<RenderObject> QuoteContentData::createContentRenderer(Document& docume
 {
     auto quote = createRenderer<RenderQuote>(document, RenderStyle::createStyleInheritingFromPseudoStyle(pseudoStyle), m_quote);
     quote->initializeStyle();
-    return WTFMove(quote);
+    return quote;
 }
 
 } // namespace WebCore

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Ericsson AB. All rights reserved.
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,8 +33,10 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "PeerConnectionStates.h"
-#include "URL.h"
+#include "RTCBundlePolicy.h"
+#include "RTCIceTransportPolicy.h"
+#include "RTCPMuxPolicy.h"
+#include <wtf/URL.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
@@ -48,15 +51,19 @@ struct MediaEndpointConfiguration {
 
         IceServerInfo(Vector<URL>&&, const String&, const String&);
     };
+    struct CertificatePEM {
+        String certificate;
+        String privateKey;
+    };
 
-    using IceTransportPolicy = PeerConnectionStates::IceTransportPolicy;
-    using BundlePolicy = PeerConnectionStates::BundlePolicy;
-
-    MediaEndpointConfiguration(Vector<IceServerInfo>&&, IceTransportPolicy, BundlePolicy);
+    MediaEndpointConfiguration(Vector<IceServerInfo>&&, RTCIceTransportPolicy, RTCBundlePolicy, RTCPMuxPolicy, unsigned short, Vector<CertificatePEM>&&);
 
     Vector<IceServerInfo> iceServers;
-    IceTransportPolicy iceTransportPolicy;
-    BundlePolicy bundlePolicy;
+    RTCIceTransportPolicy iceTransportPolicy;
+    RTCBundlePolicy bundlePolicy;
+    RTCPMuxPolicy rtcpMuxPolicy;
+    unsigned short iceCandidatePoolSize;
+    Vector<CertificatePEM> certificates;
 };
 
 } // namespace WebCore

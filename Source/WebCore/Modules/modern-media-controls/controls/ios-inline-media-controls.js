@@ -23,7 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-class IOSInlineMediaControls extends MediaControls
+class IOSInlineMediaControls extends InlineMediaControls
 {
 
     constructor(options = {})
@@ -33,34 +33,69 @@ class IOSInlineMediaControls extends MediaControls
         super(options);
 
         this.element.classList.add("ios");
-        this.element.classList.add("inline");
 
-        this._leftContainer = new ButtonsContainer({
-            buttons: [this.playPauseButton, this.skipBackButton],
-            cssClassName: "left",
-            padding: 24,
-            margin: 24,
-        });
+        this._updateGestureRecognizers();
+    }
 
-        this._rightContainer = new ButtonsContainer({
-            buttons: [this.airplayButton, this.pipButton, this.fullscreenButton],
-            cssClassName: "right",
-            padding: 24,
-            margin: 24
-        });
+    // Public
 
-        this.controlsBar.children = [this._leftContainer, this._rightContainer];
+    get showsStartButton()
+    {
+        return super.showsStartButton;
+    }
 
-        this._pinchGestureRecognizer = new PinchGestureRecognizer(this.element, this);
+    set showsStartButton(flag)
+    {
+        super.showsStartButton = flag;
+        this._updateGestureRecognizers();
+    }
+
+    get visible()
+    {
+        return super.visible;
+    }
+
+    set visible(flag)
+    {
+        super.visible = flag;
+        this._updateGestureRecognizers();
     }
 
     // Protected
 
     gestureRecognizerStateDidChange(recognizer)
     {
-        if (this._pinchGestureRecognizer !== recognizer)
-            return;
+        if (recognizer === this._pinchGestureRecognizer)
+            this._pinchGestureRecognizerStateDidChange(recognizer);
+        else if (recognizer === this._tapGestureRecognizer)
+            this._tapGestureRecognizerStateDidChange(recognizer);
+    }
 
+    // Private
+
+    _updateGestureRecognizers()
+    {
+        const shouldListenToPinches = this.visible;
+        const shouldListenToTaps = this.visible && this.showsStartButton;
+
+        if (shouldListenToPinches && !this._pinchGestureRecognizer)
+            this._pinchGestureRecognizer = new PinchGestureRecognizer(this.element, this);
+        else if (!shouldListenToPinches && this._pinchGestureRecognizer) {
+            this._pinchGestureRecognizer.enabled = false;
+            delete this._pinchGestureRecognizer;
+        }
+
+        if (shouldListenToTaps && !this._tapGestureRecognizer)
+            this._tapGestureRecognizer = new TapGestureRecognizer(this.element, this);
+        else if (!shouldListenToTaps && this._tapGestureRecognizer) {
+            this._tapGestureRecognizer.enabled = false;
+            delete this._tapGestureRecognizer;
+        }
+    }
+
+    _pinchGestureRecognizerStateDidChange(recognizer)
+    {
+        console.assert(this.visible);
         if (recognizer.state !== GestureRecognizer.States.Ended && recognizer.state !== GestureRecognizer.States.Changed)
             return;
 
@@ -68,44 +103,11 @@ class IOSInlineMediaControls extends MediaControls
             this.delegate.iOSInlineMediaControlsRecognizedPinchInGesture();
     }
 
-    // Public
-
-    layout()
+    _tapGestureRecognizerStateDidChange(recognizer)
     {
-        super.layout();
-
-        // Reset dropped buttons.
-        for (let button of this._rightContainer.buttons)
-            delete button.dropped;
-
-        this._leftContainer.layout();
-        this._rightContainer.layout();
-
-        this.timeControl.width = this.width - this._leftContainer.width - this._rightContainer.width;
-
-        if (this.timeControl.isSufficientlyWide) {
-            this.controlsBar.insertBefore(this.timeControl, this._rightContainer);
-            this.timeControl.x = this._leftContainer.width;
-        } else {
-            this.timeControl.remove();
-            // Since we don't have enough space to display the scrubber, we may also not have
-            // enough space to display all buttons in the left and right containers, so gradually drop them.
-            for (let control of [this.airplayButton, this.pipButton, this.skipBackButton, this.fullscreenButton]) {
-                // Nothing left to do if the combined container widths is shorter than the available width.
-                if (this._leftContainer.width + this._rightContainer.width < this.width)
-                    break;
-
-                // If the control was already not participating in layout, we can skip it.
-                if (!control.visible)
-                    continue;
-
-                // This control must now be dropped.
-                control.dropped = true;
-
-                this._leftContainer.layout();
-                this._rightContainer.layout();
-            }
-        }
+        console.assert(this.visible && this.showsStartButton);
+        if (recognizer.state === GestureRecognizer.States.Recognized && this.delegate && typeof this.delegate.iOSInlineMediaControlsRecognizedTapGesture === "function")
+            this.delegate.iOSInlineMediaControlsRecognizedTapGesture();
     }
 
 }

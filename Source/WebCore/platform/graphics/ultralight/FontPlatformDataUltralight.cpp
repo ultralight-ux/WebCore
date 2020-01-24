@@ -2,7 +2,7 @@
 #include "FontPlatformData.h"
 #include "NotImplemented.h"
 #include "wtf/text/WTFString.h"
-#include "WebCore/platform/graphics/FontDescription.h"
+#include "../../FontDescription.h"
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
 #include <Ultralight/private/FontCache.h>
@@ -75,7 +75,6 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
   FT_Reference_Face(m_face);
   m_font = other.m_font;
   m_data = other.m_data;
-  m_harfBuzzFace = other.m_harfBuzzFace;
 
   return *this;
 }
@@ -98,14 +97,6 @@ bool FontPlatformData::isFixedPitch() const
 
 bool FontPlatformData::platformIsEqual(const FontPlatformData& platformFont) const {
   return this->m_face == platformFont.m_face;
-}
-
-HarfBuzzFace* FontPlatformData::harfBuzzFace() const
-{
-  if (!m_harfBuzzFace)
-    m_harfBuzzFace = HarfBuzzFace::create(const_cast<FontPlatformData*>(this), hash());
-
-  return m_harfBuzzFace.get();
 }
 
 float FontPlatformData::glyphWidth(Glyph glyph) {
@@ -141,16 +132,13 @@ RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const {
   if (FT_Load_Sfnt_Table(freeTypeFace, tag, 0, 0, &tableSize))
     return nullptr;
 
-  RefPtr<SharedBuffer> buffer = SharedBuffer::create(tableSize);
-  if (buffer->size() != tableSize)
-    return nullptr;
-
+  Vector<char> data(tableSize);
   FT_ULong expectedTableSize = tableSize;
-  FT_Error error = FT_Load_Sfnt_Table(freeTypeFace, tag, 0, reinterpret_cast<FT_Byte*>(const_cast<char*>(buffer->data())), &tableSize);
+  FT_Error error = FT_Load_Sfnt_Table(freeTypeFace, tag, 0, reinterpret_cast<FT_Byte*>(data.data()), &tableSize);
   if (error || tableSize != expectedTableSize)
     return nullptr;
 
-  return buffer;
+  return SharedBuffer::create(WTFMove(data));
 }
 
 #ifndef NDEBUG

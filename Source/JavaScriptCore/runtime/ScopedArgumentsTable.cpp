@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,7 @@
 
 namespace JSC {
 
-const ClassInfo ScopedArgumentsTable::s_info = { "ScopedArgumentsTable", 0, 0, CREATE_METHOD_TABLE(ScopedArgumentsTable) };
+const ClassInfo ScopedArgumentsTable::s_info = { "ScopedArgumentsTable", nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(ScopedArgumentsTable) };
 
 ScopedArgumentsTable::ScopedArgumentsTable(VM& vm)
     : Base(vm, vm.scopedArgumentsTableStructure.get())
@@ -60,7 +60,7 @@ ScopedArgumentsTable* ScopedArgumentsTable::create(VM& vm, uint32_t length)
 {
     ScopedArgumentsTable* result = create(vm);
     result->m_length = length;
-    result->m_arguments = std::make_unique<ScopeOffset[]>(length);
+    result->m_arguments = ArgumentsPtr::create(length);
     return result;
 }
 
@@ -68,16 +68,16 @@ ScopedArgumentsTable* ScopedArgumentsTable::clone(VM& vm)
 {
     ScopedArgumentsTable* result = create(vm, m_length);
     for (unsigned i = m_length; i--;)
-        result->m_arguments[i] = m_arguments[i];
+        result->at(i) = this->at(i);
     return result;
 }
 
 ScopedArgumentsTable* ScopedArgumentsTable::setLength(VM& vm, uint32_t newLength)
 {
     if (LIKELY(!m_locked)) {
-        std::unique_ptr<ScopeOffset[]> newArguments = std::make_unique<ScopeOffset[]>(newLength);
+        ArgumentsPtr newArguments = ArgumentsPtr::create(newLength, newLength);
         for (unsigned i = std::min(m_length, newLength); i--;)
-            newArguments[i] = m_arguments[i];
+            newArguments.at(i, newLength) = this->at(i);
         m_length = newLength;
         m_arguments = WTFMove(newArguments);
         return this;
@@ -85,9 +85,11 @@ ScopedArgumentsTable* ScopedArgumentsTable::setLength(VM& vm, uint32_t newLength
     
     ScopedArgumentsTable* result = create(vm, newLength);
     for (unsigned i = std::min(m_length, newLength); i--;)
-        result->m_arguments[i] = m_arguments[i];
+        result->at(i) = this->at(i);
     return result;
 }
+
+static_assert(std::is_trivially_destructible<ScopeOffset>::value, "");
 
 ScopedArgumentsTable* ScopedArgumentsTable::set(VM& vm, uint32_t i, ScopeOffset value)
 {

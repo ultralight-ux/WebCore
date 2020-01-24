@@ -40,6 +40,7 @@
 #include "IntRect.h"
 #include <algorithm>
 #include <wtf/StdLibExtras.h>
+#include <wtf/UniqueArray.h>
 
 namespace WebCore {
 
@@ -81,7 +82,7 @@ static void convertFormat(GraphicsContext3D* context, Texture::Format format, un
     }
 }
 
-PassRefPtr<Texture> Texture::create(GraphicsContext3D* context, Format format, int width, int height)
+RefPtr<Texture> Texture::create(GraphicsContext3D* context, Format format, int width, int height)
 {
     int maxTextureSize = 0;
     context->getIntegerv(GraphicsContext3D::MAX_TEXTURE_SIZE, &maxTextureSize);
@@ -102,7 +103,7 @@ PassRefPtr<Texture> Texture::create(GraphicsContext3D* context, Format format, i
         if (!textureId) {
             for (int i = 0; i < numTiles; i++)
                 context->deleteTexture(textureIds->at(i));
-            return 0;
+            return nullptr;
         }
         textureIds->at(i) = textureId;
 
@@ -170,7 +171,7 @@ void Texture::updateSubRect(void* pixels, const IntRect& updateRect)
     int tempBuffSize = // Temporary buffer size is the smaller of the max texture size or the updateRectSanitized
         std::min(m_tiles.maxTextureSize().width(), m_tiles.borderTexels() + updateRectSanitized.width()) *
         std::min(m_tiles.maxTextureSize().height(), m_tiles.borderTexels() + updateRectSanitized.height());
-    auto tempBuff = std::make_unique<uint32_t[]>(tempBuffSize);
+    auto tempBuff = makeUniqueArray<uint32_t>(tempBuffSize);
 
     for (int tile = 0; tile < m_tiles.numTilesX() * m_tiles.numTilesY(); tile++) {
         int xIndex = tile % m_tiles.numTilesX();

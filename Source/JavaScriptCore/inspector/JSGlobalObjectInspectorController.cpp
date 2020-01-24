@@ -26,6 +26,7 @@
 #include "config.h"
 #include "JSGlobalObjectInspectorController.h"
 
+#include "CatchScope.h"
 #include "Completion.h"
 #include "ConsoleMessage.h"
 #include "ErrorHandlingScope.h"
@@ -34,26 +35,22 @@
 #include "InjectedScriptManager.h"
 #include "InspectorAgent.h"
 #include "InspectorBackendDispatcher.h"
+#include "InspectorConsoleAgent.h"
 #include "InspectorFrontendChannel.h"
 #include "InspectorFrontendRouter.h"
 #include "InspectorHeapAgent.h"
 #include "InspectorScriptProfilerAgent.h"
 #include "JSCInlines.h"
 #include "JSGlobalObject.h"
-#include "JSGlobalObjectConsoleAgent.h"
+#include "JSGlobalObjectAuditAgent.h"
 #include "JSGlobalObjectConsoleClient.h"
 #include "JSGlobalObjectDebuggerAgent.h"
 #include "JSGlobalObjectRuntimeAgent.h"
 #include "ScriptArguments.h"
 #include "ScriptCallStack.h"
 #include "ScriptCallStackFactory.h"
+#include <wtf/StackTrace.h>
 #include <wtf/Stopwatch.h>
-
-#if OS(DARWIN) || (OS(LINUX) && !PLATFORM(GTK))
-#include <cxxabi.h>
-#include <dlfcn.h>
-#include <execinfo.h>
-#endif
 
 #if ENABLE(REMOTE_INSPECTOR)
 #include "JSGlobalObjectDebuggable.h"
@@ -71,37 +68,14 @@ namespace Inspector {
     , m_scriptDebugServer(globalObject)
     , m_frontendRouter(FrontendRouter::create())
     , m_backendDispatcher(BackendDispatcher::create(m_frontendRouter.copyRef()))
-  {
-    AgentContext baseContext = {
-      *this,
-      *m_injectedScriptManager,
-      m_frontendRouter.get(),
-      m_backendDispatcher.get()
-    };
+{
+    auto context = jsAgentContext();
 
-    JSAgentContext context = {
-      baseContext,
-      globalObject
-    };
-
-    auto inspectorAgent = std::make_unique<InspectorAgent>(context);
-    auto runtimeAgent = std::make_unique<JSGlobalObjectRuntimeAgent>(context);
-    auto heapAgent = std::make_unique<InspectorHeapAgent>(context);
-    auto consoleAgent = std::make_unique<JSGlobalObjectConsoleAgent>(context, heapAgent.get());
-    auto debuggerAgent = std::make_unique<JSGlobalObjectDebuggerAgent>(context, consoleAgent.get());
-    auto scriptProfilerAgent = std::make_unique<InspectorScriptProfilerAgent>(context);
-
-    m_inspectorAgent = inspectorAgent.get();
-    m_debuggerAgent = debuggerAgent.get();
+    auto consoleAgent = std::make_unique<InspectorConsoleAgent>(context);
     m_consoleAgent = consoleAgent.get();
-    m_consoleClient = std::make_unique<JSGlobalObjectConsoleClient>(m_consoleAgent, m_debuggerAgent, scriptProfilerAgent.get());
-
-    m_agents.append(WTFMove(inspectorAgent));
-    m_agents.append(WTFMove(runtimeAgent));
     m_agents.append(WTFMove(consoleAgent));
-    m_agents.append(WTFMove(debuggerAgent));
-    m_agents.append(WTFMove(heapAgent));
-    m_agents.append(WTFMove(scriptProfilerAgent));
+
+    m_consoleClient = std::make_unique<JSGlobalObjectConsoleClient>(m_consoleAgent);
 
     m_executionStopwatch->start();
   }
@@ -123,11 +97,12 @@ namespace Inspector {
     m_agents.discardValues();
   }
 
-  void JSGlobalObjectInspectorController::connectFrontend(FrontendChannel* frontendChannel, bool isAutomaticInspection)
-  {
-    ASSERT_ARG(frontendChannel, frontendChannel);
-
+void JSGlobalObjectInspectorController::connectFrontend(FrontendChannel& frontendChannel, bool isAutomaticInspection, bool immediatelyPause)
+{
     m_isAutomaticInspection = isAutomaticInspection;
+    m_pauseAfterInitialization = immediatelyPause;
+
+    createLazyAgents();
 
     bool connectedFirstFrontend = !m_frontendRouter->hasFrontends();
     m_frontendRouter->connectFrontend(frontendChannel);
@@ -143,23 +118,22 @@ namespace Inspector {
     m_agents.didCreateFrontendAndBackend(nullptr, nullptr);
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
-    m_inspectorAgent->activateExtraDomains(m_agents.extraDomains());
+    ensureInspectorAgent().activateExtraDomains(m_agents.extraDomains());
 
     if (m_augmentingClient)
       m_augmentingClient->inspectorConnected();
 #endif
   }
 
-  void JSGlobalObjectInspectorController::disconnectFrontend(FrontendChannel* frontendChannel)
-  {
-    ASSERT_ARG(frontendChannel, frontendChannel);
-
+void JSGlobalObjectInspectorController::disconnectFrontend(FrontendChannel& frontendChannel)
+{
     // FIXME: change this to notify agents which frontend has disconnected (by id).
     m_agents.willDestroyFrontendAndBackend(DisconnectReason::InspectorDestroyed);
 
     m_frontendRouter->disconnectFrontend(frontendChannel);
 
     m_isAutomaticInspection = false;
+    m_pauseAfterInitialization = false;
 
     bool disconnectedLastFrontend = !m_frontendRouter->hasFrontends();
     if (!disconnectedLastFrontend)
@@ -180,16 +154,8 @@ namespace Inspector {
     m_backendDispatcher->dispatch(message);
   }
 
-  void JSGlobalObjectInspectorController::pause()
-  {
-    ErrorString dummyError;
-    m_debuggerAgent->enable(dummyError);
-    m_debuggerAgent->pause(dummyError);
-  }
-
-void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack* callStack)
+void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack& callStack)
 {
-#if OS(DARWIN) || (OS(LINUX) && !PLATFORM(GTK))
     static const int framesToShow = 31;
     static const int framesToSkip = 3; // WTFGetBacktrace, appendAPIBacktrace, reportAPIException.
 
@@ -200,34 +166,24 @@ void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack* call
     void** stack = samples + framesToSkip;
     int size = frames - framesToSkip;
     for (int i = 0; i < size; ++i) {
-        const char* mangledName = nullptr;
-        char* cxaDemangled = nullptr;
-        Dl_info info;
-        if (dladdr(stack[i], &info) && info.dli_sname)
-            mangledName = info.dli_sname;
-        if (mangledName)
-            cxaDemangled = abi::__cxa_demangle(mangledName, nullptr, nullptr, nullptr);
-        if (mangledName || cxaDemangled)
-            callStack->append(ScriptCallFrame(cxaDemangled ? cxaDemangled : mangledName, ASCIILiteral("[native code]"), noSourceID, 0, 0));
+        auto demangled = StackTrace::demangle(stack[i]);
+        if (demangled)
+            callStack.append(ScriptCallFrame(demangled->demangledName() ? demangled->demangledName() : demangled->mangledName(), "[native code]"_s, noSourceID, 0, 0));
         else
-            callStack->append(ScriptCallFrame(ASCIILiteral("?"), ASCIILiteral("[native code]"), noSourceID, 0, 0));
-        free(cxaDemangled);
+            callStack.append(ScriptCallFrame("?"_s, "[native code]"_s, noSourceID, 0, 0));
     }
-#else
-    UNUSED_PARAM(callStack);
-#endif
-  }
+}
 
 void JSGlobalObjectInspectorController::reportAPIException(ExecState* exec, Exception* exception)
 {
-    if (isTerminatedExecutionException(exception))
+    VM& vm = exec->vm();
+    if (isTerminatedExecutionException(vm, exception))
         return;
 
-    VM& vm = exec->vm();
     auto scope = DECLARE_CATCH_SCOPE(vm);
     ErrorHandlingScope errorScope(vm);
 
-    RefPtr<ScriptCallStack> callStack = createScriptCallStackFromException(exec, exception, ScriptCallStack::maxCallStackSizeToCapture);
+    Ref<ScriptCallStack> callStack = createScriptCallStackFromException(exec, exception);
     if (includesNativeCallStackWhenReportingExceptions())
       appendAPIBacktrace(callStack.get());
 
@@ -245,7 +201,7 @@ void JSGlobalObjectInspectorController::reportAPIException(ExecState* exec, Exce
         ConsoleClient::printConsoleMessage(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, String(), 0, 0);
     }
 
-    m_consoleAgent->addMessageToConsole(std::make_unique<ConsoleMessage>(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, callStack));
+    m_consoleAgent->addMessageToConsole(std::make_unique<ConsoleMessage>(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, WTFMove(callStack)));
 }
 
   ConsoleClient* JSGlobalObjectInspectorController::consoleClient() const
@@ -276,8 +232,16 @@ void JSGlobalObjectInspectorController::reportAPIException(ExecState* exec, Exce
     return JSC::evaluate;
   }
 
-  void JSGlobalObjectInspectorController::frontendInitialized()
-  {
+void JSGlobalObjectInspectorController::frontendInitialized()
+{
+    if (m_pauseAfterInitialization) {
+        m_pauseAfterInitialization = false;
+
+        ErrorString ignored;
+        ensureDebuggerAgent().enable(ignored);
+        ensureDebuggerAgent().pause(ignored);
+    }
+
 #if ENABLE(REMOTE_INSPECTOR)
     if (m_isAutomaticInspection)
       m_globalObject.inspectorDebuggable().unpauseForInitializedInspector();
@@ -309,8 +273,75 @@ void JSGlobalObjectInspectorController::reportAPIException(ExecState* exec, Exce
 
     m_agents.appendExtraAgent(WTFMove(agent));
 
-    m_inspectorAgent->activateExtraDomain(domainName);
-  }
+    ensureInspectorAgent().activateExtraDomain(domainName);
+}
 #endif
+
+InspectorAgent& JSGlobalObjectInspectorController::ensureInspectorAgent()
+{
+    if (!m_inspectorAgent) {
+        auto context = jsAgentContext();
+        auto inspectorAgent = std::make_unique<InspectorAgent>(context);
+        m_inspectorAgent = inspectorAgent.get();
+        m_agents.append(WTFMove(inspectorAgent));
+    }
+    return *m_inspectorAgent;
+}
+
+InspectorDebuggerAgent& JSGlobalObjectInspectorController::ensureDebuggerAgent()
+{
+    if (!m_debuggerAgent) {
+        auto context = jsAgentContext();
+        auto debuggerAgent = std::make_unique<JSGlobalObjectDebuggerAgent>(context, m_consoleAgent);
+        m_debuggerAgent = debuggerAgent.get();
+        m_consoleClient->setInspectorDebuggerAgent(m_debuggerAgent);
+        m_agents.append(WTFMove(debuggerAgent));
+    }
+    return *m_debuggerAgent;
+}
+
+JSAgentContext JSGlobalObjectInspectorController::jsAgentContext()
+{
+    AgentContext baseContext = {
+        *this,
+        *m_injectedScriptManager,
+        m_frontendRouter.get(),
+        m_backendDispatcher.get()
+    };
+
+    JSAgentContext context = {
+        baseContext,
+        m_globalObject
+    };
+
+    return context;
+}
+
+void JSGlobalObjectInspectorController::createLazyAgents()
+{
+    if (m_didCreateLazyAgents)
+        return;
+
+    m_didCreateLazyAgents = true;
+
+    auto context = jsAgentContext();
+
+    ensureInspectorAgent();
+
+    m_agents.append(std::make_unique<JSGlobalObjectRuntimeAgent>(context));
+
+    ensureDebuggerAgent();
+
+    auto scriptProfilerAgentPtr = std::make_unique<InspectorScriptProfilerAgent>(context);
+    m_consoleClient->setInspectorScriptProfilerAgent(scriptProfilerAgentPtr.get());
+    m_agents.append(WTFMove(scriptProfilerAgentPtr));
+
+    auto heapAgent = std::make_unique<InspectorHeapAgent>(context);
+    if (m_consoleAgent)
+        m_consoleAgent->setInspectorHeapAgent(heapAgent.get());
+    m_agents.append(WTFMove(heapAgent));
+
+    m_agents.append(std::make_unique<JSGlobalObjectAuditAgent>(context));
+}
 
 } // namespace Inspector

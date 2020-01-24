@@ -21,17 +21,48 @@
 
 #pragma once
 
-#include "Document.h"
-#include "ElementIterator.h"
-#include "Frame.h"
-#include "NodeTraversal.h"
+#include "ContainerNode.h"
 #include <wtf/Assertions.h>
-#include <wtf/Ref.h>
 
 namespace WebCore {
 
-void notifyChildNodeInserted(ContainerNode& insertionPoint, Node&, NodeVector& postInsertionNotificationTargets);
-void notifyChildNodeRemoved(ContainerNode& insertionPoint, Node&);
+// FIXME: Delete this class after fixing FormAssociatedElement to avoid calling getElementById during a tree removal.
+#if !ASSERT_DISABLED
+class ContainerChildRemovalScope {
+public:
+    ContainerChildRemovalScope(ContainerNode& parentOfRemovedTree, Node& child)
+        : m_parentOfRemovedTree(parentOfRemovedTree)
+        , m_removedChild(child)
+        , m_previousScope(s_scope)
+    {
+        s_scope = this;
+    }
+
+    ~ContainerChildRemovalScope()
+    {
+        s_scope = m_previousScope;
+    }
+
+    ContainerNode& parentOfRemovedTree() { return m_parentOfRemovedTree; }
+    Node& removedChild() { return m_removedChild; }
+
+    static ContainerChildRemovalScope* currentScope() { return s_scope; }
+
+private:
+    ContainerNode& m_parentOfRemovedTree;
+    Node& m_removedChild;
+    ContainerChildRemovalScope* m_previousScope;
+    static ContainerChildRemovalScope* s_scope;
+};
+#else
+class ContainerChildRemovalScope {
+public:
+    ContainerChildRemovalScope(ContainerNode&, Node&) { }
+};
+#endif
+
+NodeVector notifyChildNodeInserted(ContainerNode& parentOfInsertedTree, Node&);
+void notifyChildNodeRemoved(ContainerNode& oldParentOfRemovedTree, Node&);
 void removeDetachedChildrenInContainer(ContainerNode&);
 
 enum SubframeDisconnectPolicy {

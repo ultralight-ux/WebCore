@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,21 +33,21 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "PeerConnectionStates.h"
+#include "RTCBundlePolicy.h"
+#include "RTCCertificate.h"
 #include "RTCIceServer.h"
+#include "RTCIceTransportPolicy.h"
+#include "RTCPMuxPolicy.h"
 
 namespace WebCore {
 
-using RTCIceTransportPolicy = PeerConnectionStates::IceTransportPolicy;
-using RTCBundlePolicy = PeerConnectionStates::BundlePolicy;
-
 struct RTCConfiguration {
-    using IceTransportPolicy = RTCIceTransportPolicy;
-    using BundlePolicy = RTCBundlePolicy;
-
-    std::optional<Vector<RTCIceServer>> iceServers;
-    IceTransportPolicy iceTransportPolicy;
-    BundlePolicy bundlePolicy;
+    Optional<Vector<RTCIceServer>> iceServers;
+    RTCIceTransportPolicy iceTransportPolicy;
+    RTCBundlePolicy bundlePolicy;
+    RTCPMuxPolicy rtcpMuxPolicy;
+    unsigned short iceCandidatePoolSize;
+    Vector<RefPtr<RTCCertificate>> certificates;
 };
 
 } // namespace WebCore

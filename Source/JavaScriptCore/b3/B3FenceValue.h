@@ -72,15 +72,15 @@ public:
     HeapRange read { HeapRange::top() };
     HeapRange write { HeapRange::top() };
 
-protected:
-    Value* cloneImpl() const override;
+    B3_SPECIALIZE_VALUE_FOR_NO_CHILDREN
 
 private:
     friend class Procedure;
+    friend class Value;
     
-    JS_EXPORT_PRIVATE FenceValue(Origin origin, HeapRange read, HeapRange write);
-    
-    JS_EXPORT_PRIVATE FenceValue(Origin origin);
+    static Opcode opcodeFromConstructor(Origin, HeapRange = HeapRange(), HeapRange = HeapRange()) { return Fence; }
+    FenceValue(Origin origin, HeapRange read, HeapRange write);
+    FenceValue(Origin origin);
 };
 
 } } // namespace JSC::B3

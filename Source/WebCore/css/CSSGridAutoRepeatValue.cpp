@@ -31,8 +31,6 @@
 #include "config.h"
 #include "CSSGridAutoRepeatValue.h"
 
-#if ENABLE(CSS_GRID_LAYOUT)
-
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
@@ -44,10 +42,13 @@ String CSSGridAutoRepeatValue::customCSSText() const
     result.append(getValueName(autoRepeatID()));
     result.append(", ");
     result.append(CSSValueList::customCSSText());
-    result.append(")");
+    result.append(')');
     return result.toString();
 }
 
-} // namespace WebCore
+bool CSSGridAutoRepeatValue::equals(const CSSGridAutoRepeatValue& other) const
+{
+    return m_autoRepeatID == other.m_autoRepeatID && CSSValueList::equals(other);
+}
 
-#endif // ENABLE(CSS_GRID_LAYOUT)
+} // namespace WebCore

@@ -35,9 +35,9 @@
 #include "MHTMLArchive.h"
 
 #include "Document.h"
+#include "Frame.h"
 #include "MHTMLParser.h"
 #include "MIMETypeRegistry.h"
-#include "MainFrame.h"
 #include "Page.h"
 #include "PageSerializer.h"
 #include "QuotedPrintable.h"
@@ -122,19 +122,19 @@ RefPtr<MHTMLArchive> MHTMLArchive::create(const URL& url, SharedBuffer& data)
         RefPtr<MHTMLArchive> archive = parser.frameAt(i);
         for (size_t j = 1; j < parser.frameCount(); ++j) {
             if (i != j)
-                archive->addSubframeArchive(parser.frameAt(j));
+                archive->addSubframeArchive(*parser.frameAt(j));
         }
         for (size_t j = 0; j < parser.subResourceCount(); ++j)
-            archive->addSubresource(parser.subResourceAt(j));
+            archive->addSubresource(*parser.subResourceAt(j));
     }
     return mainArchive;
 }
 
-PassRefPtr<SharedBuffer> MHTMLArchive::generateMHTMLData(Page* page)
+Ref<SharedBuffer> MHTMLArchive::generateMHTMLData(Page* page)
 {
     Vector<PageSerializer::Resource> resources;
-    PageSerializer pageSerializer(&resources);
-    pageSerializer.serialize(page);
+    PageSerializer pageSerializer(resources);
+    pageSerializer.serialize(*page);
 
     String boundary = generateRandomBoundary();
     String endOfResourceBoundary = makeString("--", boundary, "\r\n");
@@ -160,9 +160,9 @@ PassRefPtr<SharedBuffer> MHTMLArchive::generateMHTMLData(Page* page)
     stringBuilder.append("\"\r\n\r\n");
 
     // We use utf8() below instead of ascii() as ascii() replaces CRLFs with ?? (we still only have put ASCII characters in it).
-    ASSERT(stringBuilder.toString().containsOnlyASCII());
+    ASSERT(stringBuilder.toString().isAllASCII());
     CString asciiString = stringBuilder.toString().utf8();
-    RefPtr<SharedBuffer> mhtmlData = SharedBuffer::create();
+    auto mhtmlData = SharedBuffer::create();
     mhtmlData->append(asciiString.data(), asciiString.length());
 
     for (auto& resource : resources) {
@@ -213,7 +213,7 @@ PassRefPtr<SharedBuffer> MHTMLArchive::generateMHTMLData(Page* page)
     asciiString = makeString("--", boundary, "--\r\n").utf8();
     mhtmlData->append(asciiString.data(), asciiString.length());
 
-    return mhtmlData.release();
+    return mhtmlData;
 }
 
 }

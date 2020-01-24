@@ -27,6 +27,7 @@
 namespace WebCore {
 
 class RenderTextControlMultiLine final : public RenderTextControl {
+    WTF_MAKE_ISO_ALLOCATED(RenderTextControlMultiLine);
 public:
     RenderTextControlMultiLine(HTMLTextAreaElement&, RenderStyle&&);
     virtual ~RenderTextControlMultiLine();
@@ -34,6 +35,7 @@ public:
     HTMLTextAreaElement& textAreaElement() const;
 
 private:
+    void willBeDestroyed() override;
     void element() const = delete;
 
     bool isTextArea() const override { return true; }
@@ -45,7 +47,7 @@ private:
     LayoutUnit computeControlLogicalHeight(LayoutUnit lineHeight, LayoutUnit nonContentHeight) const override;
     int baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const override;
 
-    RenderObject* layoutSpecialExcludedChild(bool relayoutChildren) override;
+    void layoutExcludedChildren(bool relayoutChildren) override;
 };
 
 inline RenderTextControlMultiLine* HTMLTextAreaElement::renderer() const

@@ -140,7 +140,7 @@ float FixedTableLayout::calcWidthArray()
         unsigned span = cell->colSpan();
         float fixedBorderBoxLogicalWidth = 0;
         // FIXME: Support other length types. If the width is non-auto, it should probably just use
-        // RenderBox::computeLogicalWidthInRegionUsing to compute the width.
+        // RenderBox::computeLogicalWidthInFragmentUsing to compute the width.
         if (logicalWidth.isFixed() && logicalWidth.isPositive()) {
             fixedBorderBoxLogicalWidth = cell->adjustBorderBoxLogicalWidthForBoxSizing(logicalWidth.value());
             logicalWidth.setValue(Fixed, fixedBorderBoxLogicalWidth);
@@ -302,12 +302,12 @@ void FixedTableLayout::layout()
     
     float pos = 0;
     for (unsigned i = 0; i < nEffCols; i++) {
-        m_table->setColumnPosition(i, pos);
+        m_table->setColumnPosition(i, LayoutUnit(pos));
         pos += calcWidth[i] + hspacing;
     }
     float colPositionsSize = m_table->columnPositions().size();
     if (colPositionsSize > 0)
-        m_table->setColumnPosition(colPositionsSize - 1, pos);
+        m_table->setColumnPosition(colPositionsSize - 1, LayoutUnit(pos));
 }
 
 } // namespace WebCore

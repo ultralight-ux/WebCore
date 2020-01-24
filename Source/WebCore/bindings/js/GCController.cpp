@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2014, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,21 +27,25 @@
 #include "GCController.h"
 
 #include "CommonVM.h"
-#include <runtime/VM.h>
-#include <runtime/JSLock.h>
-#include <heap/Heap.h>
-#include <wtf/StdLibExtras.h>
+#include "JSHTMLDocument.h"
+#include "Location.h"
+#include <JavaScriptCore/Heap.h>
+#include <JavaScriptCore/HeapSnapshotBuilder.h>
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/VM.h>
+#include <pal/Logging.h>
 #include <wtf/FastMalloc.h>
+#include <wtf/FileSystem.h>
 #include <wtf/NeverDestroyed.h>
-
-using namespace JSC;
+#include <wtf/StdLibExtras.h>
 
 namespace WebCore {
+using namespace JSC;
 
-static void collect(void*)
+static void collect()
 {
     JSLockHolder lock(commonVM());
-    commonVM().heap.collectAllGarbage();
+    commonVM().heap.collectNow(Async, CollectionScope::Full);
 }
 
 GCController& GCController::singleton()
@@ -53,6 +57,12 @@ GCController& GCController::singleton()
 GCController::GCController()
     : m_GCTimer(*this, &GCController::gcTimerFired)
 {
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        PAL::registerNotifyCallback("com.apple.WebKit.dumpGCHeap", [] {
+            GCController::singleton().dumpHeap();
+        });
+    });
 }
 
 void GCController::garbageCollectSoon()
@@ -71,19 +81,19 @@ void GCController::garbageCollectSoon()
 void GCController::garbageCollectOnNextRunLoop()
 {
     if (!m_GCTimer.isActive())
-        m_GCTimer.startOneShot(0);
+        m_GCTimer.startOneShot(0_s);
 }
 
 void GCController::gcTimerFired()
 {
-    collect(nullptr);
+    collect();
 }
 
 void GCController::garbageCollectNow()
 {
     JSLockHolder lock(commonVM());
     if (!commonVM().heap.isCurrentThreadBusy()) {
-        commonVM().heap.collectAllGarbage();
+        commonVM().heap.collectNow(Sync, CollectionScope::Full);
         WTF::releaseFastMallocFreeMemory();
     }
 }
@@ -93,7 +103,7 @@ void GCController::garbageCollectNowIfNotDoneRecently()
 #if USE(CF) || USE(GLIB)
     JSLockHolder lock(commonVM());
     if (!commonVM().heap.isCurrentThreadBusy())
-        commonVM().heap.collectAllGarbageIfNotDoneRecently();
+        commonVM().heap.collectNowFullIfNotDoneRecently(Async);
 #else
     garbageCollectSoon();
 #endif
@@ -101,14 +111,14 @@ void GCController::garbageCollectNowIfNotDoneRecently()
 
 void GCController::garbageCollectOnAlternateThreadForDebugging(bool waitUntilDone)
 {
-    ThreadIdentifier threadID = createThread(collect, 0, "WebCore: GCController");
+    auto thread = Thread::create("WebCore: GCController", &collect);
 
     if (waitUntilDone) {
-        waitForThreadCompletion(threadID);
+        thread->waitForCompletion();
         return;
     }
 
-    detachThread(threadID);
+    thread->detach();
 }
 
 void GCController::setJavaScriptGarbageCollectorTimerEnabled(bool enable)
@@ -126,6 +136,38 @@ void GCController::deleteAllLinkedCode(DeleteAllCodeEffort effort)
 {
     JSLockHolder lock(commonVM());
     commonVM().deleteAllLinkedCode(effort);
+}
+
+void GCController::dumpHeap()
+{
+    FileSystem::PlatformFileHandle fileHandle;
+    String tempFilePath = FileSystem::openTemporaryFile("GCHeap"_s, fileHandle);
+    if (!FileSystem::isHandleValid(fileHandle)) {
+        WTFLogAlways("Dumping GC heap failed to open temporary file");
+        return;
+    }
+
+    VM& vm = commonVM();
+    JSLockHolder lock(vm);
+
+    sanitizeStackForVM(&vm);
+
+    String jsonData;
+    {
+        DeferGCForAWhile deferGC(vm.heap); // Prevent concurrent GC from interfering with the full GC that the snapshot does.
+
+        HeapSnapshotBuilder snapshotBuilder(vm.ensureHeapProfiler(), HeapSnapshotBuilder::SnapshotType::GCDebuggingSnapshot);
+        snapshotBuilder.buildSnapshot();
+
+        jsonData = snapshotBuilder.json();
+    }
+
+    CString utf8String = jsonData.utf8();
+
+    FileSystem::writeToFile(fileHandle, utf8String.data(), utf8String.length());
+    FileSystem::closeFile(fileHandle);
+    
+    WTFLogAlways("Dumped GC heap to %s", tempFilePath.utf8().data());
 }
 
 } // namespace WebCore

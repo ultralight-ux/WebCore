@@ -42,14 +42,14 @@ public:
         String newURL;
     };
 
-    static Ref<HashChangeEvent> create(const AtomicString& type, const Init& initializer, IsTrusted isTrusted = IsTrusted::No)
+    static Ref<HashChangeEvent> create(const AtomString& type, const Init& initializer, IsTrusted isTrusted = IsTrusted::No)
     {
         return adoptRef(*new HashChangeEvent(type, initializer, isTrusted));
     }
 
-    void initHashChangeEvent(const AtomicString& eventType, bool canBubble, bool cancelable, const String& oldURL, const String& newURL)
+    void initHashChangeEvent(const AtomString& eventType, bool canBubble, bool cancelable, const String& oldURL, const String& newURL)
     {
-        if (dispatched())
+        if (isBeingDispatched())
             return;
 
         initEvent(eventType, canBubble, cancelable);
@@ -69,13 +69,13 @@ private:
     }
 
     HashChangeEvent(const String& oldURL, const String& newURL)
-        : Event(eventNames().hashchangeEvent, false, false)
+        : Event(eventNames().hashchangeEvent, CanBubble::No, IsCancelable::No)
         , m_oldURL(oldURL)
         , m_newURL(newURL)
     {
     }
 
-    HashChangeEvent(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+    HashChangeEvent(const AtomString& type, const Init& initializer, IsTrusted isTrusted)
         : Event(type, initializer, isTrusted)
         , m_oldURL(initializer.oldURL)
         , m_newURL(initializer.newURL)

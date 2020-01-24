@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,48 +23,52 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef Bag_h
-#define Bag_h
+#pragma once
+
+#include <wtf/DumbPtrTraits.h>
+#include <wtf/FastMalloc.h>
+#include <wtf/Noncopyable.h>
+#include <wtf/Packed.h>
 
 namespace WTF {
 
-template<typename T>
+namespace Private {
+
+template<typename T, typename PassedPtrTraits = DumbPtrTraits<T>>
+class BagNode {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    using PtrTraits = typename PassedPtrTraits::template RebindTraits<BagNode>;
+
+    template<typename... Args>
+    BagNode(Args&&... args)
+        : m_item(std::forward<Args>(args)...)
+    { }
+    
+    T m_item;
+    typename PtrTraits::StorageType m_next { nullptr };
+};
+
+} // namespace Private
+
+template<typename T, typename PassedPtrTraits = DumbPtrTraits<T>>
 class Bag {
     WTF_MAKE_NONCOPYABLE(Bag);
     WTF_MAKE_FAST_ALLOCATED;
-private:
-    class Node {
-        WTF_MAKE_FAST_ALLOCATED;
-    public:
-        template<typename... Args>
-        Node(Args&&... args)
-            : m_item(std::forward<Args>(args)...)
-        {
-        }
-        
-        T m_item;
-        Node* m_next;
-    };
-    
-public:
-    Bag()
-    {
-    }
+    using Node = Private::BagNode<T, PassedPtrTraits>;
+    using PtrTraits = typename PassedPtrTraits::template RebindTraits<Node>;
 
-    Bag(Bag<T>&& other)
+public:
+    Bag() = default;
+
+    template<typename U>
+    Bag(Bag<T, U>&& other)
     {
         ASSERT(!m_head);
-        m_head = other.m_head;
+        m_head = other.unwrappedHead();
         other.m_head = nullptr;
     }
 
-    Bag& operator=(Bag<T>&& other)
-    {
-        m_head = other.m_head;
-        other.m_head = nullptr;
-        return *this;
-    }
-    
     ~Bag()
     {
         clear();
@@ -72,9 +76,10 @@ public:
     
     void clear()
     {
-        while (m_head) {
-            Node* current = m_head;
-            m_head = current->m_next;
+        Node* head = this->unwrappedHead();
+        while (head) {
+            Node* current = head;
+            head = Node::PtrTraits::unwrap(current->m_next);
             delete current;
         }
         m_head = nullptr;
@@ -84,7 +89,7 @@ public:
     T* add(Args&&... args)
     {
         Node* newNode = new Node(std::forward<Args>(args)...);
-        newNode->m_next = m_head;
+        newNode->m_next = unwrappedHead();
         m_head = newNode;
         return &newNode->m_item;
     }
@@ -103,7 +108,7 @@ public:
         
         iterator& operator++()
         {
-            m_node = m_node->m_next;
+            m_node = Node::PtrTraits::unwrap(m_node->m_next);
             return *this;
         }
         
@@ -118,28 +123,39 @@ public:
         }
 
     private:
-        template<typename U> friend class WTF::Bag;
+        template<typename, typename> friend class WTF::Bag;
         Node* m_node;
     };
     
     iterator begin()
     {
         iterator result;
-        result.m_node = m_head;
+        result.m_node = unwrappedHead();
         return result;
     }
-    
-    iterator end() { return iterator(); }
+
+    const iterator begin() const
+    {
+        iterator result;
+        result.m_node = unwrappedHead();
+        return result;
+    }
+
+
+    iterator end() const { return iterator(); }
     
     bool isEmpty() const { return !m_head; }
     
 private:
-    Node* m_head { nullptr };
+    Node* unwrappedHead() const { return PtrTraits::unwrap(m_head); }
+
+    typename PtrTraits::StorageType m_head { nullptr };
 };
+
+template<typename T>
+using PackedBag = Bag<T, PackedPtrTraits<T>>;
 
 } // namespace WTF
 
 using WTF::Bag;
-
-#endif // Bag_h
-
+using WTF::PackedBag;

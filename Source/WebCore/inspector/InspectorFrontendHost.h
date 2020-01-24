@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,7 +36,7 @@
 
 namespace WebCore {
 
-class ContextMenuItem;
+class DOMWrapperWorld;
 class Event;
 class FrontendMenuProvider;
 class InspectorFrontendClient;
@@ -52,21 +52,35 @@ public:
     WEBCORE_EXPORT ~InspectorFrontendHost();
     WEBCORE_EXPORT void disconnectClient();
 
+    WEBCORE_EXPORT void addSelfToGlobalObjectInWorld(DOMWrapperWorld&);
+
     void loaded();
-    void requestSetDockSide(const String&);
     void closeWindow();
+    void reopen();
+    void reset();
+
     void bringToFront();
     void inspectedURLChanged(const String&);
+
+    bool supportsShowCertificate() const;
+    bool showCertificate(const String& serializedCertificate);
 
     void setZoomFactor(float);
     float zoomFactor();
 
+    String userInterfaceLayoutDirection();
+
+    void requestSetDockSide(const String&);
+
     void setAttachedWindowHeight(unsigned);
     void setAttachedWindowWidth(unsigned);
+
+    void setSheetRect(float x, float y, unsigned width, unsigned height);
 
     void startWindowDrag();
     void moveWindowBy(float x, float y) const;
 
+    bool isRemote() const;
     String localizedStringsURL();
     String backendCommandsURL();
     String debuggableType();
@@ -83,17 +97,25 @@ public:
     void append(const String& url, const String& content);
     void close(const String& url);
 
-#if ENABLE(CONTEXT_MENUS)
-    // Called from [Custom] implementations.
-    void showContextMenu(Event*, const Vector<ContextMenuItem>& items);
-#endif
+    struct ContextMenuItem {
+        String type;
+        String label;
+        Optional<int> id;
+        Optional<bool> enabled;
+        Optional<bool> checked;
+        Optional<Vector<ContextMenuItem>> subItems;
+    };
+    void showContextMenu(Event&, Vector<ContextMenuItem>&&);
+
     void sendMessageToBackend(const String& message);
-    void dispatchEventAsContextMenuEvent(Event*);
+    void dispatchEventAsContextMenuEvent(Event&);
 
     bool isUnderTest();
     void unbufferedLog(const String& message);
 
     void beep();
+    void inspectInspector();
+    bool isBeingInspected();
 
 private:
 #if ENABLE(CONTEXT_MENUS)

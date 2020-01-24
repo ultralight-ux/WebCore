@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2005, 2007, Google Inc. All rights reserved.
- * Copyright (C) 2005-2009, 2011, 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2018 Apple Inc. All rights reserved.
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -24,19 +24,20 @@
  */
 
 #include "config.h"
-#include "FastMalloc.h"
+#include <wtf/FastMalloc.h>
 
-#include "CheckedArithmetic.h"
-#include "CurrentTime.h"
 #include <limits>
 #include <string.h>
+#include <wtf/CheckedArithmetic.h>
 #include <wtf/DataLog.h>
 
 #if OS(WINDOWS)
 #include <windows.h>
 #else
 #include <pthread.h>
+#if HAVE(RESOURCE_H)
 #include <sys/resource.h>
+#endif // HAVE(RESOURCE_H)
 #endif
 
 #if OS(DARWIN)
@@ -46,9 +47,11 @@
 
 namespace WTF {
 
-#if !defined(NDEBUG) && !PLATFORM(ULTRALIGHT)
+#if !defined(NDEBUG)
 namespace {
-size_t maxSingleAllocationSize = std::numeric_limits<size_t>::max();
+// We do not use std::numeric_limits<size_t>::max() here due to the edge case in VC++.
+// https://bugs.webkit.org/show_bug.cgi?id=173720
+static size_t maxSingleAllocationSize = SIZE_MAX;
 };
 
 void fastSetMaxSingleAllocationSize(size_t size)
@@ -67,8 +70,6 @@ void fastSetMaxSingleAllocationSize(size_t size)
     } while (false)
 
 #else // !defined(NDEBUG)
-
-void fastSetMaxSingleAllocationSize(size_t size) {}
 
 #define ASSERT_IS_WITHIN_LIMIT(size)
 #define FAIL_IF_EXCEEDS_LIMIT(size)
@@ -102,6 +103,8 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
 } // namespace WTF
 
 #if defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
+
+#include <wtf/OSAllocator.h>
 
 #if OS(WINDOWS)
 #include <malloc.h>
@@ -218,6 +221,12 @@ void* fastRealloc(void* p, size_t n)
     return result;
 }
 
+TryMallocReturnValue tryFastRealloc(void* p, size_t n)
+{
+    FAIL_IF_EXCEEDS_LIMIT(n);
+    return realloc(p, n);
+}
+
 void releaseFastMallocFreeMemory() { }
 void releaseFastMallocFreeMemoryForThisThread() { }
     
@@ -239,22 +248,29 @@ size_t fastMallocSize(const void* p)
 #endif
 }
 
+void fastCommitAlignedMemory(void* ptr, size_t size)
+{
+    OSAllocator::commit(ptr, size, true, false);
+}
+
+void fastDecommitAlignedMemory(void* ptr, size_t size)
+{
+    OSAllocator::decommit(ptr, size);
+}
+
+void fastEnableMiniMode() { }
+
 } // namespace WTF
 
 #else // defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
 
 #include <bmalloc/bmalloc.h>
 
-#if OS(WINDOWS)
-#include <psapi.h>
-#endif
-
 namespace WTF {
 
 bool isFastMallocEnabled()
 {
-    //return bmalloc::api::isEnabled();
-	return true;
+    return bmalloc::api::isEnabled();
 }
 
 void* fastMalloc(size_t size)
@@ -307,13 +323,12 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
 void* tryFastAlignedMalloc(size_t alignment, size_t size) 
 {
     FAIL_IF_EXCEEDS_LIMIT(size);
-    //return bmalloc::api::tryMemalign(alignment, size);
-	return bmalloc::api::memalign(alignment, size);
+    return bmalloc::api::tryMemalign(alignment, size);
 }
 
 void fastAlignedFree(void* p) 
 {
-    bmalloc::api::freealign(p);
+    bmalloc::api::free(p);
 }
 
 TryMallocReturnValue tryFastMalloc(size_t size)
@@ -332,6 +347,12 @@ TryMallocReturnValue tryFastCalloc(size_t numElements, size_t elementSize)
     return tryFastZeroedMalloc(checkedSize.unsafeGet());
 }
     
+TryMallocReturnValue tryFastRealloc(void* object, size_t newSize)
+{
+    FAIL_IF_EXCEEDS_LIMIT(newSize);
+    return bmalloc::api::tryRealloc(object, newSize);
+}
+
 void releaseFastMallocFreeMemoryForThisThread()
 {
     bmalloc::api::scavengeThisThread();
@@ -354,7 +375,7 @@ FastMallocStatistics fastMallocStatistics()
     PROCESS_MEMORY_COUNTERS resourceUsage;
     GetProcessMemoryInfo(GetCurrentProcess(), &resourceUsage, sizeof(resourceUsage));
     statistics.committedVMBytes = resourceUsage.PeakWorkingSetSize;
-#else
+#elif HAVE(RESOURCE_H)
     struct rusage resourceUsage;
     getrusage(RUSAGE_SELF, &resourceUsage);
 
@@ -366,6 +387,21 @@ FastMallocStatistics fastMallocStatistics()
 
 #endif // OS(WINDOWS)
     return statistics;
+}
+
+void fastCommitAlignedMemory(void* ptr, size_t size)
+{
+    bmalloc::api::commitAlignedPhysical(ptr, size);
+}
+
+void fastDecommitAlignedMemory(void* ptr, size_t size)
+{
+    bmalloc::api::decommitAlignedPhysical(ptr, size);
+}
+
+void fastEnableMiniMode()
+{
+    bmalloc::api::enableMiniMode();
 }
 
 } // namespace WTF

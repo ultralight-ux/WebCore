@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MediaStreamConstraintsValidationClient_h
-#define MediaStreamConstraintsValidationClient_h
+#pragma once
 
 #if ENABLE(MEDIA_STREAM)
 
@@ -33,11 +32,9 @@
 
 namespace WebCore {
 
-class MediaConstraints;
-
 class MediaStreamConstraintsValidationClient : public RefCounted<MediaStreamConstraintsValidationClient> {
 public:
-    virtual ~MediaStreamConstraintsValidationClient() { }
+    virtual ~MediaStreamConstraintsValidationClient() = default;
 
     virtual void constraintsAreValid() = 0;
     virtual void constraintsInvalid(const String& constraintName) = 0;
@@ -46,5 +43,3 @@ public:
 } // namespace WebCore
 
 #endif // ENABLE(MEDIA_STREAM)
-
-#endif // MediaStreamConstraintsValidationClient_h

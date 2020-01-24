@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2006, 2008, 2012, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,26 +25,52 @@
 
 #pragma once
 
+#include "PageIdentifier.h"
 #include <wtf/Forward.h>
-#include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
+
+namespace PAL {
+class SessionID;
+}
 
 namespace WebCore {
 
+enum class IncludeSecureCookies : bool { No, Yes };
+enum class IncludeHttpOnlyCookies : bool { No, Yes };
+enum class SecureCookiesAccessed : bool { No, Yes };
+
 class Document;
-class URL;
 struct Cookie;
+struct CookieRequestHeaderFieldProxy;
+class NetworkStorageSession;
+class StorageSessionProvider;
+struct SameSiteInfo;
 
-// Functions in this file take a Document pointer to determine which cookie storage to use. We should merge that into call sites, and use PlatformCookieJar directly.
+class WEBCORE_EXPORT CookieJar : public RefCounted<CookieJar> {
+public:
+    static Ref<CookieJar> create(Ref<StorageSessionProvider>&&);
+    
+    static CookieRequestHeaderFieldProxy cookieRequestHeaderFieldProxy(const Document&, const URL&);
 
-// These two functions implement document.cookie API, with special rules for HttpOnly cookies.
-WEBCORE_EXPORT String cookies(const Document&, const URL&);
-WEBCORE_EXPORT void setCookies(Document&, const URL&, const String& cookieString);
+    String cookieRequestHeaderFieldValue(Document&, const URL&) const;
 
-WEBCORE_EXPORT bool cookiesEnabled(const Document&);
-WEBCORE_EXPORT String cookieRequestHeaderFieldValue(const Document&, const URL&);
-WEBCORE_EXPORT bool getRawCookies(const Document&, const URL&, Vector<Cookie>&);
-WEBCORE_EXPORT void deleteCookie(const Document&, const URL&, const String& cookieName);
-WEBCORE_EXPORT void addCookie(const Document&, const URL&, const Cookie&);
+    // These two functions implement document.cookie API, with special rules for HttpOnly cookies.
+    virtual String cookies(Document&, const URL&) const;
+    virtual void setCookies(Document&, const URL&, const String& cookieString);
+
+    virtual bool cookiesEnabled(const Document&) const;
+    virtual std::pair<String, SecureCookiesAccessed> cookieRequestHeaderFieldValue(const PAL::SessionID&, const URL& firstParty, const SameSiteInfo&, const URL&, Optional<uint64_t> frameID, Optional<PageIdentifier>, IncludeSecureCookies) const;
+    virtual bool getRawCookies(const Document&, const URL&, Vector<Cookie>&) const;
+    virtual void deleteCookie(const Document&, const URL&, const String& cookieName);
+
+    virtual ~CookieJar();
+protected:
+    static SameSiteInfo sameSiteInfo(const Document&);
+    static IncludeSecureCookies shouldIncludeSecureCookies(const Document&, const URL&);
+    CookieJar(Ref<StorageSessionProvider>&&);
+
+private:
+    Ref<StorageSessionProvider> m_storageSessionProvider;
+};
 
 } // namespace WebCore

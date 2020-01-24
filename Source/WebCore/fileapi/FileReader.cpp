@@ -32,19 +32,20 @@
 #include "FileReader.h"
 
 #include "EventNames.h"
-#include "ExceptionCode.h"
 #include "File.h"
 #include "Logging.h"
 #include "ProgressEvent.h"
 #include "ScriptExecutionContext.h"
-#include <runtime/ArrayBuffer.h>
-#include <wtf/CurrentTime.h>
+#include <JavaScriptCore/ArrayBuffer.h>
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/text/CString.h>
 
 namespace WebCore {
 
+WTF_MAKE_ISO_ALLOCATED_IMPL(FileReader);
+
 // Fire the progress event at least every 50ms.
-static const auto progressNotificationInterval = 50ms;
+static const auto progressNotificationInterval = 50_ms;
 
 Ref<FileReader> FileReader::create(ScriptExecutionContext& context)
 {
@@ -66,8 +67,7 @@ FileReader::~FileReader()
 
 bool FileReader::canSuspendForDocumentSuspension() const
 {
-    // FIXME: It is not currently possible to suspend a FileReader, so pages with FileReader can not go into page cache.
-    return false;
+    return !hasPendingActivity();
 }
 
 const char* FileReader::activeDOMObjectName() const
@@ -82,6 +82,7 @@ void FileReader::stop()
         m_loader = nullptr;
     }
     m_state = DONE;
+    m_loadingActivity = nullptr;
 }
 
 ExceptionOr<void> FileReader::readAsArrayBuffer(Blob* blob)
@@ -127,11 +128,11 @@ ExceptionOr<void> FileReader::readAsDataURL(Blob* blob)
 
 ExceptionOr<void> FileReader::readInternal(Blob& blob, FileReaderLoader::ReadType type)
 {
-    // If multiple concurrent read methods are called on the same FileReader, INVALID_STATE_ERR should be thrown when the state is LOADING.
+    // If multiple concurrent read methods are called on the same FileReader, InvalidStateError should be thrown when the state is LOADING.
     if (m_state == LOADING)
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
 
-    setPendingActivity(this);
+    m_loadingActivity = makePendingActivity(*this);
 
     m_blob = &blob;
     m_readType = type;
@@ -155,7 +156,10 @@ void FileReader::abort()
     m_aborting = true;
 
     // Schedule to have the abort done later since abort() might be called from the event handler and we do not want the resource loading code to be in the stack.
-    scriptExecutionContext()->postTask([this] (ScriptExecutionContext&) {
+    scriptExecutionContext()->postTask([this, protectedThis = makeRef(*this)] (ScriptExecutionContext&) {
+        if (isContextStopped())
+            return;
+
         ASSERT(m_state != DONE);
 
         stop();
@@ -166,9 +170,6 @@ void FileReader::abort()
         fireEvent(eventNames().errorEvent);
         fireEvent(eventNames().abortEvent);
         fireEvent(eventNames().loadendEvent);
-
-        // All possible events have fired and we're done, no more pending activity.
-        unsetPendingActivity(this);
     });
 }
 
@@ -179,8 +180,8 @@ void FileReader::didStartLoading()
 
 void FileReader::didReceiveData()
 {
-    auto now = std::chrono::steady_clock::now();
-    if (!m_lastProgressNotificationTime.time_since_epoch().count()) {
+    auto now = MonotonicTime::now();
+    if (std::isnan(m_lastProgressNotificationTime)) {
         m_lastProgressNotificationTime = now;
         return;
     }
@@ -202,8 +203,7 @@ void FileReader::didFinishLoading()
     fireEvent(eventNames().loadEvent);
     fireEvent(eventNames().loadendEvent);
     
-    // All possible events have fired and we're done, no more pending activity.
-    unsetPendingActivity(this);
+    m_loadingActivity = nullptr;
 }
 
 void FileReader::didFail(int errorCode)
@@ -219,27 +219,28 @@ void FileReader::didFail(int errorCode)
     fireEvent(eventNames().errorEvent);
     fireEvent(eventNames().loadendEvent);
     
-    // All possible events have fired and we're done, no more pending activity.
-    unsetPendingActivity(this);
+    m_loadingActivity = nullptr;
 }
 
-void FileReader::fireEvent(const AtomicString& type)
+void FileReader::fireEvent(const AtomString& type)
 {
     dispatchEvent(ProgressEvent::create(type, true, m_loader ? m_loader->bytesLoaded() : 0, m_loader ? m_loader->totalBytes() : 0));
 }
 
-RefPtr<ArrayBuffer> FileReader::arrayBufferResult() const
+Optional<Variant<String, RefPtr<JSC::ArrayBuffer>>> FileReader::result() const
 {
     if (!m_loader || m_error)
-        return nullptr;
-    return m_loader->arrayBufferResult();
-}
-
-String FileReader::stringResult()
-{
-    if (!m_loader || m_error)
-        return String();
-    return m_loader->stringResult();
+        return WTF::nullopt;
+    if (m_readType == FileReaderLoader::ReadAsArrayBuffer) {
+        auto result = m_loader->arrayBufferResult();
+        if (!result)
+            return WTF::nullopt;
+        return { result };
+    }
+    String result = m_loader->stringResult();
+    if (result.isNull())
+        return WTF::nullopt;
+    return { WTFMove(result) };
 }
 
 } // namespace WebCore

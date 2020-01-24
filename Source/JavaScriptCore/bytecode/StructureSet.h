@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,9 +25,7 @@
 
 #pragma once
 
-#include "ArrayProfile.h"
 #include "DumpContext.h"
-#include "SpeculatedType.h"
 #include "Structure.h"
 #include <wtf/TinyPtrSet.h>
 
@@ -51,15 +49,13 @@ public:
     {
     }
     
-    ALWAYS_INLINE StructureSet(const StructureSet& other)
-        : TinyPtrSet(other)
-    {
-    }
-    
     Structure* onlyStructure() const
     {
         return onlyEntry();
     }
+
+    void markIfCheap(SlotVisitor&) const;
+    bool isStillAlive(VM&) const;
     
     void dumpInContext(PrintStream&, DumpContext*) const;
     void dump(PrintStream&) const;

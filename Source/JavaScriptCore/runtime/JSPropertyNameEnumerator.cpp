@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,24 +32,24 @@
 
 namespace JSC {
 
-const ClassInfo JSPropertyNameEnumerator::s_info = { "JSPropertyNameEnumerator", 0, 0, CREATE_METHOD_TABLE(JSPropertyNameEnumerator) };
+const ClassInfo JSPropertyNameEnumerator::s_info = { "JSPropertyNameEnumerator", nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(JSPropertyNameEnumerator) };
 
 JSPropertyNameEnumerator* JSPropertyNameEnumerator::create(VM& vm)
 {
     if (!vm.emptyPropertyNameEnumerator.get()) {
-        PropertyNameArray propertyNames(&vm, PropertyNameMode::Strings);
-        vm.emptyPropertyNameEnumerator = Strong<JSCell>(vm, create(vm, 0, 0, 0, propertyNames));
+        PropertyNameArray propertyNames(&vm, PropertyNameMode::Strings, PrivateSymbolMode::Exclude);
+        vm.emptyPropertyNameEnumerator = Strong<JSCell>(vm, create(vm, 0, 0, 0, WTFMove(propertyNames)));
     }
     return jsCast<JSPropertyNameEnumerator*>(vm.emptyPropertyNameEnumerator.get());
 }
 
-JSPropertyNameEnumerator* JSPropertyNameEnumerator::create(VM& vm, Structure* structure, uint32_t indexedLength, uint32_t numberStructureProperties, PropertyNameArray& propertyNames)
+JSPropertyNameEnumerator* JSPropertyNameEnumerator::create(VM& vm, Structure* structure, uint32_t indexedLength, uint32_t numberStructureProperties, PropertyNameArray&& propertyNames)
 {
     StructureID structureID = structure ? structure->id() : 0;
     uint32_t inlineCapacity = structure ? structure->inlineCapacity() : 0;
     JSPropertyNameEnumerator* enumerator = new (NotNull, 
         allocateCell<JSPropertyNameEnumerator>(vm.heap)) JSPropertyNameEnumerator(vm, structureID, inlineCapacity);
-    enumerator->finishCreation(vm, indexedLength, numberStructureProperties, propertyNames.data());
+    enumerator->finishCreation(vm, indexedLength, numberStructureProperties, propertyNames.releaseData());
     return enumerator;
 }
 
@@ -60,11 +60,10 @@ JSPropertyNameEnumerator::JSPropertyNameEnumerator(VM& vm, StructureID structure
 {
 }
 
-void JSPropertyNameEnumerator::finishCreation(VM& vm, uint32_t indexedLength, uint32_t endStructurePropertyIndex, PassRefPtr<PropertyNameArrayData> idents)
+void JSPropertyNameEnumerator::finishCreation(VM& vm, uint32_t indexedLength, uint32_t endStructurePropertyIndex, RefPtr<PropertyNameArrayData>&& identifiers)
 {
     Base::finishCreation(vm);
 
-    RefPtr<PropertyNameArrayData> identifiers = idents;
     PropertyNameArrayData::PropertyNameVector& vector = identifiers->propertyNameVector();
 
     m_indexedLength = indexedLength;
@@ -72,7 +71,7 @@ void JSPropertyNameEnumerator::finishCreation(VM& vm, uint32_t indexedLength, ui
     m_endGenericPropertyIndex = vector.size();
 
     {
-        auto locker = lockDuringMarking(vm.heap, *this);
+        auto locker = lockDuringMarking(vm.heap, cellLock());
         m_propertyNames.resizeToFit(vector.size());
     }
     for (unsigned i = 0; i < vector.size(); ++i) {
@@ -90,10 +89,15 @@ void JSPropertyNameEnumerator::visitChildren(JSCell* cell, SlotVisitor& visitor)
 {
     Base::visitChildren(cell, visitor);
     JSPropertyNameEnumerator* thisObject = jsCast<JSPropertyNameEnumerator*>(cell);
-    auto locker = holdLock(*thisObject);
-    for (unsigned i = 0; i < thisObject->m_propertyNames.size(); ++i)
-        visitor.append(thisObject->m_propertyNames[i]);
+    auto locker = holdLock(thisObject->cellLock());
+    for (auto& propertyName : thisObject->m_propertyNames)
+        visitor.append(propertyName);
     visitor.append(thisObject->m_prototypeChain);
+
+    if (thisObject->cachedStructureID()) {
+        VM& vm = visitor.vm();
+        visitor.appendUnbarriered(vm.getStructure(thisObject->cachedStructureID()));
+    }
 }
 
 } // namespace JSC

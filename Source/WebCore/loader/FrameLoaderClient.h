@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2012 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,13 +30,17 @@
 #pragma once
 
 #include "FrameLoaderTypes.h"
-#include "LayoutMilestones.h"
+#include "LayoutMilestone.h"
 #include "LinkIcon.h"
-#include "ResourceLoadPriority.h"
+#include "PageIdentifier.h"
 #include <functional>
 #include <wtf/Forward.h>
-#include <wtf/Vector.h>
+#include <wtf/WallTime.h>
 #include <wtf/text/WTFString.h>
+
+#if ENABLE(APPLICATION_MANIFEST)
+#include "ApplicationManifest.h"
+#endif
 
 #if ENABLE(CONTENT_FILTERING)
 #include "ContentFilterUnblockHandler.h"
@@ -58,12 +62,17 @@ OBJC_CLASS NSDictionary;
 OBJC_CLASS NSView;
 #endif
 
+namespace PAL {
+class SessionID;
+}
+
 namespace WebCore {
 
 class AuthenticationChallenge;
 class CachedFrame;
 class CachedResourceRequest;
 class Color;
+class DOMWindow;
 class DOMWindowExtension;
 class DOMWrapperWorld;
 class DocumentLoader;
@@ -72,56 +81,57 @@ class FormState;
 class Frame;
 class FrameLoader;
 class FrameNetworkingContext;
-class HistoryItem;
 class HTMLAppletElement;
 class HTMLFormElement;
 class HTMLFrameOwnerElement;
 class HTMLPlugInElement;
+class HistoryItem;
 class IntSize;
-class URL;
 class MessageEvent;
 class NavigationAction;
 class Page;
-class ProtectionSpace;
 class PluginViewBase;
-class PolicyChecker;
+class PreviewLoaderClient;
+class ProtectionSpace;
+class RTCPeerConnectionHandler;
 class ResourceError;
 class ResourceHandle;
 class ResourceRequest;
 class ResourceResponse;
-#if ENABLE(WEB_RTC)
-class RTCPeerConnectionHandler;
-#endif
 class SecurityOrigin;
-class SessionID;
 class SharedBuffer;
-class StringWithDirection;
 class SubstituteData;
 class Widget;
 
-#if USE(QUICK_LOOK)
-class QuickLookHandle;
-#endif
+enum class LockBackForwardList : bool;
+enum class PolicyDecisionMode;
 
-typedef std::function<void (PolicyAction)> FramePolicyFunction;
+struct StringWithDirection;
+
+typedef WTF::Function<void (PolicyAction, PolicyCheckIdentifier)> FramePolicyFunction;
 
 class WEBCORE_EXPORT FrameLoaderClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     // An inline function cannot be the first non-abstract virtual function declared
     // in the class as it results in the vtable being generated as a weak symbol.
-    // This hurts performance (in Mac OS X at least, when loadig frameworks), so we
+    // This hurts performance (in Mac OS X at least, when loading frameworks), so we
     // don't want to do it in WebKit.
     virtual bool hasHTMLView() const;
 
-    virtual ~FrameLoaderClient() { }
+    virtual ~FrameLoaderClient() = default;
 
     virtual void frameLoaderDestroyed() = 0;
 
     virtual bool hasWebView() const = 0; // mainly for assertions
 
     virtual void makeRepresentation(DocumentLoader*) = 0;
-    
-#if PLATFORM(IOS)
+
+    virtual Optional<PageIdentifier> pageID() const = 0;
+    virtual Optional<uint64_t> frameID() const = 0;
+    virtual PAL::SessionID sessionID() const = 0;
+
+#if PLATFORM(IOS_FAMILY)
     // Returns true if the client forced the layout.
     virtual bool forceLayoutOnRestoreFromPageCache() = 0;
 #endif
@@ -141,7 +151,7 @@ public:
     virtual bool canAuthenticateAgainstProtectionSpace(DocumentLoader*, unsigned long identifier, const ProtectionSpace&) = 0;
 #endif
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     virtual RetainPtr<CFDictionaryRef> connectionProperties(DocumentLoader*, unsigned long identifier) = 0;
 #endif
 
@@ -155,40 +165,43 @@ public:
     virtual void dispatchDidReceiveServerRedirectForProvisionalLoad() = 0;
     virtual void dispatchDidChangeProvisionalURL() { }
     virtual void dispatchDidCancelClientRedirect() = 0;
-    virtual void dispatchWillPerformClientRedirect(const URL&, double interval, double fireDate) = 0;
+    virtual void dispatchWillPerformClientRedirect(const URL&, double interval, WallTime fireDate, LockBackForwardList) = 0;
+    virtual void dispatchDidChangeMainDocument() { }
+    virtual void dispatchWillChangeDocument(const URL&, const URL&) { }
     virtual void dispatchDidNavigateWithinPage() { }
     virtual void dispatchDidChangeLocationWithinPage() = 0;
     virtual void dispatchDidPushStateWithinPage() = 0;
     virtual void dispatchDidReplaceStateWithinPage() = 0;
     virtual void dispatchDidPopStateWithinPage() = 0;
     virtual void dispatchWillClose() = 0;
-    virtual void dispatchDidReceiveIcon() = 0;
+    virtual void dispatchDidReceiveIcon() { }
     virtual void dispatchDidStartProvisionalLoad() = 0;
     virtual void dispatchDidReceiveTitle(const StringWithDirection&) = 0;
-    virtual void dispatchDidCommitLoad(std::optional<HasInsecureContent>) = 0;
-    virtual void dispatchDidFailProvisionalLoad(const ResourceError&) = 0;
+    virtual void dispatchDidCommitLoad(Optional<HasInsecureContent>) = 0;
+    virtual void dispatchDidFailProvisionalLoad(const ResourceError&, WillContinueLoading) = 0;
     virtual void dispatchDidFailLoad(const ResourceError&) = 0;
     virtual void dispatchDidFinishDocumentLoad() = 0;
     virtual void dispatchDidFinishLoad() = 0;
+    virtual void dispatchDidExplicitOpen(const URL&) { }
 #if ENABLE(DATA_DETECTION)
     virtual void dispatchDidFinishDataDetection(NSArray *detectionResults) = 0;
 #endif
 
     virtual void dispatchDidLayout() { }
-    virtual void dispatchDidReachLayoutMilestone(LayoutMilestones) { }
+    virtual void dispatchDidReachLayoutMilestone(OptionSet<LayoutMilestone>) { }
 
     virtual Frame* dispatchCreatePage(const NavigationAction&) = 0;
     virtual void dispatchShow() = 0;
 
-    virtual void dispatchDecidePolicyForResponse(const ResourceResponse&, const ResourceRequest&, FramePolicyFunction) = 0;
-    virtual void dispatchDecidePolicyForNewWindowAction(const NavigationAction&, const ResourceRequest&, PassRefPtr<FormState>, const String& frameName, FramePolicyFunction) = 0;
-    virtual void dispatchDecidePolicyForNavigationAction(const NavigationAction&, const ResourceRequest&, PassRefPtr<FormState>, FramePolicyFunction) = 0;
+    virtual void dispatchDecidePolicyForResponse(const ResourceResponse&, const ResourceRequest&, PolicyCheckIdentifier, const String& downloadAttribute, FramePolicyFunction&&) = 0;
+    virtual void dispatchDecidePolicyForNewWindowAction(const NavigationAction&, const ResourceRequest&, FormState*, const String& frameName, PolicyCheckIdentifier, FramePolicyFunction&&) = 0;
+    virtual void dispatchDecidePolicyForNavigationAction(const NavigationAction&, const ResourceRequest&, const ResourceResponse& redirectResponse, FormState*, PolicyDecisionMode, PolicyCheckIdentifier, FramePolicyFunction&&) = 0;
     virtual void cancelPolicyCheck() = 0;
 
     virtual void dispatchUnableToImplementPolicy(const ResourceError&) = 0;
 
-    virtual void dispatchWillSendSubmitEvent(PassRefPtr<FormState>) = 0;
-    virtual void dispatchWillSubmitForm(PassRefPtr<FormState>, FramePolicyFunction) = 0;
+    virtual void dispatchWillSendSubmitEvent(Ref<FormState>&&) = 0;
+    virtual void dispatchWillSubmitForm(FormState&, CompletionHandler<void()>&&) = 0;
 
     virtual void revertToProvisionalState(DocumentLoader*) = 0;
     virtual void setMainDocumentError(DocumentLoader*, const ResourceError&) = 0;
@@ -209,8 +222,7 @@ public:
     virtual void updateGlobalHistory() = 0;
     virtual void updateGlobalHistoryRedirectLinks() = 0;
 
-    virtual bool shouldGoToHistoryItem(HistoryItem*) const = 0;
-    virtual void updateGlobalHistoryItemForPage() { }
+    virtual bool shouldGoToHistoryItem(HistoryItem&) const = 0;
 
     // This frame has set its opener to null, disowning it for the lifetime of the frame.
     // See http://html.spec.whatwg.org/#dom-opener.
@@ -224,7 +236,7 @@ public:
     // The indicated security origin has run active content (such as a
     // script) from an insecure source.  Note that the insecure content can
     // spread to other frames in the same origin.
-    virtual void didRunInsecureContent(SecurityOrigin*, const URL&) = 0;
+    virtual void didRunInsecureContent(SecurityOrigin&, const URL&) = 0;
     virtual void didDetectXSS(const URL&, bool didBlockEntirePage) = 0;
 
     virtual ResourceError cancelledError(const ResourceRequest&) = 0;
@@ -265,7 +277,7 @@ public:
     
     virtual void savePlatformDataToCachedFrame(CachedFrame*) = 0;
     virtual void transitionToCommittedFromCachedFrame(CachedFrame*) = 0;
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     virtual void didRestoreFrameHierarchyForCachedFrame() = 0;
 #endif
     virtual void transitionToCommittedForNewPage() = 0;
@@ -276,31 +288,29 @@ public:
     virtual void dispatchDidBecomeFrameset(bool) = 0; // Can change due to navigation or DOM modification.
 
     virtual bool canCachePage() const = 0;
-    virtual void convertMainResourceLoadToDownload(DocumentLoader*, SessionID, const ResourceRequest&, const ResourceResponse&) = 0;
+    virtual void convertMainResourceLoadToDownload(DocumentLoader*, PAL::SessionID, const ResourceRequest&, const ResourceResponse&) = 0;
 
-    virtual RefPtr<Frame> createFrame(const URL&, const String& name, HTMLFrameOwnerElement*, const String& referrer, bool allowsScrolling, int marginWidth, int marginHeight) = 0;
-    virtual RefPtr<Widget> createPlugin(const IntSize&, HTMLPlugInElement*, const URL&, const Vector<String>&, const Vector<String>&, const String&, bool loadManually) = 0;
-    virtual void recreatePlugin(Widget*) = 0;
-    virtual void redirectDataToPlugin(Widget* pluginWidget) = 0;
+    virtual RefPtr<Frame> createFrame(const URL&, const String& name, HTMLFrameOwnerElement&, const String& referrer) = 0;
+    virtual RefPtr<Widget> createPlugin(const IntSize&, HTMLPlugInElement&, const URL&, const Vector<String>&, const Vector<String>&, const String&, bool loadManually) = 0;
+    virtual void redirectDataToPlugin(Widget&) = 0;
 
-    virtual PassRefPtr<Widget> createJavaAppletWidget(const IntSize&, HTMLAppletElement*, const URL& baseURL, const Vector<String>& paramNames, const Vector<String>& paramValues) = 0;
-
-    virtual void dispatchDidFailToStartPlugin(const PluginViewBase*) const { }
+    virtual RefPtr<Widget> createJavaAppletWidget(const IntSize&, HTMLAppletElement&, const URL& baseURL, const Vector<String>& paramNames, const Vector<String>& paramValues) = 0;
 
     virtual ObjectContentType objectContentType(const URL&, const String& mimeType) = 0;
     virtual String overrideMediaType() const = 0;
 
     virtual void dispatchDidClearWindowObjectInWorld(DOMWrapperWorld&) = 0;
 
-    virtual void registerForIconNotification(bool listen = true) = 0;
+    virtual void registerForIconNotification() { }
 
 #if PLATFORM(COCOA)
     // Allow an accessibility object to retrieve a Frame parent if there's no PlatformWidget.
     virtual RemoteAXObjectRef accessibilityRemoteObject() = 0;
-    virtual NSCachedURLResponse* willCacheResponse(DocumentLoader*, unsigned long identifier, NSCachedURLResponse*) const = 0;
+    virtual void willCacheResponse(DocumentLoader*, unsigned long identifier, NSCachedURLResponse*, CompletionHandler<void(NSCachedURLResponse *)>&&) const = 0;
     virtual NSDictionary *dataDetectionContext() { return nullptr; }
 #endif
-#if PLATFORM(WIN) && USE(CFURLCONNECTION)
+
+#if USE(CFURLCONNECTION)
     // FIXME: Windows should use willCacheResponse - <https://bugs.webkit.org/show_bug.cgi?id=57257>.
     virtual bool shouldCacheResponse(DocumentLoader*, unsigned long identifier, const ResourceResponse&, const unsigned char* data, unsigned long long length) = 0;
 #endif
@@ -315,11 +325,7 @@ public:
     // Clients that generally disallow universal access can make exceptions for particular URLs.
     virtual bool shouldForceUniversalAccessFromLocalURL(const URL&) { return false; }
 
-    virtual PassRefPtr<FrameNetworkingContext> createNetworkingContext() = 0;
-
-#if ENABLE(REQUEST_AUTOCOMPLETE)
-    virtual void didRequestAutocomplete(PassRefPtr<FormState>) = 0;
-#endif
+    virtual Ref<FrameNetworkingContext> createNetworkingContext() = 0;
 
     virtual bool shouldPaintBrokenImage(const URL&) const { return true; }
 
@@ -327,6 +333,8 @@ public:
     virtual void dispatchWillDisconnectDOMWindowExtensionFromGlobalObject(DOMWindowExtension*) { }
     virtual void dispatchDidReconnectDOMWindowExtensionToGlobalObject(DOMWindowExtension*) { }
     virtual void dispatchWillDestroyGlobalObjectForDOMWindowExtension(DOMWindowExtension*) { }
+
+    virtual void willInjectUserScript(DOMWrapperWorld&) { }
 
 #if ENABLE(WEB_RTC)
     virtual void dispatchWillStartUsingPeerConnectionHandler(RTCPeerConnectionHandler*) { }
@@ -337,8 +345,8 @@ public:
     // Informs the embedder that a WebGL canvas inside this frame received a lost context
     // notification with the given GL_ARB_robustness guilt/innocence code (see Extensions3D.h).
     virtual void didLoseWebGLContext(int) { }
-    virtual WebGLLoadPolicy webGLPolicyForURL(const String&) const { return WebGLAllowCreation; }
-    virtual WebGLLoadPolicy resolveWebGLPolicyForURL(const String&) const { return WebGLAllowCreation; }
+    virtual WebGLLoadPolicy webGLPolicyForURL(const URL&) const { return WebGLAllowCreation; }
+    virtual WebGLLoadPolicy resolveWebGLPolicyForURL(const URL&) const { return WebGLAllowCreation; }
 #endif
 
     virtual void forcePageTransitionIfNeeded() { }
@@ -347,7 +355,7 @@ public:
     virtual bool isEmptyFrameLoaderClient() { return false; }
 
 #if USE(QUICK_LOOK)
-    virtual void didCreateQuickLookHandle(QuickLookHandle&) { }
+    virtual RefPtr<PreviewLoaderClient> createPreviewLoaderClient(const String&, const String&) = 0;
 #endif
 
 #if ENABLE(CONTENT_FILTERING)
@@ -358,9 +366,18 @@ public:
 
     virtual void didRestoreScrollPosition() { }
 
-    virtual bool useIconLoadingClient() { return false; }
-    virtual void getLoadDecisionForIcon(const LinkIcon&, uint64_t) { }
+    virtual void getLoadDecisionForIcons(const Vector<std::pair<WebCore::LinkIcon&, uint64_t>>&) { }
     virtual void finishedLoadingIcon(uint64_t, SharedBuffer*) { }
+
+    virtual void didCreateWindow(DOMWindow&) { }
+
+#if ENABLE(APPLICATION_MANIFEST)
+    virtual void finishedLoadingApplicationManifest(uint64_t, const Optional<ApplicationManifest>&) { }
+#endif
+
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    virtual bool hasFrameSpecificStorageAccess() { return false; }
+#endif
 };
 
 } // namespace WebCore

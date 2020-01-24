@@ -29,9 +29,10 @@
 
 #include "FloatConversion.h"
 #include "IntSize.h"
-#include "TextStream.h"
 #include <limits>
 #include <math.h>
+#include <wtf/JSONValues.h>
+#include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
@@ -73,6 +74,21 @@ TextStream& operator<<(TextStream& ts, const FloatSize& size)
 {
     return ts << "width=" << TextStream::FormatNumberRespectingIntegers(size.width())
         << " height=" << TextStream::FormatNumberRespectingIntegers(size.height());
+}
+
+Ref<JSON::Object> FloatSize::toJSONObject() const
+{
+    auto object = JSON::Object::create();
+
+    object->setDouble("width"_s, m_width);
+    object->setDouble("height"_s, m_height);
+
+    return object;
+}
+
+String FloatSize::toJSONString() const
+{
+    return toJSONObject()->toJSONString();
 }
 
 }

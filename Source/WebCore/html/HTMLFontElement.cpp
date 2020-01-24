@@ -31,11 +31,12 @@
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
 #include "StyleProperties.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/text/StringBuilder.h>
 
-using namespace WTF;
-
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLFontElement);
 
 using namespace HTMLNames;
 
@@ -185,7 +186,7 @@ bool HTMLFontElement::isPresentationAttribute(const QualifiedName& name) const
     return HTMLElement::isPresentationAttribute(name);
 }
 
-void HTMLFontElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStyleProperties& style)
+void HTMLFontElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == sizeAttr) {
         CSSValueID size = CSSValueInvalid;

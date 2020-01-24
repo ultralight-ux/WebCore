@@ -36,7 +36,7 @@ class PlacardSupport extends MediaControllerSupport
 
     get mediaEvents()
     {
-        return ["error", "webkitpresentationmodechanged", "webkitcurrentplaybacktargetiswirelesschanged"];
+        return ["loadstart", "error", "webkitpresentationmodechanged", "webkitcurrentplaybacktargetiswirelesschanged"];
     }
 
     handleEvent(event)
@@ -44,21 +44,49 @@ class PlacardSupport extends MediaControllerSupport
         this._updatePlacard();
     }
 
+    disable()
+    {
+        // We should not allow disabling Placard support when playing inline as it would prevent the
+        // PiP placard from being shown if the controls are disabled.
+        if (this.mediaController.isFullscreen)
+            super.disable();
+    }
+
     // Private
 
     _updatePlacard()
     {
         const controls = this.mediaController.controls;
-
         const media = this.mediaController.media;
+
+        let placard = null;
         if (media.webkitPresentationMode === "picture-in-picture")
-            controls.showPlacard(controls.pipPlacard);
-        else if (media.webkitCurrentPlaybackTargetIsWireless)
-            controls.showPlacard(controls.airplayPlacard);
-        else if (media instanceof HTMLVideoElement && media.error !== null && media.played.length === 0)
-            controls.showPlacard(controls.invalidPlacard);
-        else
-            controls.hidePlacard();    
+            placard = controls.pipPlacard;
+        else if (media.webkitCurrentPlaybackTargetIsWireless) {
+            this._updateAirPlayPlacard();
+            placard = controls.airplayPlacard;
+        } else if (media instanceof HTMLVideoElement && media.error !== null && media.played.length === 0)
+            placard = controls.invalidPlacard;
+
+        controls.placard = placard;
+    }
+    
+    _updateAirPlayPlacard()
+    {
+        var deviceName = "";
+        
+        if (!this.mediaController.host)
+            return;
+        
+        switch(this.mediaController.host.externalDeviceType) {
+            case 'airplay':
+                deviceName = UIString("This video is playing on “%s”.", this.mediaController.host.externalDeviceDisplayName || UIString("Apple TV"));
+                break;
+            case 'tvout':
+                deviceName = UIString("This video is playing on the TV.");
+                break;
+        }
+        this.mediaController.controls.airplayPlacard.description = deviceName;
     }
 
 }

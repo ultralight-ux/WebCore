@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,60 +23,111 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
+#pragma once
+
+#include "AvailableMemory.h"
 #include "Cache.h"
+#include "Gigacage.h"
 #include "Heap.h"
-#include "PerProcess.h"
-#include "StaticMutex.h"
+#include "IsoTLS.h"
+#include "Mutex.h"
+#include "PerHeapKind.h"
+#include "Scavenger.h"
 
 namespace bmalloc {
 namespace api {
 
 // Returns null on failure.
-inline void* tryMalloc(size_t size)
+inline void* tryMalloc(size_t size, HeapKind kind = HeapKind::Primary)
 {
-    return Cache::tryAllocate(size);
+    return Cache::tryAllocate(kind, size);
 }
 
 // Crashes on failure.
-inline void* malloc(size_t size)
+inline void* malloc(size_t size, HeapKind kind = HeapKind::Primary)
 {
-    return Cache::allocate(size);
+    return Cache::allocate(kind, size);
+}
+
+BEXPORT void* mallocOutOfLine(size_t size, HeapKind kind = HeapKind::Primary);
+
+// Returns null on failure.
+inline void* tryMemalign(size_t alignment, size_t size, HeapKind kind = HeapKind::Primary)
+{
+    return Cache::tryAllocate(kind, alignment, size);
 }
 
 // Crashes on failure.
-inline void* memalign(size_t alignment, size_t size)
+inline void* memalign(size_t alignment, size_t size, HeapKind kind = HeapKind::Primary)
 {
-    return Cache::allocate(alignment, size);
+    return Cache::allocate(kind, alignment, size);
+}
+
+// Returns null on failure.
+inline void* tryRealloc(void* object, size_t newSize, HeapKind kind = HeapKind::Primary)
+{
+    return Cache::tryReallocate(kind, object, newSize);
 }
 
 // Crashes on failure.
-inline void* realloc(void* object, size_t newSize)
+inline void* realloc(void* object, size_t newSize, HeapKind kind = HeapKind::Primary)
 {
-    return Cache::reallocate(object, newSize);
+    return Cache::reallocate(kind, object, newSize);
 }
 
-inline void free(void* object)
+// Returns null on failure.
+// This API will give you zeroed pages that are ready to be used. These pages
+// will page fault on first access. It returns to you memory that initially only
+// uses up virtual address space, not `size` bytes of physical memory.
+BEXPORT void* tryLargeZeroedMemalignVirtual(size_t alignment, size_t size, HeapKind kind = HeapKind::Primary);
+
+inline void free(void* object, HeapKind kind = HeapKind::Primary)
 {
-    Cache::deallocate(object);
+    Cache::deallocate(kind, object);
 }
 
-inline void freealign(void* object)
-{
-    Cache::deallocate(object, Cache::AlignedDeallocate);
-}
+BEXPORT void freeOutOfLine(void* object, HeapKind kind = HeapKind::Primary);
+
+BEXPORT void freeLargeVirtual(void* object, size_t, HeapKind kind = HeapKind::Primary);
 
 inline void scavengeThisThread()
 {
-    Cache::scavenge();
+    for (unsigned i = numHeaps; i--;)
+        Cache::scavenge(static_cast<HeapKind>(i));
+    IsoTLS::scavenge();
 }
 
-inline void scavenge()
+BEXPORT void scavenge();
+
+BEXPORT bool isEnabled(HeapKind kind = HeapKind::Primary);
+
+// ptr must be aligned to vmPageSizePhysical and size must be divisible 
+// by vmPageSizePhysical.
+BEXPORT void decommitAlignedPhysical(void* object, size_t, HeapKind = HeapKind::Primary);
+BEXPORT void commitAlignedPhysical(void* object, size_t, HeapKind = HeapKind::Primary);
+    
+inline size_t availableMemory()
 {
-    scavengeThisThread();
-
-    std::unique_lock<StaticMutex> lock(PerProcess<Heap>::mutex());
-    PerProcess<Heap>::get()->scavenge(lock, std::chrono::milliseconds(0));
+    return bmalloc::availableMemory();
 }
+    
+#if BPLATFORM(IOS_FAMILY) || BOS(LINUX)
+inline size_t memoryFootprint()
+{
+    return bmalloc::memoryFootprint();
+}
+
+inline double percentAvailableMemoryInUse()
+{
+    return bmalloc::percentAvailableMemoryInUse();
+}
+#endif
+
+#if BOS(DARWIN)
+BEXPORT void setScavengerThreadQOSClass(qos_class_t overrideClass);
+#endif
+
+BEXPORT void enableMiniMode();
 
 } // namespace api
 } // namespace bmalloc

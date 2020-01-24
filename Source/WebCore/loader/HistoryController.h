@@ -39,7 +39,10 @@ namespace WebCore {
 class Frame;
 class HistoryItem;
 class SerializedScriptValue;
-class StringWithDirection;
+
+enum class ShouldTreatAsContinuingLoad : bool;
+
+struct StringWithDirection;
 
 class HistoryController {
     WTF_MAKE_NONCOPYABLE(HistoryController);
@@ -72,7 +75,7 @@ public:
     void updateForFrameLoadCompleted();
 
     HistoryItem* currentItem() const { return m_currentItem.get(); }
-    void setCurrentItem(HistoryItem*);
+    WEBCORE_EXPORT void setCurrentItem(HistoryItem&);
     void setCurrentItemTitle(const StringWithDirection&);
     bool currentItemShouldBeReplaced() const;
     WEBCORE_EXPORT void replaceCurrentItem(HistoryItem*);
@@ -83,28 +86,28 @@ public:
     HistoryItem* provisionalItem() const { return m_provisionalItem.get(); }
     void setProvisionalItem(HistoryItem*);
 
-    void pushState(PassRefPtr<SerializedScriptValue>, const String& title, const String& url);
-    void replaceState(PassRefPtr<SerializedScriptValue>, const String& title, const String& url);
+    void pushState(RefPtr<SerializedScriptValue>&&, const String& title, const String& url);
+    void replaceState(RefPtr<SerializedScriptValue>&&, const String& title, const String& url);
 
     void setDefersLoading(bool);
 
 private:
     friend class Page;
     bool shouldStopLoadingForHistoryItem(HistoryItem&) const;
-    void goToItem(HistoryItem&, FrameLoadType);
+    void goToItem(HistoryItem&, FrameLoadType, ShouldTreatAsContinuingLoad);
 
     void initializeItem(HistoryItem&);
     Ref<HistoryItem> createItem();
     Ref<HistoryItem> createItemTree(Frame& targetFrame, bool clipAtTarget);
 
     void recursiveSetProvisionalItem(HistoryItem&, HistoryItem*);
-    void recursiveGoToItem(HistoryItem&, HistoryItem*, FrameLoadType);
+    void recursiveGoToItem(HistoryItem&, HistoryItem*, FrameLoadType, ShouldTreatAsContinuingLoad);
     bool isReplaceLoadTypeWithProvisionalItem(FrameLoadType);
     bool isReloadTypeWithProvisionalItem(FrameLoadType);
     void recursiveUpdateForCommit();
     void recursiveUpdateForSameDocumentNavigation();
     bool itemsAreClones(HistoryItem&, HistoryItem*) const;
-    bool currentFramesMatchItem(HistoryItem*) const;
+    bool currentFramesMatchItem(HistoryItem&) const;
     void updateBackForwardListClippedAtTarget(bool doClip);
     void updateCurrentItem();
 

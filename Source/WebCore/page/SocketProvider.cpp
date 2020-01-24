@@ -26,17 +26,19 @@
 #include "config.h"
 #include "SocketProvider.h"
 
-#if ENABLE(WEB_SOCKETS)
-
 #include "SocketStreamHandleImpl.h"
+#include "ThreadableWebSocketChannel.h"
 
 namespace WebCore {
     
-Ref<SocketStreamHandle> SocketProvider::createSocketStreamHandle(const URL& url, SocketStreamHandleClient& client, SessionID sessionID)
+Ref<SocketStreamHandle> SocketProvider::createSocketStreamHandle(const URL& url, SocketStreamHandleClient& client, PAL::SessionID sessionID, const String& credentialPartition, const StorageSessionProvider* provider)
 {
-    return SocketStreamHandleImpl::create(url, client, sessionID);
-}
-    
+    return SocketStreamHandleImpl::create(url, client, sessionID, credentialPartition, { }, provider);
 }
 
-#endif // ENABLE(WEB_SOCKETS)
+RefPtr<ThreadableWebSocketChannel> SocketProvider::createWebSocketChannel(Document&, WebSocketChannelClient&)
+{
+    return nullptr;
+}
+
+}

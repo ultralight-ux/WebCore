@@ -33,12 +33,14 @@
 
 #include "MediaControlElementTypes.h"
 #include "TextTrackRepresentation.h"
+#include <wtf/LoggerHelper.h>
 
 namespace WebCore {
 
 // ----------------------------
 
 class MediaControlPanelElement final : public MediaControlDivElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlPanelElement);
 public:
     static Ref<MediaControlPanelElement> create(Document&);
 
@@ -49,7 +51,7 @@ public:
     void makeOpaque();
     void makeTransparent();
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseMoveEvents() override { return true; }
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
@@ -82,6 +84,7 @@ private:
 // ----------------------------
 
 class MediaControlPanelEnclosureElement final : public MediaControlDivElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlPanelEnclosureElement);
 public:
     static Ref<MediaControlPanelEnclosureElement> create(Document&);
 
@@ -92,6 +95,7 @@ private:
 // ----------------------------
 
 class MediaControlOverlayEnclosureElement final : public MediaControlDivElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlOverlayEnclosureElement);
 public:
     static Ref<MediaControlOverlayEnclosureElement> create(Document&);
 
@@ -102,6 +106,7 @@ private:
 // ----------------------------
 
 class MediaControlTimelineContainerElement final : public MediaControlDivElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlTimelineContainerElement);
 public:
     static Ref<MediaControlTimelineContainerElement> create(Document&);
 
@@ -116,10 +121,11 @@ private:
 // ----------------------------
 
 class MediaControlVolumeSliderContainerElement final : public MediaControlDivElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlVolumeSliderContainerElement);
 public:
     static Ref<MediaControlVolumeSliderContainerElement> create(Document&);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseMoveEvents() override { return true; }
 #endif
 
@@ -134,6 +140,7 @@ private:
 // ----------------------------
 
 class MediaControlStatusDisplayElement final : public MediaControlDivElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlStatusDisplayElement);
 public:
     static Ref<MediaControlStatusDisplayElement> create(Document&);
 
@@ -149,10 +156,11 @@ private:
 // ----------------------------
 
 class MediaControlPanelMuteButtonElement final : public MediaControlMuteButtonElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlPanelMuteButtonElement);
 public:
     static Ref<MediaControlPanelMuteButtonElement> create(Document&, MediaControls*);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseMoveEvents() override { return true; }
 #endif
 
@@ -167,6 +175,7 @@ private:
 // ----------------------------
 
 class MediaControlVolumeSliderMuteButtonElement final : public MediaControlMuteButtonElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlVolumeSliderMuteButtonElement);
 public:
     static Ref<MediaControlVolumeSliderMuteButtonElement> create(Document&);
 
@@ -178,10 +187,11 @@ private:
 // ----------------------------
 
 class MediaControlPlayButtonElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlPlayButtonElement);
 public:
     static Ref<MediaControlPlayButtonElement> create(Document&);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -196,6 +206,7 @@ private:
 // ----------------------------
 
 class MediaControlOverlayPlayButtonElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlOverlayPlayButtonElement);
 public:
     static Ref<MediaControlOverlayPlayButtonElement> create(Document&);
 
@@ -210,6 +221,7 @@ private:
 // ----------------------------
 
 class MediaControlSeekForwardButtonElement final : public MediaControlSeekButtonElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlSeekForwardButtonElement);
 public:
     static Ref<MediaControlSeekForwardButtonElement> create(Document&);
 
@@ -222,6 +234,7 @@ private:
 // ----------------------------
 
 class MediaControlSeekBackButtonElement final : public MediaControlSeekButtonElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlSeekBackButtonElement);
 public:
     static Ref<MediaControlSeekBackButtonElement> create(Document&);
 
@@ -234,10 +247,11 @@ private:
 // ----------------------------
 
 class MediaControlRewindButtonElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlRewindButtonElement);
 public:
     static Ref<MediaControlRewindButtonElement> create(Document&);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -250,10 +264,11 @@ private:
 // ----------------------------
 
 class MediaControlReturnToRealtimeButtonElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlReturnToRealtimeButtonElement);
 public:
     static Ref<MediaControlReturnToRealtimeButtonElement> create(Document&);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -266,10 +281,11 @@ private:
 // ----------------------------
 
 class MediaControlToggleClosedCaptionsButtonElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlToggleClosedCaptionsButtonElement);
 public:
     static Ref<MediaControlToggleClosedCaptionsButtonElement> create(Document&, MediaControls*);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -288,10 +304,11 @@ private:
 // ----------------------------
 
 class MediaControlClosedCaptionsContainerElement final : public MediaControlDivElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlClosedCaptionsContainerElement);
 public:
     static Ref<MediaControlClosedCaptionsContainerElement> create(Document&);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -302,10 +319,11 @@ private:
 // ----------------------------
 
 class MediaControlClosedCaptionsTrackListElement final : public MediaControlDivElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlClosedCaptionsTrackListElement);
 public:
     static Ref<MediaControlClosedCaptionsTrackListElement> create(Document&, MediaControls*);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -330,10 +348,11 @@ private:
 // ----------------------------
 
 class MediaControlTimelineElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlTimelineElement);
 public:
     static Ref<MediaControlTimelineElement> create(Document&, MediaControls*);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override;
 #endif
 
@@ -351,10 +370,11 @@ private:
 // ----------------------------
 
 class MediaControlFullscreenButtonElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlFullscreenButtonElement);
 public:
     static Ref<MediaControlFullscreenButtonElement> create(Document&);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -369,6 +389,7 @@ private:
 // ----------------------------
 
 class MediaControlPanelVolumeSliderElement final : public MediaControlVolumeSliderElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlPanelVolumeSliderElement);
 public:
     static Ref<MediaControlPanelVolumeSliderElement> create(Document&);
 
@@ -378,6 +399,7 @@ private:
 // ----------------------------
 
 class MediaControlFullscreenVolumeSliderElement final : public MediaControlVolumeSliderElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlFullscreenVolumeSliderElement);
 public:
     static Ref<MediaControlFullscreenVolumeSliderElement> create(Document&);
 
@@ -388,10 +410,11 @@ private:
 // ----------------------------
 
 class MediaControlFullscreenVolumeMinButtonElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlFullscreenVolumeMinButtonElement);
 public:
     static Ref<MediaControlFullscreenVolumeMinButtonElement> create(Document&);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -403,10 +426,11 @@ private:
 // ----------------------------
 
 class MediaControlFullscreenVolumeMaxButtonElement final : public MediaControlInputElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlFullscreenVolumeMaxButtonElement);
 public:
     static Ref<MediaControlFullscreenVolumeMaxButtonElement> create(Document&);
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool willRespondToMouseClickEvents() override { return true; }
 #endif
 
@@ -420,6 +444,7 @@ private:
 // ----------------------------
 
 class MediaControlTimeRemainingDisplayElement final : public MediaControlTimeDisplayElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlTimeRemainingDisplayElement);
 public:
     static Ref<MediaControlTimeRemainingDisplayElement> create(Document&);
 
@@ -430,6 +455,7 @@ private:
 // ----------------------------
 
 class MediaControlCurrentTimeDisplayElement final : public MediaControlTimeDisplayElement {
+    WTF_MAKE_ISO_ALLOCATED(MediaControlCurrentTimeDisplayElement);
 public:
     static Ref<MediaControlCurrentTimeDisplayElement> create(Document&);
 
@@ -441,7 +467,14 @@ private:
 
 #if ENABLE(VIDEO_TRACK)
 
-class MediaControlTextTrackContainerElement final : public MediaControlDivElement, public TextTrackRepresentationClient {
+class MediaControlTextTrackContainerElement final
+    : public MediaControlDivElement
+    , public TextTrackRepresentationClient
+#if !RELEASE_LOG_DISABLED
+    , private LoggerHelper
+#endif
+{
+    WTF_MAKE_ISO_ALLOCATED(MediaControlTextTrackContainerElement);
 public:
     static Ref<MediaControlTextTrackContainerElement> create(Document&);
 
@@ -453,6 +486,14 @@ public:
 private:
     void updateTimerFired();
     void updateActiveCuesFontSize();
+    void updateTextStrokeStyle();
+
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const final;
+    const void* logIdentifier() const final;
+    WTFLogChannel& logChannel() const final;
+    const char* logClassName() const final { return "MediaControlTextTrackContainerElement"; }
+#endif
 
     explicit MediaControlTextTrackContainerElement(Document&);
 

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 Google, Inc. All Rights Reserved.
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,19 +34,18 @@
 #include "FrameLoader.h"
 #include "FrameLoaderClient.h"
 #include "HTMLParserIdioms.h"
+#include "NavigationScheduler.h"
 #include "PingLoader.h"
-#include "SecurityOrigin.h"
-#include <inspector/InspectorValues.h>
+#include <wtf/JSONValues.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/CString.h>
 
-using namespace Inspector;
 
 namespace WebCore {
+using namespace Inspector;
 
 XSSAuditorDelegate::XSSAuditorDelegate(Document& document)
     : m_document(document)
-    , m_didSendNotifications(false)
 {
     ASSERT(isMainThread());
 }
@@ -69,22 +69,22 @@ static inline String buildConsoleError(const XSSInfo& xssInfo)
     return message.toString();
 }
 
-PassRefPtr<FormData> XSSAuditorDelegate::generateViolationReport(const XSSInfo& xssInfo)
+Ref<FormData> XSSAuditorDelegate::generateViolationReport(const XSSInfo& xssInfo)
 {
     ASSERT(isMainThread());
 
-    FrameLoader& frameLoader = m_document.frame()->loader();
+    auto& frameLoader = m_document.frame()->loader();
     String httpBody;
     if (frameLoader.documentLoader()) {
-        if (FormData* formData = frameLoader.documentLoader()->originalRequest().httpBody())
+        if (auto formData = makeRefPtr(frameLoader.documentLoader()->originalRequest().httpBody()))
             httpBody = formData->flattenToString();
     }
 
-    Ref<InspectorObject> reportDetails = InspectorObject::create();
+    auto reportDetails = JSON::Object::create();
     reportDetails->setString("request-url", xssInfo.m_originalURL);
     reportDetails->setString("request-body", httpBody);
 
-    Ref<InspectorObject> reportObject = InspectorObject::create();
+    auto reportObject = JSON::Object::create();
     reportObject->setObject("xss-report", WTFMove(reportDetails));
 
     return FormData::create(reportObject->toJSONString().utf8().data());

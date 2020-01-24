@@ -35,6 +35,7 @@ namespace WebCore {
 class MathMLUnderOverElement;
 
 class RenderMathMLUnderOver final : public RenderMathMLScripts {
+    WTF_MAKE_ISO_ALLOCATED(RenderMathMLUnderOver);
 public:
     RenderMathMLUnderOver(MathMLUnderOverElement&, RenderStyle&&);
 
@@ -45,9 +46,9 @@ private:
     MathMLUnderOverElement& element() const;
 
     void computePreferredLogicalWidths() final;
-    void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0) final;
+    void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0_lu) final;
 
-    void computeOperatorsHorizontalStretch();
+    void stretchHorizontalOperatorsAndLayoutChildren();
     bool isValid() const;
     bool shouldMoveLimits();
     RenderBox& base() const;

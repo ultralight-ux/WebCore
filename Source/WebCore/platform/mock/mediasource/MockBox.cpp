@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,12 +28,12 @@
 
 #if ENABLE(MEDIA_SOURCE)
 
+#include <JavaScriptCore/ArrayBuffer.h>
+#include <JavaScriptCore/DataView.h>
 #include <JavaScriptCore/HeapInlines.h>
+#include <JavaScriptCore/Int8Array.h>
 #include <JavaScriptCore/JSCJSValueInlines.h>
 #include <JavaScriptCore/TypedArrayInlines.h>
-#include <runtime/ArrayBuffer.h>
-#include <runtime/DataView.h>
-#include <runtime/Int8Array.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -49,7 +49,7 @@ MockBox::MockBox(ArrayBuffer* data)
 String MockBox::peekType(ArrayBuffer* data)
 {
     StringBuilder builder;
-    RefPtr<Int8Array> array = JSC::Int8Array::create(data, 0, 4);
+    auto array = JSC::Int8Array::create(data, 0, 4);
     for (int i = 0; i < 4; ++i)
         builder.append(array->item(i));
     return builder.toString();
@@ -57,7 +57,7 @@ String MockBox::peekType(ArrayBuffer* data)
 
 size_t MockBox::peekLength(ArrayBuffer* data)
 {
-    RefPtr<JSC::DataView> view = JSC::DataView::create(data, 0, data->byteLength());
+    auto view = JSC::DataView::create(data, 0, data->byteLength());
     return view->get<uint32_t>(4, true);
 }
 
@@ -66,11 +66,11 @@ MockTrackBox::MockTrackBox(ArrayBuffer* data)
 {
     ASSERT(m_length == 17);
 
-    RefPtr<JSC::DataView> view = JSC::DataView::create(data, 0, data->byteLength());
+    auto view = JSC::DataView::create(data, 0, data->byteLength());
     m_trackID = view->get<int32_t>(8, true);
 
     StringBuilder builder;
-    RefPtr<Int8Array> array = JSC::Int8Array::create(data, 12, 4);
+    auto array = JSC::Int8Array::create(data, 12, 4);
     for (int i = 0; i < 4; ++i)
         builder.append(array->item(i));
     m_codec = builder.toString();
@@ -80,7 +80,7 @@ MockTrackBox::MockTrackBox(ArrayBuffer* data)
 
 const String& MockTrackBox::type()
 {
-    static NeverDestroyed<String> trak(ASCIILiteral("trak"));
+    static NeverDestroyed<String> trak(MAKE_STATIC_STRING_IMPL("trak"));
     return trak;
 }
 
@@ -89,7 +89,7 @@ MockInitializationBox::MockInitializationBox(ArrayBuffer* data)
 {
     ASSERT(m_length >= 13);
 
-    RefPtr<JSC::DataView> view = JSC::DataView::create(data, 0, data->byteLength());
+    auto view = JSC::DataView::create(data, 0, data->byteLength());
     int32_t timeValue = view->get<int32_t>(8, true);
     int32_t timeScale = view->get<int32_t>(12, true);
     m_duration = MediaTime(timeValue, timeScale);
@@ -97,11 +97,11 @@ MockInitializationBox::MockInitializationBox(ArrayBuffer* data)
     size_t offset = 16;
 
     while (offset < m_length) {
-        RefPtr<ArrayBuffer> subBuffer = data->slice(offset);
-        if (MockBox::peekType(subBuffer.get()) != MockTrackBox::type())
+        auto subBuffer = data->slice(offset);
+        if (MockBox::peekType(subBuffer.ptr()) != MockTrackBox::type())
             break;
 
-        MockTrackBox trackBox(subBuffer.get());
+        MockTrackBox trackBox(subBuffer.ptr());
         offset += trackBox.length();
         m_tracks.append(trackBox);
     }
@@ -109,7 +109,7 @@ MockInitializationBox::MockInitializationBox(ArrayBuffer* data)
 
 const String& MockInitializationBox::type()
 {
-    static NeverDestroyed<String> init(ASCIILiteral("init"));
+    static NeverDestroyed<String> init(MAKE_STATIC_STRING_IMPL("init"));
     return init;
 }
 
@@ -118,7 +118,7 @@ MockSampleBox::MockSampleBox(ArrayBuffer* data)
 {
     ASSERT(m_length == 30);
 
-    RefPtr<JSC::DataView> view = JSC::DataView::create(data, 0, data->byteLength());
+    auto view = JSC::DataView::create(data, 0, data->byteLength());
     int32_t timeScale = view->get<int32_t>(8, true);
 
     int32_t timeValue = view->get<int32_t>(12, true);
@@ -137,7 +137,7 @@ MockSampleBox::MockSampleBox(ArrayBuffer* data)
 
 const String& MockSampleBox::type()
 {
-    static NeverDestroyed<String> smpl(ASCIILiteral("smpl"));
+    static NeverDestroyed<String> smpl(MAKE_STATIC_STRING_IMPL("smpl"));
     return smpl;
 }
 

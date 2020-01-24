@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,14 +30,13 @@
 
 #include "TextTrack.h"
 #include "TextTrackLoader.h"
-#include <wtf/TypeCasts.h>
 
 namespace WebCore {
 
 class HTMLTrackElement;
-class LoadableTextTrack;
 
 class LoadableTextTrack final : public TextTrack, private TextTrackLoaderClient {
+    WTF_MAKE_ISO_ALLOCATED(LoadableTextTrack);
 public:
     static Ref<LoadableTextTrack> create(HTMLTrackElement& track, const String& kind, const String& label, const String& language)
     {
@@ -49,26 +49,31 @@ public:
     HTMLTrackElement* trackElement() const { return m_trackElement; }
     void clearElement() { m_trackElement = nullptr; }
 
-    void setIsDefault(bool isDefault) final  { m_isDefault = isDefault; }
+    void setIsDefault(bool isDefault) final { m_isDefault = isDefault; }
 
 private:
     LoadableTextTrack(HTMLTrackElement&, const String& kind, const String& label, const String& language);
 
-    void newCuesAvailable(TextTrackLoader*) final;
-    void cueLoadingCompleted(TextTrackLoader*, bool loadingFailed) final;
-    void newRegionsAvailable(TextTrackLoader*) final;
+    void newCuesAvailable(TextTrackLoader&) final;
+    void cueLoadingCompleted(TextTrackLoader&, bool loadingFailed) final;
+    void newRegionsAvailable(TextTrackLoader&) final;
+    void newStyleSheetsAvailable(TextTrackLoader&) final;
 
-    AtomicString id() const final;
+    AtomString id() const final;
     bool isDefault() const final { return m_isDefault; }
     Element* element() final;
 
     void loadTimerFired();
 
+#if !RELEASE_LOG_DISABLED
+    const char* logClassName() const override { return "LoadableTextTrack"; }
+#endif
+
     HTMLTrackElement* m_trackElement;
     Timer m_loadTimer;
     std::unique_ptr<TextTrackLoader> m_loader;
     URL m_url;
-    bool m_isDefault;
+    bool m_isDefault { false };
 };
 
 } // namespace WebCore

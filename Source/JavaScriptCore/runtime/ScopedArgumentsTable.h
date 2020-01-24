@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,9 +25,10 @@
 
 #pragma once
 
-#include "JSCell.h"
+#include "JSCast.h"
 #include "ScopeOffset.h"
 #include <wtf/Assertions.h>
+#include <wtf/CagedUniquePtr.h>
 
 namespace JSC {
 
@@ -38,6 +39,8 @@ namespace JSC {
 // makes sense because such modifications are so uncommon. You'd have to do something crazy like
 // "delete arguments[i]" or some variant of defineOwnProperty.
 class ScopedArgumentsTable final : public JSCell {
+    friend class CachedScopedArgumentsTable;
+
 public:
     typedef JSCell Base;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
@@ -58,10 +61,7 @@ public:
     uint32_t length() const { return m_length; }
     ScopedArgumentsTable* setLength(VM&, uint32_t newLength);
     
-    ScopeOffset get(uint32_t i) const
-    {
-        return const_cast<ScopedArgumentsTable*>(this)->at(i);
-    }
+    ScopeOffset get(uint32_t i) const { return at(i); }
     
     void lock()
     {
@@ -77,16 +77,18 @@ public:
     static ptrdiff_t offsetOfLength() { return OBJECT_OFFSETOF(ScopedArgumentsTable, m_length); }
     static ptrdiff_t offsetOfArguments() { return OBJECT_OFFSETOF(ScopedArgumentsTable, m_arguments); }
 
+    typedef CagedUniquePtr<Gigacage::Primitive, ScopeOffset> ArgumentsPtr;
+
 private:
-    ScopeOffset& at(uint32_t i)
+    ScopeOffset& at(uint32_t i) const
     {
         ASSERT_WITH_SECURITY_IMPLICATION(i < m_length);
-        return m_arguments[i];
+        return m_arguments.get(length())[i];
     }
     
     uint32_t m_length;
     bool m_locked; // Being locked means that there are multiple references to this object and none of them expect to see the others' modifications. This means that modifications need to make a copy first.
-    std::unique_ptr<ScopeOffset[]> m_arguments;
+    ArgumentsPtr m_arguments;
 };
 
 } // namespace JSC

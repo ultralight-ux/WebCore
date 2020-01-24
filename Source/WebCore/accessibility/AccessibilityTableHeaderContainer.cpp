@@ -34,13 +34,9 @@
 
 namespace WebCore {
 
-AccessibilityTableHeaderContainer::AccessibilityTableHeaderContainer()
-{
-}
+AccessibilityTableHeaderContainer::AccessibilityTableHeaderContainer() = default;
 
-AccessibilityTableHeaderContainer::~AccessibilityTableHeaderContainer()
-{
-}
+AccessibilityTableHeaderContainer::~AccessibilityTableHeaderContainer() = default;
 
 Ref<AccessibilityTableHeaderContainer> AccessibilityTableHeaderContainer::create()
 {
@@ -58,7 +54,7 @@ bool AccessibilityTableHeaderContainer::computeAccessibilityIsIgnored() const
     if (!m_parent)
         return true;
     
-#if PLATFORM(IOS) || PLATFORM(GTK) || PLATFORM(EFL)
+#if PLATFORM(IOS_FAMILY) || USE(ATK)
     return true;
 #endif
 

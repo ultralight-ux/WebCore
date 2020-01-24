@@ -25,11 +25,11 @@
 #include "CSSValue.h"
 #include "CSSValueKeywords.h"
 #include "Color.h"
+#include "ExceptionOr.h"
 #include "LayoutUnit.h"
 #include <utility>
 #include <wtf/Forward.h>
 #include <wtf/MathExtras.h>
-#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
@@ -37,9 +37,7 @@ class CSSBasicShape;
 class CSSCalcValue;
 class CSSToLengthConversionData;
 class Counter;
-class DashboardRegion;
 class DeprecatedCSSOMPrimitiveValue;
-class LengthRepeat;
 class Pair;
 class Quad;
 class RGBColor;
@@ -112,14 +110,7 @@ public:
         CSS_DPI = 31,
         CSS_DPCM = 32,
         CSS_FR = 33,
-#if ENABLE(CSS_SCROLL_SNAP)
-        // FIXME-NEWPARSER: Remove once new parser lands.
-        CSS_LENGTH_REPEAT = 34,
-#endif
         CSS_PAIR = 100, // We envision this being exposed as a means of getting computed style values for pairs (border-spacing/radius, background-position, etc.)
-#if ENABLE(DASHBOARD_SUPPORT)
-        CSS_DASHBOARD_REGION = 101, // FIXME: Dashboard region should not be a primitive value.
-#endif
         CSS_UNICODE_RANGE = 102,
 
         // These are from CSS3 Values and Units, but that isn't a finished standard yet
@@ -185,9 +176,6 @@ public:
     bool isPercentage() const { return primitiveType() == CSS_PERCENTAGE; }
     bool isPx() const { return primitiveType() == CSS_PX; }
     bool isRect() const { return m_primitiveUnitType == CSS_RECT; }
-#if ENABLE(CSS_SCROLL_SNAP)
-    bool isLengthRepeat() const { return m_primitiveUnitType == CSS_LENGTH_REPEAT; }
-#endif
     bool isPair() const { return m_primitiveUnitType == CSS_PAIR; }
     bool isPropertyID() const { return m_primitiveUnitType == CSS_PROPERTY_ID; }
     bool isRGBColor() const { return m_primitiveUnitType == CSS_RGBCOLOR; }
@@ -276,13 +264,6 @@ public:
     CSSBasicShape* shapeValue() const { return m_primitiveUnitType != CSS_SHAPE ? nullptr : m_value.shape; }
     CSSValueID valueID() const { return m_primitiveUnitType == CSS_VALUE_ID ? m_value.valueID : CSSValueInvalid; }
 
-#if ENABLE(CSS_SCROLL_SNAP)
-    LengthRepeat* lengthRepeatValue() const { return m_primitiveUnitType != CSS_LENGTH_REPEAT ? nullptr : m_value.lengthRepeat; }
-#endif
-#if ENABLE(DASHBOARD_SUPPORT)
-    DashboardRegion* dashboardRegionValue() const { return m_primitiveUnitType != CSS_DASHBOARD_REGION ? nullptr : m_value.region; }
-#endif
-
     template<typename T> inline operator T() const; // Defined in CSSPrimitiveValueMappings.h
 
     String customCSSText() const;
@@ -297,16 +278,14 @@ public:
 
     static double computeNonCalcLengthDouble(const CSSToLengthConversionData&, UnitType, double value);
 
-    Ref<DeprecatedCSSOMPrimitiveValue> createDeprecatedCSSOMPrimitiveWrapper() const;
+    Ref<DeprecatedCSSOMPrimitiveValue> createDeprecatedCSSOMPrimitiveWrapper(CSSStyleDeclaration&) const;
 
-#if COMPILER(MSVC)
-    // FIXME: This should be private, but for some reason MSVC then fails to invoke it from LazyNeverDestroyed::construct.
-public:
-#else
+    void collectDirectComputationalDependencies(HashSet<CSSPropertyID>&) const;
+    void collectDirectRootComputationalDependencies(HashSet<CSSPropertyID>&) const;
+
 private:
     friend class CSSValuePool;
-    friend class LazyNeverDestroyed<CSSPrimitiveValue>;
-#endif
+    friend LazyNeverDestroyed<CSSPrimitiveValue>;
 
     CSSPrimitiveValue(CSSValueID);
     CSSPrimitiveValue(CSSPropertyID);
@@ -334,20 +313,12 @@ private:
     void init(Ref<Quad>&&);
     void init(Ref<Rect>&&);
 
-#if ENABLE(CSS_SCROLL_SNAP)
-    void init(Ref<LengthRepeat>&&);
-#endif
-#if ENABLE(DASHBOARD_SUPPORT)
-    void init(RefPtr<DashboardRegion>&&); // FIXME: Dashboard region should not be a primitive value.
-#endif
-
-    std::optional<double> doubleValueInternal(UnitType targetUnitType) const;
+    Optional<double> doubleValueInternal(UnitType targetUnitType) const;
 
     double computeLengthDouble(const CSSToLengthConversionData&) const;
 
     ALWAYS_INLINE String formatNumberForCustomCSSText() const;
-    template<unsigned characterCount> ALWAYS_INLINE Ref<StringImpl> formatNumberValue(const char (&characters)[characterCount]) const;
-    NEVER_INLINE Ref<StringImpl> formatNumberValue(const char* suffix, unsigned suffixLength) const;
+    NEVER_INLINE String formatNumberValue(StringView) const;
 
     union {
         CSSPropertyID propertyID;
@@ -359,22 +330,19 @@ private:
         Quad* quad;
         const Color* color;
         Pair* pair;
-        DashboardRegion* region;
         CSSBasicShape* shape;
         CSSCalcValue* calc;
         const CSSFontFamily* fontFamily;
-#if ENABLE(CSS_SCROLL_SNAP)
-        LengthRepeat* lengthRepeat;
-#endif
     } m_value;
 };
 
 inline bool CSSPrimitiveValue::isAngle() const
 {
-    return m_primitiveUnitType == CSS_DEG
-        || m_primitiveUnitType == CSS_RAD
-        || m_primitiveUnitType == CSS_GRAD
-        || m_primitiveUnitType == CSS_TURN;
+    auto primitiveType = this->primitiveType();
+    return primitiveType == CSS_DEG
+        || primitiveType == CSS_RAD
+        || primitiveType == CSS_GRAD
+        || primitiveType == CSS_TURN;
 }
 
 inline bool CSSPrimitiveValue::isFontRelativeLength(UnitType type)

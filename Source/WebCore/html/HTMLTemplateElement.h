@@ -38,17 +38,19 @@ class DocumentFragment;
 class TemplateContentDocumentFragment;
 
 class HTMLTemplateElement final : public HTMLElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLTemplateElement);
 public:
     static Ref<HTMLTemplateElement> create(const QualifiedName&, Document&);
     virtual ~HTMLTemplateElement();
 
     DocumentFragment& content() const;
+    DocumentFragment* contentIfAvailable() const;
 
 private:
     HTMLTemplateElement(const QualifiedName&, Document&);
 
     Ref<Node> cloneNodeInternal(Document&, CloningOperation) final;
-    void didMoveToNewDocument(Document& oldDocument) final;
+    void didMoveToNewDocument(Document& oldDocument, Document& newDocument) final;
 
     mutable RefPtr<TemplateContentDocumentFragment> m_content;
 };

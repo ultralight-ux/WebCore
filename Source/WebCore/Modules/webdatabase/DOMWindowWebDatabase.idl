@@ -25,5 +25,5 @@
  */
 
 partial interface DOMWindow {
-    [MayThrowException] Database? openDatabase(DOMString name, DOMString version, DOMString displayName, unsigned long estimatedSize, optional DatabaseCallback? creationCallback);
+    [Custom, NotEnumerable] attribute any openDatabase;
 };

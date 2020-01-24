@@ -33,6 +33,7 @@
 #include "CCallHelpers.h"
 #include "CallFrame.h"
 #include "CodeBlock.h"
+#include "IntrinsicGetterAccessCase.h"
 #include "JSArrayBufferView.h"
 #include "JSCJSValueInlines.h"
 #include "JSCellInlines.h"
@@ -48,7 +49,7 @@ typedef CCallHelpers::ImmPtr ImmPtr;
 typedef CCallHelpers::TrustedImm64 TrustedImm64;
 typedef CCallHelpers::Imm64 Imm64;
 
-bool AccessCase::canEmitIntrinsicGetter(JSFunction* getter, Structure* structure)
+bool IntrinsicGetterAccessCase::canEmitIntrinsicGetter(JSFunction* getter, Structure* structure)
 {
 
     switch (getter->intrinsic()) {
@@ -62,13 +63,18 @@ bool AccessCase::canEmitIntrinsicGetter(JSFunction* getter, Structure* structure
         
         return true;
     }
+    case UnderscoreProtoIntrinsic: {
+        auto getPrototypeMethod = structure->classInfo()->methodTable.getPrototype;
+        MethodTable::GetPrototypeFunctionPtr defaultGetPrototype = JSObject::getPrototype;
+        return getPrototypeMethod == defaultGetPrototype;
+    }
     default:
         return false;
     }
     RELEASE_ASSERT_NOT_REACHED();
 }
 
-void AccessCase::emitIntrinsicGetter(AccessGenerationState& state)
+void IntrinsicGetterAccessCase::emitIntrinsicGetter(AccessGenerationState& state)
 {
     CCallHelpers& jit = *state.jit;
     JSValueRegs valueRegs = state.valueRegs;
@@ -108,18 +114,33 @@ void AccessCase::emitIntrinsicGetter(AccessGenerationState& state)
 
         jit.loadPtr(MacroAssembler::Address(baseGPR, JSObject::butterflyOffset()), scratchGPR);
         jit.loadPtr(MacroAssembler::Address(baseGPR, JSArrayBufferView::offsetOfVector()), valueGPR);
+#if CPU(ARM64E)
+        jit.removeArrayPtrTag(valueGPR);
+#endif
         jit.loadPtr(MacroAssembler::Address(scratchGPR, Butterfly::offsetOfArrayBuffer()), scratchGPR);
         jit.loadPtr(MacroAssembler::Address(scratchGPR, ArrayBuffer::offsetOfData()), scratchGPR);
+#if CPU(ARM64E)
+        jit.removeArrayPtrTag(scratchGPR);
+#endif
         jit.subPtr(scratchGPR, valueGPR);
 
         CCallHelpers::Jump done = jit.jump();
         
         emptyByteOffset.link(&jit);
-        jit.move(TrustedImmPtr(0), valueGPR);
+        jit.move(TrustedImmPtr(nullptr), valueGPR);
         
         done.link(&jit);
         
         jit.boxInt32(valueGPR, valueRegs);
+        state.succeed();
+        return;
+    }
+
+    case UnderscoreProtoIntrinsic: {
+        if (structure()->hasPolyProto())
+            jit.loadValue(CCallHelpers::Address(baseGPR, offsetRelativeToBase(knownPolyProtoOffset)), valueRegs);
+        else
+            jit.moveValue(structure()->storedPrototype(), valueRegs);
         state.succeed();
         return;
     }

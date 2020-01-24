@@ -56,7 +56,7 @@ CString InlineCallFrame::hashAsStringIfPossible() const
 
 CString InlineCallFrame::inferredName() const
 {
-    return jsCast<FunctionExecutable*>(baselineCodeBlock->ownerExecutable())->inferredName().utf8();
+    return jsCast<FunctionExecutable*>(baselineCodeBlock->ownerExecutable())->ecmaName().utf8();
 }
 
 void InlineCallFrame::dumpBriefFunctionInformation(PrintStream& out) const
@@ -69,12 +69,13 @@ void InlineCallFrame::dumpInContext(PrintStream& out, DumpContext* context) cons
     out.print(briefFunctionInformation(), ":<", RawPointer(baselineCodeBlock.get()));
     if (isStrictMode())
         out.print(" (StrictMode)");
-    out.print(", bc#", directCaller.bytecodeIndex, ", ", static_cast<Kind>(kind));
+    out.print(", bc#", directCaller.bytecodeIndex(), ", ", static_cast<Kind>(kind));
     if (isClosureCall)
         out.print(", closure call");
     else
         out.print(", known callee: ", inContext(calleeRecovery.constant(), context));
-    out.print(", numArgs+this = ", arguments.size());
+    out.print(", numArgs+this = ", argumentCountIncludingThis);
+    out.print(", numFixup = ", argumentsWithFixup.size() - argumentCountIncludingThis);
     out.print(", stackOffset = ", stackOffset);
     out.print(" (", virtualRegisterForLocal(0), " maps to ", virtualRegisterForLocal(0) + stackOffset, ")>");
 }

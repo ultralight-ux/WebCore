@@ -33,7 +33,7 @@
 
 namespace JSC {
 
-const ClassInfo Symbol::s_info = { "symbol", nullptr, nullptr, CREATE_METHOD_TABLE(Symbol) };
+const ClassInfo Symbol::s_info = { "symbol", nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(Symbol) };
 
 Symbol::Symbol(VM& vm)
     : Base(vm, vm.symbolStructure.get())
@@ -56,7 +56,7 @@ Symbol::Symbol(VM& vm, SymbolImpl& uid)
 void Symbol::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(info()));
+    ASSERT(inherits(vm, info()));
 
     vm.symbolImplToSymbolMap.set(&m_privateName.uid(), this);
 }
@@ -89,7 +89,7 @@ double Symbol::toNumber(ExecState* exec) const
 {
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    throwTypeError(exec, scope, ASCIILiteral("Cannot convert a symbol to a number"));
+    throwTypeError(exec, scope, "Cannot convert a symbol to a number"_s);
     return 0.0;
 }
 
@@ -100,7 +100,13 @@ void Symbol::destroy(JSCell* cell)
 
 String Symbol::descriptiveString() const
 {
-    return makeString("Symbol(", String(privateName().uid()), ')');
+    return makeString("Symbol(", String(m_privateName.uid()), ')');
+}
+
+String Symbol::description() const
+{
+    auto& uid = m_privateName.uid();
+    return uid.isNullSymbol() ? String() : uid;
 }
 
 Symbol* Symbol::create(VM& vm)
@@ -110,11 +116,9 @@ Symbol* Symbol::create(VM& vm)
     return symbol;
 }
 
-Symbol* Symbol::create(ExecState* exec, JSString* description)
+Symbol* Symbol::createWithDescription(VM& vm, const String& description)
 {
-    VM& vm = exec->vm();
-    String desc = description->value(exec);
-    Symbol* symbol = new (NotNull, allocateCell<Symbol>(vm.heap)) Symbol(vm, desc);
+    Symbol* symbol = new (NotNull, allocateCell<Symbol>(vm.heap)) Symbol(vm, description);
     symbol->finishCreation(vm);
     return symbol;
 }

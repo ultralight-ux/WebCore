@@ -22,7 +22,10 @@
 #include "config.h"
 #include "Microtasks.h"
 
+#include "CommonVM.h"
+#include "WorkerGlobalScope.h"
 #include <wtf/MainThread.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/SetForScope.h>
 
 namespace WebCore {
@@ -32,27 +35,37 @@ void Microtask::removeSelfFromQueue(MicrotaskQueue& queue)
     queue.remove(*this);
 }
 
-MicrotaskQueue::MicrotaskQueue()
-    : m_timer(*this, &MicrotaskQueue::timerFired)
+MicrotaskQueue::MicrotaskQueue(JSC::VM& vm)
+    : m_vm(makeRef(vm))
+    , m_timer(*this, &MicrotaskQueue::timerFired)
 {
 }
 
-MicrotaskQueue::~MicrotaskQueue()
-{
-}
+MicrotaskQueue::~MicrotaskQueue() = default;
 
 MicrotaskQueue& MicrotaskQueue::mainThreadQueue()
 {
     ASSERT(isMainThread());
-    static NeverDestroyed<MicrotaskQueue> queue;
+    static NeverDestroyed<MicrotaskQueue> queue(commonVM());
     return queue;
+}
+
+MicrotaskQueue& MicrotaskQueue::contextQueue(ScriptExecutionContext& context)
+{
+    // While main thread has many ScriptExecutionContexts, WorkerGlobalScope and worker thread have
+    // one on one correspondence. The lifetime of MicrotaskQueue is aligned to this semantics.
+    // While main thread MicrotaskQueue is persistently held, worker's MicrotaskQueue is held by
+    // WorkerGlobalScope.
+    if (isMainThread())
+        return mainThreadQueue();
+    return downcast<WorkerGlobalScope>(context).microtaskQueue();
 }
 
 void MicrotaskQueue::append(std::unique_ptr<Microtask>&& task)
 {
     m_microtaskQueue.append(WTFMove(task));
 
-    m_timer.startOneShot(0);
+    m_timer.startOneShot(0_s);
 }
 
 void MicrotaskQueue::remove(const Microtask& task)
@@ -76,6 +89,7 @@ void MicrotaskQueue::performMicrotaskCheckpoint()
         return;
 
     SetForScope<bool> change(m_performingMicrotaskCheckpoint, true);
+    JSC::JSLockHolder locker(vm());
 
     Vector<std::unique_ptr<Microtask>> toKeep;
     while (!m_microtaskQueue.isEmpty()) {
@@ -92,6 +106,7 @@ void MicrotaskQueue::performMicrotaskCheckpoint()
         }
     }
 
+    vm().finalizeSynchronousJSExecution();
     m_microtaskQueue = WTFMove(toKeep);
 }
 

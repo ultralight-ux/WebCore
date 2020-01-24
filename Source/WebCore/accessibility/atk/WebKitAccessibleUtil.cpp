@@ -31,16 +31,19 @@
 #include "config.h"
 #include "WebKitAccessibleUtil.h"
 
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
 
+#include "AXObjectCache.h"
 #include "AccessibilityObject.h"
 #include "FrameView.h"
 #include "IntRect.h"
 #include "Node.h"
 #include "Range.h"
+#include "RenderObject.h"
+#include "TextIterator.h"
 #include "VisibleSelection.h"
 
-#include <wtf/text/AtomicString.h>
+#include <wtf/text/AtomString.h>
 #include <wtf/text/CString.h>
 
 using namespace WebCore;
@@ -66,6 +69,10 @@ void contentsRelativeToAtkCoordinateType(AccessibilityObject* coreObject, AtkCoo
         case ATK_XY_SCREEN:
             rect = frameView->contentsToScreen(rect);
             break;
+#if ATK_CHECK_VERSION(2, 30, 0)
+        case ATK_XY_PARENT:
+            RELEASE_ASSERT_NOT_REACHED();
+#endif
         }
     }
 
@@ -96,21 +103,21 @@ String accessibilityTitle(AccessibilityObject* coreObject)
 
     for (const AccessibilityText& text : textOrder) {
         // Once we encounter visible text, or the text from our children that should be used foremost.
-        if (text.textSource == VisibleText || text.textSource == ChildrenText)
+        if (text.textSource == AccessibilityTextSource::Visible || text.textSource == AccessibilityTextSource::Children)
             return text.text;
 
         // If there's an element that labels this object and it's not exposed, then we should use
         // that text as our title.
-        if (text.textSource == LabelByElementText && !coreObject->exposesTitleUIElement())
+        if (text.textSource == AccessibilityTextSource::LabelByElement && !coreObject->exposesTitleUIElement())
             return text.text;
 
-        // Elements of role ToolbarRole will return its title as AlternativeText.
-        if (coreObject->roleValue() == ToolbarRole && text.textSource == AlternativeText)
+        // Elements of role AccessibilityRole::Toolbar will return its title as AccessibilityTextSource::Alternative.
+        if (coreObject->roleValue() == AccessibilityRole::Toolbar && text.textSource == AccessibilityTextSource::Alternative)
             return text.text;
 
         // FIXME: The title tag is used in certain cases for the title. This usage should
         // probably be in the description field since it's not "visible".
-        if (text.textSource == TitleTagText && !titleTagShouldBeUsedInDescriptionField(coreObject))
+        if (text.textSource == AccessibilityTextSource::TitleTag && !titleTagShouldBeUsedInDescriptionField(coreObject))
             return text.text;
     }
 
@@ -124,19 +131,19 @@ String accessibilityDescription(AccessibilityObject* coreObject)
 
     bool visibleTextAvailable = false;
     for (const AccessibilityText& text : textOrder) {
-        if (text.textSource == AlternativeText)
+        if (text.textSource == AccessibilityTextSource::Alternative)
             return text.text;
 
         switch (text.textSource) {
-        case VisibleText:
-        case ChildrenText:
-        case LabelByElementText:
+        case AccessibilityTextSource::Visible:
+        case AccessibilityTextSource::Children:
+        case AccessibilityTextSource::LabelByElement:
             visibleTextAvailable = true;
         default:
             break;
         }
 
-        if (text.textSource == TitleTagText && !visibleTextAvailable)
+        if (text.textSource == AccessibilityTextSource::TitleTag && !visibleTextAvailable)
             return text.text;
     }
 
@@ -167,6 +174,86 @@ bool selectionBelongsToObject(AccessibilityObject* coreObject, VisibleSelection&
         && intersectsResult.releaseReturnValue()
         && (&range->endContainer() != &node || range->endOffset())
         && (&range->startContainer() != lastDescendant || range->startOffset() != lastOffset);
+}
+
+AccessibilityObject* objectFocusedAndCaretOffsetUnignored(AccessibilityObject* referenceObject, int& offset)
+{
+    // Indication that something bogus has transpired.
+    offset = -1;
+
+    Document* document = referenceObject->document();
+    if (!document)
+        return nullptr;
+
+    Node* focusedNode = referenceObject->selection().end().containerNode();
+    if (!focusedNode)
+        return nullptr;
+
+    RenderObject* focusedRenderer = focusedNode->renderer();
+    if (!focusedRenderer)
+        return nullptr;
+
+    AccessibilityObject* focusedObject = document->axObjectCache()->getOrCreate(focusedRenderer);
+    if (!focusedObject)
+        return nullptr;
+
+    // Look for the actual (not ignoring accessibility) selected object.
+    AccessibilityObject* firstUnignoredParent = focusedObject;
+    if (firstUnignoredParent->accessibilityIsIgnored())
+        firstUnignoredParent = firstUnignoredParent->parentObjectUnignored();
+    if (!firstUnignoredParent)
+        return nullptr;
+
+    // Don't ignore links if the offset is being requested for a link
+    // or if the link is a block.
+    if (!referenceObject->isLink() && firstUnignoredParent->isLink()
+        && !(firstUnignoredParent->renderer() && !firstUnignoredParent->renderer()->isInline()))
+        firstUnignoredParent = firstUnignoredParent->parentObjectUnignored();
+    if (!firstUnignoredParent)
+        return nullptr;
+
+    // The reference object must either coincide with the focused
+    // object being considered, or be a descendant of it.
+    if (referenceObject->isDescendantOfObject(firstUnignoredParent))
+        referenceObject = firstUnignoredParent;
+
+    Node* startNode = nullptr;
+    if (firstUnignoredParent != referenceObject || firstUnignoredParent->isTextControl()) {
+        // We need to use the first child's node of the reference
+        // object as the start point to calculate the caret offset
+        // because we want it to be relative to the object of
+        // reference, not just to the focused object (which could have
+        // previous siblings which should be taken into account too).
+        AccessibilityObject* axFirstChild = referenceObject->firstChild();
+        if (axFirstChild)
+            startNode = axFirstChild->node();
+    }
+    // Getting the Position of a PseudoElement now triggers an assertion.
+    // This can occur when clicking on empty space in a render block.
+    if (!startNode || startNode->isPseudoElement())
+        startNode = firstUnignoredParent->node();
+
+    // Check if the node for the first parent object not ignoring
+    // accessibility is null again before using it. This might happen
+    // with certain kind of accessibility objects, such as the root
+    // one (the scroller containing the webArea object).
+    if (!startNode)
+        return nullptr;
+
+    VisiblePosition startPosition = VisiblePosition(positionBeforeNode(startNode), DOWNSTREAM);
+    VisiblePosition endPosition = firstUnignoredParent->selection().visibleEnd();
+
+    if (startPosition == endPosition)
+        offset = 0;
+    else if (!isStartOfLine(endPosition)) {
+        RefPtr<Range> range = makeRange(startPosition, endPosition.previous());
+        offset = TextIterator::rangeLength(range.get(), true) + 1;
+    } else {
+        RefPtr<Range> range = makeRange(startPosition, endPosition);
+        offset = TextIterator::rangeLength(range.get(), true);
+    }
+
+    return firstUnignoredParent;
 }
 
 #endif

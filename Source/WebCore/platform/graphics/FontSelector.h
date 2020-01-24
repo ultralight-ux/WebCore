@@ -37,20 +37,22 @@ class FontSelectorClient;
 
 class FontAccessor : public RefCounted<FontAccessor> {
 public:
-    virtual ~FontAccessor() { }
+    virtual ~FontAccessor() = default;
 
-    virtual const Font* font() const = 0;
+    virtual const Font* font(ExternalResourceDownloadPolicy) const = 0;
     virtual bool isLoading() const = 0;
 };
 
 class FontSelector : public RefCounted<FontSelector> {
 public:
-    virtual ~FontSelector() { }
+    virtual ~FontSelector() = default;
 
-    virtual FontRanges fontRangesForFamily(const FontDescription&, const AtomicString&) = 0;
+    virtual FontRanges fontRangesForFamily(const FontDescription&, const AtomString&) = 0;
     virtual RefPtr<Font> fallbackFontAt(const FontDescription&, size_t) = 0;
 
     virtual size_t fallbackFontCount() = 0;
+
+    virtual void opportunisticallyStartFontDataURLLoading(const FontCascadeDescription&, const AtomString& family) = 0;
 
     virtual void fontCacheInvalidated() { }
 

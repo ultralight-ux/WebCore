@@ -1,6 +1,6 @@
 /*
  * (C) 1999-2003 Lars Knoll (knoll@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2008, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,7 +21,6 @@
 #include "config.h"
 #include "CSSImageValue.h"
 
-#include "CSSCursorImageValue.h"
 #include "CSSMarkup.h"
 #include "CSSPrimitiveValue.h"
 #include "CSSValueKeywords.h"
@@ -29,18 +28,17 @@
 #include "CachedResourceLoader.h"
 #include "CachedResourceRequest.h"
 #include "CachedResourceRequestInitiators.h"
-#include "CrossOriginAccessControl.h"
 #include "DeprecatedCSSOMPrimitiveValue.h"
 #include "Document.h"
 #include "Element.h"
-#include "MemoryCache.h"
 
 namespace WebCore {
 
-CSSImageValue::CSSImageValue(URL&& url)
+CSSImageValue::CSSImageValue(URL&& url, LoadedFromOpaqueSource loadedFromOpaqueSource)
     : CSSValue(ImageClass)
     , m_url(WTFMove(url))
     , m_accessedImage(false)
+    , m_loadedFromOpaqueSource(loadedFromOpaqueSource)
 {
 }
 
@@ -53,9 +51,7 @@ CSSImageValue::CSSImageValue(CachedImage& image)
 }
 
 
-CSSImageValue::~CSSImageValue()
-{
-}
+CSSImageValue::~CSSImageValue() = default;
 
 bool CSSImageValue::isPending() const
 {
@@ -67,7 +63,9 @@ CachedImage* CSSImageValue::loadImage(CachedResourceLoader& loader, const Resour
     if (!m_accessedImage) {
         m_accessedImage = true;
 
-        CachedResourceRequest request(ResourceRequest(m_url), options);
+        ResourceLoaderOptions loadOptions = options;
+        loadOptions.loadedFromOpaqueSource = m_loadedFromOpaqueSource;
+        CachedResourceRequest request(ResourceRequest(loader.document()->completeURL(m_url.string())), loadOptions);
         if (m_initiatorName.isEmpty())
             request.setInitiator(cachedResourceRequestInitiators().css);
         else
@@ -77,12 +75,12 @@ CachedImage* CSSImageValue::loadImage(CachedResourceLoader& loader, const Resour
             ASSERT(loader.document());
             request.updateForAccessControl(*loader.document());
         }
-        m_cachedImage = loader.requestImage(WTFMove(request));
+        m_cachedImage = loader.requestImage(WTFMove(request)).value_or(nullptr);
     }
     return m_cachedImage.get();
 }
 
-bool CSSImageValue::traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const
+bool CSSImageValue::traverseSubresources(const WTF::Function<bool (const CachedResource&)>& handler) const
 {
     if (!m_cachedImage)
         return false;
@@ -99,17 +97,17 @@ String CSSImageValue::customCSSText() const
     return serializeURL(m_url);
 }
 
-Ref<DeprecatedCSSOMValue> CSSImageValue::createDeprecatedCSSOMWrapper() const
+Ref<DeprecatedCSSOMValue> CSSImageValue::createDeprecatedCSSOMWrapper(CSSStyleDeclaration& styleDeclaration) const
 {
     // NOTE: We expose CSSImageValues as URI primitive values in CSSOM to maintain old behavior.
-    return DeprecatedCSSOMPrimitiveValue::create(CSSPrimitiveValue::create(m_url, CSSPrimitiveValue::CSS_URI));
+    return DeprecatedCSSOMPrimitiveValue::create(CSSPrimitiveValue::create(m_url, CSSPrimitiveValue::CSS_URI), styleDeclaration);
 }
 
-bool CSSImageValue::knownToBeOpaque(const RenderElement* renderer) const
+bool CSSImageValue::knownToBeOpaque(const RenderElement& renderer) const
 {
     if (!m_cachedImage)
         return false;
-    return m_cachedImage->currentFrameKnownToBeOpaque(renderer);
+    return m_cachedImage->currentFrameKnownToBeOpaque(&renderer);
 }
 
 } // namespace WebCore

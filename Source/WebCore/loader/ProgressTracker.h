@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007, 2018 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -20,13 +20,12 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #pragma once
 
 #include "Timer.h"
-#include <chrono>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/Noncopyable.h>
@@ -51,7 +50,7 @@ public:
 
     void progressStarted(Frame&);
     void progressCompleted(Frame&);
-    
+
     void incrementProgress(unsigned long identifier, const ResourceResponse&);
     void incrementProgress(unsigned long identifier, unsigned bytesReceived);
     void completeProgress(unsigned long identifier);
@@ -66,26 +65,30 @@ private:
     void finalProgressComplete();
 
     void progressHeartbeatTimerFired();
-    
-    static unsigned long s_uniqueIdentifier;
-    
-    ProgressTrackerClient& m_client;
-    long long m_totalPageAndResourceBytesToLoad;
-    long long m_totalBytesReceived;
-    double m_lastNotifiedProgressValue;
-    std::chrono::steady_clock::time_point m_lastNotifiedProgressTime;
-    bool m_finalProgressChangedSent;    
-    double m_progressValue;
-    RefPtr<Frame> m_originatingProgressFrame;
-    
-    int m_numProgressTrackedFrames;
-    HashMap<unsigned long, std::unique_ptr<ProgressItem>> m_progressItems;
+    bool isAlwaysOnLoggingAllowed() const;
 
+    static unsigned long s_uniqueIdentifier;
+
+    ProgressTrackerClient& m_client;
+    RefPtr<Frame> m_originatingProgressFrame;
+    HashMap<unsigned long, std::unique_ptr<ProgressItem>> m_progressItems;
     Timer m_progressHeartbeatTimer;
-    unsigned m_heartbeatsWithNoProgress;
-    long long m_totalBytesReceivedBeforePreviousHeartbeat;
-    std::chrono::steady_clock::time_point m_mainLoadCompletionTime;
-    bool m_isMainLoad;
+
+    long long m_totalPageAndResourceBytesToLoad { 0 };
+    long long m_totalBytesReceived { 0 };
+    long long m_totalBytesReceivedBeforePreviousHeartbeat { 0 };
+
+    double m_lastNotifiedProgressValue { 0 };
+    double m_progressValue { 0 };
+
+    MonotonicTime m_mainLoadCompletionTime;
+    MonotonicTime m_lastNotifiedProgressTime;
+
+    int m_numProgressTrackedFrames { 0 };
+    unsigned m_heartbeatsWithNoProgress { 0 };
+
+    bool m_finalProgressChangedSent { false };
+    bool m_isMainLoad { false };
 };
-    
+
 } // namespace WebCore

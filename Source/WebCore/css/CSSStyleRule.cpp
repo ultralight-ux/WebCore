@@ -23,9 +23,7 @@
 #include "CSSStyleRule.h"
 
 #include "CSSParser.h"
-#include "CSSSelector.h"
 #include "CSSStyleSheet.h"
-#include "Document.h"
 #include "PropertySetCSSStyleDeclaration.h"
 #include "RuleSet.h"
 #include "StyleProperties.h"
@@ -104,7 +102,7 @@ void CSSStyleRule::setSelectorText(const String& selectorText)
 
     CSSStyleSheet::RuleMutationScope mutationScope(this);
 
-    m_styleRule->wrapperAdoptSelectorList(selectorList);
+    m_styleRule->wrapperAdoptSelectorList(WTFMove(selectorList));
 
     if (hasCachedSelectorText()) {
         selectorTextCache().remove(this);

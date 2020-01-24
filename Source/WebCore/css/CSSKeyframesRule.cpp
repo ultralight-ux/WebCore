@@ -32,19 +32,17 @@
 #include "CSSRuleList.h"
 #include "CSSStyleSheet.h"
 #include "Document.h"
-#include "StyleProperties.h"
-#include "StyleSheet.h"
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
-StyleRuleKeyframes::StyleRuleKeyframes(const AtomicString& name)
+StyleRuleKeyframes::StyleRuleKeyframes(const AtomString& name)
     : StyleRuleBase(Keyframes)
     , m_name(name)
 {
 }
 
-StyleRuleKeyframes::StyleRuleKeyframes(const AtomicString& name, std::unique_ptr<DeferredStyleGroupRuleList>&& deferredRules)
+StyleRuleKeyframes::StyleRuleKeyframes(const AtomString& name, std::unique_ptr<DeferredStyleGroupRuleList>&& deferredRules)
     : StyleRuleBase(Keyframes)
     , m_name(name)
     , m_deferredRules(WTFMove(deferredRules))
@@ -61,9 +59,7 @@ StyleRuleKeyframes::StyleRuleKeyframes(const StyleRuleKeyframes& o)
         m_keyframes.uncheckedAppend(keyframe.copyRef());
 }
 
-StyleRuleKeyframes::~StyleRuleKeyframes()
-{
-}
+StyleRuleKeyframes::~StyleRuleKeyframes() = default;
 
 void StyleRuleKeyframes::parseDeferredRulesIfNeeded() const
 {
@@ -104,6 +100,9 @@ size_t StyleRuleKeyframes::findKeyframeIndex(const String& key) const
     parseDeferredRulesIfNeeded();
 
     auto keys = CSSParser::parseKeyframeKeyList(key);
+
+    if (!keys)
+        return notFound;
 
     for (size_t i = m_keyframes.size(); i--; ) {
         if (m_keyframes[i]->keys() == *keys)
@@ -157,7 +156,7 @@ void CSSKeyframesRule::insertRule(const String& ruleText)
 {
     if (CSSStyleSheet* parent = parentStyleSheet()) {
         if (Document* ownerDocument = parent->ownerDocument())
-            ownerDocument->addConsoleMessage(MessageSource::JS, MessageLevel::Warning, ASCIILiteral("CSSKeyframesRule 'insertRule' function is deprecated.  Use 'appendRule' instead."));
+            ownerDocument->addConsoleMessage(MessageSource::JS, MessageLevel::Warning, "CSSKeyframesRule 'insertRule' function is deprecated.  Use 'appendRule' instead."_s);
     }
     appendRule(ruleText);
 }
@@ -211,12 +210,10 @@ CSSKeyframeRule* CSSKeyframesRule::item(unsigned index) const
 { 
     if (index >= length())
         return nullptr;
-
     ASSERT(m_childRuleCSSOMWrappers.size() == m_keyframesRule->keyframes().size());
-    RefPtr<CSSKeyframeRule>& rule = m_childRuleCSSOMWrappers[index];
+    auto& rule = m_childRuleCSSOMWrappers[index];
     if (!rule)
-        rule = adoptRef(new CSSKeyframeRule(const_cast<StyleRuleKeyframe&>(m_keyframesRule->keyframes()[index].get()), const_cast<CSSKeyframesRule*>(this)));
-
+        rule = adoptRef(*new CSSKeyframeRule(m_keyframesRule->keyframes()[index], const_cast<CSSKeyframesRule*>(this)));
     return rule.get(); 
 }
 

@@ -24,6 +24,7 @@
 #include "WindowFeatures.h"
 
 #include "FloatRect.h"
+#include <wtf/ASCIICType.h>
 #include <wtf/Assertions.h>
 #include <wtf/HashMap.h>
 #include <wtf/MathExtras.h>
@@ -36,12 +37,16 @@ typedef HashMap<String, String, ASCIICaseInsensitiveHash> DialogFeaturesMap;
 static void setWindowFeature(WindowFeatures&, StringView key, StringView value);
 
 static DialogFeaturesMap parseDialogFeaturesMap(const String&);
-static std::optional<bool> boolFeature(const DialogFeaturesMap&, const char* key);
-static std::optional<float> floatFeature(const DialogFeaturesMap&, const char* key, float min, float max);
+static Optional<bool> boolFeature(const DialogFeaturesMap&, const char* key);
+static Optional<float> floatFeature(const DialogFeaturesMap&, const char* key, float min, float max);
 
-static bool isSeparator(UChar character)
+// https://html.spec.whatwg.org/#feature-separator
+static bool isSeparator(UChar character, FeatureMode mode)
 {
-    return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '=' || character == ',';
+    if (mode == FeatureMode::Viewport)
+        return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '=' || character == ',';
+
+    return isASCIISpace(character) || character == '=' || character == ',';
 }
 
 WindowFeatures parseWindowFeatures(StringView featuresString)
@@ -63,44 +68,61 @@ WindowFeatures parseWindowFeatures(StringView featuresString)
     features.toolBarVisible = false;
     features.locationBarVisible = false;
     features.scrollbarsVisible = false;
+    features.noopener = false;
 
-    processFeaturesString(featuresString, [&features](StringView key, StringView value) {
+    processFeaturesString(featuresString, FeatureMode::Window, [&features](StringView key, StringView value) {
         setWindowFeature(features, key, value);
     });
 
     return features;
 }
 
-void processFeaturesString(StringView features, std::function<void(StringView type, StringView value)> callback)
+// Window: https://html.spec.whatwg.org/#concept-window-open-features-tokenize
+// Viewport: https://developer.apple.com/library/content/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/MetaTags.html#//apple_ref/doc/uid/TP40008193-SW6
+// FIXME: We should considering aligning Viewport feature parsing with Window features parsing.
+void processFeaturesString(StringView features, FeatureMode mode, const WTF::Function<void(StringView type, StringView value)>& callback)
 {
     unsigned length = features.length();
     for (unsigned i = 0; i < length; ) {
-        // skip to first non-separator
-        while (i < length && isSeparator(features[i]))
+        // Skip to first non-separator.
+        while (i < length && isSeparator(features[i], mode))
             ++i;
         unsigned keyBegin = i;
 
-        // skip to first separator
-        while (i < length && !isSeparator(features[i]))
+        // Skip to first separator.
+        while (i < length && !isSeparator(features[i], mode))
             i++;
         unsigned keyEnd = i;
 
-        // skip to first '=', but don't skip past a ','
-        while (i < length && features[i] != '=' && features[i] != ',')
+        // Skip to first '=', but don't skip past a ',' or a non-separator.
+        while (i < length && features[i] != '=' && features[i] != ',' && (mode == FeatureMode::Viewport || isSeparator(features[i], mode)))
             ++i;
 
-        // skip to first non-separator, but don't skip past a ','
-        while (i < length && isSeparator(features[i]) && features[i] != ',')
-            ++i;
-        unsigned valueBegin = i;
+        // Skip to first non-separator, but don't skip past a ','.
+        if (mode == FeatureMode::Viewport || (i < length && isSeparator(features[i], mode))) {
+            while (i < length && isSeparator(features[i], mode) && features[i] != ',')
+                ++i;
+            unsigned valueBegin = i;
 
-        // skip to first separator
-        while (i < length && !isSeparator(features[i]))
-            ++i;
-        unsigned valueEnd = i;
-
-        callback(features.substring(keyBegin, keyEnd - keyBegin), features.substring(valueBegin, valueEnd - valueBegin));
+            // Skip to first separator.
+            while (i < length && !isSeparator(features[i], mode))
+                ++i;
+            unsigned valueEnd = i;
+            callback(features.substring(keyBegin, keyEnd - keyBegin), features.substring(valueBegin, valueEnd - valueBegin));
+        } else
+            callback(features.substring(keyBegin, keyEnd - keyBegin), StringView());
     }
+}
+
+OptionSet<DisabledAdaptations> parseDisabledAdaptations(const String& disabledAdaptationsString)
+{
+    OptionSet<DisabledAdaptations> disabledAdaptations;
+    for (auto& name : disabledAdaptationsString.split(',')) {
+        auto normalizedName = name.stripWhiteSpace().convertToASCIILowercase();
+        if (normalizedName == watchAdaptationName())
+            disabledAdaptations.add(DisabledAdaptations::Watch);
+    }
+    return disabledAdaptations;
 }
 
 static void setWindowFeature(WindowFeatures& features, StringView key, StringView value)
@@ -135,6 +157,10 @@ static void setWindowFeature(WindowFeatures& features, StringView key, StringVie
         features.fullscreen = numericValue;
     else if (equalLettersIgnoringASCIICase(key, "scrollbars"))
         features.scrollbarsVisible = numericValue;
+    else if (equalLettersIgnoringASCIICase(key, "noopener"))
+        features.noopener = numericValue;
+    else if (equalLettersIgnoringASCIICase(key, "noreferrer"))
+        features.noreferrer = numericValue;
     else if (numericValue == 1)
         features.additionalFeatures.append(key.toString());
 }
@@ -158,8 +184,8 @@ WindowFeatures parseDialogFeatures(const String& dialogFeaturesString, const Flo
     features.locationBarVisible = false;
     features.dialog = true;
 
-    float width = floatFeature(featuresMap, "dialogwidth", 100, screenAvailableRect.width()).value_or(620); // default here came from frame size of dialog in MacIE
-    float height = floatFeature(featuresMap, "dialogheight", 100, screenAvailableRect.height()).value_or(450); // default here came from frame size of dialog in MacIE
+    float width = floatFeature(featuresMap, "dialogwidth", 100, screenAvailableRect.width()).valueOr(620); // default here came from frame size of dialog in MacIE
+    float height = floatFeature(featuresMap, "dialogheight", 100, screenAvailableRect.height()).valueOr(450); // default here came from frame size of dialog in MacIE
 
     features.width = width;
     features.height = height;
@@ -167,25 +193,25 @@ WindowFeatures parseDialogFeatures(const String& dialogFeaturesString, const Flo
     features.x = floatFeature(featuresMap, "dialogleft", screenAvailableRect.x(), screenAvailableRect.maxX() - width);
     features.y = floatFeature(featuresMap, "dialogtop", screenAvailableRect.y(), screenAvailableRect.maxY() - height);
 
-    if (boolFeature(featuresMap, "center").value_or(true)) {
+    if (boolFeature(featuresMap, "center").valueOr(true)) {
         if (!features.x)
             features.x = screenAvailableRect.x() + (screenAvailableRect.width() - width) / 2;
         if (!features.y)
             features.y = screenAvailableRect.y() + (screenAvailableRect.height() - height) / 2;
     }
 
-    features.resizable = boolFeature(featuresMap, "resizable").value_or(false);
-    features.scrollbarsVisible = boolFeature(featuresMap, "scroll").value_or(true);
-    features.statusBarVisible = boolFeature(featuresMap, "status").value_or(false);
+    features.resizable = boolFeature(featuresMap, "resizable").valueOr(false);
+    features.scrollbarsVisible = boolFeature(featuresMap, "scroll").valueOr(true);
+    features.statusBarVisible = boolFeature(featuresMap, "status").valueOr(false);
 
     return features;
 }
 
-static std::optional<bool> boolFeature(const DialogFeaturesMap& features, const char* key)
+static Optional<bool> boolFeature(const DialogFeaturesMap& features, const char* key)
 {
     auto it = features.find(key);
     if (it == features.end())
-        return std::nullopt;
+        return WTF::nullopt;
 
     auto& value = it->value;
     return value.isNull()
@@ -194,18 +220,18 @@ static std::optional<bool> boolFeature(const DialogFeaturesMap& features, const 
         || equalLettersIgnoringASCIICase(value, "on");
 }
 
-static std::optional<float> floatFeature(const DialogFeaturesMap& features, const char* key, float min, float max)
+static Optional<float> floatFeature(const DialogFeaturesMap& features, const char* key, float min, float max)
 {
     auto it = features.find(key);
     if (it == features.end())
-        return std::nullopt;
+        return WTF::nullopt;
 
     // FIXME: The toDouble function does not offer a way to tell "0q" from string with no digits in it: Both
     // return the number 0 and false for ok. But "0q" should yield the minimum rather than the default.
     bool ok;
     double parsedNumber = it->value.toDouble(&ok);
     if ((!parsedNumber && !ok) || std::isnan(parsedNumber))
-        return std::nullopt;
+        return WTF::nullopt;
     if (parsedNumber < min || max <= min)
         return min;
     if (parsedNumber > max)
@@ -222,10 +248,7 @@ static DialogFeaturesMap parseDialogFeaturesMap(const String& string)
 
     DialogFeaturesMap features;
 
-    Vector<String> vector;
-    string.split(';', vector);
-
-    for (auto& featureString : vector) {
+    for (auto& featureString : string.split(';')) {
         size_t separatorPosition = featureString.find('=');
         size_t colonPosition = featureString.find(':');
         if (separatorPosition != notFound && colonPosition != notFound)

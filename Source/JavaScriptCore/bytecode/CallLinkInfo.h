@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,7 +41,7 @@ class JSFunction;
 enum OpcodeID : unsigned;
 struct CallFrameShuffleData;
 
-class CallLinkInfo : public BasicRawSentinelNode<CallLinkInfo> {
+class CallLinkInfo : public PackedRawSentinelNode<CallLinkInfo> {
 public:
     enum CallType {
         None,
@@ -146,7 +146,7 @@ public:
     
     NearCallMode nearCallMode() const
     {
-        return isTailCall() ? Tail : Regular;
+        return isTailCall() ? NearCallMode::Tail : NearCallMode::Regular;
     }
 
     bool isVarargs() const
@@ -157,7 +157,7 @@ public:
     bool isLinked() { return m_stub || m_calleeOrCodeBlock; }
     void unlink(VM&);
 
-    void setUpCall(CallType callType, CodeOrigin codeOrigin, unsigned calleeGPR)
+    void setUpCall(CallType callType, CodeOrigin codeOrigin, GPRReg calleeGPR)
     {
         m_callType = callType;
         m_codeOrigin = codeOrigin;
@@ -165,9 +165,9 @@ public:
     }
 
     void setCallLocations(
-        CodeLocationLabel callReturnLocationOrPatchableJump,
-        CodeLocationLabel hotPathBeginOrSlowPathStart,
-        CodeLocationNearCall hotPathOther)
+        CodeLocationLabel<JSInternalPtrTag> callReturnLocationOrPatchableJump,
+        CodeLocationLabel<JSInternalPtrTag> hotPathBeginOrSlowPathStart,
+        CodeLocationNearCall<JSInternalPtrTag> hotPathOther)
     {
         m_callReturnLocationOrPatchableJump = callReturnLocationOrPatchableJump;
         m_hotPathBeginOrSlowPathStart = hotPathBeginOrSlowPathStart;
@@ -181,36 +181,36 @@ public:
         m_allowStubs = false;
     }
 
-    CodeLocationNearCall callReturnLocation();
-    CodeLocationJump patchableJump();
-    CodeLocationDataLabelPtr hotPathBegin();
-    CodeLocationLabel slowPathStart();
+    CodeLocationNearCall<JSInternalPtrTag> callReturnLocation();
+    CodeLocationJump<JSInternalPtrTag> patchableJump();
+    CodeLocationDataLabelPtr<JSInternalPtrTag> hotPathBegin();
+    CodeLocationLabel<JSInternalPtrTag> slowPathStart();
 
-    CodeLocationNearCall hotPathOther()
+    CodeLocationNearCall<JSInternalPtrTag> hotPathOther()
     {
         return m_hotPathOther;
     }
 
-    void setCallee(VM&, JSCell*, JSFunction* callee);
+    void setCallee(VM&, JSCell*, JSObject* callee);
     void clearCallee();
-    JSFunction* callee();
+    JSObject* callee();
 
     void setCodeBlock(VM&, JSCell*, FunctionCodeBlock*);
     void clearCodeBlock();
     FunctionCodeBlock* codeBlock();
 
-    void setLastSeenCallee(VM& vm, const JSCell* owner, JSFunction* callee);
+    void setLastSeenCallee(VM&, const JSCell* owner, JSObject* callee);
     void clearLastSeenCallee();
-    JSFunction* lastSeenCallee();
+    JSObject* lastSeenCallee();
     bool haveLastSeenCallee();
     
     void setExecutableDuringCompilation(ExecutableBase*);
     ExecutableBase* executable();
     
-    void setStub(PassRefPtr<PolymorphicCallStubRoutine> newStub)
+    void setStub(Ref<PolymorphicCallStubRoutine>&& newStub)
     {
         clearStub();
-        m_stub = newStub;
+        m_stub = WTFMove(newStub);
     }
 
     void clearStub();
@@ -220,9 +220,9 @@ public:
         return m_stub.get();
     }
 
-    void setSlowStub(PassRefPtr<JITStubRoutine> newSlowStub)
+    void setSlowStub(Ref<JITStubRoutine>&& newSlowStub)
     {
-        m_slowStub = newSlowStub;
+        m_slowStub = WTFMove(newSlowStub);
     }
 
     void clearSlowStub()
@@ -264,7 +264,27 @@ public:
     {
         return m_clearedByGC;
     }
+    
+    bool clearedByVirtual()
+    {
+        return m_clearedByVirtual;
+    }
 
+    bool clearedByJettison()
+    {
+        return m_clearedByJettison;
+    }
+
+    void setClearedByVirtual()
+    {
+        m_clearedByVirtual = true;
+    }
+
+    void setClearedByJettison()
+    {
+        m_clearedByJettison = true;
+    }
+    
     void setCallType(CallType callType)
     {
         m_callType = callType;
@@ -275,29 +295,24 @@ public:
         return static_cast<CallType>(m_callType);
     }
 
-    uint32_t* addressOfMaxNumArguments()
+    uint32_t* addressOfMaxArgumentCountIncludingThis()
     {
-        return &m_maxNumArguments;
+        return &m_maxArgumentCountIncludingThis;
     }
 
-    uint32_t maxNumArguments()
+    uint32_t maxArgumentCountIncludingThis()
     {
-        return m_maxNumArguments;
+        return m_maxArgumentCountIncludingThis;
     }
     
-    void setMaxNumArguments(unsigned);
+    void setMaxArgumentCountIncludingThis(unsigned);
 
     static ptrdiff_t offsetOfSlowPathCount()
     {
         return OBJECT_OFFSETOF(CallLinkInfo, m_slowPathCount);
     }
 
-    void setCalleeGPR(unsigned calleeGPR)
-    {
-        m_calleeGPR = calleeGPR;
-    }
-
-    unsigned calleeGPR()
+    GPRReg calleeGPR()
     {
         return m_calleeGPR;
     }
@@ -327,36 +342,31 @@ public:
     }
 
 private:
-    CodeLocationLabel m_callReturnLocationOrPatchableJump;
-    CodeLocationLabel m_hotPathBeginOrSlowPathStart;
-    CodeLocationNearCall m_hotPathOther;
+    uint32_t m_maxArgumentCountIncludingThis { 0 }; // For varargs: the profiled maximum number of arguments. For direct: the number of stack slots allocated for arguments.
+    CodeLocationLabel<JSInternalPtrTag> m_callReturnLocationOrPatchableJump;
+    CodeLocationLabel<JSInternalPtrTag> m_hotPathBeginOrSlowPathStart;
+    CodeLocationNearCall<JSInternalPtrTag> m_hotPathOther;
     WriteBarrier<JSCell> m_calleeOrCodeBlock;
     WriteBarrier<JSCell> m_lastSeenCalleeOrExecutable;
     RefPtr<PolymorphicCallStubRoutine> m_stub;
     RefPtr<JITStubRoutine> m_slowStub;
     std::unique_ptr<CallFrameShuffleData> m_frameShuffleData;
+    CodeOrigin m_codeOrigin;
     bool m_hasSeenShouldRepatch : 1;
     bool m_hasSeenClosure : 1;
     bool m_clearedByGC : 1;
+    bool m_clearedByVirtual : 1;
     bool m_allowStubs : 1;
-    bool m_isLinked : 1;
+    bool m_clearedByJettison : 1;
     unsigned m_callType : 4; // CallType
-    unsigned m_calleeGPR : 8;
-    uint32_t m_maxNumArguments; // For varargs: the profiled maximum number of arguments. For direct: the number of stack slots allocated for arguments.
-    uint32_t m_slowPathCount;
-    CodeOrigin m_codeOrigin;
+    GPRReg m_calleeGPR { InvalidGPRReg };
+    uint32_t m_slowPathCount { 0 };
 };
 
 inline CodeOrigin getCallLinkInfoCodeOrigin(CallLinkInfo& callLinkInfo)
 {
     return callLinkInfo.codeOrigin();
 }
-
-typedef HashMap<CodeOrigin, CallLinkInfo*, CodeOriginApproximateHash> CallLinkInfoMap;
-
-#else // ENABLE(JIT)
-
-typedef HashMap<int, void*> CallLinkInfoMap;
 
 #endif // ENABLE(JIT)
 

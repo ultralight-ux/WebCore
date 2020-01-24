@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,16 +53,16 @@ FrameLoaderClient& MixedContentChecker::client() const
 }
 
 // static
-bool MixedContentChecker::isMixedContent(SecurityOrigin* securityOrigin, const URL& url)
+bool MixedContentChecker::isMixedContent(SecurityOrigin& securityOrigin, const URL& url)
 {
-    if (securityOrigin->protocol() != "https")
+    if (securityOrigin.protocol() != "https")
         return false; // We only care about HTTPS security origins.
 
     // We're in a secure context, so |url| is mixed content if it's insecure.
     return !SecurityOrigin::isSecure(url);
 }
 
-bool MixedContentChecker::canDisplayInsecureContent(SecurityOrigin* securityOrigin, ContentType type, const URL& url, AlwaysDisplayInNonStrictMode alwaysDisplayInNonStrictMode) const
+bool MixedContentChecker::canDisplayInsecureContent(SecurityOrigin& securityOrigin, ContentType type, const URL& url, AlwaysDisplayInNonStrictMode alwaysDisplayInNonStrictMode) const
 {
     if (!isMixedContent(securityOrigin, url))
         return true;
@@ -77,14 +78,14 @@ bool MixedContentChecker::canDisplayInsecureContent(SecurityOrigin* securityOrig
     logWarning(allowed, "display", url);
 
     if (allowed) {
-        m_frame.document()->setFoundMixedContent();
+        m_frame.document()->setFoundMixedContent(SecurityContext::MixedContentType::Inactive);
         client().didDisplayInsecureContent();
     }
 
     return allowed;
 }
 
-bool MixedContentChecker::canRunInsecureContent(SecurityOrigin* securityOrigin, const URL& url) const
+bool MixedContentChecker::canRunInsecureContent(SecurityOrigin& securityOrigin, const URL& url) const
 {
     if (!isMixedContent(securityOrigin, url))
         return true;
@@ -92,22 +93,22 @@ bool MixedContentChecker::canRunInsecureContent(SecurityOrigin* securityOrigin, 
     if (!m_frame.document()->contentSecurityPolicy()->allowRunningOrDisplayingInsecureContent(url))
         return false;
 
-    bool allowed = !m_frame.document()->isStrictMixedContentMode() && m_frame.settings().allowRunningOfInsecureContent() && !m_frame.document()->geolocationAccessed();
+    bool allowed = !m_frame.document()->isStrictMixedContentMode() && m_frame.settings().allowRunningOfInsecureContent() && !m_frame.document()->geolocationAccessed() && !m_frame.document()->secureCookiesAccessed();
     logWarning(allowed, "run", url);
 
     if (allowed) {
-        m_frame.document()->setFoundMixedContent();
+        m_frame.document()->setFoundMixedContent(SecurityContext::MixedContentType::Active);
         client().didRunInsecureContent(securityOrigin, url);
     }
 
     return allowed;
 }
 
-void MixedContentChecker::checkFormForMixedContent(SecurityOrigin* securityOrigin, const URL& url) const
+void MixedContentChecker::checkFormForMixedContent(SecurityOrigin& securityOrigin, const URL& url) const
 {
     // Unconditionally allow javascript: URLs as form actions as some pages do this and it does not introduce
     // a mixed content issue.
-    if (protocolIsJavaScript(url))
+    if (WTF::protocolIsJavaScript(url))
         return;
 
     if (!isMixedContent(securityOrigin, url))
@@ -117,6 +118,28 @@ void MixedContentChecker::checkFormForMixedContent(SecurityOrigin* securityOrigi
     m_frame.document()->addConsoleMessage(MessageSource::Security, MessageLevel::Warning, message);
 
     client().didDisplayInsecureContent();
+}
+
+Optional<String> MixedContentChecker::checkForMixedContentInFrameTree(const URL& url)
+{
+    auto* document = m_frame.document();
+
+    while (document) {
+        RELEASE_ASSERT_WITH_MESSAGE(document->frame(), "An unparented document tried to connect to a websocket with url: %s", url.string().utf8().data());
+        
+        auto* frame = document->frame();
+        if (isMixedContent(document->securityOrigin(), url))
+            return makeString("The page at ", document->url().stringCenterEllipsizedToLength(), " was blocked from connecting insecurely to ", url.stringCenterEllipsizedToLength(), " either because the protocol is insecure or the page is embedded from an insecure page.");
+
+        if (frame->isMainFrame())
+            break;
+
+        frame = frame->tree().parent();
+        RELEASE_ASSERT_WITH_MESSAGE(frame, "Should never have a parentless non main frame");
+        document = frame->document();
+    }
+    
+    return WTF::nullopt;
 }
 
 void MixedContentChecker::logWarning(bool allowed, const String& action, const URL& target) const

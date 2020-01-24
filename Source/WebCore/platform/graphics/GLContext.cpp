@@ -26,9 +26,10 @@
 #include "GLContextEGL.h"
 #endif
 
-#if USE(OPENGL_ES_2)
+#if USE(LIBEPOXY)
+#include <epoxy/gl.h>
+#elif USE(OPENGL_ES)
 #include <GLES2/gl2.h>
-#include <GLES3/gl3.h>
 #endif
 
 #if USE(GLX)
@@ -47,7 +48,7 @@ public:
     GLContext* context() { return m_context; }
 
 private:
-    GLContext* m_context;
+    GLContext* m_context { nullptr };
 };
 
 ThreadSpecific<ThreadGlobalGLContext>* ThreadGlobalGLContext::staticGLContext;
@@ -61,7 +62,7 @@ inline ThreadGlobalGLContext* currentContext()
 
 static bool initializeOpenGLShimsIfNeeded()
 {
-#if USE(OPENGL_ES_2)
+#if USE(OPENGL_ES) || USE(LIBEPOXY)
     return true;
 #else
     static bool initialized = false;
@@ -83,18 +84,20 @@ std::unique_ptr<GLContext> GLContext::createContextForWindow(GLNativeWindowType 
 #if PLATFORM(WAYLAND)
     if (display.type() == PlatformDisplay::Type::Wayland) {
         if (auto eglContext = GLContextEGL::createContext(windowHandle, display))
-            return WTFMove(eglContext);
+            return eglContext;
         return nullptr;
     }
 #endif
 
 #if USE(GLX)
-    if (auto glxContext = GLContextGLX::createContext(windowHandle, display))
-        return WTFMove(glxContext);
+    if (display.type() == PlatformDisplay::Type::X11) {
+        if (auto glxContext = GLContextGLX::createContext(windowHandle, display))
+            return glxContext;
+    }
 #endif
 #if USE(EGL)
     if (auto eglContext = GLContextEGL::createContext(windowHandle, display))
-        return WTFMove(eglContext);
+        return eglContext;
 #endif
     return nullptr;
 }
@@ -115,13 +118,13 @@ std::unique_ptr<GLContext> GLContext::createSharingContext(PlatformDisplay& disp
 #if USE(GLX)
     if (display.type() == PlatformDisplay::Type::X11) {
         if (auto glxContext = GLContextGLX::createSharingContext(display))
-            return WTFMove(glxContext);
+            return glxContext;
     }
 #endif
 
-#if USE(EGL) || PLATFORM(WAYLAND)
+#if USE(EGL) || PLATFORM(WAYLAND) || PLATFORM(WPE)
     if (auto eglContext = GLContextEGL::createSharingContext(display))
-        return WTFMove(eglContext);
+        return eglContext;
 #endif
 
     return nullptr;
@@ -171,19 +174,18 @@ unsigned GLContext::version()
         // Version string can start with the version number (all versions except GLES 1 and 2) or with
         // "OpenGL". Different fields inside the version string are separated by spaces.
         String versionString = String(reinterpret_cast<const char*>(::glGetString(GL_VERSION)));
-        Vector<String> versionStringComponents;
-        versionString.split(' ', versionStringComponents);
+        Vector<String> versionStringComponents = versionString.split(' ');
 
         Vector<String> versionDigits;
         if (versionStringComponents[0] == "OpenGL") {
             // If the version string starts with "OpenGL" it can be GLES 1 or 2. In GLES1 version string starts
             // with "OpenGL ES-<profile> major.minor" and in GLES2 with "OpenGL ES major.minor". Version is the
             // third component in both cases.
-            versionStringComponents[2].split('.', versionDigits);
+            versionDigits = versionStringComponents[2].split('.');
         } else {
             // Version is the first component. The version number is always "major.minor" or
             // "major.minor.release". Ignore the release number.
-            versionStringComponents[0].split('.', versionDigits);
+            versionDigits = versionStringComponents[0].split('.');
         }
 
         m_version = versionDigits[0].toUInt() * 100 + versionDigits[1].toUInt() * 10;

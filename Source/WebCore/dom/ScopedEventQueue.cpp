@@ -32,8 +32,8 @@
 #include "ScopedEventQueue.h"
 
 #include "Event.h"
-#include "EventDispatcher.h"
-#include "EventTarget.h"
+#include "Node.h"
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
@@ -45,6 +45,7 @@ ScopedEventQueue& ScopedEventQueue::singleton()
 
 void ScopedEventQueue::enqueueEvent(Ref<Event>&& event)
 {
+    ASSERT(is<Node>(event->target()));
     if (m_scopingLevel)
         m_queuedEvents.append(WTFMove(event));
     else
@@ -53,10 +54,7 @@ void ScopedEventQueue::enqueueEvent(Ref<Event>&& event)
 
 void ScopedEventQueue::dispatchEvent(Event& event) const
 {
-    ASSERT(event.target());
-    // Store the target in a local variable to avoid possibly dereferencing a nullified PassRefPtr after it's passed on.
-    Node* node = event.target()->toNode();
-    EventDispatcher::dispatchEvent(*node, event);
+    downcast<Node>(*event.target()).dispatchEvent(event);
 }
 
 void ScopedEventQueue::dispatchAllEvents()

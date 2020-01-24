@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef MockTracks_h
-#define MockTracks_h
+#pragma once
 
 #if ENABLE(MEDIA_SOURCE)
 
@@ -37,59 +36,57 @@ namespace WebCore {
 
 class MockAudioTrackPrivate : public AudioTrackPrivate {
 public:
-    static RefPtr<MockAudioTrackPrivate> create(const MockTrackBox& box) { return adoptRef(new MockAudioTrackPrivate(box)); }
-    virtual ~MockAudioTrackPrivate() { }
+    static Ref<MockAudioTrackPrivate> create(const MockTrackBox& box) { return adoptRef(*new MockAudioTrackPrivate(box)); }
+    virtual ~MockAudioTrackPrivate() = default;
 
-    virtual AtomicString id() const { return m_id; }
+    virtual AtomString id() const { return m_id; }
 
 protected:
     MockAudioTrackPrivate(const MockTrackBox& box)
         : m_box(box)
-        , m_id(String::format("%d", box.trackID()))
+        , m_id(AtomString::number(box.trackID()))
     {
     }
     MockTrackBox m_box;
-    AtomicString m_id;
+    AtomString m_id;
 };
 
 class MockTextTrackPrivate : public InbandTextTrackPrivate {
 public:
-    static RefPtr<MockTextTrackPrivate> create(const MockTrackBox& box) { return adoptRef(new MockTextTrackPrivate(box)); }
-    virtual ~MockTextTrackPrivate() { }
+    static Ref<MockTextTrackPrivate> create(const MockTrackBox& box) { return adoptRef(*new MockTextTrackPrivate(box)); }
+    virtual ~MockTextTrackPrivate() = default;
 
-    virtual AtomicString id() const { return m_id; }
+    virtual AtomString id() const { return m_id; }
 
 protected:
     MockTextTrackPrivate(const MockTrackBox& box)
         : InbandTextTrackPrivate(InbandTextTrackPrivate::Generic)
         , m_box(box)
-        , m_id(String::format("%d", box.trackID()))
+        , m_id(AtomString::number(box.trackID()))
     {
     }
     MockTrackBox m_box;
-    AtomicString m_id;
+    AtomString m_id;
 };
 
 
 class MockVideoTrackPrivate : public VideoTrackPrivate {
 public:
-    static RefPtr<MockVideoTrackPrivate> create(const MockTrackBox& box) { return adoptRef(new MockVideoTrackPrivate(box)); }
-    virtual ~MockVideoTrackPrivate() { }
+    static Ref<MockVideoTrackPrivate> create(const MockTrackBox& box) { return adoptRef(*new MockVideoTrackPrivate(box)); }
+    virtual ~MockVideoTrackPrivate() = default;
 
-    virtual AtomicString id() const { return m_id; }
+    virtual AtomString id() const { return m_id; }
 
 protected:
     MockVideoTrackPrivate(const MockTrackBox& box)
         : m_box(box)
-        , m_id(String::format("%d", box.trackID()))
+        , m_id(AtomString::number(box.trackID()))
     {
     }
     MockTrackBox m_box;
-    AtomicString m_id;
+    AtomString m_id;
 };
 
 }
-
-#endif
 
 #endif

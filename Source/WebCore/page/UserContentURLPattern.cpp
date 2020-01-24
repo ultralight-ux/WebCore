@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,9 +26,9 @@
 #include "config.h"
 #include "UserContentURLPattern.h"
 
-#include "URL.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/URL.h>
 
 namespace WebCore {
 
@@ -63,7 +63,7 @@ bool UserContentURLPattern::matchesPatterns(const URL& url, const Vector<String>
 
 bool UserContentURLPattern::parse(const String& pattern)
 {
-    static NeverDestroyed<const String> schemeSeparator(ASCIILiteral("://"));
+    static NeverDestroyed<const String> schemeSeparator(MAKE_STATIC_STRING_IMPL("://"));
 
     size_t schemeEndPos = pattern.find(schemeSeparator);
     if (schemeEndPos == notFound)
@@ -125,7 +125,7 @@ bool UserContentURLPattern::matches(const URL& test) const
 
 bool UserContentURLPattern::matchesHost(const URL& test) const
 {
-    const String& host = test.host();
+    auto host = test.host();
     if (equalIgnoringASCIICase(host, m_host))
         return true;
 
@@ -138,7 +138,7 @@ bool UserContentURLPattern::matchesHost(const URL& test) const
         return true;
 
     // Check if the domain is a subdomain of our host.
-    if (!host.endsWith(m_host, false))
+    if (!host.endsWithIgnoringASCIICase(m_host))
         return false;
 
     ASSERT(host.length() > m_host.length());

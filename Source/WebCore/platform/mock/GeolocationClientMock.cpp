@@ -61,9 +61,9 @@ void GeolocationClientMock::setController(GeolocationController *controller)
     m_controller = controller;
 }
 
-void GeolocationClientMock::setPosition(PassRefPtr<GeolocationPosition> position)
+void GeolocationClientMock::setPosition(GeolocationPosition&& position)
 {
-    m_lastPosition = position;
+    m_lastPosition = WTFMove(position);
     clearError();
     asyncUpdateController();
 }
@@ -72,7 +72,7 @@ void GeolocationClientMock::setPositionUnavailableError(const String& errorMessa
 {
     m_hasError = true;
     m_errorMessage = errorMessage;
-    m_lastPosition = nullptr;
+    m_lastPosition = WTF::nullopt;
     asyncUpdateController();
 }
 
@@ -87,17 +87,17 @@ int GeolocationClientMock::numberOfPendingPermissionRequests() const
     return m_pendingPermission.size();
 }
 
-void GeolocationClientMock::requestPermission(Geolocation* geolocation)
+void GeolocationClientMock::requestPermission(Geolocation& geolocation)
 {
-    m_pendingPermission.add(geolocation);
+    m_pendingPermission.add(&geolocation);
     if (m_permissionState != PermissionStateUnset)
         asyncUpdatePermission();
 }
 
-void GeolocationClientMock::cancelPermissionRequest(Geolocation* geolocation)
+void GeolocationClientMock::cancelPermissionRequest(Geolocation& geolocation)
 {
     // Called from Geolocation::disconnectFrame() in response to Frame destruction.
-    m_pendingPermission.remove(geolocation);
+    m_pendingPermission.remove(&geolocation);
     if (m_pendingPermission.isEmpty() && m_permissionTimer.isActive())
         m_permissionTimer.stop();
 }
@@ -106,7 +106,7 @@ void GeolocationClientMock::asyncUpdatePermission()
 {
     ASSERT(m_permissionState != PermissionStateUnset);
     if (!m_permissionTimer.isActive())
-        m_permissionTimer.startOneShot(0);
+        m_permissionTimer.startOneShot(0_s);
 }
 
 void GeolocationClientMock::permissionTimerFired()
@@ -126,7 +126,7 @@ void GeolocationClientMock::permissionTimerFired()
 
 void GeolocationClientMock::reset()
 {
-    m_lastPosition = nullptr;
+    m_lastPosition = WTF::nullopt;
     clearError();
     m_permissionState = PermissionStateUnset;
 }
@@ -156,27 +156,27 @@ void GeolocationClientMock::setEnableHighAccuracy(bool)
     // See https://bugs.webkit.org/show_bug.cgi?id=49438
 }
 
-GeolocationPosition* GeolocationClientMock::lastPosition()
+Optional<GeolocationPosition> GeolocationClientMock::lastPosition()
 {
-    return m_lastPosition.get();
+    return m_lastPosition;
 }
 
 void GeolocationClientMock::asyncUpdateController()
 {
     ASSERT(m_controller);
     if (m_isActive && !m_controllerTimer.isActive())
-        m_controllerTimer.startOneShot(0);
+        m_controllerTimer.startOneShot(0_s);
 }
 
 void GeolocationClientMock::controllerTimerFired()
 {
     ASSERT(m_controller);
 
-    if (m_lastPosition.get()) {
+    if (m_lastPosition) {
         ASSERT(!m_hasError);
-        m_controller->positionChanged(m_lastPosition.get());
+        m_controller->positionChanged(*m_lastPosition);
     } else if (m_hasError) {
-        RefPtr<GeolocationError> geolocatioError = GeolocationError::create(GeolocationError::PositionUnavailable, m_errorMessage);
+        auto geolocatioError = GeolocationError::create(GeolocationError::PositionUnavailable, m_errorMessage);
         m_controller->errorOccurred(geolocatioError.get());
     }
 }

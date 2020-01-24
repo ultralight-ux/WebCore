@@ -37,7 +37,7 @@ namespace WebCore {
 namespace ContentExtensions {
 
 class DFAMerger {
-    typedef MutableRangeList<char, uint64_t, 128> CombinedTransitionsMutableRangeList;
+    typedef MutableRangeList<signed char, uint64_t, 128> CombinedTransitionsMutableRangeList;
 
     enum class WhichDFA {
         A,
@@ -184,7 +184,7 @@ private:
     Vector<uint64_t, 0, ContentExtensionsOverflowHandler> m_unprocessedNodes;
 };
 
-void DFACombiner::combineDFAs(unsigned minimumSize, std::function<void(DFA&&)> handler)
+void DFACombiner::combineDFAs(unsigned minimumSize, const WTF::Function<void(DFA&&)>& handler)
 {
     if (m_dfas.isEmpty())
         return;

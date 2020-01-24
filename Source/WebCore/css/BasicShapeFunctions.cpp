@@ -40,12 +40,12 @@
 
 namespace WebCore {
 
-static Ref<CSSPrimitiveValue> valueForCenterCoordinate(CSSValuePool& pool, const RenderStyle& style, const BasicShapeCenterCoordinate& center, EBoxOrient orientation)
+static Ref<CSSPrimitiveValue> valueForCenterCoordinate(CSSValuePool& pool, const RenderStyle& style, const BasicShapeCenterCoordinate& center, BoxOrient orientation)
 {
     if (center.direction() == BasicShapeCenterCoordinate::TopLeft)
         return pool.createValue(center.length(), style);
 
-    CSSValueID keyword = orientation == HORIZONTAL ? CSSValueRight : CSSValueBottom;
+    CSSValueID keyword = orientation == BoxOrient::Horizontal ? CSSValueRight : CSSValueBottom;
 
     return pool.createValue(Pair::create(pool.createIdentifierValue(keyword), pool.createValue(center.length(), style)));
 }
@@ -75,8 +75,8 @@ Ref<CSSPrimitiveValue> valueForBasicShape(const RenderStyle& style, const BasicS
         auto& circle = downcast<BasicShapeCircle>(basicShape);
         auto circleValue = CSSBasicShapeCircle::create();
 
-        circleValue->setCenterX(valueForCenterCoordinate(cssValuePool, style, circle.centerX(), HORIZONTAL));
-        circleValue->setCenterY(valueForCenterCoordinate(cssValuePool, style, circle.centerY(), VERTICAL));
+        circleValue->setCenterX(valueForCenterCoordinate(cssValuePool, style, circle.centerX(), BoxOrient::Horizontal));
+        circleValue->setCenterY(valueForCenterCoordinate(cssValuePool, style, circle.centerY(), BoxOrient::Vertical));
         circleValue->setRadius(basicShapeRadiusToCSSValue(style, cssValuePool, circle.radius()));
 
         basicShapeValue = WTFMove(circleValue);
@@ -86,8 +86,8 @@ Ref<CSSPrimitiveValue> valueForBasicShape(const RenderStyle& style, const BasicS
         auto& ellipse = downcast<BasicShapeEllipse>(basicShape);
         auto ellipseValue = CSSBasicShapeEllipse::create();
 
-        ellipseValue->setCenterX(valueForCenterCoordinate(cssValuePool, style, ellipse.centerX(), HORIZONTAL));
-        ellipseValue->setCenterY(valueForCenterCoordinate(cssValuePool, style, ellipse.centerY(), VERTICAL));
+        ellipseValue->setCenterX(valueForCenterCoordinate(cssValuePool, style, ellipse.centerX(), BoxOrient::Horizontal));
+        ellipseValue->setCenterY(valueForCenterCoordinate(cssValuePool, style, ellipse.centerY(), BoxOrient::Vertical));
         ellipseValue->setRadiusX(basicShapeRadiusToCSSValue(style, cssValuePool, ellipse.radiusX()));
         ellipseValue->setRadiusY(basicShapeRadiusToCSSValue(style, cssValuePool, ellipse.radiusY()));
 
@@ -144,18 +144,16 @@ static Length convertToLength(const CSSToLengthConversionData& conversionData, c
 static LengthSize convertToLengthSize(const CSSToLengthConversionData& conversionData, const CSSPrimitiveValue* value)
 {
     if (!value)
-        return LengthSize(Length(0, Fixed), Length(0, Fixed));
+        return { { 0, Fixed }, { 0, Fixed } };
 
-    Pair* pair = value->pairValue();
-    return LengthSize(convertToLength(conversionData, pair->first()), convertToLength(conversionData, pair->second()));
+    auto& pair = *value->pairValue();
+    return { convertToLength(conversionData, pair.first()), convertToLength(conversionData, pair.second()) };
 }
 
 static BasicShapeCenterCoordinate convertToCenterCoordinate(const CSSToLengthConversionData& conversionData, CSSPrimitiveValue* value)
 {
-    BasicShapeCenterCoordinate::Direction direction;
-    Length offset = Length(0, Fixed);
-
     CSSValueID keyword = CSSValueTop;
+    Length offset { 0, Fixed };
     if (!value)
         keyword = CSSValueCenter;
     else if (value->isValueID())
@@ -166,6 +164,7 @@ static BasicShapeCenterCoordinate convertToCenterCoordinate(const CSSToLengthCon
     } else
         offset = convertToLength(conversionData, value);
 
+    BasicShapeCenterCoordinate::Direction direction;
     switch (keyword) {
     case CSSValueTop:
     case CSSValueLeft:

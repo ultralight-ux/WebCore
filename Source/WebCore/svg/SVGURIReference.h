@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008, 2009 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,19 +23,26 @@
 
 #include "Document.h"
 #include "QualifiedName.h"
+#include "SVGPropertyOwnerRegistry.h"
 
 namespace WebCore {
 
-class SVGURIReference {
-public:
-    virtual ~SVGURIReference() { }
+class SVGElement;
 
-    void parseAttribute(const QualifiedName&, const AtomicString&);
-    static bool isKnownAttribute(const QualifiedName&);
-    static void addSupportedAttributes(HashSet<QualifiedName>&);
+class SVGURIReference {
+    WTF_MAKE_NONCOPYABLE(SVGURIReference);
+public:
+    virtual ~SVGURIReference() = default;
+
+    void parseAttribute(const QualifiedName&, const AtomString&);
 
     static String fragmentIdentifierFromIRIString(const String&, const Document&);
-    static Element* targetElementFromIRIString(const String&, const Document&, String* fragmentIdentifier = nullptr, const Document* externalDocument = nullptr);
+
+    struct TargetElementResult {
+        RefPtr<Element> element;
+        String identifier;
+    };
+    static TargetElementResult targetElementFromIRIString(const String&, const TreeScope&, RefPtr<Document> externalDocument = nullptr);
 
     static bool isExternalURIReference(const String& uri, const Document& document)
     {
@@ -48,9 +56,18 @@ public:
         return !equalIgnoringFragmentIdentifier(url, document.url());
     }
 
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGURIReference>;
+
+    String href() const { return m_href->currentValue(); }
+    SVGAnimatedString& hrefAnimated() { return m_href; }
+
 protected:
-    virtual String& hrefBaseValue() const = 0;
-    virtual void setHrefBaseValue(const String&, const bool validValue = true) = 0;
+    SVGURIReference(SVGElement* contextElement);
+
+    static bool isKnownAttribute(const QualifiedName& attributeName);
+
+private:
+    Ref<SVGAnimatedString> m_href;
 };
 
 } // namespace WebCore

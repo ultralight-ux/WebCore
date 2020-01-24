@@ -37,7 +37,6 @@
 #include "JSCInlines.h"
 #include "JSJavaScriptCallFrame.h"
 #include "JavaScriptCallFrame.h"
-#include "ScriptValue.h"
 #include "SourceProvider.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/SetForScope.h>
@@ -89,29 +88,29 @@ void ScriptDebugServer::clearBreakpointActions()
 
 bool ScriptDebugServer::evaluateBreakpointAction(const ScriptBreakpointAction& breakpointAction)
 {
-    DebuggerCallFrame* debuggerCallFrame = currentDebuggerCallFrame();
+    DebuggerCallFrame& debuggerCallFrame = currentDebuggerCallFrame();
 
     switch (breakpointAction.type) {
     case ScriptBreakpointActionTypeLog: {
-        dispatchBreakpointActionLog(debuggerCallFrame->globalExec(), breakpointAction.data);
+        dispatchBreakpointActionLog(debuggerCallFrame.globalExec(), breakpointAction.data);
         break;
     }
     case ScriptBreakpointActionTypeEvaluate: {
         NakedPtr<Exception> exception;
         JSObject* scopeExtensionObject = nullptr;
-        debuggerCallFrame->evaluateWithScopeExtension(breakpointAction.data, scopeExtensionObject, exception);
+        debuggerCallFrame.evaluateWithScopeExtension(breakpointAction.data, scopeExtensionObject, exception);
         if (exception)
-            reportException(debuggerCallFrame->globalExec(), exception);
+            reportException(debuggerCallFrame.globalExec(), exception);
         break;
     }
     case ScriptBreakpointActionTypeSound:
-        dispatchBreakpointActionSound(debuggerCallFrame->globalExec(), breakpointAction.identifier);
+        dispatchBreakpointActionSound(debuggerCallFrame.globalExec(), breakpointAction.identifier);
         break;
     case ScriptBreakpointActionTypeProbe: {
         NakedPtr<Exception> exception;
         JSObject* scopeExtensionObject = nullptr;
-        JSValue result = debuggerCallFrame->evaluateWithScopeExtension(breakpointAction.data, scopeExtensionObject, exception);
-        JSC::ExecState* exec = debuggerCallFrame->globalExec();
+        JSValue result = debuggerCallFrame.evaluateWithScopeExtension(breakpointAction.data, scopeExtensionObject, exception);
+        JSC::ExecState* exec = debuggerCallFrame.globalExec();
         if (exception)
             reportException(exec, exception);
 
@@ -128,8 +127,8 @@ bool ScriptDebugServer::evaluateBreakpointAction(const ScriptBreakpointAction& b
 void ScriptDebugServer::dispatchDidPause(ScriptDebugListener* listener)
 {
     ASSERT(isPaused());
-    DebuggerCallFrame* debuggerCallFrame = currentDebuggerCallFrame();
-    JSGlobalObject* globalObject = debuggerCallFrame->scope()->globalObject();
+    DebuggerCallFrame& debuggerCallFrame = currentDebuggerCallFrame();
+    JSGlobalObject* globalObject = debuggerCallFrame.scope()->globalObject();
     JSC::ExecState& state = *globalObject->globalExec();
     JSValue jsCallFrame = toJS(&state, globalObject, JavaScriptCallFrame::create(debuggerCallFrame).ptr());
     listener->didPause(state, jsCallFrame, exceptionOrCaughtValue(&state));
@@ -145,9 +144,7 @@ void ScriptDebugServer::dispatchBreakpointActionLog(ExecState* exec, const Strin
 
     SetForScope<bool> change(m_callingListeners, true);
 
-    Vector<ScriptDebugListener*> listenersCopy;
-    copyToVector(m_listeners, listenersCopy);
-    for (auto* listener : listenersCopy)
+    for (auto* listener : copyToVector(m_listeners))
         listener->breakpointActionLog(*exec, message);
 }
 
@@ -161,9 +158,7 @@ void ScriptDebugServer::dispatchBreakpointActionSound(ExecState*, int breakpoint
 
     SetForScope<bool> change(m_callingListeners, true);
 
-    Vector<ScriptDebugListener*> listenersCopy;
-    copyToVector(m_listeners, listenersCopy);
-    for (auto* listener : listenersCopy)
+    for (auto* listener : copyToVector(m_listeners))
         listener->breakpointActionSound(breakpointActionIdentifier);
 }
 
@@ -179,9 +174,7 @@ void ScriptDebugServer::dispatchBreakpointActionProbe(ExecState* exec, const Scr
 
     unsigned sampleId = m_nextProbeSampleId++;
 
-    Vector<ScriptDebugListener*> listenersCopy;
-    copyToVector(m_listeners, listenersCopy);
-    for (auto* listener : listenersCopy)
+    for (auto* listener : copyToVector(m_listeners))
         listener->breakpointActionProbe(*exec, action, m_currentProbeBatchId, sampleId, sampleValue);
 }
 
@@ -202,8 +195,8 @@ void ScriptDebugServer::dispatchDidParseSource(const ListenerSet& listeners, Sou
     script.startLine = sourceProvider->startPosition().m_line.zeroBasedInt();
     script.startColumn = sourceProvider->startPosition().m_column.zeroBasedInt();
     script.isContentScript = isContentScript;
-    script.sourceURL = sourceProvider->sourceURL();
-    script.sourceMappingURL = sourceProvider->sourceMappingURL();
+    script.sourceURL = sourceProvider->sourceURLDirective();
+    script.sourceMappingURL = sourceProvider->sourceMappingURLDirective();
 
     int sourceLength = script.source.length();
     int lineCount = 1;
@@ -221,10 +214,8 @@ void ScriptDebugServer::dispatchDidParseSource(const ListenerSet& listeners, Sou
     else
         script.endColumn = sourceLength - lastLineStart;
 
-    Vector<ScriptDebugListener*> copy;
-    copyToVector(listeners, copy);
-    for (size_t i = 0; i < copy.size(); ++i)
-        copy[i]->didParseSource(sourceID, script);
+    for (auto* listener : copyToVector(listeners))
+        listener->didParseSource(sourceID, script);
 }
 
 void ScriptDebugServer::dispatchFailedToParseSource(const ListenerSet& listeners, SourceProvider* sourceProvider, int errorLine, const String& errorMessage)
@@ -233,10 +224,8 @@ void ScriptDebugServer::dispatchFailedToParseSource(const ListenerSet& listeners
     String data = sourceProvider->source().toString();
     int firstLine = sourceProvider->startPosition().m_line.oneBasedInt();
 
-    Vector<ScriptDebugListener*> copy;
-    copyToVector(listeners, copy);
-    for (size_t i = 0; i < copy.size(); ++i)
-        copy[i]->failedToParseSource(url, data, firstLine, errorLine, errorMessage);
+    for (auto* listener : copyToVector(listeners))
+        listener->failedToParseSource(url, data, firstLine, errorLine, errorMessage);
 }
 
 void ScriptDebugServer::sourceParsed(ExecState* exec, SourceProvider* sourceProvider, int errorLine, const String& errorMessage)
@@ -271,10 +260,8 @@ void ScriptDebugServer::dispatchFunctionToListeners(JavaScriptExecutionCallback 
 
 void ScriptDebugServer::dispatchFunctionToListeners(const ListenerSet& listeners, JavaScriptExecutionCallback callback)
 {
-    Vector<ScriptDebugListener*> copy;
-    copyToVector(listeners, copy);
-    for (size_t i = 0; i < copy.size(); ++i)
-        (this->*callback)(copy[i]);
+    for (auto* listener : copyToVector(listeners))
+        (this->*callback)(listener);
 }
 
 void ScriptDebugServer::notifyDoneProcessingDebuggerEvents()
@@ -345,7 +332,7 @@ JSC::JSValue ScriptDebugServer::exceptionOrCaughtValue(JSC::ExecState* state)
     if (reasonForPause() == PausedForException)
         return currentException();
 
-    for (RefPtr<DebuggerCallFrame> frame = currentDebuggerCallFrame(); frame; frame = frame->callerFrame()) {
+    for (RefPtr<DebuggerCallFrame> frame = &currentDebuggerCallFrame(); frame; frame = frame->callerFrame()) {
         DebuggerScope& scope = *frame->scope();
         if (scope.isCatchScope())
             return scope.caughtValue(state);

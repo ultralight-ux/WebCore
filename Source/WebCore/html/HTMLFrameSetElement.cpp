@@ -3,7 +3,7 @@
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Simon Hausmann (hausmann@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2006, 2009, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,21 +25,26 @@
 #include "HTMLFrameSetElement.h"
 
 #include "CSSPropertyNames.h"
+#include "DOMWrapperWorld.h"
 #include "Document.h"
 #include "ElementIterator.h"
 #include "Event.h"
-#include "EventNames.h"
 #include "Frame.h"
 #include "FrameLoader.h"
 #include "FrameLoaderClient.h"
 #include "HTMLBodyElement.h"
+#include "HTMLCollection.h"
+#include "HTMLFrameElement.h"
 #include "HTMLNames.h"
 #include "Length.h"
 #include "MouseEvent.h"
 #include "RenderFrameSet.h"
 #include "Text.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLFrameSetElement);
 
 using namespace HTMLNames;
 
@@ -70,7 +75,7 @@ bool HTMLFrameSetElement::isPresentationAttribute(const QualifiedName& name) con
     return HTMLElement::isPresentationAttribute(name);
 }
 
-void HTMLFrameSetElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStyleProperties& style)
+void HTMLFrameSetElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == bordercolorAttr)
         addHTMLColorToStyle(style, CSSPropertyBorderColor, value);
@@ -78,7 +83,7 @@ void HTMLFrameSetElement::collectStyleForPresentationAttribute(const QualifiedNa
         HTMLElement::collectStyleForPresentationAttribute(name, value, style);
 }
 
-void HTMLFrameSetElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void HTMLFrameSetElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     if (name == rowsAttr) {
         // FIXME: What is the right thing to do when removing this attribute?
@@ -143,7 +148,7 @@ void HTMLFrameSetElement::parseAttribute(const QualifiedName& name, const Atomic
 
     auto& eventName = HTMLBodyElement::eventNameForWindowEventHandlerAttribute(name);
     if (!eventName.isNull()) {
-        document().setWindowAttributeEventListener(eventName, name, value);
+        document().setWindowAttributeEventListener(eventName, name, value, mainThreadNormalWorld());
         return;
     }
 
@@ -154,7 +159,7 @@ bool HTMLFrameSetElement::rendererIsNeeded(const RenderStyle& style)
 {
     // For compatibility, frames render even when display: none is set.
     // However, we delay creating a renderer until stylesheets have loaded. 
-    return !style.isPlaceholderStyle();
+    return !style.isNotFinal();
 }
 
 RenderPtr<RenderElement> HTMLFrameSetElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
@@ -165,7 +170,7 @@ RenderPtr<RenderElement> HTMLFrameSetElement::createElementRenderer(RenderStyle&
     return createRenderer<RenderFrameSet>(*this, WTFMove(style));
 }
 
-HTMLFrameSetElement* HTMLFrameSetElement::findContaining(Element* descendant)
+RefPtr<HTMLFrameSetElement> HTMLFrameSetElement::findContaining(Element* descendant)
 {
     return ancestorsOfType<HTMLFrameSetElement>(*descendant).first();
 }
@@ -174,7 +179,7 @@ void HTMLFrameSetElement::willAttachRenderers()
 {
     // Inherit default settings from parent frameset.
     // FIXME: This is not dynamic.
-    const HTMLFrameSetElement* containingFrameSet = findContaining(this);
+    const auto containingFrameSet = findContaining(this);
     if (!containingFrameSet)
         return;
     if (!m_frameborderSet)
@@ -206,24 +211,40 @@ void HTMLFrameSetElement::willRecalcStyle(Style::Change)
         renderer()->setNeedsLayout();
 }
 
-Node::InsertionNotificationRequest HTMLFrameSetElement::insertedInto(ContainerNode& insertionPoint)
+Node::InsertedIntoAncestorResult HTMLFrameSetElement::insertedIntoAncestor(InsertionType insertionType, ContainerNode& parentOfInsertedTree)
 {
-    HTMLElement::insertedInto(insertionPoint);
-    if (insertionPoint.inDocument()) {
-        if (Frame* frame = document().frame())
+    HTMLElement::insertedIntoAncestor(insertionType, parentOfInsertedTree);
+    if (insertionType.connectedToDocument) {
+        if (RefPtr<Frame> frame = document().frame())
             frame->loader().client().dispatchDidBecomeFrameset(document().isFrameSet());
     }
 
-    return InsertionDone;
+    return InsertedIntoAncestorResult::Done;
 }
 
-void HTMLFrameSetElement::removedFrom(ContainerNode& insertionPoint)
+void HTMLFrameSetElement::removedFromAncestor(RemovalType removalType, ContainerNode& oldParentOfRemovedTree)
 {
-    HTMLElement::removedFrom(insertionPoint);
-    if (insertionPoint.inDocument()) {
-        if (Frame* frame = document().frame())
+    HTMLElement::removedFromAncestor(removalType, oldParentOfRemovedTree);
+    if (removalType.disconnectedFromDocument) {
+        if (RefPtr<Frame> frame = document().frame())
             frame->loader().client().dispatchDidBecomeFrameset(document().isFrameSet());
     }
+}
+
+WindowProxy* HTMLFrameSetElement::namedItem(const AtomString& name)
+{
+    auto frameElement = makeRefPtr(children()->namedItem(name));
+    if (!is<HTMLFrameElement>(frameElement))
+        return nullptr;
+
+    return downcast<HTMLFrameElement>(*frameElement).contentWindow();
+}
+
+Vector<AtomString> HTMLFrameSetElement::supportedPropertyNames() const
+{
+    // NOTE: Left empty as no specification defines this named getter and we
+    //       have not historically exposed these named items for enumeration.
+    return { };
 }
 
 } // namespace WebCore

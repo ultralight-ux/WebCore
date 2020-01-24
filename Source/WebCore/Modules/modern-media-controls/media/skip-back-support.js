@@ -23,8 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-const SkipBackSeconds = 30;
-
 class SkipBackSupport extends MediaControllerSupport
 {
 
@@ -35,10 +33,20 @@ class SkipBackSupport extends MediaControllerSupport
         return this.mediaController.controls.skipBackButton;
     }
 
+    get mediaEvents()
+    {
+        return ["durationchange"];
+    }
+
     buttonWasPressed(control)
     {
         const media = this.mediaController.media;
-        media.currentTime = Math.max(media.currentTime - SkipBackSeconds, media.seekable.start(0));
+        media.currentTime = Math.max(media.currentTime - SkipSeconds, media.seekable.start(0));
+    }
+
+    syncControl()
+    {
+        this.control.enabled = this.mediaController.media.duration !== Number.POSITIVE_INFINITY;
     }
 
 }

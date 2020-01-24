@@ -27,8 +27,11 @@
 #include "RenderSVGText.h"
 #include "SVGInlineFlowBox.h"
 #include "SVGResourcesCache.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderSVGInline);
     
 RenderSVGInline::RenderSVGInline(SVGGraphicsElement& element, RenderStyle&& style)
     : RenderInline(element, WTFMove(style))
@@ -40,7 +43,7 @@ std::unique_ptr<InlineFlowBox> RenderSVGInline::createInlineFlowBox()
 {
     auto box = std::make_unique<SVGInlineFlowBox>(*this);
     box->setHasVirtualLogicalHeight();
-    return WTFMove(box);
+    return box;
 }
 
 FloatRect RenderSVGInline::objectBoundingBox() const
@@ -72,9 +75,9 @@ LayoutRect RenderSVGInline::clippedOverflowRectForRepaint(const RenderLayerModel
     return SVGRenderSupport::clippedOverflowRectForRepaint(*this, repaintContainer);
 }
 
-FloatRect RenderSVGInline::computeFloatRectForRepaint(const FloatRect& repaintRect, const RenderLayerModelObject* repaintContainer, bool fixed) const
+Optional<FloatRect> RenderSVGInline::computeFloatVisibleRectInContainer(const FloatRect& rect, const RenderLayerModelObject* container, VisibleRectContext context) const
 {
-    return SVGRenderSupport::computeFloatRectForRepaint(*this, repaintRect, repaintContainer, fixed);
+    return SVGRenderSupport::computeFloatVisibleRectInContainer(*this, rect, container, context);
 }
 
 void RenderSVGInline::mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState& transformState, MapCoordinatesFlags, bool* wasFixed) const
@@ -106,7 +109,7 @@ void RenderSVGInline::willBeDestroyed()
 
 void RenderSVGInline::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
 {
-    if (diff == StyleDifferenceLayout)
+    if (diff == StyleDifference::Layout)
         setNeedsBoundariesUpdate();
     RenderInline::styleDidChange(diff, oldStyle);
     SVGResourcesCache::clientStyleChanged(*this, diff, style());
@@ -118,31 +121,6 @@ void RenderSVGInline::updateFromStyle()
 
     // SVG text layout code expects us to be an inline-level element.
     setInline(true);
-}
-
-void RenderSVGInline::addChild(RenderObject* child, RenderObject* beforeChild)
-{
-    RenderInline::addChild(child, beforeChild);
-    SVGResourcesCache::clientWasAddedToTree(*child);
-
-    if (auto* textAncestor = RenderSVGText::locateRenderSVGTextAncestor(*this))
-        textAncestor->subtreeChildWasAdded(child);
-}
-
-void RenderSVGInline::removeChild(RenderObject& child)
-{
-    SVGResourcesCache::clientWillBeRemovedFromTree(child);
-
-    auto* textAncestor = RenderSVGText::locateRenderSVGTextAncestor(*this);
-    if (!textAncestor) {
-        RenderInline::removeChild(child);
-        return;
-    }
-
-    Vector<SVGTextLayoutAttributes*, 2> affectedAttributes;
-    textAncestor->subtreeChildWillBeRemoved(&child, affectedAttributes);
-    RenderInline::removeChild(child);
-    textAncestor->subtreeChildWasRemoved(affectedAttributes);
 }
 
 }

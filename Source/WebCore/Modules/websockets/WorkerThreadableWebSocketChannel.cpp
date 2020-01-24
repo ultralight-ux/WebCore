@@ -29,13 +29,11 @@
  */
 
 #include "config.h"
-
-#if ENABLE(WEB_SOCKETS)
-
 #include "WorkerThreadableWebSocketChannel.h"
 
 #include "Blob.h"
 #include "Document.h"
+#include "FrameLoader.h"
 #include "ScriptExecutionContext.h"
 #include "SocketProvider.h"
 #include "ThreadableWebSocketChannelClientWrapper.h"
@@ -45,7 +43,7 @@
 #include "WorkerLoaderProxy.h"
 #include "WorkerRunLoop.h"
 #include "WorkerThread.h"
-#include <runtime/ArrayBuffer.h>
+#include <JavaScriptCore/ArrayBuffer.h>
 #include <wtf/MainThread.h>
 #include <wtf/text/WTFString.h>
 
@@ -66,10 +64,12 @@ WorkerThreadableWebSocketChannel::~WorkerThreadableWebSocketChannel()
         m_bridge->disconnect();
 }
 
-void WorkerThreadableWebSocketChannel::connect(const URL& url, const String& protocol)
+WorkerThreadableWebSocketChannel::ConnectStatus WorkerThreadableWebSocketChannel::connect(const URL& url, const String& protocol)
 {
     if (m_bridge)
         m_bridge->connect(url, protocol);
+    // connect is called asynchronously, so we do not have any possibility for synchronous errors.
+    return ConnectStatus::OK;
 }
 
 String WorkerThreadableWebSocketChannel::subprotocol()
@@ -158,12 +158,12 @@ WorkerThreadableWebSocketChannel::Peer::~Peer()
         m_mainWebSocketChannel->disconnect();
 }
 
-void WorkerThreadableWebSocketChannel::Peer::connect(const URL& url, const String& protocol)
+WorkerThreadableWebSocketChannel::ConnectStatus WorkerThreadableWebSocketChannel::Peer::connect(const URL& url, const String& protocol)
 {
     ASSERT(isMainThread());
     if (!m_mainWebSocketChannel)
-        return;
-    m_mainWebSocketChannel->connect(url, protocol);
+        return WorkerThreadableWebSocketChannel::ConnectStatus::KO;
+    return m_mainWebSocketChannel->connect(url, protocol);
 }
 
 void WorkerThreadableWebSocketChannel::Peer::send(const String& message)
@@ -403,10 +403,22 @@ void WorkerThreadableWebSocketChannel::Bridge::connect(const URL& url, const Str
 
     m_loaderProxy.postTaskToLoader([peer = m_peer, url = url.isolatedCopy(), protocol = protocol.isolatedCopy()](ScriptExecutionContext& context) {
         ASSERT(isMainThread());
-        ASSERT_UNUSED(context, context.isDocument());
+        ASSERT(context.isDocument());
         ASSERT(peer);
 
-        peer->connect(url, protocol);
+        auto& document = downcast<Document>(context);
+        
+        // FIXME: make this mixed content check equivalent to the document mixed content check currently in WebSocket::connect()
+        if (document.frame()) {
+            Optional<String> errorString = document.frame()->loader().mixedContentChecker().checkForMixedContentInFrameTree(url);
+            if (errorString) {
+                peer->fail(errorString.value());
+                return;
+            }
+        }
+
+        if (peer->connect(url, protocol) == ThreadableWebSocketChannel::ConnectStatus::KO)
+            peer->didReceiveMessageError();
     });
 }
 
@@ -587,5 +599,3 @@ void WorkerThreadableWebSocketChannel::Bridge::waitForMethodCompletion()
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(WEB_SOCKETS)

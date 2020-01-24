@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,11 +25,11 @@
 
 #pragma once
 
+#include "DOMPasteAccess.h"
 #include <wtf/Function.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/Noncopyable.h>
-#include <wtf/Optional.h>
 #include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
@@ -42,35 +42,69 @@ enum ProcessingUserGestureState {
     NotProcessingUserGesture
 };
 
+enum class UserGestureType { EscapeKey, Other };
+
 class UserGestureToken : public RefCounted<UserGestureToken> {
 public:
-    static RefPtr<UserGestureToken> create(ProcessingUserGestureState state)
+    static Ref<UserGestureToken> create(ProcessingUserGestureState state, UserGestureType gestureType)
     {
-        return adoptRef(new UserGestureToken(state));
+        return adoptRef(*new UserGestureToken(state, gestureType));
     }
 
     WEBCORE_EXPORT ~UserGestureToken();
 
     ProcessingUserGestureState state() const { return m_state; }
-    bool processingUserGesture() const { return m_state == ProcessingUserGesture; }
+    bool processingUserGesture() const { return m_scope == GestureScope::All && m_state == ProcessingUserGesture; }
     bool processingUserGestureForMedia() const { return m_state == ProcessingUserGesture || m_state == ProcessingPotentialUserGesture; }
+    UserGestureType gestureType() const { return m_gestureType; }
 
     void addDestructionObserver(WTF::Function<void (UserGestureToken&)>&& observer)
     {
         m_destructionObservers.append(WTFMove(observer));
     }
 
+    DOMPasteAccessPolicy domPasteAccessPolicy() const { return m_domPasteAccessPolicy; }
+    void didRequestDOMPasteAccess(DOMPasteAccessResponse response)
+    {
+        switch (response) {
+        case DOMPasteAccessResponse::DeniedForGesture:
+            m_domPasteAccessPolicy = DOMPasteAccessPolicy::Denied;
+            break;
+        case DOMPasteAccessResponse::GrantedForCommand:
+            break;
+        case DOMPasteAccessResponse::GrantedForGesture:
+            m_domPasteAccessPolicy = DOMPasteAccessPolicy::Granted;
+            break;
+        }
+    }
+    void resetDOMPasteAccess() { m_domPasteAccessPolicy = DOMPasteAccessPolicy::NotRequestedYet; }
+
+    enum class GestureScope { All, MediaOnly };
+    void setScope(GestureScope scope) { m_scope = scope; }
+    void resetScope() { m_scope = GestureScope::All; }
+
+    bool hasExpired(Seconds expirationInterval) const
+    {
+        return m_startTime + expirationInterval < MonotonicTime::now();
+    }
+
 private:
-    UserGestureToken(ProcessingUserGestureState state)
+    UserGestureToken(ProcessingUserGestureState state, UserGestureType gestureType)
         : m_state(state)
+        , m_gestureType(gestureType)
     {
     }
 
     ProcessingUserGestureState m_state = NotProcessingUserGesture;
     Vector<WTF::Function<void (UserGestureToken&)>> m_destructionObservers;
+    UserGestureType m_gestureType;
+    DOMPasteAccessPolicy m_domPasteAccessPolicy { DOMPasteAccessPolicy::NotRequestedYet };
+    GestureScope m_scope { GestureScope::All };
+    MonotonicTime m_startTime { MonotonicTime::now() };
 };
 
 class UserGestureIndicator {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(UserGestureIndicator);
 public:
     WEBCORE_EXPORT static RefPtr<UserGestureToken> currentUserGesture();
@@ -79,8 +113,9 @@ public:
     WEBCORE_EXPORT static bool processingUserGestureForMedia();
 
     // If a document is provided, its last known user gesture timestamp is updated.
-    WEBCORE_EXPORT explicit UserGestureIndicator(std::optional<ProcessingUserGestureState>, Document* = nullptr);
-    WEBCORE_EXPORT explicit UserGestureIndicator(RefPtr<UserGestureToken>);
+    enum class ProcessInteractionStyle { Immediate, Delayed };
+    WEBCORE_EXPORT explicit UserGestureIndicator(Optional<ProcessingUserGestureState>, Document* = nullptr, UserGestureType = UserGestureType::Other, ProcessInteractionStyle = ProcessInteractionStyle::Immediate);
+    WEBCORE_EXPORT explicit UserGestureIndicator(RefPtr<UserGestureToken>, UserGestureToken::GestureScope = UserGestureToken::GestureScope::All);
     WEBCORE_EXPORT ~UserGestureIndicator();
 
 private:

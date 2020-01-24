@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,29 +26,23 @@
 #include "SVGFilterBuilder.h"
 #include "SVGNames.h"
 #include "SVGParserUtilities.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
-// Animated property definitions
-DEFINE_ANIMATED_STRING(SVGFEGaussianBlurElement, SVGNames::inAttr, In1, in1)
-DEFINE_ANIMATED_NUMBER_MULTIPLE_WRAPPERS(SVGFEGaussianBlurElement, SVGNames::stdDeviationAttr, stdDeviationXIdentifier(), StdDeviationX, stdDeviationX)
-DEFINE_ANIMATED_NUMBER_MULTIPLE_WRAPPERS(SVGFEGaussianBlurElement, SVGNames::stdDeviationAttr, stdDeviationYIdentifier(), StdDeviationY, stdDeviationY)
-DEFINE_ANIMATED_ENUMERATION(SVGFEGaussianBlurElement, SVGNames::edgeModeAttr, EdgeMode, edgeMode, EdgeModeType)
-
-BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGFEGaussianBlurElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(in1)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(stdDeviationX)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(stdDeviationY)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(edgeMode)
-    REGISTER_PARENT_ANIMATED_PROPERTIES(SVGFilterPrimitiveStandardAttributes)
-END_REGISTER_ANIMATED_PROPERTIES
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGFEGaussianBlurElement);
 
 inline SVGFEGaussianBlurElement::SVGFEGaussianBlurElement(const QualifiedName& tagName, Document& document)
     : SVGFilterPrimitiveStandardAttributes(tagName, document)
-    , m_edgeMode(EDGEMODE_NONE)
 {
     ASSERT(hasTagName(SVGNames::feGaussianBlurTag));
-    registerAnimatedPropertiesForSVGFEGaussianBlurElement();
+
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        PropertyRegistry::registerProperty<SVGNames::inAttr, &SVGFEGaussianBlurElement::m_in1>();
+        PropertyRegistry::registerProperty<SVGNames::stdDeviationAttr, &SVGFEGaussianBlurElement::m_stdDeviationX, &SVGFEGaussianBlurElement::m_stdDeviationY>();
+        PropertyRegistry::registerProperty<SVGNames::edgeModeAttr, EdgeModeType, &SVGFEGaussianBlurElement::m_edgeMode>();
+    });
 }
 
 Ref<SVGFEGaussianBlurElement> SVGFEGaussianBlurElement::create(const QualifiedName& tagName, Document& document)
@@ -55,45 +50,33 @@ Ref<SVGFEGaussianBlurElement> SVGFEGaussianBlurElement::create(const QualifiedNa
     return adoptRef(*new SVGFEGaussianBlurElement(tagName, document));
 }
 
-const AtomicString& SVGFEGaussianBlurElement::stdDeviationXIdentifier()
-{
-    static NeverDestroyed<AtomicString> s_identifier("SVGStdDeviationX", AtomicString::ConstructFromLiteral);
-    return s_identifier;
-}
-
-const AtomicString& SVGFEGaussianBlurElement::stdDeviationYIdentifier()
-{
-    static NeverDestroyed<AtomicString> s_identifier("SVGStdDeviationY", AtomicString::ConstructFromLiteral);
-    return s_identifier;
-}
-
 void SVGFEGaussianBlurElement::setStdDeviation(float x, float y)
 {
-    setStdDeviationXBaseValue(x);
-    setStdDeviationYBaseValue(y);
+    m_stdDeviationX->setBaseValInternal(x);
+    m_stdDeviationY->setBaseValInternal(y);
     invalidate();
 }
 
-void SVGFEGaussianBlurElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void SVGFEGaussianBlurElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     if (name == SVGNames::stdDeviationAttr) {
         float x, y;
         if (parseNumberOptionalNumber(value, x, y)) {
-            setStdDeviationXBaseValue(x);
-            setStdDeviationYBaseValue(y);
+            m_stdDeviationX->setBaseValInternal(x);
+            m_stdDeviationY->setBaseValInternal(y);
         }
         return;
     }
 
     if (name == SVGNames::inAttr) {
-        setIn1BaseValue(value);
+        m_in1->setBaseValInternal(value);
         return;
     }
 
     if (name == SVGNames::edgeModeAttr) {
         auto propertyValue = SVGPropertyTraits<EdgeModeType>::fromString(value);
         if (propertyValue > 0)
-            setEdgeModeBaseValue(propertyValue);
+            m_edgeMode->setBaseValInternal<EdgeModeType>(propertyValue);
         else
             document().accessSVGExtensions().reportWarning("feGaussianBlur: problem parsing edgeMode=\"" + value + "\". Filtered element will not be displayed.");
         return;
@@ -104,7 +87,7 @@ void SVGFEGaussianBlurElement::parseAttribute(const QualifiedName& name, const A
 
 void SVGFEGaussianBlurElement::svgAttributeChanged(const QualifiedName& attrName)
 {
-    if (attrName == SVGNames::inAttr || attrName == SVGNames::stdDeviationAttr || attrName == SVGNames::edgeModeAttr) {
+    if (PropertyRegistry::isKnownAttribute(attrName)) {
         InstanceInvalidationGuard guard(*this);
         invalidate();
         return;
@@ -113,9 +96,9 @@ void SVGFEGaussianBlurElement::svgAttributeChanged(const QualifiedName& attrName
     SVGFilterPrimitiveStandardAttributes::svgAttributeChanged(attrName);
 }
 
-RefPtr<FilterEffect> SVGFEGaussianBlurElement::build(SVGFilterBuilder* filterBuilder, Filter& filter)
+RefPtr<FilterEffect> SVGFEGaussianBlurElement::build(SVGFilterBuilder* filterBuilder, Filter& filter) const
 {
-    FilterEffect* input1 = filterBuilder->getEffectById(in1());
+    auto input1 = filterBuilder->getEffectById(in1());
 
     if (!input1)
         return nullptr;
@@ -123,7 +106,7 @@ RefPtr<FilterEffect> SVGFEGaussianBlurElement::build(SVGFilterBuilder* filterBui
     if (stdDeviationX() < 0 || stdDeviationY() < 0)
         return nullptr;
 
-    RefPtr<FilterEffect> effect = FEGaussianBlur::create(filter, stdDeviationX(), stdDeviationY(), edgeMode());
+    auto effect = FEGaussianBlur::create(filter, stdDeviationX(), stdDeviationY(), edgeMode());
     effect->inputEffects().append(input1);
     return effect;
 }

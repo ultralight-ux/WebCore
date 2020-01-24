@@ -76,7 +76,7 @@ static bool newFloatShrinksLine(const FloatingObject& newFloat, const RenderBloc
 
     // initial-letter float always shrinks the first line.
     const auto& style = newFloat.renderer().style();
-    if (isFirstLine && style.styleType() == FIRST_LETTER && !style.initialLetter().isEmpty())
+    if (isFirstLine && style.styleType() == PseudoId::FirstLetter && !style.initialLetter().isEmpty())
         return true;
     return false;
 }
@@ -122,14 +122,18 @@ void LineWidth::commit()
 {
     m_committedWidth += m_uncommittedWidth;
     m_uncommittedWidth = 0;
+    if (m_hasUncommittedReplaced) {
+        m_hasCommittedReplaced = true;
+        m_hasUncommittedReplaced = false;
+    }
     m_hasCommitted = true;
 }
 
-void LineWidth::applyOverhang(RenderRubyRun* rubyRun, RenderObject* startRenderer, RenderObject* endRenderer)
+void LineWidth::applyOverhang(const RenderRubyRun& rubyRun, RenderObject* startRenderer, RenderObject* endRenderer)
 {
     float startOverhang;
     float endOverhang;
-    rubyRun->getOverhang(m_isFirstLine, startRenderer, endRenderer, startOverhang, endOverhang);
+    rubyRun.getOverhang(m_isFirstLine, startRenderer, endRenderer, startOverhang, endOverhang);
 
     startOverhang = std::min(startOverhang, m_committedWidth);
     m_availableWidth += startOverhang;
@@ -178,7 +182,7 @@ void LineWidth::wrapNextToShapeOutside(bool isFirstLine)
 
         ++newLineTop;
     }
-    updateLineDimension(newLineTop, newLineWidth, newLineLeft, newLineRight);
+    updateLineDimension(newLineTop, LayoutUnit(newLineWidth), LayoutUnit(newLineLeft), LayoutUnit(newLineRight));
 }
 
 void LineWidth::fitBelowFloats(bool isFirstLine)
@@ -208,7 +212,7 @@ void LineWidth::fitBelowFloats(bool isFirstLine)
             break;
     }
 
-    updateLineDimension(lastFloatLogicalBottom, newLineWidth, newLineLeft, newLineRight);
+    updateLineDimension(lastFloatLogicalBottom, LayoutUnit(newLineWidth), LayoutUnit(newLineLeft), LayoutUnit(newLineRight));
 }
 
 void LineWidth::setTrailingWhitespaceWidth(float collapsedWhitespace, float borderPaddingMargin)
@@ -233,10 +237,10 @@ IndentTextOrNot requiresIndent(bool isFirstLine, bool isAfterHardLineBreak, cons
     if (isFirstLine)
         shouldIndentText = IndentText;
 #if ENABLE(CSS3_TEXT)
-    else if (isAfterHardLineBreak && style.textIndentLine() == TextIndentEachLine)
+    else if (isAfterHardLineBreak && style.textIndentLine() == TextIndentLine::EachLine)
         shouldIndentText = IndentText;
 
-    if (style.textIndentType() == TextIndentHanging)
+    if (style.textIndentType() == TextIndentType::Hanging)
         shouldIndentText = shouldIndentText == IndentText ? DoNotIndentText : IndentText;
 #else
     UNUSED_PARAM(isAfterHardLineBreak);

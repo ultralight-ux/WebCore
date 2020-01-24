@@ -29,7 +29,6 @@
 #include "ActiveDOMObject.h"
 #include "Blob.h"
 #include "BlobURL.h"
-#include "ExceptionCode.h"
 #include "MemoryCache.h"
 #include "PublicURLManager.h"
 #include "ResourceRequest.h"
@@ -64,7 +63,7 @@ ExceptionOr<Ref<DOMURL>> DOMURL::create(const String& url, const DOMURL& base)
 
 ExceptionOr<Ref<DOMURL>> DOMURL::create(const String& url)
 {
-    URL baseURL { blankURL() };
+    URL baseURL { WTF::blankURL() };
     URL completeURL { baseURL, url };
     if (!completeURL.isValid())
         return Exception { TypeError };
@@ -120,9 +119,8 @@ void DOMURL::revokeObjectURL(ScriptExecutionContext& scriptExecutionContext, con
 {
     URL url(URL(), urlString);
     ResourceRequest request(url);
-#if ENABLE(CACHE_PARTITIONING)
-    request.setDomainForCachePartition(scriptExecutionContext.topOrigin()->domainForCachePartition());
-#endif
+    request.setDomainForCachePartition(scriptExecutionContext.domainForCachePartition());
+
     MemoryCache::removeRequestFromSessionCaches(scriptExecutionContext, request);
 
     scriptExecutionContext.publicURLManager().revoke(url);

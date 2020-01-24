@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,19 +29,22 @@
 #if ENABLE(B3_JIT)
 
 #include "AllowMacroScratchRegisterUsage.h"
+#include "B3AtomicValue.h"
 #include "B3BasicBlockInlines.h"
 #include "B3BlockInsertionSet.h"
 #include "B3CCallValue.h"
 #include "B3CaseCollectionInlines.h"
 #include "B3ConstPtrValue.h"
+#include "B3FenceValue.h"
 #include "B3InsertionSetInlines.h"
-#include "B3MemoryValue.h"
+#include "B3MemoryValueInlines.h"
 #include "B3PatchpointValue.h"
 #include "B3PhaseScope.h"
 #include "B3ProcedureInlines.h"
 #include "B3StackmapGenerationParams.h"
 #include "B3SwitchValue.h"
 #include "B3UpsilonValue.h"
+#include "B3UseCounts.h"
 #include "B3ValueInlines.h"
 #include "CCallHelpers.h"
 #include "LinkBuffer.h"
@@ -58,11 +61,14 @@ public:
         : m_proc(proc)
         , m_blockInsertionSet(proc)
         , m_insertionSet(proc)
+        , m_useCounts(proc)
     {
     }
 
     bool run()
     {
+        RELEASE_ASSERT(!m_proc.hasQuirks());
+        
         for (BasicBlock* block : m_proc) {
             m_block = block;
             processCurrentBlock();
@@ -72,6 +78,10 @@ public:
             m_proc.resetReachability();
             m_proc.invalidateCFG();
         }
+        
+        // This indicates that we've 
+        m_proc.setHasQuirks(true);
+        
         return m_changed;
     }
     
@@ -118,7 +128,7 @@ private:
                     break;
                 }
                 
-                double (*fmodDouble)(double, double) = fmod;
+                auto* fmodDouble = tagCFunctionPtr<double (*)(double, double)>(fmod, B3CCallPtrTag);
                 if (m_value->type() == Double) {
                     Value* functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, fmodDouble);
                     Value* result = m_insertionSet.insert<CCallValue>(m_index, Double, m_origin,
@@ -167,10 +177,40 @@ private:
                 break;
             }
 
+            case CheckMul: {
+                if (isARM64() && m_value->child(0)->type() == Int32) {
+                    CheckValue* checkMul = m_value->as<CheckValue>();
+
+                    Value* left = m_insertionSet.insert<Value>(m_index, SExt32, m_origin, m_value->child(0));
+                    Value* right = m_insertionSet.insert<Value>(m_index, SExt32, m_origin, m_value->child(1));
+                    Value* mulResult = m_insertionSet.insert<Value>(m_index, Mul, m_origin, left, right);
+                    Value* mulResult32 = m_insertionSet.insert<Value>(m_index, Trunc, m_origin, mulResult);
+                    Value* upperResult = m_insertionSet.insert<Value>(m_index, Trunc, m_origin,
+                        m_insertionSet.insert<Value>(m_index, SShr, m_origin, mulResult, m_insertionSet.insert<Const32Value>(m_index, m_origin, 32)));
+                    Value* signBit = m_insertionSet.insert<Value>(m_index, SShr, m_origin,
+                        mulResult32,
+                        m_insertionSet.insert<Const32Value>(m_index, m_origin, 31));
+                    Value* hasOverflowed = m_insertionSet.insert<Value>(m_index, NotEqual, m_origin, upperResult, signBit);
+
+                    CheckValue* check = m_insertionSet.insert<CheckValue>(m_index, Check, m_origin, hasOverflowed);
+                    check->setGenerator(checkMul->generator());
+                    check->clobberEarly(checkMul->earlyClobbered());
+                    check->clobberLate(checkMul->lateClobbered());
+                    auto children = checkMul->constrainedChildren();
+                    auto it = children.begin();
+                    for (std::advance(it, 2); it != children.end(); ++it)
+                        check->append(*it);
+
+                    m_value->replaceWithIdentity(mulResult32);
+                    m_changed = true;
+                }
+                break;
+            }
+
             case Switch: {
                 SwitchValue* switchValue = m_value->as<SwitchValue>();
                 Vector<SwitchCase> cases;
-                for (const SwitchCase& switchCase : switchValue->cases(m_block))
+                for (SwitchCase switchCase : switchValue->cases(m_block))
                     cases.append(switchCase);
                 std::sort(
                     cases.begin(), cases.end(),
@@ -185,7 +225,128 @@ private:
                 m_changed = true;
                 break;
             }
+                
+            case Depend: {
+                if (isX86()) {
+                    // Create a load-load fence. This codegens to nothing on X86. We use it to tell the
+                    // compiler not to block load motion.
+                    FenceValue* fence = m_insertionSet.insert<FenceValue>(m_index, m_origin);
+                    fence->read = HeapRange();
+                    fence->write = HeapRange::top();
+                    
+                    // Kill the Depend, which should unlock a bunch of code simplification.
+                    m_value->replaceWithBottom(m_insertionSet, m_index);
+                    
+                    m_changed = true;
+                }
+                break;
+            }
 
+            case AtomicWeakCAS:
+            case AtomicStrongCAS: {
+                AtomicValue* atomic = m_value->as<AtomicValue>();
+                Width width = atomic->accessWidth();
+                
+                if (isCanonicalWidth(width))
+                    break;
+                
+                Value* expectedValue = atomic->child(0);
+                
+                if (!isX86()) {
+                    // On ARM, the load part of the CAS does a load with zero extension. Therefore, we need
+                    // to zero-extend the input.
+                    Value* maskedExpectedValue = m_insertionSet.insert<Value>(
+                        m_index, BitAnd, m_origin, expectedValue,
+                        m_insertionSet.insertIntConstant(m_index, expectedValue, mask(width)));
+                    
+                    atomic->child(0) = maskedExpectedValue;
+                    m_changed = true;
+                }
+                
+                if (atomic->opcode() == AtomicStrongCAS) {
+                    Value* newValue = m_insertionSet.insert<Value>(
+                        m_index, signExtendOpcode(width), m_origin,
+                        m_insertionSet.insertClone(m_index, atomic));
+                    
+                    atomic->replaceWithIdentity(newValue);
+                    m_changed = true;
+                }
+
+                break;
+            }
+                
+            case AtomicXchgAdd:
+            case AtomicXchgAnd:
+            case AtomicXchgOr:
+            case AtomicXchgSub:
+            case AtomicXchgXor:
+            case AtomicXchg: {
+                // On X86, these may actually return garbage in the high bits. On ARM64, these sorta
+                // zero-extend their high bits, except that the high bits might get polluted by high
+                // bits in the operand. So, either way, we need to throw a sign-extend on these
+                // things.
+                
+                if (isX86()) {
+                    if (m_value->opcode() == AtomicXchgSub && m_useCounts.numUses(m_value)) {
+                        // On x86, xchgadd is better than xchgsub if it has any users.
+                        m_value->setOpcodeUnsafely(AtomicXchgAdd);
+                        m_value->child(0) = m_insertionSet.insert<Value>(
+                            m_index, Neg, m_origin, m_value->child(0));
+                    }
+                    
+                    bool exempt = false;
+                    switch (m_value->opcode()) {
+                    case AtomicXchgAnd:
+                    case AtomicXchgOr:
+                    case AtomicXchgSub:
+                    case AtomicXchgXor:
+                        exempt = true;
+                        break;
+                    default:
+                        break;
+                    }
+                    if (exempt)
+                        break;
+                }
+                
+                AtomicValue* atomic = m_value->as<AtomicValue>();
+                Width width = atomic->accessWidth();
+                
+                if (isCanonicalWidth(width))
+                    break;
+                
+                Value* newValue = m_insertionSet.insert<Value>(
+                    m_index, signExtendOpcode(width), m_origin,
+                    m_insertionSet.insertClone(m_index, atomic));
+                
+                atomic->replaceWithIdentity(newValue);
+                m_changed = true;
+                break;
+            }
+                
+            case Load8Z:
+            case Load16Z: {
+                if (isX86())
+                    break;
+                
+                MemoryValue* memory = m_value->as<MemoryValue>();
+                if (!memory->hasFence())
+                    break;
+                
+                // Sub-width load-acq on ARM64 always sign extends.
+                Value* newLoad = m_insertionSet.insertClone(m_index, memory);
+                newLoad->setOpcodeUnsafely(memory->opcode() == Load8Z ? Load8S : Load16S);
+                
+                Value* newValue = m_insertionSet.insert<Value>(
+                    m_index, BitAnd, m_origin, newLoad,
+                    m_insertionSet.insertIntConstant(
+                        m_index, m_origin, Int32, mask(memory->accessWidth())));
+
+                m_value->replaceWithIdentity(newValue);
+                m_changed = true;
+                break;
+            }
+                
             default:
                 break;
             }
@@ -340,7 +501,7 @@ private:
                 patchpoint->effects.terminal = true;
                 
                 patchpoint->appendSomeRegister(index);
-                patchpoint->numGPScratchRegisters++;
+                patchpoint->numGPScratchRegisters = 2;
                 // Technically, we don't have to clobber macro registers on X86_64. This is probably
                 // OK though.
                 patchpoint->clobber(RegisterSet::macroScratchRegisters());
@@ -369,16 +530,18 @@ private:
                 patchpoint->setGenerator(
                     [=] (CCallHelpers& jit, const StackmapGenerationParams& params) {
                         AllowMacroScratchRegisterUsage allowScratch(jit);
-                        
-                        MacroAssemblerCodePtr* jumpTable = static_cast<MacroAssemblerCodePtr*>(
-                            params.proc().addDataSection(sizeof(MacroAssemblerCodePtr) * tableSize));
-                        
+
+                        using JumpTableCodePtr = MacroAssemblerCodePtr<JSSwitchPtrTag>;
+                        JumpTableCodePtr* jumpTable = static_cast<JumpTableCodePtr*>(
+                            params.proc().addDataSection(sizeof(JumpTableCodePtr) * tableSize));
+
                         GPRReg index = params[0].gpr();
                         GPRReg scratch = params.gpScratch(0);
-                        
+
                         jit.move(CCallHelpers::TrustedImmPtr(jumpTable), scratch);
-                        jit.jump(CCallHelpers::BaseIndex(scratch, index, CCallHelpers::timesPtr()));
-                        
+                        jit.load64(CCallHelpers::BaseIndex(scratch, index, CCallHelpers::timesPtr()), scratch);
+                        jit.jump(scratch, JSSwitchPtrTag);
+
                         // These labels are guaranteed to be populated before either late paths or
                         // link tasks run.
                         Vector<Box<CCallHelpers::Label>> labels = params.successorLabels();
@@ -386,17 +549,14 @@ private:
                         jit.addLinkTask(
                             [=] (LinkBuffer& linkBuffer) {
                                 if (hasUnhandledIndex) {
-                                    MacroAssemblerCodePtr fallThrough =
-                                        linkBuffer.locationOf(*labels.last());
+                                    JumpTableCodePtr fallThrough = linkBuffer.locationOf<JSSwitchPtrTag>(*labels.last());
                                     for (unsigned i = tableSize; i--;)
                                         jumpTable[i] = fallThrough;
                                 }
                                 
                                 unsigned labelIndex = 0;
-                                for (unsigned tableIndex : handledIndices) {
-                                    jumpTable[tableIndex] =
-                                        linkBuffer.locationOf(*labels[labelIndex++]);
-                                }
+                                for (unsigned tableIndex : handledIndices)
+                                    jumpTable[tableIndex] = linkBuffer.locationOf<JSSwitchPtrTag>(*labels[labelIndex++]);
                             });
                     });
                 return;
@@ -470,6 +630,7 @@ private:
     Procedure& m_proc;
     BlockInsertionSet m_blockInsertionSet;
     InsertionSet m_insertionSet;
+    UseCounts m_useCounts;
     BasicBlock* m_block;
     unsigned m_index;
     Value* m_value;
@@ -477,21 +638,13 @@ private:
     bool m_changed { false };
 };
 
-bool lowerMacrosImpl(Procedure& proc)
-{
-    LowerMacros lowerMacros(proc);
-    return lowerMacros.run();
-}
-
 } // anonymous namespace
 
 bool lowerMacros(Procedure& proc)
 {
-    PhaseScope phaseScope(proc, "lowerMacros");
-    bool result = lowerMacrosImpl(proc);
-    if (shouldValidateIR())
-        RELEASE_ASSERT(!lowerMacrosImpl(proc));
-    return result;
+    PhaseScope phaseScope(proc, "B3::lowerMacros");
+    LowerMacros lowerMacros(proc);
+    return lowerMacros.run();
 }
 
 } } // namespace JSC::B3

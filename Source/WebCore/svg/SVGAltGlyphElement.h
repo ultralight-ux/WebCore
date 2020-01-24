@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
- * Copyright (C) 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -31,25 +31,27 @@ namespace WebCore {
 class SVGGlyphElement;
 
 class SVGAltGlyphElement final : public SVGTextPositioningElement, public SVGURIReference {
+    WTF_MAKE_ISO_ALLOCATED(SVGAltGlyphElement);
 public:
     static Ref<SVGAltGlyphElement> create(const QualifiedName&, Document&);
 
-    const AtomicString& glyphRef() const;
-    ExceptionOr<void> setGlyphRef(const AtomicString&);
-    const AtomicString& format() const;
-    ExceptionOr<void> setFormat(const AtomicString&);
+    const AtomString& glyphRef() const;
+    ExceptionOr<void> setGlyphRef(const AtomString&);
+    const AtomString& format() const;
+    ExceptionOr<void> setFormat(const AtomString&);
 
     bool hasValidGlyphElements(Vector<String>& glyphNames) const;
 
 private:
     SVGAltGlyphElement(const QualifiedName&, Document&);
 
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGAltGlyphElement, SVGTextPositioningElement, SVGURIReference>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) override;
     bool childShouldCreateRenderer(const Node&) const override;
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGAltGlyphElement)
-        DECLARE_ANIMATED_STRING_OVERRIDE(Href, href)
-    END_DECLARE_ANIMATED_PROPERTIES
+    PropertyRegistry m_propertyRegistry { *this };
 };
 
 } // namespace WebCore

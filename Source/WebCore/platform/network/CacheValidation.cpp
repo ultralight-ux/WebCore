@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,22 +26,23 @@
 #include "config.h"
 #include "CacheValidation.h"
 
-#include "CookiesStrategy.h"
+#include "CookieJar.h"
 #include "HTTPHeaderMap.h"
 #include "NetworkStorageSession.h"
-#include "PlatformCookieJar.h"
-#include "PlatformStrategies.h"
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
-#include <wtf/CurrentTime.h>
+#include "SameSiteInfo.h"
+#include <wtf/Optional.h>
+#include <wtf/Vector.h>
 #include <wtf/text/StringView.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 // These response headers are not copied from a revalidated response to the
 // cached response headers. For compatibility, this list is based on Chromium's
 // net/http/http_response_headers.cc.
-const char* const headersToIgnoreAfterRevalidation[] = {
+static const char* const headersToIgnoreAfterRevalidation[] = {
     "allow",
     "connection",
     "etag",
@@ -60,7 +61,7 @@ const char* const headersToIgnoreAfterRevalidation[] = {
 // Some header prefixes mean "Don't copy this header from a 304 response.".
 // Rather than listing all the relevant headers, we can consolidate them into
 // this list, also grabbed from Chromium's net/http/http_response_headers.cc.
-const char* const headerPrefixesToIgnoreAfterRevalidation[] = {
+static const char* const headerPrefixesToIgnoreAfterRevalidation[] = {
     "content-",
     "x-content-",
     "x-webkit-"
@@ -72,8 +73,10 @@ static inline bool shouldUpdateHeaderAfterRevalidation(const String& header)
         if (equalIgnoringASCIICase(header, headerToIgnore))
             return false;
     }
-    for (size_t i = 0; i < WTF_ARRAY_LENGTH(headerPrefixesToIgnoreAfterRevalidation); i++) {
-        if (header.startsWith(headerPrefixesToIgnoreAfterRevalidation[i], false))
+    for (auto& prefixToIgnore : headerPrefixesToIgnoreAfterRevalidation) {
+        // FIXME: Would be more efficient if we added an overload of
+        // startsWithIgnoringASCIICase that takes a const char*.
+        if (header.startsWithIgnoringASCIICase(prefixToIgnore))
             return false;
     }
     return true;
@@ -95,25 +98,23 @@ void updateResponseHeadersAfterRevalidation(ResourceResponse& response, const Re
     }
 }
 
-std::chrono::microseconds computeCurrentAge(const ResourceResponse& response, std::chrono::system_clock::time_point responseTime)
+Seconds computeCurrentAge(const ResourceResponse& response, WallTime responseTime)
 {
-    using namespace std::chrono;
-
     // Age calculation:
     // http://tools.ietf.org/html/rfc7234#section-4.2.3
     // No compensation for latency as that is not terribly important in practice.
     auto dateValue = response.date();
-    auto apparentAge = dateValue ? std::max(0us, duration_cast<microseconds>(responseTime - *dateValue)) : 0us;
-    auto ageValue = response.age().value_or(0us);
+    auto apparentAge = dateValue ? std::max(0_us, responseTime - *dateValue) : 0_us;
+    auto ageValue = response.age().valueOr(0_us);
     auto correctedInitialAge = std::max(apparentAge, ageValue);
-    auto residentTime = duration_cast<microseconds>(system_clock::now() - responseTime);
+    auto residentTime = WallTime::now() - responseTime;
     return correctedInitialAge + residentTime;
 }
 
-std::chrono::microseconds computeFreshnessLifetimeForHTTPFamily(const ResourceResponse& response, std::chrono::system_clock::time_point responseTime)
+Seconds computeFreshnessLifetimeForHTTPFamily(const ResourceResponse& response, WallTime responseTime)
 {
-    using namespace std::chrono;
-    ASSERT(response.url().protocolIsInHTTPFamily());
+    if (!response.url().protocolIsInHTTPFamily())
+        return 0_us;
 
     // Freshness Lifetime:
     // http://tools.ietf.org/html/rfc7234#section-4.2.1
@@ -122,38 +123,36 @@ std::chrono::microseconds computeFreshnessLifetimeForHTTPFamily(const ResourceRe
         return *maxAge;
 
     auto date = response.date();
-    auto effectiveDate = date.value_or(responseTime);
+    auto effectiveDate = date.valueOr(responseTime);
     if (auto expires = response.expires())
-        return duration_cast<microseconds>(*expires - effectiveDate);
+        return *expires - effectiveDate;
 
     // Implicit lifetime.
     switch (response.httpStatusCode()) {
     case 301: // Moved Permanently
     case 410: // Gone
         // These are semantically permanent and so get long implicit lifetime.
-        return 365 * 24h;
+        return 24_h * 365;
     default:
         // Heuristic Freshness:
         // http://tools.ietf.org/html/rfc7234#section-4.2.2
         if (auto lastModified = response.lastModified())
-            return duration_cast<microseconds>((effectiveDate - *lastModified) * 0.1);
-        return 0us;
+            return (effectiveDate - *lastModified) * 0.1;
+        return 0_us;
     }
 }
 
 void updateRedirectChainStatus(RedirectChainCacheStatus& redirectChainCacheStatus, const ResourceResponse& response)
 {
-    using namespace std::chrono;
-
-    if (redirectChainCacheStatus.status == RedirectChainCacheStatus::NotCachedRedirection)
+    if (redirectChainCacheStatus.status == RedirectChainCacheStatus::Status::NotCachedRedirection)
         return;
     if (response.cacheControlContainsNoStore() || response.cacheControlContainsNoCache() || response.cacheControlContainsMustRevalidate()) {
-        redirectChainCacheStatus.status = RedirectChainCacheStatus::NotCachedRedirection;
+        redirectChainCacheStatus.status = RedirectChainCacheStatus::Status::NotCachedRedirection;
         return;
     }
 
-    redirectChainCacheStatus.status = RedirectChainCacheStatus::CachedRedirection;
-    auto responseTimestamp = system_clock::now();
+    redirectChainCacheStatus.status = RedirectChainCacheStatus::Status::CachedRedirection;
+    auto responseTimestamp = WallTime::now();
     // Store the nearest end of cache validity date
     auto endOfValidity = responseTimestamp + computeFreshnessLifetimeForHTTPFamily(response, responseTimestamp) - computeCurrentAge(response, responseTimestamp);
     redirectChainCacheStatus.endOfValidity = std::min(redirectChainCacheStatus.endOfValidity, endOfValidity);
@@ -162,12 +161,12 @@ void updateRedirectChainStatus(RedirectChainCacheStatus& redirectChainCacheStatu
 bool redirectChainAllowsReuse(RedirectChainCacheStatus redirectChainCacheStatus, ReuseExpiredRedirectionOrNot reuseExpiredRedirection)
 {
     switch (redirectChainCacheStatus.status) {
-    case RedirectChainCacheStatus::NoRedirection:
+    case RedirectChainCacheStatus::Status::NoRedirection:
         return true;
-    case RedirectChainCacheStatus::NotCachedRedirection:
+    case RedirectChainCacheStatus::Status::NotCachedRedirection:
         return false;
-    case RedirectChainCacheStatus::CachedRedirection:
-        return reuseExpiredRedirection || std::chrono::system_clock::now() <= redirectChainCacheStatus.endOfValidity;
+    case RedirectChainCacheStatus::Status::CachedRedirection:
+        return reuseExpiredRedirection || WallTime::now() <= redirectChainCacheStatus.endOfValidity;
     }
     ASSERT_NOT_REACHED();
     return false;
@@ -273,8 +272,6 @@ static Vector<std::pair<String, String>> parseCacheHeader(const String& header)
 
 CacheControlDirectives parseCacheControlDirectives(const HTTPHeaderMap& headers)
 {
-    using namespace std::chrono;
-
     CacheControlDirectives result;
 
     String cacheControlValue = headers.get(HTTPHeaderName::CacheControl);
@@ -300,7 +297,7 @@ CacheControlDirectives parseCacheControlDirectives(const HTTPHeaderMap& headers)
                 bool ok;
                 double maxAge = directives[i].second.toDouble(&ok);
                 if (ok)
-                    result.maxAge = duration_cast<microseconds>(duration<double>(maxAge));
+                    result.maxAge = Seconds { maxAge };
             } else if (equalLettersIgnoringASCIICase(directives[i].first, "max-stale")) {
                 // https://tools.ietf.org/html/rfc7234#section-5.2.1.2
                 if (result.maxStale) {
@@ -309,74 +306,153 @@ CacheControlDirectives parseCacheControlDirectives(const HTTPHeaderMap& headers)
                 }
                 if (directives[i].second.isEmpty()) {
                     // if no value is assigned to max-stale, then the client is willing to accept a stale response of any age.
-                    result.maxStale = microseconds::max();
+                    result.maxStale = Seconds::infinity();
                     continue;
                 }
                 bool ok;
                 double maxStale = directives[i].second.toDouble(&ok);
                 if (ok)
-                    result.maxStale = duration_cast<microseconds>(duration<double>(maxStale));
-            }
+                    result.maxStale = Seconds { maxStale };
+            } else if (equalLettersIgnoringASCIICase(directives[i].first, "immutable"))
+                result.immutable = true;
         }
     }
 
     if (!result.noCache) {
         // Handle Pragma: no-cache
         // This is deprecated and equivalent to Cache-control: no-cache
-        // Don't bother tokenizing the value, it is not important
-        String pragmaValue = headers.get(HTTPHeaderName::Pragma);
-
-        result.noCache = pragmaValue.contains("no-cache", false);
+        // Don't bother tokenizing the value; handling that exactly right is not important.
+        result.noCache = headers.get(HTTPHeaderName::Pragma).containsIgnoringASCIICase("no-cache");
     }
 
     return result;
 }
 
-static String headerValueForVary(const ResourceRequest& request, const String& headerName, SessionID sessionID)
+static String cookieRequestHeaderFieldValue(const NetworkStorageSession& session, const ResourceRequest& request)
+{
+    return session.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No).first;
+}
+
+static String cookieRequestHeaderFieldValue(const CookieJar* cookieJar, const PAL::SessionID& sessionID, const ResourceRequest& request)
+{
+    if (!cookieJar)
+        return { };
+
+    return cookieJar->cookieRequestHeaderFieldValue(sessionID, request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No).first;
+}
+
+static String headerValueForVary(const ResourceRequest& request, const String& headerName, Function<String()>&& cookieRequestHeaderFieldValueFunction)
 {
     // Explicit handling for cookies is needed because they are added magically by the networking layer.
     // FIXME: The value might have changed between making the request and retrieving the cookie here.
     // We could fetch the cookie when making the request but that seems overkill as the case is very rare and it
     // is a blocking operation. This should be sufficient to cover reasonable cases.
-    if (headerName == httpHeaderNameString(HTTPHeaderName::Cookie)) {
-        auto* cookieStrategy = platformStrategies() ? platformStrategies()->cookiesStrategy() : nullptr;
-        if (!cookieStrategy) {
-            ASSERT(sessionID == SessionID::defaultSessionID());
-            return cookieRequestHeaderFieldValue(NetworkStorageSession::defaultStorageSession(), request.firstPartyForCookies(), request.url());
-        }
-        return cookieStrategy->cookieRequestHeaderFieldValue(sessionID, request.firstPartyForCookies(), request.url());
-    }
+    if (headerName == httpHeaderNameString(HTTPHeaderName::Cookie))
+        return cookieRequestHeaderFieldValueFunction();
     return request.httpHeaderField(headerName);
 }
 
-Vector<std::pair<String, String>> collectVaryingRequestHeaders(const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& response, SessionID sessionID)
+static Vector<std::pair<String, String>> collectVaryingRequestHeadersInternal(const ResourceResponse& response, Function<String(const String& headerName)>&& headerValueForVaryFunction)
 {
-    String varyValue = response.httpHeaderField(WebCore::HTTPHeaderName::Vary);
+    String varyValue = response.httpHeaderField(HTTPHeaderName::Vary);
     if (varyValue.isEmpty())
         return { };
-    Vector<String> varyingHeaderNames;
-    varyValue.split(',', /*allowEmptyEntries*/ false, varyingHeaderNames);
+    Vector<String> varyingHeaderNames = varyValue.split(',');
     Vector<std::pair<String, String>> varyingRequestHeaders;
     varyingRequestHeaders.reserveCapacity(varyingHeaderNames.size());
     for (auto& varyHeaderName : varyingHeaderNames) {
         String headerName = varyHeaderName.stripWhiteSpace();
-        String headerValue = headerValueForVary(request, headerName, sessionID);
+        String headerValue = headerValueForVaryFunction(headerName);
         varyingRequestHeaders.append(std::make_pair(headerName, headerValue));
     }
     return varyingRequestHeaders;
 }
 
-bool verifyVaryingRequestHeaders(const Vector<std::pair<String, String>>& varyingRequestHeaders, const WebCore::ResourceRequest& request, SessionID sessionID)
+Vector<std::pair<String, String>> collectVaryingRequestHeaders(NetworkStorageSession& storageSession, const ResourceRequest& request, const ResourceResponse& response)
+{
+    return collectVaryingRequestHeadersInternal(response, [&] (const String& headerName) {
+        return headerValueForVary(request, headerName, [&] {
+            return cookieRequestHeaderFieldValue(storageSession, request);
+        });
+    });
+}
+
+Vector<std::pair<String, String>> collectVaryingRequestHeaders(const CookieJar* cookieJar, const ResourceRequest& request, const ResourceResponse& response, const PAL::SessionID& sessionID)
+{
+    return collectVaryingRequestHeadersInternal(response, [&] (const String& headerName) {
+        return headerValueForVary(request, headerName, [&] {
+            return cookieRequestHeaderFieldValue(cookieJar, sessionID, request);
+        });
+    });
+}
+
+static bool verifyVaryingRequestHeadersInternal(const Vector<std::pair<String, String>>& varyingRequestHeaders, Function<String(const String&)>&& headerValueForVary)
 {
     for (auto& varyingRequestHeader : varyingRequestHeaders) {
         // FIXME: Vary: * in response would ideally trigger a cache delete instead of a store.
         if (varyingRequestHeader.first == "*")
             return false;
-        String headerValue = headerValueForVary(request, varyingRequestHeader.first, sessionID);
-        if (headerValue != varyingRequestHeader.second)
+        if (headerValueForVary(varyingRequestHeader.first) != varyingRequestHeader.second)
             return false;
     }
     return true;
+}
+
+bool verifyVaryingRequestHeaders(NetworkStorageSession& storageSession, const Vector<std::pair<String, String>>& varyingRequestHeaders, const ResourceRequest& request)
+{
+    return verifyVaryingRequestHeadersInternal(varyingRequestHeaders, [&] (const String& headerName) {
+        return headerValueForVary(request, headerName, [&] {
+            return cookieRequestHeaderFieldValue(storageSession, request);
+        });
+    });
+}
+
+bool verifyVaryingRequestHeaders(const CookieJar* cookieJar, const Vector<std::pair<String, String>>& varyingRequestHeaders, const ResourceRequest& request, const PAL::SessionID& sessionID)
+{
+    return verifyVaryingRequestHeadersInternal(varyingRequestHeaders, [&] (const String& headerName) {
+        return headerValueForVary(request, headerName, [&] {
+            return cookieRequestHeaderFieldValue(cookieJar, sessionID, request);
+        });
+    });
+}
+
+// http://tools.ietf.org/html/rfc7231#page-48
+bool isStatusCodeCacheableByDefault(int statusCode)
+{
+    switch (statusCode) {
+    case 200: // OK
+    case 203: // Non-Authoritative Information
+    case 204: // No Content
+    case 206: // Partial Content
+    case 300: // Multiple Choices
+    case 301: // Moved Permanently
+    case 404: // Not Found
+    case 405: // Method Not Allowed
+    case 410: // Gone
+    case 414: // URI Too Long
+    case 501: // Not Implemented
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool isStatusCodePotentiallyCacheable(int statusCode)
+{
+    switch (statusCode) {
+    case 201: // Created
+    case 202: // Accepted
+    case 205: // Reset Content
+    case 302: // Found
+    case 303: // See Other
+    case 307: // Temporary redirect
+    case 403: // Forbidden
+    case 406: // Not Acceptable
+    case 415: // Unsupported Media Type
+        return true;
+    default:
+        return false;
+    }
 }
 
 }

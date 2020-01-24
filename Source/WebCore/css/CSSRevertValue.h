@@ -26,7 +26,6 @@
 #pragma once
 
 #include "CSSValue.h"
-#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
@@ -36,13 +35,8 @@ public:
 
     bool equals(const CSSRevertValue&) const { return true; }
 
-#if COMPILER(MSVC)
-    // FIXME: This should be private, but for some reason MSVC then fails to invoke it from LazyNeverDestroyed::construct.
-public:
-#else
 private:
-    friend class LazyNeverDestroyed<CSSRevertValue>;
-#endif
+    friend LazyNeverDestroyed<CSSRevertValue>;
     CSSRevertValue()
         : CSSValue(RevertClass)
     {

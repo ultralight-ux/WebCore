@@ -30,7 +30,7 @@
 #include "DFGRegisteredStructureSet.h"
 #include "DFGTransition.h"
 #include "DumpContext.h"
-#include "JSCell.h"
+#include "JSCast.h"
 #include "SpeculatedType.h"
 #include "StructureSet.h"
 
@@ -232,7 +232,7 @@ public:
     // contains(), true for isSubsetOf(), false for isSupersetOf(), and false for overlaps().
 
     bool contains(RegisteredStructure) const;
-    bool contains(Structure* structure) const;
+    JS_EXPORT_PRIVATE bool contains(Structure* structure) const;
     
     bool isSubsetOf(const RegisteredStructureSet& other) const;
     bool isSubsetOf(const StructureAbstractValue& other) const;

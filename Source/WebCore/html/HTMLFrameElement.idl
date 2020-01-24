@@ -19,26 +19,23 @@
  */
 
 interface HTMLFrameElement : HTMLElement {
-    [Reflect] attribute DOMString frameBorder;
-    [Reflect, URL] attribute USVString longDesc;
-
-    [Reflect, TreatNullAs=EmptyString] attribute DOMString marginHeight;
-    [Reflect, TreatNullAs=EmptyString] attribute DOMString marginWidth;
-
-    [Reflect] attribute DOMString name;
-    [Reflect] attribute boolean noResize;
-    [Reflect] attribute DOMString scrolling;
-    [Reflect, URL] attribute USVString src;
-
+    [CEReactions=NotNeeded, Reflect] attribute DOMString name;
+    [CEReactions=NotNeeded, Reflect] attribute DOMString scrolling;
+    [CEReactions=NotNeeded, Reflect, URL] attribute USVString src;
+    [CEReactions=NotNeeded, Reflect] attribute DOMString frameBorder;
+    [CEReactions=NotNeeded, Reflect, URL] attribute USVString longDesc;
+    [CEReactions=NotNeeded, Reflect] attribute boolean noResize;
     [CheckSecurityForNode] readonly attribute Document contentDocument;
+    readonly attribute WindowProxy contentWindow;
 
-    readonly attribute DOMWindow contentWindow;
+    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString marginHeight;
+    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString marginWidth;
 
     [CheckSecurityForNode, MayThrowException] Document getSVGDocument();
 
-    // FIXME: No other browser has this attribute.
-    [CustomSetter] attribute DOMString location;
+    [CEReactions=NotNeeded] readonly attribute long width;
+    [CEReactions=NotNeeded] readonly attribute long height;
 
-    readonly attribute long width;
-    readonly attribute long height;
+    // FIXME: No other browser has this attribute.
+    [SetterCallWith=ExecState] attribute DOMString? location;
 };

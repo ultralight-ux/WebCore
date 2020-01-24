@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,25 +27,37 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "B3Compilation.h"
 #include "B3Type.h"
 #include "CodeLocation.h"
 #include "Identifier.h"
 #include "MacroAssemblerCodeRef.h"
 #include "RegisterAtOffsetList.h"
 #include "WasmMemoryInformation.h"
+#include "WasmName.h"
+#include "WasmNameSection.h"
 #include "WasmOps.h"
 #include "WasmPageCount.h"
+#include "WasmSignature.h"
+#include <limits>
 #include <memory>
-#include <wtf/FastMalloc.h>
 #include <wtf/Optional.h>
 #include <wtf/Vector.h>
 
 namespace JSC {
 
-class JSFunction;
+namespace B3 {
+class Compilation;
+}
 
 namespace Wasm {
+
+struct CompilationContext;
+struct ModuleInformation;
+
+enum class TableElementType : uint8_t {
+    Anyref,
+    Funcref
+};
 
 inline bool isValueType(Type type)
 {
@@ -55,10 +67,20 @@ inline bool isValueType(Type type)
     case F32:
     case F64:
         return true;
+    case Anyref:
+    case Funcref:
+        return Options::useWebAssemblyReferences();
     default:
         break;
     }
     return false;
+}
+
+inline bool isSubtype(Type sub, Type parent)
+{
+    if (sub == parent)
+        return true;
+    return sub == Funcref && parent == Anyref;
 }
     
 enum class ExternalKind : uint8_t {
@@ -70,7 +92,7 @@ enum class ExternalKind : uint8_t {
 };
 
 template<typename Int>
-static bool isValidExternalKind(Int val)
+inline bool isValidExternalKind(Int val)
 {
     switch (val) {
     case static_cast<Int>(ExternalKind::Function):
@@ -78,9 +100,8 @@ static bool isValidExternalKind(Int val)
     case static_cast<Int>(ExternalKind::Memory):
     case static_cast<Int>(ExternalKind::Global):
         return true;
-    default:
-        return false;
     }
+    return false;
 }
 
 static_assert(static_cast<int>(ExternalKind::Function) == 0, "Wasm needs Function to have the value 0");
@@ -88,35 +109,32 @@ static_assert(static_cast<int>(ExternalKind::Table)    == 1, "Wasm needs Table t
 static_assert(static_cast<int>(ExternalKind::Memory)   == 2, "Wasm needs Memory to have the value 2");
 static_assert(static_cast<int>(ExternalKind::Global)   == 3, "Wasm needs Global to have the value 3");
 
-static inline const char* makeString(ExternalKind kind)
+inline const char* makeString(ExternalKind kind)
 {
     switch (kind) {
-    case ExternalKind::Function: return "Function";
-    case ExternalKind::Table: return "Table";
-    case ExternalKind::Memory: return "Memory";
-    case ExternalKind::Global: return "Global";
+    case ExternalKind::Function: return "function";
+    case ExternalKind::Table: return "table";
+    case ExternalKind::Memory: return "memory";
+    case ExternalKind::Global: return "global";
     }
     RELEASE_ASSERT_NOT_REACHED();
     return "?";
 }
 
-struct Signature {
-    Type returnType;
-    Vector<Type> arguments;
-};
-
 struct Import {
-    Identifier module;
-    Identifier field;
+    const Name module;
+    const Name field;
     ExternalKind kind;
     unsigned kindIndex; // Index in the vector of the corresponding kind.
 };
 
 struct Export {
-    Identifier field;
+    const Name field;
     ExternalKind kind;
     unsigned kindIndex; // Index in the vector of the corresponding kind.
 };
+
+String makeString(const Name& characters);
 
 struct Global {
     enum Mutability : uint8_t {
@@ -128,6 +146,7 @@ struct Global {
     enum InitializationType {
         IsImport,
         FromGlobalImport,
+        FromRefFunc,
         FromExpression
     };
 
@@ -137,43 +156,70 @@ struct Global {
     uint64_t initialBitsOrImportNumber { 0 };
 };
 
-struct FunctionLocationInBinary {
+struct FunctionData {
     size_t start;
     size_t end;
+    Vector<uint8_t> data;
+};
+
+class I32InitExpr {
+    enum Type : uint8_t {
+        Global,
+        Const
+    };
+
+    I32InitExpr(Type type, uint32_t bits)
+        : m_bits(bits)
+        , m_type(type)
+    { }
+
+public:
+    I32InitExpr() = delete;
+
+    static I32InitExpr globalImport(uint32_t globalImportNumber) { return I32InitExpr(Global, globalImportNumber); }
+    static I32InitExpr constValue(uint32_t constValue) { return I32InitExpr(Const, constValue); }
+
+    bool isConst() const { return m_type == Const; }
+    bool isGlobalImport() const { return m_type == Global; }
+    uint32_t constValue() const
+    {
+        RELEASE_ASSERT(isConst());
+        return m_bits;
+    }
+    uint32_t globalImportIndex() const
+    {
+        RELEASE_ASSERT(isGlobalImport());
+        return m_bits;
+    }
+
+private:
+    uint32_t m_bits;
+    Type m_type;
 };
 
 struct Segment {
-    uint32_t offset;
     uint32_t sizeInBytes;
+    I32InitExpr offset;
     // Bytes are allocated at the end.
-    static Segment* make(uint32_t offset, uint32_t sizeInBytes)
-    {
-        auto allocated = tryFastCalloc(sizeof(Segment) + sizeInBytes, 1);
-        Segment* segment;
-        if (!allocated.getValue(segment))
-            return nullptr;
-        segment->offset = offset;
-        segment->sizeInBytes = sizeInBytes;
-        return segment;
-    }
-    static void destroy(Segment *segment)
-    {
-        fastFree(segment);
-    }
     uint8_t& byte(uint32_t pos)
     {
         ASSERT(pos < sizeInBytes);
-        return *reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(this) + sizeof(offset) + sizeof(sizeInBytes) + pos);
+        return *reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(this) + sizeof(Segment) + pos);
     }
+    static Segment* create(I32InitExpr, uint32_t);
+    static void destroy(Segment*);
     typedef std::unique_ptr<Segment, decltype(&Segment::destroy)> Ptr;
-    static Ptr makePtr(Segment* segment)
-    {
-        return Ptr(segment, &Segment::destroy);
-    }
+    static Ptr adoptPtr(Segment*);
 };
 
 struct Element {
-    uint32_t offset;
+    Element(uint32_t tableIndex, I32InitExpr offset)
+        : tableIndex(tableIndex)
+        , offset(offset)
+    { }
+
+    uint32_t tableIndex;
+    I32InitExpr offset;
     Vector<uint32_t> functionIndices;
 };
 
@@ -184,11 +230,12 @@ public:
         ASSERT(!*this);
     }
 
-    TableInformation(uint32_t initial, std::optional<uint32_t> maximum, bool isImport)
+    TableInformation(uint32_t initial, Optional<uint32_t> maximum, bool isImport, TableElementType type)
         : m_initial(initial)
         , m_maximum(maximum)
         , m_isImport(isImport)
         , m_isValid(true)
+        , m_type(type)
     {
         ASSERT(*this);
     }
@@ -196,35 +243,44 @@ public:
     explicit operator bool() const { return m_isValid; }
     bool isImport() const { return m_isImport; }
     uint32_t initial() const { return m_initial; }
-    std::optional<uint32_t> maximum() const { return m_maximum; }
+    Optional<uint32_t> maximum() const { return m_maximum; }
+    TableElementType type() const { return m_type; }
+    Wasm::Type wasmType() const { return m_type == TableElementType::Funcref ? Type::Funcref : Type::Anyref; }
 
 private:
     uint32_t m_initial;
-    std::optional<uint32_t> m_maximum;
+    Optional<uint32_t> m_maximum;
     bool m_isImport { false };
     bool m_isValid { false };
+    TableElementType m_type;
+};
+    
+struct CustomSection {
+    Name name;
+    Vector<uint8_t> payload;
 };
 
-struct ModuleInformation {
-    Vector<Signature> signatures;
-    Vector<Import> imports;
-    Vector<Signature*> importFunctions;
-    Vector<Signature*> internalFunctionSignatures;
-    MemoryInformation memory;
-    Vector<Export> exports;
-    std::optional<uint32_t> startFunctionIndexSpace;
-    Vector<Segment::Ptr> data;
-    Vector<Element> elements;
-    TableInformation tableInformation;
-    Vector<Global> globals;
-    unsigned firstInternalGlobal { 0 };
-
-    ~ModuleInformation();
+enum class NameType : uint8_t {
+    Module = 0,
+    Function = 1,
+    Local = 2,
 };
+    
+template<typename Int>
+inline bool isValidNameType(Int val)
+{
+    switch (val) {
+    case static_cast<Int>(NameType::Module):
+    case static_cast<Int>(NameType::Function):
+    case static_cast<Int>(NameType::Local):
+        return true;
+    }
+    return false;
+}
 
 struct UnlinkedWasmToWasmCall {
-    CodeLocationCall callLocation;
-    size_t functionIndex;
+    CodeLocationNearCall<WasmEntryPtrTag> callLocation;
+    size_t functionIndexSpace;
 };
 
 struct Entrypoint {
@@ -232,39 +288,24 @@ struct Entrypoint {
     RegisterAtOffsetList calleeSaveRegisters;
 };
 
-struct WasmInternalFunction {
-    CodeLocationDataLabelPtr wasmCalleeMoveLocation;
-    CodeLocationDataLabelPtr jsToWasmCalleeMoveLocation;
-
-    Entrypoint wasmEntrypoint;
-    Entrypoint jsToWasmEntrypoint;
+struct InternalFunction {
+    CodeLocationDataLabelPtr<WasmEntryPtrTag> calleeMoveLocation;
+    Entrypoint entrypoint;
 };
 
-typedef MacroAssemblerCodeRef WasmToJSStub;
+// WebAssembly direct calls and call_indirect use indices into "function index space". This space starts
+// with all imports, and then all internal functions. WasmToWasmImportableFunction and FunctionIndexSpace are only
+// meant as fast lookup tables for these opcodes and do not own code.
+struct WasmToWasmImportableFunction {
+    using LoadLocation = MacroAssemblerCodePtr<WasmEntryPtrTag>*;
+    static ptrdiff_t offsetOfSignatureIndex() { return OBJECT_OFFSETOF(WasmToWasmImportableFunction, signatureIndex); }
+    static ptrdiff_t offsetOfEntrypointLoadLocation() { return OBJECT_OFFSETOF(WasmToWasmImportableFunction, entrypointLoadLocation); }
 
-// WebAssembly direct calls and call_indirect use indices into "function index space". This space starts with all imports, and then all internal functions.
-// CallableFunction and FunctionIndexSpace are only meant as fast lookup tables for these opcodes, and do not own code.
-struct CallableFunction {
-    CallableFunction() = default;
-
-    CallableFunction(Signature* signature, void* code = nullptr)
-        : signature(signature)
-        , code(code)
-    {
-    }
-
-    // FIXME pack this inside a (uniqued) integer (for correctness the parser should unique Signatures),
-    // and then pack that integer into the code pointer. https://bugs.webkit.org/show_bug.cgi?id=165511
-    Signature* signature { nullptr }; 
-    void* code { nullptr };
+    // FIXME: Pack signature index and code pointer into one 64-bit value. See <https://bugs.webkit.org/show_bug.cgi?id=165511>.
+    SignatureIndex signatureIndex { Signature::invalidIndex };
+    LoadLocation entrypointLoadLocation;
 };
-typedef Vector<CallableFunction> FunctionIndexSpace;
-
-
-struct ImmutableFunctionIndexSpace {
-    MallocPtr<CallableFunction> buffer;
-    size_t size;
-};
+using FunctionIndexSpace = Vector<WasmToWasmImportableFunction>;
 
 } } // namespace JSC::Wasm
 

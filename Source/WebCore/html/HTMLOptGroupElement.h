@@ -30,20 +30,21 @@ namespace WebCore {
 class HTMLSelectElement;
 
 class HTMLOptGroupElement final : public HTMLElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLOptGroupElement);
 public:
     static Ref<HTMLOptGroupElement> create(const QualifiedName&, Document&);
 
     bool isDisabledFormControl() const final;
-    HTMLSelectElement* ownerSelectElement() const;
+    WEBCORE_EXPORT HTMLSelectElement* ownerSelectElement() const;
     
     WEBCORE_EXPORT String groupLabelText() const;
 
 private:
     HTMLOptGroupElement(const QualifiedName&, Document&);
 
-    const AtomicString& formControlType() const;
+    const AtomString& formControlType() const;
     bool isFocusable() const final;
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
     bool rendererIsNeeded(const RenderStyle&) final { return false; }
 
     void childrenChanged(const ChildChange&) final;

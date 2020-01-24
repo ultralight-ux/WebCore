@@ -23,7 +23,7 @@ void CanvasImage::computeIntrinsicDimensions(Length& intrinsicWidth, Length& int
   intrinsicRatio = FloatSize();
 }
 
-void CanvasImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator op, BlendMode mode, ImageOrientationDescription orientation) {
+ImageDrawResult CanvasImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator op, BlendMode mode, DecodingMode decodingMode, ImageOrientationDescription orientation) {
   ultralight::RefPtr<ultralight::Canvas> srcCanvas;
 
   if (m_canvas->IsRecorder()) {

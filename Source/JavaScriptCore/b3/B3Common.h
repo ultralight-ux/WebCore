@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,25 +27,23 @@
 
 #if ENABLE(B3_JIT)
 
+#include "CPU.h"
+#include "GPRInfo.h"
 #include "JSExportMacros.h"
-#include <wtf/Optional.h>
+#include "Options.h"
 
 namespace JSC { namespace B3 {
 
-inline bool is64Bit() { return sizeof(void*) == 8; }
-inline bool is32Bit() { return !is64Bit(); }
-
-enum B3ComplitationMode {
+enum B3CompilationMode {
     B3Mode,
     AirMode
 };
 
-JS_EXPORT_PRIVATE bool shouldDumpIR(B3ComplitationMode);
-bool shouldDumpIRAtEachPhase(B3ComplitationMode);
+JS_EXPORT_PRIVATE bool shouldDumpIR(B3CompilationMode);
+bool shouldDumpIRAtEachPhase(B3CompilationMode);
 bool shouldValidateIR();
 bool shouldValidateIRAtEachPhase();
 bool shouldSaveIRBeforePhase();
-bool shouldMeasurePhaseTiming();
 
 template<typename BitsType, typename InputType>
 inline bool isIdentical(InputType left, InputType right)
@@ -98,6 +96,12 @@ template<typename ResultType>
 inline bool isRepresentableAs(int64_t value)
 {
     return isRepresentableAsImpl<ResultType, int64_t, int64_t>(value);
+}
+
+template<typename ResultType>
+inline bool isRepresentableAs(size_t value)
+{
+    return isRepresentableAsImpl<ResultType, size_t, size_t>(value);
 }
 
 template<typename ResultType>
@@ -169,6 +173,15 @@ static IntType rotateLeft(IntType value, int32_t shift)
     shift &= mask;
     return (uValue << shift) | (uValue >> ((bits - shift) & mask));
 }
+
+inline unsigned defaultOptLevel()
+{
+    // This should almost always return 2, but we allow this default to be lowered for testing. Some
+    // components will deliberately set the optLevel.
+    return Options::defaultB3OptLevel();
+}
+
+Optional<GPRReg> pinnedExtendedOffsetAddrRegister();
 
 } } // namespace JSC::B3
 

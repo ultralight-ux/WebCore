@@ -28,7 +28,8 @@
 
 #if ENABLE(B3_JIT)
 
-#include "B3BasicBlock.h"
+#include "B3BasicBlockInlines.h"
+#include "B3ValueInlines.h"
 #include <wtf/ListDump.h>
 
 namespace JSC { namespace B3 {
@@ -37,15 +38,12 @@ SwitchValue::~SwitchValue()
 {
 }
 
-SwitchCase SwitchValue::removeCase(BasicBlock* block, unsigned index)
+BasicBlock* SwitchValue::fallThrough(const BasicBlock* owner)
 {
-    FrequentedBlock resultBlock = block->successor(index);
-    int64_t resultValue = m_values[index];
-    block->successor(index) = block->successors().last();
-    block->successors().removeLast();
-    m_values[index] = m_values.last();
-    m_values.removeLast();
-    return SwitchCase(resultValue, resultBlock);
+    ASSERT(hasFallThrough());
+    BasicBlock* fallThrough = owner->successor(owner->numSuccessors() - 1).block();
+    ASSERT(fallThrough == owner->fallThrough().block());
+    return fallThrough;
 }
 
 bool SwitchValue::hasFallThrough(const BasicBlock* block) const
@@ -109,13 +107,8 @@ void SwitchValue::dumpMeta(CommaPrinter& comma, PrintStream& out) const
     out.print(comma, "cases = [", listDump(m_values), "]");
 }
 
-Value* SwitchValue::cloneImpl() const
-{
-    return new SwitchValue(*this);
-}
-
 SwitchValue::SwitchValue(Origin origin, Value* child)
-    : Value(CheckedOpcode, Switch, Void, origin, child)
+    : Value(CheckedOpcode, Switch, Void, One, origin, child)
 {
 }
 

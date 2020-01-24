@@ -27,7 +27,6 @@
 
 #if ENABLE(CONTENT_EXTENSIONS)
 
-#include "PlatformExportMacros.h"
 #include <system_error>
 
 namespace WebCore {
@@ -49,14 +48,16 @@ enum class ContentExtensionError {
     JSONInvalidTriggerFlagsArray,
     JSONInvalidObjectInTriggerFlagsArray,
     JSONInvalidStringInTriggerFlagsArray,
-    JSONInvalidDomainList,
+    JSONInvalidConditionList,
     JSONDomainNotLowerCaseASCII,
-    JSONUnlessAndIfDomain,
+    JSONMultipleConditions,
+    JSONTopURLAndDomainConditions,
     JSONTooManyRules,
     
     JSONInvalidAction,
     JSONInvalidActionType,
     JSONInvalidCSSDisplayNoneActionType,
+    JSONInvalidNotification,
     JSONInvalidRegex,
 };
 

@@ -24,12 +24,12 @@
 
 #include "BitmapImage.h"
 #include "FloatRect.h"
-#include "GRefPtrGStreamer.h"
+#include "GStreamerCommon.h"
 
 #include <gst/gst.h>
 #include <gst/video/video-frame.h>
 
-#include <wtf/PassRefPtr.h>
+#include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -38,24 +38,28 @@ class IntSize;
 
 class ImageGStreamer : public RefCounted<ImageGStreamer> {
     public:
-        static PassRefPtr<ImageGStreamer> createImage(GstSample* sample)
+        static RefPtr<ImageGStreamer> createImage(GstSample* sample)
         {
-            return adoptRef(new ImageGStreamer(sample));
+            auto image = adoptRef(new ImageGStreamer(sample));
+            if (!image->m_image)
+                return nullptr;
+
+            return image;
         }
         ~ImageGStreamer();
 
-        PassRefPtr<BitmapImage> image()
+        BitmapImage& image()
         {
             ASSERT(m_image);
-            return m_image.get();
+            return *m_image.get();
         }
 
         void setCropRect(FloatRect rect) { m_cropRect = rect; }
         FloatRect rect()
         {
+            ASSERT(m_image);
             if (!m_cropRect.isEmpty())
                 return FloatRect(m_cropRect);
-            ASSERT(m_image);
             return FloatRect(0, 0, m_image->size().width(), m_image->size().height());
         }
 
@@ -63,9 +67,9 @@ class ImageGStreamer : public RefCounted<ImageGStreamer> {
         ImageGStreamer(GstSample*);
         RefPtr<BitmapImage> m_image;
         FloatRect m_cropRect;
-
 #if USE(CAIRO)
         GstVideoFrame m_videoFrame;
+        bool m_frameMapped { false };
 #endif
     };
 }

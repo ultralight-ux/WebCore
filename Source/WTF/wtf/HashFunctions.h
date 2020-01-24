@@ -18,10 +18,10 @@
  *
  */
 
-#ifndef WTF_HashFunctions_h
-#define WTF_HashFunctions_h
+#pragma once
 
 #include <stdint.h>
+#include <tuple>
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
 
@@ -175,9 +175,49 @@ namespace WTF {
         static const bool safeToCompareToEmptyOrDeleted = PairHash<T, U>::safeToCompareToEmptyOrDeleted;
     };
 
+    template<typename... Types>
+    struct TupleHash {
+        template<size_t I = 0>
+        static typename std::enable_if<I < sizeof...(Types) - 1, unsigned>::type hash(const std::tuple<Types...>& t)
+        {
+            using IthTupleElementType = typename std::tuple_element<I, typename std::tuple<Types...>>::type;
+            return pairIntHash(DefaultHash<IthTupleElementType>::Hash::hash(std::get<I>(t)), hash<I + 1>(t));
+        }
+
+        template<size_t I = 0>
+        static typename std::enable_if<I == sizeof...(Types) - 1, unsigned>::type hash(const std::tuple<Types...>& t)
+        {
+            using IthTupleElementType = typename std::tuple_element<I, typename std::tuple<Types...>>::type;
+            return DefaultHash<IthTupleElementType>::Hash::hash(std::get<I>(t));
+        }
+
+        template<size_t I = 0>
+        static typename std::enable_if<I < sizeof...(Types) - 1, bool>::type equal(const std::tuple<Types...>& a, const std::tuple<Types...>& b)
+        {
+            using IthTupleElementType = typename std::tuple_element<I, typename std::tuple<Types...>>::type;
+            return DefaultHash<IthTupleElementType>::Hash::equal(std::get<I>(a), std::get<I>(b)) && equal<I + 1>(a, b);
+        }
+
+        template<size_t I = 0>
+        static typename std::enable_if<I == sizeof...(Types) - 1, bool>::type equal(const std::tuple<Types...>& a, const std::tuple<Types...>& b)
+        {
+            using IthTupleElementType = typename std::tuple_element<I, typename std::tuple<Types...>>::type;
+            return DefaultHash<IthTupleElementType>::Hash::equal(std::get<I>(a), std::get<I>(b));
+        }
+
+        // We should use safeToCompareToEmptyOrDeleted = DefaultHash<Types>::Hash::safeToCompareToEmptyOrDeleted &&... whenever
+        // we switch to C++17. We can't do anything better here right now because GCC can't do C++.
+        template<typename BoolType>
+        static constexpr bool allTrue(BoolType value) { return value; }
+        template<typename BoolType, typename... BoolTypes>
+        static constexpr bool allTrue(BoolType value, BoolTypes... values) { return value && allTrue(values...); }
+        static const bool safeToCompareToEmptyOrDeleted = allTrue(DefaultHash<Types>::Hash::safeToCompareToEmptyOrDeleted...);
+    };
+
     // make IntHash the default hash function for many integer types
 
     template<> struct DefaultHash<bool> { typedef IntHash<uint8_t> Hash; };
+    template<> struct DefaultHash<uint8_t> { typedef IntHash<uint8_t> Hash; };
     template<> struct DefaultHash<short> { typedef IntHash<unsigned> Hash; };
     template<> struct DefaultHash<unsigned short> { typedef IntHash<unsigned> Hash; };
     template<> struct DefaultHash<int> { typedef IntHash<unsigned> Hash; };
@@ -202,6 +242,10 @@ namespace WTF {
 
     template<typename P, typename Deleter> struct DefaultHash<std::unique_ptr<P, Deleter>> { typedef PtrHash<std::unique_ptr<P, Deleter>> Hash; };
 
+#ifdef __OBJC__
+    template<> struct DefaultHash<__unsafe_unretained id> { using Hash = PtrHash<__unsafe_unretained id>; };
+#endif
+
     // make IntPairHash the default hash function for pairs of (at most) 32-bit integers.
 
     template<> struct DefaultHash<std::pair<short, short>> { typedef IntPairHash<short, short> Hash; };
@@ -224,11 +268,10 @@ namespace WTF {
     // make PairHash the default hash function for pairs of arbitrary values.
 
     template<typename T, typename U> struct DefaultHash<std::pair<T, U>> { typedef PairHash<T, U> Hash; };
+    template<typename... Types> struct DefaultHash<std::tuple<Types...>> { typedef TupleHash<Types...> Hash; };
 
 } // namespace WTF
 
 using WTF::DefaultHash;
 using WTF::IntHash;
 using WTF::PtrHash;
-
-#endif // WTF_HashFunctions_h

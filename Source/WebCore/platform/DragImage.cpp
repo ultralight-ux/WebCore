@@ -32,12 +32,20 @@
 #include "FrameSnapshotting.h"
 #include "FrameView.h"
 #include "ImageBuffer.h"
+#include "NotImplemented.h"
 #include "Range.h"
 #include "RenderElement.h"
 #include "RenderObject.h"
 #include "RenderView.h"
+#include "TextIndicator.h"
 
 namespace WebCore {
+
+#if PLATFORM(COCOA)
+const float ColorSwatchCornerRadius = 4;
+const float ColorSwatchStrokeSize = 4;
+const float ColorSwatchWidth = 24;
+#endif
 
 DragImageRef fitDragImageToMaxSize(DragImageRef image, const IntSize& layoutSize, const IntSize& maxSize)
 {
@@ -110,7 +118,7 @@ static DragImageRef createDragImageFromSnapshot(std::unique_ptr<ImageBuffer> sna
 #else
     UNUSED_PARAM(node);
 #endif
-    RefPtr<Image> image = ImageBuffer::sinkIntoImage(WTFMove(snapshot), Unscaled);
+    RefPtr<Image> image = ImageBuffer::sinkIntoImage(WTFMove(snapshot), PreserveResolution::Yes);
     if (!image)
         return nullptr;
     return createDragImageFromImage(image.get(), orientation);
@@ -122,32 +130,37 @@ DragImageRef createDragImageForNode(Frame& frame, Node& node)
     return createDragImageFromSnapshot(snapshotNode(frame, node), &node);
 }
 
-DragImageRef createDragImageForSelection(Frame& frame, bool forceBlackText)
+#if !ENABLE(DATA_INTERACTION)
+
+DragImageRef createDragImageForSelection(Frame& frame, TextIndicatorData&, bool forceBlackText)
 {
     SnapshotOptions options = forceBlackText ? SnapshotOptionsForceBlackText : SnapshotOptionsNone;
     return createDragImageFromSnapshot(snapshotSelection(frame, options), nullptr);
 }
 
+#endif
+
 struct ScopedFrameSelectionState {
     ScopedFrameSelectionState(Frame& frame)
         : frame(frame)
     {
-        if (RenderView* root = frame.contentRenderer())
-            root->getSelection(startRenderer, startOffset, endRenderer, endOffset);
+        if (auto* renderView = frame.contentRenderer())
+            selection = renderView->selection().get();
     }
 
     ~ScopedFrameSelectionState()
     {
-        if (RenderView* root = frame.contentRenderer())
-            root->setSelection(startRenderer, startOffset, endRenderer, endOffset, RenderView::RepaintNothing);
+        if (auto* renderView = frame.contentRenderer()) {
+            ASSERT(selection);
+            renderView->selection().set(selection.value(), SelectionRangeData::RepaintMode::Nothing);
+        }
     }
 
     const Frame& frame;
-    RenderObject* startRenderer;
-    RenderObject* endRenderer;
-    std::optional<unsigned> startOffset;
-    std::optional<unsigned> endOffset;
+    Optional<SelectionRangeData::Context> selection;
 };
+
+#if !PLATFORM(IOS_FAMILY)
 
 DragImageRef createDragImageForRange(Frame& frame, Range& range, bool forceBlackText)
 {
@@ -181,11 +194,13 @@ DragImageRef createDragImageForRange(Frame& frame, Range& range, bool forceBlack
     int startOffset = start.deprecatedEditingOffset();
     int endOffset = end.deprecatedEditingOffset();
     ASSERT(startOffset >= 0 && endOffset >= 0);
-    view->setSelection(startRenderer, startOffset, endRenderer, endOffset, RenderView::RepaintNothing);
+    view->selection().set({ startRenderer, endRenderer, static_cast<unsigned>(startOffset), static_cast<unsigned>(endOffset) }, SelectionRangeData::RepaintMode::Nothing);
     // We capture using snapshotFrameRect() because we fake up the selection using
     // FrameView but snapshotSelection() uses the selection from the Frame itself.
-    return createDragImageFromSnapshot(snapshotFrameRect(frame, view->selectionBounds(), options), nullptr);
+    return createDragImageFromSnapshot(snapshotFrameRect(frame, view->selection().boundsClippedToVisibleContent(), options), nullptr);
 }
+
+#endif
 
 DragImageRef createDragImageForImage(Frame& frame, Node& node, IntRect& imageRect, IntRect& elementRect)
 {
@@ -208,11 +223,108 @@ DragImageRef createDragImageForImage(Frame& frame, Node& node, IntRect& imageRec
     return createDragImageFromSnapshot(snapshotNode(frame, node), &node);
 }
 
-#if !PLATFORM(COCOA) && !PLATFORM(WIN)
-DragImageRef createDragImageForLink(URL&, const String&, FontRenderingMode)
+#if !ENABLE(DATA_INTERACTION)
+DragImageRef platformAdjustDragImageForDeviceScaleFactor(DragImageRef image, float deviceScaleFactor)
 {
+    // Later code expects the drag image to be scaled by device's scale factor.
+    return scaleDragImage(image, { deviceScaleFactor, deviceScaleFactor });
+}
+#endif
+
+#if !PLATFORM(MAC)
+const int linkDragBorderInset = 2;
+
+IntPoint dragOffsetForLinkDragImage(DragImageRef dragImage)
+{
+    IntSize size = dragImageSize(dragImage);
+    return { -size.width() / 2, -linkDragBorderInset };
+}
+
+FloatPoint anchorPointForLinkDragImage(DragImageRef dragImage)
+{
+    IntSize size = dragImageSize(dragImage);
+    return { 0.5, static_cast<float>((size.height() - linkDragBorderInset) / size.height()) };
+}
+#endif
+
+DragImage::DragImage()
+    : m_dragImageRef { nullptr }
+{
+}
+
+DragImage::DragImage(DragImageRef dragImageRef)
+    : m_dragImageRef { dragImageRef }
+{
+}
+
+DragImage::DragImage(DragImage&& other)
+    : m_dragImageRef { std::exchange(other.m_dragImageRef, nullptr) }
+{
+    m_indicatorData = other.m_indicatorData;
+    m_visiblePath = other.m_visiblePath;
+}
+
+DragImage& DragImage::operator=(DragImage&& other)
+{
+    if (m_dragImageRef)
+        deleteDragImage(m_dragImageRef);
+
+    m_dragImageRef = std::exchange(other.m_dragImageRef, nullptr);
+    m_indicatorData = other.m_indicatorData;
+    m_visiblePath = other.m_visiblePath;
+
+    return *this;
+}
+
+DragImage::~DragImage()
+{
+    if (m_dragImageRef)
+        deleteDragImage(m_dragImageRef);
+}
+
+#if !PLATFORM(COCOA) && !PLATFORM(GTK) && !PLATFORM(WIN)
+
+IntSize dragImageSize(DragImageRef)
+{
+    notImplemented();
+    return { 0, 0 };
+}
+
+void deleteDragImage(DragImageRef)
+{
+    notImplemented();
+}
+
+DragImageRef scaleDragImage(DragImageRef, FloatSize)
+{
+    notImplemented();
     return nullptr;
 }
+
+DragImageRef dissolveDragImageToFraction(DragImageRef, float)
+{
+    notImplemented();
+    return nullptr;
+}
+
+DragImageRef createDragImageFromImage(Image*, ImageOrientationDescription)
+{
+    notImplemented();
+    return nullptr;
+}
+
+DragImageRef createDragImageIconForCachedImageFilename(const String&)
+{
+    notImplemented();
+    return nullptr;
+}
+
+DragImageRef createDragImageForLink(Element&, URL&, const String&, TextIndicatorData&, FontRenderingMode, float)
+{
+    notImplemented();
+    return nullptr;
+}
+
 #endif
 
 } // namespace WebCore

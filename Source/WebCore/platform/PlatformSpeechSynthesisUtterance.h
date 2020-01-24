@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc.  All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,29 +23,22 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PlatformSpeechSynthesisUtterance_h
-#define PlatformSpeechSynthesisUtterance_h
+#pragma once
 
 #if ENABLE(SPEECH_SYNTHESIS)
 
 #include "PlatformSpeechSynthesisVoice.h"
-#include <wtf/PassRefPtr.h>
-#include <wtf/RefCounted.h>
-#include <wtf/text/WTFString.h>
+#include <wtf/MonotonicTime.h>
 
 namespace WebCore {
     
 class PlatformSpeechSynthesisUtteranceClient {
-public:
-    // Implement methods as needed.
-protected:
-    virtual ~PlatformSpeechSynthesisUtteranceClient() { }
 };
     
 class PlatformSpeechSynthesisUtterance : public RefCounted<PlatformSpeechSynthesisUtterance> {
 public:
-    static PassRefPtr<PlatformSpeechSynthesisUtterance> create(PlatformSpeechSynthesisUtteranceClient*);
-    
+    WEBCORE_EXPORT static Ref<PlatformSpeechSynthesisUtterance> create(PlatformSpeechSynthesisUtteranceClient&);
+
     const String& text() const { return m_text; }
     void setText(const String& text) { m_text = text; }
     
@@ -67,27 +60,25 @@ public:
     float pitch() const { return m_pitch; }
     void setPitch(float pitch) { m_pitch = std::max(std::min(2.0f, pitch), 0.0f); }
 
-    double startTime() const { return m_startTime; }
-    void setStartTime(double startTime) { m_startTime = startTime; }
+    MonotonicTime startTime() const { return m_startTime; }
+    void setStartTime(MonotonicTime startTime) { m_startTime = startTime; }
     
     PlatformSpeechSynthesisUtteranceClient* client() const { return m_client; }
     void setClient(PlatformSpeechSynthesisUtteranceClient* client) { m_client = client; }
     
 private:
-    explicit PlatformSpeechSynthesisUtterance(PlatformSpeechSynthesisUtteranceClient*);
+    explicit PlatformSpeechSynthesisUtterance(PlatformSpeechSynthesisUtteranceClient&);
 
     PlatformSpeechSynthesisUtteranceClient* m_client;
     String m_text;
     String m_lang;
     RefPtr<PlatformSpeechSynthesisVoice> m_voice;
-    float m_volume;
-    float m_rate;
-    float m_pitch;
-    double m_startTime;
+    float m_volume { 1 };
+    float m_rate { 1 };
+    float m_pitch { 1 };
+    MonotonicTime m_startTime;
 };
     
 } // namespace WebCore
 
 #endif // ENABLE(SPEECH_SYNTHESIS)
-
-#endif // PlatformSpeechSynthesisUtterance_h

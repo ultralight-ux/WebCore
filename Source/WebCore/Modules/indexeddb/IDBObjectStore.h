@@ -29,9 +29,9 @@
 
 #include "ActiveDOMObject.h"
 #include "ExceptionOr.h"
+#include "IDBCursorDirection.h"
 #include "IDBKeyPath.h"
 #include "IDBObjectStoreInfo.h"
-#include <wtf/HashSet.h>
 
 namespace JSC {
 class ExecState;
@@ -55,14 +55,16 @@ enum class ObjectStoreOverwriteMode;
 }
 
 class IDBObjectStore final : public ActiveDOMObject {
+    WTF_MAKE_NONCOPYABLE(IDBObjectStore);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     IDBObjectStore(ScriptExecutionContext&, const IDBObjectStoreInfo&, IDBTransaction&);
     ~IDBObjectStore();
 
     const String& name() const;
     ExceptionOr<void> setName(const String&);
-    const std::optional<IDBKeyPath>& keyPath() const;
-    RefPtr<DOMStringList> indexNames() const;
+    const Optional<IDBKeyPath>& keyPath() const;
+    Ref<DOMStringList> indexNames() const;
     IDBTransaction& transaction();
     bool autoIncrement() const;
 
@@ -71,10 +73,10 @@ public:
         bool multiEntry;
     };
 
-    ExceptionOr<Ref<IDBRequest>> openCursor(JSC::ExecState&, RefPtr<IDBKeyRange>, const String& direction);
-    ExceptionOr<Ref<IDBRequest>> openCursor(JSC::ExecState&, JSC::JSValue key, const String& direction);
-    ExceptionOr<Ref<IDBRequest>> openKeyCursor(JSC::ExecState&, RefPtr<IDBKeyRange>, const String& direction);
-    ExceptionOr<Ref<IDBRequest>> openKeyCursor(JSC::ExecState&, JSC::JSValue key, const String& direction);
+    ExceptionOr<Ref<IDBRequest>> openCursor(JSC::ExecState&, RefPtr<IDBKeyRange>&&, IDBCursorDirection);
+    ExceptionOr<Ref<IDBRequest>> openCursor(JSC::ExecState&, JSC::JSValue key, IDBCursorDirection);
+    ExceptionOr<Ref<IDBRequest>> openKeyCursor(JSC::ExecState&, RefPtr<IDBKeyRange>&&, IDBCursorDirection);
+    ExceptionOr<Ref<IDBRequest>> openKeyCursor(JSC::ExecState&, JSC::JSValue key, IDBCursorDirection);
     ExceptionOr<Ref<IDBRequest>> get(JSC::ExecState&, JSC::JSValue key);
     ExceptionOr<Ref<IDBRequest>> get(JSC::ExecState&, IDBKeyRange*);
     ExceptionOr<Ref<IDBRequest>> getKey(JSC::ExecState&, JSC::JSValue key);
@@ -89,12 +91,12 @@ public:
     ExceptionOr<void> deleteIndex(const String& name);
     ExceptionOr<Ref<IDBRequest>> count(JSC::ExecState&, IDBKeyRange*);
     ExceptionOr<Ref<IDBRequest>> count(JSC::ExecState&, JSC::JSValue key);
-    ExceptionOr<Ref<IDBRequest>> getAll(JSC::ExecState&, RefPtr<IDBKeyRange>, std::optional<uint32_t> count);
-    ExceptionOr<Ref<IDBRequest>> getAll(JSC::ExecState&, JSC::JSValue key, std::optional<uint32_t> count);
-    ExceptionOr<Ref<IDBRequest>> getAllKeys(JSC::ExecState&, RefPtr<IDBKeyRange>, std::optional<uint32_t> count);
-    ExceptionOr<Ref<IDBRequest>> getAllKeys(JSC::ExecState&, JSC::JSValue key, std::optional<uint32_t> count);
+    ExceptionOr<Ref<IDBRequest>> getAll(JSC::ExecState&, RefPtr<IDBKeyRange>&&, Optional<uint32_t> count);
+    ExceptionOr<Ref<IDBRequest>> getAll(JSC::ExecState&, JSC::JSValue key, Optional<uint32_t> count);
+    ExceptionOr<Ref<IDBRequest>> getAllKeys(JSC::ExecState&, RefPtr<IDBKeyRange>&&, Optional<uint32_t> count);
+    ExceptionOr<Ref<IDBRequest>> getAllKeys(JSC::ExecState&, JSC::JSValue key, Optional<uint32_t> count);
 
-    ExceptionOr<Ref<IDBRequest>> putForCursorUpdate(JSC::ExecState&, JSC::JSValue, JSC::JSValue key);
+    ExceptionOr<Ref<IDBRequest>> putForCursorUpdate(JSC::ExecState&, JSC::JSValue, RefPtr<IDBKey>);
 
     void markAsDeleted();
     bool isDeleted() const { return m_deleted; }
@@ -113,7 +115,11 @@ private:
     enum class InlineKeyCheck { Perform, DoNotPerform };
     ExceptionOr<Ref<IDBRequest>> putOrAdd(JSC::ExecState&, JSC::JSValue, RefPtr<IDBKey>, IndexedDB::ObjectStoreOverwriteMode, InlineKeyCheck);
     ExceptionOr<Ref<IDBRequest>> doCount(JSC::ExecState&, const IDBKeyRangeData&);
-    ExceptionOr<Ref<IDBRequest>> doDelete(JSC::ExecState&, IDBKeyRange*);
+    ExceptionOr<Ref<IDBRequest>> doDelete(JSC::ExecState&, WTF::Function<ExceptionOr<RefPtr<IDBKeyRange>>()> &&);
+    ExceptionOr<Ref<IDBRequest>> doOpenCursor(JSC::ExecState&, IDBCursorDirection, WTF::Function<ExceptionOr<RefPtr<IDBKeyRange>>()>&&);
+    ExceptionOr<Ref<IDBRequest>> doOpenKeyCursor(JSC::ExecState&, IDBCursorDirection, WTF::Function<ExceptionOr<RefPtr<IDBKeyRange>>()>&&);
+    ExceptionOr<Ref<IDBRequest>> doGetAll(JSC::ExecState&, Optional<uint32_t> count, WTF::Function<ExceptionOr<RefPtr<IDBKeyRange>>()> &&);
+    ExceptionOr<Ref<IDBRequest>> doGetAllKeys(JSC::ExecState&, Optional<uint32_t> count, WTF::Function<ExceptionOr<RefPtr<IDBKeyRange>>()> &&);
 
     const char* activeDOMObjectName() const final;
     bool canSuspendForDocumentSuspension() const final;

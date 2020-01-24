@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005, 2008, 2009, 2014, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,13 +21,12 @@
 #pragma once
 
 #include <mutex>
-#include <thread>
 #include <wtf/Assertions.h>
 #include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
-#include <wtf/ThreadSafeRefCounted.h>
-#include <wtf/WTFThreadData.h>
+#include <wtf/Threading.h>
+#include <wtf/text/AtomStringTable.h>
 
 namespace JSC {
 
@@ -61,7 +60,7 @@ public:
     JS_EXPORT_PRIVATE GlobalJSLock();
     JS_EXPORT_PRIVATE ~GlobalJSLock();
 private:
-    static StaticLock s_sharedInstanceMutex;
+    static Lock s_sharedInstanceMutex;
 };
 
 class JSLockHolder {
@@ -71,9 +70,8 @@ public:
     JS_EXPORT_PRIVATE JSLockHolder(ExecState*);
 
     JS_EXPORT_PRIVATE ~JSLockHolder();
-private:
-    void init();
 
+private:
     RefPtr<VM> m_vm;
 };
 
@@ -93,15 +91,13 @@ public:
 
     VM* vm() { return m_vm; }
 
-    bool hasExclusiveThread() const { return m_hasExclusiveThread; }
-    std::thread::id exclusiveThread() const
+    Optional<RefPtr<Thread>> ownerThread() const
     {
-        ASSERT(m_hasExclusiveThread);
-        return m_ownerThreadID;
+        if (m_hasOwnerThread)
+            return m_ownerThread;
+        return WTF::nullopt;
     }
-    std::thread::id ownerThread() const { return m_ownerThreadID; }
-    JS_EXPORT_PRIVATE void setExclusiveThread(std::thread::id);
-    JS_EXPORT_PRIVATE bool currentThreadIsHoldingLock();
+    bool currentThreadIsHoldingLock() { return m_hasOwnerThread && m_ownerThread.get() == &Thread::current(); }
 
     void willDestroyVM(VM*);
 
@@ -122,6 +118,13 @@ public:
         unsigned m_dropDepth;
     };
 
+    void makeWebThreadAware()
+    {
+        m_isWebThreadAware = true;
+    }
+
+    bool isWebThreadAware() const { return m_isWebThreadAware; }
+
 private:
     void lock(intptr_t lockCount);
     void unlock(intptr_t unlockCount);
@@ -133,13 +136,18 @@ private:
     void grabAllLocks(DropAllLocks*, unsigned lockCount);
 
     Lock m_lock;
-    std::thread::id m_ownerThreadID;
+    bool m_isWebThreadAware { false };
+    // We cannot make m_ownerThread an optional (instead of pairing it with an explicit
+    // m_hasOwnerThread) because currentThreadIsHoldingLock() may be called from a
+    // different thread, and an optional is vulnerable to races.
+    // See https://bugs.webkit.org/show_bug.cgi?id=169042#c6
+    bool m_hasOwnerThread { false };
+    RefPtr<Thread> m_ownerThread;
     intptr_t m_lockCount;
     unsigned m_lockDropDepth;
-    bool m_hasExclusiveThread;
     bool m_shouldReleaseHeapAccess;
     VM* m_vm;
-    AtomicStringTable* m_entryAtomicStringTable; 
+    AtomStringTable* m_entryAtomStringTable; 
 };
 
 } // namespace

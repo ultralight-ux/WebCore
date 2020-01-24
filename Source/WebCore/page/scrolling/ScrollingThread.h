@@ -38,6 +38,8 @@
 
 #if PLATFORM(COCOA)
 #include <wtf/RetainPtr.h>
+#else
+#include <wtf/RunLoop.h>
 #endif
 
 namespace WebCore {
@@ -61,8 +63,6 @@ private:
     static ScrollingThread& singleton();
 
     void createThreadIfNeeded();
-    static void threadCallback(void* scrollingThread);
-    void threadBody();
     void dispatchFunctionsFromScrollingThread();
 
     void initializeRunLoop();
@@ -73,7 +73,7 @@ private:
     void threadRunLoopSourceCallback();
 #endif
 
-    ThreadIdentifier m_threadIdentifier;
+    RefPtr<Thread> m_thread;
 
     Condition m_initializeRunLoopConditionVariable;
     Lock m_initializeRunLoopMutex;
@@ -85,6 +85,8 @@ private:
     // FIXME: We should use WebCore::RunLoop here.
     RetainPtr<CFRunLoopRef> m_threadRunLoop;
     RetainPtr<CFRunLoopSourceRef> m_threadRunLoopSource;
+#else
+    RunLoop* m_runLoop { nullptr };
 #endif
 };
 

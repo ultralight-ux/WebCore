@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,200 +26,74 @@
 #include "config.h"
 #include "JSDOMPromise.h"
 
-#include "ExceptionCode.h"
-#include "JSDOMError.h"
+#include "DOMWindow.h"
 #include "JSDOMWindow.h"
-#include <builtins/BuiltinNames.h>
-#include <runtime/Exception.h>
-#include <runtime/JSONObject.h>
-#include <runtime/JSPromiseConstructor.h>
+#include <JavaScriptCore/BuiltinNames.h>
+#include <JavaScriptCore/CatchScope.h>
+#include <JavaScriptCore/Exception.h>
+#include <JavaScriptCore/JSNativeStdFunction.h>
+#include <JavaScriptCore/JSPromiseConstructor.h>
 
 using namespace JSC;
 
 namespace WebCore {
 
-DeferredPromise::DeferredPromise(JSDOMGlobalObject& globalObject, JSPromiseDeferred& promiseDeferred)
-    : ActiveDOMCallback(globalObject.scriptExecutionContext())
-    , m_deferred(&promiseDeferred)
-    , m_globalObject(&globalObject)
-{
-    auto locker = lockDuringMarking(globalObject.vm().heap, globalObject.gcLock());
-    globalObject.vm().heap.writeBarrier(&globalObject, &promiseDeferred);
-    globalObject.deferredPromises(locker).add(this);
-}
-
-DeferredPromise::~DeferredPromise()
-{
-    clear();
-}
-
-void DeferredPromise::clear()
-{
-    ASSERT(!m_deferred || m_globalObject);
-    if (m_deferred && m_globalObject) {
-        auto locker = lockDuringMarking(m_globalObject->vm().heap, m_globalObject->gcLock());
-        m_globalObject->deferredPromises(locker).remove(this);
-    }
-    m_deferred.clear();
-}
-
-void DeferredPromise::contextDestroyed()
-{
-    ActiveDOMCallback::contextDestroyed();
-    clear();
-}
-
-JSC::JSValue DeferredPromise::promise() const
-{
-    ASSERT(m_deferred);
-    return m_deferred->promise();
-}
-
-void DeferredPromise::callFunction(ExecState& exec, JSValue function, JSValue resolution)
-{
-    if (!canInvokeCallback())
-        return;
-
-    CallData callData;
-    CallType callType = getCallData(function, callData);
-    ASSERT(callType != CallType::None);
-
-    MarkedArgumentBuffer arguments;
-    arguments.append(resolution);
-
-    call(&exec, function, callType, callData, jsUndefined(), arguments);
-
-    clear();
-}
-
-void DeferredPromise::reject()
-{
-    if (isSuspended())
-        return;
-
-    ASSERT(m_deferred);
-    ASSERT(m_globalObject);
-    auto& state = *m_globalObject->globalExec();
-    JSC::JSLockHolder locker(&state);
-    reject(state, JSC::jsUndefined());
-}
-
-void DeferredPromise::reject(std::nullptr_t)
-{
-    if (isSuspended())
-        return;
-
-    ASSERT(m_deferred);
-    ASSERT(m_globalObject);
-    auto& state = *m_globalObject->globalExec();
-    JSC::JSLockHolder locker(&state);
-    reject(state, JSC::jsNull());
-}
-
-void DeferredPromise::reject(Exception&& exception)
-{
-    if (isSuspended())
-        return;
-
-    ASSERT(m_deferred);
-    ASSERT(m_globalObject);
-    auto& state = *m_globalObject->globalExec();
-    JSC::JSLockHolder locker(&state);
-    reject(state, createDOMException(state, WTFMove(exception)));
-}
-
-void DeferredPromise::reject(ExceptionCode ec, const String& message)
-{
-    if (isSuspended())
-        return;
-
-    ASSERT(m_deferred);
-    ASSERT(m_globalObject);
-    JSC::ExecState* state = m_globalObject->globalExec();
-    JSC::JSLockHolder locker(state);
-    reject(*state, createDOMException(state, ec, message));
-}
-
-void DeferredPromise::reject(const JSC::PrivateName& privateName)
-{
-    if (isSuspended())
-        return;
-
-    ASSERT(m_deferred);
-    ASSERT(m_globalObject);
-    JSC::ExecState* state = m_globalObject->globalExec();
-    JSC::JSLockHolder locker(state);
-    reject(*state, toJS(state, m_globalObject.get(), privateName));
-}
-
-void rejectPromiseWithExceptionIfAny(JSC::ExecState& state, JSDOMGlobalObject& globalObject, JSPromiseDeferred& promiseDeferred)
+static inline JSC::JSValue callFunction(JSC::ExecState& state, JSC::JSValue jsFunction, JSC::JSValue thisValue, const JSC::ArgList& arguments)
 {
     VM& vm = state.vm();
-    auto scope = DECLARE_CATCH_SCOPE(vm);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSC::CallData callData;
+    auto callType = JSC::getCallData(vm, jsFunction, callData);
+    ASSERT(callType != JSC::CallType::None);
+    auto result = call(&state, jsFunction, callType, callData, thisValue, arguments);
 
-    if (LIKELY(!scope.exception()))
-        return;
+    EXCEPTION_ASSERT_UNUSED(scope, !scope.exception() || isTerminatedExecutionException(state.vm(), scope.exception()));
 
-    JSValue error = scope.exception()->value();
-    scope.clearException();
-
-    DeferredPromise::create(globalObject, promiseDeferred)->reject<IDLAny>(error);
+    return result;
 }
 
-Ref<DeferredPromise> createDeferredPromise(JSC::ExecState& state, JSDOMWindow& domWindow)
+void DOMPromise::whenSettled(std::function<void()>&& callback)
 {
-    JSC::JSPromiseDeferred* deferred = JSC::JSPromiseDeferred::create(&state, &domWindow);
-    // deferred can only be null in workers.
-    ASSERT(deferred);
-    return DeferredPromise::create(domWindow, *deferred);
+    whenPromiseIsSettled(globalObject(), promise(), WTFMove(callback));
 }
 
-JSC::EncodedJSValue createRejectedPromiseWithTypeError(JSC::ExecState& state, const String& errorMessage)
+void DOMPromise::whenPromiseIsSettled(JSDOMGlobalObject* globalObject, JSC::JSObject* promise, std::function<void()>&& callback)
 {
-    ASSERT(state.lexicalGlobalObject());
-    auto& globalObject = *state.lexicalGlobalObject();
+    auto& state = *globalObject->globalExec();
+    auto& vm = state.vm();
+    JSLockHolder lock(vm);
+    auto* handler = JSC::JSNativeStdFunction::create(vm, globalObject, 1, String { }, [callback = WTFMove(callback)] (ExecState*) mutable {
+        callback();
+        return JSC::JSValue::encode(JSC::jsUndefined());
+    });
 
-    auto promiseConstructor = globalObject.promiseConstructor();
-    auto rejectFunction = promiseConstructor->get(&state, state.vm().propertyNames->builtinNames().rejectPrivateName());
-    auto rejectionValue = createTypeError(&state, errorMessage);
+    const JSC::Identifier& privateName = vm.propertyNames->builtinNames().thenPrivateName();
+    auto thenFunction = promise->get(&state, privateName);
+    ASSERT(thenFunction.isFunction(vm));
 
-    CallData callData;
-    auto callType = getCallData(rejectFunction, callData);
-    ASSERT(callType != CallType::None);
-
-    MarkedArgumentBuffer arguments;
-    arguments.append(rejectionValue);
-
-    return JSValue::encode(call(&state, rejectFunction, callType, callData, promiseConstructor, arguments));
+    JSC::MarkedArgumentBuffer arguments;
+    arguments.append(handler);
+    arguments.append(handler);
+    callFunction(state, thenFunction, promise, arguments);
 }
 
-static inline JSC::JSValue parseAsJSON(JSC::ExecState* state, const String& data)
+JSC::JSValue DOMPromise::result() const
 {
-    JSC::JSLockHolder lock(state);
-    return JSC::JSONParse(state, data);
+    return promise()->result(m_globalObject->globalExec()->vm());
 }
 
-void fulfillPromiseWithJSON(Ref<DeferredPromise>&& promise, const String& data)
+DOMPromise::Status DOMPromise::status() const
 {
-    JSC::JSValue value = parseAsJSON(promise->globalObject()->globalExec(), data);
-    if (!value)
-        promise->reject(SYNTAX_ERR);
-    else
-        promise->resolve<IDLAny>(value);
-}
-
-void fulfillPromiseWithArrayBuffer(Ref<DeferredPromise>&& promise, ArrayBuffer* arrayBuffer)
-{
-    if (!arrayBuffer) {
-        promise->reject<IDLAny>(createOutOfMemoryError(promise->globalObject()->globalExec()));
-        return;
-    }
-    promise->resolve<IDLInterface<ArrayBuffer>>(*arrayBuffer);
-}
-
-void fulfillPromiseWithArrayBuffer(Ref<DeferredPromise>&& promise, const void* data, size_t length)
-{
-    fulfillPromiseWithArrayBuffer(WTFMove(promise), ArrayBuffer::tryCreate(data, length).get());
+    switch (promise()->status(m_globalObject->globalExec()->vm())) {
+    case JSC::JSPromise::Status::Pending:
+        return Status::Pending;
+    case JSC::JSPromise::Status::Fulfilled:
+        return Status::Fulfilled;
+    case JSC::JSPromise::Status::Rejected:
+        return Status::Rejected;
+    };
+    ASSERT_NOT_REACHED();
+    return Status::Rejected;
 }
 
 }

@@ -32,16 +32,16 @@
 #include "config.h"
 #include "WorkerScriptDebugServer.h"
 
-#include "JSDOMBinding.h"
+#include "JSDOMExceptionHandling.h"
 #include "Timer.h"
 #include "WorkerGlobalScope.h"
 #include "WorkerRunLoop.h"
 #include "WorkerThread.h"
-#include <runtime/VM.h>
-
-using namespace Inspector;
+#include <JavaScriptCore/VM.h>
 
 namespace WebCore {
+
+using namespace Inspector;
 
 WorkerScriptDebugServer::WorkerScriptDebugServer(WorkerGlobalScope& context)
     : ScriptDebugServer(context.script()->vm())
@@ -74,7 +74,7 @@ void WorkerScriptDebugServer::runEventLoopWhilePaused()
 
     MessageQueueWaitResult result;
     do {
-        result = m_workerGlobalScope.thread().runLoop().runInMode(&m_workerGlobalScope, WorkerRunLoop::debuggerMode());
+        result = m_workerGlobalScope.thread().runLoop().runInDebuggerMode(m_workerGlobalScope);
     } while (result != MessageQueueTerminated && !m_doneProcessingDebuggerEvents);
 }
 

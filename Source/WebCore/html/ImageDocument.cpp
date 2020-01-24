@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008, 2010, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,9 +28,12 @@
 #include "CachedImage.h"
 #include "Chrome.h"
 #include "ChromeClient.h"
+#include "CustomHeaderFields.h"
+#include "DOMWindow.h"
 #include "DocumentLoader.h"
 #include "EventListener.h"
 #include "EventNames.h"
+#include "Frame.h"
 #include "FrameLoader.h"
 #include "FrameLoaderClient.h"
 #include "FrameView.h"
@@ -41,18 +44,21 @@
 #include "HTMLNames.h"
 #include "LocalizedStrings.h"
 #include "MIMETypeRegistry.h"
-#include "MainFrame.h"
 #include "MouseEvent.h"
 #include "Page.h"
 #include "RawDataDocumentParser.h"
 #include "RenderElement.h"
 #include "Settings.h"
+#include <wtf/IsoMallocInlines.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebCore {
 
+WTF_MAKE_ISO_ALLOCATED_IMPL(ImageDocument);
+
 using namespace HTMLNames;
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
 class ImageEventListener final : public EventListener {
 public:
     static Ref<ImageEventListener> create(ImageDocument& document) { return adoptRef(*new ImageEventListener(document)); }
@@ -65,7 +71,7 @@ private:
     }
 
     bool operator==(const EventListener&) const override;
-    void handleEvent(ScriptExecutionContext*, Event*) override;
+    void handleEvent(ScriptExecutionContext&, Event&) override;
 
     ImageDocument& m_document;
 };
@@ -91,6 +97,7 @@ private:
 };
 
 class ImageDocumentElement final : public HTMLImageElement {
+    WTF_MAKE_ISO_ALLOCATED_INLINE(ImageDocumentElement);
 public:
     static Ref<ImageDocumentElement> create(ImageDocument&);
 
@@ -102,7 +109,7 @@ private:
     }
 
     virtual ~ImageDocumentElement();
-    void didMoveToNewDocument(Document& oldDocument) override;
+    void didMoveToNewDocument(Document& oldDocument, Document& newDocument) override;
 
     ImageDocument* m_imageDocument;
 };
@@ -128,14 +135,14 @@ LayoutSize ImageDocument::imageSize()
 
 void ImageDocument::updateDuringParsing()
 {
-    if (!frame()->settings().areImagesEnabled())
+    if (!settings().areImagesEnabled())
         return;
 
     if (!m_imageElement)
         createDocumentStructure();
 
     if (RefPtr<SharedBuffer> buffer = loader()->mainResourceData())
-        m_imageElement->cachedImage()->addDataBuffer(*buffer);
+        m_imageElement->cachedImage()->updateBuffer(*buffer);
 
     imageUpdated();
 }
@@ -163,7 +170,7 @@ void ImageDocument::finishedParsing()
             // back on the hostname if there is no path.
             String name = decodeURLEscapeSequences(url().lastPathComponent());
             if (name.isEmpty())
-                name = url().host();
+                name = url().host().toString();
             setTitle(imageTitle(name, size));
         }
 
@@ -194,7 +201,7 @@ ImageDocument::ImageDocument(Frame& frame, const URL& url)
     : HTMLDocument(&frame, url, ImageDocumentClass)
     , m_imageElement(nullptr)
     , m_imageSizeIsKnown(false)
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     , m_didShrinkImage(false)
 #endif
     , m_shouldShrinkImage(frame.settings().shrinksStandaloneImagesToFit() && frame.isMainFrame())
@@ -216,32 +223,33 @@ void ImageDocument::createDocumentStructure()
 
     frame()->injectUserScripts(InjectAtDocumentStart);
 
+    // We need a <head> so that the call to setTitle() later on actually has an <head> to append to <title> to.
     auto head = HTMLHeadElement::create(*this);
     rootElement->appendChild(head);
 
     auto body = HTMLBodyElement::create(*this);
     body->setAttribute(styleAttr, "margin: 0px");
     if (MIMETypeRegistry::isPDFMIMEType(document().loader()->responseMIMEType()))
-        body->setInlineStyleProperty(CSSPropertyBackgroundColor, "white", CSSPrimitiveValue::CSS_IDENT);
+        body->setInlineStyleProperty(CSSPropertyBackgroundColor, "white");
     rootElement->appendChild(body);
     
     auto imageElement = ImageDocumentElement::create(*this);
     if (m_shouldShrinkImage)
-        imageElement->setAttribute(styleAttr, "-webkit-user-select:none; display:block; margin:auto;");
+        imageElement->setAttribute(styleAttr, "-webkit-user-select:none; display:block; margin:auto; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);");
     else
-        imageElement->setAttribute(styleAttr, "-webkit-user-select:none;");
+        imageElement->setAttribute(styleAttr, "-webkit-user-select:none; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);");
     imageElement->setLoadManually(true);
     imageElement->setSrc(url().string());
     imageElement->cachedImage()->setResponse(loader()->response());
     body->appendChild(imageElement);
     
     if (m_shouldShrinkImage) {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
         // Set the viewport to be in device pixels (rather than the default of 980).
-        processViewport(ASCIILiteral("width=device-width"), ViewportArguments::ImageDocument);
+        processViewport("width=device-width,viewport-fit=cover"_s, ViewportArguments::ImageDocument);
 #else
         auto listener = ImageEventListener::create(*this);
-        if (DOMWindow* window = this->domWindow())
+        if (RefPtr<DOMWindow> window = this->domWindow())
             window->addEventListener("resize", listener.copyRef(), false);
         imageElement->addEventListener("click", WTFMove(listener), false);
 #endif
@@ -264,10 +272,11 @@ void ImageDocument::imageUpdated()
     m_imageSizeIsKnown = true;
 
     if (m_shouldShrinkImage) {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
         FloatSize screenSize = page()->chrome().screenSize();
         if (imageSize.width() > screenSize.width())
-            processViewport(String::format("width=%u", static_cast<unsigned>(imageSize.width().toInt())), ViewportArguments::ImageDocument);
+            processViewport(makeString("width=", imageSize.width().toInt(), ",viewport-fit=cover"), ViewportArguments::ImageDocument);
+
         if (page())
             page()->chrome().client().imageOrMediaDocumentSizeChanged(IntSize(imageSize.width(), imageSize.height()));
 #else
@@ -277,13 +286,13 @@ void ImageDocument::imageUpdated()
     }
 }
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
 float ImageDocument::scale()
 {
     if (!m_imageElement)
         return 1;
 
-    FrameView* view = this->view();
+    RefPtr<FrameView> view = this->view();
     if (!view)
         return 1;
 
@@ -332,7 +341,7 @@ bool ImageDocument::imageFitsInWindow()
     if (!m_imageElement)
         return true;
 
-    FrameView* view = this->view();
+    RefPtr<FrameView> view = this->view();
     if (!view)
         return true;
 
@@ -390,6 +399,9 @@ void ImageDocument::imageClicked(int x, int y)
 
         updateLayout();
 
+        if (!view())
+            return;
+
         float scale = this->scale();
 
         IntSize viewportSize = view()->visibleSize();
@@ -400,12 +412,12 @@ void ImageDocument::imageClicked(int x, int y)
     }
 }
 
-void ImageEventListener::handleEvent(ScriptExecutionContext*, Event* event)
+void ImageEventListener::handleEvent(ScriptExecutionContext&, Event& event)
 {
-    if (event->type() == eventNames().resizeEvent)
+    if (event.type() == eventNames().resizeEvent)
         m_document.windowSizeChanged();
-    else if (event->type() == eventNames().clickEvent && is<MouseEvent>(*event)) {
-        MouseEvent& mouseEvent = downcast<MouseEvent>(*event);
+    else if (event.type() == eventNames().clickEvent && is<MouseEvent>(event)) {
+        MouseEvent& mouseEvent = downcast<MouseEvent>(event);
         m_document.imageClicked(mouseEvent.offsetX(), mouseEvent.offsetY());
     }
 }
@@ -425,13 +437,13 @@ ImageDocumentElement::~ImageDocumentElement()
         m_imageDocument->disconnectImageElement();
 }
 
-void ImageDocumentElement::didMoveToNewDocument(Document& oldDocument)
+void ImageDocumentElement::didMoveToNewDocument(Document& oldDocument, Document& newDocument)
 {
     if (m_imageDocument) {
         m_imageDocument->disconnectImageElement();
         m_imageDocument = nullptr;
     }
-    HTMLImageElement::didMoveToNewDocument(oldDocument);
+    HTMLImageElement::didMoveToNewDocument(oldDocument, newDocument);
 }
 
 }

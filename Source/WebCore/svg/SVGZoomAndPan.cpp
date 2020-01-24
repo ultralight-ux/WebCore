@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,32 +22,30 @@
 #include "config.h"
 #include "SVGZoomAndPan.h"
 
-#include "SVGParserUtilities.h"
-
 namespace WebCore {
 
-bool SVGZoomAndPan::parse(const UChar*& start, const UChar* end, SVGZoomAndPanType& zoomAndPan)
+bool SVGZoomAndPan::parseZoomAndPan(const UChar*& start, const UChar* end)
 {
     static const UChar disable[] = { 'd', 'i', 's', 'a', 'b', 'l', 'e' };
     if (skipString(start, end, disable, WTF_ARRAY_LENGTH(disable))) {
-        zoomAndPan = SVGZoomAndPanDisable;
+        m_zoomAndPan = SVGZoomAndPanDisable;
         return true;
     }
+
     static const UChar magnify[] = { 'm', 'a', 'g', 'n', 'i', 'f', 'y' };
     if (skipString(start, end, magnify, WTF_ARRAY_LENGTH(magnify))) {
-        zoomAndPan = SVGZoomAndPanMagnify;
+        m_zoomAndPan = SVGZoomAndPanMagnify;
         return true;
     }
+
     return false;
 }
 
-SVGZoomAndPanType SVGZoomAndPan::parseAttributeValue(const AtomicString& value)
+void SVGZoomAndPan::parseAttribute(const QualifiedName& attributeName, const AtomString& value)
 {
-    if (value == "disable")
-        return SVGZoomAndPanDisable;
-    if (value == "magnify")
-        return SVGZoomAndPanMagnify;
-    return SVGZoomAndPanUnknown;
+    if (attributeName != SVGNames::zoomAndPanAttr)
+        return;
+    m_zoomAndPan = SVGPropertyTraits<SVGZoomAndPanType>::fromString(value);
 }
 
 }

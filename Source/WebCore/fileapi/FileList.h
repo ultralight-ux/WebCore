@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2019 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,20 +27,22 @@
 
 #include "File.h"
 #include "ScriptWrappable.h"
+#include <wtf/IsoMalloc.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
 
-class FileList : public ScriptWrappable, public RefCounted<FileList> {
+class FileList final : public ScriptWrappable, public RefCounted<FileList> {
+    WTF_MAKE_ISO_ALLOCATED_EXPORT(FileList, WEBCORE_EXPORT);
 public:
     static Ref<FileList> create()
     {
         return adoptRef(*new FileList);
     }
 
-    static Ref<FileList> create(Vector<RefPtr<File>>&& files)
+    static Ref<FileList> create(Vector<Ref<File>>&& files)
     {
         return adoptRef(*new FileList(WTFMove(files)));
     }
@@ -51,19 +53,23 @@ public:
     bool isEmpty() const { return m_files.isEmpty(); }
     Vector<String> paths() const;
 
+    const Vector<Ref<File>>& files() const { return m_files; }
+    const File& file(unsigned index) const { return m_files[index].get(); }
+
 private:
-    FileList();
-    FileList(Vector<RefPtr<File>>&& files)
+    FileList() = default;
+    FileList(Vector<Ref<File>>&& files)
         : m_files(WTFMove(files))
-    { }
+    {
+    }
 
     // FileLists can only be changed by their owners.
     friend class DataTransfer;
     friend class FileInputType;
-    void append(RefPtr<File>&& file) { m_files.append(WTFMove(file)); }
+    void append(Ref<File>&& file) { m_files.append(WTFMove(file)); }
     void clear() { m_files.clear(); }
 
-    Vector<RefPtr<File>> m_files;
+    Vector<Ref<File>> m_files;
 };
 
 } // namespace WebCore

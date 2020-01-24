@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 Google Inc. All rights reserved.
- * Copyright (C) 2013 Apple Inc.  All rights reserved.
+ * Copyright (C) 2013-2018 Apple Inc.  All rights reserved.
  * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,103 +32,341 @@
 
 #include "CaptureDevice.h"
 #include "Logging.h"
-#include "MediaStream.h"
-#include "MediaStreamPrivate.h"
-#include "MediaStreamTrack.h"
+#include "MediaConstraints.h"
 #include "MockRealtimeAudioSource.h"
-#include "MockRealtimeMediaSource.h"
 #include "MockRealtimeVideoSource.h"
-#include "RealtimeMediaSource.h"
-#include "RealtimeMediaSourceCapabilities.h"
-#include "UUID.h"
+#include "NotImplemented.h"
+#include "RealtimeMediaSourceSettings.h"
+#include <math.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/text/StringView.h>
 
 namespace WebCore {
 
-void MockRealtimeMediaSourceCenter::setMockRealtimeMediaSourceCenterEnabled(bool enabled)
+static inline Vector<MockMediaDevice> defaultDevices()
+{
+    return Vector<MockMediaDevice> {
+        MockMediaDevice { "239c24b0-2b15-11e3-8224-0800200c9a66"_s, "Mock audio device 1"_s, MockMicrophoneProperties { 44100 } },
+        MockMediaDevice { "239c24b1-2b15-11e3-8224-0800200c9a66"_s, "Mock audio device 2"_s, MockMicrophoneProperties { 48000 } },
+
+        MockMediaDevice { "239c24b2-2b15-11e3-8224-0800200c9a66"_s, "Mock video device 1"_s,
+            MockCameraProperties {
+                30,
+                RealtimeMediaSourceSettings::VideoFacingMode::User, {
+                    { { 1280, 720 }, { { 30, 30}, { 27.5, 27.5}, { 25, 25}, { 22.5, 22.5}, { 20, 20}, { 17.5, 17.5}, { 15, 15}, { 12.5, 12.5}, { 10, 10}, { 7.5, 7.5}, { 5, 5} } },
+                    { { 640, 480 },  { { 30, 30}, { 27.5, 27.5}, { 25, 25}, { 22.5, 22.5}, { 20, 20}, { 17.5, 17.5}, { 15, 15}, { 12.5, 12.5}, { 10, 10}, { 7.5, 7.5}, { 5, 5} } },
+                    { { 112, 112 },  { { 30, 30}, { 27.5, 27.5}, { 25, 25}, { 22.5, 22.5}, { 20, 20}, { 17.5, 17.5}, { 15, 15}, { 12.5, 12.5}, { 10, 10}, { 7.5, 7.5}, { 5, 5} } },
+                },
+                Color::black,
+            } },
+
+        MockMediaDevice { "239c24b3-2b15-11e3-8224-0800200c9a66"_s, "Mock video device 2"_s,
+            MockCameraProperties {
+                15,
+                RealtimeMediaSourceSettings::VideoFacingMode::Environment, {
+                    { { 3840, 2160 }, { { 2, 30 } } },
+                    { { 1920, 1080 }, { { 2, 30 } } },
+                    { { 1280, 720 },  { { 3, 120 } } },
+                    { { 960, 540 },   { { 3, 60 } } },
+                    { { 640, 480 },   { { 2, 30 } } },
+                    { { 352, 288 },   { { 2, 30 } } },
+                    { { 320, 240 },   { { 2, 30 } } },
+                    { { 160, 120 },   { { 2, 30 } } },
+                },
+                Color::darkGray,
+            } },
+
+        MockMediaDevice { "SCREEN-1"_s, "Mock screen device 1"_s, MockDisplayProperties { CaptureDevice::DeviceType::Screen, Color::lightGray, { 3840, 2160 } } },
+        MockMediaDevice { "SCREEN-2"_s, "Mock screen device 2"_s, MockDisplayProperties { CaptureDevice::DeviceType::Screen, Color::yellow, { 1920, 1080 } } },
+
+        MockMediaDevice { "WINDOW-2"_s, "Mock window 1"_s, MockDisplayProperties { CaptureDevice::DeviceType::Screen, 0xfff1b5, { 640, 480 } } },
+        MockMediaDevice { "WINDOW-2"_s, "Mock window 2"_s, MockDisplayProperties { CaptureDevice::DeviceType::Screen, 0xffd0b5, { 1280, 600 } } },
+    };
+}
+
+class MockRealtimeVideoSourceFactory : public VideoCaptureFactory {
+public:
+    CaptureSourceOrError createVideoCaptureSource(const CaptureDevice& device, String&& hashSalt, const MediaConstraints* constraints) final
+    {
+        ASSERT(device.type() == CaptureDevice::DeviceType::Camera);
+        if (!MockRealtimeMediaSourceCenter::captureDeviceWithPersistentID(CaptureDevice::DeviceType::Camera, device.persistentId()))
+            return { };
+
+        return MockRealtimeVideoSource::create(String { device.persistentId() }, String { device.label() }, WTFMove(hashSalt), constraints);
+    }
+
+private:
+#if PLATFORM(IOS_FAMILY)
+    void setVideoCapturePageState(bool interrupted, bool pageMuted) final
+    {
+        if (activeSource())
+            activeSource()->setInterrupted(interrupted, pageMuted);
+    }
+#endif
+    CaptureDeviceManager& videoCaptureDeviceManager() final { return MockRealtimeMediaSourceCenter::singleton().videoCaptureDeviceManager(); }
+};
+
+class MockRealtimeDisplaySourceFactory : public DisplayCaptureFactory {
+public:
+    CaptureSourceOrError createDisplayCaptureSource(const CaptureDevice& device, const MediaConstraints* constraints) final
+    {
+        if (!MockRealtimeMediaSourceCenter::captureDeviceWithPersistentID(device.type(), device.persistentId()))
+            return { };
+
+        switch (device.type()) {
+        case CaptureDevice::DeviceType::Screen:
+        case CaptureDevice::DeviceType::Window:
+            return MockRealtimeVideoSource::create(String { device.persistentId() }, String { device.label() }, String { }, constraints);
+            break;
+        case CaptureDevice::DeviceType::Microphone:
+        case CaptureDevice::DeviceType::Camera:
+        case CaptureDevice::DeviceType::Unknown:
+            ASSERT_NOT_REACHED();
+            break;
+        }
+
+        return { };
+    }
+private:
+    CaptureDeviceManager& displayCaptureDeviceManager() final { return MockRealtimeMediaSourceCenter::singleton().displayCaptureDeviceManager(); }
+};
+
+class MockRealtimeAudioSourceFactory : public AudioCaptureFactory {
+public:
+    CaptureSourceOrError createAudioCaptureSource(const CaptureDevice& device, String&& hashSalt, const MediaConstraints* constraints) final
+    {
+        ASSERT(device.type() == CaptureDevice::DeviceType::Microphone);
+        if (!MockRealtimeMediaSourceCenter::captureDeviceWithPersistentID(CaptureDevice::DeviceType::Microphone, device.persistentId()))
+            return { };
+
+        return MockRealtimeAudioSource::create(String { device.persistentId() }, String { device.label() }, WTFMove(hashSalt), constraints);
+    }
+private:
+#if PLATFORM(IOS_FAMILY)
+    void setAudioCapturePageState(bool interrupted, bool pageMuted) final
+    {
+        if (activeSource())
+            activeSource()->setInterrupted(interrupted, pageMuted);
+    }
+#endif
+    CaptureDeviceManager& audioCaptureDeviceManager() final { return MockRealtimeMediaSourceCenter::singleton().audioCaptureDeviceManager(); }
+};
+
+static Vector<MockMediaDevice>& devices()
+{
+    static auto devices = makeNeverDestroyed([] {
+        return defaultDevices();
+    }());
+    return devices;
+}
+
+static HashMap<String, MockMediaDevice>& deviceMap()
+{
+    static auto map = makeNeverDestroyed([] {
+        HashMap<String, MockMediaDevice> map;
+        for (auto& device : devices())
+            map.add(device.persistentId, device);
+
+        return map;
+    }());
+    return map;
+}
+
+static inline Vector<CaptureDevice>& deviceListForDevice(const MockMediaDevice& device)
+{
+    if (device.isMicrophone())
+        return MockRealtimeMediaSourceCenter::audioDevices();
+    if (device.isCamera())
+        return MockRealtimeMediaSourceCenter::videoDevices();
+
+    ASSERT(device.isDisplay());
+    return MockRealtimeMediaSourceCenter::displayDevices();
+}
+
+MockRealtimeMediaSourceCenter& MockRealtimeMediaSourceCenter::singleton()
 {
     static NeverDestroyed<MockRealtimeMediaSourceCenter> center;
+    return center;
+}
+
+void MockRealtimeMediaSourceCenter::setMockRealtimeMediaSourceCenterEnabled(bool enabled)
+{
     static bool active = false;
-    if (active != enabled) {
-        active = enabled;
-        RealtimeMediaSourceCenter::setSharedStreamCenterOverride(enabled ? &center.get() : nullptr);
+    if (active == enabled)
+        return;
+
+    active = enabled;
+
+    RealtimeMediaSourceCenter& center = RealtimeMediaSourceCenter::singleton();
+    MockRealtimeMediaSourceCenter& mock = singleton();
+
+    if (active) {
+        if (mock.m_isMockAudioCaptureEnabled)
+            center.setAudioCaptureFactory(mock.audioCaptureFactory());
+        if (mock.m_isMockVideoCaptureEnabled)
+            center.setVideoCaptureFactory(mock.videoCaptureFactory());
+        if (mock.m_isMockDisplayCaptureEnabled)
+            center.setDisplayCaptureFactory(mock.displayCaptureFactory());
+        return;
     }
+
+    if (mock.m_isMockAudioCaptureEnabled)
+        center.unsetAudioCaptureFactory(mock.audioCaptureFactory());
+    if (mock.m_isMockVideoCaptureEnabled)
+        center.unsetVideoCaptureFactory(mock.videoCaptureFactory());
+    if (mock.m_isMockDisplayCaptureEnabled)
+        center.unsetDisplayCaptureFactory(mock.displayCaptureFactory());
 }
 
-MockRealtimeMediaSourceCenter::MockRealtimeMediaSourceCenter()
+bool MockRealtimeMediaSourceCenter::mockRealtimeMediaSourceCenterEnabled()
 {
-    m_supportedConstraints.setSupportsWidth(true);
-    m_supportedConstraints.setSupportsHeight(true);
-    m_supportedConstraints.setSupportsAspectRatio(true);
-    m_supportedConstraints.setSupportsFrameRate(true);
-    m_supportedConstraints.setSupportsFacingMode(true);
-    m_supportedConstraints.setSupportsVolume(true);
-    m_supportedConstraints.setSupportsDeviceId(true);
+    MockRealtimeMediaSourceCenter& mock = singleton();
+    RealtimeMediaSourceCenter& center = RealtimeMediaSourceCenter::singleton();
+
+    return &center.audioCaptureFactory() == &mock.audioCaptureFactory() || &center.videoCaptureFactory() == &mock.videoCaptureFactory() || &center.displayCaptureFactory() == &mock.displayCaptureFactory();
 }
 
-void MockRealtimeMediaSourceCenter::validateRequestConstraints(ValidConstraintsHandler validHandler, InvalidConstraintsHandler invalidHandler, const MediaConstraints& audioConstraints, const MediaConstraints& videoConstraints)
+static void createCaptureDevice(const MockMediaDevice& device)
 {
-    Vector<String> audioSourceIds;
-    Vector<String> videoSourceIds;
-    String invalidConstraint;
+    deviceListForDevice(device).append(MockRealtimeMediaSourceCenter::captureDeviceWithPersistentID(device.type(), device.persistentId).value());
+}
 
-    if (audioConstraints.isValid()) {
-        auto audioSource = MockRealtimeAudioSource::create(MockRealtimeMediaSource::mockAudioSourceName(), nullptr);
-        if (!audioSource->supportsConstraints(audioConstraints, invalidConstraint)) {
-            if (invalidHandler)
-                invalidHandler(invalidConstraint);
-            return;
+void MockRealtimeMediaSourceCenter::resetDevices()
+{
+    setDevices(defaultDevices());
+    RealtimeMediaSourceCenter::singleton().captureDevicesChanged();
+}
+
+void MockRealtimeMediaSourceCenter::setDevices(Vector<MockMediaDevice>&& newMockDevices)
+{
+    audioDevices().clear();
+    videoDevices().clear();
+    displayDevices().clear();
+
+    auto& mockDevices = devices();
+    mockDevices = WTFMove(newMockDevices);
+
+    auto& map = deviceMap();
+    map.clear();
+
+    for (const auto& device : mockDevices) {
+        map.add(device.persistentId, device);
+        createCaptureDevice(device);
+    }
+    RealtimeMediaSourceCenter::singleton().captureDevicesChanged();
+}
+
+void MockRealtimeMediaSourceCenter::addDevice(const MockMediaDevice& device)
+{
+    devices().append(device);
+    deviceMap().set(device.persistentId, device);
+    createCaptureDevice(device);
+    RealtimeMediaSourceCenter::singleton().captureDevicesChanged();
+}
+
+void MockRealtimeMediaSourceCenter::removeDevice(const String& persistentId)
+{
+    auto& map = deviceMap();
+    auto iterator = map.find(persistentId);
+    if (iterator == map.end())
+        return;
+
+    devices().removeFirstMatching([&persistentId](const auto& device) {
+        return device.persistentId == persistentId;
+    });
+
+    deviceListForDevice(iterator->value).removeFirstMatching([&persistentId](const auto& device) {
+        return device.persistentId() == persistentId;
+    });
+
+    map.remove(iterator);
+    RealtimeMediaSourceCenter::singleton().captureDevicesChanged();
+}
+
+Optional<MockMediaDevice> MockRealtimeMediaSourceCenter::mockDeviceWithPersistentID(const String& id)
+{
+    ASSERT(!id.isEmpty());
+
+    auto& map = deviceMap();
+    auto iterator = map.find(id);
+    if (iterator == map.end())
+        return WTF::nullopt;
+
+    return iterator->value;
+}
+
+Optional<CaptureDevice> MockRealtimeMediaSourceCenter::captureDeviceWithPersistentID(CaptureDevice::DeviceType type, const String& id)
+{
+    ASSERT(!id.isEmpty());
+
+    auto& map = deviceMap();
+    auto iterator = map.find(id);
+    if (iterator == map.end() || iterator->value.type() != type)
+        return WTF::nullopt;
+
+    CaptureDevice device { iterator->value.persistentId, type, iterator->value.label };
+    device.setEnabled(true);
+    return device;
+}
+
+Vector<CaptureDevice>& MockRealtimeMediaSourceCenter::audioDevices()
+{
+    static auto audioDevices = makeNeverDestroyed([] {
+        Vector<CaptureDevice> audioDevices;
+        for (const auto& device : devices()) {
+            if (device.isMicrophone())
+                audioDevices.append(captureDeviceWithPersistentID(CaptureDevice::DeviceType::Microphone, device.persistentId).value());
         }
+        return audioDevices;
+    }());
 
-        audioSourceIds.append(MockRealtimeMediaSource::mockAudioSourcePersistentID());
-    }
+    return audioDevices;
+}
 
-    if (videoConstraints.isValid()) {
-        auto videoSource = MockRealtimeVideoSource::create(MockRealtimeMediaSource::mockVideoSourceName(), nullptr);
-        if (!videoSource->supportsConstraints(videoConstraints, invalidConstraint)) {
-            if (invalidHandler)
-                invalidHandler(invalidConstraint);
-            return;
+Vector<CaptureDevice>& MockRealtimeMediaSourceCenter::videoDevices()
+{
+    static auto videoDevices = makeNeverDestroyed([] {
+        Vector<CaptureDevice> videoDevices;
+        for (const auto& device : devices()) {
+            if (device.isCamera())
+                videoDevices.append(captureDeviceWithPersistentID(CaptureDevice::DeviceType::Camera, device.persistentId).value());
         }
+        return videoDevices;
+    }());
 
-
-        videoSourceIds.append(MockRealtimeMediaSource::mockVideoSourcePersistentID());
-    }
-
-    validHandler(WTFMove(audioSourceIds), WTFMove(videoSourceIds));
+    return videoDevices;
 }
 
-void MockRealtimeMediaSourceCenter::createMediaStream(NewMediaStreamHandler completionHandler, const String& audioDeviceID, const String& videoDeviceID, const MediaConstraints* audioConstraints, const MediaConstraints* videoConstraints)
+Vector<CaptureDevice>& MockRealtimeMediaSourceCenter::displayDevices()
 {
-    Vector<Ref<RealtimeMediaSource>> audioSources;
-    Vector<Ref<RealtimeMediaSource>> videoSources;
+    static auto displayDevices = makeNeverDestroyed([] {
+        Vector<CaptureDevice> displayDevices;
+        for (const auto& device : devices()) {
+            if (device.isDisplay())
+                displayDevices.append(captureDeviceWithPersistentID(CaptureDevice::DeviceType::Screen, device.persistentId).value());
+        }
+        return displayDevices;
+    }());
 
-    if (audioDeviceID == MockRealtimeMediaSource::mockAudioSourcePersistentID()) {
-        auto source = MockRealtimeAudioSource::create(MockRealtimeMediaSource::mockAudioSourceName(), audioConstraints);
-        if (source)
-            audioSources.append(source.releaseNonNull());
-    }
-
-    if (videoDeviceID == MockRealtimeMediaSource::mockVideoSourcePersistentID()) {
-        auto source = MockRealtimeVideoSource::create(MockRealtimeMediaSource::mockVideoSourceName(), videoConstraints);
-        if (source)
-            videoSources.append(source.releaseNonNull());
-    }
-
-    if (videoSources.isEmpty() && audioSources.isEmpty())
-        completionHandler(nullptr);
-    else
-        completionHandler(MediaStreamPrivate::create(audioSources, videoSources));
+    return displayDevices;
 }
 
-Vector<CaptureDevice> MockRealtimeMediaSourceCenter::getMediaStreamDevices()
+AudioCaptureFactory& MockRealtimeMediaSourceCenter::audioCaptureFactory()
 {
-    Vector<CaptureDevice> sources;
+    static NeverDestroyed<MockRealtimeAudioSourceFactory> factory;
+    return factory.get();
+}
 
-    sources.append(MockRealtimeMediaSource::audioDeviceInfo());
-    sources.append(MockRealtimeMediaSource::videoDeviceInfo());
+VideoCaptureFactory& MockRealtimeMediaSourceCenter::videoCaptureFactory()
+{
+    static NeverDestroyed<MockRealtimeVideoSourceFactory> factory;
+    return factory.get();
+}
 
-    return sources;
+DisplayCaptureFactory& MockRealtimeMediaSourceCenter::displayCaptureFactory()
+{
+    static NeverDestroyed<MockRealtimeDisplaySourceFactory> factory;
+    return factory.get();
 }
 
 } // namespace WebCore

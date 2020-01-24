@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,7 +21,6 @@
 
 #pragma once
 
-#include "SVGAnimatedTransformList.h"
 #include "SVGElement.h"
 #include "SVGTests.h"
 #include "SVGTransformable.h"
@@ -33,6 +33,7 @@ class SVGRect;
 class SVGMatrix;
 
 class SVGGraphicsElement : public SVGElement, public SVGTransformable, public SVGTests {
+    WTF_MAKE_ISO_ALLOCATED(SVGGraphicsElement);
 public:
     virtual ~SVGGraphicsElement();
 
@@ -56,43 +57,34 @@ public:
     void setShouldIsolateBlending(bool isolate) { m_shouldIsolateBlending = isolate; }
 
     // "base class" methods for all the elements which render as paths
-    virtual void toClipPath(Path&);
+    virtual Path toClipPath();
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) override;
 
     size_t approximateMemoryCost() const override { return sizeof(*this); }
 
-    // SVGTests
-    Ref<SVGStringList> requiredFeatures();
-    Ref<SVGStringList> requiredExtensions();
-    Ref<SVGStringList> systemLanguage();
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGGraphicsElement, SVGElement, SVGTests>;
+
+    const SVGTransformList& transform() const { return m_transform->currentValue(); }
+    SVGAnimatedTransformList& transformAnimated() { return m_transform; }
 
 protected:
     SVGGraphicsElement(const QualifiedName&, Document&);
 
     bool supportsFocus() const override { return Element::supportsFocus() || hasFocusEventListeners(); }
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     void svgAttributeChanged(const QualifiedName&) override;
-
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGGraphicsElement)
-        DECLARE_ANIMATED_TRANSFORM_LIST(Transform, transform)
-    END_DECLARE_ANIMATED_PROPERTIES
 
 private:
     bool isSVGGraphicsElement() const override { return true; }
-
-    static bool isSupportedAttribute(const QualifiedName&);
-
-    // SVGTests
-    void synchronizeRequiredFeatures() final { SVGTests::synchronizeRequiredFeatures(*this); }
-    void synchronizeRequiredExtensions() final { SVGTests::synchronizeRequiredExtensions(*this); }
-    void synchronizeSystemLanguage() final { SVGTests::synchronizeSystemLanguage(*this); }
 
     // Used by <animateMotion>
     std::unique_ptr<AffineTransform> m_supplementalTransform;
 
     // Used to isolate blend operations caused by masking.
     bool m_shouldIsolateBlending;
+
+    Ref<SVGAnimatedTransformList> m_transform { SVGAnimatedTransformList::create(this) };
 };
 
 } // namespace WebCore

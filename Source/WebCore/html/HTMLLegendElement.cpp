@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *           (C) 2006 Alexey Proskuryakov (ap@nypop.com)
  *
  * This library is free software; you can redistribute it and/or
@@ -28,16 +28,16 @@
 #include "ElementIterator.h"
 #include "HTMLFieldSetElement.h"
 #include "HTMLNames.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
-using namespace HTMLNames;
-
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLLegendElement);
 
 inline HTMLLegendElement::HTMLLegendElement(const QualifiedName& tagName, Document& document)
     : HTMLElement(tagName, document)
 {
-    ASSERT(hasTagName(legendTag));
+    ASSERT(hasTagName(HTMLNames::legendTag));
 }
 
 Ref<HTMLLegendElement> HTMLLegendElement::create(const QualifiedName& tagName, Document& document)
@@ -45,7 +45,7 @@ Ref<HTMLLegendElement> HTMLLegendElement::create(const QualifiedName& tagName, D
     return adoptRef(*new HTMLLegendElement(tagName, document));
 }
 
-HTMLFormControlElement* HTMLLegendElement::associatedControl()
+RefPtr<HTMLFormControlElement> HTMLLegendElement::associatedControl()
 {
     // Check if there's a fieldset belonging to this legend.
     auto enclosingFieldset = ancestorsOfType<HTMLFieldSetElement>(*this).first();
@@ -59,7 +59,6 @@ HTMLFormControlElement* HTMLLegendElement::associatedControl()
 
 void HTMLLegendElement::focus(bool restorePreviousSelection, FocusDirection direction)
 {
-    // To match other browsers' behavior, never restore previous selection.
     if (document().haveStylesheetsLoaded()) {
         document().updateLayoutIgnorePendingStylesheets();
         if (isFocusable()) {
@@ -67,25 +66,26 @@ void HTMLLegendElement::focus(bool restorePreviousSelection, FocusDirection dire
             return;
         }
     }
-    if (auto* control = associatedControl())
+
+    // To match other browsers' behavior, never restore previous selection.
+    if (auto control = associatedControl())
         control->focus(false, direction);
 }
 
 void HTMLLegendElement::accessKeyAction(bool sendMouseEvents)
 {
-    if (HTMLFormControlElement* control = associatedControl())
+    if (auto control = associatedControl())
         control->accessKeyAction(sendMouseEvents);
 }
 
-HTMLFormElement* HTMLLegendElement::virtualForm() const
+HTMLFormElement* HTMLLegendElement::form() const
 {
     // According to the specification, If the legend has a fieldset element as
     // its parent, then the form attribute must return the same value as the
     // form attribute on that fieldset element. Otherwise, it must return null.
-    ContainerNode* fieldset = parentNode();
+    auto fieldset = makeRefPtr(parentNode());
     if (!is<HTMLFieldSetElement>(fieldset))
         return nullptr;
-
     return downcast<HTMLFieldSetElement>(*fieldset).form();
 }
     

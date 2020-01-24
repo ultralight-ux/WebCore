@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2007 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -23,29 +24,20 @@
 
 #include "Document.h"
 #include "Event.h"
-#include "EventNames.h"
-#include "HTMLNames.h"
-#include "SVGAnimatedStaticPropertyTearOff.h"
-#include "XLinkNames.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
-// Animated property definitions
-DEFINE_ANIMATED_STRING(SVGScriptElement, XLinkNames::hrefAttr, Href, href)
-DEFINE_ANIMATED_BOOLEAN(SVGScriptElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
-
-BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGScriptElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(href)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
-END_REGISTER_ANIMATED_PROPERTIES
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGScriptElement);
 
 inline SVGScriptElement::SVGScriptElement(const QualifiedName& tagName, Document& document, bool wasInsertedByParser, bool alreadyStarted)
     : SVGElement(tagName, document)
+    , SVGExternalResourcesRequired(this)
+    , SVGURIReference(this)
     , ScriptElement(*this, wasInsertedByParser, alreadyStarted)
     , m_svgLoadEventTimer(*this, &SVGElement::svgLoadEventTimerFired)
 {
     ASSERT(hasTagName(SVGNames::scriptTag));
-    registerAnimatedPropertiesForSVGScriptElement();
 }
 
 Ref<SVGScriptElement> SVGScriptElement::create(const QualifiedName& tagName, Document& document, bool insertedByParser)
@@ -53,7 +45,7 @@ Ref<SVGScriptElement> SVGScriptElement::create(const QualifiedName& tagName, Doc
     return adoptRef(*new SVGScriptElement(tagName, document, insertedByParser, false));
 }
 
-void SVGScriptElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void SVGScriptElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     SVGElement::parseAttribute(name, value);
     SVGURIReference::parseAttribute(name, value);
@@ -69,32 +61,27 @@ void SVGScriptElement::svgAttributeChanged(const QualifiedName& attrName)
         return;
     }
 
-    SVGExternalResourcesRequired::handleAttributeChange(this, attrName);
     SVGElement::svgAttributeChanged(attrName);
+    SVGExternalResourcesRequired::svgAttributeChanged(attrName);
 }
 
-Node::InsertionNotificationRequest SVGScriptElement::insertedInto(ContainerNode& rootParent)
+Node::InsertedIntoAncestorResult SVGScriptElement::insertedIntoAncestor(InsertionType insertionType, ContainerNode& parentOfInsertedTree)
 {
-    SVGElement::insertedInto(rootParent);
-    if (rootParent.inDocument())
-        SVGExternalResourcesRequired::insertedIntoDocument(this);
-    return shouldCallFinishedInsertingSubtree(rootParent) ? InsertionShouldCallFinishedInsertingSubtree : InsertionDone;
+    SVGElement::insertedIntoAncestor(insertionType, parentOfInsertedTree);
+    if (insertionType.connectedToDocument)
+        SVGExternalResourcesRequired::insertedIntoDocument();
+    return ScriptElement::insertedIntoAncestor(insertionType, parentOfInsertedTree);
 }
 
-void SVGScriptElement::finishedInsertingSubtree()
+void SVGScriptElement::didFinishInsertingNode()
 {
-    ScriptElement::finishedInsertingSubtree();
+    ScriptElement::didFinishInsertingNode();
 }
 
 void SVGScriptElement::childrenChanged(const ChildChange& change)
 {
     SVGElement::childrenChanged(change);
     ScriptElement::childrenChanged(change);
-}
-
-bool SVGScriptElement::isURLAttribute(const Attribute& attribute) const
-{
-    return attribute.name() == sourceAttributeValue();
 }
 
 void SVGScriptElement::finishParsingChildren()
@@ -109,62 +96,9 @@ void SVGScriptElement::addSubresourceAttributeURLs(ListHashSet<URL>& urls) const
 
     addSubresourceURL(urls, document().completeURL(href()));
 }
-
-String SVGScriptElement::sourceAttributeValue() const
-{
-    return href();
-}
-
-String SVGScriptElement::charsetAttributeValue() const
-{
-    return String();
-}
-
-String SVGScriptElement::typeAttributeValue() const
-{
-    return getAttribute(SVGNames::typeAttr).string();
-}
-
-String SVGScriptElement::languageAttributeValue() const
-{
-    return String();
-}
-
-String SVGScriptElement::forAttributeValue() const
-{
-    return String();
-}
-
-String SVGScriptElement::eventAttributeValue() const
-{
-    return String();
-}
-
-bool SVGScriptElement::asyncAttributeValue() const
-{
-    return false;
-}
-
-bool SVGScriptElement::deferAttributeValue() const
-{
-    return false;
-}
-
-bool SVGScriptElement::hasSourceAttribute() const
-{
-    return hasAttribute(XLinkNames::hrefAttr);
-}
-
 Ref<Element> SVGScriptElement::cloneElementWithoutAttributesAndChildren(Document& targetDocument)
 {
     return adoptRef(*new SVGScriptElement(tagQName(), targetDocument, false, alreadyStarted()));
 }
-
-#ifndef NDEBUG
-bool SVGScriptElement::filterOutAnimatableAttribute(const QualifiedName& name) const
-{
-    return name == SVGNames::typeAttr;
-}
-#endif
 
 }

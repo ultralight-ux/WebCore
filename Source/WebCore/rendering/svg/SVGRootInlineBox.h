@@ -23,7 +23,6 @@
 #pragma once
 
 #include "RootInlineBox.h"
-#include "SVGRenderSupport.h"
 #include "SVGTextLayoutEngine.h"
 
 namespace WebCore {
@@ -32,6 +31,7 @@ class RenderSVGText;
 class SVGInlineTextBox;
 
 class SVGRootInlineBox final : public RootInlineBox {
+    WTF_MAKE_ISO_ALLOCATED(SVGRootInlineBox);
 public:
     explicit SVGRootInlineBox(RenderSVGText&);
 

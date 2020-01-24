@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
  * Copyright (C) Research In Motion Limited 2009-2010. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,16 +26,16 @@
 
 #pragma once
 
-#include "FileSystem.h"
-#include <runtime/ArrayBuffer.h>
+#include <JavaScriptCore/ArrayBuffer.h>
+#include <wtf/FileSystem.h>
 #include <wtf/Forward.h>
 #include <wtf/RefCounted.h>
 #include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/Variant.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 #if USE(CF)
-#include "VNodeTracker.h"
 #include <wtf/RetainPtr.h>
 #endif
 
@@ -43,33 +43,44 @@
 #include "GUniquePtrSoup.h"
 #endif
 
+#if USE(GLIB)
+#include <wtf/glib/GRefPtr.h>
+typedef struct _GBytes GBytes;
+#endif
+
+#if USE(GSTREAMER)
+#include "GStreamerCommon.h"
+#endif
+
 #if USE(FOUNDATION)
+OBJC_CLASS NSArray;
 OBJC_CLASS NSData;
 #endif
 
 namespace WebCore {
-    
-class SharedBuffer : public RefCounted<SharedBuffer> {
+
+class SharedBufferDataView;
+
+class WEBCORE_EXPORT SharedBuffer : public RefCounted<SharedBuffer> {
 public:
     static Ref<SharedBuffer> create() { return adoptRef(*new SharedBuffer); }
-    static Ref<SharedBuffer> create(unsigned size) { return adoptRef(*new SharedBuffer(size)); }
-    static Ref<SharedBuffer> create(const char* c, unsigned i) { return adoptRef(*new SharedBuffer(c, i)); }
-    static Ref<SharedBuffer> create(const unsigned char* data, unsigned size) { return adoptRef(*new SharedBuffer(data, size)); }
+    static Ref<SharedBuffer> create(const char* data, size_t size) { return adoptRef(*new SharedBuffer(data, size)); }
+    static Ref<SharedBuffer> create(const unsigned char* data, size_t size) { return adoptRef(*new SharedBuffer(data, size)); }
+    static RefPtr<SharedBuffer> createWithContentsOfFile(const String& filePath);
 
-    WEBCORE_EXPORT static RefPtr<SharedBuffer> createWithContentsOfFile(const String& filePath);
+    static Ref<SharedBuffer> create(Vector<char>&&);
+    static Ref<SharedBuffer> create(Vector<uint8_t>&&);
 
-    WEBCORE_EXPORT static Ref<SharedBuffer> adoptVector(Vector<char>&);
-    
-    WEBCORE_EXPORT ~SharedBuffer();
-    
 #if USE(FOUNDATION)
-    WEBCORE_EXPORT RetainPtr<NSData> createNSData();
-    WEBCORE_EXPORT static Ref<SharedBuffer> wrapNSData(NSData *);
+    RetainPtr<NSData> createNSData() const;
+    RetainPtr<NSArray> createNSDataArray() const;
+    static Ref<SharedBuffer> create(NSData *);
+    void append(NSData *);
 #endif
 #if USE(CF)
-    WEBCORE_EXPORT RetainPtr<CFDataRef> createCFData();
-    WEBCORE_EXPORT CFDataRef existingCFData();
-    WEBCORE_EXPORT static Ref<SharedBuffer> wrapCFData(CFDataRef);
+    RetainPtr<CFDataRef> createCFData() const;
+    static Ref<SharedBuffer> create(CFDataRef);
+    void append(CFDataRef);
 #endif
 
 #if USE(SOUP)
@@ -77,108 +88,161 @@ public:
     static Ref<SharedBuffer> wrapSoupBuffer(SoupBuffer*);
 #endif
 
-    // Calling this function will force internal segmented buffers
-    // to be merged into a flat buffer. Use getSomeData() whenever possible
-    // for better performance.
-    WEBCORE_EXPORT const char* data() const;
+#if USE(GLIB)
+    static Ref<SharedBuffer> create(GBytes*);
+#endif
+
+#if USE(GSTREAMER)
+    static Ref<SharedBuffer> create(GstMappedBuffer&);
+#endif
+    // Calling data() causes all the data segments to be copied into one segment if they are not already.
+    // Iterate the segments using begin() and end() instead.
+    // FIXME: Audit the call sites of this function and replace them with iteration if possible.
+    const char* data() const;
+
     // Creates an ArrayBuffer and copies this SharedBuffer's contents to that
     // ArrayBuffer without merging segmented buffers into a flat buffer.
-    WEBCORE_EXPORT RefPtr<ArrayBuffer> createArrayBuffer() const;
+    RefPtr<ArrayBuffer> tryCreateArrayBuffer() const;
 
-    WEBCORE_EXPORT unsigned size() const;
-
+    size_t size() const { return m_size; }
 
     bool isEmpty() const { return !size(); }
 
-    WEBCORE_EXPORT void append(SharedBuffer&);
-    WEBCORE_EXPORT void append(const char*, unsigned);
-    WEBCORE_EXPORT void append(const Vector<char>&);
+    void append(const SharedBuffer&);
+    void append(const char*, size_t);
+    void append(Vector<char>&&);
 
-    WEBCORE_EXPORT void clear();
-    const char* platformData() const;
-    unsigned platformDataSize() const;
+    void clear();
 
-#if USE(NETWORK_CFDATA_ARRAY_CALLBACK)
-    static Ref<SharedBuffer> wrapCFDataArray(CFArrayRef);
-    void append(CFDataRef);
+    Ref<SharedBuffer> copy() const;
+
+    // Data wrapped by a DataSegment should be immutable because it can be referenced by other objects.
+    // To modify or combine the data, allocate a new DataSegment.
+    class DataSegment : public ThreadSafeRefCounted<DataSegment> {
+    public:
+        WEBCORE_EXPORT const char* data() const;
+        WEBCORE_EXPORT size_t size() const;
+
+        static Ref<DataSegment> create(Vector<char>&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
+#if USE(CF)
+        static Ref<DataSegment> create(RetainPtr<CFDataRef>&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
 #endif
+#if USE(SOUP)
+        static Ref<DataSegment> create(GUniquePtr<SoupBuffer>&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
+#endif
+#if USE(GLIB)
+        static Ref<DataSegment> create(GRefPtr<GBytes>&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
+#endif
+#if USE(GSTREAMER)
+        static Ref<DataSegment> create(RefPtr<GstMappedBuffer>&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
+#endif
+        static Ref<DataSegment> create(FileSystem::MappedFileData&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
 
-    WEBCORE_EXPORT Ref<SharedBuffer> copy() const;
-    
-    // Return the number of consecutive bytes after "position". "data"
-    // points to the first byte.
-    // Return 0 when no more data left.
-    // When extracting all data with getSomeData(), the caller should
-    // repeat calling it until it returns 0.
-    // Usage:
-    //      const char* segment;
-    //      unsigned pos = 0;
-    //      while (unsigned length = sharedBuffer->getSomeData(segment, pos)) {
-    //          // Use the data. for example: decoder->decode(segment, length);
-    //          pos += length;
-    //      }
-    WEBCORE_EXPORT unsigned getSomeData(const char*& data, unsigned position = 0) const;
+    private:
+        DataSegment(Vector<char>&& data)
+            : m_immutableData(WTFMove(data)) { }
+#if USE(CF)
+        DataSegment(RetainPtr<CFDataRef>&& data)
+            : m_immutableData(WTFMove(data)) { }
+#endif
+#if USE(SOUP)
+        DataSegment(GUniquePtr<SoupBuffer>&& data)
+            : m_immutableData(WTFMove(data)) { }
+#endif
+#if USE(GLIB)
+        DataSegment(GRefPtr<GBytes>&& data)
+            : m_immutableData(WTFMove(data)) { }
+#endif
+#if USE(GSTREAMER)
+        DataSegment(RefPtr<GstMappedBuffer>&& data)
+            : m_immutableData(WTFMove(data)) { }
+#endif
+        DataSegment(FileSystem::MappedFileData&& data)
+            : m_immutableData(WTFMove(data)) { }
 
-    bool tryReplaceContentsWithPlatformBuffer(SharedBuffer&);
-    WEBCORE_EXPORT bool hasPlatformData() const;
-
-    struct DataBuffer : public ThreadSafeRefCounted<DataBuffer> {
-        Vector<char> data;
+        Variant<Vector<char>,
+#if USE(CF)
+            RetainPtr<CFDataRef>,
+#endif
+#if USE(SOUP)
+            GUniquePtr<SoupBuffer>,
+#endif
+#if USE(GLIB)
+            GRefPtr<GBytes>,
+#endif
+#if USE(GSTREAMER)
+            RefPtr<GstMappedBuffer>,
+#endif
+            FileSystem::MappedFileData> m_immutableData;
+        friend class SharedBuffer;
     };
 
-    void hintMemoryNotNeededSoon();
+    struct DataSegmentVectorEntry {
+        size_t beginPosition;
+        Ref<DataSegment> segment;
+    };
+    using DataSegmentVector = Vector<DataSegmentVectorEntry, 1>;
+    DataSegmentVector::const_iterator begin() const { return m_segments.begin(); }
+    DataSegmentVector::const_iterator end() const { return m_segments.end(); }
+    
+    // begin and end take O(1) time, this takes O(log(N)) time.
+    SharedBufferDataView getSomeData(size_t position) const;
+
+    void hintMemoryNotNeededSoon() const;
+
+    bool operator==(const SharedBuffer&) const;
+    bool operator!=(const SharedBuffer& other) const { return !operator==(other); }
 
 private:
-    WEBCORE_EXPORT SharedBuffer();
-    explicit SharedBuffer(unsigned);
-    WEBCORE_EXPORT SharedBuffer(const char*, unsigned);
-    WEBCORE_EXPORT SharedBuffer(const unsigned char*, unsigned);
-    explicit SharedBuffer(MappedFileData&&);
-
-    static RefPtr<SharedBuffer> createFromReadingFile(const String& filePath);
-
-    // Calling this function will force internal segmented buffers
-    // to be merged into a flat buffer. Use getSomeData() whenever possible
-    // for better performance.
-    const Vector<char>& buffer() const;
-
-    void clearPlatformData();
-    void maybeTransferPlatformData();
-    bool maybeAppendPlatformData(SharedBuffer&);
-
-    void maybeTransferMappedFileData();
-
-    void copyBufferAndClear(char* destination, unsigned bytesToCopy) const;
-
-    void appendToDataBuffer(const char *, unsigned) const;
-    void duplicateDataBufferIfNecessary() const;
-    void clearDataBuffer();
-
-    unsigned m_size { 0 };
-    mutable Ref<DataBuffer> m_buffer;
-
-#if USE(NETWORK_CFDATA_ARRAY_CALLBACK)
-    explicit SharedBuffer(CFArrayRef);
-    mutable Vector<RetainPtr<CFDataRef>> m_dataArray;
-    unsigned copySomeDataFromDataArray(const char*& someData, unsigned position) const;
-    const char *singleDataArrayBuffer() const;
-    bool maybeAppendDataArray(SharedBuffer&);
-#else
-    mutable Vector<char*> m_segments;
-#endif
-
+    explicit SharedBuffer() = default;
+    explicit SharedBuffer(const char*, size_t);
+    explicit SharedBuffer(const unsigned char*, size_t);
+    explicit SharedBuffer(Vector<char>&&);
+    explicit SharedBuffer(FileSystem::MappedFileData&&);
 #if USE(CF)
     explicit SharedBuffer(CFDataRef);
-    RetainPtr<CFDataRef> m_cfData;
-    VNodeTracker::Token m_vnodeToken;
 #endif
-
 #if USE(SOUP)
     explicit SharedBuffer(SoupBuffer*);
-    GUniquePtr<SoupBuffer> m_soupBuffer;
+#endif
+#if USE(GLIB)
+    explicit SharedBuffer(GBytes*);
+#endif
+#if USE(GSTREAMER)
+    explicit SharedBuffer(GstMappedBuffer&);
 #endif
 
-    MappedFileData m_fileData;
+    void combineIntoOneSegment() const;
+    
+    static RefPtr<SharedBuffer> createFromReadingFile(const String& filePath);
+
+    size_t m_size { 0 };
+    mutable DataSegmentVector m_segments;
+
+#if !ASSERT_DISABLED
+    mutable bool m_hasBeenCombinedIntoOneSegment { false };
+    bool internallyConsistent() const;
+#endif
+};
+
+inline bool operator==(const Ref<SharedBuffer>& left, const SharedBuffer& right)
+{
+    return left.get() == right;
+}
+
+inline bool operator!=(const Ref<SharedBuffer>& left, const SharedBuffer& right)
+{
+    return left.get() != right;
+}
+
+class WEBCORE_EXPORT SharedBufferDataView {
+public:
+    SharedBufferDataView(Ref<SharedBuffer::DataSegment>&&, size_t);
+    size_t size() const;
+    const char* data() const;
+private:
+    size_t m_positionWithinSegment;
+    Ref<SharedBuffer::DataSegment> m_segment;
 };
 
 RefPtr<SharedBuffer> utf8Buffer(const String&);

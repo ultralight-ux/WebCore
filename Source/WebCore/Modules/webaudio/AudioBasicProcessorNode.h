@@ -26,8 +26,6 @@
 
 #include "AudioNode.h"
 #include <memory>
-#include <wtf/RefCounted.h>
-#include <wtf/Threading.h>
 
 namespace WebCore {
 
@@ -37,6 +35,7 @@ class AudioProcessor;
     
 // AudioBasicProcessorNode is an AudioNode with one input and one output where the input and output have the same number of channels.
 class AudioBasicProcessorNode : public AudioNode {
+    WTF_MAKE_ISO_ALLOCATED(AudioBasicProcessorNode);
 public:
     AudioBasicProcessorNode(AudioContext&, float sampleRate);
 

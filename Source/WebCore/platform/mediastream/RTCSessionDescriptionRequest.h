@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,12 +29,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef RTCSessionDescriptionRequest_h
-#define RTCSessionDescriptionRequest_h
+#pragma once
 
 #if ENABLE(WEB_RTC)
 
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
@@ -46,19 +45,19 @@ class RTCSessionDescriptionRequest : public RefCounted<RTCSessionDescriptionRequ
 public:
     class ExtraData : public RefCounted<ExtraData> {
     public:
-        virtual ~ExtraData() { }
+        virtual ~ExtraData() = default;
     };
 
-    virtual ~RTCSessionDescriptionRequest() { }
+    virtual ~RTCSessionDescriptionRequest() = default;
 
-    virtual void requestSucceeded(PassRefPtr<RTCSessionDescriptionDescriptor>) = 0;
+    virtual void requestSucceeded(RTCSessionDescriptionDescriptor&) = 0;
     virtual void requestFailed(const String& error) = 0;
 
-    PassRefPtr<ExtraData> extraData() const { return m_extraData; }
-    void setExtraData(PassRefPtr<ExtraData> extraData) { m_extraData = extraData; }
+    ExtraData* extraData() const { return m_extraData.get(); }
+    void setExtraData(RefPtr<ExtraData>&& extraData) { m_extraData = extraData; }
 
 protected:
-    RTCSessionDescriptionRequest() { }
+    RTCSessionDescriptionRequest() = default;
 
 private:
     RefPtr<ExtraData> m_extraData;
@@ -67,5 +66,3 @@ private:
 } // namespace WebCore
 
 #endif // ENABLE(WEB_RTC)
-
-#endif // RTCSessionDescriptionRequest_h

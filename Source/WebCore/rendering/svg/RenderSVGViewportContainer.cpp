@@ -25,10 +25,12 @@
 
 #include "GraphicsContext.h"
 #include "RenderView.h"
-#include "SVGNames.h"
 #include "SVGSVGElement.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderSVGViewportContainer);
 
 RenderSVGViewportContainer::RenderSVGViewportContainer(SVGSVGElement& element, RenderStyle&& style)
     : RenderSVGContainer(element, WTFMove(style))

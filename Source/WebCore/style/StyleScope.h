@@ -3,7 +3,7 @@
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
  *           (C) 2006 Alexey Proskuryakov (ap@webkit.org)
- * Copyright (C) 2004-2010, 2012-2013, 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2010, 2012-2013, 2015-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2008, 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  * Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies)
  * Copyright (C) 2011 Google Inc. All rights reserved.
@@ -30,7 +30,7 @@
 #include "Timer.h"
 #include <memory>
 #include <wtf/FastMalloc.h>
-#include <wtf/HashMap.h>
+#include <wtf/HashSet.h>
 #include <wtf/ListHashSet.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
@@ -42,6 +42,7 @@ class CSSStyleSheet;
 class Document;
 class Element;
 class Node;
+class ProcessingInstruction;
 class StyleResolver;
 class StyleSheet;
 class StyleSheetContents;
@@ -77,22 +78,26 @@ public:
     void removeStyleSheetCandidateNode(Node&);
 
     String preferredStylesheetSetName() const { return m_preferredStylesheetSetName; }
-    String selectedStylesheetSetName() const { return m_selectedStylesheetSetName; }
     void setPreferredStylesheetSetName(const String&);
-    void setSelectedStylesheetSetName(const String&);
 
-    void addPendingSheet() { m_pendingStyleSheetCount++; }
-    enum RemovePendingSheetNotificationType {
-        RemovePendingSheetNotifyImmediately,
-        RemovePendingSheetNotifyLater
-    };
-    void removePendingSheet(RemovePendingSheetNotificationType = RemovePendingSheetNotifyImmediately);
-
-    bool hasPendingSheets() const { return m_pendingStyleSheetCount > 0; }
+    void addPendingSheet(const Element&);
+    void removePendingSheet(const Element&);
+    void addPendingSheet(const ProcessingInstruction&);
+    void removePendingSheet(const ProcessingInstruction&);
+    bool hasPendingSheets() const;
+    bool hasPendingSheetsBeforeBody() const;
+    bool hasPendingSheetsInBody() const;
+    bool hasPendingSheet(const Element&) const;
+    bool hasPendingSheetInBody(const Element&) const;
+    bool hasPendingSheet(const ProcessingInstruction&) const;
 
     bool usesStyleBasedEditability() { return m_usesStyleBasedEditability; }
 
     bool activeStyleSheetsContains(const CSSStyleSheet*) const;
+
+    void evaluateMediaQueriesForViewportChange();
+    void evaluateMediaQueriesForAccessibilitySettingsChange();
+    void evaluateMediaQueriesForAppearanceChange();
 
     // This is called when some stylesheet becomes newly enabled or disabled.
     void didChangeActiveStyleSheetCandidates();
@@ -105,9 +110,14 @@ public:
     bool hasPendingUpdate() const { return m_pendingUpdate || m_hasDescendantWithPendingUpdate; }
     void flushPendingUpdate();
 
+#if ENABLE(XSLT)
+    Vector<Ref<ProcessingInstruction>> collectXSLTransforms();
+#endif
+
     StyleResolver& resolver();
     StyleResolver* resolverIfExists();
     void clearResolver();
+    void releaseMemory();
 
     const Document& document() const { return m_document; }
 
@@ -117,9 +127,13 @@ public:
 private:
     bool shouldUseSharedUserAgentShadowTreeStyleResolver() const;
 
+    void didRemovePendingStylesheet();
+
     enum class UpdateType { ActiveSet, ContentsOrInterpretation };
     void updateActiveStyleSheets(UpdateType);
     void scheduleUpdate(UpdateType);
+
+    template <typename TestFunction> void evaluateMediaQueries(TestFunction&&);
 
     WEBCORE_EXPORT void flushPendingSelfUpdate();
     WEBCORE_EXPORT void flushPendingDescendantUpdates();
@@ -149,24 +163,39 @@ private:
 
     mutable std::unique_ptr<HashSet<const CSSStyleSheet*>> m_weakCopyOfActiveStyleSheetListForFastLookup;
 
-    // Track the number of currently loading top-level stylesheets needed for rendering.
+    // Track the currently loading top-level stylesheets needed for rendering.
     // Sheets loaded using the @import directive are not included in this count.
     // We use this count of pending sheets to detect when we can begin attaching
     // elements and when it is safe to execute scripts.
-    int m_pendingStyleSheetCount { 0 };
-    bool m_didUpdateActiveStyleSheets { false };
+    HashSet<const ProcessingInstruction*> m_processingInstructionsWithPendingSheets;
+    HashSet<const Element*> m_elementsInHeadWithPendingSheets;
+    HashSet<const Element*> m_elementsInBodyWithPendingSheets;
 
-    std::optional<UpdateType> m_pendingUpdate;
+    Optional<UpdateType> m_pendingUpdate;
     bool m_hasDescendantWithPendingUpdate { false };
 
     ListHashSet<Node*> m_styleSheetCandidateNodes;
 
     String m_preferredStylesheetSetName;
-    String m_selectedStylesheetSetName;
 
     bool m_usesStyleBasedEditability { false };
     bool m_isUpdatingStyleResolver { false };
 };
+
+inline bool Scope::hasPendingSheets() const
+{
+    return hasPendingSheetsBeforeBody() || !m_elementsInBodyWithPendingSheets.isEmpty();
+}
+
+inline bool Scope::hasPendingSheetsBeforeBody() const
+{
+    return !m_elementsInHeadWithPendingSheets.isEmpty() || !m_processingInstructionsWithPendingSheets.isEmpty();
+}
+
+inline bool Scope::hasPendingSheetsInBody() const
+{
+    return !m_elementsInBodyWithPendingSheets.isEmpty();
+}
 
 inline void Scope::flushPendingUpdate()
 {

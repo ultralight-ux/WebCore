@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007 Henry Mason (hmason@mac.com)
- * Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,23 +27,28 @@
 
 #pragma once
 
-#include "DOMWindow.h"
 #include "Event.h"
+#include "JSValueInWrappedObject.h"
 #include "MessagePort.h"
 #include "SerializedScriptValue.h"
-#include <bindings/ScriptValue.h>
+#include "ServiceWorker.h"
+#include "WindowProxy.h"
 #include <wtf/Variant.h>
 
 namespace WebCore {
 
 class Blob;
 
-using MessageEventSource = Variant<RefPtr<DOMWindow>, RefPtr<MessagePort>>;
+#if ENABLE(SERVICE_WORKER)
+using MessageEventSource = Variant<RefPtr<WindowProxy>, RefPtr<MessagePort>, RefPtr<ServiceWorker>>;
+#else
+using MessageEventSource = Variant<RefPtr<WindowProxy>, RefPtr<MessagePort>>;
+#endif
 
 class MessageEvent final : public Event {
 public:
-    static Ref<MessageEvent> create(Vector<RefPtr<MessagePort>>&&, RefPtr<SerializedScriptValue>&&, const String& origin = { }, const String& lastEventId = { }, std::optional<MessageEventSource>&& source = std::nullopt);
-    static Ref<MessageEvent> create(const AtomicString& type, RefPtr<SerializedScriptValue>&&, const String& origin, const String& lastEventId);
+    static Ref<MessageEvent> create(Vector<RefPtr<MessagePort>>&&, Ref<SerializedScriptValue>&&, const String& origin = { }, const String& lastEventId = { }, Optional<MessageEventSource>&& source = WTF::nullopt);
+    static Ref<MessageEvent> create(const AtomString& type, Ref<SerializedScriptValue>&&, const String& origin, const String& lastEventId);
     static Ref<MessageEvent> create(const String& data, const String& origin = { });
     static Ref<MessageEvent> create(Ref<Blob>&& data, const String& origin);
     static Ref<MessageEvent> create(Ref<ArrayBuffer>&& data, const String& origin = { });
@@ -53,62 +58,42 @@ public:
         JSC::JSValue data;
         String origin;
         String lastEventId;
-        std::optional<MessageEventSource> source;
+        Optional<MessageEventSource> source;
         Vector<RefPtr<MessagePort>> ports;
     };
-    static Ref<MessageEvent> create(JSC::ExecState&, const AtomicString& type, Init&&, IsTrusted = IsTrusted::No);
+    static Ref<MessageEvent> create(const AtomString& type, Init&&, IsTrusted = IsTrusted::No);
 
     virtual ~MessageEvent();
 
-    void initMessageEvent(JSC::ExecState&, const AtomicString& type, bool canBubble, bool cancelable, JSC::JSValue data, const String& origin, const String& lastEventId, std::optional<MessageEventSource>&&, Vector<RefPtr<MessagePort>>&&);
-    void initMessageEvent(const AtomicString& type, bool canBubble, bool cancelable, PassRefPtr<SerializedScriptValue> data, const String& origin, const String& lastEventId, std::optional<MessageEventSource>&&, Vector<RefPtr<MessagePort>>&&);
+    void initMessageEvent(const AtomString& type, bool canBubble, bool cancelable, JSC::JSValue data, const String& origin, const String& lastEventId, Optional<MessageEventSource>&&, Vector<RefPtr<MessagePort>>&&);
 
     const String& origin() const { return m_origin; }
     const String& lastEventId() const { return m_lastEventId; }
-    EventTarget* source() const;
+    const Optional<MessageEventSource>& source() const { return m_source; }
     const Vector<RefPtr<MessagePort>>& ports() const { return m_ports; }
 
-    // FIXME: Remove this when we have custom ObjC binding support.
-    SerializedScriptValue* data() const;
+    using DataType = Variant<JSValueInWrappedObject, Ref<SerializedScriptValue>, String, Ref<Blob>, Ref<ArrayBuffer>>;
+    const DataType& data() const { return m_data; }
 
-    EventInterface eventInterface() const override;
+    JSValueInWrappedObject& cachedData() { return m_cachedData; }
+    JSValueInWrappedObject& cachedPorts() { return m_cachedPorts; }
 
-    enum DataType {
-        DataTypeScriptValue,
-        DataTypeSerializedScriptValue,
-        DataTypeString,
-        DataTypeBlob,
-        DataTypeArrayBuffer
-    };
-    DataType dataType() const { return m_dataType; }
-    JSC::JSValue dataAsScriptValue() const { ASSERT(m_dataType == DataTypeScriptValue); return m_dataAsScriptValue; }
-    PassRefPtr<SerializedScriptValue> dataAsSerializedScriptValue() const { ASSERT(m_dataType == DataTypeSerializedScriptValue); return m_dataAsSerializedScriptValue; }
-    String dataAsString() const { ASSERT(m_dataType == DataTypeString); return m_dataAsString; }
-    Blob* dataAsBlob() const { ASSERT(m_dataType == DataTypeBlob); return m_dataAsBlob.get(); }
-    ArrayBuffer* dataAsArrayBuffer() const { ASSERT(m_dataType == DataTypeArrayBuffer); return m_dataAsArrayBuffer.get(); }
-
-    RefPtr<SerializedScriptValue> trySerializeData(JSC::ExecState*);
-    
 private:
     MessageEvent();
-    MessageEvent(JSC::ExecState&, const AtomicString&, Init&&, IsTrusted);
-    MessageEvent(RefPtr<SerializedScriptValue>&& data, const String& origin, const String& lastEventId, std::optional<MessageEventSource>&&, Vector<RefPtr<MessagePort>>&&);
-    MessageEvent(const AtomicString& type, RefPtr<SerializedScriptValue>&& data, const String& origin, const String& lastEventId);
-    MessageEvent(const String& data, const String& origin);
-    MessageEvent(Ref<Blob>&& data, const String& origin);
-    MessageEvent(Ref<ArrayBuffer>&& data, const String& origin);
+    MessageEvent(const AtomString& type, Init&&, IsTrusted);
+    MessageEvent(const AtomString& type, Ref<SerializedScriptValue>&& data, const String& origin, const String& lastEventId);
+    MessageEvent(DataType&&, const String& origin, const String& lastEventId = { }, Optional<MessageEventSource>&& = WTF::nullopt, Vector<RefPtr<MessagePort>>&& = { });
 
-    DataType m_dataType;
-    Deprecated::ScriptValue m_dataAsScriptValue;
-    RefPtr<SerializedScriptValue> m_dataAsSerializedScriptValue;
-    bool m_triedToSerialize { false };
-    String m_dataAsString;
-    RefPtr<Blob> m_dataAsBlob;
-    RefPtr<ArrayBuffer> m_dataAsArrayBuffer;
+    EventInterface eventInterface() const final;
+
+    DataType m_data;
     String m_origin;
     String m_lastEventId;
-    std::optional<MessageEventSource> m_source;
+    Optional<MessageEventSource> m_source;
     Vector<RefPtr<MessagePort>> m_ports;
+
+    JSValueInWrappedObject m_cachedData;
+    JSValueInWrappedObject m_cachedPorts;
 };
 
 } // namespace WebCore

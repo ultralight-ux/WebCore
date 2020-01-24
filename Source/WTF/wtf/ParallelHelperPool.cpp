@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,16 +24,16 @@
  */
 
 #include "config.h"
-#include "ParallelHelperPool.h"
+#include <wtf/ParallelHelperPool.h>
 
-#include "AutomaticThread.h"
-#include "DataLog.h"
-#include "StringPrintStream.h"
+#include <wtf/AutomaticThread.h>
+#include <wtf/DataLog.h>
+#include <wtf/StringPrintStream.h>
 
 namespace WTF {
 
-ParallelHelperClient::ParallelHelperClient(RefPtr<ParallelHelperPool> pool)
-    : m_pool(pool)
+ParallelHelperClient::ParallelHelperClient(RefPtr<ParallelHelperPool>&& pool)
+    : m_pool(WTFMove(pool))
 {
     LockHolder locker(*m_pool->m_lock);
     RELEASE_ASSERT(!m_pool->m_isDying);
@@ -54,11 +54,11 @@ ParallelHelperClient::~ParallelHelperClient()
     }
 }
 
-void ParallelHelperClient::setTask(RefPtr<SharedTask<void ()>> task)
+void ParallelHelperClient::setTask(RefPtr<SharedTask<void ()>>&& task)
 {
     LockHolder locker(*m_pool->m_lock);
     RELEASE_ASSERT(!m_task);
-    m_task = task;
+    m_task = WTFMove(task);
     m_pool->didMakeWorkAvailable(locker);
 }
 
@@ -81,21 +81,21 @@ void ParallelHelperClient::doSomeHelping()
     runTask(task);
 }
 
-void ParallelHelperClient::runTaskInParallel(RefPtr<SharedTask<void ()>> task)
+void ParallelHelperClient::runTaskInParallel(RefPtr<SharedTask<void ()>>&& task)
 {
-    setTask(task);
+    setTask(WTFMove(task));
     doSomeHelping();
     finish();
 }
 
-void ParallelHelperClient::finish(const LockHolder&)
+void ParallelHelperClient::finish(const AbstractLocker&)
 {
     m_task = nullptr;
     while (m_numActive)
         m_pool->m_workCompleteCondition.wait(*m_pool->m_lock);
 }
 
-RefPtr<SharedTask<void ()>> ParallelHelperClient::claimTask(const LockHolder&)
+RefPtr<SharedTask<void ()>> ParallelHelperClient::claimTask(const AbstractLocker&)
 {
     if (!m_task)
         return nullptr;
@@ -104,7 +104,7 @@ RefPtr<SharedTask<void ()>> ParallelHelperClient::claimTask(const LockHolder&)
     return m_task;
 }
 
-void ParallelHelperClient::runTask(RefPtr<SharedTask<void ()>> task)
+void ParallelHelperClient::runTask(const RefPtr<SharedTask<void ()>>& task)
 {
     RELEASE_ASSERT(m_numActive);
     RELEASE_ASSERT(task);
@@ -123,9 +123,10 @@ void ParallelHelperClient::runTask(RefPtr<SharedTask<void ()>> task)
     }
 }
 
-ParallelHelperPool::ParallelHelperPool()
+ParallelHelperPool::ParallelHelperPool(CString&& threadName)
     : m_lock(Box<Lock>::create())
     , m_workAvailableCondition(AutomaticThreadCondition::create())
+    , m_threadName(WTFMove(threadName))
 {
 }
 
@@ -170,14 +171,19 @@ void ParallelHelperPool::doSomeHelping()
 
 class ParallelHelperPool::Thread : public AutomaticThread {
 public:
-    Thread(const LockHolder& locker, ParallelHelperPool& pool)
-        : AutomaticThread(locker, pool.m_lock, pool.m_workAvailableCondition)
+    Thread(const AbstractLocker& locker, ParallelHelperPool& pool)
+        : AutomaticThread(locker, pool.m_lock, pool.m_workAvailableCondition.copyRef())
         , m_pool(pool)
     {
     }
     
+    const char* name() const override
+    {
+        return m_pool.m_threadName.data();
+    }
+
 protected:
-    PollResult poll(const LockHolder& locker) override
+    PollResult poll(const AbstractLocker& locker) override
     {
         if (m_pool.m_isDying)
             return PollResult::Stop;
@@ -203,19 +209,19 @@ private:
     RefPtr<SharedTask<void ()>> m_task;
 };
 
-void ParallelHelperPool::didMakeWorkAvailable(const LockHolder& locker)
+void ParallelHelperPool::didMakeWorkAvailable(const AbstractLocker& locker)
 {
     while (m_numThreads > m_threads.size())
         m_threads.append(adoptRef(new Thread(locker, *this)));
     m_workAvailableCondition->notifyAll(locker);
 }
 
-bool ParallelHelperPool::hasClientWithTask(const LockHolder& locker)
+bool ParallelHelperPool::hasClientWithTask(const AbstractLocker& locker)
 {
     return !!getClientWithTask(locker);
 }
 
-ParallelHelperClient* ParallelHelperPool::getClientWithTask(const LockHolder&)
+ParallelHelperClient* ParallelHelperPool::getClientWithTask(const AbstractLocker&)
 {
     // We load-balance by being random.
     unsigned startIndex = m_random.getUint32(m_clients.size());

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006, 2009, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,13 +38,23 @@ namespace WebCore {
 class InlineTextBox;
 class RenderText;
 class RenderTextFragment;
+
 namespace SimpleLineLayout {
 class RunResolver;
 }
 
+WEBCORE_EXPORT String plainText(Position start, Position end, TextIteratorBehavior = TextIteratorDefaultBehavior, bool isDisplayString = false);
+WEBCORE_EXPORT String plainTextReplacingNoBreakSpace(Position start, Position end, TextIteratorBehavior = TextIteratorDefaultBehavior, bool isDisplayString = false);
+
 WEBCORE_EXPORT String plainText(const Range*, TextIteratorBehavior = TextIteratorDefaultBehavior, bool isDisplayString = false);
 WEBCORE_EXPORT String plainTextReplacingNoBreakSpace(const Range*, TextIteratorBehavior = TextIteratorDefaultBehavior, bool isDisplayString = false);
+WEBCORE_EXPORT String plainTextUsingBackwardsTextIteratorForTesting(const Range&);
+
 Ref<Range> findPlainText(const Range&, const String&, FindOptions);
+WEBCORE_EXPORT Ref<Range> findClosestPlainText(const Range&, const String&, FindOptions, unsigned);
+WEBCORE_EXPORT bool hasAnyPlainText(const Range&, TextIteratorBehavior = TextIteratorDefaultBehavior);
+bool findPlainText(const String& document, const String&, FindOptions); // Lets us use the search algorithm on a string.
+WEBCORE_EXPORT String foldQuoteMarks(const String&);
 
 // FIXME: Move this somewhere else in the editing directory. It doesn't belong here.
 bool isRendererReplacedElement(RenderObject*);
@@ -94,7 +104,9 @@ private:
 // the chunks it's already stored in, to avoid copying any text.
 
 class TextIterator {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
+    WEBCORE_EXPORT explicit TextIterator(Position start, Position end, TextIteratorBehavior = TextIteratorDefaultBehavior);
     WEBCORE_EXPORT explicit TextIterator(const Range*, TextIteratorBehavior = TextIteratorDefaultBehavior);
     WEBCORE_EXPORT ~TextIterator();
 
@@ -111,9 +123,10 @@ public:
     WEBCORE_EXPORT static int rangeLength(const Range*, bool spacesForReplacedElements = false);
     WEBCORE_EXPORT static RefPtr<Range> rangeFromLocationAndLength(ContainerNode* scope, int rangeLocation, int rangeLength, bool spacesForReplacedElements = false);
     WEBCORE_EXPORT static bool getLocationAndLengthFromRange(Node* scope, const Range*, size_t& location, size_t& length);
-    WEBCORE_EXPORT static Ref<Range> subrange(Range* entireRange, int characterOffset, int characterCount);
+    WEBCORE_EXPORT static Ref<Range> subrange(Range& entireRange, int characterOffset, int characterCount);
 
 private:
+    void init();
     void exitNode(Node*);
     bool shouldRepresentNodeOffsetZero();
     bool shouldEmitSpaceBeforeAndAfterNode(Node&);
@@ -245,12 +258,13 @@ private:
 class CharacterIterator {
 public:
     explicit CharacterIterator(const Range&, TextIteratorBehavior = TextIteratorDefaultBehavior);
+    WEBCORE_EXPORT explicit CharacterIterator(Position start, Position end, TextIteratorBehavior = TextIteratorDefaultBehavior);
     
     bool atEnd() const { return m_underlyingIterator.atEnd(); }
-    void advance(int numCharacters);
+    WEBCORE_EXPORT void advance(int numCharacters);
     
     StringView text() const { return m_underlyingIterator.text().substring(m_runOffset); }
-    Ref<Range> range() const;
+    WEBCORE_EXPORT Ref<Range> range() const;
 
     bool atBreak() const { return m_atBreak; }
     int characterOffset() const { return m_offset; }
@@ -258,9 +272,9 @@ public:
 private:
     TextIterator m_underlyingIterator;
 
-    int m_offset;
-    int m_runOffset;
-    bool m_atBreak;
+    int m_offset { 0 };
+    int m_runOffset { 0 };
+    bool m_atBreak { true };
 };
     
 class BackwardsCharacterIterator {

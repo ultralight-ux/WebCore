@@ -28,27 +28,28 @@
 #if ENABLE(APPLE_PAY)
 
 #include "Event.h"
-#include "URL.h"
+#include <wtf/URL.h>
 
 namespace WebCore {
 
-class ApplePayValidateMerchantEvent final : public Event {
+class ApplePayValidateMerchantEvent : public Event {
 public:
-    static Ref<ApplePayValidateMerchantEvent> create(const AtomicString& type, const URL& validationURL)
+    static Ref<ApplePayValidateMerchantEvent> create(const AtomString& type, URL&& validationURL)
     {
-        return adoptRef(*new ApplePayValidateMerchantEvent(type, validationURL));
+        return adoptRef(*new ApplePayValidateMerchantEvent(type, WTFMove(validationURL)));
     }
 
     virtual ~ApplePayValidateMerchantEvent();
 
     const String& validationURL() const { return m_validationURL.string(); }
 
-private:
-    ApplePayValidateMerchantEvent(const AtomicString& type, const URL& validationURL);
+protected:
+    ApplePayValidateMerchantEvent(const AtomString& type, URL&& validationURL);
 
     // Event.
     EventInterface eventInterface() const override;
 
+private:
     const URL m_validationURL;
 };
 

@@ -1,3 +1,4 @@
+#if 0
 #include "config.h"
 #include "HarfBuzzFace.h"
 
@@ -209,3 +210,5 @@ GlyphBufferAdvance HarfBuzzShaper::createGlyphBufferAdvance(float width, float h
 */
 
 }  // namespace WebCore
+
+#endif // #if 0

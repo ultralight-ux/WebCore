@@ -24,11 +24,12 @@
 #pragma once
 
 #include "HTMLElement.h"
-#include <memory>
+#include <wtf/UniqueArray.h>
 
 namespace WebCore {
 
 class HTMLFrameSetElement final : public HTMLElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLFrameSetElement);
 public:
     static Ref<HTMLFrameSetElement> create(const QualifiedName&, Document&);
 
@@ -44,14 +45,17 @@ public:
     const Length* rowLengths() const { return m_rowLengths.get(); }
     const Length* colLengths() const { return m_colLengths.get(); }
 
-    static HTMLFrameSetElement* findContaining(Element* descendant);
+    static RefPtr<HTMLFrameSetElement> findContaining(Element* descendant);
+    
+    Vector<AtomString> supportedPropertyNames() const;
+    WindowProxy* namedItem(const AtomString&);
 
 private:
     HTMLFrameSetElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
     bool isPresentationAttribute(const QualifiedName&) const final;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
 
     void willAttachRenderers() final;
     bool rendererIsNeeded(const RenderStyle&) final;
@@ -61,11 +65,11 @@ private:
 
     void willRecalcStyle(Style::Change) final;
 
-    InsertionNotificationRequest insertedInto(ContainerNode&) final;
-    void removedFrom(ContainerNode&) final;
+    InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
+    void removedFromAncestor(RemovalType, ContainerNode&) final;
 
-    std::unique_ptr<Length[]> m_rowLengths;
-    std::unique_ptr<Length[]> m_colLengths;
+    UniqueArray<Length> m_rowLengths;
+    UniqueArray<Length> m_colLengths;
 
     int m_totalRows;
     int m_totalCols;

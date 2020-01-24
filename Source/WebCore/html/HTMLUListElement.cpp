@@ -25,8 +25,11 @@
 
 #include "CSSPropertyNames.h"
 #include "HTMLNames.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLUListElement);
 
 using namespace HTMLNames;
 
@@ -53,7 +56,7 @@ bool HTMLUListElement::isPresentationAttribute(const QualifiedName& name) const
     return HTMLElement::isPresentationAttribute(name);
 }
 
-void HTMLUListElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStyleProperties& style)
+void HTMLUListElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == typeAttr)
         addPropertyToPresentationAttributeStyle(style, CSSPropertyListStyleType, value);

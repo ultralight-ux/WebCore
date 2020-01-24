@@ -26,27 +26,29 @@
 #include "config.h"
 #include "CachedModuleScriptLoader.h"
 
-#include "CachedResourceLoader.h"
 #include "CachedScript.h"
+#include "CachedScriptFetcher.h"
 #include "DOMWrapperWorld.h"
 #include "Frame.h"
 #include "JSDOMBinding.h"
+#include "ModuleFetchParameters.h"
 #include "ResourceLoaderOptions.h"
 #include "ScriptController.h"
-#include "ScriptElement.h"
 #include "ScriptModuleLoader.h"
 #include "ScriptSourceCode.h"
 
 namespace WebCore {
 
-Ref<CachedModuleScriptLoader> CachedModuleScriptLoader::create(CachedModuleScriptLoaderClient& client, DeferredPromise& promise)
+Ref<CachedModuleScriptLoader> CachedModuleScriptLoader::create(CachedModuleScriptLoaderClient& client, DeferredPromise& promise, CachedScriptFetcher& scriptFetcher, RefPtr<ModuleFetchParameters>&& parameters)
 {
-    return adoptRef(*new CachedModuleScriptLoader(client, promise));
+    return adoptRef(*new CachedModuleScriptLoader(client, promise, scriptFetcher, WTFMove(parameters)));
 }
 
-CachedModuleScriptLoader::CachedModuleScriptLoader(CachedModuleScriptLoaderClient& client, DeferredPromise& promise)
+CachedModuleScriptLoader::CachedModuleScriptLoader(CachedModuleScriptLoaderClient& client, DeferredPromise& promise, CachedScriptFetcher& scriptFetcher, RefPtr<ModuleFetchParameters>&& parameters)
     : m_client(&client)
     , m_promise(&promise)
+    , m_scriptFetcher(scriptFetcher)
+    , m_parameters(WTFMove(parameters))
 {
 }
 
@@ -58,10 +60,11 @@ CachedModuleScriptLoader::~CachedModuleScriptLoader()
     }
 }
 
-bool CachedModuleScriptLoader::load(ScriptElement& scriptElement, const URL& sourceURL)
+bool CachedModuleScriptLoader::load(Document& document, const URL& sourceURL)
 {
     ASSERT(!m_cachedScript);
-    m_cachedScript = scriptElement.requestScriptWithCacheForModuleScript(sourceURL);
+    String integrity = m_parameters ? m_parameters->integrity() : String { };
+    m_cachedScript = m_scriptFetcher->requestModuleScript(document, sourceURL, WTFMove(integrity));
     if (!m_cachedScript)
         return false;
 

@@ -39,7 +39,7 @@ namespace ContentExtensions {
 template <typename IntType>
 inline void append(Vector<DFABytecode>& bytecode, IntType value)
 {
-    bytecode.resize(bytecode.size() + sizeof(IntType));
+    bytecode.grow(bytecode.size() + sizeof(IntType));
     *reinterpret_cast<IntType*>(&bytecode[bytecode.size() - sizeof(IntType)]) = value;
 }
 
@@ -81,15 +81,15 @@ void DFABytecodeCompiler::emitAppendAction(uint64_t action)
 {
     // High bits are used to store flags. See compileRuleList.
     if (action & ActionFlagMask) {
-        if (action & IfDomainFlag)
-            append<DFABytecodeInstruction>(m_bytecode, DFABytecodeInstruction::TestFlagsAndAppendActionWithIfDomain);
+        if (action & IfConditionFlag)
+            append<DFABytecodeInstruction>(m_bytecode, DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition);
         else
             append<DFABytecodeInstruction>(m_bytecode, DFABytecodeInstruction::TestFlagsAndAppendAction);
         append<uint16_t>(m_bytecode, static_cast<uint16_t>(action >> 32));
         append<uint32_t>(m_bytecode, static_cast<uint32_t>(action));
     } else {
-        if (action & IfDomainFlag)
-            append<DFABytecodeInstruction>(m_bytecode, DFABytecodeInstruction::AppendActionWithIfDomain);
+        if (action & IfConditionFlag)
+            append<DFABytecodeInstruction>(m_bytecode, DFABytecodeInstruction::AppendActionWithIfCondition);
         else
             append<DFABytecodeInstruction>(m_bytecode, DFABytecodeInstruction::AppendAction);
         append<uint32_t>(m_bytecode, static_cast<uint32_t>(action));
@@ -461,7 +461,7 @@ void DFABytecodeCompiler::compile()
     // Link.
     for (const auto& linkRecord : m_linkRecords) {
         uint32_t destination = m_nodeStartOffsets[linkRecord.destinationNodeIndex];
-        RELEASE_ASSERT(destination < std::numeric_limits<int32_t>::max());
+        RELEASE_ASSERT(destination < static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
         int32_t distance = destination - linkRecord.instructionLocation;
         ASSERT(abs(distance) <= abs(linkRecord.longestPossibleJump));
         

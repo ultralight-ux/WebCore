@@ -28,18 +28,10 @@
 
 #if USE(CFURLCONNECTION)
 
-#include "CFNetworkSPI.h"
 #include "FormDataStreamCFNet.h"
 #include "NetworkingContext.h"
 #include "ResourceHandle.h"
-
-#if PLATFORM(COCOA)
-#include "WebCoreSystemInterface.h"
-#endif
-
-#if PLATFORM(WIN)
-#include <WebKitSystemInterface/WebKitSystemInterface.h>
-#endif
+#include <pal/spi/cf/CFNetworkSPI.h>
 
 namespace WebCore {
 
@@ -48,9 +40,7 @@ ResourceHandleCFURLConnectionDelegate::ResourceHandleCFURLConnectionDelegate(Res
 {
 }
 
-ResourceHandleCFURLConnectionDelegate::~ResourceHandleCFURLConnectionDelegate()
-{
-}
+ResourceHandleCFURLConnectionDelegate::~ResourceHandleCFURLConnectionDelegate() = default;
 
 void ResourceHandleCFURLConnectionDelegate::releaseHandle()
 {
@@ -120,13 +110,6 @@ Boolean ResourceHandleCFURLConnectionDelegate::canRespondToProtectionSpaceCallba
     return static_cast<ResourceHandleCFURLConnectionDelegate*>(const_cast<void*>(clientInfo))->canRespondToProtectionSpace(protectionSpace);
 }
 #endif // USE(PROTECTION_SPACE_AUTH_CALLBACK)
-
-#if USE(NETWORK_CFDATA_ARRAY_CALLBACK)
-void ResourceHandleCFURLConnectionDelegate::didReceiveDataArrayCallback(CFURLConnectionRef, CFArrayRef dataArray, const void* clientInfo)
-{
-    static_cast<ResourceHandleCFURLConnectionDelegate*>(const_cast<void*>(clientInfo))->didReceiveDataArray(dataArray);
-}
-#endif // USE(NETWORK_CFDATA_ARRAY_CALLBACK)
 
 RetainPtr<CFURLResponseRef> ResourceHandleCFURLConnectionDelegate::synthesizeRedirectResponseIfNecessary(CFURLRequestRef newRequest, CFURLResponseRef cfRedirectResponse)
 {
@@ -207,11 +190,7 @@ CFURLConnectionClient_V6 ResourceHandleCFURLConnectionDelegate::makeConnectionCl
         0,
 #endif
         0,
-#if USE(NETWORK_CFDATA_ARRAY_CALLBACK)
-        &ResourceHandleCFURLConnectionDelegate::didReceiveDataArrayCallback
-#else
         0
-#endif
     };
     return client;
 }

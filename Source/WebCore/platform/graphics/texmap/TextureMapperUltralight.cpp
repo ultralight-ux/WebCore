@@ -50,8 +50,7 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
     //current_surface_->DrawRect({ 20, 20, 30, 30 }, paint);
 }
 
-void TextureMapperUltralight::drawSolidColor(const FloatRect&,
-    const TransformationMatrix&, const Color&) {}
+void TextureMapperUltralight::drawSolidColor(const FloatRect&, const TransformationMatrix&, const Color&, bool) {}
 
 // makes a surface the target for the following drawTexture calls.
 void TextureMapperUltralight::bindSurface(BitmapTexture* surface) {
@@ -97,9 +96,9 @@ IntRect TextureMapperUltralight::clipBounds() {
   return IntRect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
 }
 
-PassRefPtr<BitmapTexture> TextureMapperUltralight::createTexture() {
+Ref<BitmapTexture> TextureMapperUltralight::createTexture() {
     BitmapTextureUltralight* texture = new BitmapTextureUltralight();
-    return adoptRef(texture);
+    return *adoptRef(texture);
 }
 
 void TextureMapperUltralight::beginPainting(PaintFlags) {

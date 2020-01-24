@@ -3,6 +3,7 @@
 #include "Font.h"
 #include "NotImplemented.h"
 #include "FreeTypeLib.h"
+#include <wtf/text/CString.h>
 #include <Ultralight/platform/FontLoader.h>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/private/Painter.h>
@@ -12,23 +13,21 @@ namespace WebCore {
 
 using ultralight::Convert;
 
-static int GetRawWeight(FontWeight weight) {
-  switch (weight) {
-  case FontWeight100: return 100;
-  case FontWeight200: return 200;
-  case FontWeight300: return 300;
-  case FontWeight400: return 400;
-  case FontWeight500: return 500;
-  case FontWeight600: return 600;
-  case FontWeight700: return 700;
-  case FontWeight800: return 800;
-  case FontWeight900: return 900;
-  default: return 300;
-  }
+static int GetRawWeight(FontSelectionValue weight) {
+  if (weight < FontSelectionValue(150)) return 100;
+  if (weight < FontSelectionValue(250)) return 200;
+  if (weight < FontSelectionValue(350)) return 300;
+  if (weight < FontSelectionValue(450)) return 400;
+  if (weight < FontSelectionValue(550)) return 500;
+  if (weight < FontSelectionValue(650)) return 600;
+  if (weight < FontSelectionValue(750)) return 700;
+  if (weight < FontSelectionValue(850)) return 800;
+  return 900;
 }
 
-RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& description, const Font* originalFontData,
-  bool isPlatformFont, const UChar* characters, unsigned length)
+RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& description, 
+  const Font* originalFontData, IsForPlatformFont, PreferColoredFont preferColoredFont, 
+  const UChar* characters, unsigned length)
 {
   auto& platform = ultralight::Platform::instance();
   auto loader = platform.font_loader();
@@ -37,7 +36,7 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
 
   auto fallback = loader->fallback_font_for_characters(
     ultralight::String16(reinterpret_cast<const ultralight::Char16*>(characters), length),
-    GetRawWeight(description.weight()), description.italic() == FontItalicOn, description.computedSize());
+    GetRawWeight(description.weight()), !!description.italic(), description.computedSize());
 
   return fontForFamily(description, Convert(fallback));
 }
@@ -62,10 +61,12 @@ Vector<FontSelectionCapabilities> FontCache::getFontSelectionCapabilitiesInFamil
 }
 */
 
+/*
 Ref<Font> FontCache::lastResortFallbackFontForEveryCharacter(const FontDescription& fontDescription)
 {
   return lastResortFallbackFont(fontDescription);
 }
+*/
 
 Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescription)
 {
@@ -74,13 +75,15 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
   return *fontForFamily(fontDescription, Convert(font_loader->fallback_font()));
 }
 
+/*
 Vector<FontTraitsMask> FontCache::getTraitsInFamily(const AtomicString&)
 {
   return{};
 }
+*/
 
 std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDescription& fontDescription,
-  const AtomicString& family, const FontFeatureSettings*, const FontVariantSettings*)
+  const AtomString& family, const FontFeatureSettings*, const FontVariantSettings*, FontSelectionSpecifiedCapabilities)
 {
   platformInit();
 
@@ -99,7 +102,7 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
     font_family = Convert(loader->fallback_font());
 
   auto font = loader->Load(Convert(font_family.string()), GetRawWeight(fontDescription.weight()),
-    fontDescription.italic() == FontItalicOn, fontDescription.computedSize());
+    !!fontDescription.italic(), fontDescription.computedSize());
   
   size_t font_size = font->size();
 
@@ -123,12 +126,9 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
   return nullptr;
 }
 
-const AtomicString& FontCache::platformAlternateFamilyName(const AtomicString&) {
+const AtomString& FontCache::platformAlternateFamilyName(const AtomString&) {
   // TODO
-  notImplemented();
-  static AtomicString empty;
-
-  return empty;
+  return nullAtom();
 }
 
 }  // namespace WebCore

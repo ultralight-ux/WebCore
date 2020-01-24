@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,13 +29,12 @@
 
 #if ENABLE(DATE_AND_TIME_INPUT_TYPES)
 
-#include "Chrome.h"
 #include "HTMLDivElement.h"
 #include "HTMLInputElement.h"
 #include "Page.h"
 #include "RenderElement.h"
-#include "ScriptController.h"
 #include "ShadowRoot.h"
+#include "UserGestureIndicator.h"
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
@@ -46,37 +46,40 @@ BaseChooserOnlyDateAndTimeInputType::~BaseChooserOnlyDateAndTimeInputType()
 
 void BaseChooserOnlyDateAndTimeInputType::handleDOMActivateEvent(Event&)
 {
-    if (element().isDisabledOrReadOnly() || !element().renderer() || !ScriptController::processingUserGesture())
+    ASSERT(element());
+    if (element()->isDisabledOrReadOnly() || !element()->renderer() || !UserGestureIndicator::processingUserGesture())
         return;
 
     if (m_dateTimeChooser)
         return;
-    if (!element().document().page())
+    if (!element()->document().page())
         return;
     DateTimeChooserParameters parameters;
-    if (!element().setupDateTimeChooserParameters(parameters))
+    if (!element()->setupDateTimeChooserParameters(parameters))
         return;
 }
 
 void BaseChooserOnlyDateAndTimeInputType::createShadowSubtree()
 {
-    static NeverDestroyed<AtomicString> valueContainerPseudo("-webkit-date-and-time-value", AtomicString::ConstructFromLiteral);
+    static NeverDestroyed<AtomString> valueContainerPseudo("-webkit-date-and-time-value", AtomString::ConstructFromLiteral);
 
-    auto valueContainer = HTMLDivElement::create(element().document());
+    ASSERT(element());
+    auto valueContainer = HTMLDivElement::create(element()->document());
     valueContainer->setPseudo(valueContainerPseudo);
-    element().userAgentShadowRoot()->appendChild(valueContainer);
-    updateAppearance();
+    element()->userAgentShadowRoot()->appendChild(valueContainer);
+    updateInnerTextValue();
 }
 
-void BaseChooserOnlyDateAndTimeInputType::updateAppearance()
+void BaseChooserOnlyDateAndTimeInputType::updateInnerTextValue()
 {
-    Node* node = element().userAgentShadowRoot()->firstChild();
+    ASSERT(element());
+    RefPtr<Node> node = element()->userAgentShadowRoot()->firstChild();
     if (!is<HTMLElement>(node))
         return;
     String displayValue = visibleValue();
     if (displayValue.isEmpty()) {
         // Need to put something to keep text baseline.
-        displayValue = ASCIILiteral(" ");
+        displayValue = " "_s;
     }
     downcast<HTMLElement>(*node).setInnerText(displayValue);
 }
@@ -85,7 +88,7 @@ void BaseChooserOnlyDateAndTimeInputType::setValue(const String& value, bool val
 {
     BaseDateAndTimeInputType::setValue(value, valueChanged, eventBehavior);
     if (valueChanged)
-        updateAppearance();
+        updateInnerTextValue();
 }
 
 void BaseChooserOnlyDateAndTimeInputType::detach()
@@ -95,7 +98,8 @@ void BaseChooserOnlyDateAndTimeInputType::detach()
 
 void BaseChooserOnlyDateAndTimeInputType::didChooseValue(const String& value)
 {
-    element().setValue(value, DispatchInputAndChangeEvent);
+    ASSERT(element());
+    element()->setValue(value, DispatchInputAndChangeEvent);
 }
 
 void BaseChooserOnlyDateAndTimeInputType::didEndChooser()
@@ -109,14 +113,16 @@ void BaseChooserOnlyDateAndTimeInputType::closeDateTimeChooser()
         m_dateTimeChooser->endChooser();
 }
 
-void BaseChooserOnlyDateAndTimeInputType::handleKeydownEvent(KeyboardEvent& event)
+auto BaseChooserOnlyDateAndTimeInputType::handleKeydownEvent(KeyboardEvent& event) -> ShouldCallBaseEventHandler
 {
-    BaseClickableWithKeyInputType::handleKeydownEvent(element(), event);
+    ASSERT(element());
+    return BaseClickableWithKeyInputType::handleKeydownEvent(*element(), event);
 }
 
 void BaseChooserOnlyDateAndTimeInputType::handleKeypressEvent(KeyboardEvent& event)
 {
-    BaseClickableWithKeyInputType::handleKeypressEvent(element(), event);
+    ASSERT(element());
+    BaseClickableWithKeyInputType::handleKeypressEvent(*element(), event);
 }
 
 void BaseChooserOnlyDateAndTimeInputType::handleKeyupEvent(KeyboardEvent& event)
@@ -127,13 +133,27 @@ void BaseChooserOnlyDateAndTimeInputType::handleKeyupEvent(KeyboardEvent& event)
 void BaseChooserOnlyDateAndTimeInputType::accessKeyAction(bool sendMouseEvents)
 {
     BaseDateAndTimeInputType::accessKeyAction(sendMouseEvents);
-    BaseClickableWithKeyInputType::accessKeyAction(element(), sendMouseEvents);
+    ASSERT(element());
+    BaseClickableWithKeyInputType::accessKeyAction(*element(), sendMouseEvents);
 }
 
 bool BaseChooserOnlyDateAndTimeInputType::isMouseFocusable() const
 {
-    return element().isTextFormControlFocusable();
+    ASSERT(element());
+    return element()->isTextFormControlFocusable();
+}
+
+void BaseChooserOnlyDateAndTimeInputType::attributeChanged(const QualifiedName& name)
+{
+    if (name == valueAttr) {
+        if (auto* element = this->element()) {
+            if (!element->hasDirtyValue())
+                updateInnerTextValue();
+        }
+    }
+    BaseDateAndTimeInputType::attributeChanged(name);
 }
 
 }
+
 #endif

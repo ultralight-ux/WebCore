@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2009 Google Inc. All rights reserved.
+ * Copyright (C) 2009-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -33,121 +34,56 @@
 
 #include "JSBlob.h"
 #include "JSDOMBinding.h"
-#include "JSDOMConvert.h"
+#include "JSDOMConvertBufferSource.h"
+#include "JSDOMConvertInterface.h"
+#include "JSDOMConvertStrings.h"
 #include "JSDOMWindow.h"
 #include "JSEventTarget.h"
 #include "JSMessagePort.h"
-#include "MessageEvent.h"
-#include <runtime/JSArray.h>
-#include <runtime/JSArrayBuffer.h>
-
-using namespace JSC;
+#include <JavaScriptCore/JSArray.h>
+#include <JavaScriptCore/JSArrayBuffer.h>
 
 namespace WebCore {
 
-JSValue JSMessageEvent::data(ExecState& state) const
+JSC::JSValue JSMessageEvent::ports(JSC::ExecState& state) const
 {
-    if (JSValue cachedValue = m_data.get()) {
-        // We cannot use a cached object if we are in a different world than the one it was created in.
-        if (!cachedValue.isObject() || &worldForDOMObject(cachedValue.getObject()) == &currentWorld(&state))
-            return cachedValue;
-        ASSERT_NOT_REACHED();
-    }
-
-    MessageEvent& event = wrapped();
-    JSValue result;
-    switch (event.dataType()) {
-    case MessageEvent::DataTypeScriptValue: {
-        JSValue dataValue = event.dataAsScriptValue();
-        if (!dataValue)
-            result = jsNull();
-        else {
-            // We need to make sure MessageEvents do not leak objects in their state property across isolated DOM worlds.
-            // Ideally, we would check that the worlds have different privileges but that's not possible yet.
-            if (dataValue.isObject() && &worldForDOMObject(dataValue.getObject()) != &currentWorld(&state)) {
-                RefPtr<SerializedScriptValue> serializedValue = event.trySerializeData(&state);
-                if (serializedValue)
-                    result = serializedValue->deserialize(state, globalObject());
-                else
-                    result = jsNull();
-            } else
-                result = dataValue;
-        }
-        break;
-    }
-
-    case MessageEvent::DataTypeSerializedScriptValue:
-        if (RefPtr<SerializedScriptValue> serializedValue = event.dataAsSerializedScriptValue()) {
-            Vector<RefPtr<MessagePort>> ports = wrapped().ports();
-            // FIXME: Why does this suppress exceptions?
-            result = serializedValue->deserialize(state, globalObject(), ports, SerializationErrorMode::NonThrowing);
-        } else
-            result = jsNull();
-        break;
-
-    case MessageEvent::DataTypeString:
-        result = jsStringWithCache(&state, event.dataAsString());
-        break;
-
-    case MessageEvent::DataTypeBlob:
-        result = toJS(&state, globalObject(), event.dataAsBlob());
-        break;
-
-    case MessageEvent::DataTypeArrayBuffer:
-        result = toJS(&state, globalObject(), event.dataAsArrayBuffer());
-        break;
-    }
-
-    // Save the result so we don't have to deserialize the value again.
-    m_data.set(state.vm(), this, result);
-    return result;
+    auto throwScope = DECLARE_THROW_SCOPE(state.vm());
+    return cachedPropertyValue(state, *this, wrapped().cachedPorts(), [&] {
+        JSC::JSValue ports = toJS<IDLFrozenArray<IDLInterface<MessagePort>>>(state, *globalObject(), throwScope, wrapped().ports());
+        return ports;
+    });
 }
 
-static JSC::JSValue handleInitMessageEvent(JSMessageEvent* jsEvent, JSC::ExecState& state)
+JSC::JSValue JSMessageEvent::data(JSC::ExecState& state) const
 {
-    VM& vm = state.vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
-    const String& typeArg = state.argument(0).toWTFString(&state);
-    RETURN_IF_EXCEPTION(scope, JSValue());
-
-    bool canBubbleArg = state.argument(1).toBoolean(&state);
-    RETURN_IF_EXCEPTION(scope, JSValue());
-
-    bool cancelableArg = state.argument(2).toBoolean(&state);
-    RETURN_IF_EXCEPTION(scope, JSValue());
-
-    JSValue dataArg = state.argument(3);
-
-    const String originArg = convert<IDLUSVString>(state, state.argument(4));
-    RETURN_IF_EXCEPTION(scope, JSValue());
-
-    const String lastEventIdArg = state.argument(5).toWTFString(&state);
-    RETURN_IF_EXCEPTION(scope, JSValue());
-
-    auto sourceArg = convert<IDLNullable<IDLUnion<IDLInterface<DOMWindow>, IDLInterface<MessagePort>>>>(state, state.argument(6));
-    RETURN_IF_EXCEPTION(scope, JSValue());
-    
-    Vector<RefPtr<MessagePort>> messagePorts;
-    if (!state.argument(7).isUndefinedOrNull()) {
-        messagePorts = convert<IDLSequence<IDLInterface<MessagePort>>>(state, state.argument(7));
-        RETURN_IF_EXCEPTION(scope, JSValue());
-    }
-
-    MessageEvent& event = jsEvent->wrapped();
-    event.initMessageEvent(state, typeArg, canBubbleArg, cancelableArg, dataArg, originArg, lastEventIdArg, WTFMove(sourceArg), WTFMove(messagePorts));
-    jsEvent->m_data.set(vm, jsEvent, dataArg);
-    return jsUndefined();
+    return cachedPropertyValue(state, *this, wrapped().cachedData(), [this, &state] {
+        return WTF::switchOn(wrapped().data(), [] (JSC::JSValue data) {
+            return data ? data : JSC::jsNull();
+        }, [this, &state] (const Ref<SerializedScriptValue>& data) {
+            // FIXME: Is it best to handle errors by returning null rather than throwing an exception?
+            return data->deserialize(state, globalObject(), wrapped().ports(), SerializationErrorMode::NonThrowing);
+        }, [&state] (const String& data) {
+            return toJS<IDLDOMString>(state, data);
+        }, [this, &state] (const Ref<Blob>& data) {
+            return toJS<IDLInterface<Blob>>(state, *globalObject(), data);
+        }, [this, &state] (const Ref<ArrayBuffer>& data) {
+            return toJS<IDLInterface<ArrayBuffer>>(state, *globalObject(), data);
+        });
+    });
 }
 
-JSC::JSValue JSMessageEvent::initMessageEvent(JSC::ExecState& state)
+void JSMessageEvent::visitAdditionalChildren(JSC::SlotVisitor& visitor)
 {
-    return handleInitMessageEvent(this, state);
-}
+    WTF::switchOn(wrapped().data(), [&visitor] (const JSValueInWrappedObject& data) {
+        data.visit(visitor);
+    }, [] (const Ref<SerializedScriptValue>&) {
+    }, [] (const String&) {
+    }, [] (const Ref<Blob>&) {
+    }, [] (const Ref<ArrayBuffer>&) {
+    });
 
-JSC::JSValue JSMessageEvent::webkitInitMessageEvent(JSC::ExecState& state)
-{
-    return handleInitMessageEvent(this, state);
+    wrapped().cachedData().visit(visitor);
+    wrapped().cachedPorts().visit(visitor);
 }
 
 } // namespace WebCore

@@ -27,6 +27,7 @@
 #include "config.h"
 #include "ActiveDOMObject.h"
 
+#include "Document.h"
 #include "ScriptExecutionContext.h"
 
 namespace WebCore {
@@ -38,6 +39,7 @@ ActiveDOMObject::ActiveDOMObject(ScriptExecutionContext* scriptExecutionContext)
     , m_suspendIfNeededWasCalled(false)
 #endif
 {
+    ASSERT(!is<Document>(m_scriptExecutionContext) || &downcast<Document>(m_scriptExecutionContext)->contextDocument() == downcast<Document>(m_scriptExecutionContext));
     if (!m_scriptExecutionContext)
         return;
 
@@ -47,10 +49,7 @@ ActiveDOMObject::ActiveDOMObject(ScriptExecutionContext* scriptExecutionContext)
 
 ActiveDOMObject::~ActiveDOMObject()
 {
-    if (!m_scriptExecutionContext)
-        return;
-
-    ASSERT(m_suspendIfNeededWasCalled);
+    ASSERT(canAccessThreadLocalDataForThread(m_creationThread));
 
     // ActiveDOMObject may be inherited by a sub-class whose life-cycle
     // exceeds that of the associated ScriptExecutionContext. In those cases,
@@ -58,10 +57,12 @@ ActiveDOMObject::~ActiveDOMObject()
     // ContextDestructionObserver::contextDestroyed() (which we implement /
     // inherit). Hence, we should ensure that this is not 0 before use it
     // here.
-    if (m_scriptExecutionContext) {
-        ASSERT(m_scriptExecutionContext->isContextThread());
-        m_scriptExecutionContext->willDestroyActiveDOMObject(*this);
-    }
+    if (!m_scriptExecutionContext)
+        return;
+
+    ASSERT(m_suspendIfNeededWasCalled);
+    ASSERT(m_scriptExecutionContext->isContextThread());
+    m_scriptExecutionContext->willDestroyActiveDOMObject(*this);
 }
 
 void ActiveDOMObject::suspendIfNeeded()
@@ -105,6 +106,11 @@ void ActiveDOMObject::resume()
 
 void ActiveDOMObject::stop()
 {
+}
+
+bool ActiveDOMObject::isContextStopped() const
+{
+    return !scriptExecutionContext() || scriptExecutionContext()->activeDOMObjectsAreStopped();
 }
 
 } // namespace WebCore

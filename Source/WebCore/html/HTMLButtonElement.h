@@ -30,12 +30,13 @@ namespace WebCore {
 class RenderButton;
 
 class HTMLButtonElement final : public HTMLFormControlElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLButtonElement);
 public:
     static Ref<HTMLButtonElement> create(const QualifiedName&, Document&, HTMLFormElement*);
 
-    WEBCORE_EXPORT void setType(const AtomicString&);
+    WEBCORE_EXPORT void setType(const AtomString&);
     
-    const AtomicString& value() const;
+    const AtomString& value() const;
 
     bool willRespondToMouseClickEvents() final;
 
@@ -46,18 +47,15 @@ private:
 
     enum Type { SUBMIT, RESET, BUTTON };
 
-    const AtomicString& formControlType() const final;
+    const AtomString& formControlType() const final;
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 
-    // HTMLFormControlElement always creates one, but buttons don't need it.
-    bool alwaysCreateUserAgentShadowRoot() const final { return false; }
-
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
     bool isPresentationAttribute(const QualifiedName&) const final;
     void defaultEventHandler(Event&) final;
 
-    bool appendFormData(FormDataList&, bool) final;
+    bool appendFormData(DOMFormData&, bool) final;
 
     bool isEnumeratable() const final { return true; }
     bool supportLabels() const final { return true; }

@@ -38,6 +38,7 @@
 
 namespace WebCore {
 
+class FloatRect;
 class Frame;
 class InspectorController;
 class InspectorBackendDispatchTask;
@@ -45,18 +46,22 @@ class InspectorFrontendHost;
 class Page;
 
 class WEBCORE_EXPORT InspectorFrontendClientLocal : public InspectorFrontendClient {
-    WTF_MAKE_NONCOPYABLE(InspectorFrontendClientLocal); WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_NONCOPYABLE(InspectorFrontendClientLocal);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     class WEBCORE_EXPORT Settings {
     public:
-        Settings() { }
-        virtual ~Settings() { }
+        Settings() = default;
+        virtual ~Settings() = default;
         virtual String getProperty(const String& name);
         virtual void setProperty(const String& name, const String& value);
+        virtual void deleteProperty(const String& name);
     };
 
     InspectorFrontendClientLocal(InspectorController* inspectedPageController, Page* frontendPage, std::unique_ptr<Settings>);
     virtual ~InspectorFrontendClientLocal();
+
+    void resetState() override;
 
     void windowObjectCleared() final;
     void frontendLoaded() override;
@@ -64,9 +69,12 @@ public:
     void startWindowDrag() override { }
     void moveWindowBy(float x, float y) final;
 
+    UserInterfaceLayoutDirection userInterfaceLayoutDirection() const final;
+
     void requestSetDockSide(DockSide) final;
     void changeAttachedWindowHeight(unsigned) final;
     void changeAttachedWindowWidth(unsigned) final;
+    void changeSheetRect(const FloatRect&) final;
     void openInNewTab(const String& url) final;
     bool canSave()  override { return false; }
     void save(const String&, const String&, bool, bool) override { }
@@ -78,6 +86,7 @@ public:
     void sendMessageToBackend(const String& message) final;
 
     bool isUnderTest() final;
+    bool isRemote() const final { return false; }
     unsigned inspectionLevel() const final;
 
     bool canAttachWindow();
@@ -111,6 +120,8 @@ protected:
     virtual void setAttachedWindowHeight(unsigned) = 0;
     virtual void setAttachedWindowWidth(unsigned) = 0;
     void restoreAttachedWindowHeight();
+
+    virtual void setSheetRect(const WebCore::FloatRect&) = 0;
 
 private:
     bool evaluateAsBoolean(const String& expression);

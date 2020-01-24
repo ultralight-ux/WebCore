@@ -30,33 +30,33 @@
 namespace WebCore {
 
 class HTMLTableCellElement final : public HTMLTablePartElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLTableCellElement);
 public:
     static Ref<HTMLTableCellElement> create(const QualifiedName&, Document&);
 
     WEBCORE_EXPORT int cellIndex() const;
-    unsigned colSpan() const;
-    WEBCORE_EXPORT unsigned colSpanForBindings() const;
+    WEBCORE_EXPORT unsigned colSpan() const;
     unsigned rowSpan() const;
     WEBCORE_EXPORT unsigned rowSpanForBindings() const;
 
     void setCellIndex(int);
-    WEBCORE_EXPORT void setColSpanForBindings(unsigned);
+    WEBCORE_EXPORT void setColSpan(unsigned);
     WEBCORE_EXPORT void setRowSpanForBindings(unsigned);
 
     String abbr() const;
     String axis() const;
     String headers() const;
-    WEBCORE_EXPORT const AtomicString& scope() const;
-    WEBCORE_EXPORT void setScope(const AtomicString&);
+    WEBCORE_EXPORT const AtomString& scope() const;
+    WEBCORE_EXPORT void setScope(const AtomString&);
 
     WEBCORE_EXPORT HTMLTableCellElement* cellAbove() const;
 
 private:
     HTMLTableCellElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     bool isPresentationAttribute(const QualifiedName&) const override;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) override;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) override;
     const StyleProperties* additionalPresentationAttributeStyle() const override;
 
     bool isURLAttribute(const Attribute&) const override;

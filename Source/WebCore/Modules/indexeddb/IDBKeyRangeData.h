@@ -111,11 +111,17 @@ bool IDBKeyRangeData::decode(Decoder& decoder, IDBKeyRangeData& keyRange)
     if (keyRange.isNull)
         return true;
 
-    if (!decoder.decode(keyRange.upperKey))
+    Optional<IDBKeyData> upperKey;
+    decoder >> upperKey;
+    if (!upperKey)
         return false;
-
-    if (!decoder.decode(keyRange.lowerKey))
+    keyRange.upperKey = WTFMove(*upperKey);
+    
+    Optional<IDBKeyData> lowerKey;
+    decoder >> lowerKey;
+    if (!lowerKey)
         return false;
+    keyRange.lowerKey = WTFMove(*lowerKey);
 
     if (!decoder.decode(keyRange.upperOpen))
         return false;

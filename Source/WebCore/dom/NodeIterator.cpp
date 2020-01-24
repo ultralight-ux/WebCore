@@ -27,9 +27,11 @@
 
 #include "Document.h"
 #include "NodeTraversal.h"
-#include <runtime/JSCJSValueInlines.h>
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(NodeIterator);
 
 inline NodeIterator::NodePointer::NodePointer(Node& node, bool isPointerBeforeNode)
     : node(&node)
@@ -74,7 +76,7 @@ inline NodeIterator::NodeIterator(Node& rootNode, unsigned whatToShow, RefPtr<No
     : NodeIteratorBase(rootNode, whatToShow, WTFMove(filter))
     , m_referenceNode(rootNode, true)
 {
-    root().document().attachNodeIterator(this);
+    root().document().attachNodeIterator(*this);
 }
 
 Ref<NodeIterator> NodeIterator::create(Node& rootNode, unsigned whatToShow, RefPtr<NodeFilter>&& filter)
@@ -84,10 +86,10 @@ Ref<NodeIterator> NodeIterator::create(Node& rootNode, unsigned whatToShow, RefP
 
 NodeIterator::~NodeIterator()
 {
-    root().document().detachNodeIterator(this);
+    root().document().detachNodeIterator(*this);
 }
 
-RefPtr<Node> NodeIterator::nextNode()
+ExceptionOr<RefPtr<Node>> NodeIterator::nextNode()
 {
     RefPtr<Node> result;
 
@@ -97,7 +99,14 @@ RefPtr<Node> NodeIterator::nextNode()
         // In other words, FILTER_REJECT does not pass over descendants
         // of the rejected node. Hence, FILTER_REJECT is the same as FILTER_SKIP.
         RefPtr<Node> provisionalResult = m_candidateNode.node;
-        bool nodeWasAccepted = acceptNode(provisionalResult.get()) == NodeFilter::FILTER_ACCEPT;
+
+        auto filterResult = acceptNode(*provisionalResult);
+        if (filterResult.hasException()) {
+            m_candidateNode.clear();
+            return filterResult.releaseException();
+        }
+
+        bool nodeWasAccepted = filterResult.returnValue() == NodeFilter::FILTER_ACCEPT;
         if (nodeWasAccepted) {
             m_referenceNode = m_candidateNode;
             result = WTFMove(provisionalResult);
@@ -109,7 +118,7 @@ RefPtr<Node> NodeIterator::nextNode()
     return result;
 }
 
-RefPtr<Node> NodeIterator::previousNode()
+ExceptionOr<RefPtr<Node>> NodeIterator::previousNode()
 {
     RefPtr<Node> result;
 
@@ -119,7 +128,14 @@ RefPtr<Node> NodeIterator::previousNode()
         // In other words, FILTER_REJECT does not pass over descendants
         // of the rejected node. Hence, FILTER_REJECT is the same as FILTER_SKIP.
         RefPtr<Node> provisionalResult = m_candidateNode.node;
-        bool nodeWasAccepted = acceptNode(provisionalResult.get()) == NodeFilter::FILTER_ACCEPT;
+
+        auto filterResult = acceptNode(*provisionalResult);
+        if (filterResult.hasException()) {
+            m_candidateNode.clear();
+            return filterResult.releaseException();
+        }
+
+        bool nodeWasAccepted = filterResult.returnValue() == NodeFilter::FILTER_ACCEPT;
         if (nodeWasAccepted) {
             m_referenceNode = m_candidateNode;
             result = WTFMove(provisionalResult);

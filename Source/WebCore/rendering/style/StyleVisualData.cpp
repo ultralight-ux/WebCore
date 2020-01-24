@@ -28,21 +28,19 @@ namespace WebCore {
 
 StyleVisualData::StyleVisualData()
     : hasClip(false)
-    , textDecoration(RenderStyle::initialTextDecoration())
-    , m_zoom(RenderStyle::initialZoom())
+    , textDecoration(RenderStyle::initialTextDecoration().toRaw())
+    , zoom(RenderStyle::initialZoom())
 {
 }
 
-StyleVisualData::~StyleVisualData()
-{
-}
+StyleVisualData::~StyleVisualData() = default;
 
-inline StyleVisualData::StyleVisualData(const StyleVisualData& o)
+inline StyleVisualData::StyleVisualData(const StyleVisualData& other)
     : RefCounted<StyleVisualData>()
-    , clip(o.clip)
-    , hasClip(o.hasClip)
-    , textDecoration(o.textDecoration)
-    , m_zoom(RenderStyle::initialZoom())
+    , clip(other.clip)
+    , hasClip(other.hasClip)
+    , textDecoration(other.textDecoration)
+    , zoom(RenderStyle::initialZoom())
 {
 }
 

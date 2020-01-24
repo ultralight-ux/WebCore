@@ -49,12 +49,6 @@ public:
         
         // Call this last. It's expected that the constructor is initialized to point to the
         // prototype already. This will automatically set prototype.constructor=constructor.
-        // This will also stuff the constructor into the global object at the given property.
-        // Note that the variant that does not take a property name attempts to deduce it by
-        // casting constructor to either JSFunction or InternalFunction. Also, you can pass
-        // nullptr for the property name, in which case we don't assign the property to the
-        // global object.
-        void setConstructor(PropertyName, JSObject* constructor);
         void setConstructor(JSObject* constructor);
         
         VM& vm;
@@ -101,15 +95,25 @@ public:
         return m_structure.getConcurrently();
     }
     
-    JSObject* prototypeConcurrently() const
-    {
-        if (Structure* structure = getConcurrently())
-            return structure->storedPrototypeObject();
-        return nullptr;
-    }
-    
     JSObject* constructorConcurrently() const
     {
+        return m_constructor.get();
+    }
+
+    // Call this "InitializedOnMainThread" function if we would like to (1) get a value from a compiler thread which must be initialized on the main thread and (2) initialize a value if we are on the main thread.
+    Structure* getInitializedOnMainThread(const JSGlobalObject* global) const
+    {
+        return m_structure.getInitializedOnMainThread(global);
+    }
+
+    JSObject* prototypeInitializedOnMainThread(const JSGlobalObject* global) const
+    {
+        return getInitializedOnMainThread(global)->storedPrototypeObject();
+    }
+
+    JSObject* constructorInitializedOnMainThread(const JSGlobalObject* global) const
+    {
+        m_structure.getInitializedOnMainThread(global);
         return m_constructor.get();
     }
     

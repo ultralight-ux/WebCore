@@ -23,16 +23,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef SQLiteStatement_h
-#define SQLiteStatement_h
+#pragma once
 
+#include "SQLValue.h"
 #include "SQLiteDatabase.h"
 
 struct sqlite3_stmt;
 
 namespace WebCore {
-
-class SQLValue;
 
 class SQLiteStatement {
     WTF_MAKE_NONCOPYABLE(SQLiteStatement); WTF_MAKE_FAST_ALLOCATED;
@@ -78,7 +76,7 @@ public:
     String getColumnName(int col);
     SQLValue getColumnValue(int col);
     WEBCORE_EXPORT String getColumnText(int col);
-    double getColumnDouble(int col);
+    WEBCORE_EXPORT double getColumnDouble(int col);
     WEBCORE_EXPORT int getColumnInt(int col);
     WEBCORE_EXPORT int64_t getColumnInt64(int col);
     WEBCORE_EXPORT String getColumnBlobAsString(int col);
@@ -104,5 +102,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // SQLiteStatement_h

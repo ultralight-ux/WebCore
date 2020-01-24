@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2005, 2006, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,18 +28,21 @@
 
 #include "FrameView.h"
 #include "IntRect.h"
+#include "NotImplemented.h"
 #include <wtf/Assertions.h>
 
 namespace WebCore {
 
 void Widget::init(PlatformWidget widget)
 {
-    m_parent = 0;
     m_selfVisible = false;
     m_parentVisible = false;
     m_widget = widget;
-    if (m_widget)
-        retainPlatformWidget();
+}
+
+ScrollView* Widget::parent() const
+{
+    return m_parent.get();
 }
 
 void Widget::setParent(ScrollView* view)
@@ -47,7 +50,7 @@ void Widget::setParent(ScrollView* view)
     ASSERT(!view || !m_parent);
     if (!view || !view->isVisible())
         setParentVisible(false);
-    m_parent = view;
+    m_parent = makeWeakPtr(view);
     if (view && view->isVisible())
         setParentVisible(true);
 }
@@ -77,10 +80,28 @@ IntRect Widget::convertFromRootView(const IntRect& rootRect) const
     return rootRect;
 }
 
+FloatRect Widget::convertFromRootView(const FloatRect& rootRect) const
+{
+    if (const ScrollView* parentScrollView = parent()) {
+        FloatRect parentRect = parentScrollView->convertFromRootView(rootRect);
+        return convertFromContainingView(parentRect);
+    }
+    return rootRect;
+}
+
 IntRect Widget::convertToRootView(const IntRect& localRect) const
 {
     if (const ScrollView* parentScrollView = parent()) {
         IntRect parentRect = convertToContainingView(localRect);
+        return parentScrollView->convertToRootView(parentRect);
+    }
+    return localRect;
+}
+
+FloatRect Widget::convertToRootView(const FloatRect& localRect) const
+{
+    if (const ScrollView* parentScrollView = parent()) {
+        FloatRect parentRect = convertToContainingView(localRect);
         return parentScrollView->convertToRootView(parentRect);
     }
     return localRect;
@@ -99,6 +120,25 @@ IntPoint Widget::convertToRootView(const IntPoint& localPoint) const
 {
     if (const ScrollView* parentScrollView = parent()) {
         IntPoint parentPoint = convertToContainingView(localPoint);
+        return parentScrollView->convertToRootView(parentPoint);
+    }
+    return localPoint;
+}
+
+
+FloatPoint Widget::convertFromRootView(const FloatPoint& rootPoint) const
+{
+    if (const ScrollView* parentScrollView = parent()) {
+        FloatPoint parentPoint = parentScrollView->convertFromRootView(rootPoint);
+        return convertFromContainingView(parentPoint);
+    }
+    return rootPoint;
+}
+
+FloatPoint Widget::convertToRootView(const FloatPoint& localPoint) const
+{
+    if (const ScrollView* parentScrollView = parent()) {
+        FloatPoint parentPoint = convertToContainingView(localPoint);
         return parentScrollView->convertToRootView(parentPoint);
     }
     return localPoint;
@@ -141,6 +181,17 @@ IntPoint Widget::convertToContainingWindow(const IntPoint& localPoint) const
 }
 
 #if !PLATFORM(COCOA)
+
+Widget::Widget(PlatformWidget widget)
+{
+    init(widget);
+}
+
+IntRect Widget::frameRect() const
+{
+    return m_frame;
+}
+
 IntRect Widget::convertFromRootToContainingWindow(const Widget*, const IntRect& rect)
 {
     return rect;
@@ -160,7 +211,8 @@ IntPoint Widget::convertFromContainingWindowToRoot(const Widget*, const IntPoint
 {
     return point;
 }
-#endif
+
+#endif // !PLATFORM(COCOA)
 
 IntRect Widget::convertToContainingView(const IntRect& localRect) const
 {
@@ -183,6 +235,16 @@ IntRect Widget::convertFromContainingView(const IntRect& parentRect) const
     return parentRect;
 }
 
+FloatRect Widget::convertToContainingView(const FloatRect& localRect) const
+{
+    return convertToContainingView(IntRect(localRect));
+}
+
+FloatRect Widget::convertFromContainingView(const FloatRect& parentRect) const
+{
+    return convertFromContainingView(IntRect(parentRect));
+}
+
 IntPoint Widget::convertToContainingView(const IntPoint& localPoint) const
 {
     if (const ScrollView* parentScrollView = parent())
@@ -198,5 +260,61 @@ IntPoint Widget::convertFromContainingView(const IntPoint& parentPoint) const
 
     return parentPoint;
 }
+
+FloatPoint Widget::convertToContainingView(const FloatPoint& localPoint) const
+{
+    return convertToContainingView(IntPoint(localPoint));
+}
+
+FloatPoint Widget::convertFromContainingView(const FloatPoint& parentPoint) const
+{
+    return convertFromContainingView(IntPoint(parentPoint));
+}
+
+#if !PLATFORM(COCOA) && !PLATFORM(GTK) && !PLATFORM(WIN)
+
+Widget::~Widget()
+{
+    ASSERT(!parent());
+    notImplemented();
+}
+
+void Widget::setFrameRect(const IntRect& rect)
+{
+    m_frame = rect;
+    notImplemented();
+}
+
+void Widget::paint(GraphicsContext&, const IntRect&, SecurityOriginPaintPolicy)
+{
+    notImplemented();
+}
+
+void Widget::setFocus(bool)
+{
+    notImplemented();
+}
+
+void Widget::setCursor(const Cursor&)
+{
+    notImplemented();
+}
+
+void Widget::show()
+{
+    notImplemented();
+}
+
+void Widget::hide()
+{
+    notImplemented();
+}
+
+void Widget::setIsSelected(bool)
+{
+    notImplemented();
+}
+
+#endif // !PLATFORM(COCOA) && !PLATFORM(GTK) && !PLATFORM(WIN)
 
 } // namespace WebCore

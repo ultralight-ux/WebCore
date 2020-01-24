@@ -51,10 +51,10 @@ static inline RenderSVGResource* requestPaintingResource(RenderSVGResourceMode m
 {
     const SVGRenderStyle& svgStyle = style.svgStyle();
 
-    bool isRenderingMask = renderer.view().frameView().paintBehavior() & PaintBehaviorRenderingSVGMask;
+    bool isRenderingMask = renderer.view().frameView().paintBehavior().contains(PaintBehavior::RenderingSVGMask);
 
     // If we have no fill/stroke, return nullptr.
-    if (mode == ApplyToFillMode) {
+    if (mode == RenderSVGResourceMode::ApplyToFill) {
         // When rendering the mask for a RenderSVGResourceClipper, always use the initial fill paint server, and ignore stroke.
         if (isRenderingMask) {
             RenderSVGResourceSolidColor* colorResource = RenderSVGResource::sharedSolidPaintingResource();
@@ -69,29 +69,29 @@ static inline RenderSVGResource* requestPaintingResource(RenderSVGResourceMode m
             return nullptr;
     }
 
-    bool applyToFill = mode == ApplyToFillMode;
+    bool applyToFill = mode == RenderSVGResourceMode::ApplyToFill;
     SVGPaintType paintType = applyToFill ? svgStyle.fillPaintType() : svgStyle.strokePaintType();
-    if (paintType == SVG_PAINTTYPE_NONE)
+    if (paintType == SVGPaintType::None)
         return nullptr;
 
     Color color;
     switch (paintType) {
-    case SVG_PAINTTYPE_CURRENTCOLOR:
-    case SVG_PAINTTYPE_RGBCOLOR:
-    case SVG_PAINTTYPE_URI_CURRENTCOLOR:
-    case SVG_PAINTTYPE_URI_RGBCOLOR:
+    case SVGPaintType::CurrentColor:
+    case SVGPaintType::RGBColor:
+    case SVGPaintType::URICurrentColor:
+    case SVGPaintType::URIRGBColor:
         color = applyToFill ? svgStyle.fillPaintColor() : svgStyle.strokePaintColor();
         break;
     default:
         break;
     }
 
-    if (style.insideLink() == InsideVisitedLink) {
+    if (style.insideLink() == InsideLink::InsideVisited) {
         // FIXME: This code doesn't support the uri component of the visited link paint, https://bugs.webkit.org/show_bug.cgi?id=70006
         SVGPaintType visitedPaintType = applyToFill ? svgStyle.visitedLinkFillPaintType() : svgStyle.visitedLinkStrokePaintType();
 
-        // For SVG_PAINTTYPE_CURRENTCOLOR, 'color' already contains the 'visitedColor'.
-        if (visitedPaintType < SVG_PAINTTYPE_URI_NONE && visitedPaintType != SVG_PAINTTYPE_CURRENTCOLOR) {
+        // For SVGPaintType::CurrentColor, 'color' already contains the 'visitedColor'.
+        if (visitedPaintType < SVGPaintType::URINone && visitedPaintType != SVGPaintType::CurrentColor) {
             const Color& visitedColor = applyToFill ? svgStyle.visitedLinkFillPaintColor() : svgStyle.visitedLinkStrokePaintColor();
             if (visitedColor.isValid())
                 color = visitedColor.colorWithAlpha(color.alphaAsFloat());
@@ -100,7 +100,7 @@ static inline RenderSVGResource* requestPaintingResource(RenderSVGResourceMode m
 
     // If the primary resource is just a color, return immediately.
     RenderSVGResourceSolidColor* colorResource = RenderSVGResource::sharedSolidPaintingResource();
-    if (paintType < SVG_PAINTTYPE_URI_NONE) {
+    if (paintType < SVGPaintType::URINone) {
         if (!inheritColorFromParentStyleIfNeeded(renderer, applyToFill, color))
             return nullptr;
 
@@ -111,7 +111,7 @@ static inline RenderSVGResource* requestPaintingResource(RenderSVGResourceMode m
     // If no resources are associated with the given renderer, return the color resource.
     auto* resources = SVGResourcesCache::cachedResourcesForRenderer(renderer);
     if (!resources) {
-        if (paintType == SVG_PAINTTYPE_URI_NONE || !inheritColorFromParentStyleIfNeeded(renderer, applyToFill, color))
+        if (paintType == SVGPaintType::URINone || !inheritColorFromParentStyleIfNeeded(renderer, applyToFill, color))
             return nullptr;
 
         colorResource->setColor(color);
@@ -119,7 +119,7 @@ static inline RenderSVGResource* requestPaintingResource(RenderSVGResourceMode m
     }
 
     // If the requested resource is not available, return the color resource.
-    RenderSVGResource* uriResource = mode == ApplyToFillMode ? resources->fill() : resources->stroke();
+    RenderSVGResource* uriResource = mode == RenderSVGResourceMode::ApplyToFill ? resources->fill() : resources->stroke();
     if (!uriResource) {
         if (!inheritColorFromParentStyleIfNeeded(renderer, applyToFill, color))
             return nullptr;
@@ -136,12 +136,12 @@ static inline RenderSVGResource* requestPaintingResource(RenderSVGResourceMode m
 
 RenderSVGResource* RenderSVGResource::fillPaintingResource(RenderElement& renderer, const RenderStyle& style, Color& fallbackColor)
 {
-    return requestPaintingResource(ApplyToFillMode, renderer, style, fallbackColor);
+    return requestPaintingResource(RenderSVGResourceMode::ApplyToFill, renderer, style, fallbackColor);
 }
 
 RenderSVGResource* RenderSVGResource::strokePaintingResource(RenderElement& renderer, const RenderStyle& style, Color& fallbackColor)
 {
-    return requestPaintingResource(ApplyToStrokeMode, renderer, style, fallbackColor);
+    return requestPaintingResource(RenderSVGResourceMode::ApplyToStroke, renderer, style, fallbackColor);
 }
 
 RenderSVGResourceSolidColor* RenderSVGResource::sharedSolidPaintingResource()
@@ -165,18 +165,17 @@ static inline void removeFromCacheAndInvalidateDependencies(RenderElement& rende
             clipper->removeClientFromCache(renderer);
     }
 
-    if (!renderer.element() || !renderer.element()->isSVGElement())
+    if (!is<SVGElement>(renderer.element()))
         return;
-    HashSet<SVGElement*>* dependencies = renderer.document().accessSVGExtensions().setOfElementsReferencingTarget(downcast<SVGElement>(renderer.element()));
+    auto* dependencies = renderer.document().accessSVGExtensions().setOfElementsReferencingTarget(downcast<SVGElement>(*renderer.element()));
     if (!dependencies)
         return;
 
-    // We allow cycles in SVGDocumentExtensions reference sets in order to avoid expensive
-    // reference graph adjustments on changes, so we need to break possible cycles here.
-    static NeverDestroyed<HashSet<SVGElement*>> invalidatingDependencies;
-
     for (auto* element : *dependencies) {
         if (auto* renderer = element->renderer()) {
+            // We allow cycles in SVGDocumentExtensions reference sets in order to avoid expensive
+            // reference graph adjustments on changes, so we need to break possible cycles here.
+            static NeverDestroyed<HashSet<SVGElement*>> invalidatingDependencies;
             if (UNLIKELY(!invalidatingDependencies.get().add(element).isNewEntry)) {
                 // Reference cycle: we are in process of invalidating this dependant.
                 continue;
@@ -191,7 +190,7 @@ void RenderSVGResource::markForLayoutAndParentResourceInvalidation(RenderObject&
 {
     ASSERT(object.node());
 
-    if (needsLayout && !object.documentBeingDestroyed())
+    if (needsLayout && !object.renderTreeBeingDestroyed())
         object.setNeedsLayout();
 
     if (is<RenderElement>(object))

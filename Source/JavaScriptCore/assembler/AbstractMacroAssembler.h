@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2012, 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,12 +30,15 @@
 #include "AssemblerCommon.h"
 #include "CPU.h"
 #include "CodeLocation.h"
+#include "JSCJSValue.h"
+#include "JSCPtrTag.h"
 #include "MacroAssemblerCodeRef.h"
 #include "MacroAssemblerHelpers.h"
 #include "Options.h"
 #include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/SharedTask.h>
+#include <wtf/Vector.h>
 #include <wtf/WeakRandom.h>
 
 namespace JSC {
@@ -50,25 +53,61 @@ namespace DFG {
 struct OSRExit;
 }
 
-template <class AssemblerType, class MacroAssemblerType>
-class AbstractMacroAssembler {
+class AbstractMacroAssemblerBase {
 public:
-    typedef AbstractMacroAssembler<AssemblerType, MacroAssemblerType> AbstractMacroAssemblerType;
+    enum StatusCondition {
+        Success,
+        Failure
+    };
+    
+    static StatusCondition invert(StatusCondition condition)
+    {
+        switch (condition) {
+        case Success:
+            return Failure;
+        case Failure:
+            return Success;
+        }
+        RELEASE_ASSERT_NOT_REACHED();
+        return Success;
+    }
+};
+
+template <class AssemblerType>
+class AbstractMacroAssembler : public AbstractMacroAssemblerBase {
+public:
+    typedef AbstractMacroAssembler<AssemblerType> AbstractMacroAssemblerType;
     typedef AssemblerType AssemblerType_T;
 
-    typedef MacroAssemblerCodePtr CodePtr;
-    typedef MacroAssemblerCodeRef CodeRef;
+    template<PtrTag tag> using CodePtr = MacroAssemblerCodePtr<tag>;
+    template<PtrTag tag> using CodeRef = MacroAssemblerCodeRef<tag>;
+
+    enum class CPUIDCheckState {
+        NotChecked,
+        Clear,
+        Set
+    };
 
     class Jump;
 
     typedef typename AssemblerType::RegisterID RegisterID;
+    typedef typename AssemblerType::SPRegisterID SPRegisterID;
     typedef typename AssemblerType::FPRegisterID FPRegisterID;
     
     static constexpr RegisterID firstRegister() { return AssemblerType::firstRegister(); }
     static constexpr RegisterID lastRegister() { return AssemblerType::lastRegister(); }
+    static constexpr unsigned numberOfRegisters() { return AssemblerType::numberOfRegisters(); }
+    static const char* gprName(RegisterID id) { return AssemblerType::gprName(id); }
+
+    static constexpr SPRegisterID firstSPRegister() { return AssemblerType::firstSPRegister(); }
+    static constexpr SPRegisterID lastSPRegister() { return AssemblerType::lastSPRegister(); }
+    static constexpr unsigned numberOfSPRegisters() { return AssemblerType::numberOfSPRegisters(); }
+    static const char* sprName(SPRegisterID id) { return AssemblerType::sprName(id); }
 
     static constexpr FPRegisterID firstFPRegister() { return AssemblerType::firstFPRegister(); }
     static constexpr FPRegisterID lastFPRegister() { return AssemblerType::lastFPRegister(); }
+    static constexpr unsigned numberOfFPRegisters() { return AssemblerType::numberOfFPRegisters(); }
+    static const char* fprName(FPRegisterID id) { return AssemblerType::fprName(id); }
 
     // Section 1: MacroAssembler operand types
     //
@@ -91,6 +130,15 @@ public:
     
     struct BaseIndex;
     
+    static RegisterID withSwappedRegister(RegisterID original, RegisterID left, RegisterID right)
+    {
+        if (original == left)
+            return right;
+        if (original == right)
+            return left;
+        return original;
+    }
+    
     // Address:
     //
     // Describes a simple base-offset address.
@@ -104,6 +152,11 @@ public:
         Address withOffset(int32_t additionalOffset)
         {
             return Address(base, offset + additionalOffset);
+        }
+        
+        Address withSwappedRegister(RegisterID left, RegisterID right)
+        {
+            return Address(AbstractMacroAssembler::withSwappedRegister(base, left, right), offset);
         }
         
         BaseIndex indexedBy(RegisterID index, Scale) const;
@@ -175,6 +228,11 @@ public:
         {
             return BaseIndex(base, index, scale, offset + additionalOffset);
         }
+
+        BaseIndex withSwappedRegister(RegisterID left, RegisterID right)
+        {
+            return BaseIndex(AbstractMacroAssembler::withSwappedRegister(base, left, right), AbstractMacroAssembler::withSwappedRegister(index, left, right), scale, offset);
+        }
     };
 
     // AbsoluteAddress:
@@ -190,25 +248,33 @@ public:
         const void* m_ptr;
     };
 
+    // TrustedImm:
+    //
+    // An empty super class of each of the TrustedImm types. This class is used for template overloads
+    // on a TrustedImm type via std::is_base_of.
+    struct TrustedImm { };
+
     // TrustedImmPtr:
     //
     // A pointer sized immediate operand to an instruction - this is wrapped
     // in a class requiring explicit construction in order to differentiate
     // from pointers used as absolute addresses to memory operations
-    struct TrustedImmPtr {
+    struct TrustedImmPtr : public TrustedImm {
         TrustedImmPtr() { }
         
         explicit TrustedImmPtr(const void* value)
             : m_value(value)
         {
         }
-        
-        // This is only here so that TrustedImmPtr(0) does not confuse the C++
-        // overload handling rules.
-        explicit TrustedImmPtr(int value)
-            : m_value(0)
+
+        template<typename ReturnType, typename... Arguments>
+        explicit TrustedImmPtr(ReturnType(*value)(Arguments...))
+            : m_value(reinterpret_cast<void*>(value))
         {
-            ASSERT_UNUSED(value, !value);
+        }
+
+        explicit TrustedImmPtr(std::nullptr_t)
+        {
         }
 
         explicit TrustedImmPtr(size_t value)
@@ -221,7 +287,12 @@ public:
             return reinterpret_cast<intptr_t>(m_value);
         }
 
-        const void* m_value;
+        void* asPtr()
+        {
+            return const_cast<void*>(m_value);
+        }
+
+        const void* m_value { 0 };
     };
 
     struct ImmPtr : private TrustedImmPtr
@@ -240,7 +311,7 @@ public:
     // class requiring explicit construction in order to prevent RegisterIDs
     // (which are implemented as an enum) from accidentally being passed as
     // immediate values.
-    struct TrustedImm32 {
+    struct TrustedImm32 : public TrustedImm {
         TrustedImm32() { }
         
         explicit TrustedImm32(int32_t value)
@@ -280,7 +351,7 @@ public:
     // class requiring explicit construction in order to prevent RegisterIDs
     // (which are implemented as an enum) from accidentally being passed as
     // immediate values.
-    struct TrustedImm64 {
+    struct TrustedImm64 : TrustedImm {
         TrustedImm64() { }
         
         explicit TrustedImm64(int64_t value)
@@ -326,11 +397,10 @@ public:
     // A Label records a point in the generated instruction stream, typically such that
     // it may be used as a destination for a jump.
     class Label {
-        template<class TemplateAssemblerType, class TemplateMacroAssemblerType>
-        friend class AbstractMacroAssembler;
+        friend class AbstractMacroAssembler<AssemblerType>;
         friend struct DFG::OSRExit;
         friend class Jump;
-        friend class MacroAssemblerCodeRef;
+        template<PtrTag> friend class MacroAssemblerCodeRef;
         friend class LinkBuffer;
         friend class Watchpoint;
 
@@ -363,8 +433,7 @@ public:
     //
     // addPtr(TrustedImmPtr(i), a, b)
     class ConvertibleLoadLabel {
-        template<class TemplateAssemblerType, class TemplateMacroAssemblerType>
-        friend class AbstractMacroAssembler;
+        friend class AbstractMacroAssembler<AssemblerType>;
         friend class LinkBuffer;
         
     public:
@@ -387,8 +456,7 @@ public:
     // A DataLabelPtr is used to refer to a location in the code containing a pointer to be
     // patched after the code has been generated.
     class DataLabelPtr {
-        template<class TemplateAssemblerType, class TemplateMacroAssemblerType>
-        friend class AbstractMacroAssembler;
+        friend class AbstractMacroAssembler<AssemblerType>;
         friend class LinkBuffer;
     public:
         DataLabelPtr()
@@ -411,8 +479,7 @@ public:
     // A DataLabel32 is used to refer to a location in the code containing a 32-bit constant to be
     // patched after the code has been generated.
     class DataLabel32 {
-        template<class TemplateAssemblerType, class TemplateMacroAssemblerType>
-        friend class AbstractMacroAssembler;
+        friend class AbstractMacroAssembler<AssemblerType>;
         friend class LinkBuffer;
     public:
         DataLabel32()
@@ -435,8 +502,7 @@ public:
     // A DataLabelCompact is used to refer to a location in the code containing a
     // compact immediate to be patched after the code has been generated.
     class DataLabelCompact {
-        template<class TemplateAssemblerType, class TemplateMacroAssemblerType>
-        friend class AbstractMacroAssembler;
+        friend class AbstractMacroAssembler<AssemblerType>;
         friend class LinkBuffer;
     public:
         DataLabelCompact()
@@ -466,8 +532,7 @@ public:
     // relative offset such that when executed it will call to the desired
     // destination.
     class Call {
-        template<class TemplateAssemblerType, class TemplateMacroAssemblerType>
-        friend class AbstractMacroAssembler;
+        friend class AbstractMacroAssembler<AssemblerType>;
 
     public:
         enum Flags {
@@ -512,8 +577,7 @@ public:
     // relative offset such that when executed it will jump to the desired
     // destination.
     class Jump {
-        template<class TemplateAssemblerType, class TemplateMacroAssemblerType>
-        friend class AbstractMacroAssembler;
+        friend class AbstractMacroAssembler<AssemblerType>;
         friend class Call;
         friend struct DFG::OSRExit;
         friend class LinkBuffer;
@@ -557,12 +621,6 @@ public:
         {
             ASSERT((type == ARM64Assembler::JumpTestBit) || (type == ARM64Assembler::JumpTestBitFixedSize));
         }
-#elif CPU(SH4)
-        Jump(AssemblerLabel jmp, SH4Assembler::JumpType type = SH4Assembler::JumpFar)
-            : m_label(jmp)
-            , m_type(type)
-        {
-        }
 #else
         Jump(AssemblerLabel jmp)    
             : m_label(jmp)
@@ -594,8 +652,6 @@ public:
                 masm->m_assembler.linkJump(m_label, masm->m_assembler.label(), m_type, m_condition, m_bitNumber, m_compareRegister);
             else
                 masm->m_assembler.linkJump(m_label, masm->m_assembler.label(), m_type, m_condition);
-#elif CPU(SH4)
-            masm->m_assembler.linkJump(m_label, masm->m_assembler.label(), m_type);
 #else
             masm->m_assembler.linkJump(m_label, masm->m_assembler.label());
 #endif
@@ -634,9 +690,6 @@ public:
         bool m_is64Bit;
         unsigned m_bitNumber;
         ARM64Assembler::RegisterID m_compareRegister;
-#endif
-#if CPU(SH4)
-        SH4Assembler::JumpType m_type;
 #endif
     };
 
@@ -687,7 +740,8 @@ public:
         
         void append(Jump jump)
         {
-            m_jumps.append(jump);
+            if (jump.isSet())
+                m_jumps.append(jump);
         }
         
         void append(const JumpList& other)
@@ -695,7 +749,7 @@ public:
             m_jumps.append(other.m_jumps.begin(), other.m_jumps.size());
         }
 
-        bool empty()
+        bool empty() const
         {
             return !m_jumps.size();
         }
@@ -795,9 +849,10 @@ public:
         return AssemblerType::getDifferenceBetweenLabels(from.m_label, to.m_label);
     }
 
-    static ptrdiff_t differenceBetweenCodePtr(const MacroAssemblerCodePtr& a, const MacroAssemblerCodePtr& b)
+    template<PtrTag aTag, PtrTag bTag>
+    static ptrdiff_t differenceBetweenCodePtr(const MacroAssemblerCodePtr<aTag>& a, const MacroAssemblerCodePtr<bTag>& b)
     {
-        return reinterpret_cast<ptrdiff_t>(b.executableAddress()) - reinterpret_cast<ptrdiff_t>(a.executableAddress());
+        return b.template dataLocation<ptrdiff_t>() - a.template dataLocation<ptrdiff_t>();
     }
 
     unsigned debugOffset() { return m_assembler.debugOffset(); }
@@ -807,109 +862,8 @@ public:
         AssemblerType::cacheFlush(code, size);
     }
 
-#if ENABLE(MASM_PROBE)
-
-    struct CPUState {
-        #define DECLARE_REGISTER(_type, _regName) \
-            _type _regName;
-        FOR_EACH_CPU_REGISTER(DECLARE_REGISTER)
-        #undef DECLARE_REGISTER
-
-        static const char* gprName(RegisterID regID)
-        {
-            switch (regID) {
-                #define DECLARE_REGISTER(_type, _regName) \
-                case RegisterID::_regName: \
-                    return #_regName;
-                FOR_EACH_CPU_GPREGISTER(DECLARE_REGISTER)
-                #undef DECLARE_REGISTER
-            default:
-                RELEASE_ASSERT_NOT_REACHED();
-            }
-        }
-
-        static const char* fprName(FPRegisterID regID)
-        {
-            switch (regID) {
-                #define DECLARE_REGISTER(_type, _regName) \
-                case FPRegisterID::_regName: \
-                    return #_regName;
-                FOR_EACH_CPU_FPREGISTER(DECLARE_REGISTER)
-                #undef DECLARE_REGISTER
-            default:
-                RELEASE_ASSERT_NOT_REACHED();
-            }
-        }
-
-        void*& gpr(RegisterID regID)
-        {
-            switch (regID) {
-                #define DECLARE_REGISTER(_type, _regName) \
-                case RegisterID::_regName: \
-                    return _regName;
-                FOR_EACH_CPU_GPREGISTER(DECLARE_REGISTER)
-                #undef DECLARE_REGISTER
-            default:
-                RELEASE_ASSERT_NOT_REACHED();
-            }
-        }
-
-        double& fpr(FPRegisterID regID)
-        {
-            switch (regID) {
-                #define DECLARE_REGISTER(_type, _regName) \
-                case FPRegisterID::_regName: \
-                    return _regName;
-                FOR_EACH_CPU_FPREGISTER(DECLARE_REGISTER)
-                #undef DECLARE_REGISTER
-            default:
-                RELEASE_ASSERT_NOT_REACHED();
-            }
-        }
-    };
-
-    struct ProbeContext;
-    typedef void (*ProbeFunction)(struct ProbeContext*);
-
-    struct ProbeContext {
-        ProbeFunction probeFunction;
-        void* arg1;
-        void* arg2;
-        CPUState cpu;
-
-        // Convenience methods:
-        void*& gpr(RegisterID regID) { return cpu.gpr(regID); }
-        double& fpr(FPRegisterID regID) { return cpu.fpr(regID); }
-        const char* gprName(RegisterID regID) { return cpu.gprName(regID); }
-        const char* fprName(FPRegisterID regID) { return cpu.fprName(regID); }
-    };
-
-    // This function emits code to preserve the CPUState (e.g. registers),
-    // call a user supplied probe function, and restore the CPUState before
-    // continuing with other JIT generated code.
-    //
-    // The user supplied probe function will be called with a single pointer to
-    // a ProbeContext struct (defined above) which contains, among other things,
-    // the preserved CPUState. This allows the user probe function to inspect
-    // the CPUState at that point in the JIT generated code.
-    //
-    // If the user probe function alters the register values in the ProbeContext,
-    // the altered values will be loaded into the CPU registers when the probe
-    // returns.
-    //
-    // The ProbeContext is stack allocated and is only valid for the duration
-    // of the call to the user probe function.
-    //
-    // Note: probe() should be implemented by the target specific MacroAssembler.
-    // This prototype is only provided here to document the interface.
-
-    void probe(ProbeFunction, void* arg1, void* arg2);
-
-#endif // ENABLE(MASM_PROBE)
-
-    AssemblerType m_assembler;
-    
-    static void linkJump(void* code, Jump jump, CodeLocationLabel target)
+    template<PtrTag tag>
+    static void linkJump(void* code, Jump jump, CodeLocationLabel<tag> target)
     {
         AssemblerType::linkJump(code, jump.m_label, target.dataLocation());
     }
@@ -919,9 +873,16 @@ public:
         AssemblerType::linkPointer(code, label, value);
     }
 
+    template<PtrTag tag>
+    static void linkPointer(void* code, AssemblerLabel label, MacroAssemblerCodePtr<tag> value)
+    {
+        AssemblerType::linkPointer(code, label, value.executableAddress());
+    }
+
+    template<PtrTag tag>
     static void* getLinkerAddress(void* code, AssemblerLabel label)
     {
-        return AssemblerType::getRelocatedAddress(code, label);
+        return tagCodePtr(AssemblerType::getRelocatedAddress(code, label), tag);
     }
 
     static unsigned getLinkerCallReturnOffset(Call call)
@@ -929,55 +890,64 @@ public:
         return AssemblerType::getCallReturnOffset(call.m_label);
     }
 
-    static void repatchJump(CodeLocationJump jump, CodeLocationLabel destination)
+    template<PtrTag jumpTag, PtrTag destTag>
+    static void repatchJump(CodeLocationJump<jumpTag> jump, CodeLocationLabel<destTag> destination)
     {
         AssemblerType::relinkJump(jump.dataLocation(), destination.dataLocation());
     }
     
-    static void repatchJumpToNop(CodeLocationJump jump)
+    template<PtrTag jumpTag>
+    static void repatchJumpToNop(CodeLocationJump<jumpTag> jump)
     {
         AssemblerType::relinkJumpToNop(jump.dataLocation());
     }
 
-    static void repatchNearCall(CodeLocationNearCall nearCall, CodeLocationLabel destination)
+    template<PtrTag callTag, PtrTag destTag>
+    static void repatchNearCall(CodeLocationNearCall<callTag> nearCall, CodeLocationLabel<destTag> destination)
     {
         switch (nearCall.callMode()) {
         case NearCallMode::Tail:
             AssemblerType::relinkJump(nearCall.dataLocation(), destination.dataLocation());
             return;
         case NearCallMode::Regular:
-            AssemblerType::relinkCall(nearCall.dataLocation(), destination.executableAddress());
+            AssemblerType::relinkCall(nearCall.dataLocation(), destination.untaggedExecutableAddress());
             return;
         }
         RELEASE_ASSERT_NOT_REACHED();
     }
 
-    static void repatchCompact(CodeLocationDataLabelCompact dataLabelCompact, int32_t value)
+    template<PtrTag tag>
+    static void repatchCompact(CodeLocationDataLabelCompact<tag> dataLabelCompact, int32_t value)
     {
-        AssemblerType::repatchCompact(dataLabelCompact.dataLocation(), value);
+        AssemblerType::repatchCompact(dataLabelCompact.template dataLocation(), value);
     }
-    
-    static void repatchInt32(CodeLocationDataLabel32 dataLabel32, int32_t value)
+
+    template<PtrTag tag>
+    static void repatchInt32(CodeLocationDataLabel32<tag> dataLabel32, int32_t value)
     {
         AssemblerType::repatchInt32(dataLabel32.dataLocation(), value);
     }
 
-    static void repatchPointer(CodeLocationDataLabelPtr dataLabelPtr, void* value)
+    template<PtrTag tag>
+    static void repatchPointer(CodeLocationDataLabelPtr<tag> dataLabelPtr, void* value)
     {
         AssemblerType::repatchPointer(dataLabelPtr.dataLocation(), value);
     }
-    
-    static void* readPointer(CodeLocationDataLabelPtr dataLabelPtr)
+
+    template<PtrTag tag>
+    static void* readPointer(CodeLocationDataLabelPtr<tag> dataLabelPtr)
     {
         return AssemblerType::readPointer(dataLabelPtr.dataLocation());
     }
     
-    static void replaceWithLoad(CodeLocationConvertibleLoad label)
+    template<PtrTag tag>
+    static void replaceWithLoad(CodeLocationConvertibleLoad<tag> label)
     {
         AssemblerType::replaceWithLoad(label.dataLocation());
     }
-    
-    static void replaceWithAddressComputation(CodeLocationConvertibleLoad label)
+
+    template<PtrTag tag>
+    static void replaceWithAddressComputation(CodeLocationConvertibleLoad<tag> label)
     {
         AssemblerType::replaceWithAddressComputation(label.dataLocation());
     }
@@ -990,18 +960,33 @@ public:
 
     void emitNops(size_t memoryToFillWithNopsInBytes)
     {
+#if CPU(ARM64)
+        RELEASE_ASSERT(memoryToFillWithNopsInBytes % 4 == 0);
+        for (unsigned i = 0; i < memoryToFillWithNopsInBytes / 4; ++i)
+            m_assembler.nop();
+#else
         AssemblerBuffer& buffer = m_assembler.buffer();
         size_t startCodeSize = buffer.codeSize();
         size_t targetCodeSize = startCodeSize + memoryToFillWithNopsInBytes;
         buffer.ensureSpace(memoryToFillWithNopsInBytes);
-        bool isCopyingToExecutableMemory = false;
-        AssemblerType::fillNops(static_cast<char*>(buffer.data()) + startCodeSize, memoryToFillWithNopsInBytes, isCopyingToExecutableMemory);
+        AssemblerType::fillNops(static_cast<char*>(buffer.data()) + startCodeSize, memoryToFillWithNopsInBytes, memcpy);
         buffer.setCodeSize(targetCodeSize);
+#endif
     }
+
+    ALWAYS_INLINE void tagReturnAddress() { }
+    ALWAYS_INLINE void untagReturnAddress() { }
+
+    ALWAYS_INLINE void tagPtr(PtrTag, RegisterID) { }
+    ALWAYS_INLINE void tagPtr(RegisterID, RegisterID) { }
+    ALWAYS_INLINE void untagPtr(PtrTag, RegisterID) { }
+    ALWAYS_INLINE void untagPtr(RegisterID, RegisterID) { }
+    ALWAYS_INLINE void removePtrTag(RegisterID) { }
 
 protected:
     AbstractMacroAssembler()
         : m_randomSource(0)
+        , m_assembler()
     {
         invalidateAllTempRegisters();
     }
@@ -1017,6 +1002,9 @@ protected:
 
     bool m_randomSourceIsInitialized { false };
     WeakRandom m_randomSource;
+public:
+    AssemblerType m_assembler;
+protected:
 
 #if ENABLE(DFG_REGISTER_ALLOCATION_VALIDATION)
     Vector<RegisterAllocationOffset, 10> m_registerAllocationForOffsets;
@@ -1098,6 +1086,7 @@ protected:
     }
 
     friend class AllowMacroScratchRegisterUsage;
+    friend class AllowMacroScratchRegisterUsageIf;
     friend class DisallowMacroScratchRegisterUsage;
     unsigned m_tempRegistersValidBits;
     bool m_allowScratchRegister { true };
@@ -1107,11 +1096,11 @@ protected:
     friend class LinkBuffer;
 }; // class AbstractMacroAssembler
 
-template <class AssemblerType, class MacroAssemblerType>
-inline typename AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::BaseIndex
-AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::Address::indexedBy(
-    typename AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::RegisterID index,
-    typename AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::Scale scale) const
+template <class AssemblerType>
+inline typename AbstractMacroAssembler<AssemblerType>::BaseIndex
+AbstractMacroAssembler<AssemblerType>::Address::indexedBy(
+    typename AbstractMacroAssembler<AssemblerType>::RegisterID index,
+    typename AbstractMacroAssembler<AssemblerType>::Scale scale) const
 {
     return BaseIndex(base, index, scale, offset);
 }
@@ -1119,3 +1108,16 @@ AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::Address::indexedBy(
 #endif // ENABLE(ASSEMBLER)
 
 } // namespace JSC
+
+#if ENABLE(ASSEMBLER)
+
+namespace WTF {
+
+class PrintStream;
+
+void printInternal(PrintStream& out, JSC::AbstractMacroAssemblerBase::StatusCondition);
+
+} // namespace WTF
+
+#endif // ENABLE(ASSEMBLER)
+

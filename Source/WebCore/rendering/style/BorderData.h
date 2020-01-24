@@ -25,7 +25,6 @@
 #pragma once
 
 #include "BorderValue.h"
-#include "IntRect.h"
 #include "LengthSize.h"
 #include "NinePieceImage.h"
 
@@ -34,10 +33,11 @@ namespace WebCore {
 class BorderData {
 friend class RenderStyle;
 public:
-    BorderData() : m_topLeft(Length(0, Fixed), Length(0, Fixed))
-                 , m_topRight(Length(0, Fixed), Length(0, Fixed))
-                 , m_bottomLeft(Length(0, Fixed), Length(0, Fixed))
-                 , m_bottomRight(Length(0, Fixed), Length(0, Fixed))
+    BorderData()
+        : m_topLeft { { 0, Fixed }, { 0, Fixed } }
+        , m_topRight { { 0, Fixed }, { 0, Fixed } }
+        , m_bottomLeft { { 0, Fixed }, { 0, Fixed } }
+        , m_bottomRight { { 0, Fixed }, { 0, Fixed } }
     {
     }
     bool hasBorder() const
@@ -59,41 +59,36 @@ public:
     
     bool hasBorderRadius() const
     {
-        if (!m_topLeft.width().isZero())
-            return true;
-        if (!m_topRight.width().isZero())
-            return true;
-        if (!m_bottomLeft.width().isZero())
-            return true;
-        if (!m_bottomRight.width().isZero())
-            return true;
-        return false;
+        return !m_topLeft.width.isZero()
+            || !m_topRight.width.isZero()
+            || !m_bottomLeft.width.isZero()
+            || !m_bottomRight.width.isZero();
     }
     
     float borderLeftWidth() const
     {
-        if (!m_image.hasImage() && (m_left.style() == BNONE || m_left.style() == BHIDDEN))
+        if (!m_image.hasImage() && (m_left.style() == BorderStyle::None || m_left.style() == BorderStyle::Hidden))
             return 0; 
         return m_left.width();
     }
     
     float borderRightWidth() const
     {
-        if (!m_image.hasImage() && (m_right.style() == BNONE || m_right.style() == BHIDDEN))
+        if (!m_image.hasImage() && (m_right.style() == BorderStyle::None || m_right.style() == BorderStyle::Hidden))
             return 0;
         return m_right.width();
     }
     
     float borderTopWidth() const
     {
-        if (!m_image.hasImage() && (m_top.style() == BNONE || m_top.style() == BHIDDEN))
+        if (!m_image.hasImage() && (m_top.style() == BorderStyle::None || m_top.style() == BorderStyle::Hidden))
             return 0;
         return m_top.width();
     }
     
     float borderBottomWidth() const
     {
-        if (!m_image.hasImage() && (m_bottom.style() == BNONE || m_bottom.style() == BHIDDEN))
+        if (!m_image.hasImage() && (m_bottom.style() == BorderStyle::None || m_bottom.style() == BorderStyle::Hidden))
             return 0;
         return m_bottom.width();
     }

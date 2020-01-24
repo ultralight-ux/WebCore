@@ -26,17 +26,18 @@
 #include "config.h"
 #include "ProfilerDatabase.h"
 
+#include "CatchScope.h"
 #include "CodeBlock.h"
 #include "JSONObject.h"
 #include "ObjectConstructor.h"
 #include "JSCInlines.h"
-#include <wtf/CurrentTime.h>
+#include <wtf/FilePrintStream.h>
 
 namespace JSC { namespace Profiler {
 
 static std::atomic<int> databaseCounter;
 
-static StaticLock registrationLock;
+static Lock registrationLock;
 static std::atomic<int> didRegisterAtExit;
 static Database* firstDatabase;
 
@@ -62,7 +63,7 @@ Bytecodes* Database::ensureBytecodesFor(CodeBlock* codeBlock)
     return ensureBytecodesFor(locker, codeBlock);
 }
 
-Bytecodes* Database::ensureBytecodesFor(const LockHolder&, CodeBlock* codeBlock)
+Bytecodes* Database::ensureBytecodesFor(const AbstractLocker&, CodeBlock* codeBlock)
 {
     codeBlock = codeBlock->baselineAlternative();
     
@@ -86,15 +87,13 @@ void Database::notifyDestruction(CodeBlock* codeBlock)
     m_compilationMap.remove(codeBlock);
 }
 
-void Database::addCompilation(CodeBlock* codeBlock, PassRefPtr<Compilation> passedCompilation)
+void Database::addCompilation(CodeBlock* codeBlock, Ref<Compilation>&& compilation)
 {
     LockHolder locker(m_lock);
     ASSERT(!isCompilationThread());
 
-    RefPtr<Compilation> compilation = passedCompilation;
-    
-    m_compilations.append(compilation);
-    m_compilationMap.set(codeBlock, compilation);
+    m_compilations.append(compilation.copyRef());
+    m_compilationMap.set(codeBlock, WTFMove(compilation));
 }
 
 JSValue Database::toJS(ExecState* exec) const
@@ -111,7 +110,7 @@ JSValue Database::toJS(ExecState* exec) const
         bytecodes->putDirectIndex(exec, i, value);
         RETURN_IF_EXCEPTION(scope, { });
     }
-    result->putDirect(vm, exec->propertyNames().bytecodes, bytecodes);
+    result->putDirect(vm, vm.propertyNames->bytecodes, bytecodes);
     
     JSArray* compilations = constructEmptyArray(exec, 0);
     RETURN_IF_EXCEPTION(scope, { });
@@ -121,7 +120,7 @@ JSValue Database::toJS(ExecState* exec) const
         compilations->putDirectIndex(exec, i, value);
         RETURN_IF_EXCEPTION(scope, { });
     }
-    result->putDirect(vm, exec->propertyNames().compilations, compilations);
+    result->putDirect(vm, vm.propertyNames->compilations, compilations);
     
     JSArray* events = constructEmptyArray(exec, 0);
     RETURN_IF_EXCEPTION(scope, { });
@@ -131,7 +130,7 @@ JSValue Database::toJS(ExecState* exec) const
         events->putDirectIndex(exec, i, value);
         RETURN_IF_EXCEPTION(scope, { });
     }
-    result->putDirect(vm, exec->propertyNames().events, events);
+    result->putDirect(vm, vm.propertyNames->events, events);
     
     return result;
 }
@@ -144,8 +143,7 @@ String Database::toJSON() const
 
     auto value = toJS(globalObject->globalExec());
     RETURN_IF_EXCEPTION(scope, String());
-    scope.release();
-    return JSONStringify(globalObject->globalExec(), value, 0);
+    RELEASE_AND_RETURN(scope, JSONStringify(globalObject->globalExec(), value, 0));
 }
 
 bool Database::save(const char* filename) const
@@ -181,7 +179,7 @@ void Database::logEvent(CodeBlock* codeBlock, const char* summary, const CString
     
     Bytecodes* bytecodes = ensureBytecodesFor(locker, codeBlock);
     Compilation* compilation = m_compilationMap.get(codeBlock);
-    m_events.append(Event(currentTime(), bytecodes, compilation, summary, detail));
+    m_events.append(Event(WallTime::now(), bytecodes, compilation, summary, detail));
 }
 
 void Database::addDatabaseToAtExit()

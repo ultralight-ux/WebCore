@@ -33,17 +33,11 @@ class TextResourceDecoder;
 
 class CachedScript final : public CachedResource {
 public:
-    CachedScript(CachedResourceRequest&&, SessionID);
+    CachedScript(CachedResourceRequest&&, const PAL::SessionID&, const CookieJar*);
     virtual ~CachedScript();
 
     StringView script();
     unsigned scriptHash();
-
-    String mimeType() const;
-
-#if ENABLE(NOSNIFF)
-    bool mimeTypeAllowedByNosniff() const;
-#endif
 
 private:
     bool mayTryReplaceEncodedData() const final { return true; }
@@ -70,4 +64,4 @@ private:
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_CACHED_RESOURCE(CachedScript, CachedResource::Script)
+SPECIALIZE_TYPE_TRAITS_CACHED_RESOURCE(CachedScript, CachedResource::Type::Script)

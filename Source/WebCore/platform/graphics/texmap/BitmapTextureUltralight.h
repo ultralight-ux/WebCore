@@ -24,20 +24,18 @@ public:
 
     virtual IntSize size() const override { return canvas_size_; }
 
-    virtual void updateContents(Image*, const IntRect&, const IntPoint& offset,
-        UpdateContentsFlag) override;
+    virtual void updateContents(Image*, const IntRect&, const IntPoint& offset) override;
 
     virtual void updateContents(TextureMapper& textureMapper,
       GraphicsLayer* sourceLayer, const IntRect& targetRect,
-      const IntPoint& offset, UpdateContentsFlag updateContentsFlag,
-      float scale) override;
+      const IntPoint& offset, float scale) override;
 
     virtual void updateContents(const void*, const IntRect& target,
-        const IntPoint& offset, int bytesPerLine, UpdateContentsFlag) override;
+        const IntPoint& offset, int bytesPerLine) override;
 
     virtual bool isValid() const override { return !!canvas_; }
 
-    virtual PassRefPtr<BitmapTexture> applyFilters(TextureMapper&,
+    virtual RefPtr<BitmapTexture> applyFilters(TextureMapper&,
         const FilterOperations&) override;
 
 protected:

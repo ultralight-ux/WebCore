@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,65 +25,57 @@
 
 #pragma once
 
-#include "ExceptionCode.h"
-#include "SVGPropertyTearOff.h"
+#include "SVGValueProperty.h"
 
 namespace WebCore {
 
-class SVGNumber : public SVGPropertyTearOff<float> {
+class SVGNumber : public SVGValueProperty<float> {
+    using Base = SVGValueProperty<float>;
+    using Base::Base;
+    using Base::m_value;
+        
 public:
-    static Ref<SVGNumber> create(SVGAnimatedProperty& animatedProperty, SVGPropertyRole role, float& value)
+    static Ref<SVGNumber> create(float value = 0)
     {
-        return adoptRef(*new SVGNumber(animatedProperty, role, value));
+        return adoptRef(*new SVGNumber(value));
     }
 
-    static Ref<SVGNumber> create(const float& initialValue = { })
+    static Ref<SVGNumber> create(SVGPropertyOwner* owner, SVGPropertyAccess access, float value = 0)
     {
-        return adoptRef(*new SVGNumber(initialValue));
+        return adoptRef(*new SVGNumber(owner, access, value));
     }
 
-    static Ref<SVGNumber> create(const float* initialValue)
+    template<typename T>
+    static ExceptionOr<Ref<SVGNumber>> create(ExceptionOr<T>&& value)
     {
-        return adoptRef(*new SVGNumber(initialValue));
+        if (value.hasException())
+            return value.releaseException();
+        return adoptRef(*new SVGNumber(value.releaseReturnValue()));
     }
 
-    template<typename T> static ExceptionOr<Ref<SVGNumber>> create(ExceptionOr<T>&& initialValue)
+    Ref<SVGNumber> clone() const
     {
-        if (initialValue.hasException())
-            return initialValue.releaseException();
-        return create(initialValue.releaseReturnValue());
+        return SVGNumber::create(m_value);
     }
 
     float valueForBindings()
     {
-        return propertyReference();
+        return m_value;
     }
 
     ExceptionOr<void> setValueForBindings(float value)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        propertyReference() = value;
+        m_value = value;
         commitChange();
-
         return { };
     }
 
-private:
-    SVGNumber(SVGAnimatedProperty& animatedProperty, SVGPropertyRole role, float& value)
-        : SVGPropertyTearOff<float>(&animatedProperty, role, value)
+    String valueAsString() const override
     {
-    }
-
-    explicit SVGNumber(const float& initialValue)
-        : SVGPropertyTearOff<float>(initialValue)
-    {
-    }
-
-    explicit SVGNumber(const float* initialValue)
-        : SVGPropertyTearOff<float>(initialValue)
-    {
+        return SVGPropertyTraits<float>::toString(m_value);
     }
 };
 

@@ -25,17 +25,32 @@
 
 #pragma once
 
+#include "DeviceOrientationOrMotionEvent.h"
 #include "Event.h"
 
 namespace WebCore {
 
 class DeviceMotionData;
 
-class DeviceMotionEvent final : public Event {
+class DeviceMotionEvent final : public Event, public DeviceOrientationOrMotionEvent {
 public:
     virtual ~DeviceMotionEvent();
 
-    static Ref<DeviceMotionEvent> create(const AtomicString& eventType, DeviceMotionData* deviceMotionData)
+    // FIXME: Merge this with DeviceMotionData::Acceleration
+    struct Acceleration {
+        Optional<double> x;
+        Optional<double> y;
+        Optional<double> z;
+    };
+
+    // FIXME: Merge this with DeviceMotionData::RotationRate
+    struct RotationRate {
+        Optional<double> alpha;
+        Optional<double> beta;
+        Optional<double> gamma;
+    };
+
+    static Ref<DeviceMotionEvent> create(const AtomString& eventType, DeviceMotionData* deviceMotionData)
     {
         return adoptRef(*new DeviceMotionEvent(eventType, deviceMotionData));
     }
@@ -45,15 +60,18 @@ public:
         return adoptRef(*new DeviceMotionEvent);
     }
 
-    void initDeviceMotionEvent(const AtomicString& type, bool bubbles, bool cancelable, DeviceMotionData*);
+    Optional<Acceleration> acceleration() const;
+    Optional<Acceleration> accelerationIncludingGravity() const;
+    Optional<RotationRate> rotationRate() const;
+    Optional<double> interval() const;
 
-    DeviceMotionData* deviceMotionData() const { return m_deviceMotionData.get(); }
-
-    EventInterface eventInterface() const override;
+    void initDeviceMotionEvent(const AtomString& type, bool bubbles, bool cancelable, Optional<Acceleration>&&, Optional<Acceleration>&&, Optional<RotationRate>&&, Optional<double>);
 
 private:
     DeviceMotionEvent();
-    DeviceMotionEvent(const AtomicString& eventType, DeviceMotionData*);
+    DeviceMotionEvent(const AtomString& eventType, DeviceMotionData*);
+
+    EventInterface eventInterface() const override;
 
     RefPtr<DeviceMotionData> m_deviceMotionData;
 };

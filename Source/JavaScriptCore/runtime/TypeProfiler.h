@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "CodeBlock.h"
 #include "TypeLocation.h"
 #include "TypeLocationCache.h"
 #include <wtf/Bag.h>
@@ -125,7 +124,7 @@ public:
     TypeLocation* findLocation(unsigned divot, intptr_t sourceID, TypeProfilerSearchDescriptor, VM&);
     GlobalVariableID getNextUniqueVariableID() { return m_nextUniqueVariableID++; }
     TypeLocation* nextTypeLocation();
-    void invalidateTypeSetCache();
+    void invalidateTypeSetCache(VM&);
     void dumpTypeProfilerData(VM&);
     
 private:

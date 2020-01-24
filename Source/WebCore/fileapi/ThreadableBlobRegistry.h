@@ -32,12 +32,10 @@
 #pragma once
 
 #include <wtf/Forward.h>
-#include <wtf/Vector.h>
 
 namespace WebCore {
 
 class BlobPart;
-class URL;
 class SecurityOrigin;
 
 class ThreadableBlobRegistry {

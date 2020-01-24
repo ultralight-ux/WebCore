@@ -27,9 +27,11 @@
 
 #include "ContainerNode.h"
 #include "NodeTraversal.h"
-#include <runtime/JSCJSValueInlines.h>
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(TreeWalker);
 
 TreeWalker::TreeWalker(Node& rootNode, unsigned long whatToShow, RefPtr<NodeFilter>&& filter)
     : NodeIteratorBase(rootNode, whatToShow, WTFMove(filter))
@@ -48,25 +50,32 @@ inline Node* TreeWalker::setCurrent(Ref<Node>&& node)
     return m_current.ptr();
 }
 
-Node* TreeWalker::parentNode()
+ExceptionOr<Node*> TreeWalker::parentNode()
 {
     RefPtr<Node> node = m_current.ptr();
     while (node != &root()) {
         node = node->parentNode();
         if (!node)
             return nullptr;
-        short acceptNodeResult = acceptNode(node.get());
-        if (acceptNodeResult == NodeFilter::FILTER_ACCEPT)
+
+        auto filterResult = acceptNode(*node);
+        if (filterResult.hasException())
+            return filterResult.releaseException();
+
+        if (filterResult.returnValue() == NodeFilter::FILTER_ACCEPT)
             return setCurrent(node.releaseNonNull());
     }
     return nullptr;
 }
 
-Node* TreeWalker::firstChild()
+ExceptionOr<Node*> TreeWalker::firstChild()
 {
     for (RefPtr<Node> node = m_current->firstChild(); node; ) {
-        short acceptNodeResult = acceptNode(node.get());
-        switch (acceptNodeResult) {
+        auto filterResult = acceptNode(*node);
+        if (filterResult.hasException())
+            return filterResult.releaseException();
+
+        switch (filterResult.returnValue()) {
             case NodeFilter::FILTER_ACCEPT:
                 m_current = node.releaseNonNull();
                 return m_current.ptr();
@@ -93,11 +102,14 @@ Node* TreeWalker::firstChild()
     return nullptr;
 }
 
-Node* TreeWalker::lastChild()
+ExceptionOr<Node*> TreeWalker::lastChild()
 {
     for (RefPtr<Node> node = m_current->lastChild(); node; ) {
-        short acceptNodeResult = acceptNode(node.get());
-        switch (acceptNodeResult) {
+        auto filterResult = acceptNode(*node);
+        if (filterResult.hasException())
+            return filterResult.releaseException();
+
+        switch (filterResult.returnValue()) {
             case NodeFilter::FILTER_ACCEPT:
                 m_current = node.releaseNonNull();
                 return m_current.ptr();
@@ -124,7 +136,7 @@ Node* TreeWalker::lastChild()
     return nullptr;
 }
 
-template<TreeWalker::SiblingTraversalType type> Node* TreeWalker::traverseSiblings()
+template<TreeWalker::SiblingTraversalType type> ExceptionOr<Node*> TreeWalker::traverseSiblings()
 {
     RefPtr<Node> node = m_current.ptr();
     if (node == &root())
@@ -133,47 +145,64 @@ template<TreeWalker::SiblingTraversalType type> Node* TreeWalker::traverseSiblin
     auto isNext = type == SiblingTraversalType::Next;
     while (true) {
         for (RefPtr<Node> sibling = isNext ? node->nextSibling() : node->previousSibling(); sibling; ) {
-            short acceptNodeResult = acceptNode(sibling.get());
-            if (acceptNodeResult == NodeFilter::FILTER_ACCEPT) {
+            auto filterResult = acceptNode(*sibling);
+            if (filterResult.hasException())
+                return filterResult.releaseException();
+
+            if (filterResult.returnValue() == NodeFilter::FILTER_ACCEPT) {
                 m_current = sibling.releaseNonNull();
                 return m_current.ptr();
             }
             node = sibling;
             sibling = isNext ? sibling->firstChild() : sibling->lastChild();
-            if (acceptNodeResult == NodeFilter::FILTER_REJECT || !sibling)
+            if (filterResult.returnValue() == NodeFilter::FILTER_REJECT || !sibling)
                 sibling = isNext ? node->nextSibling() : node->previousSibling();
         }
         node = node->parentNode();
         if (!node || node == &root())
             return nullptr;
-        short acceptNodeResult = acceptNode(node.get());
-        if (acceptNodeResult == NodeFilter::FILTER_ACCEPT)
+
+        auto filterResult = acceptNode(*node);
+        if (filterResult.hasException())
+            return filterResult.releaseException();
+
+        if (filterResult.returnValue() == NodeFilter::FILTER_ACCEPT)
             return nullptr;
     }
 }
 
-Node* TreeWalker::previousSibling()
+ExceptionOr<Node*> TreeWalker::previousSibling()
 {
     return traverseSiblings<SiblingTraversalType::Previous>();
 }
 
-Node* TreeWalker::nextSibling()
+ExceptionOr<Node*> TreeWalker::nextSibling()
 {
     return traverseSiblings<SiblingTraversalType::Next>();
 }
 
-Node* TreeWalker::previousNode()
+ExceptionOr<Node*> TreeWalker::previousNode()
 {
     RefPtr<Node> node = m_current.ptr();
     while (node != &root()) {
         while (Node* previousSibling = node->previousSibling()) {
             node = previousSibling;
-            short acceptNodeResult = acceptNode(node.get());
+
+            auto filterResult = acceptNode(*node);
+            if (filterResult.hasException())
+                return filterResult.releaseException();
+
+            auto acceptNodeResult = filterResult.returnValue();
             if (acceptNodeResult == NodeFilter::FILTER_REJECT)
                 continue;
             while (Node* lastChild = node->lastChild()) {
                 node = lastChild;
-                acceptNodeResult = acceptNode(node.get());
+
+                auto filterResult = acceptNode(*node);
+                if (filterResult.hasException())
+                    return filterResult.releaseException();
+
+                acceptNodeResult = filterResult.returnValue();
                 if (acceptNodeResult == NodeFilter::FILTER_REJECT)
                     break;
             }
@@ -188,31 +217,43 @@ Node* TreeWalker::previousNode()
         if (!parent)
             return nullptr;
         node = parent;
-        short acceptNodeResult = acceptNode(node.get());
-        if (acceptNodeResult == NodeFilter::FILTER_ACCEPT)
+
+        auto filterResult = acceptNode(*node);
+        if (filterResult.hasException())
+            return filterResult.releaseException();
+
+        if (filterResult.returnValue() == NodeFilter::FILTER_ACCEPT)
             return setCurrent(node.releaseNonNull());
     }
     return nullptr;
 }
 
-Node* TreeWalker::nextNode()
+ExceptionOr<Node*> TreeWalker::nextNode()
 {
     RefPtr<Node> node = m_current.ptr();
 Children:
     while (Node* firstChild = node->firstChild()) {
         node = firstChild;
-        short acceptNodeResult = acceptNode(node.get());
-        if (acceptNodeResult == NodeFilter::FILTER_ACCEPT)
+
+        auto filterResult = acceptNode(*node);
+        if (filterResult.hasException())
+            return filterResult.releaseException();
+
+        if (filterResult.releaseReturnValue() == NodeFilter::FILTER_ACCEPT)
             return setCurrent(node.releaseNonNull());
-        if (acceptNodeResult == NodeFilter::FILTER_REJECT)
+        if (filterResult.returnValue() == NodeFilter::FILTER_REJECT)
             break;
     }
     while (Node* nextSibling = NodeTraversal::nextSkippingChildren(*node, &root())) {
         node = nextSibling;
-        short acceptNodeResult = acceptNode(node.get());
-        if (acceptNodeResult == NodeFilter::FILTER_ACCEPT)
+
+        auto filterResult = acceptNode(*node);
+        if (filterResult.hasException())
+            return filterResult.releaseException();
+
+        if (filterResult.returnValue() == NodeFilter::FILTER_ACCEPT)
             return setCurrent(node.releaseNonNull());
-        if (acceptNodeResult == NodeFilter::FILTER_SKIP)
+        if (filterResult.returnValue() == NodeFilter::FILTER_SKIP)
             goto Children;
     }
     return nullptr;

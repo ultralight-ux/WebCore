@@ -27,8 +27,11 @@
 #include "SVGFontElement.h"
 #include "SVGFontFaceElement.h"
 #include "SVGNames.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGHKernElement);
 
 inline SVGHKernElement::SVGHKernElement(const QualifiedName& tagName, Document& document)
     : SVGElement(tagName, document)
@@ -43,10 +46,10 @@ Ref<SVGHKernElement> SVGHKernElement::create(const QualifiedName& tagName, Docum
 
 bool SVGHKernElement::buildHorizontalKerningPair(SVGKerningPair& kerningPair) const
 {
-    String u1 = attributeWithoutSynchronization(SVGNames::u1Attr);
-    String g1 = attributeWithoutSynchronization(SVGNames::g1Attr);
-    String u2 = attributeWithoutSynchronization(SVGNames::u2Attr);
-    String g2 = attributeWithoutSynchronization(SVGNames::g2Attr);
+    auto& u1 = attributeWithoutSynchronization(SVGNames::u1Attr);
+    auto& g1 = attributeWithoutSynchronization(SVGNames::g1Attr);
+    auto& u2 = attributeWithoutSynchronization(SVGNames::u2Attr);
+    auto& g2 = attributeWithoutSynchronization(SVGNames::g2Attr);
     if ((u1.isEmpty() && g1.isEmpty()) || (u2.isEmpty() && g2.isEmpty()))
         return false;
 

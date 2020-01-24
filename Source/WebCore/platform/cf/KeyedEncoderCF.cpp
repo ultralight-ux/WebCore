@@ -71,6 +71,12 @@ void KeyedEncoderCF::encodeUInt32(const String& key, uint32_t value)
     auto number = adoptCF(CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &value));
     CFDictionarySetValue(m_dictionaryStack.last(), key.createCFString().get(), number.get());
 }
+    
+void KeyedEncoderCF::encodeUInt64(const String& key, uint64_t value)
+{
+    auto number = adoptCF(CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt64Type, &value));
+    CFDictionarySetValue(m_dictionaryStack.last(), key.createCFString().get(), number.get());
+}
 
 void KeyedEncoderCF::encodeInt32(const String& key, int32_t value)
 {
@@ -140,13 +146,12 @@ void KeyedEncoderCF::endArray()
     m_arrayStack.removeLast();
 }
 
-PassRefPtr<SharedBuffer> KeyedEncoderCF::finishEncoding()
+RefPtr<SharedBuffer> KeyedEncoderCF::finishEncoding()
 {
-    RetainPtr<CFDataRef> data = adoptCF(CFPropertyListCreateData(kCFAllocatorDefault, m_rootDictionary.get(), kCFPropertyListBinaryFormat_v1_0, 0, nullptr));
+    auto data = adoptCF(CFPropertyListCreateData(kCFAllocatorDefault, m_rootDictionary.get(), kCFPropertyListBinaryFormat_v1_0, 0, nullptr));
     if (!data)
         return nullptr;
-
-    return SharedBuffer::wrapCFData(data.get());
+    return SharedBuffer::create(data.get());
 }
 
 } // namespace WebCore

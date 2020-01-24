@@ -21,13 +21,35 @@ namespace WebCore {
     if (m_gradient)
       return m_gradient;
 
-    m_gradient = new ultralight::Gradient();
-    m_gradient->p0 = ultralight::Point(m_p0.x(), m_p0.y());
-    m_gradient->p1 = ultralight::Point(m_p1.x(), m_p1.y());
-    m_gradient->r0 = m_r0;
-    m_gradient->r1 = m_r1;
-    m_gradient->is_radial = m_radial;
-    
+    m_gradient = WTF::switchOn(m_data,
+      [&](const LinearData& data) -> PlatformGradient {
+        auto grad = new ultralight::Gradient();
+        grad->is_radial = false;
+        grad->num_stops = 0;
+        grad->p0 = ultralight::Point(data.point0.x(), data.point0.y());
+        grad->p1 = ultralight::Point(data.point1.x(), data.point1.y());
+        return grad;
+      },
+      [&](const RadialData& data) -> PlatformGradient {
+        auto grad = new ultralight::Gradient();
+        grad->is_radial = true;
+        grad->num_stops = 0;
+        grad->p0 = ultralight::Point(data.point0.x(), data.point0.y());
+        grad->p1 = ultralight::Point(data.point1.x(), data.point1.y());
+        grad->r0 = data.startRadius;
+        grad->r1 = data.endRadius;
+        return grad;
+      },
+        [&](const ConicData&)  -> PlatformGradient {
+        // FIXME: implement conic gradient rendering.
+        return nullptr;
+      }
+    );
+
+    // Bail here if we are conic. (TODO)
+    if (!m_gradient)
+      return m_gradient;
+
     size_t num_stops = m_stops.size();
 
     // Clamp to 12 stops
@@ -36,19 +58,16 @@ namespace WebCore {
 
     m_gradient->num_stops = num_stops;
     for (size_t i = 0; i < num_stops; ++i) {
-      m_gradient->stops[i].stop = m_stops[i].stop;
-      m_gradient->stops[i].color = UltralightRGBA(m_stops[i].red * 255.0f,
-                                                  m_stops[i].green * 255.0f,
-                                                  m_stops[i].blue * 255.0f,
-                                                  m_stops[i].alpha * 255.0f);
+      m_gradient->stops[i].stop = m_stops[i].offset;
+      m_gradient->stops[i].color = UltralightRGBA(m_stops[i].color.red(), m_stops[i].color.green(), m_stops[i].color.blue(), m_stops[i].color.alpha());
     }
 
     return m_gradient;
   }
 
-  void Gradient::fill(GraphicsContext* context, const FloatRect& rect)
+  void Gradient::fill(GraphicsContext& context, const FloatRect& rect)
   {
-    context->platformContext()->canvas()->DrawGradient(platformGradient(), rect);
+    context.platformContext()->canvas()->DrawGradient(platformGradient(), rect);
   }
 
 } // namespace WebCore

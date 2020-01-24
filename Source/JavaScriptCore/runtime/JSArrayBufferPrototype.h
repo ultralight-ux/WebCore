@@ -25,12 +25,11 @@
 
 #pragma once
 
-#include "ArrayBuffer.h"
 #include "JSObject.h"
 
 namespace JSC {
 
-class JSArrayBufferPrototype : public JSNonFinalObject {
+class JSArrayBufferPrototype final : public JSNonFinalObject {
 public:
     typedef JSNonFinalObject Base;
 
@@ -39,7 +38,7 @@ protected:
     void finishCreation(VM&, JSGlobalObject*);
 
 public:
-    static JSArrayBufferPrototype* create(VM&, JSGlobalObject*, Structure*, ArrayBufferSharingMode);
+    static JSArrayBufferPrototype* create(VM&, JSGlobalObject*, Structure*, ArrayBufferSharingMode = ArrayBufferSharingMode::Default);
     
     DECLARE_INFO;
     

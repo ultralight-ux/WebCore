@@ -40,8 +40,8 @@ class GLContext;
 class PlatformDisplay {
     WTF_MAKE_NONCOPYABLE(PlatformDisplay); WTF_MAKE_FAST_ALLOCATED;
 public:
-    static PlatformDisplay& sharedDisplay();
-    static PlatformDisplay& sharedDisplayForCompositing();
+    WEBCORE_EXPORT static PlatformDisplay& sharedDisplay();
+    WEBCORE_EXPORT static PlatformDisplay& sharedDisplayForCompositing();
     virtual ~PlatformDisplay();
 
     enum class Type {
@@ -54,24 +54,26 @@ public:
 #if PLATFORM(WIN)
         Windows,
 #endif
+#if USE(WPE_RENDERER)
+        WPE,
+#endif
     };
 
     virtual Type type() const = 0;
 
-#if !PLATFORM(EFL) && (USE(EGL) || USE(GLX))
-    // FIXME: This should not have any platform ifdef, but EFL has its own EGLContext class
-    // instead of using the GLContext common API.
-    GLContext* sharingGLContext();
+#if USE(EGL) || USE(GLX)
+    WEBCORE_EXPORT GLContext* sharingGLContext();
 #endif
 
 #if USE(EGL)
     EGLDisplay eglDisplay() const;
     bool eglCheckVersion(int major, int minor) const;
+    static void shutDownEglDisplays();
 #endif
 
 protected:
     enum class NativeDisplayOwned { No, Yes };
-    explicit PlatformDisplay(NativeDisplayOwned = NativeDisplayOwned::No);
+    explicit PlatformDisplay(NativeDisplayOwned);
 
     static void setSharedDisplayForCompositing(PlatformDisplay&);
 

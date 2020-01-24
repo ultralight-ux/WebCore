@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,9 +22,6 @@
 #pragma once
 
 #include "Gradient.h"
-#include "SVGAnimatedBoolean.h"
-#include "SVGAnimatedEnumeration.h"
-#include "SVGAnimatedTransformList.h"
 #include "SVGElement.h"
 #include "SVGExternalResourcesRequired.h"
 #include "SVGNames.h"
@@ -49,11 +47,11 @@ struct SVGPropertyTraits<SVGSpreadMethodType> {
         case SVGSpreadMethodUnknown:
             return emptyString();
         case SVGSpreadMethodPad:
-            return ASCIILiteral("pad");
+            return "pad"_s;
         case SVGSpreadMethodReflect:
-            return ASCIILiteral("reflect");
+            return "reflect"_s;
         case SVGSpreadMethodRepeat:
-            return ASCIILiteral("repeat");
+            return "repeat"_s;
         }
 
         ASSERT_NOT_REACHED();
@@ -72,9 +70,8 @@ struct SVGPropertyTraits<SVGSpreadMethodType> {
     }
 };
 
-class SVGGradientElement : public SVGElement,
-                           public SVGURIReference,
-                           public SVGExternalResourcesRequired {
+class SVGGradientElement : public SVGElement, public SVGExternalResourcesRequired, public SVGURIReference {
+    WTF_MAKE_ISO_ALLOCATED(SVGGradientElement);
 public:
     enum {
         SVG_SPREADMETHOD_UNKNOWN = SVGSpreadMethodUnknown,
@@ -84,26 +81,30 @@ public:
     };
 
     Vector<Gradient::ColorStop> buildStops();
- 
+
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGGradientElement, SVGElement, SVGExternalResourcesRequired, SVGURIReference>;
+
+    SVGSpreadMethodType spreadMethod() const { return m_spreadMethod->currentValue<SVGSpreadMethodType>(); }
+    SVGUnitTypes::SVGUnitType gradientUnits() const { return m_gradientUnits->currentValue<SVGUnitTypes::SVGUnitType>(); }
+    const SVGTransformList& gradientTransform() const { return m_gradientTransform->currentValue(); }
+
+    SVGAnimatedEnumeration& spreadMethodAnimated() { return m_spreadMethod; }
+    SVGAnimatedEnumeration& gradientUnitsAnimated() { return m_gradientUnits; }
+    SVGAnimatedTransformList& gradientTransformAnimated() { return m_gradientTransform; }
+
 protected:
     SVGGradientElement(const QualifiedName&, Document&);
 
-    static bool isSupportedAttribute(const QualifiedName&);
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     void svgAttributeChanged(const QualifiedName&) override;
 
 private:
     bool needsPendingResourceHandling() const override { return false; }
-
     void childrenChanged(const ChildChange&) override;
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGGradientElement)
-        DECLARE_ANIMATED_ENUMERATION(SpreadMethod, spreadMethod, SVGSpreadMethodType)
-        DECLARE_ANIMATED_ENUMERATION(GradientUnits, gradientUnits, SVGUnitTypes::SVGUnitType)
-        DECLARE_ANIMATED_TRANSFORM_LIST(GradientTransform, gradientTransform)
-        DECLARE_ANIMATED_STRING_OVERRIDE(Href, href)
-        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)
-    END_DECLARE_ANIMATED_PROPERTIES
+    Ref<SVGAnimatedEnumeration> m_spreadMethod { SVGAnimatedEnumeration::create(this, SVGSpreadMethodPad) };
+    Ref<SVGAnimatedEnumeration> m_gradientUnits { SVGAnimatedEnumeration::create(this, SVGUnitTypes::SVG_UNIT_TYPE_OBJECTBOUNDINGBOX) };
+    Ref<SVGAnimatedTransformList> m_gradientTransform { SVGAnimatedTransformList::create(this) };
 };
 
 } // namespace WebCore

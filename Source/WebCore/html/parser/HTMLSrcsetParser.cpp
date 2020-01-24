@@ -43,7 +43,7 @@ static inline bool compareByDensity(const ImageCandidate& first, const ImageCand
 }
 
 enum DescriptorTokenizerState {
-    Start,
+    Initial,
     InParenthesis,
     AfterToken,
 };
@@ -74,12 +74,12 @@ static bool isEOF(const CharType* position, const CharType* end)
 template<typename CharType>
 static void tokenizeDescriptors(const CharType*& position, const CharType* attributeEnd, Vector<StringView>& descriptors)
 {
-    DescriptorTokenizerState state = Start;
+    DescriptorTokenizerState state = Initial;
     const CharType* descriptorsStart = position;
     const CharType* currentDescriptorStart = descriptorsStart;
     for (; ; ++position) {
         switch (state) {
-        case Start:
+        case Initial:
             if (isEOF(position, attributeEnd)) {
                 appendDescriptorAndReset(currentDescriptorStart, attributeEnd, descriptors);
                 return;
@@ -106,7 +106,7 @@ static void tokenizeDescriptors(const CharType*& position, const CharType* attri
             }
             if (*position == ')') {
                 appendCharacter(currentDescriptorStart, position);
-                state = Start;
+                state = Initial;
             } else
                 appendCharacter(currentDescriptorStart, position);
             break;
@@ -114,7 +114,7 @@ static void tokenizeDescriptors(const CharType*& position, const CharType* attri
             if (isEOF(position, attributeEnd))
                 return;
             if (!isHTMLSpace(*position)) {
-                state = Start;
+                state = Initial;
                 currentDescriptorStart = position;
                 --position;
             }
@@ -134,14 +134,14 @@ static bool parseDescriptors(Vector<StringView>& descriptors, DescriptorParsingR
         if (descriptorChar == 'x') {
             if (result.hasDensity() || result.hasHeight() || result.hasWidth())
                 return false;
-            std::optional<double> density = parseValidHTMLFloatingPointNumber(descriptor);
+            Optional<double> density = parseValidHTMLFloatingPointNumber(descriptor);
             if (!density || density.value() < 0)
                 return false;
             result.setDensity(density.value());
         } else if (descriptorChar == 'w') {
             if (result.hasDensity() || result.hasWidth())
                 return false;
-            std::optional<int> resourceWidth = parseValidHTMLNonNegativeInteger(descriptor);
+            Optional<int> resourceWidth = parseValidHTMLNonNegativeInteger(descriptor);
             if (!resourceWidth || resourceWidth.value() <= 0)
                 return false;
             result.setResourceWidth(resourceWidth.value());
@@ -150,7 +150,7 @@ static bool parseDescriptors(Vector<StringView>& descriptors, DescriptorParsingR
             // The value of the 'h' descriptor is not used.
             if (result.hasDensity() || result.hasHeight())
                 return false;
-            std::optional<int> resourceHeight = parseValidHTMLNonNegativeInteger(descriptor);
+            Optional<int> resourceHeight = parseValidHTMLNonNegativeInteger(descriptor);
             if (!resourceHeight || resourceHeight.value() <= 0)
                 return false;
             result.setResourceHeight(resourceHeight.value());
@@ -257,7 +257,7 @@ static ImageCandidate pickBestImageCandidate(float deviceScaleFactor, Vector<Ima
     return imageCandidates[winner];
 }
 
-ImageCandidate bestFitSourceForImageAttributes(float deviceScaleFactor, const AtomicString& srcAttribute, const AtomicString& srcsetAttribute, float sourceSize)
+ImageCandidate bestFitSourceForImageAttributes(float deviceScaleFactor, const AtomString& srcAttribute, const AtomString& srcsetAttribute, float sourceSize)
 {
     if (srcsetAttribute.isNull()) {
         if (srcAttribute.isNull())

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,63 +27,101 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "WasmCallingConvention.h"
+#include "WasmMemoryMode.h"
 #include "WasmPageCount.h"
 
+#include <wtf/CagedPtr.h>
+#include <wtf/Expected.h>
+#include <wtf/Function.h>
+#include <wtf/RefCounted.h>
+#include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakPtr.h>
 
-namespace JSC { namespace Wasm {
+namespace WTF {
+class PrintStream;
+}
 
-class Memory {
+namespace JSC {
+
+namespace Wasm {
+
+class Instance;
+
+class Memory : public RefCounted<Memory> {
     WTF_MAKE_NONCOPYABLE(Memory);
     WTF_MAKE_FAST_ALLOCATED;
 public:
+    void dump(WTF::PrintStream&) const;
 
-    // FIXME: We should support other modes. see: https://bugs.webkit.org/show_bug.cgi?id=162693
-    enum class Mode {
-        BoundsChecking
-    };
+    explicit operator bool() const { return !!m_memory; }
+    
+    enum NotifyPressure { NotifyPressureTag };
+    enum SyncTryToReclaim { SyncTryToReclaimTag };
+    enum GrowSuccess { GrowSuccessTag };
 
-    JS_EXPORT_PRIVATE Memory(PageCount initial, PageCount maximum);
+    static Ref<Memory> create();
+    static RefPtr<Memory> tryCreate(PageCount initial, PageCount maximum, WTF::Function<void(NotifyPressure)>&& notifyMemoryPressure, WTF::Function<void(SyncTryToReclaim)>&& syncTryToReclaimMemory, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
 
-    ~Memory()
-    {
-        if (m_memory)
-            munmap(m_memory, m_mappedCapacity);
-    }
+    ~Memory();
 
-    bool isValid() const { return !!m_memory; }
+    static size_t fastMappedRedzoneBytes();
+    static size_t fastMappedBytes(); // Includes redzone.
+    static bool addressIsInActiveFastMemory(void*);
 
-    void* memory() const { return m_memory; }
-    uint32_t size() const { return m_size; }
-
-    Mode mode() const { return m_mode; }
+    void* memory() const { ASSERT(m_memory.getMayBeNull(size()) == m_memory.getUnsafe()); return m_memory.getMayBeNull(size()); }
+    size_t size() const { return m_size; }
+    PageCount sizeInPages() const { return PageCount::fromBytes(m_size); }
 
     PageCount initial() const { return m_initial; }
     PageCount maximum() const { return m_maximum; }
 
-    bool grow(uint32_t newSize)
-    {
-        ASSERT(m_memory);
-        if (newSize > m_capacity)
-            return false;
+    MemoryMode mode() const { return m_mode; }
 
-        return !mprotect(m_memory, newSize, PROT_READ | PROT_WRITE);
-    }
+    enum class GrowFailReason {
+        InvalidDelta,
+        InvalidGrowSize,
+        WouldExceedMaximum,
+        OutOfMemory,
+    };
+    Expected<PageCount, GrowFailReason> grow(PageCount);
+    void registerInstance(Instance*);
 
+    void check() {  ASSERT(!deletionHasBegun()); }
+
+    static ptrdiff_t offsetOfMemory() { return OBJECT_OFFSETOF(Memory, m_memory); }
     static ptrdiff_t offsetOfSize() { return OBJECT_OFFSETOF(Memory, m_size); }
 
-    
 private:
-    void* m_memory { nullptr };
-    Mode m_mode;
-    uint32_t m_size { 0 };
-    uint32_t m_capacity { 0 };
+    Memory();
+    Memory(void* memory, PageCount initial, PageCount maximum, size_t mappedCapacity, MemoryMode, WTF::Function<void(NotifyPressure)>&& notifyMemoryPressure, WTF::Function<void(SyncTryToReclaim)>&& syncTryToReclaimMemory, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+    Memory(PageCount initial, PageCount maximum, WTF::Function<void(NotifyPressure)>&& notifyMemoryPressure, WTF::Function<void(SyncTryToReclaim)>&& syncTryToReclaimMemory, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+
+    using CagedMemory = CagedPtr<Gigacage::Primitive, void, tagCagedPtr>;
+    CagedMemory m_memory;
+    size_t m_size { 0 };
     PageCount m_initial;
     PageCount m_maximum;
-    uint64_t m_mappedCapacity { 0 };
+    size_t m_mappedCapacity { 0 };
+    MemoryMode m_mode { MemoryMode::BoundsChecking };
+    WTF::Function<void(NotifyPressure)> m_notifyMemoryPressure;
+    WTF::Function<void(SyncTryToReclaim)> m_syncTryToReclaimMemory;
+    WTF::Function<void(GrowSuccess, PageCount, PageCount)> m_growSuccessCallback;
+    Vector<WeakPtr<Instance>> m_instances;
 };
 
 } } // namespace JSC::Wasm
 
-#endif // ENABLE(WEBASSEMLY)
+#else
+
+namespace JSC { namespace Wasm {
+
+class Memory {
+public:
+    static size_t maxFastMemoryCount() { return 0; }
+    static bool addressIsInActiveFastMemory(void*) { return false; }
+};
+
+} } // namespace JSC::Wasm
+
+#endif // ENABLE(WEBASSEMBLY)

@@ -27,9 +27,8 @@
 #pragma once
 
 #include "ExceptionOr.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "URLUtils.h"
-#include <wtf/HashSet.h>
 
 namespace WebCore {
 
@@ -38,7 +37,7 @@ class ScriptExecutionContext;
 class URLRegistrable;
 class URLSearchParams;
 
-class DOMURL : public RefCounted<DOMURL>, public URLUtils<DOMURL> {
+class WEBCORE_EXPORT DOMURL : public RefCounted<DOMURL>, public URLUtils<DOMURL> {
 public:
     static ExceptionOr<Ref<DOMURL>> create(const String& url, const String& base);
     static ExceptionOr<Ref<DOMURL>> create(const String& url, const DOMURL& base);

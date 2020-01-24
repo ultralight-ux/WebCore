@@ -39,9 +39,11 @@ my $useOutputDir = "";
 my $useOutputHeadersDir = "";
 my $useDirectories = "";
 my $preprocessor;
+my $idlAttributes;
 my $writeDependencies = 0;
 my $defines = "";
 my $targetIdlFilePath = "";
+my $supplementalDependencies;
 
 my $codeGenerator = 0;
 
@@ -71,7 +73,7 @@ my %stringTypeHash = (
     "USVString" => 1,
 );
 
-my %typedArrayTypes = (
+my %bufferSourceTypes = (
     "ArrayBuffer" => 1,
     "ArrayBufferView" => 1,
     "DataView" => 1,
@@ -119,6 +121,7 @@ my $idlFiles;
 my $cachedInterfaces = {};
 my $cachedExternalDictionaries = {};
 my $cachedExternalEnumerations = {};
+my $cachedTypes = {};
 
 sub assert
 {
@@ -144,6 +147,8 @@ sub new
     $writeDependencies = shift;
     $verbose = shift;
     $targetIdlFilePath = shift;
+    $idlAttributes = shift;
+    $supplementalDependencies = shift;
 
     bless($reference, $object);
     return $reference;
@@ -154,6 +159,8 @@ sub ProcessDocument
     my $object = shift;
     $useDocument = shift;
     $defines = shift;
+
+    $object->ProcessSupplementalDependencies($useDocument);
 
     my $ifaceName = "CodeGenerator" . $useGenerator;
     require $ifaceName . ".pm";
@@ -240,6 +247,134 @@ sub ProcessDocument
     die "Processing document " . $useDocument->fileName . " did not generate anything"
 }
 
+sub ProcessSupplementalDependencies
+{
+    my ($object, $targetDocument) = @_;
+    my $targetFileName = fileparse($targetDocument->fileName);
+    my $targetInterfaceName = fileparse($targetFileName, ".idl");
+
+    if (!$supplementalDependencies) {
+        return;
+    }
+
+    foreach my $idlFile (@{$supplementalDependencies->{$targetFileName}}) {
+        next if fileparse($idlFile) eq $targetFileName;
+
+        my $interfaceName = fileparse($idlFile, ".idl");
+        my $parser = IDLParser->new(!$verbose);
+        my $document = $parser->Parse($idlFile, $defines, $preprocessor, $idlAttributes);
+
+        foreach my $interface (@{$document->interfaces}) {
+            next unless !$interface->isPartial || $interface->type->name eq $targetInterfaceName;
+
+            my $targetDataNode;
+            my @targetGlobalContexts;
+            foreach my $interface (@{$targetDocument->interfaces}) {
+                if ($interface->type->name eq $targetInterfaceName) {
+                    $targetDataNode = $interface;
+                    my $exposedAttribute = $targetDataNode->extendedAttributes->{"Exposed"} || "Window";
+                    $exposedAttribute = substr($exposedAttribute, 1, -1) if substr($exposedAttribute, 0, 1) eq "(";
+                    @targetGlobalContexts = split(",", $exposedAttribute);
+                    last;
+                }
+            }
+            die "Not found an interface ${targetInterfaceName} in ${targetInterfaceName}.idl." unless defined $targetDataNode;
+
+            # Support for attributes of partial interfaces.
+            foreach my $attribute (@{$interface->attributes}) {
+                next unless shouldPropertyBeExposed($attribute, \@targetGlobalContexts);
+
+                # Record that this attribute is implemented by $interfaceName.
+                $attribute->extendedAttributes->{"ImplementedBy"} = $interfaceName if $interface->isPartial && !$attribute->extendedAttributes->{Reflect};
+
+                # Add interface-wide extended attributes to each attribute.
+                foreach my $extendedAttributeName (keys %{$interface->extendedAttributes}) {
+                    $attribute->extendedAttributes->{$extendedAttributeName} = $interface->extendedAttributes->{$extendedAttributeName};
+                }
+                push(@{$targetDataNode->attributes}, $attribute);
+            }
+
+            # Support for methods of partial interfaces.
+            foreach my $operation (@{$interface->operations}) {
+                next unless shouldPropertyBeExposed($operation, \@targetGlobalContexts);
+
+                # Record that this method is implemented by $interfaceName.
+                $operation->extendedAttributes->{"ImplementedBy"} = $interfaceName if $interface->isPartial;
+
+                # Add interface-wide extended attributes to each method.
+                foreach my $extendedAttributeName (keys %{$interface->extendedAttributes}) {
+                    $operation->extendedAttributes->{$extendedAttributeName} = $interface->extendedAttributes->{$extendedAttributeName};
+                }
+                push(@{$targetDataNode->operations}, $operation);
+            }
+
+            # Support for constants of partial interfaces.
+            foreach my $constant (@{$interface->constants}) {
+                next unless shouldPropertyBeExposed($constant, \@targetGlobalContexts);
+
+                # Record that this constant is implemented by $interfaceName.
+                $constant->extendedAttributes->{"ImplementedBy"} = $interfaceName if $interface->isPartial;
+
+                # Add interface-wide extended attributes to each constant.
+                foreach my $extendedAttributeName (keys %{$interface->extendedAttributes}) {
+                    $constant->extendedAttributes->{$extendedAttributeName} = $interface->extendedAttributes->{$extendedAttributeName};
+                }
+                push(@{$targetDataNode->constants}, $constant);
+            }
+        }
+
+        foreach my $dictionary (@{$document->dictionaries}) {
+            next unless $dictionary->isPartial && $dictionary->type->name eq $targetInterfaceName;
+
+            my $targetDataNode;
+            my @targetGlobalContexts;
+            foreach my $dictionary (@{$targetDocument->dictionaries}) {
+                if ($dictionary->type->name eq $targetInterfaceName) {
+                    $targetDataNode = $dictionary;
+                    my $exposedAttribute = $targetDataNode->extendedAttributes->{"Exposed"} || "Window";
+                    $exposedAttribute = substr($exposedAttribute, 1, -1) if substr($exposedAttribute, 0, 1) eq "(";
+                    @targetGlobalContexts = split(",", $exposedAttribute);
+                    last;
+                }
+            }
+            die "Could not find dictionary ${targetInterfaceName} in ${targetInterfaceName}.idl." unless defined $targetDataNode;
+
+            # Support for members of partial dictionaries
+            foreach my $member (@{$dictionary->members}) {
+                next unless shouldPropertyBeExposed($member, \@targetGlobalContexts);
+
+                # Record that this member is implemented by $interfaceName.
+                $member->extendedAttributes->{"ImplementedBy"} = $interfaceName;
+
+                # Add interface-wide extended attributes to each member.
+                foreach my $extendedAttributeName (keys %{$dictionary->extendedAttributes}) {
+                    $member->extendedAttributes->{$extendedAttributeName} = $dictionary->extendedAttributes->{$extendedAttributeName};
+                }
+                push(@{$targetDataNode->members}, $member);
+            }
+        }
+    }
+}
+
+# Attributes / Operations / Constants of supplemental interfaces can have an [Exposed=XX] attribute which restricts
+# on which global contexts they should be exposed.
+sub shouldPropertyBeExposed
+{
+    my ($context, $targetGlobalContexts) = @_;
+
+    my $exposed = $context->extendedAttributes->{Exposed};
+
+    return 1 unless $exposed;
+
+    $exposed = substr($exposed, 1, -1) if substr($exposed, 0, 1) eq "(";
+    my @sourceGlobalContexts = split(",", $exposed);
+
+    for my $targetGlobalContext (@$targetGlobalContexts) {
+        return 1 if grep(/^$targetGlobalContext$/, @sourceGlobalContexts);
+    }
+    return 0;
+}
+
 sub FileNamePrefix
 {
     my $object = shift;
@@ -314,6 +449,15 @@ sub IDLFileForInterface
     return $idlFiles->{$interfaceName};
 }
 
+sub GetInterfaceForType
+{
+    my ($object, $currentInterface, $type) = @_;
+
+    return undef unless $object->IsInterfaceType($type);
+
+    return $object->ParseInterface($currentInterface, $type->name);
+}
+
 sub GetAttributeFromInterface
 {
     my ($object, $outerInterface, $interfaceName, $attributeName) = @_;
@@ -346,7 +490,7 @@ sub ParseInterface
 
     # Step #2: Parse the found IDL file (in quiet mode).
     my $parser = IDLParser->new(1);
-    my $document = $parser->Parse($filename, $defines, $preprocessor);
+    my $document = $parser->Parse($filename, $defines, $preprocessor, $idlAttributes);
 
     foreach my $interface (@{$document->interfaces}) {
         if ($interface->type->name eq $interfaceName) {
@@ -356,6 +500,20 @@ sub ParseInterface
     }
 
     die("Could NOT find interface definition for $interfaceName in $filename");
+}
+
+sub ParseType
+{
+    my ($object, $typeString) = @_;
+
+    return $cachedTypes->{$typeString} if exists($cachedTypes->{$typeString});
+
+    my $parser = IDLParser->new(1);
+    my $type = $parser->ParseType($typeString, $idlAttributes);
+
+    $cachedTypes->{$typeString} = $type;
+
+    return $type;
 }
 
 # Helpers for all CodeGenerator***.pm modules
@@ -440,7 +598,7 @@ sub GetEnumByType
 
     my $name = $type->name;
 
-    die "GetEnumByName() was called with an undefined enumeration name" unless defined($name);
+    die "GetEnumByType() was called with an undefined enumeration name" unless defined($name);
 
     for my $enumeration (@{$useDocument->enumerations}) {
         return $enumeration if $enumeration->type->name eq $name;
@@ -457,7 +615,7 @@ sub GetEnumByType
     if ($fileContents =~ /\benum\s+$name/gs) {
         # Parse the IDL.
         my $parser = IDLParser->new(1);
-        my $document = $parser->Parse($filename, $defines, $preprocessor);
+        my $document = $parser->Parse($filename, $defines, $preprocessor, $idlAttributes);
 
         foreach my $enumeration (@{$document->enumerations}) {
             next unless $enumeration->type->name eq $name;
@@ -525,7 +683,9 @@ sub GetDictionaryByType
     if ($fileContents =~ /\bdictionary\s+$name/gs) {
         # Parse the IDL.
         my $parser = IDLParser->new(1);
-        my $document = $parser->Parse($filename, $defines, $preprocessor);
+        my $document = $parser->Parse($filename, $defines, $preprocessor, $idlAttributes);
+
+        $object->ProcessSupplementalDependencies($document);
 
         foreach my $dictionary (@{$document->dictionaries}) {
             next unless $dictionary->type->name eq $name;
@@ -577,45 +737,6 @@ sub GetDictionaryImplementationNameOverride
     return $dictionaryTypeImplementationNameOverrides{$type->name};
 }
 
-sub IsNonPointerType
-{
-    my ($object, $type) = @_;
-
-    assert("Not a type") if ref($type) ne "IDLType";
-
-    return 1 if $object->IsPrimitiveType($type);
-    return 0;
-}
-
-sub IsTypedArrayType
-{
-    my ($object, $type) = @_;
-
-    assert("Not a type") if ref($type) ne "IDLType";
-
-    return 1 if $typedArrayTypes{$type->name};
-    return 0;
-}
-
-sub IsRefPtrType
-{
-    my ($object, $type) = @_;
-
-    assert("Not a type") if ref($type) ne "IDLType";
-
-    return 0 if $object->IsPrimitiveType($type);
-    return 0 if $object->IsDictionaryType($type);
-    return 0 if $object->IsEnumType($type);
-    return 0 if $object->IsSequenceOrFrozenArrayType($type);
-    return 0 if $object->IsRecordType($type);
-    return 0 if $object->IsStringType($type);
-    return 0 if $type->isUnion;
-    return 0 if $type->name eq "any";
-    return 0 if $type->name eq "object";
-
-    return 1;
-}
-
 sub IsSVGAnimatedTypeName
 {
     my ($object, $typeName) = @_;
@@ -630,6 +751,22 @@ sub IsSVGAnimatedType
     assert("Not a type") if ref($type) ne "IDLType";
 
     return $object->IsSVGAnimatedTypeName($type->name);
+}
+
+sub IsSVGPathSegTypeName
+{
+    my ($object, $typeName) = @_;
+
+    return $typeName =~ /^SVGPathSeg/;
+}
+
+sub IsSVGPathSegType
+{
+    my ($object, $type) = @_;
+
+    assert("Not a type") if ref($type) ne "IDLType";
+
+    return $object->IsSVGPathSegTypeName($type->name);
 }
 
 sub IsConstructorType
@@ -677,6 +814,25 @@ sub IsRecordType
     return $type->name eq "record";
 }
 
+sub IsBufferSourceType
+{
+    my ($object, $type) = @_;
+
+    assert("Not a type") if ref($type) ne "IDLType";
+
+    return 1 if $bufferSourceTypes{$type->name};
+    return 0;
+}
+
+sub IsPromiseType
+{
+    my ($object, $type) = @_;
+
+    assert("Not a type") if ref($type) ne "IDLType";
+
+    return $type->name eq "Promise";
+}
+
 # These match WK_lcfirst and WK_ucfirst defined in builtins_generator.py.
 # Uppercase the first letter while respecting WebKit style guidelines.
 # E.g., xmlEncoding becomes XMLEncoding, but xmlllang becomes Xmllang.
@@ -687,6 +843,9 @@ sub WK_ucfirst
     my $ret = ucfirst($param);
     $ret =~ s/Xml/XML/ if $ret =~ /^Xml[^a-z]/;
     $ret =~ s/Svg/SVG/ if $ret =~ /^Svg/;
+    $ret =~ s/Srgb/SRGB/ if $ret =~ /^Srgb/;
+    $ret =~ s/Cenc/cenc/ if $ret =~ /^Cenc/;
+    $ret =~ s/Cbcs/cbcs/ if $ret =~ /^Cbcs/;
 
     return $ret;
 }
@@ -745,17 +904,17 @@ sub NamespaceForAttributeName
 
 # Identifies overloaded functions and for each function adds an array with
 # links to its respective overloads (including itself).
-sub LinkOverloadedFunctions
+sub LinkOverloadedOperations
 {
     my ($object, $interface) = @_;
 
-    my %nameToFunctionsMap = ();
-    foreach my $function (@{$interface->functions}) {
-        my $name = $function->name;
-        $nameToFunctionsMap{$name} = [] if !exists $nameToFunctionsMap{$name};
-        push(@{$nameToFunctionsMap{$name}}, $function);
-        $function->{overloads} = $nameToFunctionsMap{$name};
-        $function->{overloadIndex} = @{$nameToFunctionsMap{$name}};
+    my %nameToOperationsMap = ();
+    foreach my $operation (@{$interface->operations}) {
+        my $name = $operation->name;
+        $nameToOperationsMap{$name} = [] if !exists $nameToOperationsMap{$name};
+        push(@{$nameToOperationsMap{$name}}, $operation);
+        $operation->{overloads} = $nameToOperationsMap{$name};
+        $operation->{overloadIndex} = @{$nameToOperationsMap{$name}};
     }
 
     my $index = 1;
@@ -874,16 +1033,16 @@ sub IsBuiltinType
     return 1 if $object->IsSequenceOrFrozenArrayType($type);
     return 1 if $object->IsRecordType($type);
     return 1 if $object->IsStringType($type);
-    return 1 if $object->IsTypedArrayType($type);
+    return 1 if $object->IsBufferSourceType($type);
     return 1 if $type->isUnion;
+    return 1 if $type->name eq "EventListener";
+    return 1 if $type->name eq "JSON";
+    return 1 if $type->name eq "Promise";
+    return 1 if $type->name eq "ScheduledAction";
+    return 1 if $type->name eq "SerializedScriptValue";
+    return 1 if $type->name eq "XPathNSResolver";
     return 1 if $type->name eq "any";
     return 1 if $type->name eq "object";
-    return 1 if $type->name eq "BufferSource";
-    return 1 if $type->name eq "Promise";
-    return 1 if $type->name eq "XPathNSResolver";    
-    return 1 if $type->name eq "EventListener";    
-    return 1 if $type->name eq "SerializedScriptValue";    
-    return 1 if $type->name eq "JSON";    
 
     return 0;
 }
@@ -911,6 +1070,72 @@ sub IsWrapperType
     return 1 if $type->name eq "XPathNSResolver";
 
     return 0;
+}
+
+sub InheritsSerializable
+{
+    my ($object, $interface) = @_;
+
+    my $anyParentIsSerializable = 0;
+    $object->ForAllParents($interface, sub {
+        my $parentInterface = shift;
+        $anyParentIsSerializable = 1 if $parentInterface->serializable;
+    }, 0);
+
+    return $anyParentIsSerializable;
+}
+
+sub IsSerializableType
+{
+    my ($object, $interface, $type) = @_;
+
+    # https://heycam.github.io/webidl/#dfn-serializable-type
+
+    return 1 if $type->name eq "boolean";
+    return 1 if $object->IsNumericType($type);
+    return 1 if $object->IsEnumType($type);
+    return 1 if $object->IsStringType($type);
+    return 0 if $type->name eq "EventHandler";
+
+    if ($type->isUnion || $object->IsDictionaryType($type)) {
+        die "Serializers for union and dictionary types are not currently supported.\n";
+    }
+
+    if ($object->IsSequenceOrFrozenArrayType($type)) {
+        my $subtype = @{$type->subtypes}[0];
+
+        # FIXME: webkit.org/b/194439 [WebIDL] Support serializing sequences and FrozenArrays of interfaces
+        return 0 if $object->IsInterfaceType($subtype);
+
+        return $object->IsSerializableType($interface, $subtype);
+    }
+
+    return 0 if !$object->IsInterfaceType($type);
+
+    my $interfaceForType = $object->GetInterfaceForType($interface, $type);
+    if ($interfaceForType) {
+        return 1 if $interfaceForType->serializable;
+        return $object->InheritsSerializable($interfaceForType);
+    }
+
+    return 0;
+}
+
+sub hasCachedAttributeOrCustomGetterExtendedAttribute
+{
+    my ($attribute) = @_;
+    return $attribute->extendedAttributes->{CachedAttribute} || $attribute->extendedAttributes->{CustomGetter};
+}
+
+sub IsSerializableAttribute
+{
+    my ($object, $interface, $attribute) = @_;
+
+    if ($object->IsSequenceType($attribute->type) && hasCachedAttributeOrCustomGetterExtendedAttribute($attribute)) {
+        die "Serializers for sequence types with CachedAttribute or CustomGetter extended attributes are not currently supported.\n";
+    }
+
+    return $object->IsSerializableType($interface, $attribute->type);
 }
 
 sub GetInterfaceExtendedAttributesFromName
@@ -952,6 +1177,7 @@ sub ComputeIsCallbackInterface
     assert("Not a type") if ref($type) ne "IDLType";
 
     return 0 unless $object->IsInterfaceType($type);
+    return 0 if $type->name eq "WindowProxy";
 
     my $typeName = $type->name;
     my $idlFile = $object->IDLFileForInterface($typeName) or assert("Could NOT find IDL file for interface \"$typeName\"!\n");
@@ -989,6 +1215,7 @@ sub ComputeIsCallbackFunction
     assert("Not a type") if ref($type) ne "IDLType";
 
     return 0 unless $object->IsInterfaceType($type);
+    return 0 if $type->name eq "WindowProxy";
 
     my $typeName = $type->name;
     my $idlFile = $object->IDLFileForInterface($typeName) or assert("Could NOT find IDL file for interface \"$typeName\"!\n");

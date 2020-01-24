@@ -28,11 +28,12 @@ namespace WebCore {
 
 class RenderListItem;
 
-String listMarkerText(EListStyleType, int value);
+String listMarkerText(ListStyleType, int value);
 
 // Used to render the list item's marker.
 // The RenderListMarker always has to be a child of a RenderListItem.
 class RenderListMarker final : public RenderBox {
+    WTF_MAKE_ISO_ALLOCATED(RenderListMarker);
 public:
     RenderListMarker(RenderListItem&, RenderStyle&&);
     virtual ~RenderListMarker();
@@ -42,9 +43,13 @@ public:
 
     bool isInside() const;
 
+    LayoutUnit lineOffsetForListItem() const { return m_lineOffsetForListItem; }
+
     void updateMarginsAndContent();
 
 private:
+    void willBeDestroyed() override;
+
     void element() const = delete;
 
     const char* renderName() const override { return "RenderListMarker"; }
@@ -81,7 +86,8 @@ private:
 
     String m_text;
     RefPtr<StyleImage> m_image;
-    RenderListItem& m_listItem;
+    WeakPtr<RenderListItem> m_listItem;
+    LayoutUnit m_lineOffsetForListItem;
 };
 
 } // namespace WebCore

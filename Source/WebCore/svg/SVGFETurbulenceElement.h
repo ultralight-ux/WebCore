@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,9 +22,6 @@
 #pragma once
 
 #include "FETurbulence.h"
-#include "SVGAnimatedEnumeration.h"
-#include "SVGAnimatedInteger.h"
-#include "SVGAnimatedNumber.h"
 #include "SVGFilterPrimitiveStandardAttributes.h"
 
 namespace WebCore {
@@ -44,9 +42,9 @@ struct SVGPropertyTraits<SVGStitchOptions> {
         case SVG_STITCHTYPE_UNKNOWN:
             return emptyString();
         case SVG_STITCHTYPE_STITCH:
-            return ASCIILiteral("stitch");
+            return "stitch"_s;
         case SVG_STITCHTYPE_NOSTITCH:
-            return ASCIILiteral("noStitch");
+            return "noStitch"_s;
         }
 
         ASSERT_NOT_REACHED();
@@ -65,17 +63,17 @@ struct SVGPropertyTraits<SVGStitchOptions> {
 
 template<>
 struct SVGPropertyTraits<TurbulenceType> {
-    static unsigned highestEnumValue() { return FETURBULENCE_TYPE_TURBULENCE; }
+    static unsigned highestEnumValue() { return static_cast<unsigned>(TurbulenceType::Turbulence); }
 
     static String toString(TurbulenceType type)
     {
         switch (type) {
-        case FETURBULENCE_TYPE_UNKNOWN:
+        case TurbulenceType::Unknown:
             return emptyString();
-        case FETURBULENCE_TYPE_FRACTALNOISE:
-            return ASCIILiteral("fractalNoise");
-        case FETURBULENCE_TYPE_TURBULENCE:
-            return ASCIILiteral("turbulence");
+        case TurbulenceType::FractalNoise:
+            return "fractalNoise"_s;
+        case TurbulenceType::Turbulence:
+            return "turbulence"_s;
         }
 
         ASSERT_NOT_REACHED();
@@ -85,36 +83,51 @@ struct SVGPropertyTraits<TurbulenceType> {
     static TurbulenceType fromString(const String& value)
     {
         if (value == "fractalNoise")
-            return FETURBULENCE_TYPE_FRACTALNOISE;
+            return TurbulenceType::FractalNoise;
         if (value == "turbulence")
-            return FETURBULENCE_TYPE_TURBULENCE;
-        return FETURBULENCE_TYPE_UNKNOWN;
+            return TurbulenceType::Turbulence;
+        return TurbulenceType::Unknown;
     }
 };
 
 class SVGFETurbulenceElement final : public SVGFilterPrimitiveStandardAttributes {
+    WTF_MAKE_ISO_ALLOCATED(SVGFETurbulenceElement);
 public:
     static Ref<SVGFETurbulenceElement> create(const QualifiedName&, Document&);
+
+    float baseFrequencyX() const { return m_baseFrequencyX->currentValue(); }
+    float baseFrequencyY() const { return m_baseFrequencyY->currentValue(); }
+    int numOctaves() const { return m_numOctaves->currentValue(); }
+    float seed() const { return m_seed->currentValue(); }
+    SVGStitchOptions stitchTiles() const { return m_stitchTiles->currentValue<SVGStitchOptions>(); }
+    TurbulenceType type() const { return m_type->currentValue<TurbulenceType>(); }
+
+    SVGAnimatedNumber& baseFrequencyXAnimated() { return m_baseFrequencyX; }
+    SVGAnimatedNumber& baseFrequencyYAnimated() { return m_baseFrequencyY; }
+    SVGAnimatedInteger& numOctavesAnimated() { return m_numOctaves; }
+    SVGAnimatedNumber& seedAnimated() { return m_seed; }
+    SVGAnimatedEnumeration& stitchTilesAnimated() { return m_stitchTiles; }
+    SVGAnimatedEnumeration& typeAnimated() { return m_type; }
 
 private:
     SVGFETurbulenceElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    bool setFilterEffectAttribute(FilterEffect*, const QualifiedName& attrName) override;
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFETurbulenceElement, SVGFilterPrimitiveStandardAttributes>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     void svgAttributeChanged(const QualifiedName&) override;
-    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) override;
 
-    static const AtomicString& baseFrequencyXIdentifier();
-    static const AtomicString& baseFrequencyYIdentifier();
+    bool setFilterEffectAttribute(FilterEffect*, const QualifiedName& attrName) override;
+    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) const override;
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFETurbulenceElement)
-        DECLARE_ANIMATED_NUMBER(BaseFrequencyX, baseFrequencyX)
-        DECLARE_ANIMATED_NUMBER(BaseFrequencyY, baseFrequencyY)
-        DECLARE_ANIMATED_INTEGER(NumOctaves, numOctaves)
-        DECLARE_ANIMATED_NUMBER(Seed, seed)
-        DECLARE_ANIMATED_ENUMERATION(StitchTiles, stitchTiles, SVGStitchOptions)
-        DECLARE_ANIMATED_ENUMERATION(Type, type, TurbulenceType)
-    END_DECLARE_ANIMATED_PROPERTIES
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedNumber> m_baseFrequencyX { SVGAnimatedNumber::create(this) };
+    Ref<SVGAnimatedNumber> m_baseFrequencyY { SVGAnimatedNumber::create(this) };
+    Ref<SVGAnimatedInteger> m_numOctaves { SVGAnimatedInteger::create(this, 1) };
+    Ref<SVGAnimatedNumber> m_seed { SVGAnimatedNumber::create(this) };
+    Ref<SVGAnimatedEnumeration> m_stitchTiles { SVGAnimatedEnumeration::create(this, SVG_STITCHTYPE_NOSTITCH) };
+    Ref<SVGAnimatedEnumeration> m_type { SVGAnimatedEnumeration::create(this, TurbulenceType::Turbulence) };
 };
 
 } // namespace WebCore

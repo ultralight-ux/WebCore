@@ -21,6 +21,7 @@
 
 #include "RenderSVGHiddenContainer.h"
 #include "RenderSVGResource.h"
+#include "SVGDocumentExtensions.h"
 
 namespace WebCore {
 
@@ -28,6 +29,7 @@ class RenderLayer;
 
 class RenderSVGResourceContainer : public RenderSVGHiddenContainer,
                                    public RenderSVGResource {
+    WTF_MAKE_ISO_ALLOCATED(RenderSVGResourceContainer);
 public:
     virtual ~RenderSVGResourceContainer();
 
@@ -68,14 +70,14 @@ private:
     void willBeDestroyed() final;
     void registerResource();
 
-    AtomicString m_id;
-    bool m_registered : 1;
-    bool m_isInvalidating : 1;
+    AtomString m_id;
     HashSet<RenderElement*> m_clients;
     HashSet<RenderLayer*> m_clientLayers;
+    bool m_registered { false };
+    bool m_isInvalidating { false };
 };
 
-inline RenderSVGResourceContainer* getRenderSVGResourceContainerById(Document& document, const AtomicString& id)
+inline RenderSVGResourceContainer* getRenderSVGResourceContainerById(Document& document, const AtomString& id)
 {
     if (id.isEmpty())
         return nullptr;
@@ -87,7 +89,7 @@ inline RenderSVGResourceContainer* getRenderSVGResourceContainerById(Document& d
 }
 
 template<typename Renderer>
-Renderer* getRenderSVGResourceById(Document& document, const AtomicString& id)
+Renderer* getRenderSVGResourceById(Document& document, const AtomString& id)
 {
     // Using the RenderSVGResource type here avoids ambiguous casts for types that
     // descend from both RenderObject and RenderSVGResourceContainer.

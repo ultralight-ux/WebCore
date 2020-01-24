@@ -38,6 +38,7 @@ enum ImageSizeChangeType {
 };
 
 class RenderImage : public RenderReplaced {
+    WTF_MAKE_ISO_ALLOCATED(RenderImage);
 public:
     RenderImage(Element&, RenderStyle&&, StyleImage* = nullptr, const float = 1.0f);
     RenderImage(Document&, RenderStyle&&, StyleImage* = nullptr);
@@ -54,7 +55,7 @@ public:
     HTMLMapElement* imageMap() const;
     void areaElementFocusChanged(HTMLAreaElement*);
     
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     void collectSelectionRects(Vector<SelectionRect>&, unsigned, unsigned) override;
 #endif
 
@@ -69,8 +70,17 @@ public:
     float imageDevicePixelRatio() const { return m_imageDevicePixelRatio; }
 
     void setHasShadowControls(bool hasShadowControls) { m_hasShadowControls = hasShadowControls; }
+    
+    bool isShowingMissingOrImageError() const;
+    bool isShowingAltText() const;
+
+    bool hasNonBitmapImage() const;
+
+    bool isEditableImage() const;
 
 protected:
+    void willBeDestroyed() override;
+
     bool needsPreferredWidthsRecalculation() const final;
     RenderBox* embeddedContentBox() const final;
     void computeIntrinsicRatioInformation(FloatSize& intrinsicSize, double& intrinsicRatio) const final;
@@ -81,7 +91,7 @@ protected:
 
     void imageChanged(WrappedImagePtr, const IntRect* = nullptr) override;
 
-    void paintIntoRect(GraphicsContext&, const FloatRect&);
+    ImageDrawResult paintIntoRect(PaintInfo&, const FloatRect&);
     void paint(PaintInfo&, const LayoutPoint&) final;
     void layout() override;
 
@@ -90,6 +100,8 @@ protected:
         imageChanged(imageResource().imagePtr());
     }
 
+    void incrementVisuallyNonEmptyPixelCountIfNeeded(const IntSize&);
+
 private:
     const char* renderName() const override { return "RenderImage"; }
 
@@ -97,8 +109,11 @@ private:
 
     bool isImage() const override { return true; }
     bool isRenderImage() const final { return true; }
+    
+    bool requiresLayer() const override;
 
     void paintReplaced(PaintInfo&, const LayoutPoint&) override;
+    void paintIncompleteImageOutline(PaintInfo&, LayoutPoint, LayoutUnit) const;
 
     bool computeBackgroundIsKnownToBeObscured(const LayoutPoint& paintOffset) final;
 

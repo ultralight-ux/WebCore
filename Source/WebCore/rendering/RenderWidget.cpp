@@ -32,10 +32,13 @@
 #include "RenderLayerBacking.h"
 #include "RenderView.h"
 #include "SecurityOrigin.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/StackStats.h>
 #include <wtf/Ref.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderWidget);
 
 static HashMap<const Widget*, RenderWidget*>& widgetRendererMap()
 {
@@ -53,29 +56,27 @@ WidgetHierarchyUpdatesSuspensionScope::WidgetToParentMap& WidgetHierarchyUpdates
 
 void WidgetHierarchyUpdatesSuspensionScope::moveWidgets()
 {
-    WidgetToParentMap map;
-    widgetNewParentMap().swap(map);
-    WidgetToParentMap::iterator end = map.end();
-    for (WidgetToParentMap::iterator it = map.begin(); it != end; ++it) {
-        Widget* child = it->key.get();
-        ScrollView* currentParent = child->parent();
-        FrameView* newParent = it->value;
+    auto map = WTFMove(widgetNewParentMap());
+    for (auto& entry : map) {
+        auto& child = *entry.key;
+        auto* currentParent = child.parent();
+        auto* newParent = entry.value;
         if (newParent != currentParent) {
             if (currentParent)
-                currentParent->removeChild(*child);
+                currentParent->removeChild(child);
             if (newParent)
                 newParent->addChild(child);
         }
     }
 }
 
-static void moveWidgetToParentSoon(Widget* child, FrameView* parent)
+static void moveWidgetToParentSoon(Widget& child, FrameView* parent)
 {
     if (!WidgetHierarchyUpdatesSuspensionScope::isSuspended()) {
         if (parent)
             parent->addChild(child);
         else
-            child->removeFromParent();
+            child.removeFromParent();
         return;
     }
     WidgetHierarchyUpdatesSuspensionScope::scheduleWidgetToMove(child, parent);
@@ -83,14 +84,13 @@ static void moveWidgetToParentSoon(Widget* child, FrameView* parent)
 
 RenderWidget::RenderWidget(HTMLFrameOwnerElement& element, RenderStyle&& style)
     : RenderReplaced(element, WTFMove(style))
-    , m_weakPtrFactory(this)
 {
     setInline(false);
 }
 
 void RenderWidget::willBeDestroyed()
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     if (hasLayer())
         layer()->willBeDestroyed();
 #endif
@@ -131,7 +131,7 @@ bool RenderWidget::setWidgetGeometry(const LayoutRect& frame)
 
     m_clipRect = clipRect;
 
-    WeakPtr<RenderWidget> weakThis = createWeakPtr();
+    auto weakThis = makeWeakPtr(*this);
     // These calls *may* cause this renderer to disappear from underneath...
     if (boundsChanged)
         m_widget->setFrameRect(newFrameRect);
@@ -141,8 +141,8 @@ bool RenderWidget::setWidgetGeometry(const LayoutRect& frame)
     if (!weakThis)
         return true;
 
-    if (boundsChanged && isComposited())
-        layer()->backing()->updateAfterWidgetResize();
+    if (boundsChanged)
+        view().compositor().widgetDidChangeSize(*this);
 
     return oldFrameRect.size() != newFrameRect.size();
 }
@@ -168,7 +168,7 @@ void RenderWidget::setWidget(RefPtr<Widget>&& widget)
         return;
 
     if (m_widget) {
-        moveWidgetToParentSoon(m_widget.get(), 0);
+        moveWidgetToParentSoon(*m_widget, nullptr);
         view().frameView().willRemoveWidgetFromRenderTree(*m_widget);
         widgetRendererMap().remove(m_widget.get());
         m_widget = nullptr;
@@ -181,20 +181,20 @@ void RenderWidget::setWidget(RefPtr<Widget>&& widget)
         // widget immediately, but we have to have really been fully constructed.
         if (hasInitializedStyle()) {
             if (!needsLayout()) {
-                WeakPtr<RenderWidget> weakThis = createWeakPtr();
+                auto weakThis = makeWeakPtr(*this);
                 updateWidgetGeometry();
                 if (!weakThis)
                     return;
             }
 
-            if (style().visibility() != VISIBLE)
+            if (style().visibility() != Visibility::Visible)
                 m_widget->hide();
             else {
                 m_widget->show();
                 repaint();
             }
         }
-        moveWidgetToParentSoon(m_widget.get(), &view().frameView());
+        moveWidgetToParentSoon(*m_widget, &view().frameView());
     }
 }
 
@@ -210,7 +210,7 @@ void RenderWidget::styleDidChange(StyleDifference diff, const RenderStyle* oldSt
 {
     RenderReplaced::styleDidChange(diff, oldStyle);
     if (m_widget) {
-        if (style().visibility() != VISIBLE)
+        if (style().visibility() != Visibility::Visible)
             m_widget->hide();
         else
             m_widget->show();
@@ -221,7 +221,7 @@ void RenderWidget::paintContents(PaintInfo& paintInfo, const LayoutPoint& paintO
 {
     if (paintInfo.requireSecurityOriginAccessForWidgets) {
         if (auto contentDocument = frameOwnerElement().contentDocument()) {
-            if (!document().securityOrigin()->canAccess(contentDocument->securityOrigin()))
+            if (!document().securityOrigin().canAccess(contentDocument->securityOrigin()))
                 return;
         }
     }
@@ -230,6 +230,13 @@ void RenderWidget::paintContents(PaintInfo& paintInfo, const LayoutPoint& paintO
     // Tell the widget to paint now. This is the only time the widget is allowed
     // to paint itself. That way it will composite properly with z-indexed layers.
     LayoutRect paintRect = paintInfo.rect;
+
+    OptionSet<PaintBehavior> oldBehavior = PaintBehavior::Normal;
+    if (is<FrameView>(*m_widget) && (paintInfo.paintBehavior & PaintBehavior::TileFirstPaint)) {
+        FrameView& frameView = downcast<FrameView>(*m_widget);
+        oldBehavior = frameView.paintBehavior();
+        frameView.setPaintBehavior(oldBehavior | PaintBehavior::TileFirstPaint);
+    }
 
     IntPoint widgetLocation = m_widget->frameRect().location();
     IntSize widgetPaintOffset = contentPaintOffset - widgetLocation;
@@ -252,6 +259,8 @@ void RenderWidget::paintContents(PaintInfo& paintInfo, const LayoutPoint& paintO
             ASSERT(!paintInfo.overlapTestRequests->contains(this) || (paintInfo.overlapTestRequests->get(this) == m_widget->frameRect()));
             paintInfo.overlapTestRequests->set(this, m_widget->frameRect());
         }
+        if (paintInfo.paintBehavior & PaintBehavior::TileFirstPaint)
+            frameView.setPaintBehavior(oldBehavior);
     }
 }
 
@@ -262,18 +271,18 @@ void RenderWidget::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 
     LayoutPoint adjustedPaintOffset = paintOffset + location();
 
-    if (hasVisibleBoxDecorations() && (paintInfo.phase == PaintPhaseForeground || paintInfo.phase == PaintPhaseSelection))
+    if (hasVisibleBoxDecorations() && (paintInfo.phase == PaintPhase::Foreground || paintInfo.phase == PaintPhase::Selection))
         paintBoxDecorations(paintInfo, adjustedPaintOffset);
 
-    if (paintInfo.phase == PaintPhaseMask) {
+    if (paintInfo.phase == PaintPhase::Mask) {
         paintMask(paintInfo, adjustedPaintOffset);
         return;
     }
 
-    if ((paintInfo.phase == PaintPhaseOutline || paintInfo.phase == PaintPhaseSelfOutline) && hasOutline())
+    if ((paintInfo.phase == PaintPhase::Outline || paintInfo.phase == PaintPhase::SelfOutline) && hasOutline())
         paintOutline(paintInfo, LayoutRect(adjustedPaintOffset, size()));
 
-    if (paintInfo.phase != PaintPhaseForeground)
+    if (paintInfo.phase != PaintPhase::Foreground)
         return;
 
     if (style().hasBorderRadius()) {
@@ -316,7 +325,7 @@ RenderWidget::ChildWidgetState RenderWidget::updateWidgetPosition()
     if (!m_widget)
         return ChildWidgetState::Destroyed;
 
-    WeakPtr<RenderWidget> weakThis = createWeakPtr();
+    auto weakThis = makeWeakPtr(*this);
     bool widgetSizeChanged = updateWidgetGeometry();
     if (!weakThis || !m_widget)
         return ChildWidgetState::Destroyed;
@@ -326,8 +335,8 @@ RenderWidget::ChildWidgetState RenderWidget::updateWidgetPosition()
     if (is<FrameView>(*m_widget)) {
         FrameView& frameView = downcast<FrameView>(*m_widget);
         // Check the frame's page to make sure that the frame isn't in the process of being destroyed.
-        if ((widgetSizeChanged || frameView.needsLayout()) && frameView.frame().page())
-            frameView.layout();
+        if ((widgetSizeChanged || frameView.needsLayout()) && frameView.frame().page() && frameView.frame().document())
+            frameView.layoutContext().layout();
     }
     return ChildWidgetState::Valid;
 }
@@ -346,16 +355,17 @@ void RenderWidget::setSelectionState(SelectionState state)
         m_widget->setIsSelected(isSelected());
 }
 
-RenderWidget* RenderWidget::find(const Widget* widget)
+RenderWidget* RenderWidget::find(const Widget& widget)
 {
-    return widgetRendererMap().get(widget);
+    return widgetRendererMap().get(&widget);
 }
 
 bool RenderWidget::nodeAtPoint(const HitTestRequest& request, HitTestResult& result, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction action)
 {
-    if (request.allowsChildFrameContent() && is<FrameView>(widget()) && downcast<FrameView>(*widget()).renderView()) {
+    auto shouldHitTestChildFrameContent = request.allowsChildFrameContent() || (request.allowsVisibleChildFrameContent() && visibleToHitTesting());
+    auto hasRenderView = is<FrameView>(widget()) && downcast<FrameView>(*widget()).renderView();
+    if (shouldHitTestChildFrameContent && hasRenderView) {
         FrameView& childFrameView = downcast<FrameView>(*widget());
-        RenderView& childRoot = *childFrameView.renderView();
 
         LayoutPoint adjustedLocation = accumulatedOffset + location();
         LayoutPoint contentOffset = LayoutPoint(borderLeft() + paddingLeft(), borderTop() + paddingTop()) - toIntSize(childFrameView.scrollPosition());
@@ -363,10 +373,13 @@ bool RenderWidget::nodeAtPoint(const HitTestRequest& request, HitTestResult& res
         HitTestRequest newHitTestRequest(request.type() | HitTestRequest::ChildFrameHitTest);
         HitTestResult childFrameResult(newHitTestLocation);
 
-        bool isInsideChildFrame = childRoot.hitTest(newHitTestRequest, newHitTestLocation, childFrameResult);
+        auto* document = childFrameView.frame().document();
+        if (!document)
+            return false;
+        bool isInsideChildFrame = document->hitTest(newHitTestRequest, newHitTestLocation, childFrameResult);
 
-        if (newHitTestLocation.isRectBasedTest())
-            result.append(childFrameResult);
+        if (request.resultIsElementList())
+            result.append(childFrameResult, request);
         else if (isInsideChildFrame)
             result = childFrameResult;
 

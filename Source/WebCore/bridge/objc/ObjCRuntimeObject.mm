@@ -25,15 +25,15 @@
 
 #import "config.h"
 
-#import "runtime/ObjectPrototype.h"
 #import "JSDOMBinding.h"
 #import "ObjCRuntimeObject.h"
 #import "objc_instance.h"
+#import <JavaScriptCore/ObjectPrototype.h>
 
 namespace JSC {
 namespace Bindings {
 
-const ClassInfo ObjCRuntimeObject::s_info = { "ObjCRuntimeObject", &RuntimeObject::s_info, 0, CREATE_METHOD_TABLE(ObjCRuntimeObject) };
+const ClassInfo ObjCRuntimeObject::s_info = { "ObjCRuntimeObject", &RuntimeObject::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(ObjCRuntimeObject) };
 
 ObjCRuntimeObject::ObjCRuntimeObject(VM& vm, Structure* structure, RefPtr<ObjcInstance>&& instance)
     : RuntimeObject(vm, structure, instance)
@@ -43,7 +43,7 @@ ObjCRuntimeObject::ObjCRuntimeObject(VM& vm, Structure* structure, RefPtr<ObjcIn
 void ObjCRuntimeObject::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(&s_info));
+    ASSERT(inherits(vm, &s_info));
 }
 
 ObjcInstance* ObjCRuntimeObject::getInternalObjCInstance() const

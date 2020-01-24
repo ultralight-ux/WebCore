@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2009 Dirk Schulze <krit@webkit.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,8 +21,6 @@
 #pragma once
 
 #include "FEMorphology.h"
-#include "SVGAnimatedEnumeration.h"
-#include "SVGAnimatedNumber.h"
 #include "SVGFilterPrimitiveStandardAttributes.h"
 
 namespace WebCore {
@@ -36,9 +35,9 @@ struct SVGPropertyTraits<MorphologyOperatorType> {
         case FEMORPHOLOGY_OPERATOR_UNKNOWN:
             return emptyString();
         case FEMORPHOLOGY_OPERATOR_ERODE:
-            return ASCIILiteral("erode");
+            return "erode"_s;
         case FEMORPHOLOGY_OPERATOR_DILATE:
-            return ASCIILiteral("dilate");
+            return "dilate"_s;
         }
 
         ASSERT_NOT_REACHED();
@@ -56,28 +55,39 @@ struct SVGPropertyTraits<MorphologyOperatorType> {
 };
 
 class SVGFEMorphologyElement final : public SVGFilterPrimitiveStandardAttributes {
+    WTF_MAKE_ISO_ALLOCATED(SVGFEMorphologyElement);
 public:
     static Ref<SVGFEMorphologyElement> create(const QualifiedName&, Document&);
 
     void setRadius(float radiusX, float radiusY);
 
+    String in1() const { return m_in1->currentValue(); }
+    MorphologyOperatorType svgOperator() const { return m_svgOperator->currentValue<MorphologyOperatorType>(); }
+    float radiusX() const { return m_radiusX->currentValue(); }
+    float radiusY() const { return m_radiusY->currentValue(); }
+
+    SVGAnimatedString& in1Animated() { return m_in1; }
+    SVGAnimatedEnumeration& svgOperatorAnimated() { return m_svgOperator; }
+    SVGAnimatedNumber& radiusXAnimated() { return m_radiusX; }
+    SVGAnimatedNumber& radiusYAnimated() { return m_radiusY; }
+
 private:
     SVGFEMorphologyElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&) override;
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFEMorphologyElement, SVGFilterPrimitiveStandardAttributes>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     void svgAttributeChanged(const QualifiedName&) override;
-    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) override;
 
-    static const AtomicString& radiusXIdentifier();
-    static const AtomicString& radiusYIdentifier();
+    bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&) override;
+    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) const override;
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEMorphologyElement)
-        DECLARE_ANIMATED_STRING(In1, in1)
-        DECLARE_ANIMATED_ENUMERATION(SVGOperator, svgOperator, MorphologyOperatorType)
-        DECLARE_ANIMATED_NUMBER(RadiusX, radiusX)
-        DECLARE_ANIMATED_NUMBER(RadiusY, radiusY)
-    END_DECLARE_ANIMATED_PROPERTIES
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedString> m_in1 { SVGAnimatedString::create(this) };
+    Ref<SVGAnimatedEnumeration> m_svgOperator { SVGAnimatedEnumeration::create(this, FEMORPHOLOGY_OPERATOR_ERODE) };
+    Ref<SVGAnimatedNumber> m_radiusX { SVGAnimatedNumber::create(this) };
+    Ref<SVGAnimatedNumber> m_radiusY { SVGAnimatedNumber::create(this) };
 };
 
 } // namespace WebCore

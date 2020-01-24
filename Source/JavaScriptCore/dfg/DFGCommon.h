@@ -30,7 +30,8 @@
 #if ENABLE(DFG_JIT)
 
 #include "Options.h"
-#include "VirtualRegister.h"
+#include <limits.h>
+#include <wtf/text/StringImpl.h>
 
 namespace JSC { namespace DFG {
 
@@ -155,10 +156,10 @@ enum OptimizationFixpointState { BeforeFixpoint, FixpointNotConverged, FixpointC
 // Describes the form you can expect the entire graph to be in.
 enum GraphForm {
     // LoadStore form means that basic blocks may freely use GetLocal, SetLocal,
-    // GetLocalUnlinked, and Flush for accessing local variables and indicating
-    // where their live ranges ought to be. Data flow between local accesses is
-    // implicit. Liveness is only explicit at block heads (variablesAtHead).
-    // This is only used by the DFG simplifier and is only preserved by same.
+    // and Flush for accessing local variables and indicating where their live
+    // ranges ought to be. Data flow between local accesses is implicit. Liveness
+    // is only explicit at block heads (variablesAtHead). This is only used by
+    // the DFG simplifier and is only preserved by same.
     //
     // For example, LoadStore form gives no easy way to determine which SetLocal's
     // flow into a GetLocal. As well, LoadStore form implies no restrictions on
@@ -172,7 +173,7 @@ enum GraphForm {
     // most likely) then it implies that the local is still live but that it need
     // not be stored to the stack necessarily. This implies that Phantom can
     // reference nodes that have no result, as long as those nodes are valid
-    // GetLocal children (i.e. Phi, SetLocal, SetArgument).
+    // GetLocal children (i.e. Phi, SetLocal, SetArgumentDefinitely, SetArgumentMaybe).
     //
     // LoadStore form also implies that Phis need not have children. By default,
     // they end up having no children if you enter LoadStore using the canonical

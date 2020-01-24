@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "JSDOMWrapper.h"
 #include "JSEventTarget.h"
 #include "TestEventTarget.h"
 
@@ -37,11 +38,12 @@ public:
         return ptr;
     }
 
-    static JSC::JSObject* createPrototype(JSC::VM&, JSC::JSGlobalObject*);
-    static JSC::JSObject* prototype(JSC::VM&, JSC::JSGlobalObject*);
-    static TestEventTarget* toWrapped(JSC::JSValue);
+    static JSC::JSObject* createPrototype(JSC::VM&, JSDOMGlobalObject&);
+    static JSC::JSObject* prototype(JSC::VM&, JSDOMGlobalObject&);
+    static TestEventTarget* toWrapped(JSC::VM&, JSC::JSValue);
     static bool getOwnPropertySlot(JSC::JSObject*, JSC::ExecState*, JSC::PropertyName, JSC::PropertySlot&);
     static bool getOwnPropertySlotByIndex(JSC::JSObject*, JSC::ExecState*, unsigned propertyName, JSC::PropertySlot&);
+    static void getOwnPropertyNames(JSC::JSObject*, JSC::ExecState*, JSC::PropertyNameArray&, JSC::EnumerationMode = JSC::EnumerationMode());
 
     DECLARE_INFO;
 
@@ -50,22 +52,18 @@ public:
         return JSC::Structure::create(vm, globalObject, prototype, JSC::TypeInfo(JSC::ObjectType, StructureFlags), info());
     }
 
-    static void getOwnPropertyNames(JSC::JSObject*, JSC::ExecState*, JSC::PropertyNameArray&, JSC::EnumerationMode = JSC::EnumerationMode());
     static JSC::JSValue getConstructor(JSC::VM&, const JSC::JSGlobalObject*);
-    static void visitChildren(JSCell*, JSC::SlotVisitor&);
-
+    static void heapSnapshot(JSCell*, JSC::HeapSnapshotBuilder&);
     TestEventTarget& wrapped() const
     {
         return static_cast<TestEventTarget&>(Base::wrapped());
     }
 public:
-    static const unsigned StructureFlags = JSC::GetOwnPropertySlotIsImpureForPropertyAbsence | JSC::InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | JSC::MasqueradesAsUndefined | JSC::OverridesGetOwnPropertySlot | JSC::OverridesGetPropertyNames | Base::StructureFlags;
+    static const unsigned StructureFlags = Base::StructureFlags | JSC::GetOwnPropertySlotIsImpureForPropertyAbsence | JSC::InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | JSC::MasqueradesAsUndefined | JSC::OverridesGetOwnPropertySlot | JSC::OverridesGetPropertyNames;
 protected:
     JSTestEventTarget(JSC::Structure*, JSDOMGlobalObject&, Ref<TestEventTarget>&&);
 
     void finishCreation(JSC::VM&);
-private:
-    bool nameGetter(JSC::ExecState*, JSC::PropertyName, JSC::JSValue&);
 };
 
 JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject*, TestEventTarget&);

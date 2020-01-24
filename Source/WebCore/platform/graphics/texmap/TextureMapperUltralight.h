@@ -24,8 +24,7 @@ public:
         const TransformationMatrix& modelViewMatrix = TransformationMatrix(),
         float opacity = 1.0f, unsigned exposedEdges = AllEdges) override;
 
-    virtual void drawSolidColor(const FloatRect&, const TransformationMatrix&,
-        const Color&) override;
+    virtual void drawSolidColor(const FloatRect&, const TransformationMatrix&, const Color&, bool) override;
 
     // makes a surface the target for the following drawTexture calls.
     virtual void bindSurface(BitmapTexture* surface) override;
@@ -36,7 +35,7 @@ public:
 
     virtual IntRect clipBounds() override;
 
-    virtual PassRefPtr<BitmapTexture> createTexture() override;
+    virtual Ref<BitmapTexture> createTexture() override;
 
     virtual void beginPainting(PaintFlags = 0) override;
 

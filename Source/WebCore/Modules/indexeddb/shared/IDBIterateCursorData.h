@@ -55,11 +55,17 @@ void IDBIterateCursorData::encode(Encoder& encoder) const
 template<class Decoder>
 bool IDBIterateCursorData::decode(Decoder& decoder, IDBIterateCursorData& iteratorCursorData)
 {
-    if (!decoder.decode(iteratorCursorData.keyData))
+    Optional<IDBKeyData> keyData;
+    decoder >> keyData;
+    if (!keyData)
         return false;
+    iteratorCursorData.keyData = WTFMove(*keyData);
 
-    if (!decoder.decode(iteratorCursorData.primaryKeyData))
+    Optional<IDBKeyData> primaryKeyData;
+    decoder >> primaryKeyData;
+    if (!primaryKeyData)
         return false;
+    iteratorCursorData.primaryKeyData = WTFMove(*primaryKeyData);
 
     uint64_t count;
     if (!decoder.decode(count))

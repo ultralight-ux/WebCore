@@ -4,6 +4,7 @@
  * Copyright (C) 2008 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2008 Dirk Schulze <krit@webkit.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -31,34 +32,26 @@
 #include "SVGLengthValue.h"
 #include "SVGNames.h"
 #include "SVGUnitTypes.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-// Animated property definitions
-DEFINE_ANIMATED_LENGTH(SVGLinearGradientElement, SVGNames::x1Attr, X1, x1)
-DEFINE_ANIMATED_LENGTH(SVGLinearGradientElement, SVGNames::y1Attr, Y1, y1)
-DEFINE_ANIMATED_LENGTH(SVGLinearGradientElement, SVGNames::x2Attr, X2, x2)
-DEFINE_ANIMATED_LENGTH(SVGLinearGradientElement, SVGNames::y2Attr, Y2, y2)
-
-BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGLinearGradientElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(x1)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(y1)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(x2)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(y2)
-    REGISTER_PARENT_ANIMATED_PROPERTIES(SVGGradientElement)
-END_REGISTER_ANIMATED_PROPERTIES
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGLinearGradientElement);
 
 inline SVGLinearGradientElement::SVGLinearGradientElement(const QualifiedName& tagName, Document& document)
     : SVGGradientElement(tagName, document)
-    , m_x1(LengthModeWidth)
-    , m_y1(LengthModeHeight)
-    , m_x2(LengthModeWidth, "100%")
-    , m_y2(LengthModeHeight)
 {
     // Spec: If the x2 attribute is not specified, the effect is as if a value of "100%" were specified.
     ASSERT(hasTagName(SVGNames::linearGradientTag));
-    registerAnimatedPropertiesForSVGLinearGradientElement();
+
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        PropertyRegistry::registerProperty<SVGNames::x1Attr, &SVGLinearGradientElement::m_x1>();
+        PropertyRegistry::registerProperty<SVGNames::y1Attr, &SVGLinearGradientElement::m_y1>();
+        PropertyRegistry::registerProperty<SVGNames::x2Attr, &SVGLinearGradientElement::m_x2>();
+        PropertyRegistry::registerProperty<SVGNames::y2Attr, &SVGLinearGradientElement::m_y2>();
+    });
 }
 
 Ref<SVGLinearGradientElement> SVGLinearGradientElement::create(const QualifiedName& tagName, Document& document)
@@ -66,30 +59,18 @@ Ref<SVGLinearGradientElement> SVGLinearGradientElement::create(const QualifiedNa
     return adoptRef(*new SVGLinearGradientElement(tagName, document));
 }
 
-bool SVGLinearGradientElement::isSupportedAttribute(const QualifiedName& attrName)
-{
-    static NeverDestroyed<HashSet<QualifiedName>> supportedAttributes;
-    if (supportedAttributes.get().isEmpty()) {
-        supportedAttributes.get().add(SVGNames::x1Attr);
-        supportedAttributes.get().add(SVGNames::x2Attr);
-        supportedAttributes.get().add(SVGNames::y1Attr);
-        supportedAttributes.get().add(SVGNames::y2Attr);
-    }
-    return supportedAttributes.get().contains<SVGAttributeHashTranslator>(attrName);
-}
-
-void SVGLinearGradientElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void SVGLinearGradientElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     SVGParsingError parseError = NoError;
 
     if (name == SVGNames::x1Attr)
-        setX1BaseValue(SVGLengthValue::construct(LengthModeWidth, value, parseError));
+        m_x1->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError));
     else if (name == SVGNames::y1Attr)
-        setY1BaseValue(SVGLengthValue::construct(LengthModeHeight, value, parseError));
+        m_y1->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError));
     else if (name == SVGNames::x2Attr)
-        setX2BaseValue(SVGLengthValue::construct(LengthModeWidth, value, parseError));
+        m_x2->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError));
     else if (name == SVGNames::y2Attr)
-        setY2BaseValue(SVGLengthValue::construct(LengthModeHeight, value, parseError));
+        m_y2->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError));
 
     reportAttributeParsingError(parseError, name, value);
 
@@ -98,17 +79,15 @@ void SVGLinearGradientElement::parseAttribute(const QualifiedName& name, const A
 
 void SVGLinearGradientElement::svgAttributeChanged(const QualifiedName& attrName)
 {
-    if (!isSupportedAttribute(attrName)) {
-        SVGGradientElement::svgAttributeChanged(attrName);
+    if (PropertyRegistry::isKnownAttribute(attrName)) {
+        InstanceInvalidationGuard guard(*this);
+        updateRelativeLengthsInformation();
+        if (RenderObject* object = renderer())
+            object->setNeedsLayout();
         return;
     }
 
-    InstanceInvalidationGuard guard(*this);
-    
-    updateRelativeLengthsInformation();
-
-    if (RenderObject* object = renderer())
-        object->setNeedsLayout();
+    SVGGradientElement::svgAttributeChanged(attrName);
 }
 
 RenderPtr<RenderElement> SVGLinearGradientElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
@@ -124,11 +103,8 @@ static void setGradientAttributes(SVGGradientElement& element, LinearGradientAtt
     if (!attributes.hasGradientUnits() && element.hasAttribute(SVGNames::gradientUnitsAttr))
         attributes.setGradientUnits(element.gradientUnits());
 
-    if (!attributes.hasGradientTransform() && element.hasAttribute(SVGNames::gradientTransformAttr)) {
-        AffineTransform transform;
-        element.gradientTransform().concatenate(transform);
-        attributes.setGradientTransform(transform);
-    }
+    if (!attributes.hasGradientTransform() && element.hasAttribute(SVGNames::gradientTransformAttr))
+        attributes.setGradientTransform(element.gradientTransform().concatenate());
 
     if (!attributes.hasStops()) {
         const Vector<Gradient::ColorStop>& stops(element.buildStops());
@@ -158,17 +134,17 @@ bool SVGLinearGradientElement::collectGradientAttributes(LinearGradientAttribute
     if (!renderer())
         return false;
 
-    HashSet<SVGGradientElement*> processedGradients;
-    SVGGradientElement* current = this;
+    HashSet<Ref<SVGGradientElement>> processedGradients;
+    Ref<SVGGradientElement> current { *this };
 
-    setGradientAttributes(*current, attributes);
-    processedGradients.add(current);
+    setGradientAttributes(current.get(), attributes);
+    processedGradients.add(current.copyRef());
 
     while (true) {
         // Respect xlink:href, take attributes from referenced element
-        Node* refNode = SVGURIReference::targetElementFromIRIString(current->href(), document());
-        if (is<SVGGradientElement>(refNode)) {
-            current = downcast<SVGGradientElement>(refNode);
+        auto target = SVGURIReference::targetElementFromIRIString(current->href(), treeScope());
+        if (is<SVGGradientElement>(target.element)) {
+            current = downcast<SVGGradientElement>(*target.element);
 
             // Cycle detection
             if (processedGradients.contains(current))
@@ -177,8 +153,8 @@ bool SVGLinearGradientElement::collectGradientAttributes(LinearGradientAttribute
             if (!current->renderer())
                 return false;
 
-            setGradientAttributes(*current, attributes, current->hasTagName(SVGNames::linearGradientTag));
-            processedGradients.add(current);
+            setGradientAttributes(current.get(), attributes, current->hasTagName(SVGNames::linearGradientTag));
+            processedGradients.add(current.copyRef());
         } else
             return true;
     }

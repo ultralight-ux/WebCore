@@ -29,57 +29,25 @@
 #include "config.h"
 #include "AnimationBase.h"
 
-#include "AnimationControllerPrivate.h"
+#include "CSSAnimationControllerPrivate.h"
 #include "CSSPrimitiveValue.h"
 #include "CSSPropertyAnimation.h"
 #include "CompositeAnimation.h"
 #include "Document.h"
-#include "EventNames.h"
 #include "FloatConversion.h"
 #include "GeometryUtilities.h"
 #include "Logging.h"
 #include "RenderBox.h"
 #include "RenderStyle.h"
 #include "RenderView.h"
-#include "SpringSolver.h"
-#include "UnitBezier.h"
 #include <algorithm>
-#include <wtf/CurrentTime.h>
 #include <wtf/Ref.h>
 
 namespace WebCore {
 
-// The epsilon value we pass to UnitBezier::solve given that the animation is going to run over |dur| seconds. The longer the
-// animation, the more precision we need in the timing function result to avoid ugly discontinuities.
-static inline double solveEpsilon(double duration)
-{
-    return 1.0 / (200.0 * duration);
-}
-
-static inline double solveCubicBezierFunction(double p1x, double p1y, double p2x, double p2y, double t, double duration)
-{
-    // Convert from input time to parametric value in curve, then from
-    // that to output time.
-    UnitBezier bezier(p1x, p1y, p2x, p2y);
-    return bezier.solve(t, solveEpsilon(duration));
-}
-
-static inline double solveStepsFunction(int numSteps, bool stepAtStart, double t)
-{
-    if (stepAtStart)
-        return std::min(1.0, (floor(numSteps * t) + 1) / numSteps);
-    return floor(numSteps * t) / numSteps;
-}
-
-static inline double solveSpringFunction(double mass, double stiffness, double damping, double initialVelocity, double t, double duration)
-{
-    SpringSolver solver(mass, stiffness, damping, initialVelocity);
-    return solver.solve(t * duration);
-}
-
-AnimationBase::AnimationBase(const Animation& animation, RenderElement* renderer, CompositeAnimation* compositeAnimation)
-    : m_object(renderer)
-    , m_compositeAnimation(compositeAnimation)
+AnimationBase::AnimationBase(const Animation& animation, Element& element, CompositeAnimation& compositeAnimation)
+    : m_element(&element)
+    , m_compositeAnimation(&compositeAnimation)
     , m_animation(const_cast<Animation&>(animation))
 {
     // Compute the total duration
@@ -87,11 +55,34 @@ AnimationBase::AnimationBase(const Animation& animation, RenderElement* renderer
         m_totalDuration = m_animation->duration() * m_animation->iterationCount();
 }
 
+AnimationBase::~AnimationBase() = default;
+
+const RenderStyle& AnimationBase::currentStyle() const
+{
+    if (auto* renderer = this->renderer())
+        return renderer->style();
+    return unanimatedStyle();
+}
+
+RenderElement* AnimationBase::renderer() const
+{
+    return m_element ? m_element->renderer() : nullptr;
+}
+
+void AnimationBase::clear()
+{
+    endAnimation();
+    m_element = nullptr;
+    m_compositeAnimation = nullptr;
+}
+
 void AnimationBase::setNeedsStyleRecalc(Element* element)
 {
-    ASSERT(!element || element->document().pageCacheState() == Document::NotInPageCache);
-    if (element)
-        element->invalidateStyleAndLayerComposition();
+    if (!element || element->document().renderTreeBeingDestroyed())
+        return;
+
+    ASSERT(element->document().pageCacheState() == Document::NotInPageCache);
+    element->invalidateStyle();
 }
 
 double AnimationBase::duration() const
@@ -101,7 +92,7 @@ double AnimationBase::duration() const
 
 bool AnimationBase::playStatePlaying() const
 {
-    return m_animation->playState() == AnimPlayStatePlaying;
+    return m_animation->playState() == AnimationPlayState::Playing;
 }
 
 bool AnimationBase::animationsMatch(const Animation& animation) const
@@ -159,26 +150,26 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
     // If we get AnimationStateInput::RestartAnimation then we force a new animation, regardless of state.
     if (input == AnimationStateInput::MakeNew) {
         if (m_animationState == AnimationState::StartWaitStyleAvailable)
-            m_compositeAnimation->animationController().removeFromAnimationsWaitingForStyle(this);
+            m_compositeAnimation->animationController().removeFromAnimationsWaitingForStyle(*this);
         LOG(Animations, "%p AnimationState %s -> New", this, nameForState(m_animationState));
         m_animationState = AnimationState::New;
-        m_startTime = 0;
-        m_pauseTime = -1;
+        m_startTime = WTF::nullopt;
+        m_pauseTime = WTF::nullopt;
         m_requestedStartTime = 0;
-        m_nextIterationDuration = -1;
+        m_nextIterationDuration = WTF::nullopt;
         endAnimation();
         return;
     }
 
     if (input == AnimationStateInput::RestartAnimation) {
         if (m_animationState == AnimationState::StartWaitStyleAvailable)
-            m_compositeAnimation->animationController().removeFromAnimationsWaitingForStyle(this);
+            m_compositeAnimation->animationController().removeFromAnimationsWaitingForStyle(*this);
         LOG(Animations, "%p AnimationState %s -> New", this, nameForState(m_animationState));
         m_animationState = AnimationState::New;
-        m_startTime = 0;
-        m_pauseTime = -1;
+        m_startTime = WTF::nullopt;
+        m_pauseTime = WTF::nullopt;
         m_requestedStartTime = 0;
-        m_nextIterationDuration = -1;
+        m_nextIterationDuration = WTF::nullopt;
         endAnimation();
 
         if (!paused())
@@ -188,7 +179,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
 
     if (input == AnimationStateInput::EndAnimation) {
         if (m_animationState == AnimationState::StartWaitStyleAvailable)
-            m_compositeAnimation->animationController().removeFromAnimationsWaitingForStyle(this);
+            m_compositeAnimation->animationController().removeFromAnimationsWaitingForStyle(*this);
         LOG(Animations, "%p AnimationState %s -> Done", this, nameForState(m_animationState));
         m_animationState = AnimationState::Done;
         endAnimation();
@@ -208,7 +199,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
     if (input == AnimationStateInput::ResumeOverride) {
         if (m_animationState == AnimationState::Looping || m_animationState == AnimationState::Ending) {
             // Start the animation
-            startAnimation(beginAnimationUpdateTime() - m_startTime);
+            startAnimation(beginAnimationUpdateTime() - m_startTime.valueOr(0));
         }
         return;
     }
@@ -226,13 +217,9 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 // We are pausing before we even started.
                 LOG(Animations, "%p AnimationState %s -> AnimationState::PausedNew", this, nameForState(m_animationState));
                 m_animationState = AnimationState::PausedNew;
-                m_pauseTime = 0;
+                m_pauseTime = WTF::nullopt;
             }
 
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-            if (m_animation->trigger() && m_animation->trigger()->isScrollAnimationTrigger())
-                m_compositeAnimation->animationController().addToAnimationsDependentOnScroll(this);
-#endif
             break;
         case AnimationState::StartWaitTimer:
             ASSERT(input == AnimationStateInput::StartTimerFired || input == AnimationStateInput::PlayStatePaused);
@@ -242,11 +229,11 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 // Start timer has fired, tell the animation to start and wait for it to respond with start time
                 LOG(Animations, "%p AnimationState %s -> StartWaitStyleAvailable (time is %f)", this, nameForState(m_animationState), param);
                 m_animationState = AnimationState::StartWaitStyleAvailable;
-                m_compositeAnimation->animationController().addToAnimationsWaitingForStyle(this);
+                m_compositeAnimation->animationController().addToAnimationsWaitingForStyle(*this);
 
                 // Trigger a render so we can start the animation
-                if (m_object && m_object->element())
-                    m_compositeAnimation->animationController().addElementChangeToDispatch(*m_object->element());
+                if (m_element)
+                    m_compositeAnimation->animationController().addElementChangeToDispatch(*m_element);
             } else {
                 ASSERT(!paused());
                 // We're waiting for the start timer to fire and we got a pause. Cancel the timer, pause and wait
@@ -280,7 +267,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                         timeOffset = -m_animation->delay();
                     bool started = startAnimation(timeOffset);
 
-                    m_compositeAnimation->animationController().addToAnimationsWaitingForStartTimeResponse(this, started);
+                    m_compositeAnimation->animationController().addToAnimationsWaitingForStartTimeResponse(*this, started);
                     m_isAccelerated = started;
                 }
             } else {
@@ -298,11 +285,11 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 LOG(Animations, "%p AnimationState %s -> StartTimeSet (time is %f)", this, nameForState(m_animationState), param);
 
                 // We have a start time, set it, unless the startTime is already set
-                if (m_startTime <= 0) {
+                if (!m_startTime) {
                     m_startTime = param;
                     // If the value for 'animation-delay' is negative then the animation appears to have started in the past.
                     if (m_animation->delay() < 0)
-                        m_startTime += m_animation->delay();
+                        m_startTime = m_startTime.value() + m_animation->delay();
                 }
 
                 // Now that we know the start time, fire the start event.
@@ -312,13 +299,13 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 goIntoEndingOrLoopingState();
 
                 // Dispatch updateStyleIfNeeded so we can start the animation
-                if (m_object && m_object->element())
-                    m_compositeAnimation->animationController().addElementChangeToDispatch(*m_object->element());
+                if (m_element)
+                    m_compositeAnimation->animationController().addElementChangeToDispatch(*m_element);
             } else {
                 // We are pausing while waiting for a start response. Cancel the animation and wait. When 
                 // we unpause, we will act as though the start timer just fired
                 m_pauseTime = beginAnimationUpdateTime();
-                pauseAnimation(beginAnimationUpdateTime() - m_startTime);
+                pauseAnimation(beginAnimationUpdateTime() - m_startTime.valueOr(0));
                 LOG(Animations, "%p AnimationState %s -> PausedWaitResponse", this, nameForState(m_animationState));
                 m_animationState = AnimationState::PausedWaitResponse;
             }
@@ -338,7 +325,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
             } else {
                 // We are pausing while running. Cancel the animation and wait
                 m_pauseTime = beginAnimationUpdateTime();
-                pauseAnimation(beginAnimationUpdateTime() - m_startTime);
+                pauseAnimation(beginAnimationUpdateTime() - m_startTime.valueOr(0));
                 LOG(Animations, "%p AnimationState %s -> PausedRun", this, nameForState(m_animationState));
                 m_animationState = AnimationState::PausedRun;
             }
@@ -356,7 +343,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 LOG(Animations, "%p AnimationState %s -> Done (time is %f)", this, nameForState(m_animationState), param);
                 m_animationState = AnimationState::Done;
                 
-                if (m_object) {
+                if (m_element) {
                     if (m_animation->fillsForwards()) {
                         LOG(Animations, "%p AnimationState %s -> FillingForwards", this, nameForState(m_animationState));
                         m_animationState = AnimationState::FillingForwards;
@@ -364,13 +351,13 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                         resumeOverriddenAnimations();
 
                     // Fire off another style change so we can set the final value
-                    if (m_object->element())
-                        m_compositeAnimation->animationController().addElementChangeToDispatch(*m_object->element());
+                    if (m_element)
+                        m_compositeAnimation->animationController().addElementChangeToDispatch(*m_element);
                 }
             } else {
                 // We are pausing while running. Cancel the animation and wait
                 m_pauseTime = beginAnimationUpdateTime();
-                pauseAnimation(beginAnimationUpdateTime() - m_startTime);
+                pauseAnimation(beginAnimationUpdateTime() - m_startTime.valueOr(0));
                 LOG(Animations, "%p AnimationState %s -> PausedRun", this, nameForState(m_animationState));
                 m_animationState = AnimationState::PausedRun;
             }
@@ -380,8 +367,8 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
             ASSERT(input == AnimationStateInput::PlayStateRunning);
             ASSERT(paused());
             // Update the times
-            m_startTime += beginAnimationUpdateTime() - m_pauseTime;
-            m_pauseTime = -1;
+            m_startTime = m_startTime.valueOr(0) + beginAnimationUpdateTime() - m_pauseTime.valueOr(0);
+            m_pauseTime = WTF::nullopt;
 
             // we were waiting for the start timer to fire, go back and wait again
             LOG(Animations, "%p AnimationState %s -> New", this, nameForState(m_animationState));
@@ -396,7 +383,7 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
             // AnimationState::PausedWaitResponse, we don't yet have a valid startTime, so we send 0 to startAnimation.
             // When the AnimationStateInput::StartTimeSet comes in and we were in AnimationState::PausedRun, we will notice
             // that we have already set the startTime and will ignore it.
-            ASSERT(input == AnimationStateInput::PlayStatePaused || input == AnimationStateInput::PlayStateRunning || input == AnimationStateInput::StartTimeSet || input == AnimationStateInput::StyleAvailable || input == AnimationStateInput::StartAnimation);
+            ASSERT(input == AnimationStateInput::PlayStatePaused || input == AnimationStateInput::PlayStateRunning || input == AnimationStateInput::StartTimeSet || input == AnimationStateInput::StyleAvailable);
             ASSERT(paused());
 
             if (input == AnimationStateInput::PlayStateRunning) {
@@ -405,18 +392,18 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                     // to start, so jump back to the New state and reset.
                     LOG(Animations, "%p AnimationState %s -> AnimationState::New", this, nameForState(m_animationState));
                     m_animationState = AnimationState::New;
-                    m_pauseTime = -1;
+                    m_pauseTime = WTF::nullopt;
                     updateStateMachine(input, param);
                     break;
                 }
 
                 // Update the times
                 if (m_animationState == AnimationState::PausedRun)
-                    m_startTime += beginAnimationUpdateTime() - m_pauseTime;
+                    m_startTime = m_startTime.valueOr(0) + beginAnimationUpdateTime() - m_pauseTime.valueOr(0);
                 else
                     m_startTime = 0;
 
-                m_pauseTime = -1;
+                m_pauseTime = WTF::nullopt;
 
                 if (m_animationState == AnimationState::PausedWaitStyleAvailable) {
                     LOG(Animations, "%p AnimationState %s -> StartWaitStyleAvailable", this, nameForState(m_animationState));
@@ -435,8 +422,8 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                         updateStateMachine(AnimationStateInput::StartTimeSet, beginAnimationUpdateTime());
                         m_isAccelerated = true;
                     } else {
-                        bool started = startAnimation(beginAnimationUpdateTime() - m_startTime);
-                        m_compositeAnimation->animationController().addToAnimationsWaitingForStartTimeResponse(this, started);
+                        bool started = startAnimation(beginAnimationUpdateTime() - m_startTime.valueOr(0));
+                        m_compositeAnimation->animationController().addToAnimationsWaitingForStartTimeResponse(*this, started);
                         m_isAccelerated = started;
                     }
                 }
@@ -450,13 +437,19 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
                 // We ignore the start time and just move into the paused-run state.
                 LOG(Animations, "%p AnimationState %s -> PausedRun (time is %f)", this, nameForState(m_animationState), param);
                 m_animationState = AnimationState::PausedRun;
-                ASSERT(m_startTime == 0);
+                ASSERT(!m_startTime);
                 m_startTime = param;
-                m_pauseTime += m_startTime;
+                m_pauseTime = m_pauseTime.valueOr(0) + param;
                 break;
             }
 
             ASSERT(m_animationState == AnimationState::PausedNew || m_animationState == AnimationState::PausedWaitStyleAvailable);
+
+            if (input == AnimationStateInput::PlayStatePaused)
+                break;
+
+            ASSERT(input == AnimationStateInput::StyleAvailable);
+
             // We are paused but we got the callback that notifies us that style has been updated.
             // We move to the AnimationState::PausedWaitResponse state
             LOG(Animations, "%p AnimationState %s -> PausedWaitResponse", this, nameForState(m_animationState));
@@ -488,30 +481,12 @@ void AnimationBase::fireAnimationEventsIfNeeded()
     
     // Check for start timeout
     if (m_animationState == AnimationState::StartWaitTimer) {
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-        if (m_animation->trigger() && m_animation->trigger()->isScrollAnimationTrigger()) {
-            if (m_object) {
-                float offset = m_compositeAnimation->animationController().scrollPosition();
-                ScrollAnimationTrigger& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger().get());
-                if (offset > scrollTrigger.startValue().value())
-                    updateStateMachine(AnimationStateInput::StartTimerFired, 0);
-            }
-
-            return;
-        }
-#endif
         if (beginAnimationUpdateTime() - m_requestedStartTime >= m_animation->delay())
             updateStateMachine(AnimationStateInput::StartTimerFired, 0);
         return;
     }
 
-    double elapsedDuration = beginAnimationUpdateTime() - m_startTime;
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    // If we are a triggered animation that depends on scroll, our elapsed
-    // time is determined by the scroll position.
-    if (m_animation->trigger() && m_animation->trigger()->isScrollAnimationTrigger())
-        elapsedDuration = getElapsedTime();
-#endif
+    double elapsedDuration = beginAnimationUpdateTime() - m_startTime.valueOr(0);
 
     // FIXME: we need to ensure that elapsedDuration is never < 0. If it is, this suggests that
     // we had a recalcStyle() outside of beginAnimationUpdate()/endAnimationUpdate().
@@ -519,17 +494,17 @@ void AnimationBase::fireAnimationEventsIfNeeded()
     elapsedDuration = std::max(elapsedDuration, 0.0);
     
     // Check for end timeout
-    if (m_totalDuration >= 0 && elapsedDuration >= m_totalDuration) {
+    if (m_totalDuration && elapsedDuration >= m_totalDuration.value()) {
         // We may still be in AnimationState::Looping if we've managed to skip a
         // whole iteration, in which case we should jump to the end state.
         LOG(Animations, "%p AnimationState %s -> Ending", this, nameForState(m_animationState));
         m_animationState = AnimationState::Ending;
 
         // Fire an end event
-        updateStateMachine(AnimationStateInput::EndTimerFired, m_totalDuration);
+        updateStateMachine(AnimationStateInput::EndTimerFired, m_totalDuration.value());
     } else {
         // Check for iteration timeout
-        if (m_nextIterationDuration < 0) {
+        if (!m_nextIterationDuration) {
             // Hasn't been set yet, set it
             double durationLeft = m_animation->duration() - fmod(elapsedDuration, m_animation->duration());
             m_nextIterationDuration = elapsedDuration + durationLeft;
@@ -537,7 +512,7 @@ void AnimationBase::fireAnimationEventsIfNeeded()
         
         if (elapsedDuration >= m_nextIterationDuration) {
             // Set to the next iteration
-            double previous = m_nextIterationDuration;
+            double previous = m_nextIterationDuration.value();
             double durationLeft = m_animation->duration() - fmod(elapsedDuration, m_animation->duration());
             m_nextIterationDuration = elapsedDuration + durationLeft;
             
@@ -547,7 +522,7 @@ void AnimationBase::fireAnimationEventsIfNeeded()
     }
 }
 
-void AnimationBase::updatePlayState(EAnimPlayState playState)
+void AnimationBase::updatePlayState(AnimationPlayState playState)
 {
     if (!m_compositeAnimation)
         return;
@@ -555,7 +530,7 @@ void AnimationBase::updatePlayState(EAnimPlayState playState)
     // When we get here, we can have one of 4 desired states: running, paused, suspended, paused & suspended.
     // The state machine can be in one of two states: running, paused.
     // Set the state machine to the desired state.
-    bool pause = playState == AnimPlayStatePaused || m_compositeAnimation->isSuspended();
+    bool pause = playState == AnimationPlayState::Paused || m_compositeAnimation->isSuspended();
 
     if (pause == paused() && !isNew())
         return;
@@ -563,33 +538,22 @@ void AnimationBase::updatePlayState(EAnimPlayState playState)
     updateStateMachine(pause ?  AnimationStateInput::PlayStatePaused : AnimationStateInput::PlayStateRunning, -1);
 }
 
-double AnimationBase::timeToNextService()
+Optional<Seconds> AnimationBase::timeToNextService()
 {
-    // Returns the time at which next service is required. -1 means no service is required. 0 means 
+    // Returns the time at which next service is required. WTF::nullopt means no service is required. 0 means
     // service is required now, and > 0 means service is required that many seconds in the future.
     if (paused() || isNew() || postActive() || fillingForwards())
-        return -1;
+        return WTF::nullopt;
     
     if (m_animationState == AnimationState::StartWaitTimer) {
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-        if (m_animation->trigger()->isScrollAnimationTrigger()) {
-            if (m_object) {
-                float currentScrollPosition = m_object->view().frameView().scrollPositionForFixedPosition().y().toFloat();
-                ScrollAnimationTrigger& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger().get());
-                if (currentScrollPosition >= scrollTrigger.startValue().value() && (!scrollTrigger.hasEndValue() || currentScrollPosition <= scrollTrigger.endValue().value()))
-                    return 0;
-            }
-            return -1;
-        }
-#endif
         double timeFromNow = m_animation->delay() - (beginAnimationUpdateTime() - m_requestedStartTime);
-        return std::max(timeFromNow, 0.0);
+        return std::max(Seconds { timeFromNow }, 0_s);
     }
     
     fireAnimationEventsIfNeeded();
         
     // In all other cases, we need service right away.
-    return 0;
+    return 0_s;
 }
 
 // Compute the fractional time, taking into account direction.
@@ -651,42 +615,24 @@ double AnimationBase::progress(double scale, double offset, const TimingFunction
     }
 
     if (!timingFunction)
-        timingFunction = m_animation->timingFunction().get();
+        timingFunction = m_animation->timingFunction();
 
-    switch (timingFunction->type()) {
-    case TimingFunction::CubicBezierFunction: {
-        auto& function = *static_cast<const CubicBezierTimingFunction*>(timingFunction);
-        return solveCubicBezierFunction(function.x1(), function.y1(), function.x2(), function.y2(), fractionalTime, m_animation->duration());
-    }
-    case TimingFunction::StepsFunction: {
-        auto& function = *static_cast<const StepsTimingFunction*>(timingFunction);
-        return solveStepsFunction(function.numberOfSteps(), function.stepAtStart(), fractionalTime);
-    }
-    case TimingFunction::SpringFunction: {
-        auto& function = *static_cast<const SpringTimingFunction*>(timingFunction);
-        return solveSpringFunction(function.mass(), function.stiffness(), function.damping(), function.initialVelocity(), fractionalTime, m_animation->duration());
-    }
-    case TimingFunction::LinearFunction:
-        return fractionalTime;
-    }
-
-    ASSERT_NOT_REACHED();
-    return 0;
+    return timingFunction->transformTime(fractionalTime, m_animation->duration());
 }
 
-void AnimationBase::getTimeToNextEvent(double& time, bool& isLooping) const
+void AnimationBase::getTimeToNextEvent(Seconds& time, bool& isLooping) const
 {
     // Decide when the end or loop event needs to fire
-    const double elapsedDuration = std::max(beginAnimationUpdateTime() - m_startTime, 0.0);
+    const double elapsedDuration = std::max(beginAnimationUpdateTime() - m_startTime.valueOr(0), 0.0);
     double durationLeft = 0;
-    double nextIterationTime = m_totalDuration;
+    double nextIterationTime = m_totalDuration.valueOr(0);
 
-    if (m_totalDuration < 0 || elapsedDuration < m_totalDuration) {
+    if (!m_totalDuration || elapsedDuration < m_totalDuration.value()) {
         durationLeft = m_animation->duration() > 0 ? (m_animation->duration() - fmod(elapsedDuration, m_animation->duration())) : 0;
         nextIterationTime = elapsedDuration + durationLeft;
     }
     
-    if (m_totalDuration < 0 || nextIterationTime < m_totalDuration) {
+    if (!m_totalDuration || nextIterationTime < m_totalDuration.value()) {
         // We are not at the end yet
         ASSERT(nextIterationTime > 0);
         isLooping = true;
@@ -695,12 +641,12 @@ void AnimationBase::getTimeToNextEvent(double& time, bool& isLooping) const
         isLooping = false;
     }
     
-    time = durationLeft;
+    time = Seconds { durationLeft };
 }
 
 void AnimationBase::goIntoEndingOrLoopingState()
 {
-    double t;
+    Seconds t;
     bool isLooping;
     getTimeToNextEvent(t, isLooping);
     LOG(Animations, "%p AnimationState %s -> %s", this, nameForState(m_animationState), isLooping ? "Looping" : "Ending");
@@ -716,17 +662,17 @@ void AnimationBase::freezeAtTime(double t)
         // If we haven't started yet, make it as if we started.
         LOG(Animations, "%p AnimationState %s -> StartWaitResponse", this, nameForState(m_animationState));
         m_animationState = AnimationState::StartWaitResponse;
-        onAnimationStartResponse(monotonicallyIncreasingTime());
+        onAnimationStartResponse(MonotonicTime::now());
     }
 
     ASSERT(m_startTime); // If m_startTime is zero, we haven't started yet, so we'll get a bad pause time.
     if (t <= m_animation->delay())
-        m_pauseTime = m_startTime;
+        m_pauseTime = m_startTime.valueOr(0);
     else
-        m_pauseTime = m_startTime + t - m_animation->delay();
+        m_pauseTime = m_startTime.valueOr(0) + t - m_animation->delay();
 
-    if (m_object && m_object->isComposited())
-        downcast<RenderBoxModelObject>(*m_object).suspendAnimations(m_pauseTime);
+    if (auto* renderer = this->renderer())
+        renderer->suspendAnimations(MonotonicTime::fromRawSeconds(m_pauseTime.value()));
 }
 
 double AnimationBase::beginAnimationUpdateTime() const
@@ -734,39 +680,23 @@ double AnimationBase::beginAnimationUpdateTime() const
     if (!m_compositeAnimation)
         return 0;
 
-    return m_compositeAnimation->animationController().beginAnimationUpdateTime();
+    return m_compositeAnimation->animationController().beginAnimationUpdateTime().secondsSinceEpoch().seconds();
 }
 
 double AnimationBase::getElapsedTime() const
 {
-#if ENABLE(CSS_ANIMATIONS_LEVEL_2)
-    if (m_animation->trigger() && m_animation->trigger()->isScrollAnimationTrigger()) {
-        ScrollAnimationTrigger& scrollTrigger = downcast<ScrollAnimationTrigger>(*m_animation->trigger().get());
-        if (scrollTrigger.hasEndValue() && m_object) {
-            float offset = m_compositeAnimation->animationController().scrollPosition();
-            float startValue = scrollTrigger.startValue().value();
-            if (offset < startValue)
-                return 0;
-            float endValue = scrollTrigger.endValue().value();
-            if (offset > endValue)
-                return m_animation->duration();
-            return m_animation->duration() * (offset - startValue) / (endValue - startValue);
-        }
-    }
-#endif
-
     if (paused()) {
         double delayOffset = (!m_startTime && m_animation->delay() < 0) ? m_animation->delay() : 0;
-        return m_pauseTime - m_startTime - delayOffset;
+        return m_pauseTime.valueOr(0) - m_startTime.valueOr(0) - delayOffset;
     }
 
-    if (m_startTime <= 0)
+    if (!m_startTime)
         return 0;
 
     if (postActive() || fillingForwards())
-        return m_totalDuration;
+        return m_totalDuration.valueOr(0);
 
-    return beginAnimationUpdateTime() - m_startTime;
+    return beginAnimationUpdateTime() - m_startTime.valueOr(0);
 }
 
 void AnimationBase::setElapsedTime(double time)
@@ -801,13 +731,10 @@ bool AnimationBase::computeTransformedExtentViaTransformList(const FloatRect& re
     
     bool applyTransformOrigin = containsRotation(style.transform().operations()) || style.transform().affectedByTransformOrigin();
     if (applyTransformOrigin) {
-        float offsetX = style.transformOriginX().isPercent() ? rendererBox.x() : 0;
-        float offsetY = style.transformOriginY().isPercent() ? rendererBox.y() : 0;
-
-        transformOrigin.setX(floatValueForLength(style.transformOriginX(), rendererBox.width()) + offsetX);
-        transformOrigin.setY(floatValueForLength(style.transformOriginY(), rendererBox.height()) + offsetY);
+        transformOrigin.setX(rendererBox.x() + floatValueForLength(style.transformOriginX(), rendererBox.width()));
+        transformOrigin.setY(rendererBox.y() + floatValueForLength(style.transformOriginY(), rendererBox.height()));
         // Ignore transformOriginZ because we'll bail if we encounter any 3D transforms.
-        
+
         floatBounds.moveBy(-transformOrigin);
     }
 

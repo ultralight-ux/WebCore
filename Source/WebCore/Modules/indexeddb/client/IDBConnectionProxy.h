@@ -30,13 +30,13 @@
 #include "IDBConnectionToServer.h"
 #include "IDBResourceIdentifier.h"
 #include "TransactionOperation.h"
-#include <functional>
 #include <wtf/CrossThreadQueue.h>
 #include <wtf/CrossThreadTask.h>
+#include <wtf/Forward.h>
+#include <wtf/Function.h>
 #include <wtf/HashMap.h>
 #include <wtf/MainThread.h>
 #include <wtf/RefPtr.h>
-#include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -58,6 +58,8 @@ namespace IDBClient {
 class IDBConnectionToServer;
 
 class IDBConnectionProxy {
+    WTF_MAKE_NONCOPYABLE(IDBConnectionProxy);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     IDBConnectionProxy(IDBConnectionToServer&);
 
@@ -114,12 +116,13 @@ public:
     void ref();
     void deref();
 
-    void getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, std::function<void (const Vector<String>&)>);
+    void getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, WTF::Function<void (const Vector<String>&)>&&);
 
     void registerDatabaseConnection(IDBDatabase&);
     void unregisterDatabaseConnection(IDBDatabase&);
 
     void forgetActiveOperations(const Vector<RefPtr<TransactionOperation>>&);
+    void forgetTransaction(IDBTransaction&);
     void forgetActivityForCurrentThread();
 
 private:

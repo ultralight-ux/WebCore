@@ -44,16 +44,22 @@ Ref<AccessibilityMenuList> AccessibilityMenuList::create(RenderMenuList* rendere
 
 bool AccessibilityMenuList::press()
 {
-#if !PLATFORM(IOS)
-    RenderMenuList* menuList = static_cast<RenderMenuList*>(m_renderer);
-    if (menuList->popupIsVisible())
-        menuList->hidePopup();
-    else
-        menuList->showPopup();
+#if !PLATFORM(IOS_FAMILY)
+    auto element = this->element();
+    AXObjectCache::AXNotification notification = AXObjectCache::AXPressDidFail;
+    if (element && !element->isDisabledFormControl() && is<RenderMenuList>(renderer())) {
+        RenderMenuList* menuList = downcast<RenderMenuList>(renderer());
+        if (menuList->popupIsVisible())
+            menuList->hidePopup();
+        else
+            menuList->showPopup();
+        notification = AXObjectCache::AXPressDidSucceed;
+    }
+    if (auto cache = axObjectCache())
+        cache->postNotification(element, notification);
     return true;
-#else
-    return false;
 #endif
+    return false;
 }
 
 void AccessibilityMenuList::addChildren()
@@ -65,7 +71,7 @@ void AccessibilityMenuList::addChildren()
     if (!cache)
         return;
     
-    AccessibilityObject* list = cache->getOrCreate(MenuListPopupRole);
+    AccessibilityObject* list = cache->getOrCreate(AccessibilityRole::MenuListPopup);
     if (!list)
         return;
 
@@ -92,8 +98,8 @@ void AccessibilityMenuList::childrenChanged()
 
 bool AccessibilityMenuList::isCollapsed() const
 {
-#if !PLATFORM(IOS)
-    return !static_cast<RenderMenuList*>(m_renderer)->popupIsVisible();
+#if !PLATFORM(IOS_FAMILY)
+    return !static_cast<RenderMenuList*>(renderer())->popupIsVisible();
 #else
     return true;
 #endif

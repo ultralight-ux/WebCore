@@ -43,6 +43,10 @@
 
 #pragma once
 
+namespace WTF {
+class TextStream;
+}
+
 namespace WebCore {
 
 struct ScrollAlignment {
@@ -63,7 +67,7 @@ struct ScrollAlignment {
 
     static const ScrollAlignment alignCenterIfNotVisible;
     static const ScrollAlignment alignToEdgeIfNotVisible;
-    static const ScrollAlignment alignCenterIfNeeded;
+    WEBCORE_EXPORT static const ScrollAlignment alignCenterIfNeeded;
     WEBCORE_EXPORT static const ScrollAlignment alignToEdgeIfNeeded;
     WEBCORE_EXPORT static const ScrollAlignment alignCenterAlways;
     static const ScrollAlignment alignTopAlways;
@@ -75,5 +79,8 @@ struct ScrollAlignment {
     Behavior m_rectHidden;
     Behavior m_rectPartial;
 };
+    
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, ScrollAlignment::Behavior);
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const ScrollAlignment&);
 
 }; // namespace WebCore

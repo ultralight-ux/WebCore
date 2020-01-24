@@ -40,7 +40,7 @@
 
 namespace WebCore {
 
-const AtomicString& ResetInputType::formControlType() const
+const AtomString& ResetInputType::formControlType() const
 {
     return InputTypeNames::reset();
 }
@@ -52,9 +52,10 @@ bool ResetInputType::supportsValidation() const
 
 void ResetInputType::handleDOMActivateEvent(Event& event)
 {
-    if (element().isDisabledFormControl() || !element().form())
+    ASSERT(element());
+    if (element()->isDisabledFormControl() || !element()->form())
         return;
-    element().form()->reset();
+    element()->form()->reset();
     event.setDefaultHandled();
 }
 

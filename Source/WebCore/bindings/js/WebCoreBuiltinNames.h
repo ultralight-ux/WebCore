@@ -1,5 +1,6 @@
 /*
  *  Copyright (c) 2015, Canon Inc. All rights reserved.
+ *  Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions
@@ -26,67 +27,301 @@
 
 #pragma once
 
-#include <builtins/BuiltinUtils.h>
+#include <JavaScriptCore/BuiltinUtils.h>
+
+#if USE(APPLE_INTERNAL_SDK)
+#include <WebKitAdditions/WebCoreBuiltinNamesAdditions.h>
+#endif
 
 namespace WebCore {
 
-#define WEBCORE_COMMON_PRIVATE_IDENTIFIERS_EACH_PROPERTY_NAME(macro)\
-    macro(addTrack) \
+#if !defined(WEBCORE_ADDITIONAL_PRIVATE_IDENTIFIERS)
+#define WEBCORE_ADDITIONAL_PRIVATE_IDENTIFIERS(macro)
+#endif
+
+#define WEBCORE_COMMON_PRIVATE_IDENTIFIERS_EACH_PROPERTY_NAME(macro) \
+    macro(Animation) \
+    macro(AnimationEffect) \
+    macro(AnimationPlaybackEvent) \
+    macro(AnimationTimeline) \
+    macro(ApplePaySession) \
+    macro(AttachmentElement) \
+    macro(Audio) \
+    macro(AuthenticatorAssertionResponse) \
+    macro(AuthenticatorAttestationResponse) \
+    macro(AuthenticatorResponse) \
+    macro(BlobEvent) \
+    macro(Cache) \
+    macro(CacheStorage) \
+    macro(Client) \
+    macro(Clients) \
+    macro(Credential) \
+    macro(CredentialsContainer) \
+    macro(CSSAnimation) \
+    macro(CSSImageValue) \
+    macro(CSSNumericValue) \
+    macro(CSSPaintSize) \
+    macro(CSSStyleValue) \
+    macro(CSSTransition) \
+    macro(CSSUnitValue) \
+    macro(CSSUnparsedValue) \
+    macro(CustomElementRegistry) \
+    macro(Database) \
+    macro(DataTransferItem) \
+    macro(DataTransferItemList) \
+    macro(DocumentTimeline) \
+    macro(ExtendableEvent) \
+    macro(ExtendableMessageEvent) \
+    macro(FetchEvent) \
+    macro(FileSystem) \
+    macro(FileSystemDirectoryEntry) \
+    macro(FileSystemDirectoryReader) \
+    macro(FileSystemEntry) \
+    macro(FileSystemFileEntry) \
+    macro(Gamepad) \
+    macro(GamepadButton) \
+    macro(GamepadEvent) \
+    macro(GPU) \
+    macro(GPUAdapter) \
+    macro(GPUBindGroup) \
+    macro(GPUBindGroupLayout) \
+    macro(GPUBuffer) \
+    macro(GPUBufferUsage) \
+    macro(GPUCanvasContext) \
+    macro(GPUColorWriteBits) \
+    macro(GPUCommandBuffer) \
+    macro(GPUCommandEncoder) \
+    macro(GPUComputePassEncoder) \
+    macro(GPUComputePipeline) \
+    macro(GPUDevice) \
+    macro(GPUPipelineLayout) \
+    macro(GPUProgrammablePassEncoder) \
+    macro(GPUQueue) \
+    macro(GPURenderPassEncoder) \
+    macro(GPURenderPipeline) \
+    macro(GPUSampler) \
+    macro(GPUShaderModule) \
+    macro(GPUShaderStageBit) \
+    macro(GPUSwapChain) \
+    macro(GPUTexture) \
+    macro(GPUTextureUsage) \
+    macro(GPUTextureView) \
+    macro(HTMLAttachmentElement) \
+    macro(HTMLAudioElement) \
+    macro(HTMLDataListElement) \
+    macro(HTMLMenuItemElement) \
+    macro(HTMLSlotElement) \
+    macro(Headers) \
+    macro(IDBCursor) \
+    macro(IDBCursorWithValue) \
+    macro(IDBDatabase) \
+    macro(IDBFactory) \
+    macro(IDBIndex) \
+    macro(IDBKeyRange) \
+    macro(IDBObjectStore) \
+    macro(IDBOpenDBRequest) \
+    macro(IDBRequest) \
+    macro(IDBTransaction) \
+    macro(IDBVersionChangeEvent) \
+    macro(ImageBitmap) \
+    macro(ImageBitmapRenderingContext) \
+    macro(InputEvent) \
+    macro(IntersectionObserver) \
+    macro(IntersectionObserverEntry) \
+    macro(KeyframeEffect) \
+    macro(MediaCapabilities) \
+    macro(MediaCapabilitiesInfo) \
+    macro(MediaEncryptedEvent) \
+    macro(MediaKeyMessageEvent) \
+    macro(MediaKeySession) \
+    macro(MediaKeyStatusMap) \
+    macro(MediaKeySystemAccess) \
+    macro(MediaKeys) \
+    macro(MediaRecorder) \
+    macro(MediaRecorderErrorEvent) \
+    macro(MediaSource) \
+    macro(MediaStream) \
+    macro(MediaStreamTrack) \
+    macro(MerchantValidationEvent) \
+    macro(ModernMediaControls) \
+    macro(NavigatorCredentials) \
+    macro(NavigatorMediaDevices) \
+    macro(NavigatorUserMedia) \
+    macro(OffscreenCanvas) \
+    macro(OffscreenCanvasRenderingContext2D) \
+    macro(PaintRenderingContext2D) \
+    macro(PaymentAddress) \
+    macro(PaymentMethodChangeEvent) \
+    macro(PaymentRequest) \
+    macro(PaymentRequestUpdateEvent) \
+    macro(PaymentResponse) \
+    macro(SQLError) \
+    macro(SQLResultSet) \
+    macro(SQLResultSetRowList) \
+    macro(SQLTransaction) \
+    macro(PaintWorkletGlobalScope) \
+    macro(PerformanceEntry) \
+    macro(PerformanceEntryList) \
+    macro(PerformanceMark) \
+    macro(PerformanceMeasure) \
+    macro(PerformanceObserver) \
+    macro(PerformanceObserverEntryList) \
+    macro(PerformanceResourceTiming) \
+    macro(PerformanceServerTiming) \
+    macro(PointerEvent) \
+    macro(PublicKeyCredential) \
+    macro(ResizeObserver) \
+    macro(ResizeObserverEntry) \
+    macro(RTCCertificate) \
+    macro(RTCDTMFSender) \
+    macro(RTCDTMFToneChangeEvent) \
+    macro(RTCDataChannel) \
+    macro(RTCDataChannelEvent) \
+    macro(RTCIceCandidate) \
+    macro(RTCIceTransport) \
+    macro(RTCPeerConnection) \
+    macro(RTCPeerConnectionIceEvent) \
+    macro(RTCRtpReceiver) \
+    macro(RTCRtpSender) \
+    macro(RTCRtpTransceiver) \
+    macro(RTCSessionDescription) \
+    macro(RTCStatsReport) \
+    macro(RTCTrackEvent) \
+    macro(ReadableByteStreamController) \
+    macro(ReadableStream) \
+    macro(ReadableStreamBYOBReader) \
+    macro(ReadableStreamBYOBRequest) \
+    macro(ReadableStreamDefaultController) \
+    macro(ReadableStreamDefaultReader) \
+    macro(Request) \
+    macro(Response) \
+    macro(ScreenLuminance) \
+    macro(ServiceWorker) \
+    macro(ServiceWorkerContainer) \
+    macro(ServiceWorkerGlobalScope) \
+    macro(ServiceWorkerRegistration) \
+    macro(ShadowRoot) \
+    macro(SpectreGadget) \
+    macro(StaticRange) \
+    macro(StylePropertyMapReadOnly) \
+    macro(StylePropertyMap) \
+    macro(UndoItem) \
+    macro(UndoManager) \
+    macro(VRDisplay) \
+    macro(VRDisplayCapabilities) \
+    macro(VRDisplayEvent) \
+    macro(VREyeParameters) \
+    macro(VRFieldOfView) \
+    macro(VRFrameData) \
+    macro(VRStageParameters) \
+    macro(VisualViewport) \
+    macro(WebGL2RenderingContext) \
+    macro(WebGLVertexArrayObject) \
+    macro(WebKitMediaKeyError) \
+    macro(WebKitMediaKeyMessageEvent) \
+    macro(WebKitMediaKeyNeededEvent) \
+    macro(WebKitMediaKeySession) \
+    macro(WebKitMediaKeys) \
+    macro(WebSocket) \
+    macro(WindowClient) \
+    macro(Worklet) \
+    macro(WorkletGlobalScope) \
+    macro(WritableStream) \
+    macro(XMLHttpRequest) \
     macro(appendFromJS) \
+    macro(associatedReadableByteStreamController) \
     macro(autoAllocateChunkSize) \
+    macro(backingMap) \
+    macro(blur) \
     macro(body) \
+    macro(byobRequest) \
+    macro(caches) \
     macro(cancel) \
-    macro(cloneForJS) \
+    macro(cloneArrayBuffer) \
+    macro(close) \
     macro(closeRequested) \
+    macro(closed) \
     macro(closedPromiseCapability) \
+    macro(collectMatchingElementsInFlatTree) \
     macro(consume) \
     macro(consumeChunk) \
     macro(controlledReadableStream) \
     macro(controller) \
-    macro(createReadableStreamSource) \
+    macro(createImageBitmap) \
+    macro(createReadableStream) \
+    macro(customElements) \
     macro(disturbed) \
+    macro(document) \
+    macro(failureKind) \
+    macro(fetch) \
     macro(fetchRequest) \
     macro(fillFromJS) \
     macro(finishConsumingStream) \
-    macro(getUserMedia) \
-    macro(getRemoteStreams) \
-    macro(getSenders) \
+    macro(focus) \
+    macro(frames) \
     macro(getTracks) \
+    macro(getUserMedia) \
+    macro(gpu) \
+    macro(header) \
+    macro(href) \
+    macro(indexedDB) \
     macro(initializeWith) \
     macro(isDisturbed) \
     macro(isLoading) \
+    macro(isSecureContext) \
     macro(localStreams) \
-    macro(makeThisTypeError) \
+    macro(location) \
     macro(makeGetterTypeError) \
+    macro(makeThisTypeError) \
+    macro(matchingElementInFlatTree) \
     macro(mediaStreamTrackConstraints) \
+    macro(openDatabase) \
+    macro(ontouchcancel) \
+    macro(ontouchend) \
+    macro(ontouchmove) \
+    macro(ontouchstart) \
+    macro(ontouchforcechange) \
+    macro(onvrdisplayactivate) \
+    macro(onvrdisplayblur) \
+    macro(onvrdisplayconnect) \
+    macro(onvrdisplaydeactivate) \
+    macro(onvrdisplaydisconnect) \
+    macro(onvrdisplayfocus) \
+    macro(onvrdisplaypresentchange) \
+    macro(opener) \
     macro(operations) \
     macro(ownerReadableStream) \
+    macro(parent) \
     macro(pendingPullIntos) \
+    macro(postMessage) \
     macro(privateGetStats) \
     macro(pull) \
-    macro(pulling) \
     macro(pullAgain) \
+    macro(pulling) \
     macro(queue) \
     macro(queuedAddIceCandidate) \
     macro(queuedCreateAnswer) \
     macro(queuedCreateOffer) \
     macro(queuedSetLocalDescription) \
     macro(queuedSetRemoteDescription) \
-    macro(reader) \
+    macro(readIntoRequests) \
     macro(readRequests) \
     macro(readableByteStreamAPIEnabled) \
     macro(readableStreamController) \
+    macro(reader) \
     macro(readyPromiseCapability) \
-    macro(removeTrack) \
+    macro(response) \
     macro(responseCacheIsValid) \
     macro(retrieveResponse) \
-    macro(response) \
+    macro(self) \
     macro(setBody) \
+    macro(setBodyFromInputRequest) \
     macro(setStatus) \
-    macro(state) \
+    macro(showModalDialog) \
     macro(startConsumingStream) \
     macro(started) \
     macro(startedPromise) \
+    macro(state) \
     macro(storedError) \
     macro(strategy) \
     macro(strategyHWM) \
@@ -98,23 +333,26 @@ namespace WebCore {
     macro(streamWritable) \
     macro(structuredCloneArrayBuffer) \
     macro(structuredCloneArrayBufferView) \
-    macro(totalQueuedBytes) \
+    macro(top) \
     macro(underlyingByteSource) \
     macro(underlyingSink) \
     macro(underlyingSource) \
+    macro(view) \
+    macro(visualViewport) \
+    macro(webkit) \
+    macro(webkitAudioContext) \
+    macro(webkitIDBCursor) \
+    macro(webkitIDBDatabase) \
+    macro(webkitIDBFactory) \
+    macro(webkitIDBIndex) \
+    macro(webkitIDBKeyRange) \
+    macro(webkitIDBObjectStore) \
+    macro(webkitIDBRequest) \
+    macro(webkitIDBTransaction) \
+    macro(webkitIndexedDB) \
+    macro(window) \
     macro(writing) \
-    macro(Headers) \
-    macro(MediaStream) \
-    macro(MediaStreamTrack) \
-    macro(ReadableByteStreamController) \
-    macro(ReadableStream) \
-    macro(ReadableStreamDefaultController) \
-    macro(ReadableStreamDefaultReader) \
-    macro(Request) \
-    macro(Response) \
-    macro(RTCIceCandidate) \
-    macro(RTCSessionDescription) \
-    macro(XMLHttpRequest)
+    WEBCORE_ADDITIONAL_PRIVATE_IDENTIFIERS(macro) \
 
 class WebCoreBuiltinNames {
 public:

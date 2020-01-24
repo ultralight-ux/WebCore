@@ -31,30 +31,33 @@
 
 namespace WebCore {
 
-class Frame;
 class StorageArea;
 
-class Storage : public ScriptWrappable, public RefCounted<Storage>, public DOMWindowProperty {
+class Storage final : public ScriptWrappable, public RefCounted<Storage>, public DOMWindowProperty {
+    WTF_MAKE_ISO_ALLOCATED(Storage);
 public:
-    static Ref<Storage> create(Frame*, RefPtr<StorageArea>&&);
+    static Ref<Storage> create(DOMWindow&, Ref<StorageArea>&&);
     ~Storage();
 
-    ExceptionOr<unsigned> length() const;
-    ExceptionOr<String> key(unsigned index) const;
-    ExceptionOr<String> getItem(const String& key) const;
+    unsigned length() const;
+    String key(unsigned index) const;
+    String getItem(const String& key) const;
     ExceptionOr<void> setItem(const String& key, const String& value);
     ExceptionOr<void> removeItem(const String& key);
     ExceptionOr<void> clear();
-    ExceptionOr<bool> contains(const String& key) const;
+    bool contains(const String& key) const;
+    bool prewarm();
 
-    StorageArea& area() const { return *m_storageArea; }
+    // Bindings support functions.
+    bool isSupportedPropertyName(const String&) const;
+    Vector<AtomString> supportedPropertyNames() const;
+
+    StorageArea& area() const { return m_storageArea.get(); }
 
 private:
-    Storage(Frame*, RefPtr<StorageArea>&&);
+    Storage(DOMWindow&, Ref<StorageArea>&&);
 
-    bool isDisabledByPrivateBrowsing() const;
-
-    const RefPtr<StorageArea> m_storageArea;
+    const Ref<StorageArea> m_storageArea;
 };
 
 } // namespace WebCore

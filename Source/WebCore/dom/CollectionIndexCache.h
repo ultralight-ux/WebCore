@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,7 +43,13 @@ public:
 
     bool hasValidCache(const Collection& collection) const { return m_current != collection.collectionEnd() || m_nodeCountValid || m_listValid; }
     void invalidate(const Collection&);
-    size_t memoryCost() { return m_cachedList.capacity() * sizeof(NodeType*); }
+    size_t memoryCost()
+    {
+        // memoryCost() may be invoked concurrently from a GC thread, and we need to be careful
+        // about what data we access here and how. Accessing m_cachedList.capacity() is safe
+        // because it doesn't involve any pointer chasing.
+        return m_cachedList.capacity() * sizeof(NodeType*);
+    }
 
 private:
     unsigned computeNodeCountUpdatingListCache(const Collection&);
@@ -197,13 +203,14 @@ inline typename CollectionIndexCache<Collection, Iterator>::NodeType* Collection
 
     m_current = collection.collectionBegin();
     m_currentIndex = 0;
-    if (index && m_current != end) {
+    bool startIsEnd = m_current == end;
+    if (index && !startIsEnd) {
         collection.collectionTraverseForward(m_current, index, m_currentIndex);
         ASSERT(m_current != end || m_currentIndex < index);
     }
     if (m_current == end) {
         // Failed to find the index but at least we now know the size.
-        m_nodeCount = index ? m_currentIndex + 1 : 0;
+        m_nodeCount = startIsEnd ? 0 : m_currentIndex + 1;
         m_nodeCountValid = true;
         return nullptr;
     }

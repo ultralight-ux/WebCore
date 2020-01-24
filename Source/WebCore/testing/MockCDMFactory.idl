@@ -30,8 +30,13 @@
 ] interface MockCDMFactory {
     attribute sequence<DOMString> supportedDataTypes;
     attribute sequence<DOMString> supportedRobustness;
+    attribute sequence<MediaKeySessionType> supportedSessionTypes;
     attribute MediaKeysRequirement distinctiveIdentifiersRequirement;
     attribute MediaKeysRequirement persistentStateRequirement;
+    attribute boolean canCreateInstances;
+    attribute boolean supportsServerCertificates;
+    attribute boolean supportsSessions;
+    attribute sequence<MediaKeyEncryptionScheme> supportedEncryptionSchemes;
 
     void unregister();
 };

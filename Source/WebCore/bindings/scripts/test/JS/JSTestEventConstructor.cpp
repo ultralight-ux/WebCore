@@ -21,14 +21,24 @@
 #include "config.h"
 #include "JSTestEventConstructor.h"
 
+#include "JSDOMAttribute.h"
 #include "JSDOMBinding.h"
 #include "JSDOMConstructor.h"
-#include <runtime/Error.h>
+#include "JSDOMConvertBoolean.h"
+#include "JSDOMConvertInterface.h"
+#include "JSDOMConvertStrings.h"
+#include "JSDOMExceptionHandling.h"
+#include "JSDOMWrapperCache.h"
+#include "ScriptExecutionContext.h"
+#include <JavaScriptCore/HeapSnapshotBuilder.h>
+#include <JavaScriptCore/JSCInlines.h>
 #include <wtf/GetPtr.h>
+#include <wtf/PointerPreparations.h>
+#include <wtf/URL.h>
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
 template<> TestEventConstructor::Init convertDictionary<TestEventConstructor::Init>(ExecState& state, JSValue value)
 {
@@ -40,58 +50,86 @@ template<> TestEventConstructor::Init convertDictionary<TestEventConstructor::In
         throwTypeError(&state, throwScope);
         return { };
     }
-    if (UNLIKELY(object && object->type() == RegExpObjectType)) {
-        throwTypeError(&state, throwScope);
-        return { };
-    }
     TestEventConstructor::Init result;
-    JSValue bubblesValue = isNullOrUndefined ? jsUndefined() : object->get(&state, Identifier::fromString(&state, "bubbles"));
+    JSValue bubblesValue;
+    if (isNullOrUndefined)
+        bubblesValue = jsUndefined();
+    else {
+        bubblesValue = object->get(&state, Identifier::fromString(&state, "bubbles"));
+        RETURN_IF_EXCEPTION(throwScope, { });
+    }
     if (!bubblesValue.isUndefined()) {
         result.bubbles = convert<IDLBoolean>(state, bubblesValue);
         RETURN_IF_EXCEPTION(throwScope, { });
     } else
         result.bubbles = false;
-    JSValue cancelableValue = isNullOrUndefined ? jsUndefined() : object->get(&state, Identifier::fromString(&state, "cancelable"));
+    JSValue cancelableValue;
+    if (isNullOrUndefined)
+        cancelableValue = jsUndefined();
+    else {
+        cancelableValue = object->get(&state, Identifier::fromString(&state, "cancelable"));
+        RETURN_IF_EXCEPTION(throwScope, { });
+    }
     if (!cancelableValue.isUndefined()) {
         result.cancelable = convert<IDLBoolean>(state, cancelableValue);
         RETURN_IF_EXCEPTION(throwScope, { });
     } else
         result.cancelable = false;
-    JSValue composedValue = isNullOrUndefined ? jsUndefined() : object->get(&state, Identifier::fromString(&state, "composed"));
+    JSValue composedValue;
+    if (isNullOrUndefined)
+        composedValue = jsUndefined();
+    else {
+        composedValue = object->get(&state, Identifier::fromString(&state, "composed"));
+        RETURN_IF_EXCEPTION(throwScope, { });
+    }
     if (!composedValue.isUndefined()) {
         result.composed = convert<IDLBoolean>(state, composedValue);
         RETURN_IF_EXCEPTION(throwScope, { });
     } else
         result.composed = false;
-    JSValue attr2Value = isNullOrUndefined ? jsUndefined() : object->get(&state, Identifier::fromString(&state, "attr2"));
+    JSValue attr2Value;
+    if (isNullOrUndefined)
+        attr2Value = jsUndefined();
+    else {
+        attr2Value = object->get(&state, Identifier::fromString(&state, "attr2"));
+        RETURN_IF_EXCEPTION(throwScope, { });
+    }
     if (!attr2Value.isUndefined()) {
         result.attr2 = convert<IDLDOMString>(state, attr2Value);
         RETURN_IF_EXCEPTION(throwScope, { });
     } else
         result.attr2 = emptyString();
-    JSValue attr3Value = isNullOrUndefined ? jsUndefined() : object->get(&state, Identifier::fromString(&state, "attr3"));
+#if ENABLE(SPECIAL_EVENT)
+    JSValue attr3Value;
+    if (isNullOrUndefined)
+        attr3Value = jsUndefined();
+    else {
+        attr3Value = object->get(&state, Identifier::fromString(&state, "attr3"));
+        RETURN_IF_EXCEPTION(throwScope, { });
+    }
     if (!attr3Value.isUndefined()) {
         result.attr3 = convert<IDLDOMString>(state, attr3Value);
         RETURN_IF_EXCEPTION(throwScope, { });
     } else
         result.attr3 = emptyString();
+#endif
     return result;
 }
 
 // Attributes
 
+JSC::EncodedJSValue jsTestEventConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
+bool setJSTestEventConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 JSC::EncodedJSValue jsTestEventConstructorAttr1(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
 JSC::EncodedJSValue jsTestEventConstructorAttr2(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
 #if ENABLE(SPECIAL_EVENT)
 JSC::EncodedJSValue jsTestEventConstructorAttr3(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
 #endif
-JSC::EncodedJSValue jsTestEventConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-bool setJSTestEventConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 
 class JSTestEventConstructorPrototype : public JSC::JSNonFinalObject {
 public:
     using Base = JSC::JSNonFinalObject;
-    static JSTestEventConstructorPrototype* create(JSC::VM& vm, JSC::JSGlobalObject* globalObject, JSC::Structure* structure)
+    static JSTestEventConstructorPrototype* create(JSC::VM& vm, JSDOMGlobalObject* globalObject, JSC::Structure* structure)
     {
         JSTestEventConstructorPrototype* ptr = new (NotNull, JSC::allocateCell<JSTestEventConstructorPrototype>(vm.heap)) JSTestEventConstructorPrototype(vm, globalObject, structure);
         ptr->finishCreation(vm);
@@ -124,12 +162,12 @@ template<> EncodedJSValue JSC_HOST_CALL JSTestEventConstructorConstructor::const
     ASSERT(castedThis);
     if (UNLIKELY(state->argumentCount() < 1))
         return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
-    auto type = convert<IDLDOMString>(*state, state->uncheckedArgument(0), StringConversionConfiguration::Normal);
+    auto type = convert<IDLDOMString>(*state, state->uncheckedArgument(0));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
     auto eventInitDict = convert<IDLDictionary<TestEventConstructor::Init>>(*state, state->argument(1));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
     auto object = TestEventConstructor::create(WTFMove(type), WTFMove(eventInitDict));
-    return JSValue::encode(toJSNewlyCreated(state, castedThis->globalObject(), WTFMove(object)));
+    return JSValue::encode(toJSNewlyCreated<IDLInterface<TestEventConstructor>>(*state, *castedThis->globalObject(), WTFMove(object)));
 }
 
 template<> JSValue JSTestEventConstructorConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
@@ -139,36 +177,36 @@ template<> JSValue JSTestEventConstructorConstructor::prototypeForStructure(JSC:
 
 template<> void JSTestEventConstructorConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, JSTestEventConstructor::prototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestEventConstructor"))), ReadOnly | DontEnum);
-    putDirect(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestEventConstructor::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String("TestEventConstructor"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->length, jsNumber(1), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
 
-template<> const ClassInfo JSTestEventConstructorConstructor::s_info = { "TestEventConstructor", &Base::s_info, 0, CREATE_METHOD_TABLE(JSTestEventConstructorConstructor) };
+template<> const ClassInfo JSTestEventConstructorConstructor::s_info = { "TestEventConstructor", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestEventConstructorConstructor) };
 
 /* Hash table for prototype */
 
 static const HashTableValue JSTestEventConstructorPrototypeTableValues[] =
 {
-    { "constructor", DontEnum, NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestEventConstructorConstructor), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(setJSTestEventConstructorConstructor) } },
-    { "attr1", ReadOnly | CustomAccessor, NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestEventConstructorAttr1), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
-    { "attr2", ReadOnly | CustomAccessor, NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestEventConstructorAttr2), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
+    { "constructor", static_cast<unsigned>(JSC::PropertyAttribute::DontEnum), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestEventConstructorConstructor), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(setJSTestEventConstructorConstructor) } },
+    { "attr1", static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestEventConstructorAttr1), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
+    { "attr2", static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestEventConstructorAttr2), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
 #if ENABLE(SPECIAL_EVENT)
-    { "attr3", ReadOnly | CustomAccessor, NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestEventConstructorAttr3), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
+    { "attr3", static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestEventConstructorAttr3), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
 #else
     { 0, 0, NoIntrinsic, { 0, 0 } },
 #endif
 };
 
-const ClassInfo JSTestEventConstructorPrototype::s_info = { "TestEventConstructorPrototype", &Base::s_info, 0, CREATE_METHOD_TABLE(JSTestEventConstructorPrototype) };
+const ClassInfo JSTestEventConstructorPrototype::s_info = { "TestEventConstructorPrototype", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestEventConstructorPrototype) };
 
 void JSTestEventConstructorPrototype::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    reifyStaticProperties(vm, JSTestEventConstructorPrototypeTableValues, *this);
+    reifyStaticProperties(vm, JSTestEventConstructor::info(), JSTestEventConstructorPrototypeTableValues, *this);
 }
 
-const ClassInfo JSTestEventConstructor::s_info = { "TestEventConstructor", &Base::s_info, 0, CREATE_METHOD_TABLE(JSTestEventConstructor) };
+const ClassInfo JSTestEventConstructor::s_info = { "TestEventConstructor", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestEventConstructor) };
 
 JSTestEventConstructor::JSTestEventConstructor(Structure* structure, JSDOMGlobalObject& globalObject, Ref<TestEventConstructor>&& impl)
     : JSEvent(structure, globalObject, WTFMove(impl))
@@ -178,30 +216,51 @@ JSTestEventConstructor::JSTestEventConstructor(Structure* structure, JSDOMGlobal
 void JSTestEventConstructor::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(info()));
+    ASSERT(inherits(vm, info()));
 
 }
 
-JSObject* JSTestEventConstructor::createPrototype(VM& vm, JSGlobalObject* globalObject)
+JSObject* JSTestEventConstructor::createPrototype(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    return JSTestEventConstructorPrototype::create(vm, globalObject, JSTestEventConstructorPrototype::createStructure(vm, globalObject, JSEvent::prototype(vm, globalObject)));
+    return JSTestEventConstructorPrototype::create(vm, &globalObject, JSTestEventConstructorPrototype::createStructure(vm, &globalObject, JSEvent::prototype(vm, globalObject)));
 }
 
-JSObject* JSTestEventConstructor::prototype(VM& vm, JSGlobalObject* globalObject)
+JSObject* JSTestEventConstructor::prototype(VM& vm, JSDOMGlobalObject& globalObject)
 {
     return getDOMPrototype<JSTestEventConstructor>(vm, globalObject);
 }
 
-template<> inline JSTestEventConstructor* BindingCaller<JSTestEventConstructor>::castForAttribute(ExecState&, EncodedJSValue thisValue)
+JSValue JSTestEventConstructor::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return jsDynamicDowncast<JSTestEventConstructor*>(JSValue::decode(thisValue));
+    return getDOMConstructor<JSTestEventConstructorConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
-static inline JSValue jsTestEventConstructorAttr1Getter(ExecState&, JSTestEventConstructor&, ThrowScope& throwScope);
-
-EncodedJSValue jsTestEventConstructorAttr1(ExecState* state, EncodedJSValue thisValue, PropertyName)
+template<> inline JSTestEventConstructor* IDLAttribute<JSTestEventConstructor>::cast(ExecState& state, EncodedJSValue thisValue)
 {
-    return BindingCaller<JSTestEventConstructor>::attribute<jsTestEventConstructorAttr1Getter>(state, thisValue, "attr1");
+    return jsDynamicCast<JSTestEventConstructor*>(state.vm(), JSValue::decode(thisValue));
+}
+
+EncodedJSValue jsTestEventConstructorConstructor(ExecState* state, EncodedJSValue thisValue, PropertyName)
+{
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    auto* prototype = jsDynamicCast<JSTestEventConstructorPrototype*>(vm, JSValue::decode(thisValue));
+    if (UNLIKELY(!prototype))
+        return throwVMTypeError(state, throwScope);
+    return JSValue::encode(JSTestEventConstructor::getConstructor(state->vm(), prototype->globalObject()));
+}
+
+bool setJSTestEventConstructorConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+{
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    auto* prototype = jsDynamicCast<JSTestEventConstructorPrototype*>(vm, JSValue::decode(thisValue));
+    if (UNLIKELY(!prototype)) {
+        throwVMTypeError(state, throwScope);
+        return false;
+    }
+    // Shadowing a built-in constructor
+    return prototype->putDirect(vm, vm.propertyNames->constructor, JSValue::decode(encodedValue));
 }
 
 static inline JSValue jsTestEventConstructorAttr1Getter(ExecState& state, JSTestEventConstructor& thisObject, ThrowScope& throwScope)
@@ -209,15 +268,13 @@ static inline JSValue jsTestEventConstructorAttr1Getter(ExecState& state, JSTest
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(state);
     auto& impl = thisObject.wrapped();
-    JSValue result = toJS<IDLDOMString>(state, impl.attr1());
+    JSValue result = toJS<IDLDOMString>(state, throwScope, impl.attr1());
     return result;
 }
 
-static inline JSValue jsTestEventConstructorAttr2Getter(ExecState&, JSTestEventConstructor&, ThrowScope& throwScope);
-
-EncodedJSValue jsTestEventConstructorAttr2(ExecState* state, EncodedJSValue thisValue, PropertyName)
+EncodedJSValue jsTestEventConstructorAttr1(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    return BindingCaller<JSTestEventConstructor>::attribute<jsTestEventConstructorAttr2Getter>(state, thisValue, "attr2");
+    return IDLAttribute<JSTestEventConstructor>::get<jsTestEventConstructorAttr1Getter, CastedThisErrorBehavior::Assert>(*state, thisValue, "attr1");
 }
 
 static inline JSValue jsTestEventConstructorAttr2Getter(ExecState& state, JSTestEventConstructor& thisObject, ThrowScope& throwScope)
@@ -225,56 +282,39 @@ static inline JSValue jsTestEventConstructorAttr2Getter(ExecState& state, JSTest
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(state);
     auto& impl = thisObject.wrapped();
-    JSValue result = toJS<IDLDOMString>(state, impl.attr2());
+    JSValue result = toJS<IDLDOMString>(state, throwScope, impl.attr2());
     return result;
 }
 
-#if ENABLE(SPECIAL_EVENT)
-static inline JSValue jsTestEventConstructorAttr3Getter(ExecState&, JSTestEventConstructor&, ThrowScope& throwScope);
-
-EncodedJSValue jsTestEventConstructorAttr3(ExecState* state, EncodedJSValue thisValue, PropertyName)
+EncodedJSValue jsTestEventConstructorAttr2(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    return BindingCaller<JSTestEventConstructor>::attribute<jsTestEventConstructorAttr3Getter>(state, thisValue, "attr3");
+    return IDLAttribute<JSTestEventConstructor>::get<jsTestEventConstructorAttr2Getter, CastedThisErrorBehavior::Assert>(*state, thisValue, "attr2");
 }
 
+#if ENABLE(SPECIAL_EVENT)
 static inline JSValue jsTestEventConstructorAttr3Getter(ExecState& state, JSTestEventConstructor& thisObject, ThrowScope& throwScope)
 {
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(state);
     auto& impl = thisObject.wrapped();
-    JSValue result = toJS<IDLDOMString>(state, impl.attr3());
+    JSValue result = toJS<IDLDOMString>(state, throwScope, impl.attr3());
     return result;
+}
+
+EncodedJSValue jsTestEventConstructorAttr3(ExecState* state, EncodedJSValue thisValue, PropertyName)
+{
+    return IDLAttribute<JSTestEventConstructor>::get<jsTestEventConstructorAttr3Getter, CastedThisErrorBehavior::Assert>(*state, thisValue, "attr3");
 }
 
 #endif
 
-EncodedJSValue jsTestEventConstructorConstructor(ExecState* state, EncodedJSValue thisValue, PropertyName)
+void JSTestEventConstructor::heapSnapshot(JSCell* cell, HeapSnapshotBuilder& builder)
 {
-    VM& vm = state->vm();
-    auto throwScope = DECLARE_THROW_SCOPE(vm);
-    JSTestEventConstructorPrototype* domObject = jsDynamicDowncast<JSTestEventConstructorPrototype*>(JSValue::decode(thisValue));
-    if (UNLIKELY(!domObject))
-        return throwVMTypeError(state, throwScope);
-    return JSValue::encode(JSTestEventConstructor::getConstructor(state->vm(), domObject->globalObject()));
-}
-
-bool setJSTestEventConstructorConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
-{
-    VM& vm = state->vm();
-    auto throwScope = DECLARE_THROW_SCOPE(vm);
-    JSValue value = JSValue::decode(encodedValue);
-    JSTestEventConstructorPrototype* domObject = jsDynamicDowncast<JSTestEventConstructorPrototype*>(JSValue::decode(thisValue));
-    if (UNLIKELY(!domObject)) {
-        throwVMTypeError(state, throwScope);
-        return false;
-    }
-    // Shadowing a built-in constructor
-    return domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
-}
-
-JSValue JSTestEventConstructor::getConstructor(VM& vm, const JSGlobalObject* globalObject)
-{
-    return getDOMConstructor<JSTestEventConstructorConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    auto* thisObject = jsCast<JSTestEventConstructor*>(cell);
+    builder.setWrappedObjectForCell(cell, &thisObject->wrapped());
+    if (thisObject->scriptExecutionContext())
+        builder.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
+    Base::heapSnapshot(cell, builder);
 }
 
 #if ENABLE(BINDING_INTEGRITY)
@@ -292,15 +332,15 @@ JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, 
 #if ENABLE(BINDING_INTEGRITY)
     void* actualVTablePointer = *(reinterpret_cast<void**>(impl.ptr()));
 #if PLATFORM(WIN)
-    void* expectedVTablePointer = reinterpret_cast<void*>(__identifier("??_7TestEventConstructor@WebCore@@6B@"));
+    void* expectedVTablePointer = WTF_PREPARE_VTBL_POINTER_FOR_INSPECTION(__identifier("??_7TestEventConstructor@WebCore@@6B@"));
 #else
-    void* expectedVTablePointer = &_ZTVN7WebCore20TestEventConstructorE[2];
-#if COMPILER(CLANG)
+    void* expectedVTablePointer = WTF_PREPARE_VTBL_POINTER_FOR_INSPECTION(&_ZTVN7WebCore20TestEventConstructorE[2]);
+#endif
+
     // If this fails TestEventConstructor does not have a vtable, so you need to add the
     // ImplementationLacksVTable attribute to the interface definition
-    static_assert(__is_polymorphic(TestEventConstructor), "TestEventConstructor is not polymorphic");
-#endif
-#endif
+    static_assert(std::is_polymorphic<TestEventConstructor>::value, "TestEventConstructor is not polymorphic");
+
     // If you hit this assertion you either have a use after free bug, or
     // TestEventConstructor has subclasses. If TestEventConstructor has subclasses that get passed
     // to toJS() we currently require TestEventConstructor you to opt out of binding hardening

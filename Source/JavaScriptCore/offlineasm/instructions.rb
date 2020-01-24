@@ -1,4 +1,4 @@
-# Copyright (C) 2011 Apple Inc. All rights reserved.
+# Copyright (C) 2011-2018 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -53,9 +53,11 @@ MACRO_INSTRUCTIONS =
      "loadi",
      "loadis",
      "loadb",
-     "loadbs",
+     "loadbsi",
+     "loadbsq",
      "loadh",
-     "loadhs",
+     "loadhsi",
+     "loadhsq",
      "storei",
      "storeb",
      "loadd",
@@ -249,7 +251,11 @@ MACRO_INSTRUCTIONS =
      "bnz",
      "leai",
      "leap",
-     "memfence"
+     "memfence",
+     "tagReturnAddress",
+     "untagReturnAddress",
+     "removeCodePtrTag",
+     "untagArrayPtr",    
     ]
 
 X86_INSTRUCTIONS =
@@ -261,13 +267,16 @@ X86_INSTRUCTIONS =
 ARM_INSTRUCTIONS =
     [
      "clrbp",
-     "mvlbl"
+     "mvlbl",
+     "globaladdr"
     ]
 
 ARM64_INSTRUCTIONS =
     [
+     "bfiq", # Bit field insert <source reg> <last bit written> <width immediate> <dest reg>
      "pcrtoaddr",   # Address from PC relative offset - adr instruction
-     "nopFixCortexA53Err835769" # nop on Cortex-A53 (nothing otherwise)
+     "nopFixCortexA53Err835769", # nop on Cortex-A53 (nothing otherwise)
+     "globaladdr"
     ]
 
 RISC_INSTRUCTIONS =
@@ -290,23 +299,6 @@ MIPS_INSTRUCTIONS =
     "pichdr"
     ]
 
-SH4_INSTRUCTIONS =
-    [
-    "flushcp",
-    "alignformova",
-    "mova",
-    "shllx",
-    "shlrx",
-    "shld",
-    "shad",
-    "bdnan",
-    "loaddReversedAndIncrementAddress",
-    "storedReversedAndDecrementAddress",
-    "ldspr",
-    "stspr",
-    "setargs"
-    ]
-
 CXX_INSTRUCTIONS =
     [
      "cloopCrash",              # no operands
@@ -324,7 +316,7 @@ CXX_INSTRUCTIONS =
      "cloopDo",              # no operands
     ]
 
-INSTRUCTIONS = MACRO_INSTRUCTIONS + X86_INSTRUCTIONS + ARM_INSTRUCTIONS + ARM64_INSTRUCTIONS + RISC_INSTRUCTIONS + MIPS_INSTRUCTIONS + SH4_INSTRUCTIONS + CXX_INSTRUCTIONS
+INSTRUCTIONS = MACRO_INSTRUCTIONS + X86_INSTRUCTIONS + ARM_INSTRUCTIONS + ARM64_INSTRUCTIONS + RISC_INSTRUCTIONS + MIPS_INSTRUCTIONS + CXX_INSTRUCTIONS
 
 INSTRUCTION_SET = INSTRUCTIONS.to_set
 
@@ -336,3 +328,7 @@ def hasFallThrough(instruction)
     instruction != "ret" and instruction != "jmp"
 end
 
+def isPowerOfTwo(value)
+    return false if value <= 0
+    (value & (value - 1)).zero?
+end

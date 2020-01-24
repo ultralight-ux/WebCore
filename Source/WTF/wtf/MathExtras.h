@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008, 2009, 2010, 2013, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,20 +23,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef WTF_MathExtras_h
-#define WTF_MathExtras_h
+#pragma once
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <float.h>
 #include <limits>
 #include <stdint.h>
 #include <stdlib.h>
 #include <wtf/StdLibExtras.h>
-
-#if OS(SOLARIS)
-#include <ieeefp.h>
-#endif
 
 #if OS(OPENBSD)
 #include <sys/types.h>
@@ -73,24 +69,6 @@ const float sqrtOfTwoFloat = 1.41421356237309504880f;
 #else
 const double sqrtOfTwoDouble = M_SQRT2;
 const float sqrtOfTwoFloat = static_cast<float>(M_SQRT2);
-#endif
-
-#if OS(SOLARIS)
-
-namespace std {
-
-#ifndef isfinite
-inline bool isfinite(double x) { return finite(x) && !isnand(x); }
-#endif
-#ifndef signbit
-inline bool signbit(double x) { return copysign(1.0, x) < 0; }
-#endif
-#ifndef isinf
-inline bool isinf(double x) { return !finite(x) && !isnand(x); }
-#endif
-
-} // namespace std
-
 #endif
 
 #if COMPILER(MSVC)
@@ -141,20 +119,115 @@ inline float rad2grad(float r) { return r * 200.0f / piFloat; }
 inline float grad2rad(float g) { return g * piFloat / 200.0f; }
 
 // std::numeric_limits<T>::min() returns the smallest positive value for floating point types
-template<typename T> inline T defaultMinimumForClamp() { return std::numeric_limits<T>::min(); }
-template<> inline float defaultMinimumForClamp() { return -std::numeric_limits<float>::max(); }
-template<> inline double defaultMinimumForClamp() { return -std::numeric_limits<double>::max(); }
-template<typename T> inline T defaultMaximumForClamp() { return std::numeric_limits<T>::max(); }
+template<typename T> constexpr T defaultMinimumForClamp() { return std::numeric_limits<T>::min(); }
+template<> constexpr float defaultMinimumForClamp() { return -std::numeric_limits<float>::max(); }
+template<> constexpr double defaultMinimumForClamp() { return -std::numeric_limits<double>::max(); }
+template<typename T> constexpr T defaultMaximumForClamp() { return std::numeric_limits<T>::max(); }
 
-template<typename T> inline T clampTo(double value, T min = defaultMinimumForClamp<T>(), T max = defaultMaximumForClamp<T>())
+// Same type in and out.
+template<typename TargetType, typename SourceType>
+typename std::enable_if<std::is_same<TargetType, SourceType>::value, TargetType>::type
+clampTo(SourceType value, TargetType min = defaultMinimumForClamp<TargetType>(), TargetType max = defaultMaximumForClamp<TargetType>())
 {
-    if (value >= static_cast<double>(max))
+    if (value >= max)
         return max;
-    if (value <= static_cast<double>(min))
+    if (value <= min)
         return min;
-    return static_cast<T>(value);
+    return value;
 }
-template<> inline long long int clampTo(double, long long int, long long int); // clampTo does not support long long ints.
+
+// Floating point source.
+template<typename TargetType, typename SourceType>
+typename std::enable_if<!std::is_same<TargetType, SourceType>::value
+    && std::is_floating_point<SourceType>::value
+    && !(std::is_floating_point<TargetType>::value && sizeof(TargetType) > sizeof(SourceType)), TargetType>::type
+clampTo(SourceType value, TargetType min = defaultMinimumForClamp<TargetType>(), TargetType max = defaultMaximumForClamp<TargetType>())
+{
+    if (value >= static_cast<SourceType>(max))
+        return max;
+    if (value <= static_cast<SourceType>(min))
+        return min;
+    return static_cast<TargetType>(value);
+}
+
+template<typename TargetType, typename SourceType>
+typename std::enable_if<!std::is_same<TargetType, SourceType>::value
+    && std::is_floating_point<SourceType>::value
+    && std::is_floating_point<TargetType>::value
+    && (sizeof(TargetType) > sizeof(SourceType)), TargetType>::type
+clampTo(SourceType value, TargetType min = defaultMinimumForClamp<TargetType>(), TargetType max = defaultMaximumForClamp<TargetType>())
+{
+    TargetType convertedValue = static_cast<TargetType>(value);
+    if (convertedValue >= max)
+        return max;
+    if (convertedValue <= min)
+        return min;
+    return convertedValue;
+}
+
+// Source and Target have the same sign and Source is larger or equal to Target
+template<typename TargetType, typename SourceType>
+typename std::enable_if<!std::is_same<TargetType, SourceType>::value
+    && std::numeric_limits<SourceType>::is_integer
+    && std::numeric_limits<TargetType>::is_integer
+    && std::numeric_limits<TargetType>::is_signed == std::numeric_limits<SourceType>::is_signed
+    && sizeof(SourceType) >= sizeof(TargetType), TargetType>::type
+clampTo(SourceType value, TargetType min = defaultMinimumForClamp<TargetType>(), TargetType max = defaultMaximumForClamp<TargetType>())
+{
+    if (value >= static_cast<SourceType>(max))
+        return max;
+    if (value <= static_cast<SourceType>(min))
+        return min;
+    return static_cast<TargetType>(value);
+}
+
+// Clamping a unsigned integer to the max signed value.
+template<typename TargetType, typename SourceType>
+typename std::enable_if<!std::is_same<TargetType, SourceType>::value
+    && std::numeric_limits<SourceType>::is_integer
+    && std::numeric_limits<TargetType>::is_integer
+    && std::numeric_limits<TargetType>::is_signed
+    && !std::numeric_limits<SourceType>::is_signed
+    && sizeof(SourceType) >= sizeof(TargetType), TargetType>::type
+clampTo(SourceType value)
+{
+    TargetType max = std::numeric_limits<TargetType>::max();
+    if (value >= static_cast<SourceType>(max))
+        return max;
+    return static_cast<TargetType>(value);
+}
+
+// Clamping a signed integer into a valid unsigned integer.
+template<typename TargetType, typename SourceType>
+typename std::enable_if<!std::is_same<TargetType, SourceType>::value
+    && std::numeric_limits<SourceType>::is_integer
+    && std::numeric_limits<TargetType>::is_integer
+    && !std::numeric_limits<TargetType>::is_signed
+    && std::numeric_limits<SourceType>::is_signed
+    && sizeof(SourceType) == sizeof(TargetType), TargetType>::type
+clampTo(SourceType value)
+{
+    if (value < 0)
+        return 0;
+    return static_cast<TargetType>(value);
+}
+
+template<typename TargetType, typename SourceType>
+typename std::enable_if<!std::is_same<TargetType, SourceType>::value
+    && std::numeric_limits<SourceType>::is_integer
+    && std::numeric_limits<TargetType>::is_integer
+    && !std::numeric_limits<TargetType>::is_signed
+    && std::numeric_limits<SourceType>::is_signed
+    && (sizeof(SourceType) > sizeof(TargetType)), TargetType>::type
+clampTo(SourceType value)
+{
+    if (value < 0)
+        return 0;
+    TargetType max = std::numeric_limits<TargetType>::max();
+    if (value >= static_cast<SourceType>(max))
+        return max;
+    return static_cast<TargetType>(value);
+}
 
 inline int clampToInteger(double value)
 {
@@ -193,6 +266,13 @@ inline int clampToInteger(T x)
     return static_cast<int>(x);
 }
 
+// Explicitly accept 64bit result when clamping double value.
+// Keep in mind that double can only represent 53bit integer precisely.
+template<typename T> constexpr T clampToAccepting64(double value, T min = defaultMinimumForClamp<T>(), T max = defaultMaximumForClamp<T>())
+{
+    return (value >= static_cast<double>(max)) ? max : ((value <= static_cast<double>(min)) ? min : static_cast<T>(value));
+}
+
 inline bool isWithinIntRange(float x)
 {
     return x > static_cast<float>(std::numeric_limits<int>::min()) && x < static_cast<float>(std::numeric_limits<int>::max());
@@ -207,31 +287,19 @@ inline float normalizedFloat(float value)
     return value;
 }
 
-template<typename T> inline bool hasOneBitSet(T value)
+template<typename T> constexpr bool hasOneBitSet(T value)
 {
     return !((value - 1) & value) && value;
 }
 
-template<typename T> inline bool hasZeroOrOneBitsSet(T value)
+template<typename T> constexpr bool hasZeroOrOneBitsSet(T value)
 {
     return !((value - 1) & value);
 }
 
-template<typename T> inline bool hasTwoOrMoreBitsSet(T value)
+template<typename T> constexpr bool hasTwoOrMoreBitsSet(T value)
 {
     return !hasZeroOrOneBitsSet(value);
-}
-
-template <typename T> inline unsigned getLSBSet(T value)
-{
-    typedef typename std::make_unsigned<T>::type UnsignedT;
-    unsigned result = 0;
-
-    UnsignedT unsignedValue = static_cast<UnsignedT>(value);
-    while (unsignedValue >>= 1)
-        ++result;
-
-    return result;
 }
 
 template<typename T> inline T divideRoundedUp(T a, T b)
@@ -265,6 +333,11 @@ template<typename T> inline bool isGreaterThanNonZeroPowerOfTwo(T value, unsigne
     // (where I use ** to denote pow()).
     return !!((value >> 1) >> (power - 1));
 }
+
+template<typename T> constexpr bool isLessThan(const T& a, const T& b) { return a < b; }
+template<typename T> constexpr bool isLessThanEqual(const T& a, const T& b) { return a <= b; }
+template<typename T> constexpr bool isGreaterThan(const T& a, const T& b) { return a > b; }
+template<typename T> constexpr bool isGreaterThanEqual(const T& a, const T& b) { return a >= b; }
 
 #ifndef UINT64_C
 #if COMPILER(MSVC)
@@ -344,7 +417,7 @@ inline void doubleToInteger(double d, unsigned long long& value)
 namespace WTF {
 
 // From http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
-inline uint32_t roundUpToPowerOfTwo(uint32_t v)
+constexpr uint32_t roundUpToPowerOfTwo(uint32_t v)
 {
     v--;
     v |= v >> 1;
@@ -356,19 +429,34 @@ inline uint32_t roundUpToPowerOfTwo(uint32_t v)
     return v;
 }
 
+constexpr unsigned maskForSize(unsigned size)
+{
+    if (!size)
+        return 0;
+    return roundUpToPowerOfTwo(size) - 1;
+}
+
 inline unsigned fastLog2(unsigned i)
 {
     unsigned log2 = 0;
     if (i & (i - 1))
         log2 += 1;
-    if (i >> 16)
-        log2 += 16, i >>= 16;
-    if (i >> 8)
-        log2 += 8, i >>= 8;
-    if (i >> 4)
-        log2 += 4, i >>= 4;
-    if (i >> 2)
-        log2 += 2, i >>= 2;
+    if (i >> 16) {
+        log2 += 16;
+        i >>= 16;
+    }
+    if (i >> 8) {
+        log2 += 8;
+        i >>= 8;
+    }
+    if (i >> 4) {
+        log2 += 4;
+        i >>= 4;
+    }
+    if (i >> 2) {
+        log2 += 2;
+        i >>= 2;
+    }
     if (i >> 1)
         log2 += 1;
     return log2;
@@ -476,6 +564,183 @@ inline bool rangesOverlap(T leftMin, T leftMax, T rightMin, T rightMax)
     return nonEmptyRangesOverlap(leftMin, leftMax, rightMin, rightMax);
 }
 
+// This mask is not necessarily the minimal mask, specifically if size is
+// a power of 2. It has the advantage that it's fast to compute, however.
+inline uint32_t computeIndexingMask(uint32_t size)
+{
+    return static_cast<uint64_t>(static_cast<uint32_t>(-1)) >> std::clz(size);
+}
+
+constexpr unsigned preciseIndexMaskShiftForSize(unsigned size)
+{
+    return size * 8 - 1;
+}
+
+template<typename T>
+constexpr unsigned preciseIndexMaskShift()
+{
+    return preciseIndexMaskShiftForSize(sizeof(T));
+}
+
+template<typename T>
+T opaque(T pointer)
+{
+#if !OS(WINDOWS)
+    asm("" : "+r"(pointer));
+#endif
+    return pointer;
+}
+
+// This masks the given pointer with 0xffffffffffffffff (ptrwidth) if `index <
+// length`. Otherwise, it masks the pointer with 0. Similar to Linux kernel's array_ptr.
+template<typename T>
+inline T* preciseIndexMaskPtr(uintptr_t index, uintptr_t length, T* value)
+{
+    uintptr_t result = bitwise_cast<uintptr_t>(value) & static_cast<uintptr_t>(
+        static_cast<intptr_t>(index - opaque(length)) >>
+        static_cast<intptr_t>(preciseIndexMaskShift<T*>()));
+    return bitwise_cast<T*>(result);
+}
+
+template<typename VectorType, typename RandomFunc>
+void shuffleVector(VectorType& vector, size_t size, const RandomFunc& randomFunc)
+{
+    for (size_t i = 0; i + 1 < size; ++i)
+        std::swap(vector[i], vector[i + randomFunc(size - i)]);
+}
+
+template<typename VectorType, typename RandomFunc>
+void shuffleVector(VectorType& vector, const RandomFunc& randomFunc)
+{
+    shuffleVector(vector, vector.size(), randomFunc);
+}
+
+template <typename T>
+constexpr unsigned clzConstexpr(T value)
+{
+    constexpr unsigned bitSize = sizeof(T) * CHAR_BIT;
+
+    using UT = typename std::make_unsigned<T>::type;
+    UT uValue = value;
+
+    unsigned zeroCount = 0;
+    for (int i = bitSize - 1; i >= 0; i--) {
+        if (uValue >> i)
+            break;
+        zeroCount++;
+    }
+    return zeroCount;
+}
+
+template<typename T>
+inline unsigned clz(T value)
+{
+    constexpr unsigned bitSize = sizeof(T) * CHAR_BIT;
+
+    using UT = typename std::make_unsigned<T>::type;
+    UT uValue = value;
+
+#if COMPILER(GCC_COMPATIBLE)
+    constexpr unsigned bitSize64 = sizeof(uint64_t) * CHAR_BIT;
+    if (uValue)
+        return __builtin_clzll(uValue) - (bitSize64 - bitSize);
+    return bitSize;
+#elif COMPILER(MSVC) && !CPU(X86)
+    // Visual Studio 2008 or upper have __lzcnt, but we can't detect Intel AVX at compile time.
+    // So we use bit-scan-reverse operation to calculate clz.
+    // _BitScanReverse64 is defined in X86_64 and ARM in MSVC supported environments.
+    unsigned long ret = 0;
+    if (_BitScanReverse64(&ret, uValue))
+        return bitSize - 1 - ret;
+    return bitSize;
+#else
+    UNUSED_PARAM(bitSize);
+    UNUSED_PARAM(uValue);
+    return clzConstexpr(value);
+#endif
+}
+
+template <typename T>
+constexpr unsigned ctzConstexpr(T value)
+{
+    constexpr unsigned bitSize = sizeof(T) * CHAR_BIT;
+
+    using UT = typename std::make_unsigned<T>::type;
+    UT uValue = value;
+
+    unsigned zeroCount = 0;
+    for (unsigned i = 0; i < bitSize; i++) {
+        if (uValue & 1)
+            break;
+
+        zeroCount++;
+        uValue >>= 1;
+    }
+    return zeroCount;
+}
+
+template<typename T>
+inline unsigned ctz(T value)
+{
+    constexpr unsigned bitSize = sizeof(T) * CHAR_BIT;
+
+    using UT = typename std::make_unsigned<T>::type;
+    UT uValue = value;
+
+#if COMPILER(GCC_COMPATIBLE)
+    if (uValue)
+        return __builtin_ctzll(uValue);
+    return bitSize;
+#elif COMPILER(MSVC) && !CPU(X86)
+    unsigned long ret = 0;
+    if (_BitScanForward64(&ret, uValue))
+        return ret;
+    return bitSize;
+#else
+    UNUSED_PARAM(bitSize);
+    UNUSED_PARAM(uValue);
+    return ctzConstexpr(value);
+#endif
+}
+
+template<typename T>
+inline unsigned getLSBSet(T t)
+{
+    ASSERT(t);
+    return ctz(t);
+}
+
+template<typename T>
+constexpr unsigned getLSBSetConstexpr(T t)
+{
+    ASSERT_UNDER_CONSTEXPR_CONTEXT(t);
+    return ctzConstexpr(t);
+}
+
+template<typename T>
+inline unsigned getMSBSet(T t)
+{
+    constexpr unsigned bitSize = sizeof(T) * CHAR_BIT;
+    ASSERT(t);
+    return bitSize - 1 - clz(t);
+}
+
+template<typename T>
+constexpr unsigned getMSBSetConstexpr(T t)
+{
+    constexpr unsigned bitSize = sizeof(T) * CHAR_BIT;
+    ASSERT_UNDER_CONSTEXPR_CONTEXT(t);
+    return bitSize - 1 - clzConstexpr(t);
+}
+
 } // namespace WTF
 
-#endif // #ifndef WTF_MathExtras_h
+using WTF::opaque;
+using WTF::preciseIndexMaskPtr;
+using WTF::preciseIndexMaskShift;
+using WTF::preciseIndexMaskShiftForSize;
+using WTF::shuffleVector;
+using WTF::clz;
+using WTF::ctz;
+using WTF::getLSBSet;
+using WTF::getMSBSet;

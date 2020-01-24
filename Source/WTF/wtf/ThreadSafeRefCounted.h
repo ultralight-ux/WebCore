@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <wtf/FastMalloc.h>
+#include <wtf/MainThread.h>
 #include <wtf/Noncopyable.h>
 
 namespace WTF {
@@ -63,12 +64,35 @@ private:
     mutable std::atomic<unsigned> m_refCount { 1 };
 };
 
-template<class T> class ThreadSafeRefCounted : public ThreadSafeRefCountedBase {
+enum class DestructionThread { Any, Main, MainRunLoop };
+
+template<class T, DestructionThread destructionThread = DestructionThread::Any> class ThreadSafeRefCounted : public ThreadSafeRefCountedBase {
 public:
     void deref() const
     {
-        if (derefBase())
+        if (!derefBase())
+            return;
+
+        auto deleteThis = [this] {
             delete static_cast<const T*>(this);
+        };
+        switch (destructionThread) {
+        case DestructionThread::Any:
+            break;
+        case DestructionThread::Main:
+            if (!isMainThread()) {
+                callOnMainThread(WTFMove(deleteThis));
+                return;
+            }
+            break;
+        case DestructionThread::MainRunLoop:
+            if (!isMainRunLoop()) {
+                callOnMainRunLoop(WTFMove(deleteThis));
+                return;
+            }
+            break;
+        }
+        deleteThis();
     }
 
 protected:

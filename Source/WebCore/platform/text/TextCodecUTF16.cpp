@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006, 2008, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,10 +27,14 @@
 #include "TextCodecUTF16.h"
 
 #include <wtf/text/CString.h>
-#include <wtf/text/StringBuffer.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
+
+inline TextCodecUTF16::TextCodecUTF16(bool littleEndian)
+    : m_littleEndian(littleEndian)
+{
+}
 
 void TextCodecUTF16::registerEncodingNames(EncodingNameRegistrar registrar)
 {
@@ -47,20 +51,14 @@ void TextCodecUTF16::registerEncodingNames(EncodingNameRegistrar registrar)
     registrar("unicodeFFFE", "UTF-16BE");
 }
 
-static std::unique_ptr<TextCodec> newStreamingTextDecoderUTF16LE(const TextEncoding&, const void*)
-{
-    return std::make_unique<TextCodecUTF16>(true);
-}
-
-static std::unique_ptr<TextCodec> newStreamingTextDecoderUTF16BE(const TextEncoding&, const void*)
-{
-    return std::make_unique<TextCodecUTF16>(false);
-}
-
 void TextCodecUTF16::registerCodecs(TextCodecRegistrar registrar)
 {
-    registrar("UTF-16LE", newStreamingTextDecoderUTF16LE, 0);
-    registrar("UTF-16BE", newStreamingTextDecoderUTF16BE, 0);
+    registrar("UTF-16LE", [] {
+        return std::make_unique<TextCodecUTF16>(true);
+    });
+    registrar("UTF-16BE", [] {
+        return std::make_unique<TextCodecUTF16>(false);
+    });
 }
 
 String TextCodecUTF16::decode(const char* bytes, size_t length, bool, bool, bool&)
@@ -72,10 +70,11 @@ String TextCodecUTF16::decode(const char* bytes, size_t length, bool, bool, bool
 
     const unsigned char* p = reinterpret_cast<const unsigned char*>(bytes);
     size_t numBytes = length + m_haveBufferedByte;
-    size_t numChars = numBytes / 2;
+    size_t numCodeUnits = numBytes / 2;
+    RELEASE_ASSERT(numCodeUnits <= std::numeric_limits<unsigned>::max());
 
-    StringBuffer<UChar> buffer(numChars);
-    UChar* q = buffer.characters();
+    UChar* q;
+    auto result = String::createUninitialized(numCodeUnits, q);
 
     if (m_haveBufferedByte) {
         UChar c;
@@ -86,17 +85,17 @@ String TextCodecUTF16::decode(const char* bytes, size_t length, bool, bool, bool
         *q++ = c;
         m_haveBufferedByte = false;
         p += 1;
-        numChars -= 1;
+        numCodeUnits -= 1;
     }
 
     if (m_littleEndian) {
-        for (size_t i = 0; i < numChars; ++i) {
+        for (size_t i = 0; i < numCodeUnits; ++i) {
             UChar c = p[0] | (p[1] << 8);
             p += 2;
             *q++ = c;
         }
     } else {
-        for (size_t i = 0; i < numChars; ++i) {
+        for (size_t i = 0; i < numCodeUnits; ++i) {
             UChar c = (p[0] << 8) | p[1];
             p += 2;
             *q++ = c;
@@ -109,41 +108,27 @@ String TextCodecUTF16::decode(const char* bytes, size_t length, bool, bool, bool
         m_bufferedByte = p[0];
     }
 
-    buffer.shrink(q - buffer.characters());
-
-    return String::adopt(WTFMove(buffer));
+    return result;
 }
 
-CString TextCodecUTF16::encode(const UChar* characters, size_t length, UnencodableHandling)
+Vector<uint8_t> TextCodecUTF16::encode(StringView string, UnencodableHandling)
 {
-    // We need to be sure we can double the length without overflowing.
-    // Since the passed-in length is the length of an actual existing
-    // character buffer, each character is two bytes, and we know
-    // the buffer doesn't occupy the entire address space, we can
-    // assert here that doubling the length does not overflow size_t
-    // and there's no need for a runtime check.
-    ASSERT(length <= std::numeric_limits<size_t>::max() / 2);
+    Vector<uint8_t> result(WTF::checkedProduct<size_t>(string.length(), 2).unsafeGet());
+    auto* bytes = result.data();
 
-    char* bytes;
-    CString string = CString::newUninitialized(length * 2, bytes);
-
-    // FIXME: CString is not a reasonable data structure for encoded UTF-16, which will have
-    // null characters inside it. Perhaps the result of encode should not be a CString.
     if (m_littleEndian) {
-        for (size_t i = 0; i < length; ++i) {
-            UChar c = characters[i];
-            bytes[i * 2] = c;
-            bytes[i * 2 + 1] = c >> 8;
+        for (auto character : string.codeUnits()) {
+            *bytes++ = character;
+            *bytes++ = character >> 8;
         }
     } else {
-        for (size_t i = 0; i < length; ++i) {
-            UChar c = characters[i];
-            bytes[i * 2] = c >> 8;
-            bytes[i * 2 + 1] = c;
+        for (auto character : string.codeUnits()) {
+            *bytes++ = character >> 8;
+            *bytes++ = character;
         }
     }
 
-    return string;
+    return result;
 }
 
 } // namespace WebCore

@@ -1,7 +1,7 @@
 #pragma once
 #include <Ultralight/String16.h>
-#include <WTFString.h>
-#include <wtf/unicode/UTF8.h>
+#include <wtf/text/WTFString.h>
+//#include <wtf/unicode/UTF8.h>
 #include <wtf/text/ASCIIFastPath.h>
 
 namespace ultralight {

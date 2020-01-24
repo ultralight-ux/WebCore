@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,20 +25,30 @@
 
 #pragma once
 
-#include "ActiveDOMObject.h"
+#if ENABLE(WEBGL)
+
 #include "ActivityStateChangeObserver.h"
-#include "CanvasRenderingContext.h"
+#include "ExceptionOr.h"
+#include "GPUBasedCanvasRenderingContext.h"
 #include "GraphicsContext3D.h"
 #include "ImageBuffer.h"
 #include "Timer.h"
+#include "WebGLAny.h"
+#include "WebGLBuffer.h"
 #include "WebGLContextAttributes.h"
-#include "WebGLGetInfo.h"
-#include "WebGLObject.h"
+#include "WebGLFramebuffer.h"
+#include "WebGLProgram.h"
+#include "WebGLRenderbuffer.h"
 #include "WebGLStateTracker.h"
 #include "WebGLTexture.h"
+#include "WebGLVertexArrayObjectOES.h"
+#include <JavaScriptCore/ConsoleTypes.h>
+#include <limits>
 #include <memory>
-#include <runtime/Float32Array.h>
-#include <runtime/Int32Array.h>
+
+#if ENABLE(WEBGL2)
+#include "WebGLVertexArrayObject.h"
+#endif
 
 namespace WebCore {
 
@@ -49,8 +59,6 @@ class EXTShaderTextureLOD;
 class EXTsRGB;
 class EXTFragDepth;
 class HTMLImageElement;
-class HTMLVideoElement;
-class ImageBuffer;
 class ImageData;
 class IntSize;
 class OESStandardDerivatives;
@@ -60,10 +68,11 @@ class OESTextureHalfFloat;
 class OESTextureHalfFloatLinear;
 class OESVertexArrayObject;
 class OESElementIndexUint;
+class OffscreenCanvas;
 class WebGLActiveInfo;
-class WebGLBuffer;
 class WebGLContextGroup;
 class WebGLContextObject;
+class WebGLCompressedTextureASTC;
 class WebGLCompressedTextureATC;
 class WebGLCompressedTexturePVRTC;
 class WebGLCompressedTextureS3TC;
@@ -72,53 +81,26 @@ class WebGLDebugShaders;
 class WebGLDepthTexture;
 class WebGLDrawBuffers;
 class WebGLExtension;
-class WebGLFramebuffer;
 class WebGLLoseContext;
 class WebGLObject;
-class WebGLProgram;
-class WebGLRenderbuffer;
 class WebGLShader;
 class WebGLSharedObject;
 class WebGLShaderPrecisionFormat;
 class WebGLUniformLocation;
-class WebGLVertexArrayObjectOES;
 
-inline void clip1D(GC3Dint start, GC3Dsizei range, GC3Dsizei sourceRange, GC3Dint* clippedStart, GC3Dsizei* clippedRange)
-{
-    ASSERT(clippedStart && clippedRange);
-    if (start < 0) {
-        range += start;
-        start = 0;
-    }
-    GC3Dint end = start + range;
-    if (end > sourceRange)
-        range -= end - sourceRange;
-    *clippedStart = start;
-    *clippedRange = range;
-}
+#if ENABLE(VIDEO)
+class HTMLVideoElement;
+#endif
 
-// Returns false if no clipping is necessary, i.e., x, y, width, height stay the same.
-inline bool clip2D(GC3Dint x, GC3Dint y, GC3Dsizei width, GC3Dsizei height,
-    GC3Dsizei sourceWidth, GC3Dsizei sourceHeight,
-    GC3Dint* clippedX, GC3Dint* clippedY, GC3Dsizei* clippedWidth, GC3Dsizei*clippedHeight)
-{
-    ASSERT(clippedX && clippedY && clippedWidth && clippedHeight);
-    clip1D(x, width, sourceWidth, clippedX, clippedWidth);
-    clip1D(y, height, sourceHeight, clippedY, clippedHeight);
-    return (*clippedX != x || *clippedY != y || *clippedWidth != width || *clippedHeight != height);
-}
+using WebGLCanvas = WTF::Variant<RefPtr<HTMLCanvasElement>, RefPtr<OffscreenCanvas>>;
 
-class WebGLRenderingContextBase : public CanvasRenderingContext, private ActivityStateChangeObserver, public ActiveDOMObject {
+class WebGLRenderingContextBase : public GraphicsContext3D::Client, public GPUBasedCanvasRenderingContext, private ActivityStateChangeObserver {
+    WTF_MAKE_ISO_ALLOCATED(WebGLRenderingContextBase);
 public:
-    static std::unique_ptr<WebGLRenderingContextBase> create(HTMLCanvasElement&, WebGLContextAttributes&, const String&);
+    static std::unique_ptr<WebGLRenderingContextBase> create(CanvasBase&, WebGLContextAttributes&, const String&);
     virtual ~WebGLRenderingContextBase();
 
-#if PLATFORM(WIN)
-    // FIXME: Implement accelerated 3d canvas on Windows.
-    bool isAccelerated() const override { return false; }
-#else
-    bool isAccelerated() const override { return true; }
-#endif
+    WebGLCanvas canvas();
 
     int drawingBufferWidth() const;
     int drawingBufferHeight() const;
@@ -138,8 +120,8 @@ public:
 
     using BufferDataSource = WTF::Variant<RefPtr<ArrayBuffer>, RefPtr<ArrayBufferView>>;
     void bufferData(GC3Denum target, long long size, GC3Denum usage);
-    void bufferData(GC3Denum target, std::optional<BufferDataSource>&&, GC3Denum usage);
-    void bufferSubData(GC3Denum target, long long offset, std::optional<BufferDataSource>&&);
+    void bufferData(GC3Denum target, Optional<BufferDataSource>&&, GC3Denum usage);
+    void bufferSubData(GC3Denum target, long long offset, Optional<BufferDataSource>&&);
 
     GC3Denum checkFramebufferStatus(GC3Denum target);
     virtual void clear(GC3Dbitfield mask) = 0;
@@ -191,27 +173,35 @@ public:
 
     RefPtr<WebGLActiveInfo> getActiveAttrib(WebGLProgram*, GC3Duint index);
     RefPtr<WebGLActiveInfo> getActiveUniform(WebGLProgram*, GC3Duint index);
-    bool getAttachedShaders(WebGLProgram*, Vector<RefPtr<WebGLShader>>&);
+    Optional<Vector<RefPtr<WebGLShader>>> getAttachedShaders(WebGLProgram*);
     GC3Dint getAttribLocation(WebGLProgram*, const String& name);
-    WebGLGetInfo getBufferParameter(GC3Denum target, GC3Denum pname);
-    std::optional<WebGLContextAttributes> getContextAttributes();
+    WebGLAny getBufferParameter(GC3Denum target, GC3Denum pname);
+    Optional<WebGLContextAttributes> getContextAttributes();
     GC3Denum getError();
     virtual WebGLExtension* getExtension(const String& name) = 0;
-    virtual WebGLGetInfo getFramebufferAttachmentParameter(GC3Denum target, GC3Denum attachment, GC3Denum pname) = 0;
-    virtual WebGLGetInfo getParameter(GC3Denum pname) = 0;
-    WebGLGetInfo getProgramParameter(WebGLProgram*, GC3Denum pname);
+    virtual WebGLAny getFramebufferAttachmentParameter(GC3Denum target, GC3Denum attachment, GC3Denum pname) = 0;
+    virtual WebGLAny getParameter(GC3Denum pname) = 0;
+    WebGLAny getProgramParameter(WebGLProgram*, GC3Denum pname);
     String getProgramInfoLog(WebGLProgram*);
-    WebGLGetInfo getRenderbufferParameter(GC3Denum target, GC3Denum pname);
-    WebGLGetInfo getShaderParameter(WebGLShader*, GC3Denum pname);
+    WebGLAny getRenderbufferParameter(GC3Denum target, GC3Denum pname);
+    WebGLAny getShaderParameter(WebGLShader*, GC3Denum pname);
     String getShaderInfoLog(WebGLShader*);
     RefPtr<WebGLShaderPrecisionFormat> getShaderPrecisionFormat(GC3Denum shaderType, GC3Denum precisionType);
     String getShaderSource(WebGLShader*);
-    virtual Vector<String> getSupportedExtensions() = 0;
-    WebGLGetInfo getTexParameter(GC3Denum target, GC3Denum pname);
-    WebGLGetInfo getUniform(WebGLProgram*, const WebGLUniformLocation*);
+    virtual Optional<Vector<String>> getSupportedExtensions() = 0;
+    WebGLAny getTexParameter(GC3Denum target, GC3Denum pname);
+    WebGLAny getUniform(WebGLProgram*, const WebGLUniformLocation*);
     RefPtr<WebGLUniformLocation> getUniformLocation(WebGLProgram*, const String&);
-    WebGLGetInfo getVertexAttrib(GC3Duint index, GC3Denum pname);
+    WebGLAny getVertexAttrib(GC3Duint index, GC3Denum pname);
     long long getVertexAttribOffset(GC3Duint index, GC3Denum pname);
+
+    bool extensionIsEnabled(const String&);
+
+    bool isPreservingDrawingBuffer() const { return m_attributes.preserveDrawingBuffer; }
+    void setPreserveDrawingBuffer(bool value) { m_attributes.preserveDrawingBuffer = value; }
+
+    bool preventBufferClearForInspector() const { return m_preventBufferClearForInspector; }
+    void setPreventBufferClearForInspector(bool value) { m_preventBufferClearForInspector = value; }
 
     virtual void hint(GC3Denum target, GC3Denum mode) = 0;
     GC3Dboolean isBuffer(WebGLBuffer*);
@@ -225,6 +215,7 @@ public:
 
     void lineWidth(GC3Dfloat);
     void linkProgram(WebGLProgram*);
+    bool linkProgramWithoutInvalidatingAttribLocations(WebGLProgram*);
     void pixelStorei(GC3Denum pname, GC3Dint param);
     void polygonOffset(GC3Dfloat factor, GC3Dfloat units);
     void readPixels(GC3Dint x, GC3Dint y, GC3Dsizei width, GC3Dsizei height, GC3Denum format, GC3Denum type, ArrayBufferView& pixels);
@@ -242,61 +233,90 @@ public:
 
     void texImage2D(GC3Denum target, GC3Dint level, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height, GC3Dint border, GC3Denum format, GC3Denum type, RefPtr<ArrayBufferView>&&);
 
-    using TexImageSource = WTF::Variant<RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>, RefPtr<HTMLVideoElement>>;
-    ExceptionOr<void> texImage2D(GC3Denum target, GC3Dint level, GC3Denum internalformat, GC3Denum format, GC3Denum type, std::optional<TexImageSource>);
+#if ENABLE(VIDEO)
+    using TexImageSource = WTF::Variant<RefPtr<ImageBitmap>, RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>, RefPtr<HTMLVideoElement>>;
+#else
+    using TexImageSource = WTF::Variant<RefPtr<ImageBitmap>, RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>>;
+#endif
+
+    ExceptionOr<void> texImage2D(GC3Denum target, GC3Dint level, GC3Denum internalformat, GC3Denum format, GC3Denum type, Optional<TexImageSource>);
 
     void texParameterf(GC3Denum target, GC3Denum pname, GC3Dfloat param);
     void texParameteri(GC3Denum target, GC3Denum pname, GC3Dint param);
 
     void texSubImage2D(GC3Denum target, GC3Dint level, GC3Dint xoffset, GC3Dint yoffset, GC3Dsizei width, GC3Dsizei height, GC3Denum format, GC3Denum type, RefPtr<ArrayBufferView>&&);
-    ExceptionOr<void> texSubImage2D(GC3Denum target, GC3Dint level, GC3Dint xoffset, GC3Dint yoffset, GC3Denum format, GC3Denum type, std::optional<TexImageSource>&&);
+    ExceptionOr<void> texSubImage2D(GC3Denum target, GC3Dint level, GC3Dint xoffset, GC3Dint yoffset, GC3Denum format, GC3Denum type, Optional<TexImageSource>&&);
+
+    template <class TypedArray, class DataType>
+    class TypedList {
+    public:
+        using VariantType = Variant<RefPtr<TypedArray>, Vector<DataType>>;
+
+        TypedList(VariantType&& variant)
+            : m_variant(WTFMove(variant))
+        {
+        }
+
+        const DataType* data() const
+        {
+            return WTF::switchOn(m_variant,
+                [] (const RefPtr<TypedArray>& typedArray) -> const DataType* { return typedArray->data(); },
+                [] (const Vector<DataType>& vector) -> const DataType* { return vector.data(); }
+            );
+        }
+
+        GC3Dsizei length() const
+        {
+            return WTF::switchOn(m_variant,
+                [] (const RefPtr<TypedArray>& typedArray) -> GC3Dsizei { return typedArray->length(); },
+                [] (const Vector<DataType>& vector) -> GC3Dsizei { return vector.size(); }
+            );
+        }
+
+    private:
+        VariantType m_variant;
+    };
+
+    using Float32List = TypedList<Float32Array, float>;
+    using Int32List = TypedList<Int32Array, int>;
 
     void uniform1f(const WebGLUniformLocation*, GC3Dfloat x);
-    void uniform1fv(const WebGLUniformLocation*, Float32Array& v);
-    void uniform1fv(const WebGLUniformLocation*, GC3Dfloat* v, GC3Dsizei);
-    void uniform1i(const WebGLUniformLocation*, GC3Dint x);
-    void uniform1iv(const WebGLUniformLocation*, Int32Array& v);
-    void uniform1iv(const WebGLUniformLocation*, GC3Dint* v, GC3Dsizei);
     void uniform2f(const WebGLUniformLocation*, GC3Dfloat x, GC3Dfloat y);
-    void uniform2fv(const WebGLUniformLocation*, Float32Array& v);
-    void uniform2fv(const WebGLUniformLocation*, GC3Dfloat* v, GC3Dsizei);
-    void uniform2i(const WebGLUniformLocation*, GC3Dint x, GC3Dint y);
-    void uniform2iv(const WebGLUniformLocation*, Int32Array& v);
-    void uniform2iv(const WebGLUniformLocation*, GC3Dint* v, GC3Dsizei);
     void uniform3f(const WebGLUniformLocation*, GC3Dfloat x, GC3Dfloat y, GC3Dfloat z);
-    void uniform3fv(const WebGLUniformLocation*, Float32Array& v);
-    void uniform3fv(const WebGLUniformLocation*, GC3Dfloat* v, GC3Dsizei);
-    void uniform3i(const WebGLUniformLocation*, GC3Dint x, GC3Dint y, GC3Dint z);
-    void uniform3iv(const WebGLUniformLocation*, Int32Array& v);
-    void uniform3iv(const WebGLUniformLocation*, GC3Dint* v, GC3Dsizei);
     void uniform4f(const WebGLUniformLocation*, GC3Dfloat x, GC3Dfloat y, GC3Dfloat z, GC3Dfloat w);
-    void uniform4fv(const WebGLUniformLocation*, Float32Array& v);
-    void uniform4fv(const WebGLUniformLocation*, GC3Dfloat* v, GC3Dsizei);
+
+    void uniform1i(const WebGLUniformLocation*, GC3Dint x);
+    void uniform2i(const WebGLUniformLocation*, GC3Dint x, GC3Dint y);
+    void uniform3i(const WebGLUniformLocation*, GC3Dint x, GC3Dint y, GC3Dint z);
     void uniform4i(const WebGLUniformLocation*, GC3Dint x, GC3Dint y, GC3Dint z, GC3Dint w);
-    void uniform4iv(const WebGLUniformLocation*, Int32Array& v);
-    void uniform4iv(const WebGLUniformLocation*, GC3Dint* v, GC3Dsizei);
-    void uniformMatrix2fv(const WebGLUniformLocation*, GC3Dboolean transpose, Float32Array& value);
-    void uniformMatrix2fv(const WebGLUniformLocation*, GC3Dboolean transpose, GC3Dfloat* value, GC3Dsizei);
-    void uniformMatrix3fv(const WebGLUniformLocation*, GC3Dboolean transpose, Float32Array& value);
-    void uniformMatrix3fv(const WebGLUniformLocation*, GC3Dboolean transpose, GC3Dfloat* value, GC3Dsizei);
-    void uniformMatrix4fv(const WebGLUniformLocation*, GC3Dboolean transpose, Float32Array& value);
-    void uniformMatrix4fv(const WebGLUniformLocation*, GC3Dboolean transpose, GC3Dfloat* value, GC3Dsizei);
+
+    void uniform1fv(const WebGLUniformLocation*, Float32List&&);
+    void uniform2fv(const WebGLUniformLocation*, Float32List&&);
+    void uniform3fv(const WebGLUniformLocation*, Float32List&&);
+    void uniform4fv(const WebGLUniformLocation*, Float32List&&);
+
+    void uniform1iv(const WebGLUniformLocation*, Int32List&&);
+    void uniform2iv(const WebGLUniformLocation*, Int32List&&);
+    void uniform3iv(const WebGLUniformLocation*, Int32List&&);
+    void uniform4iv(const WebGLUniformLocation*, Int32List&&);
+
+    void uniformMatrix2fv(const WebGLUniformLocation*, GC3Dboolean transpose, Float32List&&);
+    void uniformMatrix3fv(const WebGLUniformLocation*, GC3Dboolean transpose, Float32List&&);
+    void uniformMatrix4fv(const WebGLUniformLocation*, GC3Dboolean transpose, Float32List&&);
 
     void useProgram(WebGLProgram*);
     void validateProgram(WebGLProgram*);
 
     void vertexAttrib1f(GC3Duint index, GC3Dfloat x);
-    void vertexAttrib1fv(GC3Duint index, Float32Array& values);
-    void vertexAttrib1fv(GC3Duint index, GC3Dfloat* values, GC3Dsizei size);
     void vertexAttrib2f(GC3Duint index, GC3Dfloat x, GC3Dfloat y);
-    void vertexAttrib2fv(GC3Duint index, Float32Array& values);
-    void vertexAttrib2fv(GC3Duint index, GC3Dfloat* values, GC3Dsizei size);
     void vertexAttrib3f(GC3Duint index, GC3Dfloat x, GC3Dfloat y, GC3Dfloat z);
-    void vertexAttrib3fv(GC3Duint index, Float32Array& values);
-    void vertexAttrib3fv(GC3Duint index, GC3Dfloat* values, GC3Dsizei size);
     void vertexAttrib4f(GC3Duint index, GC3Dfloat x, GC3Dfloat y, GC3Dfloat z, GC3Dfloat w);
-    void vertexAttrib4fv(GC3Duint index, Float32Array& values);
-    void vertexAttrib4fv(GC3Duint index, GC3Dfloat* values, GC3Dsizei size);
+
+    void vertexAttrib1fv(GC3Duint index, Float32List&&);
+    void vertexAttrib2fv(GC3Duint index, Float32List&&);
+    void vertexAttrib3fv(GC3Duint index, Float32List&&);
+    void vertexAttrib4fv(GC3Duint index, Float32List&&);
+
     void vertexAttribPointer(GC3Duint index, GC3Dint size, GC3Denum type, GC3Dboolean normalized,
         GC3Dsizei stride, long long offset);
 
@@ -311,24 +331,22 @@ public:
         SyntheticLostContext
     };
     void forceLostContext(LostContextMode);
-    void recycleContext();
     void forceRestoreContext();
     void loseContextImpl(LostContextMode);
-    void dispatchContextChangedEvent();
     WEBCORE_EXPORT void simulateContextChanged();
 
     GraphicsContext3D* graphicsContext3D() const { return m_context.get(); }
     WebGLContextGroup* contextGroup() const { return m_contextGroup.get(); }
     PlatformLayer* platformLayer() const override;
 
-    void reshape(int width, int height);
+    void reshape(int width, int height) override;
 
-    void markLayerComposited();
+    void markLayerComposited() final;
     void paintRenderingResultsToCanvas() override;
     RefPtr<ImageData> paintRenderingResultsToImageData();
 
-    void removeSharedObject(WebGLSharedObject*);
-    void removeContextObject(WebGLContextObject*);
+    void removeSharedObject(WebGLSharedObject&);
+    void removeContextObject(WebGLContextObject&);
     
     unsigned getMaxVertexAttribs() const { return m_maxVertexAttribs; }
 
@@ -337,15 +355,25 @@ public:
     void drawElementsInstanced(GC3Denum mode, GC3Dsizei count, GC3Denum type, long long offset, GC3Dsizei primcount);
     void vertexAttribDivisor(GC3Duint index, GC3Duint divisor);
 
+    // Used for testing only, from Internals.
+    WEBCORE_EXPORT void setFailNextGPUStatusCheck();
+
+    // GraphicsContext3D::Client
+    void didComposite() override;
+    void forceContextLost() override;
+    void recycleContext() override;
+    void dispatchContextChangedNotification() override;
+
 protected:
-    WebGLRenderingContextBase(HTMLCanvasElement&, WebGLContextAttributes);
-    WebGLRenderingContextBase(HTMLCanvasElement&, RefPtr<GraphicsContext3D>&&, WebGLContextAttributes);
+    WebGLRenderingContextBase(CanvasBase&, WebGLContextAttributes);
+    WebGLRenderingContextBase(CanvasBase&, Ref<GraphicsContext3D>&&, WebGLContextAttributes);
 
     friend class WebGLDrawBuffers;
     friend class WebGLFramebuffer;
     friend class WebGLObject;
     friend class OESVertexArrayObject;
     friend class WebGLDebugShaders;
+    friend class WebGLCompressedTextureASTC;
     friend class WebGLCompressedTextureATC;
     friend class WebGLCompressedTexturePVRTC;
     friend class WebGLCompressedTextureS3TC;
@@ -364,12 +392,13 @@ protected:
     const char* activeDOMObjectName() const override;
     bool canSuspendForDocumentSuspension() const override;
 
-    void addSharedObject(WebGLSharedObject*);
-    void addContextObject(WebGLContextObject*);
+    void addSharedObject(WebGLSharedObject&);
+    void addContextObject(WebGLContextObject&);
     void detachAndRemoveAllObjects();
 
     void destroyGraphicsContext3D();
     void markContextChanged();
+    void markContextChangedAndNotifyCanvasObserver();
 
     void addActivityStateChangeObserverIfNecessary();
     void removeActivityStateChangeObserver();
@@ -412,6 +441,8 @@ protected:
 
     WebGLTexture::TextureExtensionFlag textureExtensionFlags() const;
 
+    bool enableSupportedExtension(ASCIILiteral extensionNameLiteral);
+
     RefPtr<GraphicsContext3D> m_context;
     RefPtr<WebGLContextGroup> m_contextGroup;
 
@@ -421,7 +452,7 @@ protected:
     // on how exactly the platform discovers that the context was lost. For better
     // portability we always defer the dispatch of the event.
     Timer m_dispatchContextLostEventTimer;
-    bool m_restoreAllowed;
+    bool m_restoreAllowed { false };
     Timer m_restoreTimer;
 
     bool m_needsUpdate;
@@ -439,12 +470,10 @@ protected:
 
     RefPtr<WebGLVertexArrayObjectBase> m_defaultVertexArrayObject;
     RefPtr<WebGLVertexArrayObjectBase> m_boundVertexArrayObject;
-    void setBoundVertexArrayObject(PassRefPtr<WebGLVertexArrayObjectBase> arrayObject)
+
+    void setBoundVertexArrayObject(WebGLVertexArrayObjectBase* arrayObject)
     {
-        if (arrayObject)
-            m_boundVertexArrayObject = arrayObject;
-        else
-            m_boundVertexArrayObject = m_defaultVertexArrayObject;
+        m_boundVertexArrayObject = arrayObject ? arrayObject : m_defaultVertexArrayObject;
     }
     
     class VertexAttribValue {
@@ -467,13 +496,14 @@ protected:
     Vector<VertexAttribValue> m_vertexAttribValue;
     unsigned m_maxVertexAttribs;
     RefPtr<WebGLBuffer> m_vertexAttrib0Buffer;
-    long m_vertexAttrib0BufferSize;
+    long m_vertexAttrib0BufferSize { 0 };
     GC3Dfloat m_vertexAttrib0BufferValue[4];
-    bool m_forceAttrib0BufferRefill;
-    bool m_vertexAttrib0UsedBefore;
+    bool m_forceAttrib0BufferRefill { true };
+    bool m_vertexAttrib0UsedBefore { false };
 
     RefPtr<WebGLProgram> m_currentProgram;
     RefPtr<WebGLFramebuffer> m_framebufferBinding;
+    RefPtr<WebGLFramebuffer> m_readFramebufferBinding;
     RefPtr<WebGLRenderbuffer> m_renderbufferBinding;
     struct TextureUnitState {
         RefPtr<WebGLTexture> texture2DBinding;
@@ -496,16 +526,15 @@ protected:
         // The pointer returned is owned by the image buffer map.
         ImageBuffer* imageBuffer(const IntSize& size);
     private:
-        void bubbleToFront(int idx);
-        std::unique_ptr<std::unique_ptr<ImageBuffer>[]> m_buffers;
-        int m_capacity;
+        void bubbleToFront(size_t idx);
+        Vector<std::unique_ptr<ImageBuffer>> m_buffers;
     };
-    LRUImageBufferCache m_generatedImageCache;
+    LRUImageBufferCache m_generatedImageCache { 0 };
 
     GC3Dint m_maxTextureSize;
     GC3Dint m_maxCubeMapTextureSize;
     GC3Dint m_maxRenderbufferSize;
-    GC3Dint m_maxViewportDims[2];
+    GC3Dint m_maxViewportDims[2] { 0, 0 };
     GC3Dint m_maxTextureLevel;
     GC3Dint m_maxCubeMapTextureLevel;
 
@@ -520,8 +549,8 @@ protected:
     bool m_unpackFlipY;
     bool m_unpackPremultiplyAlpha;
     GC3Denum m_unpackColorspaceConversion;
-    bool m_contextLost;
-    LostContextMode m_contextLostMode;
+    bool m_contextLost { false };
+    LostContextMode m_contextLostMode { SyntheticLostContext };
     WebGLContextAttributes m_attributes;
 
     bool m_layerCleared;
@@ -542,17 +571,20 @@ protected:
     bool m_isDepthStencilSupported;
     bool m_isRobustnessEXTSupported;
 
-    bool m_synthesizedErrorsToConsole;
+    bool m_synthesizedErrorsToConsole { true };
     int m_numGLErrorsToConsoleAllowed;
+
+    bool m_preventBufferClearForInspector { false };
 
     // A WebGLRenderingContext can be created in a state where it appears as
     // a valid and active context, but will not execute any important operations
     // until its load policy is completely resolved.
-    bool m_isPendingPolicyResolution;
-    bool m_hasRequestedPolicyResolution;
+    bool m_isPendingPolicyResolution { false };
+    bool m_hasRequestedPolicyResolution { false };
     bool isContextLostOrPending();
 
-    // Enabled extension objects. FIXME: Move these to WebGL1RenderingContext, not needed for WebGL2
+    // Enabled extension objects.
+    // FIXME: Move some of these to WebGLRenderingContext, the ones not needed for WebGL2
     std::unique_ptr<EXTFragDepth> m_extFragDepth;
     std::unique_ptr<EXTBlendMinMax> m_extBlendMinMax;
     std::unique_ptr<EXTsRGB> m_extsRGB;
@@ -568,6 +600,7 @@ protected:
     std::unique_ptr<WebGLLoseContext> m_webglLoseContext;
     std::unique_ptr<WebGLDebugRendererInfo> m_webglDebugRendererInfo;
     std::unique_ptr<WebGLDebugShaders> m_webglDebugShaders;
+    std::unique_ptr<WebGLCompressedTextureASTC> m_webglCompressedTextureASTC;
     std::unique_ptr<WebGLCompressedTextureATC> m_webglCompressedTextureATC;
     std::unique_ptr<WebGLCompressedTexturePVRTC> m_webglCompressedTexturePVRTC;
     std::unique_ptr<WebGLCompressedTextureS3TC> m_webglCompressedTextureS3TC;
@@ -575,15 +608,15 @@ protected:
     std::unique_ptr<WebGLDrawBuffers> m_webglDrawBuffers;
     std::unique_ptr<ANGLEInstancedArrays> m_angleInstancedArrays;
 
-    // Helpers for getParameter and others
-    WebGLGetInfo getBooleanParameter(GC3Denum);
-    WebGLGetInfo getBooleanArrayParameter(GC3Denum);
-    WebGLGetInfo getFloatParameter(GC3Denum);
-    WebGLGetInfo getIntParameter(GC3Denum);
-    WebGLGetInfo getUnsignedIntParameter(GC3Denum);
-    WebGLGetInfo getInt64Parameter(GC3Denum);
-    WebGLGetInfo getWebGLFloatArrayParameter(GC3Denum);
-    WebGLGetInfo getWebGLIntArrayParameter(GC3Denum);
+    // Helpers for getParameter and other similar functions.
+    bool getBooleanParameter(GC3Denum);
+    Vector<bool> getBooleanArrayParameter(GC3Denum);
+    float getFloatParameter(GC3Denum);
+    int getIntParameter(GC3Denum);
+    unsigned getUnsignedIntParameter(GC3Denum);
+    long long getInt64Parameter(GC3Denum);
+    RefPtr<Float32Array> getWebGLFloatArrayParameter(GC3Denum);
+    RefPtr<Int32Array> getWebGLIntArrayParameter(GC3Denum);
 
     // Clear the backbuffer if it was composited since the last operation.
     // clearMask is set to the bitfield of any clear that would happen anyway at this time
@@ -631,7 +664,7 @@ protected:
     // Helper function to check target and texture bound to the target.
     // Generate GL errors and return 0 if target is invalid or texture bound is
     // null.  Otherwise, return the texture bound to the target.
-    WebGLTexture* validateTextureBinding(const char* functionName, GC3Denum target, bool useSixEnumsForCubeMap);
+    RefPtr<WebGLTexture> validateTextureBinding(const char* functionName, GC3Denum target, bool useSixEnumsForCubeMap);
 
     // Helper function to check input format/type for functions {copy}Tex{Sub}Image.
     // Generates GL error and returns false if parameters are invalid.
@@ -649,10 +682,13 @@ protected:
 
     enum TexFuncValidationSourceType {
         SourceArrayBufferView,
+        SourceImageBitmap,
         SourceImageData,
         SourceHTMLImageElement,
         SourceHTMLCanvasElement,
+#if ENABLE(VIDEO)
         SourceHTMLVideoElement,
+#endif
     };
 
     // Helper function for tex{Sub}Image2D to check if the input format/type/level/target/width/height/border/xoffset/yoffset are valid.
@@ -717,13 +753,8 @@ protected:
     // Helper function for texParameterf and texParameteri.
     void texParameter(GC3Denum target, GC3Denum pname, GC3Dfloat parami, GC3Dint paramf, bool isFloat);
 
-    // Helper function to print GL errors to console.
-    void printGLErrorToConsole(const String&);
-    void printGLWarningToConsole(const char* function, const char* reason);
-
-    // Helper function to print warnings to console. Currently
-    // used only to warn about use of obsolete functions.
-    void printWarningToConsole(const String&);
+    // Helper function to print errors and warnings to console.
+    void printToConsole(MessageLevel, const String&);
 
     // Helper function to validate input parameters for framebuffer functions.
     // Generate GL error if parameters are illegal.
@@ -739,27 +770,26 @@ protected:
     virtual bool validateCapability(const char* functionName, GC3Denum) = 0;
 
     // Helper function to validate input parameters for uniform functions.
-    bool validateUniformParameters(const char* functionName, const WebGLUniformLocation*, Float32Array&, GC3Dsizei mod);
-    bool validateUniformParameters(const char* functionName, const WebGLUniformLocation*, Int32Array&, GC3Dsizei mod);
+    bool validateUniformParameters(const char* functionName, const WebGLUniformLocation*, const Float32List&, GC3Dsizei mod);
+    bool validateUniformParameters(const char* functionName, const WebGLUniformLocation*, const Int32List&, GC3Dsizei mod);
     bool validateUniformParameters(const char* functionName, const WebGLUniformLocation*, void*, GC3Dsizei, GC3Dsizei mod);
-    bool validateUniformMatrixParameters(const char* functionName, const WebGLUniformLocation*, GC3Dboolean transpose, Float32Array&, GC3Dsizei mod);
-    bool validateUniformMatrixParameters(const char* functionName, const WebGLUniformLocation*, GC3Dboolean transpose, void*, GC3Dsizei, GC3Dsizei mod);
+    bool validateUniformMatrixParameters(const char* functionName, const WebGLUniformLocation*, GC3Dboolean transpose, const Float32List&, GC3Dsizei mod);
+    bool validateUniformMatrixParameters(const char* functionName, const WebGLUniformLocation*, GC3Dboolean transpose, const void*, GC3Dsizei, GC3Dsizei mod);
 
     // Helper function to validate parameters for bufferData.
     // Return the current bound buffer to target, or 0 if parameters are invalid.
     WebGLBuffer* validateBufferDataParameters(const char* functionName, GC3Denum target, GC3Denum usage);
 
     // Helper function for tex{Sub}Image2D to make sure image is ready.
-    bool validateHTMLImageElement(const char* functionName, HTMLImageElement*);
-    bool validateHTMLCanvasElement(const char* functionName, HTMLCanvasElement*);
+    ExceptionOr<bool> validateHTMLImageElement(const char* functionName, HTMLImageElement*);
+    ExceptionOr<bool> validateHTMLCanvasElement(const char* functionName, HTMLCanvasElement*);
 #if ENABLE(VIDEO)
-    bool validateHTMLVideoElement(const char* functionName, HTMLVideoElement*);
+    ExceptionOr<bool> validateHTMLVideoElement(const char* functionName, HTMLVideoElement*);
 #endif
 
     // Helper functions for vertexAttribNf{v}.
     void vertexAttribfImpl(const char* functionName, GC3Duint index, GC3Dsizei expectedSize, GC3Dfloat, GC3Dfloat, GC3Dfloat, GC3Dfloat);
-    void vertexAttribfvImpl(const char* functionName, GC3Duint index, Float32Array&, GC3Dsizei expectedSize);
-    void vertexAttribfvImpl(const char* functionName, GC3Duint index, GC3Dfloat*, GC3Dsizei, GC3Dsizei expectedSize);
+    void vertexAttribfvImpl(const char* functionName, GC3Duint index, Float32List&&, GC3Dsizei expectedSize);
 
     // Helper function for delete* (deleteBuffer, deleteProgram, etc) functions.
     // Return false if caller should return without further processing.
@@ -772,8 +802,8 @@ protected:
 
     // Helpers for simulating vertexAttrib0.
     void initVertexAttrib0();
-    bool simulateVertexAttrib0(GC3Dsizei numVertex);
-    bool validateSimulatedVertexAttrib0(GC3Dsizei numVertex);
+    Optional<bool> simulateVertexAttrib0(GC3Duint numVertex);
+    bool validateSimulatedVertexAttrib0(GC3Duint numVertex);
     void restoreStatesAfterVertexAttrib0Simulation();
 
     void dispatchContextLostEvent();
@@ -806,17 +836,61 @@ protected:
     // Check if EXT_draw_buffers extension is supported and if it satisfies the WebGL requirements.
     bool supportsDrawBuffers();
 
+    HTMLCanvasElement* htmlCanvas();
+    OffscreenCanvas* offscreenCanvas();
+
+    template <typename T> inline Optional<T> checkedAddAndMultiply(T value, T add, T multiply);
+    template <typename T> unsigned getMaxIndex(const RefPtr<JSC::ArrayBuffer> elementArrayBuffer, GC3Dintptr uoffset, GC3Dsizei n);
+
 private:
-    bool validateArrayBufferType(const char* functionName, GC3Denum type, std::optional<JSC::TypedArrayType>);
+    bool validateArrayBufferType(const char* functionName, GC3Denum type, Optional<JSC::TypedArrayType>);
     void registerWithWebGLStateTracker();
     void checkForContextLossHandling();
 
-    void activityStateDidChange(ActivityState::Flags oldActivityState, ActivityState::Flags newActivityState) override;
+    void activityStateDidChange(OptionSet<ActivityState::Flag> oldActivityState, OptionSet<ActivityState::Flag> newActivityState) override;
 
     WebGLStateTracker::Token m_trackerToken;
     Timer m_checkForContextLossHandlingTimer;
 };
 
+template <typename T>
+inline Optional<T> WebGLRenderingContextBase::checkedAddAndMultiply(T value, T add, T multiply)
+{
+    Checked<T, RecordOverflow> checkedResult = Checked<T>(value);
+    checkedResult += Checked<T>(add);
+    checkedResult *= Checked<T>(multiply);
+    if (checkedResult.hasOverflowed())
+        return WTF::nullopt;
+
+    return checkedResult.unsafeGet();
+}
+
+template<typename T>
+inline unsigned WebGLRenderingContextBase::getMaxIndex(const RefPtr<JSC::ArrayBuffer> elementArrayBuffer, GC3Dintptr uoffset, GC3Dsizei n)
+{
+    unsigned maxIndex = 0;
+    T restartIndex = 0;
+
+#if ENABLE(WEBGL2)
+    // WebGL 2 spec enforces that GL_PRIMITIVE_RESTART_FIXED_INDEX is always enabled, so ignore the restart index.
+    if (isWebGL2())
+        restartIndex = std::numeric_limits<T>::max();
+#endif
+
+    // Make uoffset an element offset.
+    uoffset /= sizeof(T);
+    const T* p = static_cast<const T*>(elementArrayBuffer->data()) + uoffset;
+    while (n-- > 0) {
+        if (*p != restartIndex && *p > maxIndex)
+            maxIndex = *p;
+        ++p;
+    }
+
+    return maxIndex;
+}
+
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_CANVASRENDERINGCONTEXT(WebCore::WebGLRenderingContextBase, is3d())
+SPECIALIZE_TYPE_TRAITS_CANVASRENDERINGCONTEXT(WebCore::WebGLRenderingContextBase, isWebGL())
+
+#endif

@@ -31,18 +31,41 @@
 
 namespace WebCore {
 
-    class ContentType {
-    public:
-        explicit ContentType(const String& type);
+class ContentType {
+public:
+    explicit ContentType(String&& type);
+    explicit ContentType(const String& type);
+    ContentType() = default;
 
-        String parameter(const String& parameterName) const;
-        String type() const;
-        Vector<String> codecs() const;
-        const String& raw() const { return m_type; }
-    private:
-        String m_type;
-    };
+    static const String& codecsParameter();
+    static const String& profilesParameter();
+
+    String parameter(const String& parameterName) const;
+    String containerType() const;
+    Vector<String> codecs() const;
+    Vector<String> profiles() const;
+    const String& raw() const { return m_type; }
+    bool isEmpty() const { return m_type.isEmpty(); }
+
+    String toJSONString() const;
+
+private:
+    String m_type;
+};
 
 } // namespace WebCore
+
+namespace WTF {
+template<typename Type> struct LogArgument;
+
+template <>
+struct LogArgument<WebCore::ContentType> {
+    static String toString(const WebCore::ContentType& type)
+    {
+        return type.toJSONString();
+    }
+};
+
+} // namespace WTF
 
 #endif // ContentType_h

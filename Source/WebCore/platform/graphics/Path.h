@@ -30,10 +30,9 @@
 
 #include "FloatRect.h"
 #include "WindRule.h"
-#include <functional>
 #include <wtf/FastMalloc.h>
+#include <wtf/Function.h>
 #include <wtf/Forward.h>
-#include <wtf/Vector.h>
 
 #if USE(ULTRALIGHT)
 #include <Ultralight/private/Path.h>
@@ -84,6 +83,10 @@ typedef void PlatformPath;
 
 typedef PlatformPath* PlatformPathPtr;
 
+namespace WTF {
+class TextStream;
+}
+
 namespace WebCore {
 
     class AffineTransform;
@@ -94,7 +97,6 @@ namespace WebCore {
     class PathTraversalState;
     class RoundedRect;
     class StrokeStyleApplier;
-    class TextStream;
 
     enum PathElementType {
         PathElementMoveToPoint, // The points member will contain 1 value.
@@ -112,7 +114,7 @@ namespace WebCore {
         FloatPoint* points;
     };
 
-    typedef std::function<void (const PathElement&)> PathApplierFunction;
+    using PathApplierFunction = WTF::Function<void (const PathElement&)>;
 
     class Path {
         WTF_MAKE_FAST_ALLOCATED;
@@ -124,16 +126,18 @@ namespace WebCore {
         WEBCORE_EXPORT ~Path();
 
         WEBCORE_EXPORT Path(const Path&);
+        WEBCORE_EXPORT Path(Path&&);
         WEBCORE_EXPORT Path& operator=(const Path&);
+        WEBCORE_EXPORT Path& operator=(Path&&);
         
         static Path polygonPathFromPoints(const Vector<FloatPoint>&);
 
-        bool contains(const FloatPoint&, WindRule rule = RULE_NONZERO) const;
+        bool contains(const FloatPoint&, WindRule = WindRule::NonZero) const;
         bool strokeContains(StrokeStyleApplier*, const FloatPoint&) const;
         // fastBoundingRect() should equal or contain boundingRect(); boundingRect()
         // should perfectly bound the points within the path.
         FloatRect boundingRect() const;
-        FloatRect fastBoundingRect() const;
+        WEBCORE_EXPORT FloatRect fastBoundingRect() const;
         FloatRect strokeBoundingRect(StrokeStyleApplier* = 0) const;
 
         float length() const;
@@ -208,9 +212,11 @@ namespace WebCore {
         ID2D1GeometrySink* activePath() const { return m_activePath.get(); }
         void appendGeometry(ID2D1Geometry*);
         void createGeometryWithFillMode(WindRule, COMPtr<ID2D1GeometryGroup>&) const;
-        void drawDidComplete() const;
+        void drawDidComplete();
 
         HRESULT initializePathState();
+        void openFigureAtCurrentPointIfNecessary();
+        void closeAnyOpenGeometries();
 #endif
 
 #ifndef NDEBUG
@@ -222,12 +228,13 @@ namespace WebCore {
         COMPtr<ID2D1GeometryGroup> m_path;
         COMPtr<ID2D1PathGeometry> m_activePathGeometry;
         COMPtr<ID2D1GeometrySink> m_activePath;
+        size_t m_openFigureCount { 0 };
 #else
         mutable PlatformPathPtr m_path { nullptr };
 #endif
     };
 
-TextStream& operator<<(TextStream&, const Path&);
+WTF::TextStream& operator<<(WTF::TextStream&, const Path&);
 
 }
 

@@ -25,7 +25,7 @@
 
 #include "Filter.h"
 #include "GraphicsContext.h"
-#include "TextStream.h"
+#include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
@@ -41,22 +41,12 @@ Ref<FEFlood> FEFlood::create(Filter& filter, const Color& floodColor, float floo
     return adoptRef(*new FEFlood(filter, floodColor, floodOpacity));
 }
 
-const Color& FEFlood::floodColor() const
-{
-    return m_floodColor;
-}
-
 bool FEFlood::setFloodColor(const Color& color)
 {
     if (m_floodColor == color)
         return false;
     m_floodColor = color;
     return true;
-}
-
-float FEFlood::floodOpacity() const
-{
-    return m_floodOpacity;
 }
 
 bool FEFlood::setFloodOpacity(float floodOpacity)
@@ -73,19 +63,16 @@ void FEFlood::platformApplySoftware()
     if (!resultImage)
         return;
 
-    const Color& color = colorWithOverrideAlpha(floodColor().rgb(), floodOpacity());
+    // FIXME: This should use colorWithAlphaMultipliedBy() but that has different rounding of the alpha component that breaks some tests.
+    float colorAlpha = floodColor().alpha() / 255.0;
+    auto color = colorWithOverrideAlpha(floodColor().rgb(), colorAlpha * floodOpacity());
     resultImage->context().fillRect(FloatRect(FloatPoint(), absolutePaintRect().size()), color);
 }
 
-void FEFlood::dump()
+TextStream& FEFlood::externalRepresentation(TextStream& ts, RepresentationType representation) const
 {
-}
-
-TextStream& FEFlood::externalRepresentation(TextStream& ts, int indent) const
-{
-    writeIndent(ts, indent);
-    ts << "[feFlood";
-    FilterEffect::externalRepresentation(ts);
+    ts << indent << "[feFlood";
+    FilterEffect::externalRepresentation(ts, representation);
     ts << " flood-color=\"" << floodColor().nameForRenderTreeAsText() << "\" "
        << "flood-opacity=\"" << floodOpacity() << "\"]\n";
     return ts;

@@ -46,15 +46,15 @@ IndirectEvalExecutable* IndirectEvalExecutable::create(ExecState* exec, const So
         return 0;
     }
 
-    auto* executable = new (NotNull, allocateCell<IndirectEvalExecutable>(*exec->heap())) IndirectEvalExecutable(exec, source, isInStrictContext, derivedContextType, isArrowFunctionContext, evalContextType);
+    auto* executable = new (NotNull, allocateCell<IndirectEvalExecutable>(vm.heap)) IndirectEvalExecutable(exec, source, isInStrictContext, derivedContextType, isArrowFunctionContext, evalContextType);
     executable->finishCreation(vm);
 
     ParserError error;
     JSParserStrictMode strictMode = executable->isStrictMode() ? JSParserStrictMode::Strict : JSParserStrictMode::NotStrict;
-    DebuggerMode debuggerMode = globalObject->hasInteractiveDebugger() ? DebuggerOn : DebuggerOff;
+    OptionSet<CodeGenerationMode> codeGenerationMode = globalObject->defaultCodeGenerationMode();
     
     UnlinkedEvalCodeBlock* unlinkedEvalCode = vm.codeCache()->getUnlinkedEvalCodeBlock(
-        vm, executable, executable->source(), strictMode, debuggerMode, error, evalContextType);
+        vm, executable, executable->source(), strictMode, codeGenerationMode, error, evalContextType);
 
     if (globalObject->hasDebugger())
         globalObject->debugger()->sourceParsed(exec, executable->source().provider(), error.line(), error.message());

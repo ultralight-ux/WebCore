@@ -30,8 +30,6 @@
 
 #pragma once
 
-#if ENABLE(CSS_GRID_LAYOUT)
-
 #include "CSSValueKeywords.h"
 #include "CSSValueList.h"
 
@@ -56,6 +54,8 @@ public:
     }
 
     String customCSSText() const;
+    bool equals(const CSSGridAutoRepeatValue&) const;
+
     CSSValueID autoRepeatID() const { return m_autoRepeatID; }
 
 private:
@@ -72,5 +72,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSGridAutoRepeatValue, isGridAutoRepeatValue());
-
-#endif // ENABLE(CSS_GRID_LAYOUT)

@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include <wtf/Optional.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -34,70 +35,79 @@ class DeviceMotionData : public RefCounted<DeviceMotionData> {
 public:
     class Acceleration : public RefCounted<DeviceMotionData::Acceleration> {
     public:
-        WEBCORE_EXPORT static Ref<Acceleration> create(bool canProvideX, double x, bool canProvideY, double y, bool canProvideZ, double z);
+        static Ref<Acceleration> create()
+        {
+            return adoptRef(*new Acceleration);
+        }
+        static Ref<Acceleration> create(Optional<double> x, Optional<double> y, Optional<double> z)
+        {
+            return adoptRef(*new Acceleration(x, y, z));
+        }
 
-        bool canProvideX() const { return m_canProvideX; }
-        bool canProvideY() const { return m_canProvideY; }
-        bool canProvideZ() const { return m_canProvideZ; }
-
-        double x() const { return m_x; }
-        double y() const { return m_y; }
-        double z() const { return m_z; }
+        Optional<double> x() const { return m_x; }
+        Optional<double> y() const { return m_y; }
+        Optional<double> z() const { return m_z; }
 
     private:
-        Acceleration(bool canProvideX, double x, bool canProvideY, double y, bool canProvideZ, double z);
+        Acceleration() = default;
+        Acceleration(Optional<double> x, Optional<double> y, Optional<double> z)
+            : m_x(x)
+            , m_y(y)
+            , m_z(z)
+        {
+        }
 
-        double m_x;
-        double m_y;
-        double m_z;
-
-        bool m_canProvideX;
-        bool m_canProvideY;
-        bool m_canProvideZ;
+        Optional<double> m_x;
+        Optional<double> m_y;
+        Optional<double> m_z;
     };
 
     class RotationRate : public RefCounted<DeviceMotionData::RotationRate> {
     public:
-        WEBCORE_EXPORT static Ref<RotationRate> create(bool canProvideAlpha, double alpha, bool canProvideBeta,  double beta, bool canProvideGamma, double gamma);
+        static Ref<RotationRate> create()
+        {
+            return adoptRef(*new RotationRate);
+        }
+        static Ref<RotationRate> create(Optional<double> alpha, Optional<double> beta, Optional<double> gamma)
+        {
+            return adoptRef(*new RotationRate(alpha, beta, gamma));
+        }
 
-        bool canProvideAlpha() const { return m_canProvideAlpha; }
-        bool canProvideBeta() const { return m_canProvideBeta; }
-        bool canProvideGamma() const { return m_canProvideGamma; }
-
-        double alpha() const { return m_alpha; }
-        double beta() const { return m_beta; }
-        double gamma() const { return m_gamma; }
+        Optional<double> alpha() const { return m_alpha; }
+        Optional<double> beta() const { return m_beta; }
+        Optional<double> gamma() const { return m_gamma; }
 
     private:
-        RotationRate(bool canProvideAlpha, double alpha, bool canProvideBeta,  double beta, bool canProvideGamma, double gamma);
+        RotationRate() = default;
+        RotationRate(Optional<double> alpha, Optional<double> beta, Optional<double> gamma)
+            : m_alpha(alpha)
+            , m_beta(beta)
+            , m_gamma(gamma)
+        {
+        }
 
-        double m_alpha;
-        double m_beta;
-        double m_gamma;
-
-        bool m_canProvideAlpha;
-        bool m_canProvideBeta;
-        bool m_canProvideGamma;
+        Optional<double> m_alpha;
+        Optional<double> m_beta;
+        Optional<double> m_gamma;
     };
 
     WEBCORE_EXPORT static Ref<DeviceMotionData> create();
-    WEBCORE_EXPORT static Ref<DeviceMotionData> create(RefPtr<Acceleration>&&, RefPtr<Acceleration>&& accelerationIncludingGravity, RefPtr<RotationRate>&&, bool canProvideInterval, double interval);
+    WEBCORE_EXPORT static Ref<DeviceMotionData> create(RefPtr<Acceleration>&&, RefPtr<Acceleration>&& accelerationIncludingGravity, RefPtr<RotationRate>&&, Optional<double> interval);
 
     const Acceleration* acceleration() const { return m_acceleration.get(); }
     const Acceleration* accelerationIncludingGravity() const { return m_accelerationIncludingGravity.get(); }
     const RotationRate* rotationRate() const { return m_rotationRate.get(); }
-    double interval() const { return m_interval; }
-    bool canProvideInterval() const { return m_canProvideInterval; }
+    
+    Optional<double> interval() const { return m_interval; }
 
 private:
-    DeviceMotionData();
-    DeviceMotionData(RefPtr<Acceleration>&&, RefPtr<Acceleration>&& accelerationIncludingGravity, RefPtr<RotationRate>&&, bool canProvideInterval, double interval);
+    DeviceMotionData() = default;
+    DeviceMotionData(RefPtr<Acceleration>&&, RefPtr<Acceleration>&& accelerationIncludingGravity, RefPtr<RotationRate>&&, Optional<double> interval);
 
     RefPtr<Acceleration> m_acceleration;
     RefPtr<Acceleration> m_accelerationIncludingGravity;
     RefPtr<RotationRate> m_rotationRate;
-    bool m_canProvideInterval;
-    double m_interval;
+    Optional<double> m_interval;
 };
 
 } // namespace WebCore

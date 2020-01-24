@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef SQLiteDatabase_h
-#define SQLiteDatabase_h
+#pragma once
 
 #include <functional>
 #include <sqlite3.h>
@@ -47,13 +46,15 @@ class SQLiteStatement;
 class SQLiteTransaction;
 
 class SQLiteDatabase {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(SQLiteDatabase);
     friend class SQLiteTransaction;
 public:
     WEBCORE_EXPORT SQLiteDatabase();
     WEBCORE_EXPORT ~SQLiteDatabase();
 
-    WEBCORE_EXPORT bool open(const String& filename, bool forWebSQLDatabase = false);
+    enum class OpenMode { ReadOnly, ReadWrite, ReadWriteCreate };
+    WEBCORE_EXPORT bool open(const String& filename, OpenMode = OpenMode::ReadWriteCreate);
     bool isOpen() const { return m_db; }
     WEBCORE_EXPORT void close();
 
@@ -64,7 +65,7 @@ public:
     
     WEBCORE_EXPORT bool tableExists(const String&);
     void clearAllTables();
-    int runVacuumCommand();
+    WEBCORE_EXPORT int runVacuumCommand();
     int runIncrementalVacuumCommand();
     
     bool transactionInProgress() const { return m_transactionInProgress; }
@@ -101,14 +102,15 @@ public:
     WEBCORE_EXPORT int lastError();
     WEBCORE_EXPORT const char* lastErrorMsg();
     
-    sqlite3* sqlite3Handle() const {
-#if !PLATFORM(IOS)
-        ASSERT(m_sharable || currentThread() == m_openingThread || !m_db);
+    sqlite3* sqlite3Handle() const
+    {
+#if !PLATFORM(IOS_FAMILY)
+        ASSERT(m_sharable || m_openingThread == &Thread::current() || !m_db);
 #endif
         return m_db;
     }
     
-    void setAuthorizer(PassRefPtr<DatabaseAuthorizer>);
+    void setAuthorizer(DatabaseAuthorizer&);
 
     Lock& databaseMutex() { return m_lockingMutex; }
     bool isAutoCommitOn() const;
@@ -125,7 +127,7 @@ public:
     enum AutoVacuumPragma { AutoVacuumNone = 0, AutoVacuumFull = 1, AutoVacuumIncremental = 2 };
     bool turnOnIncrementalAutoVacuum();
 
-    WEBCORE_EXPORT void setCollationFunction(const String& collationName, std::function<int(int, const void*, int, const void*)>);
+    WEBCORE_EXPORT void setCollationFunction(const String& collationName, WTF::Function<int(int, const void*, int, const void*)>&&);
     void removeCollationFunction(const String& collationName);
 
     // Set this flag to allow access from multiple threads.  Not all multi-threaded accesses are safe!
@@ -136,11 +138,14 @@ public:
     WEBCORE_EXPORT void disableThreadingChecks() {}
 #endif
 
+    WEBCORE_EXPORT static void setIsDatabaseOpeningForbidden(bool);
+
 private:
     static int authorizerFunction(void*, int, const char*, const char*, const char*, const char*);
 
     void enableAuthorizer(bool enable);
-    
+    void useWALJournalMode();
+
     int pageSize();
 
     void overrideUnauthorizedFunctions();
@@ -149,13 +154,17 @@ private:
     int m_pageSize { -1 };
     
     bool m_transactionInProgress { false };
+#ifndef NDEBUG
     bool m_sharable { false };
-    
+#endif
+
+    bool m_useWAL { false };
+
     Lock m_authorizerLock;
     RefPtr<DatabaseAuthorizer> m_authorizer;
 
     Lock m_lockingMutex;
-    ThreadIdentifier m_openingThread { 0 };
+    RefPtr<Thread> m_openingThread { nullptr };
 
     Lock m_databaseClosingMutex;
 
@@ -166,5 +175,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif

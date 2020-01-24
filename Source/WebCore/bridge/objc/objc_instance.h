@@ -23,11 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef BINDINGS_OBJC_INSTANCE_H_
-#define BINDINGS_OBJC_INSTANCE_H_
-
-#include "objc_class.h"
-#include "objc_utility.h"
+#import "objc_class.h"
+#import "objc_utility.h"
 
 namespace JSC {
 
@@ -37,7 +34,7 @@ class ObjcClass;
 
 class ObjcInstance : public Instance {
 public:
-    static RefPtr<ObjcInstance> create(ObjectStructPtr, RefPtr<RootObject>&&);
+    static Ref<ObjcInstance> create(ObjectStructPtr, RefPtr<RootObject>&&);
     virtual ~ObjcInstance();
     
     static void setGlobalException(NSString*, JSGlobalObject* exceptionEnvironment = 0); // A null exceptionEnvironment means the exception should propogate to any execution environment.
@@ -75,13 +72,11 @@ private:
     virtual RuntimeObject* newRuntimeObject(ExecState*);
 
     RetainPtr<ObjectStructPtr> _instance;
-    mutable ObjcClass *_class;
-    ObjectStructPtr _pool;
-    int _beginCount;
+    mutable ObjcClass* _class { nullptr };
+    void* m_autoreleasePool { nullptr };
+    int _beginCount { 0 };
 };
 
 } // namespace Bindings
 
 } // namespace JSC
-
-#endif // BINDINGS_OBJC_INSTANCE_H_

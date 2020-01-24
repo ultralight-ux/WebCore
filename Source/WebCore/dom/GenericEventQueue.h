@@ -29,7 +29,6 @@
 #include <wtf/Deque.h>
 #include <wtf/Forward.h>
 #include <wtf/RefPtr.h>
-#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -38,6 +37,7 @@ class EventTarget;
 class Timer;
 
 class GenericEventQueue {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit GenericEventQueue(EventTarget&);
     ~GenericEventQueue();
@@ -47,6 +47,7 @@ public:
 
     void cancelAllEvents();
     bool hasPendingEvents() const;
+    bool hasPendingEventsOfType(const AtomString&) const;
 
     void suspend();
     void resume();

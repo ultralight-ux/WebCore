@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2010, 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,20 +25,28 @@
 
 #pragma once
 
-#include "ScriptExecutable.h"
+#include "ExecutableToCodeBlockEdge.h"
+#include "GlobalExecutable.h"
 
 namespace JSC {
 
-class ProgramExecutable final : public ScriptExecutable {
+class ProgramExecutable final : public GlobalExecutable {
     friend class LLIntOffsetsExtractor;
 public:
-    typedef ScriptExecutable Base;
+    using Base = GlobalExecutable;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
+
+    template<typename CellType, SubspaceAccess>
+    static IsoSubspace* subspaceFor(VM& vm)
+    {
+        return &vm.programExecutableSpace.space;
+    }
 
     static ProgramExecutable* create(ExecState* exec, const SourceCode& source)
     {
-        ProgramExecutable* executable = new (NotNull, allocateCell<ProgramExecutable>(*exec->heap())) ProgramExecutable(exec, source);
-        executable->finishCreation(exec->vm());
+        VM& vm = exec->vm();
+        ProgramExecutable* executable = new (NotNull, allocateCell<ProgramExecutable>(vm.heap)) ProgramExecutable(exec, source);
+        executable->finishCreation(vm);
         return executable;
     }
 
@@ -48,12 +56,10 @@ public:
 
     ProgramCodeBlock* codeBlock()
     {
-        return m_programCodeBlock.get();
+        return bitwise_cast<ProgramCodeBlock*>(ExecutableToCodeBlockEdge::unwrap(m_programCodeBlock.get()));
     }
 
-    JSObject* checkSyntax(ExecState*);
-
-    PassRefPtr<JITCode> generatedJITCode()
+    Ref<JITCode> generatedJITCode()
     {
         return generatedJITCodeForCall();
     }
@@ -67,6 +73,8 @@ public:
 
     ExecutableInfo executableInfo() const { return ExecutableInfo(usesEval(), isStrictMode(), false, false, ConstructorKind::None, JSParserScriptMode::Classic, SuperBinding::NotNeeded, SourceParseMode::ProgramMode, derivedContextType(), isArrowFunctionContext(), false, EvalContextType::None); }
 
+    TemplateObjectMap& ensureTemplateObjectMap(VM&);
+
 private:
     friend class ExecutableBase;
     friend class ScriptExecutable;
@@ -76,7 +84,8 @@ private:
     static void visitChildren(JSCell*, SlotVisitor&);
 
     WriteBarrier<UnlinkedProgramCodeBlock> m_unlinkedProgramCodeBlock;
-    WriteBarrier<ProgramCodeBlock> m_programCodeBlock;
+    WriteBarrier<ExecutableToCodeBlockEdge> m_programCodeBlock;
+    std::unique_ptr<TemplateObjectMap> m_templateObjectMap;
 };
 
 } // namespace JSC

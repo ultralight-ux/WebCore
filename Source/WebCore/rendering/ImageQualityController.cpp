@@ -31,11 +31,12 @@
 #include "Page.h"
 #include "RenderBoxModelObject.h"
 #include "RenderView.h"
+#include <wtf/Optional.h>
 
 namespace WebCore {
 
 static const double cInterpolationCutoff = 800. * 800.;
-static const double cLowQualityTimeThreshold = 0.500; // 500 ms
+static const Seconds lowQualityTimeThreshold { 500_ms };
 
 ImageQualityController::ImageQualityController(const RenderView& renderView)
     : m_renderView(renderView)
@@ -74,7 +75,7 @@ void ImageQualityController::removeObject(RenderBoxModelObject* object)
 
 void ImageQualityController::highQualityRepaintTimerFired()
 {
-    if (m_renderView.documentBeingDestroyed())
+    if (m_renderView.renderTreeBeingDestroyed())
         return;
     if (!m_animatedResizeIsActive && !m_liveResizeOptimizationIsActive)
         return;
@@ -94,32 +95,32 @@ void ImageQualityController::highQualityRepaintTimerFired()
 
 void ImageQualityController::restartTimer()
 {
-    m_timer.startOneShot(cLowQualityTimeThreshold);
+    m_timer.startOneShot(lowQualityTimeThreshold);
 }
 
-std::optional<InterpolationQuality> ImageQualityController::interpolationQualityFromStyle(const RenderStyle& style)
+Optional<InterpolationQuality> ImageQualityController::interpolationQualityFromStyle(const RenderStyle& style)
 {
     switch (style.imageRendering()) {
-    case ImageRenderingOptimizeSpeed:
+    case ImageRendering::OptimizeSpeed:
         return InterpolationLow;
-    case ImageRenderingCrispEdges:
-    case ImageRenderingPixelated:
+    case ImageRendering::CrispEdges:
+    case ImageRendering::Pixelated:
         return InterpolationNone;
-    case ImageRenderingOptimizeQuality:
+    case ImageRendering::OptimizeQuality:
         return InterpolationDefault; // FIXME: CSS 3 Images says that optimizeQuality should behave like 'auto', but that prevents authors from overriding this low quality rendering behavior.
-    case ImageRenderingAuto:
+    case ImageRendering::Auto:
         break;
     }
-    return std::nullopt;
+    return WTF::nullopt;
 }
 
-InterpolationQuality ImageQualityController::chooseInterpolationQuality(GraphicsContext& context, RenderBoxModelObject* object, Image& image, const void *layer, const LayoutSize& size)
+InterpolationQuality ImageQualityController::chooseInterpolationQuality(GraphicsContext& context, RenderBoxModelObject* object, Image& image, const void* layer, const LayoutSize& size)
 {
     // If the image is not a bitmap image, then none of this is relevant and we just paint at high quality.
     if (!(image.isBitmapImage() || image.isPDFDocumentImage()) || context.paintingDisabled())
         return InterpolationDefault;
 
-    if (std::optional<InterpolationQuality> styleInterpolation = interpolationQualityFromStyle(object->style()))
+    if (Optional<InterpolationQuality> styleInterpolation = interpolationQualityFromStyle(object->style()))
         return styleInterpolation.value();
 
     // Make sure to use the unzoomed image size, since if a full page zoom is in effect, the image
@@ -161,7 +162,7 @@ InterpolationQuality ImageQualityController::chooseInterpolationQuality(Graphics
     }
 
     // There is no need to hash scaled images that always use low quality mode when the page demands it. This is the iChat case.
-    if (m_renderView.frame().page()->inLowQualityImageInterpolationMode()) {
+    if (m_renderView.page().inLowQualityImageInterpolationMode()) {
         double totalPixels = static_cast<double>(image.width()) * static_cast<double>(image.height());
         if (totalPixels > cInterpolationCutoff)
             return InterpolationLow;

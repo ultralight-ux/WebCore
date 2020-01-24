@@ -36,10 +36,10 @@ public:
     {
     }
 
-    virtual ~TableLayout() { }
+    virtual ~TableLayout() = default;
 
     virtual void computeIntrinsicLogicalWidths(LayoutUnit& minWidth, LayoutUnit& maxWidth) = 0;
-    virtual LayoutUnit scaledWidthFromPercentColumns() const { return LayoutUnit(0); }
+    virtual LayoutUnit scaledWidthFromPercentColumns() const { return 0_lu; }
     virtual void applyPreferredLogicalWidthQuirks(LayoutUnit& minWidth, LayoutUnit& maxWidth) const = 0;
     virtual void layout() = 0;
 

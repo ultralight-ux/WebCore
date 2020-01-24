@@ -23,13 +23,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef FilterOperation_h
-#define FilterOperation_h
+#pragma once
 
 #include "Color.h"
 #include "LayoutSize.h"
 #include "Length.h"
-#include <wtf/RefCounted.h>
+#include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/TypeCasts.h>
 #include <wtf/text/WTFString.h>
 
@@ -45,9 +44,10 @@ namespace WebCore {
 class CachedResourceLoader;
 class CachedSVGDocumentReference;
 class FilterEffect;
+struct FloatComponents;
 struct ResourceLoaderOptions;
 
-class FilterOperation : public RefCounted<FilterOperation> {
+class FilterOperation : public ThreadSafeRefCounted<FilterOperation> {
 public:
     enum OperationType {
         REFERENCE, // url(#somefilter)
@@ -56,6 +56,7 @@ public:
         SATURATE,
         HUE_ROTATE,
         INVERT,
+        APPLE_INVERT_LIGHTNESS,
         OPACITY,
         BRIGHTNESS,
         CONTRAST,
@@ -66,24 +67,20 @@ public:
         NONE
     };
 
-    virtual ~FilterOperation() { }
+    virtual ~FilterOperation() = default;
 
-    virtual PassRefPtr<FilterOperation> clone() const = 0;
+    virtual Ref<FilterOperation> clone() const = 0;
 
     virtual bool operator==(const FilterOperation&) const = 0;
     bool operator!=(const FilterOperation& o) const { return !(*this == o); }
 
-    virtual PassRefPtr<FilterOperation> blend(const FilterOperation* /*from*/, double /*progress*/, bool /*blendToPassthrough*/ = false)
+    virtual RefPtr<FilterOperation> blend(const FilterOperation* /*from*/, double /*progress*/, bool /*blendToPassthrough*/ = false)
     {
-        ASSERT(!blendingNeedsRendererSize());
-        return 0;
+        return nullptr;
     }
-
-    virtual PassRefPtr<FilterOperation> blend(const FilterOperation* /*from*/, double /*progress*/, const LayoutSize&, bool /*blendToPassthrough*/ = false)
-    {
-        ASSERT(blendingNeedsRendererSize());
-        return 0;
-    }
+    
+    virtual bool transformColor(FloatComponents&) const { return false; }
+    virtual bool inverseTransformColor(FloatComponents&) const { return false; }
 
     OperationType type() const { return m_type; }
 
@@ -101,12 +98,10 @@ public:
 
     // True if the alpha channel of any pixel can change under this operation.
     virtual bool affectsOpacity() const { return false; }
-    // True if the the value of one pixel can affect the value of another pixel under this operation, such as blur.
+    // True if the value of one pixel can affect the value of another pixel under this operation, such as blur.
     virtual bool movesPixels() const { return false; }
     // True if the filter should not be allowed to work on content that is not available from this security origin.
     virtual bool shouldBeRestrictedBySecurityOrigin() const { return false; }
-    // True if the filter needs the size of the box in order to calculate the animations.
-    virtual bool blendingNeedsRendererSize() const { return false; }
 
 protected:
     FilterOperation(OperationType type)
@@ -119,14 +114,14 @@ protected:
 
 class WEBCORE_EXPORT DefaultFilterOperation : public FilterOperation {
 public:
-    static PassRefPtr<DefaultFilterOperation> create(OperationType representedType)
+    static Ref<DefaultFilterOperation> create(OperationType representedType)
     {
-        return adoptRef(new DefaultFilterOperation(representedType));
+        return adoptRef(*new DefaultFilterOperation(representedType));
     }
 
-    PassRefPtr<FilterOperation> clone() const override
+    Ref<FilterOperation> clone() const override
     {
-        return adoptRef(new DefaultFilterOperation(representedType()));
+        return adoptRef(*new DefaultFilterOperation(representedType()));
     }
 
     OperationType representedType() const { return m_representedType; }
@@ -145,14 +140,14 @@ private:
 
 class PassthroughFilterOperation : public FilterOperation {
 public:
-    static PassRefPtr<PassthroughFilterOperation> create()
+    static Ref<PassthroughFilterOperation> create()
     {
-        return adoptRef(new PassthroughFilterOperation());
+        return adoptRef(*new PassthroughFilterOperation());
     }
 
-    PassRefPtr<FilterOperation> clone() const override
+    Ref<FilterOperation> clone() const override
     {
-        return adoptRef(new PassthroughFilterOperation());
+        return adoptRef(*new PassthroughFilterOperation());
     }
 
 private:
@@ -169,17 +164,16 @@ private:
 
 class ReferenceFilterOperation : public FilterOperation {
 public:
-    static PassRefPtr<ReferenceFilterOperation> create(const String& url, const String& fragment)
+    static Ref<ReferenceFilterOperation> create(const String& url, const String& fragment)
     {
-        return adoptRef(new ReferenceFilterOperation(url, fragment));
+        return adoptRef(*new ReferenceFilterOperation(url, fragment));
     }
     virtual ~ReferenceFilterOperation();
 
-    PassRefPtr<FilterOperation> clone() const override
+    Ref<FilterOperation> clone() const final
     {
         // Reference filters cannot be cloned.
-        ASSERT_NOT_REACHED();
-        return nullptr;
+        RELEASE_ASSERT_NOT_REACHED();
     }
 
     bool affectsOpacity() const override { return true; }
@@ -195,9 +189,6 @@ public:
 
     CachedSVGDocumentReference* cachedSVGDocumentReference() const { return m_cachedSVGDocumentReference.get(); }
 
-    FilterEffect* filterEffect() const { return m_filterEffect.get(); }
-    void setFilterEffect(PassRefPtr<FilterEffect>);
-
 private:
     ReferenceFilterOperation(const String& url, const String& fragment);
 
@@ -206,26 +197,25 @@ private:
     String m_url;
     String m_fragment;
     std::unique_ptr<CachedSVGDocumentReference> m_cachedSVGDocumentReference;
-    RefPtr<FilterEffect> m_filterEffect;
 };
 
 // GRAYSCALE, SEPIA, SATURATE and HUE_ROTATE are variations on a basic color matrix effect.
 // For HUE_ROTATE, the angle of rotation is stored in m_amount.
 class WEBCORE_EXPORT BasicColorMatrixFilterOperation : public FilterOperation {
 public:
-    static PassRefPtr<BasicColorMatrixFilterOperation> create(double amount, OperationType type)
+    static Ref<BasicColorMatrixFilterOperation> create(double amount, OperationType type)
     {
-        return adoptRef(new BasicColorMatrixFilterOperation(amount, type));
+        return adoptRef(*new BasicColorMatrixFilterOperation(amount, type));
     }
 
-    PassRefPtr<FilterOperation> clone() const override
+    Ref<FilterOperation> clone() const override
     {
-        return adoptRef(new BasicColorMatrixFilterOperation(amount(), type()));
+        return adoptRef(*new BasicColorMatrixFilterOperation(amount(), type()));
     }
 
     double amount() const { return m_amount; }
 
-    PassRefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
+    RefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
 
 private:
     bool operator==(const FilterOperation&) const override;
@@ -238,27 +228,29 @@ private:
     {
     }
 
+    bool transformColor(FloatComponents&) const override;
+
     double m_amount;
 };
 
 // INVERT, BRIGHTNESS, CONTRAST and OPACITY are variations on a basic component transfer effect.
 class WEBCORE_EXPORT BasicComponentTransferFilterOperation : public FilterOperation {
 public:
-    static PassRefPtr<BasicComponentTransferFilterOperation> create(double amount, OperationType type)
+    static Ref<BasicComponentTransferFilterOperation> create(double amount, OperationType type)
     {
-        return adoptRef(new BasicComponentTransferFilterOperation(amount, type));
+        return adoptRef(*new BasicComponentTransferFilterOperation(amount, type));
     }
 
-    PassRefPtr<FilterOperation> clone() const override
+    Ref<FilterOperation> clone() const override
     {
-        return adoptRef(new BasicComponentTransferFilterOperation(amount(), type()));
+        return adoptRef(*new BasicComponentTransferFilterOperation(amount(), type()));
     }
 
     double amount() const { return m_amount; }
 
     bool affectsOpacity() const override { return m_type == OPACITY; }
 
-    PassRefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
+    RefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
 
 private:
     bool operator==(const FilterOperation&) const override;
@@ -271,19 +263,47 @@ private:
     {
     }
 
+    bool transformColor(FloatComponents&) const override;
+
     double m_amount;
+};
+
+class WEBCORE_EXPORT InvertLightnessFilterOperation : public FilterOperation {
+public:
+    static Ref<InvertLightnessFilterOperation> create()
+    {
+        return adoptRef(*new InvertLightnessFilterOperation());
+    }
+
+    Ref<FilterOperation> clone() const final
+    {
+        return adoptRef(*new InvertLightnessFilterOperation());
+    }
+
+    RefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
+
+private:
+    bool operator==(const FilterOperation&) const final;
+
+    InvertLightnessFilterOperation()
+        : FilterOperation(APPLE_INVERT_LIGHTNESS)
+    {
+    }
+
+    bool transformColor(FloatComponents&) const final;
+    bool inverseTransformColor(FloatComponents&) const final;
 };
 
 class WEBCORE_EXPORT BlurFilterOperation : public FilterOperation {
 public:
-    static PassRefPtr<BlurFilterOperation> create(Length stdDeviation)
+    static Ref<BlurFilterOperation> create(Length stdDeviation)
     {
-        return adoptRef(new BlurFilterOperation(WTFMove(stdDeviation)));
+        return adoptRef(*new BlurFilterOperation(WTFMove(stdDeviation)));
     }
 
-    PassRefPtr<FilterOperation> clone() const override
+    Ref<FilterOperation> clone() const override
     {
-        return adoptRef(new BlurFilterOperation(stdDeviation()));
+        return adoptRef(*new BlurFilterOperation(stdDeviation()));
     }
 
     const Length& stdDeviation() const { return m_stdDeviation; }
@@ -291,7 +311,7 @@ public:
     bool affectsOpacity() const override { return true; }
     bool movesPixels() const override { return true; }
 
-    PassRefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
+    RefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
 
 private:
     bool operator==(const FilterOperation&) const override;
@@ -307,14 +327,14 @@ private:
 
 class WEBCORE_EXPORT DropShadowFilterOperation : public FilterOperation {
 public:
-    static PassRefPtr<DropShadowFilterOperation> create(const IntPoint& location, int stdDeviation, const Color& color)
+    static Ref<DropShadowFilterOperation> create(const IntPoint& location, int stdDeviation, const Color& color)
     {
-        return adoptRef(new DropShadowFilterOperation(location, stdDeviation, color));
+        return adoptRef(*new DropShadowFilterOperation(location, stdDeviation, color));
     }
 
-    PassRefPtr<FilterOperation> clone() const override
+    Ref<FilterOperation> clone() const override
     {
-        return adoptRef(new DropShadowFilterOperation(location(), stdDeviation(), color()));
+        return adoptRef(*new DropShadowFilterOperation(location(), stdDeviation(), color()));
     }
 
     int x() const { return m_location.x(); }
@@ -326,7 +346,7 @@ public:
     bool affectsOpacity() const override { return true; }
     bool movesPixels() const override { return true; }
 
-    PassRefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
+    RefPtr<FilterOperation> blend(const FilterOperation* from, double progress, bool blendToPassthrough = false) override;
 
 private:
     bool operator==(const FilterOperation&) const override;
@@ -344,7 +364,7 @@ private:
     Color m_color;
 };
 
-WEBCORE_EXPORT TextStream& operator<<(TextStream&, const FilterOperation&);
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const FilterOperation&);
 
 } // namespace WebCore
 
@@ -358,7 +378,7 @@ SPECIALIZE_TYPE_TRAITS_FILTEROPERATION(PassthroughFilterOperation, type() == Web
 SPECIALIZE_TYPE_TRAITS_FILTEROPERATION(ReferenceFilterOperation, type() == WebCore::FilterOperation::REFERENCE)
 SPECIALIZE_TYPE_TRAITS_FILTEROPERATION(BasicColorMatrixFilterOperation, isBasicColorMatrixFilterOperation())
 SPECIALIZE_TYPE_TRAITS_FILTEROPERATION(BasicComponentTransferFilterOperation, isBasicComponentTransferFilterOperation())
+SPECIALIZE_TYPE_TRAITS_FILTEROPERATION(InvertLightnessFilterOperation, type() == WebCore::FilterOperation::APPLE_INVERT_LIGHTNESS)
 SPECIALIZE_TYPE_TRAITS_FILTEROPERATION(BlurFilterOperation, type() == WebCore::FilterOperation::BLUR)
 SPECIALIZE_TYPE_TRAITS_FILTEROPERATION(DropShadowFilterOperation, type() == WebCore::FilterOperation::DROP_SHADOW)
 
-#endif // FilterOperation_h

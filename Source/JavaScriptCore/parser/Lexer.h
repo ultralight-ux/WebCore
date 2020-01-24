@@ -24,6 +24,7 @@
 
 #include "Lookup.h"
 #include "ParserArena.h"
+#include "ParserModes.h"
 #include "ParserTokens.h"
 #include "SourceCode.h"
 #include <wtf/ASCIICType.h>
@@ -36,6 +37,8 @@ enum LexerFlags {
     LexerFlagsDontBuildStrings = 2,
     LexexFlagsDontBuildKeywords = 4
 };
+
+enum class LexerEscapeParseMode { Template, String };
 
 struct ParsedUnicodeEscapeValue;
 
@@ -62,6 +65,7 @@ public:
     bool isReparsingFunction() const { return m_isReparsingFunction; }
 
     JSTokenType lex(JSToken*, unsigned, bool strictMode);
+    JSTokenType lexWithoutClearingLineTerminator(JSToken*, unsigned, bool strictMode);
     bool nextTokenIsColon();
     int lineNumber() const { return m_lineNumber; }
     ALWAYS_INLINE int currentOffset() const { return offsetFromSourcePtr(m_code); }
@@ -74,18 +78,18 @@ public:
     JSTokenLocation lastTokenLocation() const { return m_lastTokenLocation; }
     void setLastLineNumber(int lastLineNumber) { m_lastLineNumber = lastLineNumber; }
     int lastLineNumber() const { return m_lastLineNumber; }
-    bool prevTerminator() const { return m_terminator; }
+    bool hasLineTerminatorBeforeToken() const { return m_hasLineTerminatorBeforeToken; }
     JSTokenType scanRegExp(JSToken*, UChar patternPrefix = 0);
     enum class RawStringsBuildMode { BuildRawStrings, DontBuildRawStrings };
-    JSTokenType scanTrailingTemplateString(JSToken*, RawStringsBuildMode);
+    JSTokenType scanTemplateString(JSToken*, RawStringsBuildMode);
 
     // Functions for use after parsing.
     bool sawError() const { return m_error; }
     void setSawError(bool sawError) { m_error = sawError; }
     String getErrorMessage() const { return m_lexErrorMessage; }
     void setErrorMessage(const String& errorMessage) { m_lexErrorMessage = errorMessage; }
-    String sourceURL() const { return m_sourceURLDirective; }
-    String sourceMappingURL() const { return m_sourceMappingURLDirective; }
+    String sourceURLDirective() const { return m_sourceURLDirective; }
+    String sourceMappingURLDirective() const { return m_sourceMappingURLDirective; }
     void clear();
     void setOffset(int offset, int lineStartOffset)
     {
@@ -96,8 +100,8 @@ public:
         m_lineStart = sourcePtrFromOffset(lineStartOffset);
         ASSERT(currentOffset() >= currentLineStartOffset());
 
-        m_buffer8.resize(0);
-        m_buffer16.resize(0);
+        m_buffer8.shrink(0);
+        m_buffer16.shrink(0);
         if (LIKELY(m_code < m_codeEnd))
             m_current = *m_code;
         else
@@ -107,9 +111,9 @@ public:
     {
         m_lineNumber = line;
     }
-    void setTerminator(bool terminator)
+    void setHasLineTerminatorBeforeToken(bool terminator)
     {
-        m_terminator = terminator;
+        m_hasLineTerminatorBeforeToken = terminator;
     }
 
     JSTokenType lexExpectIdentifier(JSToken*, unsigned, bool strictMode);
@@ -170,14 +174,16 @@ private:
     template <bool shouldBuildStrings> ALWAYS_INLINE StringParseResult parseString(JSTokenData*, bool strictMode);
     template <bool shouldBuildStrings> NEVER_INLINE StringParseResult parseStringSlowCase(JSTokenData*, bool strictMode);
 
-    enum class EscapeParseMode { Template, String };
-    template <bool shouldBuildStrings> ALWAYS_INLINE StringParseResult parseComplexEscape(EscapeParseMode, bool strictMode, T stringQuoteCharacter);
-    template <bool shouldBuildStrings> ALWAYS_INLINE StringParseResult parseTemplateLiteral(JSTokenData*, RawStringsBuildMode);
-    ALWAYS_INLINE void parseHex(double& returnValue);
-    ALWAYS_INLINE bool parseBinary(double& returnValue);
-    ALWAYS_INLINE bool parseOctal(double& returnValue);
-    ALWAYS_INLINE bool parseDecimal(double& returnValue);
-    ALWAYS_INLINE void parseNumberAfterDecimalPoint();
+
+    template <bool shouldBuildStrings, LexerEscapeParseMode escapeParseMode> ALWAYS_INLINE StringParseResult parseComplexEscape(bool strictMode, T stringQuoteCharacter);
+    ALWAYS_INLINE StringParseResult parseTemplateLiteral(JSTokenData*, RawStringsBuildMode);
+    
+    using NumberParseResult = Variant<double, const Identifier*>;
+    ALWAYS_INLINE Optional<NumberParseResult> parseHex();
+    ALWAYS_INLINE Optional<NumberParseResult> parseBinary();
+    ALWAYS_INLINE Optional<NumberParseResult> parseOctal();
+    ALWAYS_INLINE Optional<NumberParseResult> parseDecimal();
+    ALWAYS_INLINE bool parseNumberAfterDecimalPoint();
     ALWAYS_INLINE bool parseNumberAfterExponentIndicator();
     ALWAYS_INLINE bool parseMultilineComment();
 
@@ -197,7 +203,7 @@ private:
     Vector<LChar> m_buffer8;
     Vector<UChar> m_buffer16;
     Vector<UChar> m_bufferForRawTemplateString16;
-    bool m_terminator;
+    bool m_hasLineTerminatorBeforeToken;
     int m_lastToken;
 
     const SourceCode* m_source;
@@ -235,8 +241,7 @@ ALWAYS_INLINE bool Lexer<LChar>::isWhiteSpace(LChar ch)
 template <>
 ALWAYS_INLINE bool Lexer<UChar>::isWhiteSpace(UChar ch)
 {
-    // 0x180E used to be in Zs category before Unicode 6.3, and EcmaScript says that we should keep treating it as such.
-    return (ch < 256) ? Lexer<LChar>::isWhiteSpace(static_cast<LChar>(ch)) : (u_charType(ch) == U_SPACE_SEPARATOR || ch == 0x180E || ch == 0xFEFF);
+    return (ch < 256) ? Lexer<LChar>::isWhiteSpace(static_cast<LChar>(ch)) : (u_charType(ch) == U_SPACE_SEPARATOR || ch == 0xFEFF);
 }
 
 template <>
@@ -397,6 +402,13 @@ ALWAYS_INLINE JSTokenType Lexer<T>::lexExpectIdentifier(JSToken* tokenRecord, un
     
 slowCase:
     return lex(tokenRecord, lexerFlags, strictMode);
+}
+
+template <typename T>
+ALWAYS_INLINE JSTokenType Lexer<T>::lex(JSToken* tokenRecord, unsigned lexerFlags, bool strictMode)
+{
+    m_hasLineTerminatorBeforeToken = false;
+    return lexWithoutClearingLineTerminator(tokenRecord, lexerFlags, strictMode);
 }
 
 } // namespace JSC

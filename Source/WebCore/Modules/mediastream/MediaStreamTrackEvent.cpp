@@ -27,36 +27,33 @@
 
 #include "MediaStreamTrackEvent.h"
 
-#include "EventNames.h"
 #include "MediaStreamTrack.h"
 
 namespace WebCore {
 
-Ref<MediaStreamTrackEvent> MediaStreamTrackEvent::create(const AtomicString& type, bool canBubble, bool cancelable, RefPtr<MediaStreamTrack>&& track)
+Ref<MediaStreamTrackEvent> MediaStreamTrackEvent::create(const AtomString& type, CanBubble canBubble, IsCancelable cancelable, RefPtr<MediaStreamTrack>&& track)
 {
     return adoptRef(*new MediaStreamTrackEvent(type, canBubble, cancelable, WTFMove(track)));
 }
 
-Ref<MediaStreamTrackEvent> MediaStreamTrackEvent::create(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+Ref<MediaStreamTrackEvent> MediaStreamTrackEvent::create(const AtomString& type, const Init& initializer, IsTrusted isTrusted)
 {
     return adoptRef(*new MediaStreamTrackEvent(type, initializer, isTrusted));
 }
 
-MediaStreamTrackEvent::MediaStreamTrackEvent(const AtomicString& type, bool canBubble, bool cancelable, RefPtr<MediaStreamTrack>&& track)
+MediaStreamTrackEvent::MediaStreamTrackEvent(const AtomString& type, CanBubble canBubble, IsCancelable cancelable, RefPtr<MediaStreamTrack>&& track)
     : Event(type, canBubble, cancelable)
     , m_track(WTFMove(track))
 {
 }
 
-MediaStreamTrackEvent::MediaStreamTrackEvent(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+MediaStreamTrackEvent::MediaStreamTrackEvent(const AtomString& type, const Init& initializer, IsTrusted isTrusted)
     : Event(type, initializer, isTrusted)
     , m_track(initializer.track)
 {
 }
 
-MediaStreamTrackEvent::~MediaStreamTrackEvent()
-{
-}
+MediaStreamTrackEvent::~MediaStreamTrackEvent() = default;
 
 MediaStreamTrack* MediaStreamTrackEvent::track() const
 {

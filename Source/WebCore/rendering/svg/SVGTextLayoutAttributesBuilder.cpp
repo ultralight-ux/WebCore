@@ -80,17 +80,20 @@ void SVGTextLayoutAttributesBuilder::rebuildMetricsForTextRenderer(RenderSVGInli
 
 static inline void processRenderSVGInlineText(const RenderSVGInlineText& text, unsigned& atCharacter, bool& lastCharacterWasSpace)
 {
-    if (text.style().whiteSpace() == PRE) {
-        atCharacter += text.textLength();
+    auto& string = text.text();
+    auto length = string.length();
+    if (text.style().whiteSpace() == WhiteSpace::Pre) {
+        atCharacter += length;
         return;
     }
 
-    for (unsigned textPosition = 0, textLength = text.textLength(); textPosition < textLength; ++textPosition) {
-        const UChar currentCharacter = text[textPosition];
-        if (currentCharacter == ' ' && lastCharacterWasSpace)
+    // FIXME: This is not a complete whitespace collapsing implementation; it doesn't handle newlines or tabs.
+    for (unsigned i = 0; i < length; ++i) {
+        UChar character = string[i];
+        if (character == ' ' && lastCharacterWasSpace)
             continue;
 
-        lastCharacterWasSpace = currentCharacter == ' ';
+        lastCharacterWasSpace = character == ' ';
         ++atCharacter;
     }
 }
@@ -157,18 +160,18 @@ void SVGTextLayoutAttributesBuilder::buildCharacterDataMap(RenderSVGText& textRo
         fillCharacterDataMap(m_textPositions[i]);
 }
 
-static inline void updateCharacterData(unsigned i, float& lastRotation, SVGCharacterData& data, const SVGLengthContext& lengthContext, const SVGLengthListValues* xList, const SVGLengthListValues* yList, const SVGLengthListValues* dxList, const SVGLengthListValues* dyList, const SVGNumberListValues* rotateList)
+static inline void updateCharacterData(unsigned i, float& lastRotation, SVGCharacterData& data, const SVGLengthContext& lengthContext, const SVGLengthList* xList, const SVGLengthList* yList, const SVGLengthList* dxList, const SVGLengthList* dyList, const SVGNumberList* rotateList)
 {
     if (xList)
-        data.x = xList->at(i).value(lengthContext);
+        data.x = xList->items()[i]->value().value(lengthContext);
     if (yList)
-        data.y = yList->at(i).value(lengthContext);
+        data.y = yList->items()[i]->value().value(lengthContext);
     if (dxList)
-        data.dx = dxList->at(i).value(lengthContext);
+        data.dx = dxList->items()[i]->value().value(lengthContext);
     if (dyList)
-        data.dy = dyList->at(i).value(lengthContext);
+        data.dy = dyList->items()[i]->value().value(lengthContext);
     if (rotateList) {
-        data.rotate = rotateList->at(i);
+        data.rotate = rotateList->items()[i]->value();
         lastRotation = data.rotate;
     }
 }
@@ -185,18 +188,18 @@ void SVGTextLayoutAttributesBuilder::fillCharacterDataMap(const TextPosition& po
     unsigned yListSize = yList.size();
     unsigned dxListSize = dxList.size();
     unsigned dyListSize = dyList.size();
-    unsigned rotateListSize = rotateList.size();
+    unsigned rotateListSize = rotateList.items().size();
     if (!xListSize && !yListSize && !dxListSize && !dyListSize && !rotateListSize)
         return;
 
     float lastRotation = SVGTextLayoutAttributes::emptyValue();
     SVGLengthContext lengthContext(position.element);
     for (unsigned i = 0; i < position.length; ++i) {
-        const SVGLengthListValues* xListPtr = i < xListSize ? &xList : 0;
-        const SVGLengthListValues* yListPtr = i < yListSize ? &yList : 0;
-        const SVGLengthListValues* dxListPtr = i < dxListSize ? &dxList : 0;
-        const SVGLengthListValues* dyListPtr = i < dyListSize ? &dyList : 0;
-        const SVGNumberListValues* rotateListPtr = i < rotateListSize ? &rotateList : 0;
+        const SVGLengthList* xListPtr = i < xListSize ? &xList : nullptr;
+        const SVGLengthList* yListPtr = i < yListSize ? &yList : nullptr;
+        const SVGLengthList* dxListPtr = i < dxListSize ? &dxList : nullptr;
+        const SVGLengthList* dyListPtr = i < dyListSize ? &dyList : nullptr;
+        const SVGNumberList* rotateListPtr = i < rotateListSize ? &rotateList : nullptr;
         if (!xListPtr && !yListPtr && !dxListPtr && !dyListPtr && !rotateListPtr)
             break;
 
@@ -215,7 +218,7 @@ void SVGTextLayoutAttributesBuilder::fillCharacterDataMap(const TextPosition& po
     if (lastRotation == SVGTextLayoutAttributes::emptyValue())
         return;
 
-    for (unsigned i = rotateList.size(); i < position.length; ++i) {
+    for (unsigned i = rotateList.items().size(); i < position.length; ++i) {
         SVGCharacterDataMap::iterator it = m_characterDataMap.find(position.start + i + 1);
         if (it == m_characterDataMap.end()) {
             SVGCharacterData data;

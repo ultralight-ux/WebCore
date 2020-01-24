@@ -35,8 +35,13 @@ namespace WebCore {
 CSSDeferredParser::CSSDeferredParser(const CSSParserContext& context, const String& sheetText, StyleSheetContents& styleSheet)
     : m_context(context)
     , m_sheetText(sheetText)
-    , m_styleSheet(styleSheet.createWeakPtr())
+    , m_styleSheet(makeWeakPtr(styleSheet))
 {
+}
+
+StyleSheetContents* CSSDeferredParser::styleSheet() const
+{
+    return m_styleSheet.get();
 }
 
 Ref<ImmutableStyleProperties> CSSDeferredParser::parseDeclaration(const CSSParserTokenRange& range)

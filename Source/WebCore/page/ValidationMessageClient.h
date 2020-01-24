@@ -33,8 +33,9 @@ class Document;
 class Element;
 
 class ValidationMessageClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
-    virtual ~ValidationMessageClient() { }
+    virtual ~ValidationMessageClient() = default;
 
     // Show validation message for the specified anchor element. An
     // implementation of this function may hide the message automatically after

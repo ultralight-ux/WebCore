@@ -18,7 +18,10 @@
  */
 
 #include "config.h"
-#include "GLibUtilities.h"
+#include <wtf/glib/GLibUtilities.h>
+
+#include <glib.h>
+#include <wtf/glib/GUniquePtr.h>
 
 #if OS(WINDOWS)
 #include <windows.h>
@@ -63,3 +66,29 @@ CString getCurrentExecutablePath()
     return path.utf8();
 }
 #endif
+
+CString getCurrentExecutableName()
+{
+    auto executablePath = getCurrentExecutablePath();
+    if (!executablePath.isNull()) {
+        GUniquePtr<char> basename(g_path_get_basename(executablePath.data()));
+        return basename.get();
+    }
+
+    return g_get_prgname();
+}
+
+CString enumToString(GType type, guint value)
+{
+#if GLIB_CHECK_VERSION(2, 54, 0)
+    GUniquePtr<char> result(g_enum_to_string(type, value));
+    return result.get();
+#else
+    GEnumClass* enumClass = reinterpret_cast<GEnumClass*>(g_type_class_ref(type));
+    GEnumValue* enumValue = g_enum_get_value(enumClass, value);
+    char* representation = enumValue ? g_strdup(enumValue->value_nick) : nullptr;
+    g_type_class_unref(enumClass);
+    GUniquePtr<char> result(representation);
+    return result.get();
+#endif
+}

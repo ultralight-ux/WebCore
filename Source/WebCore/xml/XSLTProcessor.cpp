@@ -21,10 +21,9 @@
  */
 
 #include "config.h"
+#include "XSLTProcessor.h"
 
 #if ENABLE(XSLT)
-
-#include "XSLTProcessor.h"
 
 #include "DOMImplementation.h"
 #include "CachedResourceLoader.h"
@@ -33,8 +32,6 @@
 #include "Frame.h"
 #include "FrameLoader.h"
 #include "FrameView.h"
-#include "HTMLDocument.h"
-#include "Page.h"
 #include "SecurityOrigin.h"
 #include "SecurityOriginPolicy.h"
 #include "Text.h"
@@ -88,10 +85,11 @@ Ref<Document> XSLTProcessor::createDocumentFromSource(const String& sourceString
 
         if (Document* oldDocument = frame->document()) {
             result->setTransformSourceDocument(oldDocument);
-            result->takeDOMWindowFrom(oldDocument);
+            result->takeDOMWindowFrom(*oldDocument);
             result->setSecurityOriginPolicy(oldDocument->securityOriginPolicy());
             result->setCookieURL(oldDocument->cookieURL());
             result->setFirstPartyForCookies(oldDocument->firstPartyForCookies());
+            result->setSiteForCookies(oldDocument->siteForCookies());
             result->setStrictMixedContentMode(oldDocument->isStrictMixedContentMode());
             result->contentSecurityPolicy()->copyStateFrom(oldDocument->contentSecurityPolicy());
             result->contentSecurityPolicy()->copyUpgradeInsecureRequestStateFrom(*oldDocument->contentSecurityPolicy());
@@ -100,7 +98,7 @@ Ref<Document> XSLTProcessor::createDocumentFromSource(const String& sourceString
         frame->setDocument(result.copyRef());
     }
 
-    RefPtr<TextResourceDecoder> decoder = TextResourceDecoder::create(sourceMIMEType);
+    auto decoder = TextResourceDecoder::create(sourceMIMEType);
     decoder->setEncoding(sourceEncoding.isEmpty() ? UTF8Encoding() : TextEncoding(sourceEncoding), TextResourceDecoder::EncodingFromXMLHeader);
     result->setDecoder(WTFMove(decoder));
 
@@ -142,6 +140,9 @@ RefPtr<DocumentFragment> XSLTProcessor::transformToFragment(Node* sourceNode, Do
 
 void XSLTProcessor::setParameter(const String& /*namespaceURI*/, const String& localName, const String& value)
 {
+    if (localName.isNull() || value.isNull())
+        return;
+
     // FIXME: namespace support?
     // should make a QualifiedName here but we'd have to expose the impl
     m_parameters.set(localName, value);
@@ -149,6 +150,9 @@ void XSLTProcessor::setParameter(const String& /*namespaceURI*/, const String& l
 
 String XSLTProcessor::getParameter(const String& /*namespaceURI*/, const String& localName) const
 {
+    if (localName.isNull())
+        return { };
+
     // FIXME: namespace support?
     // should make a QualifiedName here but we'd have to expose the impl
     return m_parameters.get(localName);
@@ -156,6 +160,9 @@ String XSLTProcessor::getParameter(const String& /*namespaceURI*/, const String&
 
 void XSLTProcessor::removeParameter(const String& /*namespaceURI*/, const String& localName)
 {
+    if (localName.isNull())
+        return;
+
     // FIXME: namespace support?
     m_parameters.remove(localName);
 }

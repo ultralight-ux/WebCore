@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2003, 2006, 2017 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,22 +23,40 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef TextFlags_h
-#define TextFlags_h
+#pragma once
 
 namespace WebCore {
 
-enum TextRenderingMode { AutoTextRendering, OptimizeSpeed, OptimizeLegibility, GeometricPrecision };
+enum class TextRenderingMode : uint8_t {
+    AutoTextRendering,
+    OptimizeSpeed,
+    OptimizeLegibility,
+    GeometricPrecision
+};
 
-enum FontSmoothingMode { AutoSmoothing, NoSmoothing, Antialiased, SubpixelAntialiased };
+enum class FontSmoothingMode : uint8_t {
+    AutoSmoothing,
+    NoSmoothing,
+    Antialiased,
+    SubpixelAntialiased
+};
 
 // This setting is used to provide ways of switching between multiple rendering modes that may have different
 // metrics. It is used to switch between CG and GDI text on Windows.
-enum class FontRenderingMode { Normal, Alternate };
+enum class FontRenderingMode : uint8_t {
+    Normal,
+    Alternate
+};
 
-enum FontOrientation { Horizontal, Vertical };
+enum class FontOrientation : uint8_t {
+    Horizontal,
+    Vertical
+};
 
-enum class NonCJKGlyphOrientation { Mixed, Upright };
+enum class NonCJKGlyphOrientation : uint8_t {
+    Mixed,
+    Upright
+};
 
 // Here, "Leading" and "Trailing" are relevant after the line has been rearranged for bidi.
 // ("Leading" means "left" and "Trailing" means "right.")
@@ -66,19 +84,19 @@ enum FontSynthesisValues {
 typedef unsigned FontSynthesis;
 const unsigned FontSynthesisWidth = 3;
 
-enum class FontVariantLigatures {
+enum class FontVariantLigatures : uint8_t {
     Normal,
     Yes,
     No
 };
 
-enum class FontVariantPosition {
+enum class FontVariantPosition : uint8_t {
     Normal,
     Subscript,
     Superscript
 };
 
-enum class FontVariantCaps {
+enum class FontVariantCaps : uint8_t {
     Normal,
     Small,
     AllSmall,
@@ -88,40 +106,40 @@ enum class FontVariantCaps {
     Titling
 };
 
-enum class FontVariantNumericFigure {
+enum class FontVariantNumericFigure : uint8_t {
     Normal,
     LiningNumbers,
     OldStyleNumbers
 };
 
-enum class FontVariantNumericSpacing {
+enum class FontVariantNumericSpacing : uint8_t {
     Normal,
     ProportionalNumbers,
     TabularNumbers
 };
 
-enum class FontVariantNumericFraction {
+enum class FontVariantNumericFraction : uint8_t {
     Normal,
     DiagonalFractions,
     StackedFractions
 };
 
-enum class FontVariantNumericOrdinal {
+enum class FontVariantNumericOrdinal : uint8_t {
     Normal,
     Yes
 };
 
-enum class FontVariantNumericSlashedZero {
+enum class FontVariantNumericSlashedZero : uint8_t {
     Normal,
     Yes
 };
 
-enum class FontVariantAlternates {
+enum class FontVariantAlternates : uint8_t {
     Normal,
     HistoricalForms
 };
 
-enum class FontVariantEastAsianVariant {
+enum class FontVariantEastAsianVariant : uint8_t {
     Normal,
     Jis78,
     Jis83,
@@ -131,13 +149,13 @@ enum class FontVariantEastAsianVariant {
     Traditional
 };
 
-enum class FontVariantEastAsianWidth {
+enum class FontVariantEastAsianWidth : uint8_t {
     Normal,
     Full,
     Proportional
 };
 
-enum class FontVariantEastAsianRuby {
+enum class FontVariantEastAsianRuby : uint8_t {
     Normal,
     Yes
 };
@@ -255,6 +273,7 @@ struct FontVariantSettings {
             | static_cast<unsigned>(eastAsianRuby) << 0;
     }
 
+    // FIXME: this would be much more compact with bitfields.
     FontVariantLigatures commonLigatures;
     FontVariantLigatures discretionaryLigatures;
     FontVariantLigatures historicalLigatures;
@@ -329,7 +348,7 @@ struct FontVariantEastAsianValues {
     FontVariantEastAsianRuby ruby;
 };
 
-enum FontWidthVariant {
+enum class FontWidthVariant : uint8_t {
     RegularWidth,
     HalfWidth,
     ThirdWidth,
@@ -339,70 +358,33 @@ enum FontWidthVariant {
 
 const unsigned FontWidthVariantWidth = 2;
 
-COMPILE_ASSERT(!(LastFontWidthVariant >> FontWidthVariantWidth), FontWidthVariantWidth_is_correct);
+COMPILE_ASSERT(!(static_cast<unsigned>(FontWidthVariant::LastFontWidthVariant) >> FontWidthVariantWidth), FontWidthVariantWidth_is_correct);
 
-enum FontWeight {
-    FontWeight100,
-    FontWeight200,
-    FontWeight300,
-    FontWeight400,
-    FontWeight500,
-    FontWeight600,
-    FontWeight700,
-    FontWeight800,
-    FontWeight900,
-    FontWeightNormal = FontWeight400,
-    FontWeightBold = FontWeight700
+enum class FontSmallCaps : uint8_t {
+    Off = 0,
+    On = 1
 };
 
-enum FontItalic {
-    FontItalicOff = 0,
-    FontItalicOn = 1
-};
-
-enum FontSmallCaps {
-    FontSmallCapsOff = 0,
-    FontSmallCapsOn = 1
-};
-
-enum {
-    FontStyleNormalBit = 0,
-    FontStyleItalicBit,
-    FontWeight100Bit,
-    FontWeight200Bit,
-    FontWeight300Bit,
-    FontWeight400Bit,
-    FontWeight500Bit,
-    FontWeight600Bit,
-    FontWeight700Bit,
-    FontWeight800Bit,
-    FontWeight900Bit,
-    FontTraitsMaskWidth
-};
-
-enum FontTraitsMask {
-    FontStyleNormalMask = 1 << FontStyleNormalBit,
-    FontStyleItalicMask = 1 << FontStyleItalicBit,
-    FontStyleMask = FontStyleNormalMask | FontStyleItalicMask,
-
-    FontWeight100Mask = 1 << FontWeight100Bit,
-    FontWeight200Mask = 1 << FontWeight200Bit,
-    FontWeight300Mask = 1 << FontWeight300Bit,
-    FontWeight400Mask = 1 << FontWeight400Bit,
-    FontWeight500Mask = 1 << FontWeight500Bit,
-    FontWeight600Mask = 1 << FontWeight600Bit,
-    FontWeight700Mask = 1 << FontWeight700Bit,
-    FontWeight800Mask = 1 << FontWeight800Bit,
-    FontWeight900Mask = 1 << FontWeight900Bit,
-    FontWeightMask = FontWeight100Mask | FontWeight200Mask | FontWeight300Mask | FontWeight400Mask | FontWeight500Mask | FontWeight600Mask | FontWeight700Mask | FontWeight800Mask | FontWeight900Mask
-};
-
-enum class Kerning {
+enum class Kerning : uint8_t {
     Auto,
     Normal,
     NoShift
 };
 
-}
+enum class FontOpticalSizing : uint8_t {
+    Enabled,
+    Disabled
+};
 
-#endif
+// https://www.microsoft.com/typography/otspec/fvar.htm#VAT
+enum class FontStyleAxis : uint8_t {
+    slnt,
+    ital
+};
+
+enum class AllowUserInstalledFonts : uint8_t {
+    No,
+    Yes
+};
+
+}

@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef ScrollbarThemeComposite_h
-#define ScrollbarThemeComposite_h
+#pragma once
 
 #include "ScrollbarTheme.h"
 
@@ -44,7 +43,6 @@ public:
     int thumbLength(Scrollbar&) override;
     int trackPosition(Scrollbar&) override;
     int trackLength(Scrollbar&) override;
-    void paintScrollCorner(ScrollView*, GraphicsContext&, const IntRect& cornerRect) override;
     void paintOverhangAreas(ScrollView&, GraphicsContext&, const IntRect& horizontalOverhangArea, const IntRect& verticalOverhangArea, const IntRect& dirtyRect) override;
 
     virtual bool hasButtons(Scrollbar&) = 0;
@@ -72,4 +70,3 @@ public:
 };
 
 }
-#endif

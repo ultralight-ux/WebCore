@@ -2,8 +2,12 @@ set(JavaScriptCore_LIBRARY_TYPE STATIC)
 add_definitions(-DSTATICALLY_LINKED_WITH_WTF)
 
 list(APPEND JavaScriptCore_INCLUDE_DIRECTORIES
-    "${WTF_DIR}"
+    #"${WTF_DIR}"
 	${CMAKE_BINARY_DIR}/../include/private
+)
+
+list(APPEND JavaScriptCore_LIBRARIES
+    WTF
 )
 
 list(REMOVE_ITEM JavaScriptCore_SOURCES
@@ -18,11 +22,11 @@ file(COPY
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore)
 
-set(JavaScriptCore_PRE_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/JavaScriptCore/preBuild.cmd")
-file(REMOVE "${JavaScriptCore_PRE_BUILD_COMMAND}")
-foreach (_directory ${JavaScriptCore_FORWARDING_HEADERS_DIRECTORIES})
-    file(APPEND "${JavaScriptCore_PRE_BUILD_COMMAND}" "@xcopy /y /d /f \"${JAVASCRIPTCORE_DIR}/${_directory}/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore\" >nul 2>nul\n")
-endforeach ()
+#set(JavaScriptCore_PRE_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/JavaScriptCore/preBuild.cmd")
+#file(REMOVE "${JavaScriptCore_PRE_BUILD_COMMAND}")
+#foreach (_directory ${JavaScriptCore_FORWARDING_HEADERS_DIRECTORIES})
+#    file(APPEND "${JavaScriptCore_PRE_BUILD_COMMAND}" "@xcopy /y /d /f \"${JAVASCRIPTCORE_DIR}/${_directory}/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore\" >nul 2>nul\n")
+#endforeach ()
 
 set(JavaScriptCore_POST_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/JavaScriptCore/postBuild.cmd")
 file(WRITE "${JavaScriptCore_POST_BUILD_COMMAND}" "@xcopy /y /d /f \"${DERIVED_SOURCES_DIR}/JavaScriptCore/*.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore\" >nul 2>nul\n")

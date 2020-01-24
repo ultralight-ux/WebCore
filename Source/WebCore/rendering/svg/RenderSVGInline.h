@@ -26,6 +26,7 @@
 namespace WebCore {
 
 class RenderSVGInline : public RenderInline {
+    WTF_MAKE_ISO_ALLOCATED(RenderSVGInline);
 public:
     RenderSVGInline(SVGGraphicsElement&, RenderStyle&&);
 
@@ -50,7 +51,7 @@ private:
     FloatRect repaintRectInLocalCoordinates() const final;
 
     LayoutRect clippedOverflowRectForRepaint(const RenderLayerModelObject* repaintContainer) const final;
-    FloatRect computeFloatRectForRepaint(const FloatRect&, const RenderLayerModelObject* repaintContainer, bool fixed = false) const final;
+    Optional<FloatRect> computeFloatVisibleRectInContainer(const FloatRect&, const RenderLayerModelObject* container, VisibleRectContext) const final;
     void mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState&, MapCoordinatesFlags, bool* wasFixed) const final;
     const RenderObject* pushMappingToContainer(const RenderLayerModelObject* ancestorToStopAt, RenderGeometryMap&) const final;
     void absoluteQuads(Vector<FloatQuad>&, bool* wasFixed) const final;
@@ -59,9 +60,6 @@ private:
 
     void willBeDestroyed() final;
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) final;
-
-    void addChild(RenderObject* child, RenderObject* beforeChild = nullptr) final;
-    void removeChild(RenderObject&) final;
 };
 
 } // namespace WebCore

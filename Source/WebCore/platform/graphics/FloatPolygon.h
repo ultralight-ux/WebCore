@@ -27,13 +27,11 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef FloatPolygon_h
-#define FloatPolygon_h
+#pragma once
 
 #include "FloatPoint.h"
 #include "FloatRect.h"
 #include "PODIntervalTree.h"
-#include "ValueToString.h"
 #include "WindRule.h"
 #include <memory>
 #include <wtf/Vector.h>
@@ -77,7 +75,7 @@ private:
 
 class VertexPair {
 public:
-    virtual ~VertexPair() { }
+    virtual ~VertexPair() = default;
 
     virtual const FloatPoint& vertex1() const = 0;
     virtual const FloatPoint& vertex2() const = 0;
@@ -123,22 +121,28 @@ public:
     unsigned vertexIndex2() const { return m_vertexIndex2; }
     unsigned edgeIndex() const { return m_edgeIndex; }
 
+    String debugString() const;
+
 private:
     // Edge vertex index1 is less than index2, except the last edge, where index2 is 0. When a polygon edge
-    // is defined by 3 or more colinear vertices, index2 can be the the index of the last colinear vertex.
+    // is defined by 3 or more colinear vertices, index2 can be the index of the last colinear vertex.
     unsigned m_vertexIndex1;
     unsigned m_vertexIndex2;
     unsigned m_edgeIndex;
     const FloatPolygon* m_polygon;
 };
 
-// This structure is used by PODIntervalTree for debugging.
-#ifndef NDEBUG
-template<> struct ValueToString<FloatPolygonEdge*> {
-    static String string(const FloatPolygonEdge* edge) { return String::format("%p (%f,%f %f,%f)", edge, edge->vertex1().x(), edge->vertex1().y(), edge->vertex2().x(), edge->vertex2().y()); }
-};
-#endif
-
 } // namespace WebCore
 
-#endif // FloatPolygon_h
+#ifndef NDEBUG
+
+namespace WTF {
+
+// This structure is used by PODIntervalTree for debugging.
+template<> struct ValueToString<WebCore::FloatPolygonEdge*> {
+    static String string(const WebCore::FloatPolygonEdge* edge) { return edge->debugString(); }
+};
+
+}
+
+#endif

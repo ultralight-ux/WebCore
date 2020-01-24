@@ -20,14 +20,13 @@
 
 #pragma once
 
-#if ENABLE(DETAILS_ELEMENT)
-
 #include "DetailsMarkerControl.h"
 #include "RenderBlockFlow.h"
 
 namespace WebCore {
 
 class RenderDetailsMarker final : public RenderBlockFlow {
+    WTF_MAKE_ISO_ALLOCATED(RenderDetailsMarker);
 public:
     RenderDetailsMarker(DetailsMarkerControl&, RenderStyle&&);
     DetailsMarkerControl& element() const { return static_cast<DetailsMarkerControl&>(nodeForNonAnonymous()); }
@@ -48,5 +47,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderDetailsMarker, isDetailsMarker())
-
-#endif // ENABLE(DETAILS_ELEMENT)

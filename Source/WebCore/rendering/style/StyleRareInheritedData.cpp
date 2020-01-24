@@ -28,7 +28,9 @@
 #include "RenderStyle.h"
 #include "RenderStyleConstants.h"
 #include "ShadowData.h"
+#include "StyleColorScheme.h"
 #include "StyleCustomPropertyData.h"
+#include "StyleFilterData.h"
 #include "StyleImage.h"
 #include <wtf/PointerComparison.h>
 
@@ -38,20 +40,20 @@ struct GreaterThanOrSameSizeAsStyleRareInheritedData : public RefCounted<Greater
     void* styleImage;
     Color firstColor;
     float firstFloat;
-    Color colors[5];
+    Color colors[9];
     void* ownPtrs[1];
-    AtomicString atomicStrings[5];
-    void* refPtrs[2];
+    AtomString atomStrings[5];
+    void* refPtrs[3];
     Length lengths[2];
     float secondFloat;
-    unsigned m_bitfields[4];
+    TextUnderlineOffset offset;
+    TextDecorationThickness thickness;
+    void* customPropertyDataRefs[1];
+    unsigned bitfields[4];
     short pagedMediaShorts[2];
-    unsigned unsigneds[1];
+    TabSize tabSize;
     short hyphenationShorts[3];
 
-#if PLATFORM(IOS)
-    Color compositionColor;
-#endif
 #if ENABLE(TEXT_AUTOSIZING)
     TextSizeAdjustment textSizeAdjust;
 #endif
@@ -64,7 +66,9 @@ struct GreaterThanOrSameSizeAsStyleRareInheritedData : public RefCounted<Greater
     Color tapHighlightColor;
 #endif
 
-    void* customPropertyDataRefs[1];
+#if ENABLE(DARK_MODE_CSS)
+    StyleColorScheme colorScheme;
+#endif
 };
 
 COMPILE_ASSERT(sizeof(StyleRareInheritedData) <= sizeof(GreaterThanOrSameSizeAsStyleRareInheritedData), StyleRareInheritedData_should_bit_pack);
@@ -73,71 +77,85 @@ StyleRareInheritedData::StyleRareInheritedData()
     : listStyleImage(RenderStyle::initialListStyleImage())
     , textStrokeWidth(RenderStyle::initialTextStrokeWidth())
     , indent(RenderStyle::initialTextIndent())
-    , m_effectiveZoom(RenderStyle::initialZoom())
-    , m_customProperties(StyleCustomPropertyData::create())
+    , effectiveZoom(RenderStyle::initialZoom())
+    , textUnderlineOffset(RenderStyle::initialTextUnderlineOffset())
+    , textDecorationThickness(RenderStyle::initialTextDecorationThickness())
+    , customProperties(StyleCustomPropertyData::create())
     , widows(RenderStyle::initialWidows())
     , orphans(RenderStyle::initialOrphans())
-    , m_hasAutoWidows(true)
-    , m_hasAutoOrphans(true)
-    , textSecurity(RenderStyle::initialTextSecurity())
-    , userModify(READ_ONLY)
-    , wordBreak(RenderStyle::initialWordBreak())
-    , overflowWrap(RenderStyle::initialOverflowWrap())
-    , nbspMode(NBNORMAL)
-    , lineBreak(LineBreakAuto)
-    , userSelect(RenderStyle::initialUserSelect())
-    , speak(SpeakNormal)
-    , hyphens(HyphensManual)
-    , textEmphasisFill(TextEmphasisFillFilled)
-    , textEmphasisMark(TextEmphasisMarkNone)
-    , textEmphasisPosition(TextEmphasisPositionOver | TextEmphasisPositionRight)
-    , m_textOrientation(static_cast<unsigned>(TextOrientation::Mixed))
+    , hasAutoWidows(true)
+    , hasAutoOrphans(true)
+    , textSecurity(static_cast<unsigned>(RenderStyle::initialTextSecurity()))
+    , userModify(static_cast<unsigned>(UserModify::ReadOnly))
+    , wordBreak(static_cast<unsigned>(RenderStyle::initialWordBreak()))
+    , overflowWrap(static_cast<unsigned>(RenderStyle::initialOverflowWrap()))
+    , nbspMode(static_cast<unsigned>(NBSPMode::Normal))
+    , lineBreak(static_cast<unsigned>(LineBreak::Auto))
+    , userSelect(static_cast<unsigned>(RenderStyle::initialUserSelect()))
+    , speakAs(RenderStyle::initialSpeakAs().toRaw())
+    , hyphens(static_cast<unsigned>(Hyphens::Manual))
+    , textEmphasisFill(static_cast<unsigned>(TextEmphasisFill::Filled))
+    , textEmphasisMark(static_cast<unsigned>(TextEmphasisMark::None))
+    , textEmphasisPosition(static_cast<unsigned>(RenderStyle::initialTextEmphasisPosition().toRaw()))
+    , textOrientation(static_cast<unsigned>(TextOrientation::Mixed))
 #if ENABLE(CSS3_TEXT)
-    , m_textIndentLine(RenderStyle::initialTextIndentLine())
-    , m_textIndentType(RenderStyle::initialTextIndentType())
+    , textIndentLine(RenderStyle::initialTextIndentLine())
+    , textIndentType(RenderStyle::initialTextIndentType())
 #endif
-    , m_lineBoxContain(RenderStyle::initialLineBoxContain())
+    , lineBoxContain(RenderStyle::initialLineBoxContain())
 #if ENABLE(CSS_IMAGE_ORIENTATION)
-    , m_imageOrientation(RenderStyle::initialImageOrientation())
+    , imageOrientation(RenderStyle::initialImageOrientation())
 #endif
-    , m_imageRendering(RenderStyle::initialImageRendering())
-    , m_lineSnap(RenderStyle::initialLineSnap())
-    , m_lineAlign(RenderStyle::initialLineAlign())
-#if ENABLE(ACCELERATED_OVERFLOW_SCROLLING)
+    , imageRendering(static_cast<unsigned>(RenderStyle::initialImageRendering()))
+    , lineSnap(static_cast<unsigned>(RenderStyle::initialLineSnap()))
+    , lineAlign(static_cast<unsigned>(RenderStyle::initialLineAlign()))
+#if ENABLE(OVERFLOW_SCROLLING_TOUCH)
     , useTouchOverflowScrolling(RenderStyle::initialUseTouchOverflowScrolling())
 #endif
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-    , m_imageResolutionSource(RenderStyle::initialImageResolutionSource())
-    , m_imageResolutionSnap(RenderStyle::initialImageResolutionSnap())
+    , imageResolutionSource(RenderStyle::initialImageResolutionSource())
+    , imageResolutionSnap(RenderStyle::initialImageResolutionSnap())
 #endif
 #if ENABLE(CSS3_TEXT)
-    , m_textAlignLast(RenderStyle::initialTextAlignLast())
-    , m_textJustify(RenderStyle::initialTextJustify())
-#endif // CSS3_TEXT
-    , m_textDecorationSkip(RenderStyle::initialTextDecorationSkip())
-    , m_textUnderlinePosition(RenderStyle::initialTextUnderlinePosition())
-    , m_rubyPosition(RenderStyle::initialRubyPosition())
-    , m_textZoom(RenderStyle::initialTextZoom())
-#if PLATFORM(IOS)
+    , textAlignLast(RenderStyle::initialTextAlignLast())
+    , textJustify(RenderStyle::initialTextJustify())
+#endif
+    , textDecorationSkip(RenderStyle::initialTextDecorationSkip().toRaw())
+    , textUnderlinePosition(static_cast<unsigned>(RenderStyle::initialTextUnderlinePosition()))
+    , rubyPosition(static_cast<unsigned>(RenderStyle::initialRubyPosition()))
+    , textZoom(static_cast<unsigned>(RenderStyle::initialTextZoom()))
+#if PLATFORM(IOS_FAMILY)
     , touchCalloutEnabled(RenderStyle::initialTouchCalloutEnabled())
 #endif
-#if ENABLE(CSS_TRAILING_WORD)
-    , trailingWord(static_cast<unsigned>(RenderStyle::initialTrailingWord()))
+    , hangingPunctuation(RenderStyle::initialHangingPunctuation().toRaw())
+    , paintOrder(static_cast<unsigned>(RenderStyle::initialPaintOrder()))
+    , capStyle(RenderStyle::initialCapStyle())
+    , joinStyle(RenderStyle::initialJoinStyle())
+    , hasSetStrokeWidth(false)
+    , hasSetStrokeColor(false)
+#if ENABLE(POINTER_EVENTS)
+    , effectiveTouchActions(static_cast<unsigned>(RenderStyle::initialTouchActions()))
 #endif
-    , m_hangingPunctuation(RenderStyle::initialHangingPunctuation())
+    , strokeWidth(RenderStyle::initialStrokeWidth())
+    , strokeColor(RenderStyle::initialStrokeColor())
+    , miterLimit(RenderStyle::initialStrokeMiterLimit())
     , hyphenationLimitBefore(-1)
     , hyphenationLimitAfter(-1)
     , hyphenationLimitLines(-1)
-    , m_lineGrid(RenderStyle::initialLineGrid())
-    , m_tabSize(RenderStyle::initialTabSize())
+    , appleColorFilter(StyleFilterData::create())
+    , lineGrid(RenderStyle::initialLineGrid())
+    , tabSize(RenderStyle::initialTabSize())
 #if ENABLE(TEXT_AUTOSIZING)
     , textSizeAdjust(RenderStyle::initialTextSizeAdjust())
 #endif
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-    , m_imageResolution(RenderStyle::initialImageResolution())
+    , imageResolution(RenderStyle::initialImageResolution())
 #endif
 #if ENABLE(TOUCH_EVENTS)
     , tapHighlightColor(RenderStyle::initialTapHighlightColor())
+#endif
+#if ENABLE(DARK_MODE_CSS)
+    , colorScheme(RenderStyle::initialColorScheme())
 #endif
 {
 }
@@ -152,15 +170,19 @@ inline StyleRareInheritedData::StyleRareInheritedData(const StyleRareInheritedDa
     , visitedLinkTextStrokeColor(o.visitedLinkTextStrokeColor)
     , visitedLinkTextFillColor(o.visitedLinkTextFillColor)
     , visitedLinkTextEmphasisColor(o.visitedLinkTextEmphasisColor)
+    , caretColor(o.caretColor)
+    , visitedLinkCaretColor(o.visitedLinkCaretColor)
     , textShadow(o.textShadow ? std::make_unique<ShadowData>(*o.textShadow) : nullptr)
     , cursorData(o.cursorData)
     , indent(o.indent)
-    , m_effectiveZoom(o.m_effectiveZoom)
-    , m_customProperties(o.m_customProperties)
+    , effectiveZoom(o.effectiveZoom)
+    , textUnderlineOffset(o.textUnderlineOffset)
+    , textDecorationThickness(o.textDecorationThickness)
+    , customProperties(o.customProperties)
     , widows(o.widows)
     , orphans(o.orphans)
-    , m_hasAutoWidows(o.m_hasAutoWidows)
-    , m_hasAutoOrphans(o.m_hasAutoOrphans)
+    , hasAutoWidows(o.hasAutoWidows)
+    , hasAutoOrphans(o.hasAutoOrphans)
     , textSecurity(o.textSecurity)
     , userModify(o.userModify)
     , wordBreak(o.wordBreak)
@@ -168,60 +190,73 @@ inline StyleRareInheritedData::StyleRareInheritedData(const StyleRareInheritedDa
     , nbspMode(o.nbspMode)
     , lineBreak(o.lineBreak)
     , userSelect(o.userSelect)
-    , speak(o.speak)
+    , speakAs(o.speakAs)
     , hyphens(o.hyphens)
     , textEmphasisFill(o.textEmphasisFill)
     , textEmphasisMark(o.textEmphasisMark)
     , textEmphasisPosition(o.textEmphasisPosition)
-    , m_textOrientation(o.m_textOrientation)
+    , textOrientation(o.textOrientation)
 #if ENABLE(CSS3_TEXT)
-    , m_textIndentLine(o.m_textIndentLine)
-    , m_textIndentType(o.m_textIndentType)
+    , textIndentLine(o.textIndentLine)
+    , textIndentType(o.textIndentType)
 #endif
-    , m_lineBoxContain(o.m_lineBoxContain)
+    , lineBoxContain(o.lineBoxContain)
 #if ENABLE(CSS_IMAGE_ORIENTATION)
-    , m_imageOrientation(o.m_imageOrientation)
+    , imageOrientation(o.imageOrientation)
 #endif
-    , m_imageRendering(o.m_imageRendering)
-    , m_lineSnap(o.m_lineSnap)
-    , m_lineAlign(o.m_lineAlign)
-#if ENABLE(ACCELERATED_OVERFLOW_SCROLLING)
+    , imageRendering(o.imageRendering)
+    , lineSnap(o.lineSnap)
+    , lineAlign(o.lineAlign)
+#if ENABLE(OVERFLOW_SCROLLING_TOUCH)
     , useTouchOverflowScrolling(o.useTouchOverflowScrolling)
 #endif
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-    , m_imageResolutionSource(o.m_imageResolutionSource)
-    , m_imageResolutionSnap(o.m_imageResolutionSnap)
+    , imageResolutionSource(o.imageResolutionSource)
+    , imageResolutionSnap(o.imageResolutionSnap)
 #endif
 #if ENABLE(CSS3_TEXT)
-    , m_textAlignLast(o.m_textAlignLast)
-    , m_textJustify(o.m_textJustify)
-#endif // CSS3_TEXT
-    , m_textDecorationSkip(o.m_textDecorationSkip)
-    , m_textUnderlinePosition(o.m_textUnderlinePosition)
-    , m_rubyPosition(o.m_rubyPosition)
-    , m_textZoom(o.m_textZoom)
-#if PLATFORM(IOS)
+    , textAlignLast(o.textAlignLast)
+    , textJustify(o.textJustify)
+#endif
+    , textDecorationSkip(o.textDecorationSkip)
+    , textUnderlinePosition(o.textUnderlinePosition)
+    , rubyPosition(o.rubyPosition)
+    , textZoom(o.textZoom)
+#if PLATFORM(IOS_FAMILY)
     , touchCalloutEnabled(o.touchCalloutEnabled)
 #endif
-#if ENABLE(CSS_TRAILING_WORD)
-    , trailingWord(o.trailingWord)
+    , hangingPunctuation(o.hangingPunctuation)
+    , paintOrder(o.paintOrder)
+    , capStyle(o.capStyle)
+    , joinStyle(o.joinStyle)
+    , hasSetStrokeWidth(o.hasSetStrokeWidth)
+    , hasSetStrokeColor(o.hasSetStrokeColor)
+#if ENABLE(POINTER_EVENTS)
+    , effectiveTouchActions(o.effectiveTouchActions)
 #endif
-    , m_hangingPunctuation(o.m_hangingPunctuation)
+    , strokeWidth(o.strokeWidth)
+    , strokeColor(o.strokeColor)
+    , visitedLinkStrokeColor(o.visitedLinkStrokeColor)
+    , miterLimit(o.miterLimit)
     , hyphenationString(o.hyphenationString)
     , hyphenationLimitBefore(o.hyphenationLimitBefore)
     , hyphenationLimitAfter(o.hyphenationLimitAfter)
     , hyphenationLimitLines(o.hyphenationLimitLines)
     , textEmphasisCustomMark(o.textEmphasisCustomMark)
-    , m_lineGrid(o.m_lineGrid)
-    , m_tabSize(o.m_tabSize)
+    , appleColorFilter(o.appleColorFilter)
+    , lineGrid(o.lineGrid)
+    , tabSize(o.tabSize)
 #if ENABLE(TEXT_AUTOSIZING)
     , textSizeAdjust(o.textSizeAdjust)
 #endif
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-    , m_imageResolution(o.m_imageResolution)
+    , imageResolution(o.imageResolution)
 #endif
 #if ENABLE(TOUCH_EVENTS)
     , tapHighlightColor(o.tapHighlightColor)
+#endif
+#if ENABLE(DARK_MODE_CSS)
+    , colorScheme(o.colorScheme)
 #endif
 {
 }
@@ -231,9 +266,7 @@ Ref<StyleRareInheritedData> StyleRareInheritedData::copy() const
     return adoptRef(*new StyleRareInheritedData(*this));
 }
 
-StyleRareInheritedData::~StyleRareInheritedData()
-{
-}
+StyleRareInheritedData::~StyleRareInheritedData() = default;
 
 bool StyleRareInheritedData::operator==(const StyleRareInheritedData& o) const
 {
@@ -244,31 +277,38 @@ bool StyleRareInheritedData::operator==(const StyleRareInheritedData& o) const
         && visitedLinkTextStrokeColor == o.visitedLinkTextStrokeColor
         && visitedLinkTextFillColor == o.visitedLinkTextFillColor
         && visitedLinkTextEmphasisColor == o.visitedLinkTextEmphasisColor
+        && caretColor == o.caretColor
+        && visitedLinkCaretColor == o.visitedLinkCaretColor
 #if ENABLE(TOUCH_EVENTS)
         && tapHighlightColor == o.tapHighlightColor
 #endif
         && arePointingToEqualData(textShadow, o.textShadow)
         && arePointingToEqualData(cursorData, o.cursorData)
         && indent == o.indent
-        && m_effectiveZoom == o.m_effectiveZoom
+        && effectiveZoom == o.effectiveZoom
+        && textUnderlineOffset == o.textUnderlineOffset
+        && textDecorationThickness == o.textDecorationThickness
         && widows == o.widows
         && orphans == o.orphans
-        && m_hasAutoWidows == o.m_hasAutoWidows
-        && m_hasAutoOrphans == o.m_hasAutoOrphans
+        && hasAutoWidows == o.hasAutoWidows
+        && hasAutoOrphans == o.hasAutoOrphans
         && textSecurity == o.textSecurity
         && userModify == o.userModify
         && wordBreak == o.wordBreak
         && overflowWrap == o.overflowWrap
         && nbspMode == o.nbspMode
         && lineBreak == o.lineBreak
-#if ENABLE(ACCELERATED_OVERFLOW_SCROLLING)
+#if ENABLE(OVERFLOW_SCROLLING_TOUCH)
         && useTouchOverflowScrolling == o.useTouchOverflowScrolling
 #endif
 #if ENABLE(TEXT_AUTOSIZING)
         && textSizeAdjust == o.textSizeAdjust
 #endif
+#if ENABLE(DARK_MODE_CSS)
+        && colorScheme == o.colorScheme
+#endif
         && userSelect == o.userSelect
-        && speak == o.speak
+        && speakAs == o.speakAs
         && hyphens == o.hyphens
         && hyphenationLimitBefore == o.hyphenationLimitBefore
         && hyphenationLimitAfter == o.hyphenationLimitAfter
@@ -276,45 +316,60 @@ bool StyleRareInheritedData::operator==(const StyleRareInheritedData& o) const
         && textEmphasisFill == o.textEmphasisFill
         && textEmphasisMark == o.textEmphasisMark
         && textEmphasisPosition == o.textEmphasisPosition
-        && m_textOrientation == o.m_textOrientation
+        && textOrientation == o.textOrientation
 #if ENABLE(CSS3_TEXT)
-        && m_textIndentLine == o.m_textIndentLine
-        && m_textIndentType == o.m_textIndentType
+        && textIndentLine == o.textIndentLine
+        && textIndentType == o.textIndentType
 #endif
-        && m_lineBoxContain == o.m_lineBoxContain
-#if PLATFORM(IOS)
+        && lineBoxContain == o.lineBoxContain
+#if PLATFORM(IOS_FAMILY)
         && touchCalloutEnabled == o.touchCalloutEnabled
 #endif
         && hyphenationString == o.hyphenationString
         && textEmphasisCustomMark == o.textEmphasisCustomMark
         && arePointingToEqualData(quotes, o.quotes)
-        && m_tabSize == o.m_tabSize
-        && m_lineGrid == o.m_lineGrid
+        && appleColorFilter == o.appleColorFilter
+        && tabSize == o.tabSize
+        && lineGrid == o.lineGrid
 #if ENABLE(CSS_IMAGE_ORIENTATION)
-        && m_imageOrientation == o.m_imageOrientation
+        && imageOrientation == o.imageOrientation
 #endif
-        && m_imageRendering == o.m_imageRendering
+        && imageRendering == o.imageRendering
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-        && m_imageResolutionSource == o.m_imageResolutionSource
-        && m_imageResolutionSnap == o.m_imageResolutionSnap
-        && m_imageResolution == o.m_imageResolution
+        && imageResolutionSource == o.imageResolutionSource
+        && imageResolutionSnap == o.imageResolutionSnap
+        && imageResolution == o.imageResolution
 #endif
 #if ENABLE(CSS3_TEXT)
-        && m_textAlignLast == o.m_textAlignLast
-        && m_textJustify == o.m_textJustify
+        && textAlignLast == o.textAlignLast
+        && textJustify == o.textJustify
 #endif // CSS3_TEXT
-        && m_textDecorationSkip == o.m_textDecorationSkip
-        && m_textUnderlinePosition == o.m_textUnderlinePosition
-        && m_rubyPosition == o.m_rubyPosition
-        && m_textZoom == o.m_textZoom
-        && m_lineSnap == o.m_lineSnap
-        && m_lineAlign == o.m_lineAlign
-#if ENABLE(CSS_TRAILING_WORD)
-        && trailingWord == o.trailingWord
+        && textDecorationSkip == o.textDecorationSkip
+        && textUnderlinePosition == o.textUnderlinePosition
+        && rubyPosition == o.rubyPosition
+        && textZoom == o.textZoom
+        && lineSnap == o.lineSnap
+        && lineAlign == o.lineAlign
+        && hangingPunctuation == o.hangingPunctuation
+        && paintOrder == o.paintOrder
+        && capStyle == o.capStyle
+        && joinStyle == o.joinStyle
+        && hasSetStrokeWidth == o.hasSetStrokeWidth
+        && hasSetStrokeColor == o.hasSetStrokeColor
+#if ENABLE(POINTER_EVENTS)
+        && effectiveTouchActions == o.effectiveTouchActions
 #endif
-        && m_hangingPunctuation == o.m_hangingPunctuation
-        && m_customProperties == o.m_customProperties
+        && strokeWidth == o.strokeWidth
+        && strokeColor == o.strokeColor
+        && visitedLinkStrokeColor == o.visitedLinkStrokeColor
+        && miterLimit == o.miterLimit
+        && customProperties == o.customProperties
         && arePointingToEqualData(listStyleImage, o.listStyleImage);
+}
+
+bool StyleRareInheritedData::hasColorFilters() const
+{
+    return !appleColorFilter->operations.isEmpty();
 }
 
 } // namespace WebCore

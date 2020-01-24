@@ -30,7 +30,6 @@
 #include "IntSize.h"
 #include "NotImplemented.h"
 #include <wtf/MathExtras.h>
-#include <wtf/NeverDestroyed.h>
 #include <wtf/text/TextBreakIterator.h>
 #include <wtf/unicode/CharacterNames.h>
 
@@ -38,39 +37,46 @@
 #include <wtf/RetainPtr.h>
 #endif
 
-#if PLATFORM(COCOA)
-#include "WebCoreSystemInterface.h"
+#if USE(GLIB)
+#include <wtf/glib/GUniquePtr.h>
 #endif
 
 namespace WebCore {
 
-// We can't use String::format for two reasons:
-//  1) It doesn't handle non-ASCII characters in the format string.
-//  2) It doesn't handle the %2$d syntax.
-// Note that because |format| is used as the second parameter to va_start, it cannot be a reference
+// Because |format| is used as the second parameter to va_start, it cannot be a reference
 // type according to section 18.7/3 of the C++ N1905 standard.
-static String formatLocalizedString(String format, ...)
+String formatLocalizedString(String format, ...)
 {
 #if USE(CF)
     va_list arguments;
     va_start(arguments, format);
 
-#if COMPILER(CLANG)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-nonliteral"
-#endif
+    ALLOW_NONLITERAL_FORMAT_BEGIN
     auto result = adoptCF(CFStringCreateWithFormatAndArguments(0, 0, format.createCFString().get(), arguments));
-#if COMPILER(CLANG)
-#pragma clang diagnostic pop
-#endif
+    ALLOW_NONLITERAL_FORMAT_END
 
     va_end(arguments);
     return result.get();
+#elif USE(GLIB)
+    va_list arguments;
+    va_start(arguments, format);
+    GUniquePtr<gchar> result(g_strdup_vprintf(format.utf8().data(), arguments));
+    va_end(arguments);
+    return String::fromUTF8(result.get());
 #else
     notImplemented();
     return format;
 #endif
 }
+
+#if !USE(CF)
+
+String localizedString(const char* key)
+{
+    return String::fromUTF8(key, strlen(key));
+}
+
+#endif
 
 #if ENABLE(CONTEXT_MENUS)
 
@@ -80,7 +86,7 @@ static String truncatedStringForLookupMenuItem(const String& original)
     unsigned maxNumberOfGraphemeClustersInLookupMenuItem = 24;
 
     String trimmed = original.stripWhiteSpace();
-    unsigned numberOfCharacters = numCharactersInGraphemeClusters(trimmed, maxNumberOfGraphemeClustersInLookupMenuItem);
+    unsigned numberOfCharacters = numCodeUnitsInGraphemeClusters(trimmed, maxNumberOfGraphemeClustersInLookupMenuItem);
     return numberOfCharacters == trimmed.length() ? trimmed : makeString(trimmed.left(numberOfCharacters), horizontalEllipsis);
 }
 
@@ -132,85 +138,80 @@ String defaultDetailsSummaryText()
     return WEB_UI_STRING("Details", "text to display in <details> tag when it has no <summary> child");
 }
 
-#if PLATFORM(COCOA)
-
-String copyImageUnknownFileLabel()
-{
-    return WEB_UI_STRING("unknown", "Unknown filename");
-}
-
-#endif
-
 #if ENABLE(CONTEXT_MENUS)
 
 String contextMenuItemTagOpenLinkInNewWindow()
 {
-    return WEB_UI_STRING("Open Link in New Window", "Open in New Window context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Open Link in New Window", "Open Link in New _Window", "Open in New Window context menu item");
 }
 
 String contextMenuItemTagDownloadLinkToDisk()
 {
-    return WEB_UI_STRING("Download Linked File", "Download Linked File context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Download Linked File", "_Download Linked File", "Download Linked File context menu item");
 }
 
+#if !PLATFORM(GTK)
 String contextMenuItemTagCopyLinkToClipboard()
 {
     return WEB_UI_STRING("Copy Link", "Copy Link context menu item");
 }
+#endif
 
 String contextMenuItemTagOpenImageInNewWindow()
 {
-    return WEB_UI_STRING("Open Image in New Window", "Open Image in New Window context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Open Image in New Window", "Open _Image in New Window", "Open Image in New Window context menu item");
 }
 
+#if !PLATFORM(GTK)
 String contextMenuItemTagDownloadImageToDisk()
 {
     return WEB_UI_STRING("Download Image", "Download Image context menu item");
 }
+#endif
 
 String contextMenuItemTagCopyImageToClipboard()
 {
-    return WEB_UI_STRING("Copy Image", "Copy Image context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Copy Image", "Cop_y Image", "Copy Image context menu item");
 }
 
 String contextMenuItemTagOpenFrameInNewWindow()
 {
-    return WEB_UI_STRING("Open Frame in New Window", "Open Frame in New Window context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Open Frame in New Window", "Open _Frame in New Window", "Open Frame in New Window context menu item");
 }
 
 String contextMenuItemTagCopy()
 {
-    return WEB_UI_STRING("Copy", "Copy context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Copy", "_Copy", "Copy context menu item");
 }
 
 String contextMenuItemTagGoBack()
 {
-    return WEB_UI_STRING("Back", "Back context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Back", "_Back", "Back context menu item");
 }
 
 String contextMenuItemTagGoForward()
 {
-    return WEB_UI_STRING("Forward", "Forward context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Forward", "_Forward", "Forward context menu item");
 }
 
 String contextMenuItemTagStop()
 {
-    return WEB_UI_STRING("Stop", "Stop context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Stop", "_Stop", "Stop context menu item");
 }
 
 String contextMenuItemTagReload()
 {
-    return WEB_UI_STRING("Reload", "Reload context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Reload", "_Reload", "Reload context menu item");
 }
 
 String contextMenuItemTagCut()
 {
-    return WEB_UI_STRING("Cut", "Cut context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Cut", "Cu_t", "Cut context menu item");
 }
 
 String contextMenuItemTagPaste()
 {
-    return WEB_UI_STRING("Paste", "Paste context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Paste", "_Paste", "Paste context menu item");
 }
 
 String contextMenuItemTagNoGuessesFound()
@@ -220,36 +221,21 @@ String contextMenuItemTagNoGuessesFound()
 
 String contextMenuItemTagIgnoreSpelling()
 {
-    return WEB_UI_STRING("Ignore Spelling", "Ignore Spelling context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Ignore Spelling", "_Ignore Spelling", "Ignore Spelling context menu item");
 }
 
 String contextMenuItemTagLearnSpelling()
 {
-    return WEB_UI_STRING("Learn Spelling", "Learn Spelling context menu item");
-}
-
-#if PLATFORM(COCOA)
-String contextMenuItemTagSearchInSpotlight()
-{
-    return WEB_UI_STRING("Search in Spotlight", "Search in Spotlight context menu item");
-}
-#endif
-
-String contextMenuItemTagSearchWeb()
-{
-#if PLATFORM(COCOA)
-    auto searchProviderName = adoptCF(wkCopyDefaultSearchProviderDisplayName());
-    return formatLocalizedString(WEB_UI_STRING("Search with %@", "Search with search provider context menu item with provider name inserted"), searchProviderName.get());
-#else
-    return WEB_UI_STRING("Search with Google", "Search with Google context menu item");
-#endif
+    return WEB_UI_STRING_WITH_MNEMONIC("Learn Spelling", "_Learn Spelling", "Learn Spelling context menu item");
 }
 
 String contextMenuItemTagLookUpInDictionary(const String& selectedString)
 {
 #if USE(CF)
     auto selectedCFString = truncatedStringForLookupMenuItem(selectedString).createCFString();
-    return formatLocalizedString(WEB_UI_STRING("Look Up “%@”", "Look Up context menu item with selected word"), selectedCFString.get());
+    return formatLocalizedString(WEB_UI_CFSTRING("Look Up “%@”", "Look Up context menu item with selected word"), selectedCFString.get());
+#elif USE(GLIB)
+    return formatLocalizedString(WEB_UI_STRING("Look Up “%s”", "Look Up context menu item with selected word"), truncatedStringForLookupMenuItem(selectedString).utf8().data());
 #else
     return WEB_UI_STRING("Look Up “<selection>”", "Look Up context menu item with selected word").replace("<selection>", truncatedStringForLookupMenuItem(selectedString));
 #endif
@@ -257,102 +243,67 @@ String contextMenuItemTagLookUpInDictionary(const String& selectedString)
 
 String contextMenuItemTagOpenLink()
 {
-    return WEB_UI_STRING("Open Link", "Open Link context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Open Link", "_Open Link", "Open Link context menu item");
 }
 
 String contextMenuItemTagIgnoreGrammar()
 {
-    return WEB_UI_STRING("Ignore Grammar", "Ignore Grammar context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Ignore Grammar", "Ignore _Grammar", "Ignore Grammar context menu item");
 }
 
 String contextMenuItemTagSpellingMenu()
 {
-    return WEB_UI_STRING("Spelling and Grammar", "Spelling and Grammar context sub-menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Spelling and Grammar", "Spelling and _Grammar", "Spelling and Grammar context sub-menu item");
 }
 
 String contextMenuItemTagShowSpellingPanel(bool show)
 {
     if (show)
-        return WEB_UI_STRING("Show Spelling and Grammar", "menu item title");
-    return WEB_UI_STRING("Hide Spelling and Grammar", "menu item title");
+        return WEB_UI_STRING_WITH_MNEMONIC("Show Spelling and Grammar", "_Show Spelling and Grammar", "menu item title");
+    return WEB_UI_STRING_WITH_MNEMONIC("Hide Spelling and Grammar", "_Hide Spelling and Grammar", "menu item title");
 }
 
 String contextMenuItemTagCheckSpelling()
 {
-    return WEB_UI_STRING("Check Document Now", "Check spelling context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Check Document Now", "_Check Document Now", "Check spelling context menu item");
 }
 
 String contextMenuItemTagCheckSpellingWhileTyping()
 {
-    return WEB_UI_STRING("Check Spelling While Typing", "Check spelling while typing context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Check Spelling While Typing", "Check Spelling While _Typing", "Check spelling while typing context menu item");
 }
 
 String contextMenuItemTagCheckGrammarWithSpelling()
 {
-    return WEB_UI_STRING("Check Grammar With Spelling", "Check grammar with spelling context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Check Grammar With Spelling", "Check _Grammar With Spelling", "Check grammar with spelling context menu item");
 }
 
 String contextMenuItemTagFontMenu()
 {
-    return WEB_UI_STRING("Font", "Font context sub-menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Font", "_Font", "Font context sub-menu item");
 }
-
-#if PLATFORM(COCOA)
-String contextMenuItemTagShowFonts()
-{
-    return WEB_UI_STRING("Show Fonts", "Show fonts context menu item");
-}
-#endif
 
 String contextMenuItemTagBold()
 {
-    return WEB_UI_STRING("Bold", "Bold context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Bold", "_Bold", "Bold context menu item");
 }
 
 String contextMenuItemTagItalic()
 {
-    return WEB_UI_STRING("Italic", "Italic context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Italic", "_Italic", "Italic context menu item");
 }
 
 String contextMenuItemTagUnderline()
 {
-    return WEB_UI_STRING("Underline", "Underline context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Underline", "_Underline", "Underline context menu item");
 }
 
 String contextMenuItemTagOutline()
 {
-    return WEB_UI_STRING("Outline", "Outline context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Outline", "_Outline", "Outline context menu item");
 }
 
-#if PLATFORM(COCOA)
-
-String contextMenuItemTagStyles()
-{
-    return WEB_UI_STRING("Styles...", "Styles context menu item");
-}
-
-String contextMenuItemTagShowColors()
-{
-    return WEB_UI_STRING("Show Colors", "Show colors context menu item");
-}
-
-String contextMenuItemTagSpeechMenu()
-{
-    return WEB_UI_STRING("Speech", "Speech context sub-menu item");
-}
-
-String contextMenuItemTagStartSpeaking()
-{
-    return WEB_UI_STRING("Start Speaking", "Start speaking context menu item");
-}
-
-String contextMenuItemTagStopSpeaking()
-{
-    return WEB_UI_STRING("Stop Speaking", "Stop speaking context menu item");
-}
-
-#endif
-
+#if !PLATFORM(GTK)
 String contextMenuItemTagWritingDirectionMenu()
 {
     return WEB_UI_STRING("Paragraph Direction", "Paragraph direction context sub-menu item");
@@ -377,99 +328,29 @@ String contextMenuItemTagRightToLeft()
 {
     return WEB_UI_STRING("Right to Left", "Right to Left context menu item");
 }
-
-#if PLATFORM(COCOA)
-
-String contextMenuItemTagCorrectSpellingAutomatically()
-{
-    return WEB_UI_STRING("Correct Spelling Automatically", "Correct Spelling Automatically context menu item");
-}
-
-String contextMenuItemTagSubstitutionsMenu()
-{
-    return WEB_UI_STRING("Substitutions", "Substitutions context sub-menu item");
-}
-
-String contextMenuItemTagShowSubstitutions(bool show)
-{
-    if (show)
-        return WEB_UI_STRING("Show Substitutions", "menu item title");
-    return WEB_UI_STRING("Hide Substitutions", "menu item title");
-}
-
-String contextMenuItemTagSmartCopyPaste()
-{
-    return WEB_UI_STRING("Smart Copy/Paste", "Smart Copy/Paste context menu item");
-}
-
-String contextMenuItemTagSmartQuotes()
-{
-    return WEB_UI_STRING("Smart Quotes", "Smart Quotes context menu item");
-}
-
-String contextMenuItemTagSmartDashes()
-{
-    return WEB_UI_STRING("Smart Dashes", "Smart Dashes context menu item");
-}
-
-String contextMenuItemTagSmartLinks()
-{
-    return WEB_UI_STRING("Smart Links", "Smart Links context menu item");
-}
-
-String contextMenuItemTagTextReplacement()
-{
-    return WEB_UI_STRING("Text Replacement", "Text Replacement context menu item");
-}
-
-String contextMenuItemTagTransformationsMenu()
-{
-    return WEB_UI_STRING("Transformations", "Transformations context sub-menu item");
-}
-
-String contextMenuItemTagMakeUpperCase()
-{
-    return WEB_UI_STRING("Make Upper Case", "Make Upper Case context menu item");
-}
-
-String contextMenuItemTagMakeLowerCase()
-{
-    return WEB_UI_STRING("Make Lower Case", "Make Lower Case context menu item");
-}
-
-String contextMenuItemTagCapitalize()
-{
-    return WEB_UI_STRING("Capitalize", "Capitalize context menu item");
-}
-
-String contextMenuItemTagChangeBack(const String& replacedString)
-{
-    notImplemented();
-    return replacedString;
-}
-
-#endif // PLATFORM(COCOA)
+#endif
 
 String contextMenuItemTagOpenVideoInNewWindow()
 {
-    return WEB_UI_STRING("Open Video in New Window", "Open Video in New Window context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Open Video in New Window", "Open _Video in New Window", "Open Video in New Window context menu item");
 }
 
 String contextMenuItemTagOpenAudioInNewWindow()
 {
-    return WEB_UI_STRING("Open Audio in New Window", "Open Audio in New Window context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Open Audio in New Window", "Open _Audio in New Window", "Open Audio in New Window context menu item");
 }
 
 String contextMenuItemTagDownloadVideoToDisk()
 {
-    return WEB_UI_STRING("Download Video", "Download Video To Disk context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Download Video", "Download _Video", "Download Video To Disk context menu item");
 }
 
 String contextMenuItemTagDownloadAudioToDisk()
 {
-    return WEB_UI_STRING("Download Audio", "Download Audio To Disk context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Download Audio", "Download _Audio", "Download Audio To Disk context menu item");
 }
 
+#if !PLATFORM(GTK)
 String contextMenuItemTagCopyVideoLinkToClipboard()
 {
     return WEB_UI_STRING("Copy Video Address", "Copy Video Address Location context menu item");
@@ -502,51 +383,45 @@ String contextMenuItemTagToggleMediaLoop()
 
 String contextMenuItemTagEnterVideoFullscreen()
 {
-    return WEB_UI_STRING("Enter Full Screen", "Video Enter Fullscreen context menu item");
+    return WEB_UI_STRING("Enter Full Screen", "Video Enter Full Screen context menu item");
 }
 
 String contextMenuItemTagExitVideoFullscreen()
 {
-    return WEB_UI_STRING("Exit Full Screen", "Video Exit Fullscreen context menu item");
+    return WEB_UI_STRING_KEY("Exit Full Screen", "Exit Full Screen (context menu)", "Video Exit Full Screen context menu item");
 }
-
-#if PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE)
-
-String contextMenuItemTagEnterVideoEnhancedFullscreen()
-{
-    return WEB_UI_STRING("Enter Picture in Picture", "menu item");
-}
-
-String contextMenuItemTagExitVideoEnhancedFullscreen()
-{
-    return WEB_UI_STRING("Exit Picture in Picture", "menu item");
-}
-
 #endif
 
 String contextMenuItemTagMediaPlay()
 {
-    return WEB_UI_STRING("Play", "Media Play context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Play", "_Play", "Media Play context menu item");
 }
 
 String contextMenuItemTagMediaPause()
 {
-    return WEB_UI_STRING("Pause", "Media Pause context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Pause", "_Pause", "Media Pause context menu item");
 }
 
 String contextMenuItemTagMediaMute()
 {
-    return WEB_UI_STRING("Mute", "Media Mute context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Mute", "_Mute", "Media Mute context menu item");
 }
-    
+
 String contextMenuItemTagInspectElement()
 {
-    return WEB_UI_STRING("Inspect Element", "Inspect Element context menu item");
+    return WEB_UI_STRING_WITH_MNEMONIC("Inspect Element", "Inspect _Element", "Inspect Element context menu item");
 }
+
+#if !PLATFORM(COCOA)
+String contextMenuItemTagSearchWeb()
+{
+    return WEB_UI_STRING_WITH_MNEMONIC("Search the Web", "_Search the Web", "Search the Web context menu item");
+}
+#endif
 
 #endif // ENABLE(CONTEXT_MENUS)
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
 
 String searchMenuNoRecentSearchesText()
 {
@@ -563,7 +438,7 @@ String searchMenuClearRecentSearchesText()
     return WEB_UI_STRING("Clear Recent Searches", "menu item in Recent Searches menu that empties menu's contents");
 }
 
-#endif // !PLATFORM(IOS)
+#endif // !PLATFORM(IOS_FAMILY)
 
 String AXWebAreaText()
 {
@@ -588,6 +463,11 @@ String AXImageMapText()
 String AXHeadingText()
 {
     return WEB_UI_STRING("heading", "accessibility role description for headings");
+}
+
+String AXColorWellText()
+{
+    return WEB_UI_STRING("color well", "accessibility role description for a color well");
 }
 
 String AXDefinitionText()
@@ -645,6 +525,11 @@ String AXSearchFieldCancelButtonText()
     return WEB_UI_STRING("cancel", "accessibility description for a search field cancel button");
 }
 
+String AXFeedText()
+{
+    return WEB_UI_STRING("feed", "accessibility role description for a group containing a scrollable list of articles.");
+}
+
 String AXFigureText()
 {
     return WEB_UI_STRING("figure", "accessibility role description for a figure element.");
@@ -673,6 +558,26 @@ String AXDateFieldText()
 String AXTimeFieldText()
 {
     return WEB_UI_STRING("time field", "accessibility role description for a time field.");
+}
+
+String AXDateTimeFieldText()
+{
+    return WEB_UI_STRING("date and time field", "accessibility role description for a date and time field.");
+}
+
+String AXMonthFieldText()
+{
+    return WEB_UI_STRING("month and year field", "accessibility role description for a month field.");
+}
+
+String AXNumberFieldText()
+{
+    return WEB_UI_STRING("number field", "accessibility role description for a number field.");
+}
+
+String AXWeekFieldText()
+{
+    return WEB_UI_STRING("week and year field", "accessibility role description for a time field.");
 }
 
 String AXButtonActionVerb()
@@ -723,91 +628,67 @@ String AXListItemActionVerb()
     return "select";
 }
 
+#if ENABLE(APPLE_PAY)
+String AXApplePayPlainLabel()
+{
+    return WEB_UI_STRING("Apple Pay", "Label for the plain Apple Pay button.");
+}
+
+String AXApplePayBuyLabel()
+{
+    return WEB_UI_STRING("Buy with Apple Pay", "Label for the buy with Apple Pay button.");
+}
+
+String AXApplePaySetupLabel()
+{
+    return WEB_UI_STRING("Set up with Apple Pay", "Label for the set up with Apple Pay button.");
+}
+
+String AXApplePayDonateLabel()
+{
+    return WEB_UI_STRING("Donate with Apple Pay", "Label for the donate with Apple Pay button.");
+}
+
+String AXApplePayCheckOutLabel()
+{
+    return WEB_UI_STRING("Check out with Apple Pay", "Label for the check out with Apple Pay button.");
+}
+
+String AXApplePayBookLabel()
+{
+    return WEB_UI_STRING("Book with Apple Pay", "Label for the book with Apple Pay button.");
+}
+
+String AXApplePaySubscribeLabel()
+{
+    return WEB_UI_STRING("Subscribe with Apple Pay", "Label for the subcribe with Apple Pay button.");
+}
+#endif
+
 String AXAutoFillCredentialsLabel()
 {
-    return WEB_UI_STRING("password auto fill", "Label for the auto fill credentials button inside a text field.");
+    return WEB_UI_STRING("password AutoFill", "Label for the AutoFill credentials button inside a text field.");
 }
 
 String AXAutoFillContactsLabel()
 {
-    return WEB_UI_STRING("contact info auto fill", "Label for the auto fill contacts button inside a text field.");
-}
-    
-#if PLATFORM(COCOA)
-String AXARIAContentGroupText(const String& ariaType)
-{
-    if (ariaType == "ARIAApplicationAlert")
-        return WEB_UI_STRING("alert", "An ARIA accessibility group that acts as an alert.");
-    if (ariaType == "ARIAApplicationAlertDialog")
-        return WEB_UI_STRING("web alert dialog", "An ARIA accessibility group that acts as an alert dialog.");
-    if (ariaType == "ARIAApplicationDialog")
-        return WEB_UI_STRING("web dialog", "An ARIA accessibility group that acts as an dialog.");
-    if (ariaType == "ARIAApplicationLog")
-        return WEB_UI_STRING("log", "An ARIA accessibility group that acts as a console log.");
-    if (ariaType == "ARIAApplicationMarquee")
-        return WEB_UI_STRING("marquee", "An ARIA accessibility group that acts as a marquee.");
-    if (ariaType == "ARIAApplicationStatus")
-        return WEB_UI_STRING("application status", "An ARIA accessibility group that acts as a status update.");
-    if (ariaType == "ARIAApplicationTimer")
-        return WEB_UI_STRING("timer", "An ARIA accessibility group that acts as an updating timer.");
-    if (ariaType == "ARIADocument")
-        return WEB_UI_STRING("document", "An ARIA accessibility group that acts as a document.");
-    if (ariaType == "ARIADocumentArticle")
-        return WEB_UI_STRING("article", "An ARIA accessibility group that acts as an article.");
-    if (ariaType == "ARIADocumentNote")
-        return WEB_UI_STRING("note", "An ARIA accessibility group that acts as a note in a document.");
-    if (ariaType == "ARIAWebApplication")
-        return WEB_UI_STRING("web application", "An ARIA accessibility group that acts as an application.");
-    if (ariaType == "ARIALandmarkBanner")
-        return WEB_UI_STRING("banner", "An ARIA accessibility group that acts as a banner.");
-    if (ariaType == "ARIALandmarkComplementary")
-        return WEB_UI_STRING("complementary", "An ARIA accessibility group that acts as a region of complementary information.");
-    if (ariaType == "ARIALandmarkContentInfo")
-        return WEB_UI_STRING("content information", "An ARIA accessibility group that contains content.");
-    if (ariaType == "ARIALandmarkMain")
-        return WEB_UI_STRING("main", "An ARIA accessibility group that is the main portion of the website.");
-    if (ariaType == "ARIALandmarkNavigation")
-        return WEB_UI_STRING("navigation", "An ARIA accessibility group that contains the main navigation elements of a website.");
-    if (ariaType == "ARIALandmarkRegion")
-        return WEB_UI_STRING("region", "An ARIA accessibility group that acts as a distinct region in a document.");
-    if (ariaType == "ARIALandmarkSearch")
-        return WEB_UI_STRING("search", "An ARIA accessibility group that contains a search feature of a website.");
-    if (ariaType == "ARIAUserInterfaceTooltip")
-        return WEB_UI_STRING("tooltip", "An ARIA accessibility group that acts as a tooltip.");
-    if (ariaType == "ARIATabPanel")
-        return WEB_UI_STRING("tab panel", "An ARIA accessibility group that contains the content of a tab.");
-    if (ariaType == "ARIADocumentMath")
-        return WEB_UI_STRING("math", "An ARIA accessibility group that contains mathematical symbols.");
-    return String();
+    return WEB_UI_STRING("contact info AutoFill", "Label for the AutoFill contacts button inside a text field.");
 }
 
-String AXHorizontalRuleDescriptionText()
+String AXAutoFillStrongPasswordLabel()
 {
-    return WEB_UI_STRING("separator", "accessibility role description for a horizontal rule [<hr>]");
-}
-    
-String AXMarkText()
-{
-    return WEB_UI_STRING("highlighted", "accessibility role description for a mark element");
+    return WEB_UI_STRING("strong password AutoFill", "Label for the strong password AutoFill button inside a text field.");
 }
 
-#if ENABLE(METER_ELEMENT)
-String AXMeterGaugeRegionOptimumText()
+String AXAutoFillCreditCardLabel()
 {
-    return WEB_UI_STRING("optimal value", "The optimum value description for a meter element.");
+    return WEB_UI_STRING("credit card AutoFill", "Label for the credit card AutoFill button inside a text field.");
 }
 
-String AXMeterGaugeRegionSuboptimalText()
+String autoFillStrongPasswordLabel()
 {
-    return WEB_UI_STRING("suboptimal value", "The suboptimal value description for a meter element.");
+    return WEB_UI_STRING("Strong Password", "Label for strong password.");
 }
-
-String AXMeterGaugeRegionLessGoodText()
-{
-    return WEB_UI_STRING("critical value", "The less good value description for a meter element.");
-}
-#endif // ENABLE(METER_ELEMENT)
-#endif // PLATFORM(COCOA)
 
 String missingPluginText()
 {
@@ -829,6 +710,16 @@ String insecurePluginVersionText()
     return WEB_UI_STRING_KEY("Blocked Plug-in", "Blocked Plug-In (Insecure plug-in)", "Label text to be used when an insecure plug-in version was blocked from loading");
 }
 
+String unsupportedPluginText()
+{
+    return WEB_UI_STRING_KEY("Unsupported Plug-in", "Unsupported Plug-In", "Label text to be used when an unsupported plug-in was blocked from loading");
+}
+
+String pluginTooSmallText()
+{
+    return WEB_UI_STRING_KEY("Plug-In too small", "Plug-In too small", "Label text to be used when a plug-in was blocked from loading because it was too small");
+}
+
 String multipleFileUploadText(unsigned numberOfFiles)
 {
     return formatLocalizedString(WEB_UI_STRING("%d files", "Label to describe the number of files selected in a file upload control that allows multiple files"), numberOfFiles);
@@ -838,87 +729,6 @@ String unknownFileSizeText()
 {
     return WEB_UI_STRING_KEY("Unknown", "Unknown (filesize)", "Unknown filesize FTP directory listing item");
 }
-
-#if PLATFORM(WIN)
-String uploadFileText()
-{
-    notImplemented();
-    return "upload";
-}
-
-String allFilesText()
-{
-    notImplemented();
-    return "all files";
-}
-#endif
-
-#if PLATFORM(COCOA)
-String builtInPDFPluginName()
-{
-    // Also exposed to DOM.
-    return WEB_UI_STRING("WebKit built-in PDF", "Pseudo plug-in name, visible in the Installed Plug-ins page in Safari.");
-}
-
-String pdfDocumentTypeDescription()
-{
-    // Also exposed to DOM.
-    return WEB_UI_STRING("Portable Document Format", "Description of the primary type supported by the PDF pseudo plug-in. Visible in the Installed Plug-ins page in Safari.");
-}
-
-String postScriptDocumentTypeDescription()
-{
-    // Also exposed to DOM.
-    return WEB_UI_STRING("PostScript", "Description of the PostScript type supported by the PDF pseudo plug-in. Visible in the Installed Plug-ins page in Safari.");
-}
-
-String keygenMenuItem2048()
-{
-    return WEB_UI_STRING("2048 (High Grade)", "Menu item title for KEYGEN pop-up menu");
-}
-
-String keygenKeychainItemName(const String& host)
-{
-    return formatLocalizedString(WEB_UI_STRING("Key from %@", "Name of keychain key generated by the KEYGEN tag"), host.createCFString().get());
-}
-
-#endif
-
-#if PLATFORM(IOS)
-
-String htmlSelectMultipleItems(size_t count)
-{
-    switch (count) {
-    case 0:
-        return WEB_UI_STRING("0 Items", "Present the element <select multiple> when no <option> items are selected (iOS only)");
-    case 1:
-        return WEB_UI_STRING("1 Item", "Present the element <select multiple> when a single <option> is selected (iOS only)");
-    default:
-        return formatLocalizedString(WEB_UI_STRING("%zu Items", "Present the number of selected <option> items in a <select multiple> element (iOS only)"), count);
-    }
-}
-
-String fileButtonChooseMediaFileLabel()
-{
-    return WEB_UI_STRING("Choose Media (Single)", "Title for file button used in HTML forms for media files");
-}
-
-String fileButtonChooseMultipleMediaFilesLabel()
-{
-    return WEB_UI_STRING("Choose Media (Multiple)", "Title for file button used in HTML5 forms for multiple media files");
-}
-
-String fileButtonNoMediaFileSelectedLabel()
-{
-    return WEB_UI_STRING("no media selected (single)", "Text to display in file button used in HTML forms for media files when no media file is selected");
-}
-
-String fileButtonNoMediaFilesSelectedLabel()
-{
-    return WEB_UI_STRING("no media selected (multiple)", "Text to display in file button used in HTML forms for media files when no media files are selected and the button allows multiple files to be selected");
-}
-
-#endif
 
 String imageTitle(const String& filename, const IntSize& size)
 {
@@ -934,7 +744,9 @@ String imageTitle(const String& filename, const IntSize& size)
     auto height = adoptCF(CFNumberCreate(0, kCFNumberIntType, &heightInt));
     auto heightString = adoptCF(CFNumberFormatterCreateStringWithNumber(0, formatter.get(), height.get()));
 
-    return formatLocalizedString(WEB_UI_STRING("%@ %@×%@ pixels", "window title for a standalone image (uses multiplication symbol, not x)"), filename.createCFString().get(), widthString.get(), heightString.get());
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ %@×%@ pixels", "window title for a standalone image (uses multiplication symbol, not x)"), filename.createCFString().get(), widthString.get(), heightString.get());
+#elif USE(GLIB)
+    return formatLocalizedString(WEB_UI_STRING("%s %d×%d pixels", "window title for a standalone image (uses multiplication symbol, not x)"), filename.utf8().data(), size.width(), size.height());
 #else
     return formatLocalizedString(WEB_UI_STRING("<filename> %d×%d pixels", "window title for a standalone image (uses multiplication symbol, not x)"), size.width(), size.height()).replace("<filename>", filename);
 #endif
@@ -942,7 +754,7 @@ String imageTitle(const String& filename, const IntSize& size)
 
 String mediaElementLoadingStateText()
 {
-    return WEB_UI_STRING("Loading...", "Media controller status message when the media is loading");
+    return WEB_UI_STRING("Loading…", "Media controller status message when the media is loading");
 }
 
 String mediaElementLiveBroadcastStateText()
@@ -979,9 +791,9 @@ String localizedMediaControlElementString(const String& name)
     if (name == "StatusDisplay")
         return WEB_UI_STRING("status", "accessibility label for movie status");
     if (name == "EnterFullscreenButton")
-        return WEB_UI_STRING("enter fullscreen", "accessibility label for enter fullscreen button");
+        return WEB_UI_STRING("enter full screen", "accessibility label for enter full screen button");
     if (name == "ExitFullscreenButton")
-        return WEB_UI_STRING("exit fullscreen", "accessibility label for exit fullscreen button");
+        return WEB_UI_STRING("exit full screen", "accessibility label for exit full screen button");
     if (name == "SeekForwardButton")
         return WEB_UI_STRING("fast forward", "accessibility label for fast forward button");
     if (name == "SeekBackButton")
@@ -1032,7 +844,7 @@ String localizedMediaControlElementHelpText(const String& name)
     if (name == "SeekForwardButton")
         return WEB_UI_STRING("seek quickly forward", "accessibility help text for fast forward button");
     if (name == "FullscreenButton")
-        return WEB_UI_STRING("Play movie in fullscreen mode", "accessibility help text for enter fullscreen button");
+        return WEB_UI_STRING("Play movie in full screen mode", "accessibility help text for enter full screen button");
     if (name == "ShowClosedCaptionsButton")
         return WEB_UI_STRING("start displaying closed captions", "accessibility help text for show closed captions button");
     if (name == "HideClosedCaptionsButton")
@@ -1121,24 +933,26 @@ String validationMessagePatternMismatchText()
     return WEB_UI_STRING("Match the requested format", "Validation message for input form controls requiring a constrained value according to pattern");
 }
 
+#if !PLATFORM(GTK)
 String validationMessageTooShortText(int, int minLength)
 {
     return formatLocalizedString(WEB_UI_STRING("Use at least %d characters", "Validation message for form control elements with a value shorter than minimum allowed length"), minLength);
 }
 
 #if !PLATFORM(COCOA)
-
 String validationMessageTooLongText(int, int maxLength)
 {
     return formatLocalizedString(WEB_UI_STRING("Use no more than %d characters", "Validation message for form control elements with a value shorter than maximum allowed length"), maxLength);
 }
-
+#endif
 #endif
 
 String validationMessageRangeUnderflowText(const String& minimum)
 {
 #if USE(CF)
-    return formatLocalizedString(WEB_UI_STRING("Value must be greater than or equal to %@", "Validation message for input form controls with value lower than allowed minimum"), minimum.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("Value must be greater than or equal to %@", "Validation message for input form controls with value lower than allowed minimum"), minimum.createCFString().get());
+#elif USE(GLIB)
+    return formatLocalizedString(WEB_UI_STRING("Value must be greater than or equal to %s", "Validation message for input form controls with value lower than allowed minimum"), minimum.utf8().data());
 #else
     UNUSED_PARAM(minimum);
     return WEB_UI_STRING("range underflow", "Validation message for input form controls with value lower than allowed minimum");
@@ -1148,7 +962,9 @@ String validationMessageRangeUnderflowText(const String& minimum)
 String validationMessageRangeOverflowText(const String& maximum)
 {
 #if USE(CF)
-    return formatLocalizedString(WEB_UI_STRING("Value must be less than or equal to %@", "Validation message for input form controls with value higher than allowed maximum"), maximum.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("Value must be less than or equal to %@", "Validation message for input form controls with value higher than allowed maximum"), maximum.createCFString().get());
+#elif USE(GLIB)
+    return formatLocalizedString(WEB_UI_STRING("Value must be less than or equal to %s", "Validation message for input form controls with value higher than allowed maximum"), maximum.utf8().data());
 #else
     UNUSED_PARAM(maximum);
     return WEB_UI_STRING("range overflow", "Validation message for input form controls with value higher than allowed maximum");
@@ -1203,37 +1019,37 @@ String audioTrackNoLabelText()
 
 String textTrackCountryAndLanguageMenuItemText(const String& title, const String& country, const String& language)
 {
-    return formatLocalizedString(WEB_UI_STRING("%@ (%@-%@)", "Text track display name format that includes the country and language of the subtitle, in the form of 'Title (Language-Country)'"), title.createCFString().get(), language.createCFString().get(), country.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ (%@-%@)", "Text track display name format that includes the country and language of the subtitle, in the form of 'Title (Language-Country)'"), title.createCFString().get(), language.createCFString().get(), country.createCFString().get());
 }
 
 String textTrackLanguageMenuItemText(const String& title, const String& language)
 {
-    return formatLocalizedString(WEB_UI_STRING("%@ (%@)", "Text track display name format that includes the language of the subtitle, in the form of 'Title (Language)'"), title.createCFString().get(), language.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ (%@)", "Text track display name format that includes the language of the subtitle, in the form of 'Title (Language)'"), title.createCFString().get(), language.createCFString().get());
 }
 
 String closedCaptionTrackMenuItemText(const String& title)
 {
-    return formatLocalizedString(WEB_UI_STRING("%@ CC", "Text track contains closed captions"), title.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ CC", "Text track contains closed captions"), title.createCFString().get());
 }
 
 String sdhTrackMenuItemText(const String& title)
 {
-    return formatLocalizedString(WEB_UI_STRING("%@ SDH", "Text track contains subtitles for the deaf and hard of hearing"), title.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ SDH", "Text track contains subtitles for the deaf and hard of hearing"), title.createCFString().get());
 }
 
 String easyReaderTrackMenuItemText(const String& title)
 {
-    return formatLocalizedString(WEB_UI_STRING("%@ Easy Reader", "Text track contains simplified (3rd grade level) subtitles"), title.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ Easy Reader", "Text track contains simplified (3rd grade level) subtitles"), title.createCFString().get());
 }
 
 String forcedTrackMenuItemText(const String& title)
 {
-    return formatLocalizedString(WEB_UI_STRING("%@ Forced", "Text track contains forced subtitles"), title.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ Forced", "Text track contains forced subtitles"), title.createCFString().get());
 }
 
 String audioDescriptionTrackSuffixText(const String& title)
 {
-    return formatLocalizedString(WEB_UI_STRING("%@ AD", "Text track contains Audio Descriptions"), title.createCFString().get());
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ AD", "Text track contains Audio Descriptions"), title.createCFString().get());
 }
 
 #endif
@@ -1253,11 +1069,17 @@ String useBlockedPlugInContextMenuTitle()
     return formatLocalizedString(WEB_UI_STRING("Show in blocked plug-in", "Title of the context menu item to show when PDFPlugin was used instead of a blocked plugin"));
 }
 
-#if ENABLE(SUBTLE_CRYPTO)
+#if ENABLE(WEB_CRYPTO)
 
 String webCryptoMasterKeyKeychainLabel(const String& localizedApplicationName)
 {
-    return formatLocalizedString(WEB_UI_STRING("%@ WebCrypto Master Key", "Name of application's single WebCrypto master key in Keychain"), localizedApplicationName.createCFString().get());
+#if USE(CF)
+    return formatLocalizedString(WEB_UI_CFSTRING("%@ WebCrypto Master Key", "Name of application's single WebCrypto master key in Keychain"), localizedApplicationName.createCFString().get());
+#elif USE(GLIB)
+    return formatLocalizedString(WEB_UI_STRING("%s WebCrypto Master Key", "Name of application's single WebCrypto master key in Keychain"), localizedApplicationName.utf8().data());
+#else
+    return String::fromUTF8("<application> WebCrypto Master Key", "Name of application's single WebCrypto master key in Keychain").replace("<application>", localizedApplicationName);
+#endif
 }
 
 String webCryptoMasterKeyKeychainComment()
@@ -1267,38 +1089,65 @@ String webCryptoMasterKeyKeychainComment()
 
 #endif
 
-#if PLATFORM(MAC)
+#if PLATFORM(WATCHOS)
 
-String insertListTypeNone()
+String numberPadOKButtonTitle()
 {
-    return WEB_UI_STRING("None", "Option in segmented control for choosing list type in text editing");
+    return WEB_UI_STRING_KEY("OK", "OK (OK button title in extra zoomed number pad)", "Title of the OK button for the number pad in zoomed form controls.");
 }
 
-String insertListTypeBulleted()
+String formControlDoneButtonTitle()
 {
-    return WEB_UI_STRING("•", "Option in segmented control for choosing list type in text editing");
+    return WEB_UI_STRING("Done", "Title of the Done button for zoomed form controls.");
 }
 
-String insertListTypeBulletedAccessibilityTitle()
+String formControlCancelButtonTitle()
 {
-    return WEB_UI_STRING("Bulleted list", "Option in segmented control for inserting a bulleted list in text editing");
+    return WEB_UI_STRING("Cancel", "Cancel");
 }
 
-String insertListTypeNumbered()
+String formControlHideButtonTitle()
 {
-    return WEB_UI_STRING("1. 2. 3.", "Option in segmented control for choosing list type in text editing");
+    return WEB_UI_STRING("Hide", "Title of the Hide button for zoomed form controls.");
 }
 
-String insertListTypeNumberedAccessibilityTitle()
+String formControlGoButtonTitle()
 {
-    return WEB_UI_STRING("Numbered list", "Option in segmented control for inserting a numbered list in text editing");
+    return WEB_UI_STRING("Go", "Title of the Go button for zoomed form controls.");
 }
 
-String exitFullScreenButtonAccessibilityTitle()
+String formControlSearchButtonTitle()
 {
-    return WEB_UI_STRING("Exit Fullscreen", "Button for exiting fullscreen when in fullscreen media playback");
+    return WEB_UI_STRING("Search", "Title of the Search button for zoomed form controls.");
 }
 
-#endif // PLATFORM(MAC)
+String datePickerSetButtonTitle()
+{
+    return WEB_UI_STRING_KEY("Set", "Set (Button below date picker for extra zoom mode)", "Set button below date picker");
+}
+
+String datePickerDayLabelTitle()
+{
+    return WEB_UI_STRING_KEY("DAY", "DAY (Date picker for extra zoom mode)", "Day label in date picker");
+}
+
+String datePickerMonthLabelTitle()
+{
+    return WEB_UI_STRING_KEY("MONTH", "MONTH (Date picker for extra zoom mode)", "Month label in date picker");
+}
+
+String datePickerYearLabelTitle()
+{
+    return WEB_UI_STRING_KEY("YEAR", "YEAR (Date picker for extra zoom mode)", "Year label in date picker");
+}
+
+#endif
+
+#if USE(SOUP)
+String unacceptableTLSCertificate()
+{
+    return WEB_UI_STRING("Unacceptable TLS certificate", "Unacceptable TLS certificate error");
+}
+#endif
 
 } // namespace WebCore

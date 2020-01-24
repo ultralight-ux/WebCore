@@ -26,17 +26,21 @@
 namespace WebCore {
 
 class RenderReplaced : public RenderBox {
+    WTF_MAKE_ISO_ALLOCATED(RenderReplaced);
 public:
     virtual ~RenderReplaced();
 
     LayoutUnit computeReplacedLogicalWidth(ShouldComputePreferred = ComputeActual) const override;
-    LayoutUnit computeReplacedLogicalHeight() const override;
+    LayoutUnit computeReplacedLogicalHeight(Optional<LayoutUnit> estimatedUsedWidth = WTF::nullopt) const override;
 
     LayoutRect replacedContentRect(const LayoutSize& intrinsicSize) const;
+    LayoutRect replacedContentRect() const { return replacedContentRect(intrinsicSize()); }
 
     bool hasReplacedLogicalWidth() const;
     bool hasReplacedLogicalHeight() const;
     bool setNeedsLayoutIfNeededAfterIntrinsicSizeChange();
+
+    LayoutSize intrinsicSize() const final { return m_intrinsicSize; }
 
 protected:
     RenderReplaced(Element&, RenderStyle&&);
@@ -45,12 +49,11 @@ protected:
 
     void layout() override;
 
-    LayoutSize intrinsicSize() const final { return m_intrinsicSize; }
     void computeIntrinsicRatioInformation(FloatSize& intrinsicSize, double& intrinsicRatio) const override;
 
     void computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const final;
 
-    virtual LayoutUnit minimumReplacedHeight() const { return LayoutUnit(); }
+    virtual LayoutUnit minimumReplacedHeight() const { return 0_lu; }
 
     void setSelectionState(SelectionState) override;
 
@@ -69,6 +72,8 @@ protected:
     void willBeDestroyed() override;
 
 private:
+    LayoutUnit computeConstrainedLogicalWidth(ShouldComputePreferred) const;
+
     virtual RenderBox* embeddedContentBox() const { return 0; }
     const char* renderName() const override { return "RenderReplaced"; }
 
@@ -79,7 +84,7 @@ private:
 
     LayoutRect clippedOverflowRectForRepaint(const RenderLayerModelObject* repaintContainer) const override;
 
-    VisiblePosition positionForPoint(const LayoutPoint&, const RenderRegion*) final;
+    VisiblePosition positionForPoint(const LayoutPoint&, const RenderFragmentContainer*) final;
     
     bool canBeSelectionLeaf() const override { return true; }
 

@@ -31,6 +31,7 @@ class HTMLInputElement;
 // associated with it to receive click/hover events.
 
 class RenderFileUploadControl final : public RenderBlockFlow {
+    WTF_MAKE_ISO_ALLOCATED(RenderFileUploadControl);
 public:
     RenderFileUploadControl(HTMLInputElement&, RenderStyle&&);
     virtual ~RenderFileUploadControl();
@@ -52,11 +53,9 @@ private:
     void computePreferredLogicalWidths() override;
     void paintObject(PaintInfo&, const LayoutPoint&) override;
 
-    bool requiresForcedStyleRecalcPropagation() const override { return true; }
-
     int maxFilenameWidth() const;
     
-    VisiblePosition positionForPoint(const LayoutPoint&, const RenderRegion*) override;
+    VisiblePosition positionForPoint(const LayoutPoint&, const RenderFragmentContainer*) override;
 
     HTMLInputElement* uploadButton() const;
 

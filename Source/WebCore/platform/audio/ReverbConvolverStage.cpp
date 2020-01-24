@@ -32,6 +32,8 @@
 
 #include "ReverbConvolverStage.h"
 
+#include "DirectConvolver.h"
+#include "FFTConvolver.h"
 #include "FFTFrame.h"
 #include "VectorMath.h"
 #include "ReverbAccumulationBuffer.h"
@@ -93,9 +95,7 @@ ReverbConvolverStage::ReverbConvolverStage(const float* impulseResponse, size_t,
     m_preDelayBuffer.allocate(delayBufferSize);
 }
 
-ReverbConvolverStage::~ReverbConvolverStage()
-{
-}
+ReverbConvolverStage::~ReverbConvolverStage() = default;
 
 void ReverbConvolverStage::processInBackground(ReverbConvolver* convolver, size_t framesToProcess)
 {

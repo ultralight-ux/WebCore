@@ -36,6 +36,7 @@
 namespace WebCore {
 
 class HTMLOutputElement final : public HTMLFormControlElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLOutputElement);
 public:
     static Ref<HTMLOutputElement> create(const QualifiedName&, Document&, HTMLFormElement*);
 
@@ -51,8 +52,8 @@ private:
     HTMLOutputElement(const QualifiedName&, Document&, HTMLFormElement*);
 
     bool computeWillValidate() const final { return false; }
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
-    const AtomicString& formControlType() const final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    const AtomString& formControlType() const final;
     bool isEnumeratable() const final { return true; }
     bool supportLabels() const final { return true; }
     bool supportsFocus() const final;

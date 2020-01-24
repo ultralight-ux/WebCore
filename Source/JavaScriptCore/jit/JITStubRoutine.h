@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,7 @@
 namespace JSC {
 
 class JITStubRoutineSet;
+class VM;
 
 // This is a base-class for JIT stub routines, and also the class you want
 // to instantiate directly if you have a routine that does not need any
@@ -48,7 +49,7 @@ class JITStubRoutine {
     WTF_MAKE_NONCOPYABLE(JITStubRoutine);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    JITStubRoutine(const MacroAssemblerCodeRef& code)
+    JITStubRoutine(const MacroAssemblerCodeRef<JITStubRoutinePtrTag>& code)
         : m_code(code)
         , m_refCount(1)
     {
@@ -57,9 +58,9 @@ public:
     // Use this if you want to pass a CodePtr to someone who insists on taking
     // a RefPtr<JITStubRoutine>.
     static Ref<JITStubRoutine> createSelfManagedRoutine(
-        MacroAssemblerCodePtr rawCodePointer)
+        MacroAssemblerCodePtr<JITStubRoutinePtrTag> rawCodePointer)
     {
-        return adoptRef(*new JITStubRoutine(MacroAssemblerCodeRef::createSelfManagedCodeRef(rawCodePointer)));
+        return adoptRef(*new JITStubRoutine(MacroAssemblerCodeRef<JITStubRoutinePtrTag>::createSelfManagedCodeRef(rawCodePointer)));
     }
     
     virtual ~JITStubRoutine();
@@ -68,14 +69,11 @@ public:
     // MacroAssemblerCodeRef is copyable, but at the cost of reference
     // counting churn. Returning a reference is a good way of reducing
     // the churn.
-    const MacroAssemblerCodeRef& code() const { return m_code; }
+    const MacroAssemblerCodeRef<JITStubRoutinePtrTag>& code() const { return m_code; }
     
-    static MacroAssemblerCodePtr asCodePtr(PassRefPtr<JITStubRoutine> stubRoutine)
+    static MacroAssemblerCodePtr<JITStubRoutinePtrTag> asCodePtr(Ref<JITStubRoutine>&& stubRoutine)
     {
-        if (!stubRoutine)
-            return MacroAssemblerCodePtr();
-        
-        MacroAssemblerCodePtr result = stubRoutine->code().code();
+        MacroAssemblerCodePtr<JITStubRoutinePtrTag> result = stubRoutine->code().code();
         ASSERT(!!result);
         return result;
     }
@@ -98,44 +96,9 @@ public:
     uintptr_t endAddress() const { return m_code.executableMemory()->endAsInteger(); }
     static uintptr_t addressStep() { return jitAllocationGranule; }
     
-    static bool canPerformRangeFilter()
-    {
-#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
-        return true;
-#else
-        return false;
-#endif
-    }
-    static uintptr_t filteringStartAddress()
-    {
-#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
-        return startOfFixedExecutableMemoryPool;
-#else
-        UNREACHABLE_FOR_PLATFORM();
-        return 0;
-#endif
-    }
-    static size_t filteringExtentSize()
-    {
-#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
-        return fixedExecutableMemoryPoolSize;
-#else
-        UNREACHABLE_FOR_PLATFORM();
-        return 0;
-#endif
-    }
     static bool passesFilter(uintptr_t address)
     {
-        if (!canPerformRangeFilter()) {
-            // Just check that the address doesn't use any special values that would make
-            // our hashtables upset.
-            return address >= jitAllocationGranule && address != std::numeric_limits<uintptr_t>::max();
-        }
-        
-        if (address - filteringStartAddress() >= filteringExtentSize())
-            return false;
-        
-        return true;
+        return isJITPC(bitwise_cast<void*>(address));
     }
     
     // Return true if you are still valid after. Return false if you are now invalid. If you return
@@ -146,13 +109,13 @@ public:
 protected:
     virtual void observeZeroRefCount();
 
-    MacroAssemblerCodeRef m_code;
+    MacroAssemblerCodeRef<JITStubRoutinePtrTag> m_code;
     unsigned m_refCount;
 };
 
 // Helper for the creation of simple stub routines that need no help from the GC.
-#define FINALIZE_CODE_FOR_STUB(codeBlock, patchBuffer, dataLogFArguments) \
-    (adoptRef(new JITStubRoutine(FINALIZE_CODE_FOR((codeBlock), (patchBuffer), dataLogFArguments))))
+#define FINALIZE_CODE_FOR_STUB(codeBlock, patchBuffer, resultPtrTag, ...) \
+    (adoptRef(new JITStubRoutine(FINALIZE_CODE_FOR((codeBlock), (patchBuffer), (resultPtrTag), __VA_ARGS__))))
 
 } // namespace JSC
 

@@ -31,7 +31,7 @@ namespace JSC {
 
 class JSProxy : public JSDestructibleObject {
 public:
-    typedef JSDestructibleObject Base;
+    using Base = JSDestructibleObject;
     static const unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetPropertyNames | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero;
 
     static JSProxy* create(VM& vm, Structure* structure, JSObject* target)
@@ -63,7 +63,7 @@ public:
 
 protected:
     JSProxy(VM& vm, Structure* structure)
-        : JSDestructibleObject(vm, structure)
+        : Base(vm, structure)
     {
     }
 
@@ -80,7 +80,8 @@ protected:
 
     JS_EXPORT_PRIVATE static void visitChildren(JSCell*, SlotVisitor&);
 
-    JS_EXPORT_PRIVATE static String className(const JSObject*);
+    JS_EXPORT_PRIVATE static String className(const JSObject*, VM&);
+    JS_EXPORT_PRIVATE static String toStringName(const JSObject*, ExecState*);
     JS_EXPORT_PRIVATE static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
     JS_EXPORT_PRIVATE static bool getOwnPropertySlotByIndex(JSObject*, ExecState*, unsigned, PropertySlot&);
     JS_EXPORT_PRIVATE static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
@@ -95,6 +96,7 @@ protected:
     JS_EXPORT_PRIVATE static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
     JS_EXPORT_PRIVATE static bool setPrototype(JSObject*, ExecState*, JSValue, bool shouldThrowIfCantSet);
     JS_EXPORT_PRIVATE static JSValue getPrototype(JSObject*, ExecState*);
+    JS_EXPORT_PRIVATE static bool isExtensible(JSObject*, ExecState*);
     JS_EXPORT_PRIVATE static bool preventExtensions(JSObject*, ExecState*);
 
 private:

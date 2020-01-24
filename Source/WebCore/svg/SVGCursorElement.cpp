@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,32 +26,26 @@
 #include "Document.h"
 #include "SVGNames.h"
 #include "SVGStringList.h"
-#include "XLinkNames.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-// Animated property definitions
-DEFINE_ANIMATED_LENGTH(SVGCursorElement, SVGNames::xAttr, X, x)
-DEFINE_ANIMATED_LENGTH(SVGCursorElement, SVGNames::yAttr, Y, y)
-DEFINE_ANIMATED_STRING(SVGCursorElement, XLinkNames::hrefAttr, Href, href)
-DEFINE_ANIMATED_BOOLEAN(SVGCursorElement, SVGNames::externalResourcesRequiredAttr, ExternalResourcesRequired, externalResourcesRequired)
-
-BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGCursorElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(x)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(y)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(href)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(externalResourcesRequired)
-    REGISTER_PARENT_ANIMATED_PROPERTIES(SVGTests)
-END_REGISTER_ANIMATED_PROPERTIES
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGCursorElement);
 
 inline SVGCursorElement::SVGCursorElement(const QualifiedName& tagName, Document& document)
     : SVGElement(tagName, document)
-    , m_x(LengthModeWidth)
-    , m_y(LengthModeHeight)
+    , SVGExternalResourcesRequired(this)
+    , SVGTests(this)
+    , SVGURIReference(this)
 {
     ASSERT(hasTagName(SVGNames::cursorTag));
-    registerAnimatedPropertiesForSVGCursorElement();
+
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        PropertyRegistry::registerProperty<SVGNames::xAttr, &SVGCursorElement::m_x>();
+        PropertyRegistry::registerProperty<SVGNames::yAttr, &SVGCursorElement::m_y>();
+    });
 }
 
 Ref<SVGCursorElement> SVGCursorElement::create(const QualifiedName& tagName, Document& document)
@@ -64,27 +59,14 @@ SVGCursorElement::~SVGCursorElement()
         client->cursorElementRemoved(*this);
 }
 
-bool SVGCursorElement::isSupportedAttribute(const QualifiedName& attrName)
-{
-    static NeverDestroyed<HashSet<QualifiedName>> supportedAttributes;
-    if (supportedAttributes.get().isEmpty()) {
-        SVGTests::addSupportedAttributes(supportedAttributes);
-        SVGExternalResourcesRequired::addSupportedAttributes(supportedAttributes);
-        SVGURIReference::addSupportedAttributes(supportedAttributes);
-        supportedAttributes.get().add(SVGNames::xAttr);
-        supportedAttributes.get().add(SVGNames::yAttr);
-    }
-    return supportedAttributes.get().contains<SVGAttributeHashTranslator>(attrName);
-}
-
-void SVGCursorElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void SVGCursorElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     SVGParsingError parseError = NoError;
 
     if (name == SVGNames::xAttr)
-        setXBaseValue(SVGLengthValue::construct(LengthModeWidth, value, parseError));
+        m_x->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError));
     else if (name == SVGNames::yAttr)
-        setYBaseValue(SVGLengthValue::construct(LengthModeHeight, value, parseError));
+        m_y->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError));
 
     reportAttributeParsingError(parseError, name, value);
 
@@ -106,14 +88,14 @@ void SVGCursorElement::removeClient(CSSCursorImageValue& value)
 
 void SVGCursorElement::svgAttributeChanged(const QualifiedName& attrName)
 {
-    if (!isSupportedAttribute(attrName)) {
-        SVGElement::svgAttributeChanged(attrName);
+    if (PropertyRegistry::isKnownAttribute(attrName)) {
+        InstanceInvalidationGuard guard(*this);
+        for (auto& client : m_clients)
+            client->cursorElementChanged(*this);
         return;
     }
 
-    InstanceInvalidationGuard guard(*this);
-    for (auto& client : m_clients)
-        client->cursorElementChanged(*this);
+    SVGElement::svgAttributeChanged(attrName);
 }
 
 void SVGCursorElement::addSubresourceAttributeURLs(ListHashSet<URL>& urls) const
@@ -121,21 +103,6 @@ void SVGCursorElement::addSubresourceAttributeURLs(ListHashSet<URL>& urls) const
     SVGElement::addSubresourceAttributeURLs(urls);
 
     addSubresourceURL(urls, document().completeURL(href()));
-}
-
-Ref<SVGStringList> SVGCursorElement::requiredFeatures()
-{
-    return SVGTests::requiredFeatures(*this);
-}
-
-Ref<SVGStringList> SVGCursorElement::requiredExtensions()
-{ 
-    return SVGTests::requiredExtensions(*this);
-}
-
-Ref<SVGStringList> SVGCursorElement::systemLanguage()
-{
-    return SVGTests::systemLanguage(*this);
 }
 
 }

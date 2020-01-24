@@ -30,6 +30,7 @@
 namespace WebCore {
 
 class HTMLTableColElement final : public HTMLTablePartElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLTableColElement);
 public:
     static Ref<HTMLTableColElement> create(const QualifiedName& tagName, Document&);
 
@@ -41,9 +42,9 @@ public:
 private:
     HTMLTableColElement(const QualifiedName& tagName, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
     bool isPresentationAttribute(const QualifiedName&) const final;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
     const StyleProperties* additionalPresentationAttributeStyle() const final;
 
     unsigned m_span;

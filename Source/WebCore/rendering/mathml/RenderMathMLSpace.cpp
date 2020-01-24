@@ -29,9 +29,11 @@
 #if ENABLE(MATHML)
 
 #include "GraphicsContext.h"
-#include "PaintInfo.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderMathMLSpace);
 
 RenderMathMLSpace::RenderMathMLSpace(MathMLSpaceElement& element, RenderStyle&& style)
     : RenderMathMLBlock(element, WTFMove(style))
@@ -79,14 +81,16 @@ void RenderMathMLSpace::layoutBlock(bool relayoutChildren, LayoutUnit)
     getSpaceHeightAndDepth(height, depth);
     setLogicalHeight(height + depth);
 
+    updateScrollInfoAfterLayout();
+
     clearNeedsLayout();
 }
 
-std::optional<int> RenderMathMLSpace::firstLineBaseline() const
+Optional<int> RenderMathMLSpace::firstLineBaseline() const
 {
     LayoutUnit height, depth;
     getSpaceHeightAndDepth(height, depth);
-    return std::optional<int>(height);
+    return Optional<int>(height);
 }
 
 }

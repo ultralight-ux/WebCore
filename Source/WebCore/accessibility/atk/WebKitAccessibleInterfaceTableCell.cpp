@@ -20,13 +20,13 @@
 #include "config.h"
 #include "WebKitAccessibleInterfaceTableCell.h"
 
-#if HAVE(ACCESSIBILITY)
-#if ATK_CHECK_VERSION(2,11,90)
+#if ENABLE(ACCESSIBILITY)
+
 #include "AccessibilityObject.h"
 #include "AccessibilityTable.h"
 #include "AccessibilityTableCell.h"
+#include "WebKitAccessible.h"
 #include "WebKitAccessibleUtil.h"
-#include "WebKitAccessibleWrapperAtk.h"
 
 using namespace WebCore;
 
@@ -34,7 +34,7 @@ static GPtrArray* convertToGPtrArray(const AccessibilityObject::AccessibilityChi
 {
     GPtrArray* array = g_ptr_array_new();
     for (const auto& child : children) {
-        if (AtkObject* atkObject = child->wrapper())
+        if (auto* atkObject = child->wrapper())
             g_ptr_array_add(array, atkObject);
     }
     return array;
@@ -45,7 +45,7 @@ static AccessibilityObject* core(AtkTableCell* cell)
     if (!WEBKIT_IS_ACCESSIBLE(cell))
         return nullptr;
 
-    return webkitAccessibleGetAccessibilityObject(WEBKIT_ACCESSIBLE(cell));
+    return &webkitAccessibleGetAccessibilityObject(WEBKIT_ACCESSIBLE(cell));
 }
 
 GPtrArray* webkitAccessibleTableCellGetColumnHeaderCells(AtkTableCell* cell)
@@ -119,12 +119,22 @@ gboolean webkitAccessibleTableCellGetPosition(AtkTableCell* cell, gint* row, gin
 
     std::pair<unsigned, unsigned> columnRowRange;
     if (row) {
-        downcast<AccessibilityTableCell>(*axObject).rowIndexRange(columnRowRange);
-        *row = columnRowRange.first;
+        // aria-rowindex is 1-based.
+        int rowIndex = downcast<AccessibilityTableCell>(*axObject).axRowIndex() - 1;
+        if (rowIndex <= -1) {
+            downcast<AccessibilityTableCell>(*axObject).rowIndexRange(columnRowRange);
+            rowIndex = columnRowRange.first;
+        }
+        *row = rowIndex;
     }
     if (column) {
-        downcast<AccessibilityTableCell>(*axObject).columnIndexRange(columnRowRange);
-        *column = columnRowRange.first;
+        // aria-colindex is 1-based.
+        int columnIndex = downcast<AccessibilityTableCell>(*axObject).axColumnIndex() - 1;
+        if (columnIndex <= -1) {
+            downcast<AccessibilityTableCell>(*axObject).columnIndexRange(columnRowRange);
+            columnIndex = columnRowRange.first;
+        }
+        *column = columnIndex;
     }
 
     return true;
@@ -139,7 +149,7 @@ AtkObject* webkitAccessibleTableCellGetTable(AtkTableCell* cell)
     if (!axObject || !axObject->isTableCell())
         return nullptr;
 
-    AtkObject* table = atk_object_get_parent(axObject->wrapper());
+    auto* table = atk_object_get_parent(ATK_OBJECT(axObject->wrapper()));
     if (!table || !ATK_IS_TABLE(table))
         return nullptr;
 
@@ -156,5 +166,4 @@ void webkitAccessibleTableCellInterfaceInit(AtkTableCellIface* iface)
     iface->get_table = webkitAccessibleTableCellGetTable;
 }
 
-#endif // ATK_CHECK_VERSION(2,11,90)
-#endif // HAVE(ACCESSIBILITY)
+#endif // ENABLE(ACCESSIBILITY)

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) Research In Motion Limited 2011. All rights reserved.
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,34 +21,46 @@
 #pragma once
 
 #include "FEDropShadow.h"
-#include "SVGAnimatedNumber.h"
 #include "SVGFilterPrimitiveStandardAttributes.h"
 
 namespace WebCore {
-    
+
 class SVGFEDropShadowElement final : public SVGFilterPrimitiveStandardAttributes {
+    WTF_MAKE_ISO_ALLOCATED(SVGFEDropShadowElement);
 public:
     static Ref<SVGFEDropShadowElement> create(const QualifiedName&, Document&);
     
     void setStdDeviation(float stdDeviationX, float stdDeviationY);
-    
+
+    String in1() const { return m_in1->currentValue(); }
+    float dx() const { return m_dx->currentValue(); }
+    float dy() const { return m_dy->currentValue(); }
+    float stdDeviationX() const { return m_stdDeviationX->currentValue(); }
+    float stdDeviationY() const { return m_stdDeviationY->currentValue(); }
+
+    SVGAnimatedString& in1Animated() { return m_in1; }
+    SVGAnimatedNumber& dxAnimated() { return m_dx; }
+    SVGAnimatedNumber& dyAnimated() { return m_dy; }
+    SVGAnimatedNumber& stdDeviationXAnimated() { return m_stdDeviationX; }
+    SVGAnimatedNumber& stdDeviationYAnimated() { return m_stdDeviationY; }
+
 private:
     SVGFEDropShadowElement(const QualifiedName&, Document&);
-    
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFEDropShadowElement, SVGFilterPrimitiveStandardAttributes>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     void svgAttributeChanged(const QualifiedName&) override;
-    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) override;
-    
-    static const AtomicString& stdDeviationXIdentifier();
-    static const AtomicString& stdDeviationYIdentifier();
-    
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEDropShadowElement)
-        DECLARE_ANIMATED_STRING(In1, in1)
-        DECLARE_ANIMATED_NUMBER(Dx, dx)
-        DECLARE_ANIMATED_NUMBER(Dy, dy)
-        DECLARE_ANIMATED_NUMBER(StdDeviationX, stdDeviationX)
-        DECLARE_ANIMATED_NUMBER(StdDeviationY, stdDeviationY)
-    END_DECLARE_ANIMATED_PROPERTIES
+
+    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) const override;
+
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedString> m_in1 { SVGAnimatedString::create(this) };
+    Ref<SVGAnimatedNumber> m_dx { SVGAnimatedNumber::create(this, 2) };
+    Ref<SVGAnimatedNumber> m_dy { SVGAnimatedNumber::create(this, 2) };
+    Ref<SVGAnimatedNumber> m_stdDeviationX { SVGAnimatedNumber::create(this, 2) };
+    Ref<SVGAnimatedNumber> m_stdDeviationY { SVGAnimatedNumber::create(this, 2) };
 };
     
 } // namespace WebCore

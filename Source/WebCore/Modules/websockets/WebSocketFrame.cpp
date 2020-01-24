@@ -22,12 +22,10 @@
 
 #include "config.h"
 
-#if ENABLE(WEB_SOCKETS)
-
 #include "WebSocketFrame.h"
-
 #include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/MathExtras.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebCore {
 
@@ -96,7 +94,7 @@ WebSocketFrame::ParseFrameResult WebSocketFrame::parseFrame(char* data, size_t d
     static const uint64_t maxPayloadLength = UINT64_C(0x7FFFFFFFFFFFFFFF);
     size_t maskingKeyLength = masked ? maskingKeyWidthInBytes : 0;
     if (payloadLength64 > maxPayloadLength || payloadLength64 + maskingKeyLength > std::numeric_limits<size_t>::max()) {
-        errorString = "WebSocket frame length too large: " + String::number(payloadLength64) + " bytes";
+        errorString = makeString("WebSocket frame length too large: ", payloadLength64, " bytes");
         return FrameError;
     }
     size_t payloadLength = static_cast<size_t>(payloadLength64);
@@ -184,5 +182,3 @@ WebSocketFrame::WebSocketFrame(OpCode opCode, bool final, bool compress, bool ma
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(WEB_SOCKETS)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,22 +27,16 @@
 
 #include "ArrayBufferView.h"
 #include <wtf/FlipBytes.h>
-#include <wtf/PassRefPtr.h>
 
 namespace JSC {
 
 class DataView : public ArrayBufferView {
 protected:
-    DataView(PassRefPtr<ArrayBuffer>, unsigned byteOffset, unsigned byteLength);
+    DataView(RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned byteLength);
     
 public:
-    JS_EXPORT_PRIVATE static Ref<DataView> create(PassRefPtr<ArrayBuffer>, unsigned byteOffset, unsigned length);
-    static Ref<DataView> create(PassRefPtr<ArrayBuffer>);
-    
-    unsigned byteLength() const override
-    {
-        return m_byteLength;
-    }
+    JS_EXPORT_PRIVATE static Ref<DataView> create(RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned length);
+    static Ref<DataView> create(RefPtr<ArrayBuffer>&&);
     
     TypedArrayType getType() const override
     {
@@ -61,9 +55,9 @@ public:
             }
             *status = true;
         } else
-            ASSERT_WITH_SECURITY_IMPLICATION(offset + sizeof(T) <= byteLength());
+            RELEASE_ASSERT(offset + sizeof(T) <= byteLength());
         return flipBytesIfLittleEndian(
-            *reinterpret_cast<T*>(static_cast<uint8_t*>(m_baseAddress) + offset),
+            *reinterpret_cast<T*>(static_cast<uint8_t*>(m_baseAddress.get(byteLength())) + offset),
             littleEndian);
     }
     
@@ -86,13 +80,10 @@ public:
             }
             *status = true;
         } else
-            ASSERT_WITH_SECURITY_IMPLICATION(offset + sizeof(T) <= byteLength());
-        *reinterpret_cast<T*>(static_cast<uint8_t*>(m_baseAddress) + offset) =
+            RELEASE_ASSERT(offset + sizeof(T) <= byteLength());
+        *reinterpret_cast<T*>(static_cast<uint8_t*>(m_baseAddress.get(byteLength())) + offset) =
             flipBytesIfLittleEndian(value, littleEndian);
     }
-
-private:
-    unsigned m_byteLength;
 };
 
 } // namespace JSC

@@ -24,22 +24,23 @@
  */
 
 #include "config.h"
-#include "WorkQueue.h"
-#include "BlockPtr.h"
-#include "Ref.h"
+#include <wtf/WorkQueue.h>
+
+#include <wtf/BlockPtr.h>
+#include <wtf/Ref.h>
 
 namespace WTF {
 
-void WorkQueue::dispatch(Function<void ()>&& function)
+void WorkQueue::dispatch(Function<void()>&& function)
 {
-    dispatch_async(m_dispatchQueue, BlockPtr<void ()>::fromCallable([protectedThis = makeRef(*this), function = WTFMove(function)] {
+    dispatch_async(m_dispatchQueue, makeBlockPtr([protectedThis = makeRef(*this), function = WTFMove(function)] {
         function();
     }).get());
 }
 
-void WorkQueue::dispatchAfter(std::chrono::nanoseconds duration, Function<void ()>&& function)
+void WorkQueue::dispatchAfter(Seconds duration, Function<void()>&& function)
 {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, duration.count()), m_dispatchQueue, BlockPtr<void ()>::fromCallable([protectedThis = makeRef(*this), function = WTFMove(function)] {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, duration.nanosecondsAs<int64_t>()), m_dispatchQueue, makeBlockPtr([protectedThis = makeRef(*this), function = WTFMove(function)] {
         function();
     }).get());
 }
@@ -49,15 +50,15 @@ static dispatch_qos_class_t dispatchQOSClass(WorkQueue::QOS qos)
 {
     switch (qos) {
     case WorkQueue::QOS::UserInteractive:
-        return adjustedQOSClass(QOS_CLASS_USER_INTERACTIVE);
+        return Thread::adjustedQOSClass(QOS_CLASS_USER_INTERACTIVE);
     case WorkQueue::QOS::UserInitiated:
-        return adjustedQOSClass(QOS_CLASS_USER_INITIATED);
+        return Thread::adjustedQOSClass(QOS_CLASS_USER_INITIATED);
     case WorkQueue::QOS::Default:
-        return adjustedQOSClass(QOS_CLASS_DEFAULT);
+        return Thread::adjustedQOSClass(QOS_CLASS_DEFAULT);
     case WorkQueue::QOS::Utility:
-        return adjustedQOSClass(QOS_CLASS_UTILITY);
+        return Thread::adjustedQOSClass(QOS_CLASS_UTILITY);
     case WorkQueue::QOS::Background:
-        return adjustedQOSClass(QOS_CLASS_BACKGROUND);
+        return Thread::adjustedQOSClass(QOS_CLASS_BACKGROUND);
     }
 }
 #else
@@ -82,16 +83,8 @@ static dispatch_queue_t targetQueueForQOSClass(WorkQueue::QOS qos)
 void WorkQueue::platformInitialize(const char* name, Type type, QOS qos)
 {
     dispatch_queue_attr_t attr = type == Type::Concurrent ? DISPATCH_QUEUE_CONCURRENT : DISPATCH_QUEUE_SERIAL;
-#if HAVE(QOS_CLASSES)
     attr = dispatch_queue_attr_make_with_qos_class(attr, dispatchQOSClass(qos), 0);
-#else
-    UNUSED_PARAM(qos);
-#endif
     m_dispatchQueue = dispatch_queue_create(name, attr);
-#if !HAVE(QOS_CLASSES)
-    if (qos != WorkQueue::QOS::Default)
-        dispatch_set_target_queue(m_dispatchQueue, targetQueueForQOSClass(qos));
-#endif
     dispatch_set_context(m_dispatchQueue, this);
 }
 
@@ -100,11 +93,11 @@ void WorkQueue::platformInvalidate()
     dispatch_release(m_dispatchQueue);
 }
 
-void WorkQueue::concurrentApply(size_t iterations, const std::function<void (size_t index)>& function)
+void WorkQueue::concurrentApply(size_t iterations, WTF::Function<void(size_t index)>&& function)
 {
-    dispatch_apply(iterations, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t index) {
+    dispatch_apply(iterations, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), makeBlockPtr([function = WTFMove(function)](size_t index) {
         function(index);
-    });
+    }).get());
 }
 
 }

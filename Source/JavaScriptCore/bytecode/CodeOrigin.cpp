@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,20 +33,15 @@
 
 namespace JSC {
 
-unsigned CodeOrigin::inlineDepthForCallFrame(InlineCallFrame* inlineCallFrame)
+unsigned CodeOrigin::inlineDepth() const
 {
     unsigned result = 1;
-    for (InlineCallFrame* current = inlineCallFrame; current; current = current->directCaller.inlineCallFrame)
+    for (InlineCallFrame* current = inlineCallFrame(); current; current = current->directCaller.inlineCallFrame())
         result++;
     return result;
 }
 
-unsigned CodeOrigin::inlineDepth() const
-{
-    return inlineDepthForCallFrame(inlineCallFrame);
-}
-
-bool CodeOrigin::isApproximatelyEqualTo(const CodeOrigin& other) const
+bool CodeOrigin::isApproximatelyEqualTo(const CodeOrigin& other, InlineCallFrame* terminal) const
 {
     CodeOrigin a = *this;
     CodeOrigin b = other;
@@ -65,24 +60,28 @@ bool CodeOrigin::isApproximatelyEqualTo(const CodeOrigin& other) const
         ASSERT(a.isSet());
         ASSERT(b.isSet());
         
-        if (a.bytecodeIndex != b.bytecodeIndex)
+        if (a.bytecodeIndex() != b.bytecodeIndex())
+            return false;
+
+        auto* aInlineCallFrame = a.inlineCallFrame();
+        auto* bInlineCallFrame = b.inlineCallFrame();
+        bool aHasInlineCallFrame = !!aInlineCallFrame && aInlineCallFrame != terminal;
+        bool bHasInlineCallFrame = !!bInlineCallFrame;
+        if (aHasInlineCallFrame != bHasInlineCallFrame)
             return false;
         
-        if ((!!a.inlineCallFrame) != (!!b.inlineCallFrame))
-            return false;
-        
-        if (!a.inlineCallFrame)
+        if (!aHasInlineCallFrame)
             return true;
         
-        if (a.inlineCallFrame->baselineCodeBlock.get() != b.inlineCallFrame->baselineCodeBlock.get())
+        if (aInlineCallFrame->baselineCodeBlock.get() != bInlineCallFrame->baselineCodeBlock.get())
             return false;
         
-        a = a.inlineCallFrame->directCaller;
-        b = b.inlineCallFrame->directCaller;
+        a = aInlineCallFrame->directCaller;
+        b = bInlineCallFrame->directCaller;
     }
 }
 
-unsigned CodeOrigin::approximateHash() const
+unsigned CodeOrigin::approximateHash(InlineCallFrame* terminal) const
 {
     if (!isSet())
         return 0;
@@ -92,14 +91,19 @@ unsigned CodeOrigin::approximateHash() const
     unsigned result = 2;
     CodeOrigin codeOrigin = *this;
     for (;;) {
-        result += codeOrigin.bytecodeIndex;
-        
-        if (!codeOrigin.inlineCallFrame)
+        result += codeOrigin.bytecodeIndex();
+
+        auto* inlineCallFrame = codeOrigin.inlineCallFrame();
+
+        if (!inlineCallFrame)
             return result;
         
-        result += WTF::PtrHash<JSCell*>::hash(codeOrigin.inlineCallFrame->baselineCodeBlock.get());
+        if (inlineCallFrame == terminal)
+            return result;
         
-        codeOrigin = codeOrigin.inlineCallFrame->directCaller;
+        result += WTF::PtrHash<JSCell*>::hash(inlineCallFrame->baselineCodeBlock.get());
+        
+        codeOrigin = inlineCallFrame->directCaller;
     }
 }
 
@@ -108,24 +112,25 @@ Vector<CodeOrigin> CodeOrigin::inlineStack() const
     Vector<CodeOrigin> result(inlineDepth());
     result.last() = *this;
     unsigned index = result.size() - 2;
-    for (InlineCallFrame* current = inlineCallFrame; current; current = current->directCaller.inlineCallFrame)
+    for (InlineCallFrame* current = inlineCallFrame(); current; current = current->directCaller.inlineCallFrame())
         result[index--] = current->directCaller;
-    RELEASE_ASSERT(!result[0].inlineCallFrame);
+    RELEASE_ASSERT(!result[0].inlineCallFrame());
     return result;
 }
 
 CodeBlock* CodeOrigin::codeOriginOwner() const
 {
+    auto* inlineCallFrame = this->inlineCallFrame();
     if (!inlineCallFrame)
-        return 0;
+        return nullptr;
     return inlineCallFrame->baselineCodeBlock.get();
 }
 
 int CodeOrigin::stackOffset() const
 {
+    auto* inlineCallFrame = this->inlineCallFrame();
     if (!inlineCallFrame)
         return 0;
-    
     return inlineCallFrame->stackOffset;
 }
 
@@ -141,13 +146,13 @@ void CodeOrigin::dump(PrintStream& out) const
         if (i)
             out.print(" --> ");
         
-        if (InlineCallFrame* frame = stack[i].inlineCallFrame) {
+        if (InlineCallFrame* frame = stack[i].inlineCallFrame()) {
             out.print(frame->briefFunctionInformation(), ":<", RawPointer(frame->baselineCodeBlock.get()), "> ");
             if (frame->isClosureCall)
                 out.print("(closure) ");
         }
         
-        out.print("bc#", stack[i].bytecodeIndex);
+        out.print("bc#", stack[i].bytecodeIndex());
     }
 }
 

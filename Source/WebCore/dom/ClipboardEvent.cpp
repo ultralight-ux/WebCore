@@ -24,19 +24,22 @@
 #include "ClipboardEvent.h"
 
 #include "DataTransfer.h"
-#include "EventNames.h"
 
 namespace WebCore {
 
-ClipboardEvent::ClipboardEvent(const AtomicString& type, const Init& init, IsTrusted isTrusted)
-    : Event(type, init, isTrusted)
+ClipboardEvent::ClipboardEvent(const AtomString& type, Ref<DataTransfer>&& dataTransfer)
+    : Event(type, CanBubble::Yes, IsCancelable::Yes, IsComposed::Yes)
+    , m_clipboardData(WTFMove(dataTransfer))
+{
+}
+
+ClipboardEvent::ClipboardEvent(const AtomString& type, const Init& init)
+    : Event(type, init, IsTrusted::No)
     , m_clipboardData(init.clipboardData)
 {
 }
 
-ClipboardEvent::~ClipboardEvent()
-{
-}
+ClipboardEvent::~ClipboardEvent() = default;
 
 EventInterface ClipboardEvent::eventInterface() const
 {

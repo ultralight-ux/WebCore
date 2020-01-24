@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,33 +22,34 @@
 #include "config.h"
 #include "SVGLangSpace.h"
 
-#include "SVGElement.h"
+#include "RenderSVGResource.h"
+#include "RenderSVGShape.h"
+#include "SVGGeometryElement.h"
 #include "XMLNames.h"
-#include <wtf/StdLibExtras.h>
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-void SVGLangSpace::setXmllang(const AtomicString& xmlLang)
+SVGLangSpace::SVGLangSpace(SVGElement* contextElement)
+    : m_contextElement(*contextElement)
 {
-    m_lang = xmlLang;
 }
 
-const AtomicString& SVGLangSpace::xmlspace() const
+const AtomString& SVGLangSpace::xmlspace() const
 {
     if (!m_space) {
-        static NeverDestroyed<const AtomicString> defaultString("default", AtomicString::ConstructFromLiteral);
+        static NeverDestroyed<const AtomString> defaultString("default", AtomString::ConstructFromLiteral);
         return defaultString;
     }
-
     return m_space;
 }
-
-void SVGLangSpace::setXmlspace(const AtomicString& xmlSpace)
+    
+bool SVGLangSpace::isKnownAttribute(const QualifiedName& attributeName)
 {
-    m_space = xmlSpace;
+    return attributeName.matches(XMLNames::langAttr) || attributeName.matches(XMLNames::spaceAttr);
 }
 
-void SVGLangSpace::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void SVGLangSpace::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     if (name.matches(XMLNames::langAttr))
         setXmllang(value);
@@ -55,24 +57,18 @@ void SVGLangSpace::parseAttribute(const QualifiedName& name, const AtomicString&
         setXmlspace(value);
 }
 
-bool SVGLangSpace::isKnownAttribute(const QualifiedName& attrName)
+void SVGLangSpace::svgAttributeChanged(const QualifiedName& attributeName)
 {
-    return attrName.matches(XMLNames::langAttr) || attrName.matches(XMLNames::spaceAttr);
-}
-    
-void SVGLangSpace::addSupportedAttributes(HashSet<QualifiedName>& supportedAttributes)
-{
-    static NeverDestroyed<AtomicString> xmlPrefix("xml", AtomicString::ConstructFromLiteral);
+    if (!isKnownAttribute(attributeName))
+        return;
 
-    QualifiedName langWithPrefix = XMLNames::langAttr;
-    langWithPrefix.setPrefix(xmlPrefix);
-    supportedAttributes.add(langWithPrefix);
-    supportedAttributes.add(XMLNames::langAttr);
+    auto* renderer = m_contextElement.renderer();
+    if (!is<RenderSVGShape>(renderer))
+        return;
 
-    QualifiedName spaceWithPrefix = XMLNames::spaceAttr;
-    spaceWithPrefix.setPrefix(xmlPrefix);
-    supportedAttributes.add(spaceWithPrefix);
-    supportedAttributes.add(XMLNames::spaceAttr);
+    ASSERT(is<SVGGeometryElement>(m_contextElement));
+    SVGElement::InstanceInvalidationGuard guard(m_contextElement);
+    RenderSVGResource::markForLayoutAndParentResourceInvalidation(*renderer);
 }
 
 }

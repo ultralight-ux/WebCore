@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
+ * Copyright (C) 2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,33 +31,20 @@
 
 #include "Color.h"
 #include "FloatQuad.h"
-#include "LayoutRect.h"
-#include "NodeList.h"
+#include "FloatRect.h"
 #include "Timer.h"
-#include <inspector/InspectorProtocolObjects.h>
 #include <wtf/Deque.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
-namespace Inspector {
-class InspectorObject;
-class InspectorValue;
-
-namespace Protocol {
-namespace OverlayTypes {
-class NodeHighlightData;
-}
-}
-}
-
 namespace WebCore {
 
-class Color;
 class GraphicsContext;
 class InspectorClient;
-class IntRect;
 class Node;
+class NodeList;
 class Page;
 
 struct HighlightConfig {
@@ -99,6 +87,8 @@ struct Highlight {
     HighlightType type {HighlightType::Node};
     Vector<FloatQuad> quads;
     bool usePageCoordinates {true};
+
+    using Bounds = FloatRect;
 };
 
 class InspectorOverlay {
@@ -116,58 +106,55 @@ public:
     void paint(GraphicsContext&);
     void getHighlight(Highlight&, CoordinateSystem) const;
 
-    void setPausedInDebuggerMessage(const String*);
-
     void hideHighlight();
     void highlightNodeList(RefPtr<NodeList>&&, const HighlightConfig&);
     void highlightNode(Node*, const HighlightConfig&);
     void highlightQuad(std::unique_ptr<FloatQuad>, const HighlightConfig&);
-    
-    void setShowingPaintRects(bool);
+
+    void setShowPaintRects(bool);
     void showPaintRect(const FloatRect&);
-    
+
+    void setShowRulers(bool);
+    void setShowRulersDuringElementSelection(bool enabled) { m_showRulersDuringElementSelection = enabled; }
+
     Node* highlightedNode() const;
 
     void didSetSearchingForNode(bool enabled);
 
     void setIndicating(bool indicating);
 
-    RefPtr<Inspector::Protocol::OverlayTypes::NodeHighlightData> buildHighlightObjectForNode(Node*, HighlightType) const;
-    Ref<Inspector::Protocol::Array<Inspector::Protocol::OverlayTypes::NodeHighlightData>> buildObjectForHighlightedNodes() const;
-
-    void freePage();
 private:
+    using TimeRectPair = std::pair<MonotonicTime, FloatRect>;
+
     bool shouldShowOverlay() const;
-    void drawGutter();
-    void drawNodeHighlight();
-    void drawQuadHighlight();
-    void drawPausedInDebuggerMessage();
-    void drawPaintRects();
+
+    Highlight::Bounds drawNodeHighlight(GraphicsContext&, Node&);
+    Highlight::Bounds drawQuadHighlight(GraphicsContext&, const FloatQuad&);
+    void drawPaintRects(GraphicsContext&, const Deque<TimeRectPair>&);
+    void drawBounds(GraphicsContext&, const Highlight::Bounds&);
+    void drawRulers(GraphicsContext&, const Highlight::Bounds&);
+
+    void drawElementTitle(GraphicsContext&, Node&, const Highlight::Bounds&);
+
     void updatePaintRectsTimerFired();
-
-    Page* overlayPage();
-
-    void forcePaint();
-    void reset(const IntSize& viewportSize, const IntSize& frameViewFullSize);
-    void evaluateInOverlay(const String& method);
-    void evaluateInOverlay(const String& method, const String& argument);
-    void evaluateInOverlay(const String& method, RefPtr<Inspector::InspectorValue>&& argument);
 
     Page& m_page;
     InspectorClient* m_client;
-    String m_pausedInDebuggerMessage;
+
     RefPtr<Node> m_highlightNode;
     RefPtr<NodeList> m_highlightNodeList;
     HighlightConfig m_nodeHighlightConfig;
+
     std::unique_ptr<FloatQuad> m_highlightQuad;
-    std::unique_ptr<Page> m_overlayPage;
     HighlightConfig m_quadHighlightConfig;
-    
-    typedef std::pair<std::chrono::steady_clock::time_point, FloatRect> TimeRectPair;
+
     Deque<TimeRectPair> m_paintRects;
     Timer m_paintRectUpdateTimer;
-    bool m_indicating {false};
-    bool m_showingPaintRects {false};
+
+    bool m_indicating { false };
+    bool m_showPaintRects { false };
+    bool m_showRulers { false };
+    bool m_showRulersDuringElementSelection { false };
 };
 
 } // namespace WebCore

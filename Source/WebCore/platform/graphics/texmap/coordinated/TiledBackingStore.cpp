@@ -24,6 +24,7 @@
 #include "GraphicsContext.h"
 #include "TiledBackingStoreClient.h"
 #include <wtf/CheckedArithmetic.h>
+#include <wtf/MemoryPressureHandler.h>
 
 namespace WebCore {
 
@@ -35,19 +36,16 @@ static IntPoint innerBottomRight(const IntRect& rect)
     return IntPoint(rect.maxX() - 1, rect.maxY() - 1);
 }
 
-TiledBackingStore::TiledBackingStore(TiledBackingStoreClient* client, float contentsScale)
+TiledBackingStore::TiledBackingStore(TiledBackingStoreClient& client, float contentsScale)
     : m_client(client)
     , m_tileSize(defaultTileDimension, defaultTileDimension)
     , m_coverAreaMultiplier(2.0f)
     , m_contentsScale(contentsScale)
-    , m_supportsAlpha(false)
     , m_pendingTileCreation(false)
 {
 }
 
-TiledBackingStore::~TiledBackingStore()
-{
-}
+TiledBackingStore::~TiledBackingStore() = default;
 
 void TiledBackingStore::setTrajectoryVector(const FloatPoint& trajectoryVector)
 {
@@ -59,10 +57,11 @@ void TiledBackingStore::createTilesIfNeeded(const IntRect& unscaledVisibleRect, 
 {
     IntRect scaledContentsRect = mapFromContents(contentsRect);
     IntRect visibleRect = mapFromContents(unscaledVisibleRect);
+    float coverAreaMultiplier = MemoryPressureHandler::singleton().isUnderMemoryPressure() ? 1.0f : 2.0f;
 
-    bool didChange = m_trajectoryVector != m_pendingTrajectoryVector || m_visibleRect != visibleRect || m_rect != scaledContentsRect;
+    bool didChange = m_trajectoryVector != m_pendingTrajectoryVector || m_visibleRect != visibleRect || m_rect != scaledContentsRect || m_coverAreaMultiplier != coverAreaMultiplier;
     if (didChange || m_pendingTileCreation)
-        createTiles(visibleRect, scaledContentsRect);
+        createTiles(visibleRect, scaledContentsRect, coverAreaMultiplier);
 }
 
 void TiledBackingStore::invalidate(const IntRect& contentsDirtyRect)
@@ -88,21 +87,15 @@ void TiledBackingStore::invalidate(const IntRect& contentsDirtyRect)
     }
 }
 
-void TiledBackingStore::updateTileBuffers()
+Vector<std::reference_wrapper<Tile>> TiledBackingStore::dirtyTiles()
 {
-    // FIXME: In single threaded case, tile back buffers could be updated asynchronously 
-    // one by one and then swapped to front in one go. This would minimize the time spent
-    // blocking on tile updates.
-    bool updated = false;
+    Vector<std::reference_wrapper<Tile>> tiles;
     for (auto& tile : m_tiles.values()) {
-        if (!tile->isDirty())
-            continue;
-
-        updated |= tile->updateBackBuffer();
+        if (tile->isDirty())
+            tiles.append(*tile);
     }
 
-    if (updated)
-        m_client->didUpdateTileBuffers();
+    return tiles;
 }
 
 double TiledBackingStore::tileDistance(const IntRect& viewport, const Tile::Coordinate& tileCoordinate) const
@@ -143,13 +136,13 @@ bool TiledBackingStore::visibleAreaIsCovered() const
     return coverageRatio(intersection(m_visibleRect, m_rect)) == 1.0f;
 }
 
-void TiledBackingStore::createTiles(const IntRect& visibleRect, const IntRect& scaledContentsRect)
+void TiledBackingStore::createTiles(const IntRect& visibleRect, const IntRect& scaledContentsRect, float coverAreaMultiplier)
 {
     // Update our backing store geometry.
-    const IntRect previousRect = m_rect;
     m_rect = scaledContentsRect;
     m_trajectoryVector = m_pendingTrajectoryVector;
     m_visibleRect = visibleRect;
+    m_coverAreaMultiplier = coverAreaMultiplier;
 
     if (m_rect.isEmpty()) {
         setCoverRect(IntRect());
@@ -190,9 +183,10 @@ void TiledBackingStore::createTiles(const IntRect& visibleRect, const IntRect& s
 
     // Resize tiles at the edge in case the contents size has changed, but only do so
     // after having dropped tiles outside the keep rect.
-    bool didResizeTiles = false;
-    if (previousRect != m_rect)
-        didResizeTiles = resizeEdgeTiles();
+    if (m_previousRect != m_rect) {
+        m_previousRect = m_rect;
+        resizeEdgeTiles();
+    }
 
     // Search for the tile position closest to the viewport center that does not yet contain a tile.
     // Which position is considered the closest depends on the tileDistance function.
@@ -230,14 +224,10 @@ void TiledBackingStore::createTiles(const IntRect& visibleRect, const IntRect& s
     }
     requiredTileCount -= tilesToCreateCount;
 
-    // Paint the content of the newly created tiles or resized tiles.
-    if (tilesToCreateCount || didResizeTiles)
-        updateTileBuffers();
-
     // Re-call createTiles on a timer to cover the visible area with the newest shortest distance.
     m_pendingTileCreation = requiredTileCount;
     if (m_pendingTileCreation)
-        m_client->tiledBackingStoreHasPendingTileCreation();
+        m_client.tiledBackingStoreHasPendingTileCreation();
 }
 
 void TiledBackingStore::adjustForContentsRect(IntRect& rect) const
@@ -327,9 +317,8 @@ void TiledBackingStore::computeCoverAndKeepRect(const IntRect& visibleRect, IntR
     ASSERT(coverRect.isEmpty() || keepRect.contains(coverRect));
 }
 
-bool TiledBackingStore::resizeEdgeTiles()
+void TiledBackingStore::resizeEdgeTiles()
 {
-    bool wasResized = false;
     Vector<Tile::Coordinate> tilesToRemove;
     for (auto& tile : m_tiles.values()) {
         Tile::Coordinate tileCoordinate = tile->coordinate();
@@ -337,16 +326,12 @@ bool TiledBackingStore::resizeEdgeTiles()
         IntRect expectedTileRect = tileRectForCoordinate(tileCoordinate);
         if (expectedTileRect.isEmpty())
             tilesToRemove.append(tileCoordinate);
-        else if (expectedTileRect != tileRect) {
+        else if (expectedTileRect != tileRect)
             tile->resize(expectedTileRect.size());
-            wasResized = true;
-        }
     }
 
     for (auto& coordinateToRemove : tilesToRemove)
         m_tiles.remove(coordinateToRemove);
-
-    return wasResized;
 }
 
 void TiledBackingStore::setKeepRect(const IntRect& keepRect)
@@ -407,14 +392,6 @@ Tile::Coordinate TiledBackingStore::tileCoordinateForPoint(const IntPoint& point
     int x = point.x() / m_tileSize.width();
     int y = point.y() / m_tileSize.height();
     return Tile::Coordinate(std::max(x, 0), std::max(y, 0));
-}
-
-void TiledBackingStore::setSupportsAlpha(bool a)
-{
-    if (a == m_supportsAlpha)
-        return;
-    m_supportsAlpha = a;
-    invalidate(m_rect);
 }
 
 }

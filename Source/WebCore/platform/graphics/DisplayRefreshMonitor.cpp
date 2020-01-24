@@ -30,11 +30,14 @@
 
 #include "DisplayRefreshMonitorClient.h"
 #include "DisplayRefreshMonitorManager.h"
+#include "Logging.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #include "DisplayRefreshMonitorIOS.h"
-#else
+#elif PLATFORM(MAC)
 #include "DisplayRefreshMonitorMac.h"
+#elif PLATFORM(GTK)
+#include "DisplayRefreshMonitorGtk.h"
 #endif
 
 namespace WebCore {
@@ -44,9 +47,13 @@ RefPtr<DisplayRefreshMonitor> DisplayRefreshMonitor::createDefaultDisplayRefresh
 #if PLATFORM(MAC)
     return DisplayRefreshMonitorMac::create(displayID);
 #endif
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     return DisplayRefreshMonitorIOS::create(displayID);
 #endif
+#if PLATFORM(GTK)
+    return DisplayRefreshMonitorGtk::create(displayID);
+#endif
+    UNUSED_PARAM(displayID);
     return nullptr;
 }
 
@@ -56,18 +63,11 @@ RefPtr<DisplayRefreshMonitor> DisplayRefreshMonitor::create(DisplayRefreshMonito
 }
 
 DisplayRefreshMonitor::DisplayRefreshMonitor(PlatformDisplayID displayID)
-    : m_active(true)
-    , m_scheduled(false)
-    , m_previousFrameDone(true)
-    , m_unscheduledFireCount(0)
-    , m_displayID(displayID)
-    , m_clientsToBeNotified(nullptr)
+    : m_displayID(displayID)
 {
 }
 
-DisplayRefreshMonitor::~DisplayRefreshMonitor()
-{
-}
+DisplayRefreshMonitor::~DisplayRefreshMonitor() = default;
 
 void DisplayRefreshMonitor::handleDisplayRefreshedNotificationOnMainThread(void* data)
 {
@@ -91,6 +91,7 @@ void DisplayRefreshMonitor::displayDidRefresh()
 {
     {
         LockHolder lock(m_mutex);
+        LOG(RequestAnimationFrame, "DisplayRefreshMonitor::displayDidRefresh(%p) - m_scheduled(%d), m_unscheduledFireCount(%d)", this, m_scheduled, m_unscheduledFireCount);
         if (!m_scheduled)
             ++m_unscheduledFireCount;
         else
@@ -122,9 +123,9 @@ void DisplayRefreshMonitor::displayDidRefresh()
 
     {
         LockHolder lock(m_mutex);
-        m_previousFrameDone = true;
+        setIsPreviousFrameDone(true);
     }
-    
+
     DisplayRefreshMonitorManager::sharedManager().displayDidRefresh(*this);
 }
 

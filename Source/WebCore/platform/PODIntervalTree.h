@@ -28,10 +28,11 @@
 
 #include "PODInterval.h"
 #include "PODRedBlackTree.h"
-#include "ValueToString.h"
 #include <wtf/Assertions.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/Optional.h>
 #include <wtf/Vector.h>
+#include <wtf/text/ValueToString.h>
 
 namespace WebCore {
 
@@ -115,6 +116,15 @@ public:
         return IntervalType(low, high, data);
     }
 
+    Optional<IntervalType> nextIntervalAfter(const IntervalType& interval)
+    {
+        auto next = smallestNodeGreaterThanFrom(interval, this->root());
+        if (!next)
+            return WTF::nullopt;
+
+        return next->data();
+    }
+
     bool checkInvariants() const override
     {
         if (!PODRedBlackTree<IntervalType>::checkInvariants())
@@ -164,6 +174,20 @@ private:
         if (!(adapter.highValue() < node->data().low()))
             searchForOverlapsFrom<AdapterType>(node->right(), adapter);
     }
+
+    IntervalNode* smallestNodeGreaterThanFrom(const IntervalType& interval, IntervalNode* node) const
+    {
+        if (!node)
+            return nullptr;
+
+        if (!(interval.high() < node->data().low()))
+            return smallestNodeGreaterThanFrom(interval, node->right());
+
+        if (auto left = smallestNodeGreaterThanFrom(interval, node->right()))
+            return left;
+
+        return node;
+}
 
     bool updateNode(IntervalNode* node) override
     {
@@ -234,17 +258,21 @@ private:
     }
 };
 
+} // namespace WebCore
+
 #ifndef NDEBUG
+namespace WTF {
+
 // Support for printing PODIntervals at the PODRedBlackTree level.
 template<class T, class UserData>
-struct ValueToString<PODInterval<T, UserData>> {
-    static String string(const PODInterval<T, UserData>& interval)
+struct ValueToString<WebCore::PODInterval<T, UserData>> {
+    static String string(const WebCore::PODInterval<T, UserData>& interval)
     {
         return interval.toString();
     }
 };
-#endif
 
-} // namespace WebCore
+} // namespace WTF
+#endif
 
 #endif // PODIntervalTree_h

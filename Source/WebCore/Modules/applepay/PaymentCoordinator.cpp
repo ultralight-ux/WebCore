@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,15 +28,26 @@
 
 #if ENABLE(APPLE_PAY)
 
-#include "ApplePaySession.h"
+#include "Document.h"
+#include "LinkIconCollector.h"
+#include "Logging.h"
+#include "Page.h"
 #include "PaymentAuthorizationStatus.h"
 #include "PaymentCoordinatorClient.h"
-#include "URL.h"
+#include "PaymentSession.h"
+#include "UserContentProvider.h"
+#include <wtf/CompletionHandler.h>
+#include <wtf/URL.h>
+
+#undef RELEASE_LOG_ERROR_IF_ALLOWED
+#undef RELEASE_LOG_IF_ALLOWED
+#define RELEASE_LOG_ERROR_IF_ALLOWED(fmt, ...) RELEASE_LOG_ERROR_IF(m_client.isAlwaysOnLoggingAllowed(), ApplePay, "%p - PaymentCoordinator::" fmt, this, ##__VA_ARGS__)
+#define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(m_client.isAlwaysOnLoggingAllowed(), ApplePay, "%p - PaymentCoordinator::" fmt, this, ##__VA_ARGS__)
 
 namespace WebCore {
 
 PaymentCoordinator::PaymentCoordinator(PaymentCoordinatorClient& client)
-    : m_client(client)
+    : m_client { client }
 {
 }
 
@@ -45,31 +56,65 @@ PaymentCoordinator::~PaymentCoordinator()
     m_client.paymentCoordinatorDestroyed();
 }
 
-bool PaymentCoordinator::supportsVersion(unsigned version)
+bool PaymentCoordinator::supportsVersion(Document&, unsigned version) const
 {
-    return m_client.supportsVersion(version);
+    auto supportsVersion = m_client.supportsVersion(version);
+    RELEASE_LOG_IF_ALLOWED("supportsVersion(%d) -> %d", version, supportsVersion);
+    return supportsVersion;
 }
 
-bool PaymentCoordinator::canMakePayments()
+bool PaymentCoordinator::canMakePayments(Document& document)
 {
-    return m_client.canMakePayments();
+    auto canMakePayments = m_client.canMakePayments();
+    RELEASE_LOG_IF_ALLOWED("canMakePayments() -> %d", canMakePayments);
+
+    if (!canMakePayments)
+        return false;
+
+    if (!setApplePayIsActiveIfAllowed(document))
+        return false;
+
+    return true;
 }
 
-void PaymentCoordinator::canMakePaymentsWithActiveCard(const String& merchantIdentifier, const String& domainName, std::function<void (bool)> completionHandler)
+void PaymentCoordinator::canMakePaymentsWithActiveCard(Document& document, const String& merchantIdentifier, WTF::Function<void(bool)>&& completionHandler)
 {
-    m_client.canMakePaymentsWithActiveCard(merchantIdentifier, domainName, WTFMove(completionHandler));
+    m_client.canMakePaymentsWithActiveCard(merchantIdentifier, document.domain(), [this, weakThis = makeWeakPtr(*this), document = makeWeakPtr(document), completionHandler = WTFMove(completionHandler)](bool canMakePayments) {
+        if (!weakThis)
+            return completionHandler(false);
+
+        RELEASE_LOG_IF_ALLOWED("canMakePaymentsWithActiveCard() -> %d", canMakePayments);
+
+        if (!canMakePayments)
+            return completionHandler(false);
+
+        if (!document || !setApplePayIsActiveIfAllowed(*document))
+            return completionHandler(false);
+
+        completionHandler(true);
+    });
 }
 
-void PaymentCoordinator::openPaymentSetup(const String& merchantIdentifier, const String& domainName, std::function<void (bool)> completionHandler)
+void PaymentCoordinator::openPaymentSetup(Document& document, const String& merchantIdentifier, WTF::Function<void(bool)>&& completionHandler)
 {
-    m_client.openPaymentSetup(merchantIdentifier, domainName, WTFMove(completionHandler));
+    RELEASE_LOG_IF_ALLOWED("openPaymentSetup()");
+    m_client.openPaymentSetup(merchantIdentifier, document.domain(), WTFMove(completionHandler));
 }
 
-bool PaymentCoordinator::beginPaymentSession(ApplePaySession& paymentSession, const URL& originatingURL, const Vector<URL>& linkIconURLs, const PaymentRequest& paymentRequest)
+bool PaymentCoordinator::beginPaymentSession(Document& document, PaymentSession& paymentSession, const ApplePaySessionPaymentRequest& paymentRequest)
 {
     ASSERT(!m_activeSession);
 
-    if (!m_client.showPaymentUI(originatingURL, linkIconURLs, paymentRequest))
+    if (!setApplePayIsActiveIfAllowed(document))
+        return false;
+
+    Vector<URL> linkIconURLs;
+    for (auto& icon : LinkIconCollector { document }.iconsOfTypes({ LinkIconType::TouchIcon, LinkIconType::TouchPrecomposedIcon }))
+        linkIconURLs.append(icon.url);
+
+    auto showPaymentUI = m_client.showPaymentUI(document.url(), linkIconURLs, paymentRequest);
+    RELEASE_LOG_IF_ALLOWED("beginPaymentSession() -> %d", showPaymentUI);
+    if (!showPaymentUI)
         return false;
 
     m_activeSession = &paymentSession;
@@ -79,38 +124,40 @@ bool PaymentCoordinator::beginPaymentSession(ApplePaySession& paymentSession, co
 void PaymentCoordinator::completeMerchantValidation(const PaymentMerchantSession& paymentMerchantSession)
 {
     ASSERT(m_activeSession);
-
+    RELEASE_LOG_IF_ALLOWED("completeMerchantValidation()");
     m_client.completeMerchantValidation(paymentMerchantSession);
 }
 
-void PaymentCoordinator::completeShippingMethodSelection(PaymentAuthorizationStatus status, std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems)
+void PaymentCoordinator::completeShippingMethodSelection(Optional<ShippingMethodUpdate>&& update)
 {
     ASSERT(m_activeSession);
-
-    m_client.completeShippingMethodSelection(status, WTFMove(newTotalAndItems));
+    RELEASE_LOG_IF_ALLOWED("completeShippingMethodSelection()");
+    m_client.completeShippingMethodSelection(WTFMove(update));
 }
 
-void PaymentCoordinator::completeShippingContactSelection(PaymentAuthorizationStatus status, const Vector<PaymentRequest::ShippingMethod>& newShippingMethods, std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems)
+void PaymentCoordinator::completeShippingContactSelection(Optional<ShippingContactUpdate>&& update)
 {
     ASSERT(m_activeSession);
-
-    m_client.completeShippingContactSelection(status, newShippingMethods, WTFMove(newTotalAndItems));
+    RELEASE_LOG_IF_ALLOWED("completeShippingContactSelection()");
+    m_client.completeShippingContactSelection(WTFMove(update));
 }
 
-void PaymentCoordinator::completePaymentMethodSelection(std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems)
+void PaymentCoordinator::completePaymentMethodSelection(Optional<PaymentMethodUpdate>&& update)
 {
     ASSERT(m_activeSession);
-
-    m_client.completePaymentMethodSelection(WTFMove(newTotalAndItems));
+    RELEASE_LOG_IF_ALLOWED("completePaymentMethodSelection()");
+    m_client.completePaymentMethodSelection(WTFMove(update));
 }
 
-void PaymentCoordinator::completePaymentSession(PaymentAuthorizationStatus status)
+void PaymentCoordinator::completePaymentSession(Optional<PaymentAuthorizationResult>&& result)
 {
     ASSERT(m_activeSession);
 
-    m_client.completePaymentSession(status);
+    bool isFinalState = isFinalStateResult(result);
+    RELEASE_LOG_IF_ALLOWED("completePaymentSession() (isFinalState: %d)", isFinalState);
+    m_client.completePaymentSession(WTFMove(result));
 
-    if (!isFinalStateStatus(status))
+    if (!isFinalState)
         return;
 
     m_activeSession = nullptr;
@@ -119,19 +166,27 @@ void PaymentCoordinator::completePaymentSession(PaymentAuthorizationStatus statu
 void PaymentCoordinator::abortPaymentSession()
 {
     ASSERT(m_activeSession);
-
+    RELEASE_LOG_IF_ALLOWED("abortPaymentSession()");
     m_client.abortPaymentSession();
     m_activeSession = nullptr;
 }
 
-void PaymentCoordinator::validateMerchant(const URL& validationURL)
+void PaymentCoordinator::cancelPaymentSession()
+{
+    ASSERT(m_activeSession);
+    RELEASE_LOG_IF_ALLOWED("cancelPaymentSession()");
+    m_client.cancelPaymentSession();
+}
+
+void PaymentCoordinator::validateMerchant(URL&& validationURL)
 {
     if (!m_activeSession) {
         // It's possible that the payment has been aborted already.
         return;
     }
 
-    m_activeSession->validateMerchant(validationURL);
+    RELEASE_LOG_IF_ALLOWED("validateMerchant()");
+    m_activeSession->validateMerchant(WTFMove(validationURL));
 }
 
 void PaymentCoordinator::didAuthorizePayment(const Payment& payment)
@@ -141,6 +196,7 @@ void PaymentCoordinator::didAuthorizePayment(const Payment& payment)
         return;
     }
 
+    RELEASE_LOG_IF_ALLOWED("validateMerchant()");
     m_activeSession->didAuthorizePayment(payment);
 }
 
@@ -151,16 +207,18 @@ void PaymentCoordinator::didSelectPaymentMethod(const PaymentMethod& paymentMeth
         return;
     }
 
+    RELEASE_LOG_IF_ALLOWED("didSelectPaymentMethod()");
     m_activeSession->didSelectPaymentMethod(paymentMethod);
 }
 
-void PaymentCoordinator::didSelectShippingMethod(const PaymentRequest::ShippingMethod& shippingMethod)
+void PaymentCoordinator::didSelectShippingMethod(const ApplePaySessionPaymentRequest::ShippingMethod& shippingMethod)
 {
     if (!m_activeSession) {
         // It's possible that the payment has been aborted already.
         return;
     }
 
+    RELEASE_LOG_IF_ALLOWED("didSelectShippingMethod()");
     m_activeSession->didSelectShippingMethod(shippingMethod);
 }
 
@@ -171,20 +229,80 @@ void PaymentCoordinator::didSelectShippingContact(const PaymentContact& shipping
         return;
     }
 
+    RELEASE_LOG_IF_ALLOWED("didSelectShippingContact()");
     m_activeSession->didSelectShippingContact(shippingContact);
 }
 
-void PaymentCoordinator::didCancelPayment()
+void PaymentCoordinator::didCancelPaymentSession(PaymentSessionError&& error)
 {
     if (!m_activeSession) {
         // It's possible that the payment has been aborted already.
         return;
     }
 
-    m_activeSession->didCancelPayment();
+    RELEASE_LOG_IF_ALLOWED("didCancelPaymentSession()");
+    m_activeSession->didCancelPaymentSession(WTFMove(error));
     m_activeSession = nullptr;
 }
 
+Optional<String> PaymentCoordinator::validatedPaymentNetwork(Document&, unsigned version, const String& paymentNetwork) const
+{
+    if (version < 2 && equalIgnoringASCIICase(paymentNetwork, "jcb"))
+        return WTF::nullopt;
+
+    if (version < 3 && equalIgnoringASCIICase(paymentNetwork, "carteBancaire"))
+        return WTF::nullopt;
+
+    return m_client.validatedPaymentNetwork(paymentNetwork);
 }
 
-#endif
+bool PaymentCoordinator::shouldEnableApplePayAPIs(Document& document) const
+{
+    if (m_client.supportsUnrestrictedApplePay()) {
+        RELEASE_LOG_IF_ALLOWED("shouldEnableApplePayAPIs() -> true (unrestricted client)");
+        return true;
+    }
+
+    bool shouldEnableAPIs = true;
+    document.page()->userContentProvider().forEachUserScript([&](DOMWrapperWorld&, const UserScript&) {
+        shouldEnableAPIs = false;
+    });
+
+    RELEASE_LOG_IF_ALLOWED("shouldEnableApplePayAPIs() -> %d", shouldEnableAPIs);
+    return shouldEnableAPIs;
+}
+
+bool PaymentCoordinator::setApplePayIsActiveIfAllowed(Document& document) const
+{
+    auto hasEvaluatedUserAgentScripts = document.hasEvaluatedUserAgentScripts();
+    auto isRunningUserScripts = document.isRunningUserScripts();
+    auto supportsUnrestrictedApplePay = m_client.supportsUnrestrictedApplePay();
+
+    if (!supportsUnrestrictedApplePay && (hasEvaluatedUserAgentScripts || isRunningUserScripts)) {
+        ASSERT(!document.isApplePayActive());
+        RELEASE_LOG_IF_ALLOWED("setApplePayIsActiveIfAllowed() -> false (hasEvaluatedUserAgentScripts: %d, isRunningUserScripts: %d)", hasEvaluatedUserAgentScripts, isRunningUserScripts);
+        return false;
+    }
+
+    RELEASE_LOG_IF_ALLOWED("setApplePayIsActiveIfAllowed() -> true (supportsUnrestrictedApplePay: %d)", supportsUnrestrictedApplePay);
+    document.setApplePayIsActive();
+    return true;
+}
+
+bool PaymentCoordinator::shouldAllowUserAgentScripts(Document& document) const
+{
+    if (m_client.supportsUnrestrictedApplePay() || !document.isApplePayActive())
+        return true;
+
+    ASSERT(!document.hasEvaluatedUserAgentScripts());
+    ASSERT(!document.isRunningUserScripts());
+    RELEASE_LOG_ERROR_IF_ALLOWED("shouldAllowUserAgentScripts() -> false (active session)");
+    return false;
+}
+
+} // namespace WebCore
+
+#undef RELEASE_LOG_ERROR_IF_ALLOWED
+#undef RELEASE_LOG_IF_ALLOWED
+
+#endif // ENABLE(APPLE_PAY)

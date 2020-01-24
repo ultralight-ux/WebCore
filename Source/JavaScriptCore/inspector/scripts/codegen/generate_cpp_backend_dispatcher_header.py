@@ -30,34 +30,34 @@ import re
 import string
 from string import Template
 
-from cpp_generator import CppGenerator
-from cpp_generator_templates import CppGeneratorTemplates as CppTemplates
-from generator import Generator, ucfirst
-from models import EnumType
+try:
+    from .cpp_generator import CppGenerator
+    from .cpp_generator_templates import CppGeneratorTemplates as CppTemplates
+    from .generator import Generator, ucfirst
+    from .models import EnumType
+except ValueError:
+    from cpp_generator import CppGenerator
+    from cpp_generator_templates import CppGeneratorTemplates as CppTemplates
+    from generator import Generator, ucfirst
+    from models import EnumType
 
 log = logging.getLogger('global')
 
 
 class CppBackendDispatcherHeaderGenerator(CppGenerator):
-    def __init__(self, model, input_filepath):
-        CppGenerator.__init__(self, model, input_filepath)
+    def __init__(self, *args, **kwargs):
+        CppGenerator.__init__(self, *args, **kwargs)
 
     def output_filename(self):
         return "%sBackendDispatchers.h" % self.protocol_name()
 
     def domains_to_generate(self):
-        return filter(lambda domain: len(domain.commands) > 0, Generator.domains_to_generate(self))
+        return [domain for domain in Generator.domains_to_generate(self) if len(self.commands_for_domain(domain)) > 0]
 
     def generate_output(self):
-        headers = [
-            '"%sProtocolObjects.h"' % self.protocol_name(),
-            '<inspector/InspectorBackendDispatcher.h>',
-            '<wtf/text/WTFString.h>']
-
         typedefs = [('String', 'ErrorString')]
-
         header_args = {
-            'includes': '\n'.join(['#include ' + header for header in headers]),
+            'includes': self._generate_secondary_header_includes(),
             'typedefs': '\n'.join(['typedef %s %s;' % typedef for typedef in typedefs]),
         }
 
@@ -68,12 +68,21 @@ class CppBackendDispatcherHeaderGenerator(CppGenerator):
         sections.append(Template(CppTemplates.HeaderPrelude).substitute(None, **header_args))
         if self.model().framework.setting('alternate_dispatchers', False):
             sections.append(self._generate_alternate_handler_forward_declarations_for_domains(domains))
-        sections.extend(map(self._generate_handler_declarations_for_domain, domains))
-        sections.extend(map(self._generate_dispatcher_declarations_for_domain, domains))
+        sections.extend(list(map(self._generate_handler_declarations_for_domain, domains)))
+        sections.extend(list(map(self._generate_dispatcher_declarations_for_domain, domains)))
         sections.append(Template(CppTemplates.HeaderPostlude).substitute(None, **header_args))
         return "\n\n".join(sections)
 
     # Private methods.
+
+    def _generate_secondary_header_includes(self):
+        header_includes = [
+            (["JavaScriptCore", "WebKit"], (self.model().framework.name, "%sProtocolObjects.h" % self.protocol_name())),
+            (["JavaScriptCore", "WebKit"], ("JavaScriptCore", "inspector/InspectorBackendDispatcher.h")),
+            (["JavaScriptCore", "WebKit"], ("WTF", "wtf/text/WTFString.h"))
+        ]
+
+        return '\n'.join(self.generate_includes_from_entries(header_includes))
 
     def _generate_alternate_handler_forward_declarations_for_domains(self, domains):
         if not domains:
@@ -95,7 +104,7 @@ class CppBackendDispatcherHeaderGenerator(CppGenerator):
         used_enum_names = set()
 
         command_declarations = []
-        for command in domain.commands:
+        for command in self.commands_for_domain(domain):
             command_declarations.append(self._generate_handler_declaration_for_command(command, used_enum_names))
 
         handler_args = {
@@ -157,7 +166,7 @@ class CppBackendDispatcherHeaderGenerator(CppGenerator):
     def _generate_async_handler_declaration_for_command(self, command):
         callbackName = "%sCallback" % ucfirst(command.command_name)
 
-        in_parameters = ['ErrorString&']
+        in_parameters = []
         for _parameter in command.call_parameters:
             parameter_name = 'in_' + _parameter.parameter_name
             if _parameter.is_optional:
@@ -192,9 +201,10 @@ class CppBackendDispatcherHeaderGenerator(CppGenerator):
             classComponents.append(exportMacro)
 
         declarations = []
-        if len(domain.commands) > 0:
+        commands = self.commands_for_domain(domain)
+        if len(commands) > 0:
             declarations.append('private:')
-        declarations.extend(map(self._generate_dispatcher_declaration_for_command, domain.commands))
+        declarations.extend(list(map(self._generate_dispatcher_declaration_for_command, commands)))
 
         declaration_args = {
             'domainName': domain.domain_name,
@@ -213,4 +223,4 @@ class CppBackendDispatcherHeaderGenerator(CppGenerator):
         return self.wrap_with_guard_for_domain(domain, Template(CppTemplates.BackendDispatcherHeaderDomainDispatcherDeclaration).substitute(None, **handler_args))
 
     def _generate_dispatcher_declaration_for_command(self, command):
-        return "    void %s(long requestId, RefPtr<InspectorObject>&& parameters);" % command.command_name
+        return "    void %s(long requestId, RefPtr<JSON::Object>&& parameters);" % command.command_name

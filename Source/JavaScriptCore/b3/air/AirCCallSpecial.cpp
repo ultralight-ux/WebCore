@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,17 +48,17 @@ CCallSpecial::~CCallSpecial()
 void CCallSpecial::forEachArg(Inst& inst, const ScopedLambda<Inst::EachArgCallback>& callback)
 {
     for (unsigned i = 0; i < numCalleeArgs; ++i)
-        callback(inst.args[calleeArgOffset + i], Arg::Use, Arg::GP, Arg::pointerWidth());
+        callback(inst.args[calleeArgOffset + i], Arg::Use, GP, pointerWidth());
     for (unsigned i = 0; i < numReturnGPArgs; ++i)
-        callback(inst.args[returnGPArgOffset + i], Arg::Def, Arg::GP, Arg::pointerWidth());
+        callback(inst.args[returnGPArgOffset + i], Arg::Def, GP, pointerWidth());
     for (unsigned i = 0; i < numReturnFPArgs; ++i)
-        callback(inst.args[returnFPArgOffset + i], Arg::Def, Arg::FP, Arg::Width64);
+        callback(inst.args[returnFPArgOffset + i], Arg::Def, FP, Width64);
     
     for (unsigned i = argArgOffset; i < inst.args.size(); ++i) {
-        // For the type, we can just query the arg's type. The arg will have a type, because we
+        // For the type, we can just query the arg's bank. The arg will have a bank, because we
         // require these args to be argument registers.
-        Arg::Type type = inst.args[i].type();
-        callback(inst.args[i], Arg::Use, type, Arg::conservativeWidth(type));
+        Bank bank = inst.args[i].bank();
+        callback(inst.args[i], Arg::Use, bank, conservativeWidth(bank));
     }
 }
 
@@ -82,6 +82,7 @@ bool CCallSpecial::isValid(Inst& inst)
             return false;
         case Arg::Tmp:
         case Arg::Addr:
+        case Arg::ExtendedOffsetAddr:
         case Arg::Stack:
         case Arg::CallArg:
             break;
@@ -110,11 +111,17 @@ bool CCallSpecial::isValid(Inst& inst)
 
 bool CCallSpecial::admitsStack(Inst&, unsigned argIndex)
 {
-    // The callee can be on the stack.
+    // The callee can be on the stack unless targeting ARM64, where we can't later properly
+    // handle an Addr callee argument in generate() due to disallowed scratch register usage.
     if (argIndex == calleeArgOffset)
-        return true;
+        return !isARM64();
     
     return false;
+}
+
+bool CCallSpecial::admitsExtendedOffsetAddr(Inst& inst, unsigned argIndex)
+{
+    return admitsStack(inst, argIndex);
 }
 
 void CCallSpecial::reportUsedRegisters(Inst&, const RegisterSet&)
@@ -127,13 +134,14 @@ CCallHelpers::Jump CCallSpecial::generate(Inst& inst, CCallHelpers& jit, Generat
     case Arg::Imm:
     case Arg::BigImm:
         jit.move(inst.args[calleeArgOffset].asTrustedImmPtr(), scratchRegister);
-        jit.call(scratchRegister);
+        jit.call(scratchRegister, B3CCallPtrTag);
         break;
     case Arg::Tmp:
-        jit.call(inst.args[calleeArgOffset].gpr());
+        jit.call(inst.args[calleeArgOffset].gpr(), B3CCallPtrTag);
         break;
     case Arg::Addr:
-        jit.call(inst.args[calleeArgOffset].asAddress());
+    case Arg::ExtendedOffsetAddr:
+        jit.call(inst.args[calleeArgOffset].asAddress(), B3CCallPtrTag);
         break;
     default:
         RELEASE_ASSERT_NOT_REACHED();

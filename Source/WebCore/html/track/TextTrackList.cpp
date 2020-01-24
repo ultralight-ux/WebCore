@@ -29,13 +29,15 @@
 
 #include "TextTrackList.h"
 
-#include "EventNames.h"
 #include "HTMLMediaElement.h"
 #include "InbandTextTrack.h"
 #include "InbandTextTrackPrivate.h"
 #include "LoadableTextTrack.h"
+#include <wtf/IsoMallocInlines.h>
 
-using namespace WebCore;
+namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(TextTrackList);
 
 TextTrackList::TextTrackList(HTMLMediaElement* element, ScriptExecutionContext* context)
     : TrackListBase(element, context)
@@ -136,7 +138,7 @@ TextTrack* TextTrackList::item(unsigned index) const
     return nullptr;
 }
 
-TextTrack* TextTrackList::getTrackById(const AtomicString& id)
+TextTrack* TextTrackList::getTrackById(const AtomString& id)
 {
     // 4.8.10.12.5 Text track API
     // The getTrackById(id) method must return the first TextTrack in the
@@ -188,7 +190,7 @@ void TextTrackList::append(Ref<TextTrack>&& track)
 {
     if (track->trackType() == TextTrack::AddTrack)
         m_addTrackTracks.append(track.ptr());
-    else if (is<LoadableTextTrack>(track.get())) {
+    else if (is<LoadableTextTrack>(track)) {
         // Insert tracks added for <track> element in tree order.
         size_t index = downcast<LoadableTextTrack>(track.get()).trackElementIndex();
         m_elementTracks.insert(index, track.ptr());
@@ -266,4 +268,10 @@ EventTargetInterface TextTrackList::eventTargetInterface() const
     return TextTrackListEventTargetInterfaceType;
 }
 
+const char* TextTrackList::activeDOMObjectName() const
+{
+    return "TextTrackList";
+}
+
+} // namespace WebCore
 #endif

@@ -26,8 +26,11 @@
 #include "SVGNames.h"
 #include "SVGRenderStyle.h"
 #include "SVGTSpanElement.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGTextElement);
 
 inline SVGTextElement::SVGTextElement(const QualifiedName& tagName, Document& document)
     : SVGTextPositioningElement(tagName, document)
@@ -56,7 +59,7 @@ AffineTransform SVGTextElement::animatedLocalTransform() const
         // Flatten any 3D transform
         matrix = t.toAffineTransform();
     } else
-        transform().concatenate(matrix);
+        matrix = transform().concatenate();
 
     const AffineTransform* transform = const_cast<SVGTextElement*>(this)->supplementalTransform();
     if (transform)

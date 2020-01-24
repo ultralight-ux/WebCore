@@ -46,33 +46,32 @@ RemoveFormatCommand::RemoveFormatCommand(Document& document)
 
 static bool isElementForRemoveFormatCommand(const Element* element)
 {
-    static NeverDestroyed<HashSet<QualifiedName>> elements;
-    if (elements.get().isEmpty()) {
-        elements.get().add(acronymTag);
-        elements.get().add(bTag);
-        elements.get().add(bdoTag);
-        elements.get().add(bigTag);
-        elements.get().add(citeTag);
-        elements.get().add(codeTag);
-        elements.get().add(dfnTag);
-        elements.get().add(emTag);
-        elements.get().add(fontTag);
-        elements.get().add(iTag);
-        elements.get().add(insTag);
-        elements.get().add(kbdTag);
-        elements.get().add(nobrTag);
-        elements.get().add(qTag);
-        elements.get().add(sTag);
-        elements.get().add(sampTag);
-        elements.get().add(smallTag);
-        elements.get().add(strikeTag);
-        elements.get().add(strongTag);
-        elements.get().add(subTag);
-        elements.get().add(supTag);
-        elements.get().add(ttTag);
-        elements.get().add(uTag);
-        elements.get().add(varTag);
-    }
+    static const auto elements = makeNeverDestroyed(HashSet<QualifiedName> {
+        acronymTag,
+        bTag,
+        bdoTag,
+        bigTag,
+        citeTag,
+        codeTag,
+        dfnTag,
+        emTag,
+        fontTag,
+        iTag,
+        insTag,
+        kbdTag,
+        nobrTag,
+        qTag,
+        sTag,
+        sampTag,
+        smallTag,
+        strikeTag,
+        strongTag,
+        subTag,
+        supTag,
+        ttTag,
+        uTag,
+        varTag,
+    });
     return elements.get().contains(element->tagQName());
 }
 
@@ -84,13 +83,13 @@ void RemoveFormatCommand::doApply()
     // Get the default style for this editable root, it's the style that we'll give the
     // content that we're operating on.
     Node* root = endingSelection().rootEditableElement();
-    RefPtr<EditingStyle> defaultStyle = EditingStyle::create(root);
+    auto defaultStyle = EditingStyle::create(root);
 
     // We want to remove everything but transparent background.
     // FIXME: We shouldn't access style().
     defaultStyle->style()->setProperty(CSSPropertyBackgroundColor, CSSValueTransparent);
 
-    applyCommandToComposite(ApplyStyleCommand::create(document(), defaultStyle.get(), isElementForRemoveFormatCommand, editingAction()));
+    applyCommandToComposite(ApplyStyleCommand::create(document(), defaultStyle.ptr(), isElementForRemoveFormatCommand, editingAction()));
 }
 
 }

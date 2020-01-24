@@ -32,9 +32,12 @@
 #include "RenderMenuList.h"
 #include "NodeRenderStyle.h"
 #include "StyleResolver.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/StdLibExtras.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLOptGroupElement);
 
 using namespace HTMLNames;
 
@@ -60,12 +63,12 @@ bool HTMLOptGroupElement::isFocusable() const
         return false;
     // Optgroup elements do not have a renderer.
     auto* style = const_cast<HTMLOptGroupElement&>(*this).computedStyle();
-    return style && style->display() != NONE;
+    return style && style->display() != DisplayType::None;
 }
 
-const AtomicString& HTMLOptGroupElement::formControlType() const
+const AtomString& HTMLOptGroupElement::formControlType() const
 {
-    static NeverDestroyed<const AtomicString> optgroup("optgroup", AtomicString::ConstructFromLiteral);
+    static NeverDestroyed<const AtomString> optgroup("optgroup", AtomString::ConstructFromLiteral);
     return optgroup;
 }
 
@@ -75,7 +78,7 @@ void HTMLOptGroupElement::childrenChanged(const ChildChange& change)
     HTMLElement::childrenChanged(change);
 }
 
-void HTMLOptGroupElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void HTMLOptGroupElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     HTMLElement::parseAttribute(name, value);
     recalcSelectOptions();
@@ -86,7 +89,7 @@ void HTMLOptGroupElement::parseAttribute(const QualifiedName& name, const Atomic
 
 void HTMLOptGroupElement::recalcSelectOptions()
 {
-    if (auto* selectElement = ancestorsOfType<HTMLSelectElement>(*this).first()) {
+    if (auto selectElement = makeRefPtr(ancestorsOfType<HTMLSelectElement>(*this).first())) {
         selectElement->setRecalcListItems();
         selectElement->updateValidity();
     }
@@ -106,19 +109,19 @@ String HTMLOptGroupElement::groupLabelText() const
     
 HTMLSelectElement* HTMLOptGroupElement::ownerSelectElement() const
 {
-    ContainerNode* select = parentNode();
+    RefPtr<ContainerNode> select = parentNode();
     while (select && !is<HTMLSelectElement>(*select))
         select = select->parentNode();
     
     if (!select)
         return nullptr;
     
-    return downcast<HTMLSelectElement>(select);
+    return downcast<HTMLSelectElement>(select.get());
 }
 
 void HTMLOptGroupElement::accessKeyAction(bool)
 {
-    HTMLSelectElement* select = ownerSelectElement();
+    RefPtr<HTMLSelectElement> select = ownerSelectElement();
     // send to the parent to bring focus to the list box
     if (select && !select->focused())
         select->accessKeyAction(false);

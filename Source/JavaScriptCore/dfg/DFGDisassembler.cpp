@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,7 @@
 #include "CodeBlockWithJITType.h"
 #include "DFGGraph.h"
 #include "DFGJITCode.h"
+#include "Disassembler.h"
 #include "JSCInlines.h"
 #include "LinkBuffer.h"
 #include "ProfilerDatabase.h"
@@ -42,7 +43,7 @@ Disassembler::Disassembler(Graph& graph)
     : m_graph(graph)
 {
     m_dumpContext.graph = &m_graph;
-    m_labelForBlockIndex.resize(graph.numBlocks());
+    m_labelForBlockIndex.grow(graph.numBlocks());
 }
 
 void Disassembler::dump(PrintStream& out, LinkBuffer& linkBuffer)
@@ -73,7 +74,7 @@ void Disassembler::reportToProfiler(Profiler::Compilation* compilation, LinkBuff
 
 void Disassembler::dumpHeader(PrintStream& out, LinkBuffer& linkBuffer)
 {
-    out.print("Generated DFG JIT code for ", CodeBlockWithJITType(m_graph.m_codeBlock, JITCode::DFGJIT), ", instruction count = ", m_graph.m_codeBlock->instructionCount(), ":\n");
+    out.print("Generated DFG JIT code for ", CodeBlockWithJITType(m_graph.m_codeBlock, JITType::DFGJIT), ", instructions size = ", m_graph.m_codeBlock->instructionsSize(), ":\n");
     out.print("    Optimized with execution counter = ", m_graph.m_profiledBlock->jitExecuteCounter(), "\n");
     out.print("    Code at [", RawPointer(linkBuffer.debugAddress()), ", ", RawPointer(static_cast<char*>(linkBuffer.debugAddress()) + linkBuffer.size()), "):\n");
 }
@@ -94,8 +95,8 @@ Vector<Disassembler::DumpedOp> Disassembler::createDumpList(LinkBuffer& linkBuff
     dumpHeader(out, linkBuffer);
     append(result, out, previousOrigin);
     
-    m_graph.ensureDominators();
-    m_graph.ensureNaturalLoops();
+    m_graph.ensureCPSDominators();
+    m_graph.ensureCPSNaturalLoops();
     
     const char* prefix = "    ";
     const char* disassemblyPrefix = "        ";
@@ -158,17 +159,17 @@ void Disassembler::dumpDisassembly(PrintStream& out, const char* prefix, LinkBuf
         amountOfNodeWhiteSpace = 0;
     else
         amountOfNodeWhiteSpace = Graph::amountOfNodeWhiteSpace(context);
-    auto prefixBuffer = std::make_unique<char[]>(prefixLength + amountOfNodeWhiteSpace + 1);
-    strcpy(prefixBuffer.get(), prefix);
+    Vector<char> prefixBuffer(prefixLength + amountOfNodeWhiteSpace + 1);
+    memcpy(prefixBuffer.data(), prefix, prefixLength);
     for (int i = 0; i < amountOfNodeWhiteSpace; ++i)
         prefixBuffer[i + prefixLength] = ' ';
     prefixBuffer[prefixLength + amountOfNodeWhiteSpace] = 0;
     
-    CodeLocationLabel start = linkBuffer.locationOf(previousLabel);
-    CodeLocationLabel end = linkBuffer.locationOf(currentLabel);
+    CodeLocationLabel<DisassemblyPtrTag> start = linkBuffer.locationOf<DisassemblyPtrTag>(previousLabel);
+    CodeLocationLabel<DisassemblyPtrTag> end = linkBuffer.locationOf<DisassemblyPtrTag>(currentLabel);
     previousLabel = currentLabel;
-    ASSERT(bitwise_cast<uintptr_t>(end.executableAddress()) >= bitwise_cast<uintptr_t>(start.executableAddress()));
-    disassemble(start, bitwise_cast<uintptr_t>(end.executableAddress()) - bitwise_cast<uintptr_t>(start.executableAddress()), prefixBuffer.get(), out);
+    ASSERT(end.dataLocation<uintptr_t>() >= start.dataLocation<uintptr_t>());
+    disassemble(start, end.dataLocation<uintptr_t>() - start.dataLocation<uintptr_t>(), prefixBuffer.data(), out);
 }
 
 } } // namespace JSC::DFG

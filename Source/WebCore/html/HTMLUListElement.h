@@ -27,6 +27,7 @@
 namespace WebCore {
 
 class HTMLUListElement final : public HTMLElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLUListElement);
 public:
     static Ref<HTMLUListElement> create(Document&);
     static Ref<HTMLUListElement> create(const QualifiedName&, Document&);
@@ -35,7 +36,7 @@ private:
     HTMLUListElement(const QualifiedName&, Document&);
 
     bool isPresentationAttribute(const QualifiedName&) const final;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
 };
 
 } // namespace WebCore

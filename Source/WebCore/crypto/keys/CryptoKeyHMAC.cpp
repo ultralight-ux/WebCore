@@ -26,16 +26,32 @@
 #include "config.h"
 #include "CryptoKeyHMAC.h"
 
-#if ENABLE(SUBTLE_CRYPTO)
+#if ENABLE(WEB_CRYPTO)
 
 #include "CryptoAlgorithmHmacKeyParams.h"
 #include "CryptoAlgorithmRegistry.h"
-#include "CryptoKeyDataOctetSequence.h"
+#include "ExceptionOr.h"
 #include "JsonWebKey.h"
 #include <wtf/text/Base64.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
+
+static size_t getKeyLengthFromHash(CryptoAlgorithmIdentifier hash)
+{
+    switch (hash) {
+    case CryptoAlgorithmIdentifier::SHA_1:
+    case CryptoAlgorithmIdentifier::SHA_224:
+    case CryptoAlgorithmIdentifier::SHA_256:
+        return 512;
+    case CryptoAlgorithmIdentifier::SHA_384:
+    case CryptoAlgorithmIdentifier::SHA_512:
+        return 1024;
+    default:
+        ASSERT_NOT_REACHED();
+        return 0;
+    }
+}
 
 CryptoKeyHMAC::CryptoKeyHMAC(const Vector<uint8_t>& key, CryptoAlgorithmIdentifier hash, bool extractable, CryptoKeyUsageBitmap usage)
     : CryptoKey(CryptoAlgorithmIdentifier::HMAC, CryptoKeyType::Secret, extractable, usage)
@@ -51,26 +67,14 @@ CryptoKeyHMAC::CryptoKeyHMAC(Vector<uint8_t>&& key, CryptoAlgorithmIdentifier ha
 {
 }
 
-CryptoKeyHMAC::~CryptoKeyHMAC()
-{
-}
+CryptoKeyHMAC::~CryptoKeyHMAC() = default;
 
 RefPtr<CryptoKeyHMAC> CryptoKeyHMAC::generate(size_t lengthBits, CryptoAlgorithmIdentifier hash, bool extractable, CryptoKeyUsageBitmap usages)
 {
     if (!lengthBits) {
-        switch (hash) {
-        case CryptoAlgorithmIdentifier::SHA_1:
-        case CryptoAlgorithmIdentifier::SHA_224:
-        case CryptoAlgorithmIdentifier::SHA_256:
-            lengthBits = 512;
-            break;
-        case CryptoAlgorithmIdentifier::SHA_384:
-        case CryptoAlgorithmIdentifier::SHA_512:
-            lengthBits = 1024;
-            break;
-        default:
+        lengthBits = getKeyLengthFromHash(hash);
+        if (!lengthBits)
             return nullptr;
-        }
     }
     // CommonHMAC only supports key length that is a multiple of 8. Therefore, here we are a little bit different
     // from the spec as of 11 December 2014: https://www.w3.org/TR/WebCryptoAPI/#hmac-operations
@@ -97,16 +101,16 @@ RefPtr<CryptoKeyHMAC> CryptoKeyHMAC::importJwk(size_t lengthBits, CryptoAlgorith
 {
     if (keyData.kty != "oct")
         return nullptr;
-    if (!keyData.k)
+    if (keyData.k.isNull())
         return nullptr;
     Vector<uint8_t> octetSequence;
-    if (!base64URLDecode(keyData.k.value(), octetSequence))
+    if (!base64URLDecode(keyData.k, octetSequence))
         return nullptr;
     if (!callback(hash, keyData.alg))
         return nullptr;
-    if (usages && keyData.use && keyData.use.value() != "sig")
+    if (usages && !keyData.use.isNull() && keyData.use != "sig")
         return nullptr;
-    if (keyData.usages && ((keyData.usages & usages) != usages))
+    if (keyData.key_ops && ((keyData.usages & usages) != usages))
         return nullptr;
     if (keyData.ext && !keyData.ext.value() && extractable)
         return nullptr;
@@ -124,17 +128,26 @@ JsonWebKey CryptoKeyHMAC::exportJwk() const
     return result;
 }
 
-std::unique_ptr<KeyAlgorithm> CryptoKeyHMAC::buildAlgorithm() const
+ExceptionOr<size_t> CryptoKeyHMAC::getKeyLength(const CryptoAlgorithmParameters& parameters)
 {
-    return std::make_unique<HmacKeyAlgorithm>(CryptoAlgorithmRegistry::singleton().name(algorithmIdentifier()),
-        CryptoAlgorithmRegistry::singleton().name(m_hash), m_key.size() * 8);
+    auto& aesParameters = downcast<CryptoAlgorithmHmacKeyParams>(parameters);
+
+    size_t result = aesParameters.length ? *(aesParameters.length) : getKeyLengthFromHash(aesParameters.hashIdentifier);
+    if (result)
+        return result;
+
+    return Exception { TypeError };
 }
 
-std::unique_ptr<CryptoKeyData> CryptoKeyHMAC::exportData() const
+auto CryptoKeyHMAC::algorithm() const -> KeyAlgorithm
 {
-    return std::make_unique<CryptoKeyDataOctetSequence>(m_key);
+    CryptoHmacKeyAlgorithm result;
+    result.name = CryptoAlgorithmRegistry::singleton().name(algorithmIdentifier());
+    result.hash.name = CryptoAlgorithmRegistry::singleton().name(m_hash);
+    result.length = m_key.size() * 8;
+    return result;
 }
 
 } // namespace WebCore
 
-#endif // ENABLE(SUBTLE_CRYPTO)
+#endif // ENABLE(WEB_CRYPTO)

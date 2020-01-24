@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,8 +22,6 @@
 #pragma once
 
 #include "FEComposite.h"
-#include "SVGAnimatedEnumeration.h"
-#include "SVGAnimatedNumber.h"
 #include "SVGFilterPrimitiveStandardAttributes.h"
 
 namespace WebCore {
@@ -40,19 +39,19 @@ struct SVGPropertyTraits<CompositeOperationType> {
         case FECOMPOSITE_OPERATOR_UNKNOWN:
             return emptyString();
         case FECOMPOSITE_OPERATOR_OVER:
-            return ASCIILiteral("over");
+            return "over"_s;
         case FECOMPOSITE_OPERATOR_IN:
-            return ASCIILiteral("in");
+            return "in"_s;
         case FECOMPOSITE_OPERATOR_OUT:
-            return ASCIILiteral("out");
+            return "out"_s;
         case FECOMPOSITE_OPERATOR_ATOP:
-            return ASCIILiteral("atop");
+            return "atop"_s;
         case FECOMPOSITE_OPERATOR_XOR:
-            return ASCIILiteral("xor");
+            return "xor"_s;
         case FECOMPOSITE_OPERATOR_ARITHMETIC:
-            return ASCIILiteral("arithmetic");
+            return "arithmetic"_s;
         case FECOMPOSITE_OPERATOR_LIGHTER:
-            return ASCIILiteral("lighter");
+            return "lighter"_s;
         }
 
         ASSERT_NOT_REACHED();
@@ -80,26 +79,46 @@ struct SVGPropertyTraits<CompositeOperationType> {
 };
 
 class SVGFECompositeElement final : public SVGFilterPrimitiveStandardAttributes {
+    WTF_MAKE_ISO_ALLOCATED(SVGFECompositeElement);
 public:
     static Ref<SVGFECompositeElement> create(const QualifiedName&, Document&);
+
+    String in1() const { return m_in1->currentValue(); }
+    String in2() const { return m_in2->currentValue(); }
+    CompositeOperationType svgOperator() const { return m_svgOperator->currentValue<CompositeOperationType>(); }
+    float k1() const { return m_k1->currentValue(); }
+    float k2() const { return m_k2->currentValue(); }
+    float k3() const { return m_k3->currentValue(); }
+    float k4() const { return m_k4->currentValue(); }
+
+    SVGAnimatedString& in1Animated() { return m_in1; }
+    SVGAnimatedString& in2Animated() { return m_in2; }
+    SVGAnimatedEnumeration& svgOperatorAnimated() { return m_svgOperator; }
+    SVGAnimatedNumber& k1Animated() { return m_k1; }
+    SVGAnimatedNumber& k2Animated() { return m_k2; }
+    SVGAnimatedNumber& k3Animated() { return m_k3; }
+    SVGAnimatedNumber& k4Animated() { return m_k4; }
 
 private:
     SVGFECompositeElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&) override;
-    void svgAttributeChanged(const QualifiedName&) override;
-    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) override;
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFECompositeElement, SVGFilterPrimitiveStandardAttributes>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFECompositeElement)
-        DECLARE_ANIMATED_STRING(In1, in1)
-        DECLARE_ANIMATED_STRING(In2, in2)
-        DECLARE_ANIMATED_ENUMERATION(SVGOperator, svgOperator, CompositeOperationType)
-        DECLARE_ANIMATED_NUMBER(K1, k1)
-        DECLARE_ANIMATED_NUMBER(K2, k2)
-        DECLARE_ANIMATED_NUMBER(K3, k3)
-        DECLARE_ANIMATED_NUMBER(K4, k4)
-    END_DECLARE_ANIMATED_PROPERTIES
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
+    void svgAttributeChanged(const QualifiedName&) override;
+
+    bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&) override;
+    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) const override;
+
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedString> m_in1 { SVGAnimatedString::create(this) };
+    Ref<SVGAnimatedString> m_in2 { SVGAnimatedString::create(this) };
+    Ref<SVGAnimatedEnumeration> m_svgOperator { SVGAnimatedEnumeration::create(this, FECOMPOSITE_OPERATOR_OVER) };
+    Ref<SVGAnimatedNumber> m_k1 { SVGAnimatedNumber::create(this) };
+    Ref<SVGAnimatedNumber> m_k2 { SVGAnimatedNumber::create(this) };
+    Ref<SVGAnimatedNumber> m_k3 { SVGAnimatedNumber::create(this) };
+    Ref<SVGAnimatedNumber> m_k4 { SVGAnimatedNumber::create(this) };
 };
 
 } // namespace WebCore

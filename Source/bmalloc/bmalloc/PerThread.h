@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,15 +26,12 @@
 #ifndef PerThread_h
 #define PerThread_h
 
+#include "BInline.h"
 #include "BPlatform.h"
-#include "Inline.h"
+#include "PerHeapKind.h"
+#include "VMAllocate.h"
 #include <mutex>
-
-#if !BOS(WINDOWS)
 #include <pthread.h>
-#else
-#include <windows.h>
-#endif
 
 #if defined(__has_include)
 #if __has_include(<System/pthread_machdep.h>)
@@ -60,11 +57,7 @@ public:
     static T* getSlowCase();
 
 private:
-#if !BOS(WINDOWS)
     static void destructor(void*);
-#else
-    static void WINAPI destructor(void*);
-#endif
 };
 
 #if HAVE_PTHREAD_MACHDEP_H
@@ -72,9 +65,9 @@ private:
 class Cache;
 template<typename T> struct PerThreadStorage;
 
-// For now, we only support PerThread<Cache>. We can expand to other types by
+// For now, we only support PerThread<PerHeapKind<Cache>>. We can expand to other types by
 // using more keys.
-template<> struct PerThreadStorage<Cache> {
+template<> struct PerThreadStorage<PerHeapKind<Cache>> {
     static const pthread_key_t key = __PTK_FRAMEWORK_JAVASCRIPTCORE_KEY0;
 
     static void* get()
@@ -93,58 +86,43 @@ template<> struct PerThreadStorage<Cache> {
 
 template<typename T> struct PerThreadStorage {
     static bool s_didInitialize;
-#if !BOS(WINDOWS)
     static pthread_key_t s_key;
-#else
-    static DWORD s_key;
-#endif
     static std::once_flag s_onceFlag;
     
     static void* get()
     {
         if (!s_didInitialize)
             return nullptr;
-#if !BOS(WINDOWS)
         return pthread_getspecific(s_key);
-#else
-        return FlsGetValue(s_key);
-#endif
     }
-
-#if !BOS(WINDOWS)
+    
     static void init(void* object, void (*destructor)(void*))
-#else
-    static void init(void* object, void (WINAPI *destructor)(void*))
-#endif
     {
         std::call_once(s_onceFlag, [destructor]() {
-#if !BOS(WINDOWS)
-            pthread_key_create(&s_key, destructor);
-#else
-            s_key = FlsAlloc(destructor);
-#endif
+            int error = pthread_key_create(&s_key, destructor);
+            if (error)
+                BCRASH();
             s_didInitialize = true;
         });
-#if !BOS(WINDOWS)
         pthread_setspecific(s_key, object);
-#else
-        FlsSetValue(s_key, object);
-#endif
     }
 };
 
-template<typename T> bool PerThreadStorage<T>::s_didInitialize;
-#if !BOS(WINDOWS)
-template<typename T> pthread_key_t PerThreadStorage<T>::s_key;
-#else
-template<typename T> DWORD PerThreadStorage<T>::s_key;
-#endif
-template<typename T> std::once_flag PerThreadStorage<T>::s_onceFlag;
+class Cache;
+class Heap;
+
+template<> bool PerThreadStorage<PerHeapKind<Cache>>::s_didInitialize;
+template<> pthread_key_t PerThreadStorage<PerHeapKind<Cache>>::s_key;
+template<> std::once_flag PerThreadStorage<PerHeapKind<Cache>>::s_onceFlag;
+
+template<> bool PerThreadStorage<PerHeapKind<Heap>>::s_didInitialize;
+template<> pthread_key_t PerThreadStorage<PerHeapKind<Heap>>::s_key;
+template<> std::once_flag PerThreadStorage<PerHeapKind<Heap>>::s_onceFlag;
 
 #endif
 
 template<typename T>
-INLINE T* PerThread<T>::getFastCase()
+BINLINE T* PerThread<T>::getFastCase()
 {
     return static_cast<T*>(PerThreadStorage<T>::get());
 }
@@ -162,14 +140,16 @@ template<typename T>
 void PerThread<T>::destructor(void* p)
 {
     T* t = static_cast<T*>(p);
-    delete t;
+    t->~T();
+    vmDeallocate(t, vmSize(sizeof(T)));
 }
 
 template<typename T>
 T* PerThread<T>::getSlowCase()
 {
     BASSERT(!getFastCase());
-    T* t = new T;
+    T* t = static_cast<T*>(vmAllocate(vmSize(sizeof(T))));
+    new (t) T();
     PerThreadStorage<T>::init(t, destructor);
     return t;
 }

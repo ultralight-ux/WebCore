@@ -25,6 +25,7 @@
 #include "SVGElement.h"
 #include "SVGInlineTextBox.h"
 #include "SVGLengthContext.h"
+#include "SVGTextContentElement.h"
 #include "SVGTextLayoutEngineBaseline.h"
 #include "SVGTextLayoutEngineSpacing.h"
 
@@ -315,7 +316,7 @@ bool SVGTextLayoutEngine::currentLogicalCharacterAttributes(SVGTextLayoutAttribu
     logicalAttributes = m_layoutAttributes[m_layoutAttributesPosition];
     ASSERT(logicalAttributes);
 
-    if (m_logicalCharacterOffset != logicalAttributes->context().textLength())
+    if (m_logicalCharacterOffset != logicalAttributes->context().text().length())
         return true;
 
     ++m_layoutAttributesPosition;

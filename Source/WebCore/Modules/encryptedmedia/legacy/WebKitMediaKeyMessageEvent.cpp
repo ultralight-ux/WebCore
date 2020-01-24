@@ -28,29 +28,26 @@
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
-#include "EventNames.h"
-#include <runtime/Uint8Array.h>
+#include <JavaScriptCore/Uint8Array.h>
 
 namespace WebCore {
 
-WebKitMediaKeyMessageEvent::WebKitMediaKeyMessageEvent(const AtomicString& type, Uint8Array* message, const String& destinationURL)
-    : Event(type, false, false)
+WebKitMediaKeyMessageEvent::WebKitMediaKeyMessageEvent(const AtomString& type, Uint8Array* message, const String& destinationURL)
+    : Event(type, CanBubble::No, IsCancelable::No)
     , m_message(message)
     , m_destinationURL(destinationURL)
 {
 }
 
 
-WebKitMediaKeyMessageEvent::WebKitMediaKeyMessageEvent(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+WebKitMediaKeyMessageEvent::WebKitMediaKeyMessageEvent(const AtomString& type, const Init& initializer, IsTrusted isTrusted)
     : Event(type, initializer, isTrusted)
     , m_message(initializer.message)
     , m_destinationURL(initializer.destinationURL)
 {
 }
 
-WebKitMediaKeyMessageEvent::~WebKitMediaKeyMessageEvent()
-{
-}
+WebKitMediaKeyMessageEvent::~WebKitMediaKeyMessageEvent() = default;
 
 EventInterface WebKitMediaKeyMessageEvent::eventInterface() const
 {

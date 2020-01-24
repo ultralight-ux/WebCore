@@ -21,11 +21,15 @@
 #include "config.h"
 #include "SVGFEFloodElement.h"
 
+#include "FEFlood.h"
 #include "RenderStyle.h"
 #include "SVGNames.h"
 #include "SVGRenderStyle.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGFEFloodElement);
 
 inline SVGFEFloodElement::SVGFEFloodElement(const QualifiedName& tagName, Document& document)
     : SVGFilterPrimitiveStandardAttributes(tagName, document)
@@ -54,7 +58,7 @@ bool SVGFEFloodElement::setFilterEffectAttribute(FilterEffect* effect, const Qua
     return false;
 }
 
-RefPtr<FilterEffect> SVGFEFloodElement::build(SVGFilterBuilder*, Filter& filter)
+RefPtr<FilterEffect> SVGFEFloodElement::build(SVGFilterBuilder*, Filter& filter) const
 {
     RenderObject* renderer = this->renderer();
     if (!renderer)
@@ -62,7 +66,7 @@ RefPtr<FilterEffect> SVGFEFloodElement::build(SVGFilterBuilder*, Filter& filter)
     
     const SVGRenderStyle& svgStyle = renderer->style().svgStyle();
 
-    const Color& color = svgStyle.floodColor();
+    Color color = renderer->style().colorByApplyingColorFilter(svgStyle.floodColor());
     float opacity = svgStyle.floodOpacity();
 
     return FEFlood::create(filter, color, opacity);

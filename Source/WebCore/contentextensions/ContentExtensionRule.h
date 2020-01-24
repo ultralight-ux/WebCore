@@ -43,35 +43,45 @@ namespace ContentExtensions {
 struct Trigger {
     String urlFilter;
     bool urlFilterIsCaseSensitive { false };
+    bool topURLConditionIsCaseSensitive { false };
     ResourceFlags flags { 0 };
-    Vector<String> domains;
-    enum class DomainCondition {
+    Vector<String> conditions;
+    enum class ConditionType {
         None,
         IfDomain,
         UnlessDomain,
-    } domainCondition { DomainCondition::None };
+        IfTopURL,
+        UnlessTopURL,
+    };
+    ConditionType conditionType { ConditionType::None };
 
+    WEBCORE_EXPORT Trigger isolatedCopy() const;
+    
     ~Trigger()
     {
-        ASSERT(domains.isEmpty() == (domainCondition == DomainCondition::None));
+        ASSERT(conditions.isEmpty() == (conditionType == ConditionType::None));
+        if (topURLConditionIsCaseSensitive)
+            ASSERT(conditionType == ConditionType::IfTopURL || conditionType == ConditionType::UnlessTopURL);
     }
 
     bool isEmpty() const
     {
         return urlFilter.isEmpty()
             && !urlFilterIsCaseSensitive
+            && !topURLConditionIsCaseSensitive
             && !flags
-            && domains.isEmpty()
-            && domainCondition == DomainCondition::None;
+            && conditions.isEmpty()
+            && conditionType == ConditionType::None;
     }
 
     bool operator==(const Trigger& other) const
     {
         return urlFilter == other.urlFilter
             && urlFilterIsCaseSensitive == other.urlFilterIsCaseSensitive
+            && topURLConditionIsCaseSensitive == other.topURLConditionIsCaseSensitive
             && flags == other.flags
-            && domains == other.domains
-            && domainCondition == other.domainCondition;
+            && conditions == other.conditions
+            && conditionType == other.conditionType;
     }
 };
 
@@ -83,13 +93,10 @@ struct TriggerHash {
             hash ^= StringHash::hash(trigger.urlFilter);
         hash = WTF::pairIntHash(hash, DefaultHash<ResourceFlags>::Hash::hash(trigger.flags));
 
-        for (const String& domain : trigger.domains)
-            hash ^= StringHash::hash(domain);
+        for (const String& condition : trigger.conditions)
+            hash ^= StringHash::hash(condition);
 
-        if (trigger.domainCondition == Trigger::DomainCondition::IfDomain)
-            hash |= 1 << 16;
-        else if (trigger.domainCondition == Trigger::DomainCondition::IfDomain)
-            hash |= 1 << 31;
+        hash ^= 1 << static_cast<unsigned>(trigger.conditionType);
         return hash;
     }
 
@@ -127,31 +134,25 @@ struct TriggerHashTraits : public WTF::CustomHashTraits<Trigger> {
 };
 
 struct Action {
-    Action()
-        : m_type(ActionType::InvalidAction)
-        , m_actionID(std::numeric_limits<uint32_t>::max())
-    {
-    }
-
     Action(ActionType type, const String& stringArgument, uint32_t actionID = std::numeric_limits<uint32_t>::max())
         : m_type(type)
         , m_actionID(actionID)
         , m_stringArgument(stringArgument)
     {
-        ASSERT(type == ActionType::CSSDisplayNoneSelector || type == ActionType::CSSDisplayNoneStyleSheet);
+        ASSERT(hasStringArgument(type));
     }
 
     Action(ActionType type, uint32_t actionID = std::numeric_limits<uint32_t>::max())
         : m_type(type)
         , m_actionID(actionID)
     {
-        ASSERT(type != ActionType::CSSDisplayNoneSelector && type != ActionType::CSSDisplayNoneStyleSheet);
+        ASSERT(!hasStringArgument(type));
     }
+    Action(Action&&) = default;
 
     bool operator==(const Action& other) const
     {
         return m_type == other.m_type
-            && m_extensionIdentifier == other.m_extensionIdentifier
             && m_actionID == other.m_actionID
             && m_stringArgument == other.m_stringArgument;
     }
@@ -160,14 +161,13 @@ struct Action {
     static ActionType deserializeType(const SerializedActionByte* actions, const uint32_t actionsLength, uint32_t location);
     static uint32_t serializedLength(const SerializedActionByte* actions, const uint32_t actionsLength, uint32_t location);
 
-    void setExtensionIdentifier(const String& extensionIdentifier) { m_extensionIdentifier = extensionIdentifier; }
-    const String& extensionIdentifier() const { return m_extensionIdentifier; }
     ActionType type() const { return m_type; }
     uint32_t actionID() const { return m_actionID; }
     const String& stringArgument() const { return m_stringArgument; }
 
+    WEBCORE_EXPORT Action isolatedCopy() const;
+    
 private:
-    String m_extensionIdentifier;
     ActionType m_type;
     uint32_t m_actionID;
     String m_stringArgument;
@@ -175,10 +175,19 @@ private:
     
 class ContentExtensionRule {
 public:
-    ContentExtensionRule(const Trigger&, const Action&);
+    WEBCORE_EXPORT ContentExtensionRule(Trigger&&, Action&&);
 
     const Trigger& trigger() const { return m_trigger; }
     const Action& action() const { return m_action; }
+
+    ContentExtensionRule isolatedCopy() const
+    {
+        return { m_trigger.isolatedCopy(), m_action.isolatedCopy() };
+    }
+    bool operator==(const ContentExtensionRule& other) const
+    {
+        return m_trigger == other.m_trigger && m_action == other.m_action;
+    }
 
 private:
     Trigger m_trigger;

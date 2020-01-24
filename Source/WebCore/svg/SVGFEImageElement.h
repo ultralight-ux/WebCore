@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,9 +23,6 @@
 
 #include "CachedImageClient.h"
 #include "CachedResourceHandle.h"
-#include "ImageBuffer.h"
-#include "SVGAnimatedBoolean.h"
-#include "SVGAnimatedPreserveAspectRatio.h"
 #include "SVGExternalResourcesRequired.h"
 #include "SVGFEImage.h"
 #include "SVGFilterPrimitiveStandardAttributes.h"
@@ -32,10 +30,8 @@
 
 namespace WebCore {
 
-class SVGFEImageElement final : public SVGFilterPrimitiveStandardAttributes,
-                                public SVGURIReference,
-                                public SVGExternalResourcesRequired,
-                                public CachedImageClient {
+class SVGFEImageElement final : public SVGFilterPrimitiveStandardAttributes, public SVGExternalResourcesRequired, public SVGURIReference, public CachedImageClient {
+    WTF_MAKE_ISO_ALLOCATED(SVGFEImageElement);
 public:
     static Ref<SVGFEImageElement> create(const QualifiedName&, Document&);
 
@@ -43,31 +39,34 @@ public:
 
     bool hasSingleSecurityOrigin() const;
 
+    const SVGPreserveAspectRatioValue& preserveAspectRatio() const { return m_preserveAspectRatio->currentValue(); }
+    SVGAnimatedPreserveAspectRatio& preserveAspectRatioAnimated() { return m_preserveAspectRatio; }
+
 private:
     SVGFEImageElement(const QualifiedName&, Document&);
 
-    void finishedInsertingSubtree() override;
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFEImageElement, SVGFilterPrimitiveStandardAttributes, SVGExternalResourcesRequired, SVGURIReference>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     void svgAttributeChanged(const QualifiedName&) override;
-    void notifyFinished(CachedResource&) final;
 
+    void notifyFinished(CachedResource&) final;
     void addSubresourceAttributeURLs(ListHashSet<URL>&) const override;
-    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) override;
+
+    void didFinishInsertingNode() override;
+
+    RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) const override;
 
     void clearResourceReferences();
     void requestImageResource();
 
     void buildPendingResource() override;
-    InsertionNotificationRequest insertedInto(ContainerNode&) override;
-    void removedFrom(ContainerNode&) override;
+    InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) override;
+    void removedFromAncestor(RemovalType, ContainerNode&) override;
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFEImageElement)
-        DECLARE_ANIMATED_PRESERVEASPECTRATIO(PreserveAspectRatio, preserveAspectRatio)
-        DECLARE_ANIMATED_STRING_OVERRIDE(Href, href)
-        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)
-    END_DECLARE_ANIMATED_PROPERTIES
-
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedPreserveAspectRatio> m_preserveAspectRatio { SVGAnimatedPreserveAspectRatio::create(this) };
     CachedResourceHandle<CachedImage> m_cachedImage;
 };
 

@@ -23,25 +23,16 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PlatformStrategies_h
-#define PlatformStrategies_h
+#pragma once
 
 namespace WebCore {
 
 class BlobRegistry;
-class CookiesStrategy;
 class LoaderStrategy;
 class PasteboardStrategy;
 
 class PlatformStrategies {
 public:
-    CookiesStrategy* cookiesStrategy()
-    {
-        if (!m_cookiesStrategy)
-            m_cookiesStrategy = createCookiesStrategy();
-        return m_cookiesStrategy;
-    }
-
     LoaderStrategy* loaderStrategy()
     {
         if (!m_loaderStrategy)
@@ -64,21 +55,17 @@ public:
     }
 
 protected:
-    PlatformStrategies()
-    {
-    }
+    PlatformStrategies() = default;
 
     virtual ~PlatformStrategies()
     {
     }
 
 private:
-    virtual CookiesStrategy* createCookiesStrategy() = 0;
     virtual LoaderStrategy* createLoaderStrategy() = 0;
     virtual PasteboardStrategy* createPasteboardStrategy() = 0;
     virtual BlobRegistry* createBlobRegistry() = 0;
 
-    CookiesStrategy* m_cookiesStrategy { };
     LoaderStrategy* m_loaderStrategy { };
     PasteboardStrategy* m_pasteboardStrategy { };
     BlobRegistry* m_blobRegistry { };
@@ -88,5 +75,3 @@ WEBCORE_EXPORT PlatformStrategies* platformStrategies();
 WEBCORE_EXPORT void setPlatformStrategies(PlatformStrategies*);
     
 } // namespace WebCore
-
-#endif // PlatformStrategies_h

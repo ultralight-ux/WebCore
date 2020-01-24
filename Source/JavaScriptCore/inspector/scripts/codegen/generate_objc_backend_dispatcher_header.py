@@ -30,24 +30,31 @@ import string
 import re
 from string import Template
 
-from cpp_generator import CppGenerator
-from generator import Generator
-from models import Frameworks
-from objc_generator import ObjCGenerator
-from objc_generator_templates import ObjCGeneratorTemplates as ObjCTemplates
+try:
+    from .cpp_generator import CppGenerator
+    from .generator import Generator
+    from .models import Frameworks
+    from .objc_generator import ObjCGenerator
+    from .objc_generator_templates import ObjCGeneratorTemplates as ObjCTemplates
+except ValueError:
+    from cpp_generator import CppGenerator
+    from generator import Generator
+    from models import Frameworks
+    from objc_generator import ObjCGenerator
+    from objc_generator_templates import ObjCGeneratorTemplates as ObjCTemplates
 
 log = logging.getLogger('global')
 
 
 class ObjCBackendDispatcherHeaderGenerator(ObjCGenerator):
-    def __init__(self, model, input_filepath):
-        ObjCGenerator.__init__(self, model, input_filepath)
+    def __init__(self, *args, **kwargs):
+        ObjCGenerator.__init__(self, *args, **kwargs)
 
     def output_filename(self):
         return '%sBackendDispatchers.h' % self.protocol_name()
 
     def domains_to_generate(self):
-        return filter(ObjCGenerator.should_generate_domain_command_handler_filter(self.model()), Generator.domains_to_generate(self))
+        return list(filter(self.should_generate_commands_for_domain, Generator.domains_to_generate(self)))
 
     def generate_output(self):
         headers = [
@@ -64,23 +71,26 @@ class ObjCBackendDispatcherHeaderGenerator(ObjCGenerator):
         sections = []
         sections.append(self.generate_license())
         sections.append(Template(ObjCTemplates.BackendDispatcherHeaderPrelude).substitute(None, **header_args))
-        sections.extend(map(self._generate_objc_handler_declarations_for_domain, domains))
+        sections.extend(list(map(self._generate_objc_handler_declarations_for_domain, domains)))
         sections.append(Template(ObjCTemplates.BackendDispatcherHeaderPostlude).substitute(None, **header_args))
         return '\n\n'.join(sections)
+
+    # Private methods.
 
     def _generate_objc_forward_declarations(self):
         lines = []
         for domain in self.domains_to_generate():
-            if domain.commands:
+            if self.commands_for_domain(domain):
                 lines.append('@protocol %s%sDomainHandler;' % (self.objc_prefix(), domain.domain_name))
         return '\n'.join(lines)
 
     def _generate_objc_handler_declarations_for_domain(self, domain):
-        if not domain.commands:
+        commands = self.commands_for_domain(domain)
+        if not commands:
             return ''
 
         command_declarations = []
-        for command in domain.commands:
+        for command in commands:
             command_declarations.append(self._generate_objc_handler_declaration_for_command(command))
 
         handler_args = {

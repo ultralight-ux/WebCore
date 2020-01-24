@@ -40,7 +40,6 @@
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
 #include "SecurityOriginData.h"
-#include "Settings.h"
 
 namespace WebCore {
 
@@ -95,14 +94,14 @@ namespace WebCore {
 // DatabaseContext will outlive both regardless of which of the 2 destructs first.
 
 
-DatabaseContext::DatabaseContext(ScriptExecutionContext& context)
-    : ActiveDOMObject(&context)
+DatabaseContext::DatabaseContext(Document& document)
+    : ActiveDOMObject(document)
 {
     // ActiveDOMObject expects this to be called to set internal flags.
     suspendIfNeeded();
 
-    ASSERT(!context.databaseContext());
-    context.setDatabaseContext(this);
+    ASSERT(!document.databaseContext());
+    document.setDatabaseContext(this);
 }
 
 DatabaseContext::~DatabaseContext()
@@ -151,8 +150,7 @@ DatabaseThread* DatabaseContext::databaseThread()
         // Create the database thread on first request - but not if at least one database was already opened,
         // because in that case we already had a database thread and terminated it and should not create another.
         m_databaseThread = DatabaseThread::create();
-        if (!m_databaseThread->start())
-            m_databaseThread = nullptr;
+        m_databaseThread->start();
     }
 
     return m_databaseThread.get();
@@ -191,7 +189,7 @@ bool DatabaseContext::allowDatabaseAccess() const
 {
     if (is<Document>(*m_scriptExecutionContext)) {
         Document& document = downcast<Document>(*m_scriptExecutionContext);
-        if (!document.page() || (document.page()->usesEphemeralSession() && !SchemeRegistry::allowsDatabaseAccessInPrivateBrowsing(document.securityOrigin()->protocol())))
+        if (!document.page() || (document.page()->usesEphemeralSession() && !SchemeRegistry::allowsDatabaseAccessInPrivateBrowsing(document.securityOrigin().protocol())))
             return false;
         return true;
     }
@@ -205,15 +203,15 @@ void DatabaseContext::databaseExceededQuota(const String& name, DatabaseDetails 
     if (is<Document>(*m_scriptExecutionContext)) {
         Document& document = downcast<Document>(*m_scriptExecutionContext);
         if (Page* page = document.page())
-            page->chrome().client().exceededDatabaseQuota(document.frame(), name, details);
+            page->chrome().client().exceededDatabaseQuota(*document.frame(), name, details);
         return;
     }
     ASSERT(m_scriptExecutionContext->isWorkerGlobalScope());
 }
 
-SecurityOriginData DatabaseContext::securityOrigin() const
+const SecurityOriginData& DatabaseContext::securityOrigin() const
 {
-    return SecurityOriginData::fromSecurityOrigin(*m_scriptExecutionContext->securityOrigin());
+    return m_scriptExecutionContext->securityOrigin()->data();
 }
 
 bool DatabaseContext::isContextThread() const

@@ -33,7 +33,7 @@
 #include "Event.h"
 #include "MediaKeyMessageEventInit.h"
 #include "MediaKeyMessageType.h"
-#include <runtime/ArrayBuffer.h>
+#include <JavaScriptCore/ArrayBuffer.h>
 
 namespace WebCore {
 
@@ -44,7 +44,7 @@ public:
 
     virtual ~MediaKeyMessageEvent();
 
-    static Ref<MediaKeyMessageEvent> create(const AtomicString& type, const MediaKeyMessageEventInit& initializer, IsTrusted isTrusted = IsTrusted::No)
+    static Ref<MediaKeyMessageEvent> create(const AtomString& type, const MediaKeyMessageEventInit& initializer, IsTrusted isTrusted = IsTrusted::No)
     {
         return adoptRef(*new MediaKeyMessageEvent(type, initializer, isTrusted));
     }
@@ -53,7 +53,7 @@ public:
     RefPtr<JSC::ArrayBuffer> message() const { return m_message; }
 
 private:
-    MediaKeyMessageEvent(const AtomicString&, const MediaKeyMessageEventInit&, IsTrusted);
+    MediaKeyMessageEvent(const AtomString&, const MediaKeyMessageEventInit&, IsTrusted);
 
     // Event
     EventInterface eventInterface() const override;

@@ -28,13 +28,13 @@
  *
  */
 
-#ifndef ThreadingPrimitives_h
-#define ThreadingPrimitives_h
+#pragma once
 
-#include <wtf/Assertions.h>
+#include <limits.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/Locker.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/WallTime.h>
 
 #if OS(WINDOWS)
 #include <windows.h>
@@ -42,73 +42,137 @@
 
 #if USE(PTHREADS)
 #include <pthread.h>
+#if !defined(PTHREAD_KEYS_MAX)
+// PTHREAD_KEYS_MAX is not defined in bionic nor in Hurd, so explicitly define it here.
+#define PTHREAD_KEYS_MAX 1024
+#endif
+#endif
+
+#if OS(WINDOWS) && CPU(X86)
+#define THREAD_SPECIFIC_CALL __stdcall
+#else
+#define THREAD_SPECIFIC_CALL
 #endif
 
 namespace WTF {
 
-#if USE(PTHREADS)
-typedef pthread_mutex_t PlatformMutex;
-typedef pthread_cond_t PlatformCondition;
-#elif OS(WINDOWS)
-struct PlatformMutex {
-    CRITICAL_SECTION m_internalMutex;
-    size_t m_recursionCount;
-};
-struct PlatformCondition {
-    size_t m_waitersGone;
-    size_t m_waitersBlocked;
-    size_t m_waitersToUnblock; 
-    HANDLE m_blockLock;
-    HANDLE m_blockQueue;
-    HANDLE m_unblockLock;
+using ThreadFunction = void (*)(void* argument);
 
-    bool timedWait(PlatformMutex&, DWORD durationMilliseconds);
-    void signal(bool unblockAll);
-};
+#if USE(PTHREADS)
+using PlatformThreadHandle = pthread_t;
+using PlatformMutex = pthread_mutex_t;
+using PlatformCondition = pthread_cond_t;
+using ThreadSpecificKey = pthread_key_t;
+#elif OS(WINDOWS)
+using ThreadIdentifier = uint32_t;
+using PlatformThreadHandle = HANDLE;
+using PlatformMutex = SRWLOCK;
+using PlatformCondition = CONDITION_VARIABLE;
+using ThreadSpecificKey = DWORD;
 #else
-typedef void* PlatformMutex;
-typedef void* PlatformCondition;
+#error "Not supported platform"
 #endif
-    
+
 class Mutex {
-    WTF_MAKE_NONCOPYABLE(Mutex); WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_NONCOPYABLE(Mutex);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
-    WTF_EXPORT_PRIVATE Mutex();
+    constexpr Mutex() = default;
     WTF_EXPORT_PRIVATE ~Mutex();
 
     WTF_EXPORT_PRIVATE void lock();
     WTF_EXPORT_PRIVATE bool tryLock();
     WTF_EXPORT_PRIVATE void unlock();
 
-public:
     PlatformMutex& impl() { return m_mutex; }
+
 private:
-    PlatformMutex m_mutex;
+#if USE(PTHREADS)
+    PlatformMutex m_mutex = PTHREAD_MUTEX_INITIALIZER;
+#elif OS(WINDOWS)
+    PlatformMutex m_mutex = SRWLOCK_INIT;
+#endif
 };
 
 typedef Locker<Mutex> MutexLocker;
 
 class ThreadCondition {
     WTF_MAKE_NONCOPYABLE(ThreadCondition);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
-    WTF_EXPORT_PRIVATE ThreadCondition();
+    constexpr ThreadCondition() = default;
     WTF_EXPORT_PRIVATE ~ThreadCondition();
     
     WTF_EXPORT_PRIVATE void wait(Mutex& mutex);
     // Returns true if the condition was signaled before absoluteTime, false if the absoluteTime was reached or is in the past.
-    // The absoluteTime is in seconds, starting on January 1, 1970. The time is assumed to use the same time zone as WTF::currentTime().
-    WTF_EXPORT_PRIVATE bool timedWait(Mutex&, double absoluteTime);
+    WTF_EXPORT_PRIVATE bool timedWait(Mutex&, WallTime absoluteTime);
     WTF_EXPORT_PRIVATE void signal();
     WTF_EXPORT_PRIVATE void broadcast();
     
 private:
-    PlatformCondition m_condition;
+#if USE(PTHREADS)
+    PlatformCondition m_condition = PTHREAD_COND_INITIALIZER;
+#elif OS(WINDOWS)
+    PlatformCondition m_condition = CONDITION_VARIABLE_INIT;
+#endif
 };
 
-#if OS(WINDOWS)
-// The absoluteTime is in seconds, starting on January 1, 1970. The time is assumed to use the same time zone as WTF::currentTime().
-// Returns an interval in milliseconds suitable for passing to one of the Win32 wait functions (e.g., ::WaitForSingleObject).
-WTF_EXPORT_PRIVATE DWORD absoluteTimeToWaitTimeoutInterval(double absoluteTime);
+#if USE(PTHREADS)
+
+static constexpr ThreadSpecificKey InvalidThreadSpecificKey = PTHREAD_KEYS_MAX;
+
+inline void threadSpecificKeyCreate(ThreadSpecificKey* key, void (*destructor)(void *))
+{
+    int error = pthread_key_create(key, destructor);
+    if (error)
+        CRASH();
+}
+
+inline void threadSpecificKeyDelete(ThreadSpecificKey key)
+{
+    int error = pthread_key_delete(key);
+    if (error)
+        CRASH();
+}
+
+inline void threadSpecificSet(ThreadSpecificKey key, void* value)
+{
+    pthread_setspecific(key, value);
+}
+
+inline void* threadSpecificGet(ThreadSpecificKey key)
+{
+    return pthread_getspecific(key);
+}
+
+#elif OS(WINDOWS)
+
+static constexpr ThreadSpecificKey InvalidThreadSpecificKey = FLS_OUT_OF_INDEXES;
+
+inline void threadSpecificKeyCreate(ThreadSpecificKey* key, void (THREAD_SPECIFIC_CALL *destructor)(void *))
+{
+    DWORD flsKey = FlsAlloc(destructor);
+    if (flsKey == FLS_OUT_OF_INDEXES)
+        CRASH();
+
+    *key = flsKey;
+}
+
+inline void threadSpecificKeyDelete(ThreadSpecificKey key)
+{
+    FlsFree(key);
+}
+
+inline void threadSpecificSet(ThreadSpecificKey key, void* data)
+{
+    FlsSetValue(key, data);
+}
+
+inline void* threadSpecificGet(ThreadSpecificKey key)
+{
+    return FlsGetValue(key);
+}
+
 #endif
 
 } // namespace WTF
@@ -116,9 +180,3 @@ WTF_EXPORT_PRIVATE DWORD absoluteTimeToWaitTimeoutInterval(double absoluteTime);
 using WTF::Mutex;
 using WTF::MutexLocker;
 using WTF::ThreadCondition;
-
-#if OS(WINDOWS)
-using WTF::absoluteTimeToWaitTimeoutInterval;
-#endif
-
-#endif // ThreadingPrimitives_h

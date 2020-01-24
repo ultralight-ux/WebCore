@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Ericsson AB. All rights reserved.
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,9 +33,16 @@
 
 #if ENABLE(MEDIA_STREAM)
 
+#include "ActiveDOMObject.h"
+#include "EventNames.h"
+#include "EventTarget.h"
 #include "ExceptionOr.h"
-#include "JSDOMPromise.h"
+#include "JSDOMPromiseDeferred.h"
 #include "MediaTrackConstraints.h"
+#include "RealtimeMediaSourceCenter.h"
+#include "Timer.h"
+#include "UserMediaClient.h"
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -45,25 +52,64 @@ class MediaStream;
 
 struct MediaTrackSupportedConstraints;
 
-class MediaDevices : public ScriptWrappable, public RefCounted<MediaDevices>, public ContextDestructionObserver {
+class MediaDevices final : public RefCounted<MediaDevices>, public ActiveDOMObject, public EventTargetWithInlineData, public CanMakeWeakPtr<MediaDevices> {
+    WTF_MAKE_ISO_ALLOCATED(MediaDevices);
 public:
     static Ref<MediaDevices> create(Document&);
 
+    ~MediaDevices();
+
     Document* document() const;
 
-    using Promise = DOMPromise<IDLInterface<MediaStream>>;
-    using EnumerateDevicesPromise = DOMPromise<IDLSequence<IDLInterface<MediaDeviceInfo>>>;
+    using Promise = DOMPromiseDeferred<IDLInterface<MediaStream>>;
+    using EnumerateDevicesPromise = DOMPromiseDeferred<IDLSequence<IDLInterface<MediaDeviceInfo>>>;
+
+    enum class DisplayCaptureSurfaceType {
+        Monitor,
+        Window,
+        Application,
+        Browser,
+    };
 
     struct StreamConstraints {
         Variant<bool, MediaTrackConstraints> video;
         Variant<bool, MediaTrackConstraints> audio;
     };
-    ExceptionOr<void> getUserMedia(const StreamConstraints&, Promise&&) const;
+    void getUserMedia(const StreamConstraints&, Promise&&) const;
+    void getDisplayMedia(const StreamConstraints&, Promise&&) const;
     void enumerateDevices(EnumerateDevicesPromise&&) const;
     MediaTrackSupportedConstraints getSupportedConstraints();
 
+    using RefCounted<MediaDevices>::ref;
+    using RefCounted<MediaDevices>::deref;
+
+    void setDisableGetDisplayMediaUserGestureConstraint(bool value) { m_disableGetDisplayMediaUserGestureConstraint = value; }
+
 private:
     explicit MediaDevices(Document&);
+
+    void scheduledEventTimerFired();
+    bool addEventListener(const AtomString& eventType, Ref<EventListener>&&, const AddEventListenerOptions&) override;
+
+    friend class JSMediaDevicesOwner;
+
+    // ActiveDOMObject
+    const char* activeDOMObjectName() const final;
+    bool canSuspendForDocumentSuspension() const final;
+    void stop() final;
+    bool hasPendingActivity() const final;
+
+    // EventTargetWithInlineData.
+    EventTargetInterface eventTargetInterface() const final { return MediaDevicesEventTargetInterfaceType; }
+    ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
+    void refEventTarget() final { ref(); }
+    void derefEventTarget() final { deref(); }
+
+    Timer m_scheduledEventTimer;
+    UserMediaClient::DeviceChangeObserverToken m_deviceChangeToken;
+    const EventNames& m_eventNames; // Need to cache this so we can use it from GC threads.
+    bool m_listeningForDeviceChanges { false };
+    bool m_disableGetDisplayMediaUserGestureConstraint { false };
 };
 
 } // namespace WebCore

@@ -28,11 +28,18 @@
 #include "DataRef.h"
 #include "Length.h"
 #include "StyleCustomPropertyData.h"
+#include "TabSize.h"
+#include "TextDecorationThickness.h"
+#include "TextUnderlineOffset.h"
 #include <wtf/RefCounted.h>
-#include <wtf/text/AtomicString.h>
+#include <wtf/text/AtomString.h>
 
 #if ENABLE(TEXT_AUTOSIZING)
 #include "TextSizeAdjustment.h"
+#endif
+
+#if ENABLE(DARK_MODE_CSS)
+#include "StyleColorScheme.h"
 #endif
 
 namespace WebCore {
@@ -40,6 +47,7 @@ namespace WebCore {
 class CursorList;
 class QuotesData;
 class ShadowData;
+class StyleFilterData;
 class StyleImage;
 
 // This struct is for rarely used inherited CSS3, CSS2, and WebKit-specific properties.
@@ -57,6 +65,8 @@ public:
         return !(*this == o);
     }
 
+    bool hasColorFilters() const;
+
     RefPtr<StyleImage> listStyleImage;
 
     Color textStrokeColor;
@@ -66,97 +76,119 @@ public:
     
     Color visitedLinkTextStrokeColor;
     Color visitedLinkTextFillColor;
-    Color visitedLinkTextEmphasisColor;    
+    Color visitedLinkTextEmphasisColor;
+
+    Color caretColor;
+    Color visitedLinkCaretColor;
 
     std::unique_ptr<ShadowData> textShadow; // Our text shadow information for shadowed text drawing.
     
     RefPtr<CursorList> cursorData;
     Length indent;
-    float m_effectiveZoom;
+    float effectiveZoom;
+
+    TextUnderlineOffset textUnderlineOffset;
+    TextDecorationThickness textDecorationThickness;
     
     Length wordSpacing;
 
-    DataRef<StyleCustomPropertyData> m_customProperties;
+    DataRef<StyleCustomPropertyData> customProperties;
 
     // Paged media properties.
     short widows;
     short orphans;
-    unsigned m_hasAutoWidows : 1;
-    unsigned m_hasAutoOrphans : 1;
+    unsigned hasAutoWidows : 1;
+    unsigned hasAutoOrphans : 1;
     
-    unsigned textSecurity : 2; // ETextSecurity
-    unsigned userModify : 2; // EUserModify (editing)
-    unsigned wordBreak : 2; // EWordBreak
-    unsigned overflowWrap : 1; // EOverflowWrap
-    unsigned nbspMode : 1; // ENBSPMode
+    unsigned textSecurity : 2; // TextSecurity
+    unsigned userModify : 2; // UserModify (editing)
+    unsigned wordBreak : 2; // WordBreak
+    unsigned overflowWrap : 1; // OverflowWrap
+    unsigned nbspMode : 1; // NBSPMode
     unsigned lineBreak : 3; // LineBreak
-    unsigned userSelect : 2; // EUserSelect
+    unsigned userSelect : 2; // UserSelect
     unsigned colorSpace : 1; // ColorSpace
-    unsigned speak : 3; // ESpeak
+    unsigned speakAs : 4; // ESpeakAs
     unsigned hyphens : 2; // Hyphens
     unsigned textEmphasisFill : 1; // TextEmphasisFill
     unsigned textEmphasisMark : 3; // TextEmphasisMark
     unsigned textEmphasisPosition : 4; // TextEmphasisPosition
-    unsigned m_textOrientation : 2; // TextOrientation
+    unsigned textOrientation : 2; // TextOrientation
 #if ENABLE(CSS3_TEXT)
-    unsigned m_textIndentLine : 1; // TextIndentLine
-    unsigned m_textIndentType : 1; // TextIndentType
+    unsigned textIndentLine : 1; // TextIndentLine
+    unsigned textIndentType : 1; // TextIndentType
 #endif
-    unsigned m_lineBoxContain: 7; // LineBoxContain
+    unsigned lineBoxContain: 7; // LineBoxContain
     // CSS Image Values Level 3
 #if ENABLE(CSS_IMAGE_ORIENTATION)
-    unsigned m_imageOrientation : 4; // ImageOrientationEnum
+    unsigned imageOrientation : 4; // ImageOrientationEnum
 #endif
-    unsigned m_imageRendering : 3; // EImageRendering
-    unsigned m_lineSnap : 2; // LineSnap
-    unsigned m_lineAlign : 1; // LineAlign
-#if ENABLE(ACCELERATED_OVERFLOW_SCROLLING)
+    unsigned imageRendering : 3; // ImageRendering
+    unsigned lineSnap : 2; // LineSnap
+    unsigned lineAlign : 1; // LineAlign
+#if ENABLE(OVERFLOW_SCROLLING_TOUCH)
     unsigned useTouchOverflowScrolling: 1;
 #endif
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-    unsigned m_imageResolutionSource : 1; // ImageResolutionSource
-    unsigned m_imageResolutionSnap : 1; // ImageResolutionSnap
+    unsigned imageResolutionSource : 1; // ImageResolutionSource
+    unsigned imageResolutionSnap : 1; // ImageResolutionSnap
 #endif
 #if ENABLE(CSS3_TEXT)
-    unsigned m_textAlignLast : 3; // TextAlignLast
-    unsigned m_textJustify : 2; // TextJustify
-#endif // CSS3_TEXT
-    unsigned m_textDecorationSkip : 5; // TextDecorationSkip
-    unsigned m_textUnderlinePosition : 3; // TextUnderlinePosition
-    unsigned m_rubyPosition : 2; // RubyPosition
-    unsigned m_textZoom: 1; // TextZoom
+    unsigned textAlignLast : 3; // TextAlignLast
+    unsigned textJustify : 2; // TextJustify
+#endif
+    unsigned textDecorationSkip : 5; // TextDecorationSkip
+    unsigned textUnderlinePosition : 2; // TextUnderlinePosition
+    unsigned rubyPosition : 2; // RubyPosition
+    unsigned textZoom: 1; // TextZoom
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     unsigned touchCalloutEnabled : 1;
 #endif
 
-#if ENABLE(CSS_TRAILING_WORD)
-    unsigned trailingWord : 1;
+    unsigned hangingPunctuation : 4;
+
+    unsigned paintOrder : 3; // PaintOrder
+    unsigned capStyle : 2; // LineCap
+    unsigned joinStyle : 2; // LineJoin
+    unsigned hasSetStrokeWidth : 1;
+    unsigned hasSetStrokeColor : 1;
+
+#if ENABLE(POINTER_EVENTS)
+    unsigned effectiveTouchActions : 6; // OptionSet<TouchAction>
 #endif
 
-    unsigned m_hangingPunctuation : 4;
+    Length strokeWidth;
+    Color strokeColor;
+    Color visitedLinkStrokeColor;
+    float miterLimit;
 
-    AtomicString hyphenationString;
+    AtomString hyphenationString;
     short hyphenationLimitBefore;
     short hyphenationLimitAfter;
     short hyphenationLimitLines;
 
-    AtomicString textEmphasisCustomMark;
+    AtomString textEmphasisCustomMark;
     RefPtr<QuotesData> quotes;
+    DataRef<StyleFilterData> appleColorFilter;
 
-    AtomicString m_lineGrid;
-    unsigned m_tabSize;
+    AtomString lineGrid;
+    TabSize tabSize;
 
 #if ENABLE(TEXT_AUTOSIZING)
     TextSizeAdjustment textSizeAdjust;
 #endif
 
 #if ENABLE(CSS_IMAGE_RESOLUTION)
-    float m_imageResolution;
+    float imageResolution;
 #endif
 
 #if ENABLE(TOUCH_EVENTS)
     Color tapHighlightColor;
+#endif
+
+#if ENABLE(DARK_MODE_CSS)
+    StyleColorScheme colorScheme;
 #endif
 
 private:

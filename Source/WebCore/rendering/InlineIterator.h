@@ -74,7 +74,7 @@ public:
         moveTo(object, 0);
     }
 
-    void moveTo(RenderObject& object, unsigned offset, std::optional<unsigned> nextBreak = std::optional<unsigned>())
+    void moveTo(RenderObject& object, unsigned offset, Optional<unsigned> nextBreak = Optional<unsigned>())
     {
         setRenderer(&object);
         setOffset(offset);
@@ -86,8 +86,8 @@ public:
     unsigned offset() const { return m_pos; }
     void setOffset(unsigned position);
     RenderElement* root() const { return m_root; }
-    std::optional<unsigned> nextBreakablePosition() const { return m_nextBreakablePosition; }
-    void setNextBreakablePosition(std::optional<unsigned> position) { m_nextBreakablePosition = position; }
+    Optional<unsigned> nextBreakablePosition() const { return m_nextBreakablePosition; }
+    void setNextBreakablePosition(Optional<unsigned> position) { m_nextBreakablePosition = position; }
     bool refersToEndOfPreviousNode() const { return m_refersToEndOfPreviousNode; }
     void setRefersToEndOfPreviousNode();
 
@@ -118,7 +118,7 @@ private:
     RenderElement* m_root { nullptr };
     RenderObject* m_renderer { nullptr };
 
-    std::optional<unsigned> m_nextBreakablePosition;
+    Optional<unsigned> m_nextBreakablePosition;
     unsigned m_pos { 0 };
 
     // There are a couple places where we want to decrement an InlineIterator.
@@ -141,10 +141,9 @@ inline bool operator!=(const InlineIterator& it1, const InlineIterator& it2)
 
 static inline UCharDirection embedCharFromDirection(TextDirection direction, EUnicodeBidi unicodeBidi)
 {
-    using namespace WTF::Unicode;
     if (unicodeBidi == Embed)
-        return direction == RTL ? U_RIGHT_TO_LEFT_EMBEDDING : U_LEFT_TO_RIGHT_EMBEDDING;
-    return direction == RTL ? U_RIGHT_TO_LEFT_OVERRIDE : U_LEFT_TO_RIGHT_OVERRIDE;
+        return direction == TextDirection::RTL ? U_RIGHT_TO_LEFT_EMBEDDING : U_LEFT_TO_RIGHT_EMBEDDING;
+    return direction == TextDirection::RTL ? U_RIGHT_TO_LEFT_OVERRIDE : U_LEFT_TO_RIGHT_OVERRIDE;
 }
 
 template <class Observer>
@@ -343,7 +342,7 @@ static inline RenderObject* bidiFirstIncludingEmptyInlines(RenderElement& root)
 inline void InlineIterator::fastIncrementInTextNode()
 {
     ASSERT(m_renderer);
-    ASSERT(m_pos <= downcast<RenderText>(*m_renderer).textLength());
+    ASSERT(m_pos <= downcast<RenderText>(*m_renderer).text().length());
     ++m_pos;
 }
 
@@ -397,7 +396,7 @@ inline void InlineIterator::increment(InlineBidiResolver* resolver)
         return;
     if (is<RenderText>(*m_renderer)) {
         fastIncrementInTextNode();
-        if (m_pos < downcast<RenderText>(*m_renderer).textLength())
+        if (m_pos < downcast<RenderText>(*m_renderer).text().length())
             return;
     }
     // bidiNext can return nullptr
@@ -585,6 +584,13 @@ inline void InlineBidiResolver::appendRunInternal()
 
     m_direction = U_OTHER_NEUTRAL;
     m_status.eor = U_OTHER_NEUTRAL;
+}
+
+template<>
+inline bool InlineBidiResolver::needsContinuePastEndInternal() const
+{
+    // We don't collect runs beyond the endOfLine renderer. Stop traversing when the iterator moves to the next renderer to prevent O(n^2).
+    return m_current.renderer() == endOfLine.renderer();
 }
 
 } // namespace WebCore

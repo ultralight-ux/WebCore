@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,6 +22,7 @@
 #pragma once
 
 #include "QualifiedName.h"
+#include "SVGPropertyOwnerRegistry.h"
 #include <wtf/HashSet.h>
 
 namespace WebCore {
@@ -33,29 +35,37 @@ class SVGElement;
 // states that externalResourcesRequired cannot be animated, the animVal will always be the same as the baseVal.
 // FIXME: When implementing animVal support, make sure that animVal==baseVal for externalResourcesRequired
 class SVGExternalResourcesRequired {
+    WTF_MAKE_NONCOPYABLE(SVGExternalResourcesRequired);
 public:
-    virtual ~SVGExternalResourcesRequired() { }
+    virtual ~SVGExternalResourcesRequired() = default;
 
-    void parseAttribute(const QualifiedName&, const AtomicString&);
+    void parseAttribute(const QualifiedName&, const AtomString&);
+    void svgAttributeChanged(const QualifiedName&);
 
-    static bool isKnownAttribute(const QualifiedName&);
     static void addSupportedAttributes(HashSet<QualifiedName>&);
 
-    bool handleAttributeChange(SVGElement*, const QualifiedName&);
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGExternalResourcesRequired>;
+
+    bool externalResourcesRequired() const { return m_externalResourcesRequired->currentValue(); }
+    SVGAnimatedBoolean& externalResourcesRequiredAnimated() { return m_externalResourcesRequired; }
 
 protected:
-    // These types look a bit awkward, but have to match the generic types of the SVGAnimatedProperty macros.
-    virtual void setExternalResourcesRequiredBaseValue(const bool&, const bool validValue = true) = 0;
-    virtual bool& externalResourcesRequiredBaseValue() const = 0;
+    SVGExternalResourcesRequired(SVGElement* contextElement);
+
+    static bool isKnownAttribute(const QualifiedName& attributeName) { return PropertyRegistry::isKnownAttribute(attributeName); }
 
     virtual void setHaveFiredLoadEvent(bool) { }
     virtual bool isParserInserted() const { return false; }
     virtual bool haveFiredLoadEvent() const { return false; }
 
-    void dispatchLoadEvent(SVGElement*);
-    void insertedIntoDocument(SVGElement*);
+    void dispatchLoadEvent();
+    void insertedIntoDocument();
     void finishParsingChildren();
     bool haveLoadedRequiredResources() const;
+
+private:
+    SVGElement& m_contextElement;
+    Ref<SVGAnimatedBoolean> m_externalResourcesRequired;
 };
 
 } // namespace WebCore

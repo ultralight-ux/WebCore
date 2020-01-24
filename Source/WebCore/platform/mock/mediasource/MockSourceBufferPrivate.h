@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,15 +23,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef MockSourceBufferPrivate_h
-#define MockSourceBufferPrivate_h
+#pragma once
 
 #if ENABLE(MEDIA_SOURCE)
 
 #include "SourceBufferPrivate.h"
-#include <wtf/MediaTime.h>
-#include <wtf/RefPtr.h>
-#include <wtf/Vector.h>
 
 namespace WebCore {
 
@@ -43,9 +39,9 @@ class MockSampleBox;
 class TimeRanges;
 class VideoTrackPrivate;
 
-class MockSourceBufferPrivate : public SourceBufferPrivate {
+class MockSourceBufferPrivate final : public SourceBufferPrivate {
 public:
-    static RefPtr<MockSourceBufferPrivate> create(MockMediaSourcePrivate*);
+    static Ref<MockSourceBufferPrivate> create(MockMediaSourcePrivate*);
     virtual ~MockSourceBufferPrivate();
 
     void clearMediaSource() { m_mediaSource = nullptr; }
@@ -53,41 +49,49 @@ public:
     bool hasVideo() const;
     bool hasAudio() const;
 
-    void seekToTime(const MediaTime&);
     MediaTime fastSeekTimeForMediaTime(const MediaTime&, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold);
 
 private:
     explicit MockSourceBufferPrivate(MockMediaSourcePrivate*);
 
     // SourceBufferPrivate overrides
-    void setClient(SourceBufferPrivateClient*) override;
-    void append(const unsigned char* data, unsigned length) override;
-    void abort() override;
-    void resetParserState() override;
-    void removedFromMediaSource() override;
-    MediaPlayer::ReadyState readyState() const override;
-    void setReadyState(MediaPlayer::ReadyState) override;
+    void setClient(SourceBufferPrivateClient*) final;
+    void append(Vector<unsigned char>&&) final;
+    void abort() final;
+    void resetParserState() final;
+    void removedFromMediaSource() final;
+    MediaPlayer::ReadyState readyState() const final;
+    void setReadyState(MediaPlayer::ReadyState) final;
+    bool canSetMinimumUpcomingPresentationTime(const AtomString&) const final;
+    void setMinimumUpcomingPresentationTime(const AtomString&, const MediaTime&) final;
+    void clearMinimumUpcomingPresentationTime(const AtomString&) final;
+    bool canSwitchToType(const ContentType&) final;
 
-    void flush(AtomicString) override { m_enqueuedSamples.clear(); }
-    void enqueueSample(PassRefPtr<MediaSample>, AtomicString) override;
-    bool isReadyForMoreSamples(AtomicString) override { return true; }
-    void setActive(bool) override;
+    void flush(const AtomString&) final { m_enqueuedSamples.clear(); m_minimumUpcomingPresentationTime = MediaTime::invalidTime(); }
+    void enqueueSample(Ref<MediaSample>&&, const AtomString&) final;
+    bool isReadyForMoreSamples(const AtomString&) final { return !m_maxQueueDepth || m_enqueuedSamples.size() < m_maxQueueDepth.value(); }
+    void setActive(bool) final;
 
-    Vector<String> enqueuedSamplesForTrackID(AtomicString) override;
+    Vector<String> enqueuedSamplesForTrackID(const AtomString&) final;
+    MediaTime minimumUpcomingPresentationTimeForTrackID(const AtomString&) final;
+    void setMaximumQueueDepthForTrackID(const AtomString&, size_t) final;
 
     void didReceiveInitializationSegment(const MockInitializationBox&);
     void didReceiveSample(const MockSampleBox&);
 
+#if !RELEASE_LOG_DISABLED
+    const Logger& sourceBufferLogger() const final;
+    const void* sourceBufferLogIdentifier() final;
+#endif
+
     MockMediaSourcePrivate* m_mediaSource;
     SourceBufferPrivateClient* m_client;
+    MediaTime m_minimumUpcomingPresentationTime;
     Vector<String> m_enqueuedSamples;
-
+    Optional<size_t> m_maxQueueDepth;
     Vector<char> m_inputBuffer;
 };
 
 }
 
 #endif // ENABLE(MEDIA_SOURCE) && USE(AVFOUNDATION)
-
-#endif
-

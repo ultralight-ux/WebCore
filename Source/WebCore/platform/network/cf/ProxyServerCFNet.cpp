@@ -26,12 +26,12 @@
 #include "config.h"
 #include "ProxyServer.h"
 
-#include "URL.h"
+#include <wtf/URL.h>
 #include "Logging.h"
 #include <wtf/RetainPtr.h>
 #include <wtf/text/CString.h>
 
-#if PLATFORM(IOS) || PLATFORM(WIN)
+#if PLATFORM(IOS_FAMILY) || PLATFORM(WIN)
 #include <CFNetwork/CFNetwork.h>
 #endif
 
@@ -133,7 +133,7 @@ static void addProxyServersForURL(Vector<ProxyServer>& proxyServers, const URL& 
     processProxyServers(proxyServers, proxiesForURL.get(), cfURL.get());
 }
 
-Vector<ProxyServer> proxyServersForURL(const URL& url, const NetworkingContext*)
+Vector<ProxyServer> proxyServersForURL(const URL& url)
 {
     Vector<ProxyServer> proxyServers;
     

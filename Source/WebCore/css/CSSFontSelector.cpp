@@ -29,18 +29,13 @@
 
 #include "CachedFont.h"
 #include "CSSFontFace.h"
-#include "CSSFontFaceRule.h"
 #include "CSSFontFaceSource.h"
 #include "CSSFontFamily.h"
-#include "CSSFontFeatureValue.h"
 #include "CSSPrimitiveValue.h"
-#include "CSSPrimitiveValueMappings.h"
 #include "CSSPropertyNames.h"
 #include "CSSSegmentedFontFace.h"
-#include "CSSUnicodeRangeValue.h"
 #include "CSSValueKeywords.h"
 #include "CSSValueList.h"
-#include "CSSValuePool.h"
 #include "CachedResourceLoader.h"
 #include "Document.h"
 #include "Font.h"
@@ -48,26 +43,28 @@
 #include "FontFace.h"
 #include "FontFaceSet.h"
 #include "FontSelectorClient.h"
-#include "FontVariantBuilder.h"
 #include "Frame.h"
 #include "FrameLoader.h"
-#include "SVGFontFaceElement.h"
-#include "SVGNames.h"
+#include "Logging.h"
+#include "Quirks.h"
+#include "ResourceLoadObserver.h"
+#include "RuntimeEnabledFeatures.h"
 #include "Settings.h"
 #include "StyleProperties.h"
 #include "StyleResolver.h"
 #include "StyleRule.h"
 #include "WebKitFontFamilyNames.h"
 #include <wtf/Ref.h>
-#include <wtf/text/AtomicString.h>
+#include <wtf/SetForScope.h>
+#include <wtf/text/AtomString.h>
 
 namespace WebCore {
 
 static unsigned fontSelectorId;
 
 CSSFontSelector::CSSFontSelector(Document& document)
-    : m_document(&document)
-    , m_cssFontFaceSet(CSSFontFaceSet::create())
+    : m_document(makeWeakPtr(document))
+    , m_cssFontFaceSet(CSSFontFaceSet::create(this))
     , m_beginLoadingTimer(*this, &CSSFontSelector::beginLoadTimerFired)
     , m_uniqueId(++fontSelectorId)
     , m_version(0)
@@ -75,10 +72,13 @@ CSSFontSelector::CSSFontSelector(Document& document)
     ASSERT(m_document);
     FontCache::singleton().addClient(*this);
     m_cssFontFaceSet->addClient(*this);
+    LOG(Fonts, "CSSFontSelector %p ctor", this);
 }
 
 CSSFontSelector::~CSSFontSelector()
 {
+    LOG(Fonts, "CSSFontSelector %p dtor", this);
+
     clearDocument();
     m_cssFontFaceSet->removeClient(*this);
     FontCache::singleton().removeClient(*this);
@@ -99,15 +99,20 @@ bool CSSFontSelector::isEmpty() const
     return !m_cssFontFaceSet->faceCount();
 }
 
+void CSSFontSelector::emptyCaches()
+{
+    m_cssFontFaceSet->emptyCaches();
+}
+
 void CSSFontSelector::buildStarted()
 {
     m_buildIsUnderway = true;
-    m_stagingArea.clear();
     m_cssFontFaceSet->purge();
     ++m_version;
 
-    m_cssConnectionsPossiblyToRemove.clear();
-    m_cssConnectionsEncounteredDuringBuild.clear();
+    ASSERT(m_cssConnectionsPossiblyToRemove.isEmpty());
+    ASSERT(m_cssConnectionsEncounteredDuringBuild.isEmpty());
+    ASSERT(m_stagingArea.isEmpty());
     for (size_t i = 0; i < m_cssFontFaceSet->faceCount(); ++i) {
         CSSFontFace& face = m_cssFontFaceSet.get()[i];
         if (face.cssConnection())
@@ -132,7 +137,9 @@ void CSSFontSelector::buildCompleted()
 
     for (auto& item : m_stagingArea)
         addFontFaceRule(item.styleRuleFontFace, item.isInitiatingElementInUserAgentShadowTree);
+    m_cssConnectionsEncounteredDuringBuild.clear();
     m_stagingArea.clear();
+    m_cssConnectionsPossiblyToRemove.clear();
 }
 
 void CSSFontSelector::addFontFaceRule(StyleRuleFontFace& fontFaceRule, bool isInitiatingElementInUserAgentShadowTree)
@@ -147,6 +154,7 @@ void CSSFontSelector::addFontFaceRule(StyleRuleFontFace& fontFaceRule, bool isIn
     RefPtr<CSSValue> fontFamily = style.getPropertyCSSValue(CSSPropertyFontFamily);
     RefPtr<CSSValue> fontStyle = style.getPropertyCSSValue(CSSPropertyFontStyle);
     RefPtr<CSSValue> fontWeight = style.getPropertyCSSValue(CSSPropertyFontWeight);
+    RefPtr<CSSValue> fontStretch = style.getPropertyCSSValue(CSSPropertyFontStretch);
     RefPtr<CSSValue> src = style.getPropertyCSSValue(CSSPropertySrc);
     RefPtr<CSSValue> unicodeRange = style.getPropertyCSSValue(CSSPropertyUnicodeRange);
     RefPtr<CSSValue> featureSettings = style.getPropertyCSSValue(CSSPropertyFontFeatureSettings);
@@ -156,18 +164,13 @@ void CSSFontSelector::addFontFaceRule(StyleRuleFontFace& fontFaceRule, bool isIn
     RefPtr<CSSValue> variantNumeric = style.getPropertyCSSValue(CSSPropertyFontVariantNumeric);
     RefPtr<CSSValue> variantAlternates = style.getPropertyCSSValue(CSSPropertyFontVariantAlternates);
     RefPtr<CSSValue> variantEastAsian = style.getPropertyCSSValue(CSSPropertyFontVariantEastAsian);
-    if (!is<CSSValueList>(fontFamily.get()) || !is<CSSValueList>(src.get()) || (unicodeRange && !is<CSSValueList>(*unicodeRange)))
+    RefPtr<CSSValue> loadingBehavior = style.getPropertyCSSValue(CSSPropertyFontDisplay);
+    if (!is<CSSValueList>(fontFamily) || !is<CSSValueList>(src) || (unicodeRange && !is<CSSValueList>(*unicodeRange)))
         return;
 
     CSSValueList& familyList = downcast<CSSValueList>(*fontFamily);
     if (!familyList.length())
         return;
-
-    if (!fontStyle)
-        fontStyle = CSSValuePool::singleton().createIdentifierValue(CSSValueNormal).ptr();
-
-    if (!fontWeight)
-        fontWeight = CSSValuePool::singleton().createIdentifierValue(CSSValueNormal);
 
     CSSValueList* rangeList = downcast<CSSValueList>(unicodeRange.get());
 
@@ -175,15 +178,17 @@ void CSSFontSelector::addFontFaceRule(StyleRuleFontFace& fontFaceRule, bool isIn
     if (!srcList.length())
         return;
 
-    m_creatingFont = true;
+    SetForScope<bool> creatingFont(m_creatingFont, true);
     Ref<CSSFontFace> fontFace = CSSFontFace::create(this, &fontFaceRule);
 
     if (!fontFace->setFamilies(*fontFamily))
         return;
-    if (!fontFace->setStyle(*fontStyle))
-        return;
-    if (!fontFace->setWeight(*fontWeight))
-        return;
+    if (fontStyle)
+        fontFace->setStyle(*fontStyle);
+    if (fontWeight)
+        fontFace->setWeight(*fontWeight);
+    if (fontStretch)
+        fontFace->setStretch(*fontStretch);
     if (rangeList && !fontFace->setUnicodeRange(*rangeList))
         return;
     if (variantLigatures && !fontFace->setVariantLigatures(*variantLigatures))
@@ -200,9 +205,11 @@ void CSSFontSelector::addFontFaceRule(StyleRuleFontFace& fontFaceRule, bool isIn
         return;
     if (featureSettings)
         fontFace->setFeatureSettings(*featureSettings);
+    if (loadingBehavior)
+        fontFace->setLoadingBehavior(*loadingBehavior);
 
-    CSSFontFace::appendSources(fontFace, srcList, m_document, isInitiatingElementInUserAgentShadowTree);
-    if (fontFace->allSourcesFailed())
+    CSSFontFace::appendSources(fontFace, srcList, m_document.get(), isInitiatingElementInUserAgentShadowTree);
+    if (fontFace->computeFailureState())
         return;
 
     if (RefPtr<CSSFontFace> existingFace = m_cssFontFaceSet->lookUpByCSSConnection(fontFaceRule)) {
@@ -222,7 +229,6 @@ void CSSFontSelector::addFontFaceRule(StyleRuleFontFace& fontFaceRule, bool isIn
     }
 
     m_cssFontFaceSet->add(fontFace.get());
-    m_creatingFont = false;
     ++m_version;
 }
 
@@ -240,10 +246,17 @@ void CSSFontSelector::dispatchInvalidationCallbacks()
 {
     ++m_version;
 
-    Vector<FontSelectorClient*> clients;
-    copyToVector(m_clients, clients);
-    for (size_t i = 0; i < clients.size(); ++i)
-        clients[i]->fontsNeedUpdate(*this);
+    for (auto& client : copyToVector(m_clients))
+        client->fontsNeedUpdate(*this);
+}
+
+void CSSFontSelector::opportunisticallyStartFontDataURLLoading(const FontCascadeDescription& description, const AtomString& familyName)
+{
+    const auto& segmentedFontFace = m_cssFontFaceSet->fontFace(description.fontSelectionRequest(), familyName);
+    if (!segmentedFontFace)
+        return;
+    for (auto& face : segmentedFontFace->constituentFaces())
+        face->opportunisticallyStartFontDataURLLoading(*this);
 }
 
 void CSSFontSelector::fontLoaded()
@@ -253,7 +266,7 @@ void CSSFontSelector::fontLoaded()
 
 void CSSFontSelector::fontModified()
 {
-    if (!m_creatingFont)
+    if (!m_creatingFont && !m_buildIsUnderway)
         dispatchInvalidationCallbacks();
 }
 
@@ -262,12 +275,16 @@ void CSSFontSelector::fontCacheInvalidated()
     dispatchInvalidationCallbacks();
 }
 
-static const AtomicString& resolveGenericFamily(Document* document, const FontDescription& fontDescription, const AtomicString& familyName)
+static Optional<AtomString> resolveGenericFamily(Document* document, const FontDescription& fontDescription, const AtomString& familyName)
 {
-    if (!document || !document->frame())
-        return familyName;
+    auto platformResult = FontDescription::platformResolveGenericFamily(fontDescription.script(), fontDescription.locale(), familyName);
+    if (!platformResult.isNull())
+        return platformResult;
 
-    const Settings& settings = document->frame()->settings();
+    if (!document)
+        return WTF::nullopt;
+
+    const Settings& settings = document->settings();
 
     UScriptCode script = fontDescription.script();
     if (familyName == serifFamily)
@@ -285,26 +302,50 @@ static const AtomicString& resolveGenericFamily(Document* document, const FontDe
     if (familyName == standardFamily)
         return settings.standardFontFamily(script);
 
-    return familyName;
+    return WTF::nullopt;
 }
 
-FontRanges CSSFontSelector::fontRangesForFamily(const FontDescription& fontDescription, const AtomicString& familyName)
+FontRanges CSSFontSelector::fontRangesForFamily(const FontDescription& fontDescription, const AtomString& familyName)
 {
     // If this ASSERT() fires, it usually means you forgot a document.updateStyleIfNeeded() somewhere.
-    ASSERT(!m_buildIsUnderway || m_isComputingRootStyleFont);
+    ASSERT(!m_buildIsUnderway || m_computingRootStyleFontCount);
 
     // FIXME: The spec (and Firefox) says user specified generic families (sans-serif etc.) should be resolved before the @font-face lookup too.
     bool resolveGenericFamilyFirst = familyName == standardFamily;
 
-    AtomicString familyForLookup = resolveGenericFamilyFirst ? resolveGenericFamily(m_document, fontDescription, familyName) : familyName;
-    auto* face = m_cssFontFaceSet->fontFace(fontDescription.traitsMask(), familyForLookup);
-    if (!face) {
-        if (!resolveGenericFamilyFirst)
-            familyForLookup = resolveGenericFamily(m_document, fontDescription, familyName);
-        return FontRanges(FontCache::singleton().fontForFamily(fontDescription, familyForLookup));
+    AtomString familyForLookup = familyName;
+    Optional<FontDescription> overrideFontDescription;
+    const FontDescription* fontDescriptionForLookup = &fontDescription;
+    auto resolveGenericFamily = [&]() {
+        if (auto genericFamilyOptional = WebCore::resolveGenericFamily(m_document.get(), fontDescription, familyName)) {
+            if (m_document && m_document->quirks().shouldLightenJapaneseBoldSansSerif() && familyForLookup == sansSerifFamily && fontDescription.weight() == boldWeightValue() && fontDescription.script() == USCRIPT_KATAKANA_OR_HIRAGANA) {
+                overrideFontDescription = fontDescription;
+                overrideFontDescription->setWeight(FontSelectionValue(600));
+                fontDescriptionForLookup = &*overrideFontDescription;
+            }
+            familyForLookup = *genericFamilyOptional;
+        }
+    };
+
+    if (resolveGenericFamilyFirst)
+        resolveGenericFamily();
+    auto* face = m_cssFontFaceSet->fontFace(fontDescriptionForLookup->fontSelectionRequest(), familyForLookup);
+    if (face) {
+        if (RuntimeEnabledFeatures::sharedFeatures().webAPIStatisticsEnabled()) {
+            if (m_document)
+                ResourceLoadObserver::shared().logFontLoad(*m_document, familyForLookup.string(), true);
+        }
+        return face->fontRanges(*fontDescriptionForLookup);
     }
 
-    return face->fontRanges(fontDescription);
+    if (!resolveGenericFamilyFirst)
+        resolveGenericFamily();
+    auto font = FontCache::singleton().fontForFamily(*fontDescriptionForLookup, familyForLookup);
+    if (RuntimeEnabledFeatures::sharedFeatures().webAPIStatisticsEnabled()) {
+        if (m_document)
+            ResourceLoadObserver::shared().logFontLoad(*m_document, familyForLookup.string(), !!font);
+    }
+    return FontRanges { WTFMove(font) };
 }
 
 void CSSFontSelector::clearDocument()
@@ -340,7 +381,8 @@ void CSSFontSelector::beginLoadingFontSoon(CachedFont& font)
     // after this font has been requested but before it began loading. Balanced by
     // decrementRequestCount() in beginLoadTimerFired() and in clearDocument().
     m_document->cachedResourceLoader().incrementRequestCount(font);
-    m_beginLoadingTimer.startOneShot(0);
+
+    m_beginLoadingTimer.startOneShot(0_s);
 }
 
 void CSSFontSelector::beginLoadTimerFired()
@@ -358,11 +400,11 @@ void CSSFontSelector::beginLoadTimerFired()
         cachedResourceLoader.decrementRequestCount(*fontHandle);
     }
     // Ensure that if the request count reaches zero, the frame loader will know about it.
-    cachedResourceLoader.loadDone(nullptr);
     // New font loads may be triggered by layout after the document load is complete but before we have dispatched
     // didFinishLoading for the frame. Make sure the delegate is always dispatched by checking explicitly.
     if (m_document && m_document->frame())
         m_document->frame()->loader().checkLoadComplete();
+    cachedResourceLoader.loadDone(LoadCompletionType::Finish);
 }
 
 
@@ -371,10 +413,7 @@ size_t CSSFontSelector::fallbackFontCount()
     if (!m_document)
         return 0;
 
-    if (Settings* settings = m_document->settings())
-        return settings->fontFallbackPrefersPictographs() ? 1 : 0;
-
-    return 0;
+    return m_document->settings().fontFallbackPrefersPictographs() ? 1 : 0;
 }
 
 RefPtr<Font> CSSFontSelector::fallbackFontAt(const FontDescription& fontDescription, size_t index)
@@ -384,11 +423,14 @@ RefPtr<Font> CSSFontSelector::fallbackFontAt(const FontDescription& fontDescript
     if (!m_document)
         return nullptr;
 
-    Settings* settings = m_document->settings();
-    if (!settings || !settings->fontFallbackPrefersPictographs())
+    if (!m_document->settings().fontFallbackPrefersPictographs())
         return nullptr;
-
-    return FontCache::singleton().fontForFamily(fontDescription, settings->pictographFontFamily());
+    auto& pictographFontFamily = m_document->settings().pictographFontFamily();
+    auto font = FontCache::singleton().fontForFamily(fontDescription, pictographFontFamily);
+    if (RuntimeEnabledFeatures::sharedFeatures().webAPIStatisticsEnabled())
+        ResourceLoadObserver::shared().logFontLoad(*m_document, pictographFontFamily.string(), !!font);
+    
+    return font;
 }
 
 }

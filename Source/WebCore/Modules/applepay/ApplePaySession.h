@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,8 +31,14 @@
 #include "ApplePayPaymentRequest.h"
 #include "EventTarget.h"
 #include "ExceptionOr.h"
+#include "PaymentSession.h"
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
+
+namespace JSC {
+class ExecState;
+class JSValue;
+}
 
 namespace WebCore {
 
@@ -42,13 +48,17 @@ class Payment;
 class PaymentContact;
 class PaymentCoordinator;
 class PaymentMethod;
-class URL;
-
+enum class PaymentAuthorizationStatus;
 struct ApplePayLineItem;
 struct ApplePayPaymentRequest;
 struct ApplePayShippingMethod;
+struct ApplePayPaymentAuthorizationResult;
+struct ApplePayPaymentMethodUpdate;
+struct ApplePayShippingContactUpdate;
+struct ApplePayShippingMethodUpdate;
 
-class ApplePaySession final : public RefCounted<ApplePaySession>, public ActiveDOMObject, public EventTargetWithInlineData {
+class ApplePaySession final : public PaymentSession, public ActiveDOMObject, public EventTargetWithInlineData {
+    WTF_MAKE_ISO_ALLOCATED(ApplePaySession);
 public:
     static ExceptionOr<Ref<ApplePaySession>> create(Document&, unsigned version, ApplePayPaymentRequest&&);
     virtual ~ApplePaySession();
@@ -62,33 +72,32 @@ public:
     static const unsigned short STATUS_PIN_INCORRECT = 6;
     static const unsigned short STATUS_PIN_LOCKOUT = 7;
 
-    static ExceptionOr<bool> supportsVersion(ScriptExecutionContext&, unsigned version);
-    static ExceptionOr<bool> canMakePayments(ScriptExecutionContext&);
-    static ExceptionOr<void> canMakePaymentsWithActiveCard(ScriptExecutionContext&, const String& merchantIdentifier, Ref<DeferredPromise>&&);
-    static ExceptionOr<void> openPaymentSetup(ScriptExecutionContext&, const String& merchantIdentifier, Ref<DeferredPromise>&&);
+    static ExceptionOr<bool> supportsVersion(Document&, unsigned version);
+    static ExceptionOr<bool> canMakePayments(Document&);
+    static ExceptionOr<void> canMakePaymentsWithActiveCard(Document&, const String& merchantIdentifier, Ref<DeferredPromise>&&);
+    static ExceptionOr<void> openPaymentSetup(Document&, const String& merchantIdentifier, Ref<DeferredPromise>&&);
 
-    ExceptionOr<void> begin();
+    ExceptionOr<void> begin(Document&);
     ExceptionOr<void> abort();
     ExceptionOr<void> completeMerchantValidation(JSC::ExecState&, JSC::JSValue merchantSession);
+    ExceptionOr<void> completeShippingMethodSelection(ApplePayShippingMethodUpdate&&);
+    ExceptionOr<void> completeShippingContactSelection(ApplePayShippingContactUpdate&&);
+    ExceptionOr<void> completePaymentMethodSelection(ApplePayPaymentMethodUpdate&&);
+    ExceptionOr<void> completePayment(ApplePayPaymentAuthorizationResult&&);
+
+    // Old functions.
     ExceptionOr<void> completeShippingMethodSelection(unsigned short status, ApplePayLineItem&& newTotal, Vector<ApplePayLineItem>&& newLineItems);
     ExceptionOr<void> completeShippingContactSelection(unsigned short status, Vector<ApplePayShippingMethod>&& newShippingMethods, ApplePayLineItem&& newTotal, Vector<ApplePayLineItem>&& newLineItems);
     ExceptionOr<void> completePaymentMethodSelection(ApplePayLineItem&& newTotal, Vector<ApplePayLineItem>&& newLineItems);
     ExceptionOr<void> completePayment(unsigned short status);
 
-    const PaymentRequest& paymentRequest() const { return m_paymentRequest; }
+    const ApplePaySessionPaymentRequest& paymentRequest() const { return m_paymentRequest; }
 
-    void validateMerchant(const URL&);
-    void didAuthorizePayment(const Payment&);
-    void didSelectShippingMethod(const PaymentRequest::ShippingMethod&);
-    void didSelectShippingContact(const PaymentContact&);
-    void didSelectPaymentMethod(const PaymentMethod&);
-    void didCancelPayment();
-
-    using RefCounted<ApplePaySession>::ref;
-    using RefCounted<ApplePaySession>::deref;
+    using PaymentSession::ref;
+    using PaymentSession::deref;
 
 private:
-    ApplePaySession(Document&, PaymentRequest&&);
+    ApplePaySession(Document&, unsigned version, ApplePaySessionPaymentRequest&&);
 
     // ActiveDOMObject.
     const char* activeDOMObjectName() const override;
@@ -100,6 +109,15 @@ private:
     ScriptExecutionContext* scriptExecutionContext() const override { return ActiveDOMObject::scriptExecutionContext(); }
     void refEventTarget() override { ref(); }
     void derefEventTarget() override { deref(); }
+
+    // PaymentSession
+    unsigned version() const override;
+    void validateMerchant(URL&&) override;
+    void didAuthorizePayment(const Payment&) override;
+    void didSelectShippingMethod(const ApplePaySessionPaymentRequest::ShippingMethod&) override;
+    void didSelectShippingContact(const PaymentContact&) override;
+    void didSelectPaymentMethod(const PaymentMethod&) override;
+    void didCancelPaymentSession(PaymentSessionError&&) override;
 
     PaymentCoordinator& paymentCoordinator() const;
 
@@ -122,6 +140,7 @@ private:
         ShippingMethodSelected,
         ShippingContactSelected,
         PaymentMethodSelected,
+        CancelRequested,
         Authorized,
         Completed,
 
@@ -135,7 +154,8 @@ private:
         ValidationComplete,
     } m_merchantValidationState { MerchantValidationState::Idle };
 
-    const PaymentRequest m_paymentRequest;
+    const ApplePaySessionPaymentRequest m_paymentRequest;
+    unsigned m_version;
 };
 
 }

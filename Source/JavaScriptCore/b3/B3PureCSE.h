@@ -40,7 +40,7 @@ class Value;
 typedef Vector<Value*, 1> Matches;
 
 // This is a reusable utility for doing pure CSE. You can use it to do pure CSE on a program by just
-// proceeding in order an calling process().
+// proceeding in order and calling process().
 class PureCSE {
 public:
     PureCSE();
@@ -55,6 +55,8 @@ public:
 private:
     HashMap<ValueKey, Matches> m_map;
 };
+
+bool pureCSE(Procedure&);
 
 } } // namespace JSC::B3
 

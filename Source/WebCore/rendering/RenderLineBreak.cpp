@@ -23,6 +23,7 @@
 #include "RenderLineBreak.h"
 
 #include "Document.h"
+#include "FontMetrics.h"
 #include "HTMLElement.h"
 #include "HTMLWBRElement.h"
 #include "InlineElementBox.h"
@@ -32,12 +33,15 @@
 #include "RootInlineBox.h"
 #include "SimpleLineLayoutFunctions.h"
 #include "VisiblePosition.h"
+#include <wtf/IsoMallocInlines.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #include "SelectionRect.h"
 #endif
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderLineBreak);
 
 static const int invalidLineHeight = -1;
 
@@ -46,13 +50,6 @@ static const SimpleLineLayout::Layout* simpleLineLayout(const RenderLineBreak& r
     if (!is<RenderBlockFlow>(*renderer.parent()))
         return nullptr;
     return downcast<RenderBlockFlow>(*renderer.parent()).simpleLineLayout();
-}
-
-static void ensureLineBoxes(const RenderLineBreak& renderer)
-{
-    if (!is<RenderBlockFlow>(*renderer.parent()))
-        return;
-    downcast<RenderBlockFlow>(*renderer.parent()).ensureLineBoxes();
 }
 
 RenderLineBreak::RenderLineBreak(HTMLElement& element, RenderStyle&& style)
@@ -111,7 +108,7 @@ void RenderLineBreak::deleteInlineBoxWrapper()
 {
     if (!m_inlineBoxWrapper)
         return;
-    if (!documentBeingDestroyed())
+    if (!renderTreeBeingDestroyed())
         m_inlineBoxWrapper->removeFromParent();
     delete m_inlineBoxWrapper;
     m_inlineBoxWrapper = nullptr;
@@ -127,6 +124,13 @@ void RenderLineBreak::dirtyLineBoxes(bool fullLayout)
         return;
     }
     m_inlineBoxWrapper->dirtyLineBoxes();
+}
+
+void RenderLineBreak::ensureLineBoxes()
+{
+    if (!is<RenderBlockFlow>(*parent()))
+        return;
+    downcast<RenderBlockFlow>(*parent()).ensureLineBoxes();
 }
 
 void RenderLineBreak::deleteLineBoxesBeforeSimpleLineLayout()
@@ -150,16 +154,16 @@ bool RenderLineBreak::canBeSelectionLeaf() const
     return true;
 }
 
-VisiblePosition RenderLineBreak::positionForPoint(const LayoutPoint&, const RenderRegion*)
+VisiblePosition RenderLineBreak::positionForPoint(const LayoutPoint&, const RenderFragmentContainer*)
 {
-    ensureLineBoxes(*this);
+    ensureLineBoxes();
     return createVisiblePosition(0, DOWNSTREAM);
 }
 
 void RenderLineBreak::setSelectionState(SelectionState state)
 {
     if (state != SelectionNone)
-        ensureLineBoxes(*this);
+        ensureLineBoxes();
     RenderBoxModelObject::setSelectionState(state);
     if (!m_inlineBoxWrapper)
         return;
@@ -225,10 +229,10 @@ void RenderLineBreak::updateFromStyle()
     m_cachedLineHeight = invalidLineHeight;
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 void RenderLineBreak::collectSelectionRects(Vector<SelectionRect>& rects, unsigned, unsigned)
 {
-    ensureLineBoxes(*this);
+    ensureLineBoxes();
     InlineElementBox* box = m_inlineBoxWrapper;
     if (!box)
         return;
@@ -244,8 +248,8 @@ void RenderLineBreak::collectSelectionRects(Vector<SelectionRect>& rects, unsign
     auto* containingBlock = containingBlockForObjectInFlow();
     // Map rect, extended left to leftOffset, and right to rightOffset, through transforms to get minX and maxX.
     LogicalSelectionOffsetCaches cache(*containingBlock);
-    LayoutUnit leftOffset = containingBlock->logicalLeftSelectionOffset(*containingBlock, box->logicalTop(), cache);
-    LayoutUnit rightOffset = containingBlock->logicalRightSelectionOffset(*containingBlock, box->logicalTop(), cache);
+    LayoutUnit leftOffset = containingBlock->logicalLeftSelectionOffset(*containingBlock, LayoutUnit(box->logicalTop()), cache);
+    LayoutUnit rightOffset = containingBlock->logicalRightSelectionOffset(*containingBlock, LayoutUnit(box->logicalTop()), cache);
     LayoutRect extentsRect = rect;
     if (box->isHorizontal()) {
         extentsRect.setX(leftOffset);

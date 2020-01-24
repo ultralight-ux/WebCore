@@ -30,12 +30,13 @@
 
 #if ENABLE(ENCRYPTED_MEDIA)
 
-#include "JSDOMPromise.h"
+#include "JSDOMPromiseDeferred.h"
 #include "MediaKeySystemConfiguration.h"
 #include "Supplementable.h"
 
 namespace WebCore {
 
+class Document;
 class MediaKeySystemAccess;
 class Navigator;
 class Page;

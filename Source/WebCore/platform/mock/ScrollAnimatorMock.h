@@ -28,8 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ScrollAnimatorMock_h
-#define ScrollAnimatorMock_h
+#pragma once
 
 #include "ScrollAnimator.h"
 
@@ -40,8 +39,10 @@ namespace WebCore {
 // the internal setting enableMockScrollAnimator.
 class ScrollAnimatorMock final : public ScrollAnimator {
 public:
-    ScrollAnimatorMock(ScrollableArea&, std::function<void(const String&)>&&);
+    ScrollAnimatorMock(ScrollableArea&, WTF::Function<void(const String&)>&&);
     virtual ~ScrollAnimatorMock();
+
+private:
 
 #if ENABLE(RUBBER_BANDING)
     bool allowsHorizontalStretching(const PlatformWheelEvent&) override { return false; }
@@ -56,7 +57,6 @@ public:
     void adjustScrollPositionToBoundsIfNecessary() override { }
 #endif
 
-private:
     void didAddVerticalScrollbar(Scrollbar*) override;
     void didAddHorizontalScrollbar(Scrollbar*) override;
     void willRemoveVerticalScrollbar(Scrollbar*) override;
@@ -68,11 +68,10 @@ private:
     void mouseExitedScrollbar(Scrollbar*) const override;
     void mouseIsDownInScrollbar(Scrollbar*, bool) const override;
 
-    std::function<void(const String&)> m_logger;
+    WTF::Function<void(const String&)> m_logger;
     Scrollbar* m_verticalScrollbar { nullptr };
     Scrollbar* m_horizontalScrollbar { nullptr };
 };
 
 } // namespace WebCore
 
-#endif // ScrollAnimatorMock_h

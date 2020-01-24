@@ -36,8 +36,11 @@
 #include "FloatConversion.h"
 #include "PannerNode.h"
 #include "ScriptExecutionContext.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(AudioBufferSourceNode);
 
 const double DefaultGrainDuration = 0.020; // 20ms
 
@@ -105,14 +108,14 @@ void AudioBufferSourceNode::process(size_t framesToProcess)
 
     // After calling setBuffer() with a buffer having a different number of channels, there can in rare cases be a slight delay
     // before the output bus is updated to the new number of channels because of use of tryLocks() in the context's updating system.
-    // In this case, if the the buffer has just been changed and we're not quite ready yet, then just output silence.
+    // In this case, if the buffer has just been changed and we're not quite ready yet, then just output silence.
     if (numberOfChannels() != buffer()->numberOfChannels()) {
         outputBus.zero();
         return;
     }
 
-    size_t quantumFrameOffset;
-    size_t bufferFramesToProcess;
+    size_t quantumFrameOffset = 0;
+    size_t bufferFramesToProcess = 0;
     updateSchedulingInfo(framesToProcess, outputBus, quantumFrameOffset, bufferFramesToProcess);
 
     if (!bufferFramesToProcess) {
@@ -407,7 +410,8 @@ void AudioBufferSourceNode::reset()
 void AudioBufferSourceNode::setBuffer(RefPtr<AudioBuffer>&& buffer)
 {
     ASSERT(isMainThread());
-    
+    DEBUG_LOG(LOGIDENTIFIER);
+
     // The context must be locked since changing the buffer can re-configure the number of channels that are output.
     AudioContext::AutoLocker contextLocker(context());
     
@@ -421,8 +425,8 @@ void AudioBufferSourceNode::setBuffer(RefPtr<AudioBuffer>&& buffer)
 
         output(0)->setNumberOfChannels(numberOfChannels);
 
-        m_sourceChannels = std::make_unique<const float*[]>(numberOfChannels);
-        m_destinationChannels = std::make_unique<float*[]>(numberOfChannels);
+        m_sourceChannels = makeUniqueArray<const float*>(numberOfChannels);
+        m_destinationChannels = makeUniqueArray<float*>(numberOfChannels);
 
         for (unsigned i = 0; i < numberOfChannels; ++i) 
             m_sourceChannels[i] = buffer->channelData(i)->data();
@@ -437,7 +441,7 @@ unsigned AudioBufferSourceNode::numberOfChannels()
     return output(0)->numberOfChannels();
 }
 
-ExceptionOr<void> AudioBufferSourceNode::start(double when, double grainOffset, std::optional<double> optionalGrainDuration)
+ExceptionOr<void> AudioBufferSourceNode::start(double when, double grainOffset, Optional<double> optionalGrainDuration)
 {
     double grainDuration = 0;
     if (optionalGrainDuration)
@@ -451,20 +455,21 @@ ExceptionOr<void> AudioBufferSourceNode::start(double when, double grainOffset, 
 ExceptionOr<void> AudioBufferSourceNode::startPlaying(BufferPlaybackMode playbackMode, double when, double grainOffset, double grainDuration)
 {
     ASSERT(isMainThread());
+    ALWAYS_LOG(LOGIDENTIFIER, "when = ", when, ", offset = ", grainOffset, ", duration = ", grainDuration);
 
     context().nodeWillBeginPlayback();
 
     if (m_playbackState != UNSCHEDULED_STATE)
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
 
     if (!std::isfinite(when) || (when < 0))
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
 
     if (!std::isfinite(grainOffset) || (grainOffset < 0))
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
 
     if (!std::isfinite(grainDuration) || (grainDuration < 0))
-        return Exception { INVALID_STATE_ERR };
+        return Exception { InvalidStateError };
 
     if (!buffer())
         return { };
@@ -528,8 +533,8 @@ double AudioBufferSourceNode::totalPitchRate()
 bool AudioBufferSourceNode::looping()
 {
     static bool firstTime = true;
-    if (firstTime && context().scriptExecutionContext()) {
-        context().scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Warning, ASCIILiteral("AudioBufferSourceNode 'looping' attribute is deprecated.  Use 'loop' instead."));
+    if (firstTime) {
+        context().addConsoleMessage(MessageSource::JS, MessageLevel::Warning, "AudioBufferSourceNode 'looping' attribute is deprecated.  Use 'loop' instead."_s);
         firstTime = false;
     }
 
@@ -539,8 +544,8 @@ bool AudioBufferSourceNode::looping()
 void AudioBufferSourceNode::setLooping(bool looping)
 {
     static bool firstTime = true;
-    if (firstTime && context().scriptExecutionContext()) {
-        context().scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Warning, ASCIILiteral("AudioBufferSourceNode 'looping' attribute is deprecated.  Use 'loop' instead."));
+    if (firstTime) {
+        context().addConsoleMessage(MessageSource::JS, MessageLevel::Warning, "AudioBufferSourceNode 'looping' attribute is deprecated.  Use 'loop' instead."_s);
         firstTime = false;
     }
 

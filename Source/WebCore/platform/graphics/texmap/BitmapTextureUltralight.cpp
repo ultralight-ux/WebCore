@@ -40,8 +40,7 @@ void BitmapTextureUltralight::didReset() {
 }
 
 void BitmapTextureUltralight::updateContents(Image* image,
-    const IntRect& targetRect, const IntPoint& offset,
-    UpdateContentsFlag updateContentsFlag) {
+    const IntRect& targetRect, const IntPoint& offset) {
     if (!image)
         return;
 
@@ -86,8 +85,7 @@ void BitmapTextureUltralight::updateContents(Image* image,
 
 void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
   GraphicsLayer* sourceLayer, const IntRect& targetRect,
-  const IntPoint& offset, UpdateContentsFlag updateContentsFlag,
-  float scale) {
+  const IntPoint& offset, float scale) {
   IntRect sourceRect(targetRect);
   sourceRect.setLocation(offset);
   sourceRect.scale(1 / scale);
@@ -122,11 +120,11 @@ void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
 }
 
 void BitmapTextureUltralight::updateContents(const void*, const IntRect& target,
-    const IntPoint& offset, int bytesPerLine, UpdateContentsFlag) {
+    const IntPoint& offset, int bytesPerLine) {
   // not implemented
 }
 
-PassRefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper&,
+RefPtr<BitmapTexture> BitmapTextureUltralight::applyFilters(TextureMapper&,
     const FilterOperations&) {
     // not implemented
     return this;

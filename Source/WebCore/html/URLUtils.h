@@ -36,6 +36,7 @@ public:
     void setHref(const String& url) { static_cast<T*>(this)->setHref(url); }
 
     String toString() const;
+    String toJSON() const;
 
     String origin() const;
 
@@ -74,15 +75,23 @@ String URLUtils<T>::toString() const
 }
 
 template <typename T>
+String URLUtils<T>::toJSON() const
+{
+    return href().string();
+}
+
+template <typename T>
 String URLUtils<T>::origin() const
 {
-    RefPtr<SecurityOrigin> origin = SecurityOrigin::create(href());
+    auto origin = SecurityOrigin::create(href());
     return origin->toString();
 }
 
 template <typename T>
 String URLUtils<T>::protocol() const
 {
+    if (WTF::protocolIsJavaScript(href()))
+        return "javascript:"_s;
     return makeString(href().protocol(), ':');
 }
 
@@ -104,6 +113,8 @@ template <typename T>
 void URLUtils<T>::setUsername(const String& user)
 {
     URL url = href();
+    if (url.cannotBeABaseURL())
+        return;
     url.setUser(user);
     setHref(url);
 }
@@ -118,6 +129,8 @@ template <typename T>
 void URLUtils<T>::setPassword(const String& pass)
 {
     URL url = href();
+    if (url.cannotBeABaseURL())
+        return;
     url.setPass(pass);
     setHref(url);
 }
@@ -143,6 +156,8 @@ void URLUtils<T>::setHost(const String& value)
     if (value.isEmpty())
         return;
     URL url = href();
+    if (url.cannotBeABaseURL())
+        return;
     if (!url.canSetHostOrPort())
         return;
 
@@ -161,7 +176,7 @@ void URLUtils<T>::setHost(const String& value)
             // requires setting the port to "0" if it is set to empty string.
             url.setHostAndPort(value.substring(0, separator + 1) + '0');
         } else {
-            if (isDefaultPortForProtocol(port, url.protocol()))
+            if (WTF::isDefaultPortForProtocol(port, url.protocol()))
                 url.setHostAndPort(value.substring(0, separator));
             else
                 url.setHostAndPort(value.substring(0, portEnd));
@@ -173,7 +188,7 @@ void URLUtils<T>::setHost(const String& value)
 template <typename T>
 String URLUtils<T>::hostname() const
 {
-    return href().host();
+    return href().host().toString();
 }
 
 template <typename T>
@@ -190,6 +205,8 @@ void URLUtils<T>::setHostname(const String& value)
         return;
 
     URL url = href();
+    if (url.cannotBeABaseURL())
+        return;
     if (!url.canSetHostOrPort())
         return;
 
@@ -210,6 +227,8 @@ template <typename T>
 void URLUtils<T>::setPort(const String& value)
 {
     URL url = href();
+    if (url.cannotBeABaseURL() || url.protocolIs("file"))
+        return;
     if (!url.canSetHostOrPort())
         return;
 
@@ -218,7 +237,7 @@ void URLUtils<T>::setPort(const String& value)
     // requires setting the port to "0" if it is set to empty string.
     // FIXME: http://url.spec.whatwg.org/ doesn't appear to require this; test what browsers do
     unsigned port = value.toUInt();
-    if (isDefaultPortForProtocol(port, url.protocol()))
+    if (WTF::isDefaultPortForProtocol(port, url.protocol()))
         url.removePort();
     else
         url.setPort(port);
@@ -236,6 +255,8 @@ template <typename T>
 void URLUtils<T>::setPathname(const String& value)
 {
     URL url = href();
+    if (url.cannotBeABaseURL())
+        return;
     if (!url.canSetPathname())
         return;
 
@@ -258,9 +279,14 @@ template <typename T>
 void URLUtils<T>::setSearch(const String& value)
 {
     URL url = href();
-    String newSearch = (value[0U] == '?') ? value.substring(1) : value;
-    // Make sure that '#' in the query does not leak to the hash.
-    url.setQuery(newSearch.replaceWithLiteral('#', "%23"));
+    if (value.isEmpty()) {
+        // If the given value is the empty string, set url's query to null.
+        url.setQuery({ });
+    } else {
+        String newSearch = (value[0U] == '?') ? value.substring(1) : value;
+        // Make sure that '#' in the query does not leak to the hash.
+        url.setQuery(newSearch.replaceWithLiteral('#', "%23"));
+    }
 
     setHref(url.string());
 }
@@ -271,7 +297,7 @@ String URLUtils<T>::hash() const
     String fragmentIdentifier = href().fragmentIdentifier();
     if (fragmentIdentifier.isEmpty())
         return emptyString();
-    return AtomicString(String("#" + fragmentIdentifier));
+    return AtomString(String("#" + fragmentIdentifier));
 }
 
 template <typename T>

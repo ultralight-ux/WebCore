@@ -25,8 +25,11 @@
 
 #include "Document.h"
 #include "HTMLNames.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLParamElement);
 
 using namespace HTMLNames;
 
@@ -45,7 +48,7 @@ String HTMLParamElement::name() const
 {
     if (hasName())
         return getNameAttribute();
-    return document().isHTMLDocument() ? emptyAtom : getIdAttribute();
+    return document().isHTMLDocument() ? emptyAtom() : getIdAttribute();
 }
 
 String HTMLParamElement::value() const

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,26 +23,27 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef KeyedCoding_h
-#define KeyedCoding_h
+#pragma once
 
 #include <functional>
+#include <wtf/Deque.h>
 #include <wtf/Forward.h>
-#include <wtf/Vector.h>
 
 namespace WebCore {
 
 class SharedBuffer;
 
 class KeyedDecoder {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WEBCORE_EXPORT static std::unique_ptr<KeyedDecoder> decoder(const uint8_t* data, size_t);
 
-    virtual ~KeyedDecoder() { }
+    virtual ~KeyedDecoder() = default;
 
     virtual bool decodeBytes(const String& key, const uint8_t*&, size_t&) = 0;
     virtual bool decodeBool(const String& key, bool&) = 0;
     virtual bool decodeUInt32(const String& key, uint32_t&) = 0;
+    virtual bool decodeUInt64(const String& key, uint64_t&) = 0;
     virtual bool decodeInt32(const String& key, int32_t&) = 0;
     virtual bool decodeInt64(const String& key, int64_t&) = 0;
     virtual bool decodeFloat(const String& key, float&) = 0;
@@ -105,17 +106,18 @@ public:
         return result;
     }
 
-    template<typename T, typename F>
-    bool decodeObjects(const String& key, Vector<T>& objects, F&& function)
+    template<typename ContainerType, typename F>
+    bool decodeObjects(const String& key, ContainerType& objects, F&& function)
     {
         if (!beginArray(key))
             return false;
 
         bool result = true;
         while (beginArrayElement()) {
-            T element;
+            typename ContainerType::ValueType element;
             if (!function(*this, element)) {
                 result = false;
+                endArrayElement();
                 break;
             }
             objects.append(WTFMove(element));
@@ -142,21 +144,23 @@ private:
 };
 
 class KeyedEncoder {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WEBCORE_EXPORT static std::unique_ptr<KeyedEncoder> encoder();
 
-    virtual ~KeyedEncoder() { }
+    virtual ~KeyedEncoder() = default;
 
     virtual void encodeBytes(const String& key, const uint8_t*, size_t) = 0;
     virtual void encodeBool(const String& key, bool) = 0;
     virtual void encodeUInt32(const String& key, uint32_t) = 0;
+    virtual void encodeUInt64(const String& key, uint64_t) = 0;
     virtual void encodeInt32(const String& key, int32_t) = 0;
     virtual void encodeInt64(const String& key, int64_t) = 0;
     virtual void encodeFloat(const String& key, float) = 0;
     virtual void encodeDouble(const String& key, double) = 0;
     virtual void encodeString(const String& key, const String&) = 0;
 
-    virtual PassRefPtr<SharedBuffer> finishEncoding() = 0;
+    virtual RefPtr<SharedBuffer> finishEncoding() = 0;
 
     template<typename T>
     void encodeEnum(const String& key, T value)
@@ -211,5 +215,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // KeyedCoding_h

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,68 +25,23 @@
 
 #pragma once
 
-#if ENABLE(SUBTLE_CRYPTO)
+#if ENABLE(WEB_CRYPTO)
 
 #include "CryptoAlgorithmIdentifier.h"
 #include <CommonCrypto/CommonCryptor.h>
+#include <CommonCrypto/CommonRandom.h>
+#include <pal/spi/cocoa/CommonCryptoSPI.h>
 #include <wtf/Vector.h>
 
-#if USE(APPLE_INTERNAL_SDK)
-#include <CommonCrypto/CommonRSACryptor.h>
-#include <CommonCrypto/CommonRandomSPI.h>
-#endif
-
-#ifndef _CC_RSACRYPTOR_H_
-enum {
-    kCCDigestNone = 0,
-    kCCDigestSHA1 = 8,
-    kCCDigestSHA224 = 9,
-    kCCDigestSHA256 = 10,
-    kCCDigestSHA384 = 11,
-    kCCDigestSHA512 = 12,
-};
-typedef uint32_t CCDigestAlgorithm;
-
-enum {
-    ccRSAKeyPublic = 0,
-    ccRSAKeyPrivate = 1
-};
-typedef uint32_t CCRSAKeyType;
-
-enum {
-    ccPKCS1Padding = 1001,
-    ccOAEPPadding = 1002
-};
-typedef uint32_t CCAsymmetricPadding;
-
-enum {
-    kCCNotVerified = -4306
-};
-#endif
-
+#if !HAVE(CCRSAGetCRTComponents)
 typedef struct _CCBigNumRef *CCBigNumRef;
-
-typedef struct __CCRandom *CCRandomRef;
-extern const CCRandomRef kCCRandomDefault;
-extern "C" int CCRandomCopyBytes(CCRandomRef rnd, void *bytes, size_t count);
-
-typedef struct _CCRSACryptor *CCRSACryptorRef;
-extern "C" CCCryptorStatus CCRSACryptorEncrypt(CCRSACryptorRef publicKey, CCAsymmetricPadding padding, const void *plainText, size_t plainTextLen, void *cipherText, size_t *cipherTextLen, const void *tagData, size_t tagDataLen, CCDigestAlgorithm digestType);
-extern "C" CCCryptorStatus CCRSACryptorDecrypt(CCRSACryptorRef privateKey, CCAsymmetricPadding padding, const void *cipherText, size_t cipherTextLen, void *plainText, size_t *plainTextLen, const void *tagData, size_t tagDataLen, CCDigestAlgorithm digestType);
-extern "C" CCCryptorStatus CCRSACryptorSign(CCRSACryptorRef privateKey, CCAsymmetricPadding padding, const void *hashToSign, size_t hashSignLen, CCDigestAlgorithm digestType, size_t saltLen, void *signedData, size_t *signedDataLen);
-extern "C" CCCryptorStatus CCRSACryptorVerify(CCRSACryptorRef publicKey, CCAsymmetricPadding padding, const void *hash, size_t hashLen, CCDigestAlgorithm digestType, size_t saltLen, const void *signedData, size_t signedDataLen);
-extern "C" CCCryptorStatus CCRSACryptorCreateFromData(CCRSAKeyType keyType, uint8_t *modulus, size_t modulusLength, uint8_t *exponent, size_t exponentLength, uint8_t *p, size_t pLength, uint8_t *q, size_t qLength, CCRSACryptorRef *ref);
-extern "C" CCCryptorStatus CCRSACryptorGeneratePair(size_t keysize, uint32_t e, CCRSACryptorRef *publicKey, CCRSACryptorRef *privateKey);
-extern "C" CCRSACryptorRef CCRSACryptorGetPublicKeyFromPrivateKey(CCRSACryptorRef privkey);
-extern "C" void CCRSACryptorRelease(CCRSACryptorRef key);
-extern "C" CCCryptorStatus CCRSAGetKeyComponents(CCRSACryptorRef rsaKey, uint8_t *modulus, size_t *modulusLength, uint8_t *exponent, size_t *exponentLength, uint8_t *p, size_t *pLength, uint8_t *q, size_t *qLength);
-extern "C" CCRSAKeyType CCRSAGetKeyType(CCRSACryptorRef key);
-extern "C" CCCryptorStatus CCCryptorGCM(CCOperation op, CCAlgorithm alg, const void* key, size_t keyLength, const void* iv, size_t ivLen, const void* aData, size_t aDataLen, const void* dataIn, size_t dataInLength, void* dataOut, const void* tag, size_t* tagLength);
-extern "C" CCCryptorStatus CCRSACryptorImport(const void *keyPackage, size_t keyPackageLen, CCRSACryptorRef *key);
-extern "C" CCCryptorStatus CCRSACryptorExport(CCRSACryptorRef key, void *out, size_t *outLen);
+#endif
 
 namespace WebCore {
 
+#if !HAVE(CCRSAGetCRTComponents)
+
+// Only need CCBigNum for the code used when we don't have CCRSAGetCRTComponents.
 class CCBigNum {
 public:
     CCBigNum(const uint8_t*, size_t);
@@ -109,8 +64,10 @@ private:
     CCBigNumRef m_number;
 };
 
+#endif
+
 bool getCommonCryptoDigestAlgorithm(CryptoAlgorithmIdentifier, CCDigestAlgorithm&);
 
 } // namespace WebCore
 
-#endif // ENABLE(SUBTLE_CRYPTO)
+#endif // ENABLE(WEB_CRYPTO)

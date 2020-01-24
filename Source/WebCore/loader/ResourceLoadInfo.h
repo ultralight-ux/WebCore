@@ -25,10 +25,14 @@
 
 #pragma once
 
+#if ENABLE(CONTENT_EXTENSIONS)
+
 #include "CachedResource.h"
-#include "URL.h"
+#include <wtf/OptionSet.h>
+#include <wtf/URL.h>
 
 namespace WebCore {
+namespace ContentExtensions {
 
 enum class ResourceType : uint16_t {
     Invalid = 0x0000,
@@ -42,8 +46,10 @@ enum class ResourceType : uint16_t {
     Media = 0x0080,
     PlugInStream = 0x0100,
     Popup = 0x0200,
+    // 0x0400 and 0x0800 are used by LoadType.
+    Ping = 0x1000,
 };
-const uint16_t ResourceTypeMask = 0x03FF;
+const uint16_t ResourceTypeMask = 0x13FF;
 
 enum class LoadType : uint16_t {
     Invalid = 0x0000,
@@ -52,15 +58,19 @@ enum class LoadType : uint16_t {
 };
 const uint16_t LoadTypeMask = 0x0C00;
 
+static_assert(!(ResourceTypeMask & LoadTypeMask), "ResourceTypeMask and LoadTypeMask should be mutually exclusive because they are stored in the same uint16_t");
+
 typedef uint16_t ResourceFlags;
 
 // The first 32 bits of a uint64_t action are used for the action location.
 // The next 16 bits are used for the flags (ResourceType and LoadType).
-// The next bit is used to mark actions that are from a rule with an if-domain condition.
-// The next bit is used to mark actions that in the default stylesheet.
+// The next bit is used to mark actions that are from a rule with an if-domain.
+//     Actions from rules with unless-domain conditions are distinguished from
+//     rules with if-domain conditions by not having this bit set.
+//     Actions from rules with no conditions are put in the DFA without conditions.
 // The values -1 and -2 are used for removed and empty values in HashTables.
 const uint64_t ActionFlagMask = 0x0000FFFF00000000;
-const uint64_t IfDomainFlag = 0x0001000000000000;
+const uint64_t IfConditionFlag = 0x0001000000000000;
 
 ResourceType toResourceType(CachedResource::Type);
 uint16_t readResourceType(const String&);
@@ -69,10 +79,13 @@ uint16_t readLoadType(const String&);
 struct ResourceLoadInfo {
     URL resourceURL;
     URL mainDocumentURL;
-    ResourceType type;
+    OptionSet<ResourceType> type;
 
     bool isThirdParty() const;
     ResourceFlags getResourceFlags() const;
 };
 
+} // namespace ContentExtensions
 } // namespace WebCore
+
+#endif

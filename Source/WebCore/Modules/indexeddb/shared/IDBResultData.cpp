@@ -94,6 +94,8 @@ void IDBResultData::isolatedCopy(const IDBResultData& source, IDBResultData& des
         destination.m_resultKey = std::make_unique<IDBKeyData>(*source.m_resultKey, IDBKeyData::IsolatedCopy);
     if (source.m_getResult)
         destination.m_getResult = std::make_unique<IDBGetResult>(*source.m_getResult, IDBGetResult::IsolatedCopy);
+    if (source.m_getAllResult)
+        destination.m_getAllResult = std::make_unique<IDBGetAllResult>(*source.m_getAllResult, IDBGetAllResult::IsolatedCopy);
 }
 
 IDBResultData IDBResultData::error(const IDBResourceIdentifier& requestIdentifier, const IDBError& error)
@@ -109,7 +111,7 @@ IDBResultData IDBResultData::openDatabaseSuccess(const IDBResourceIdentifier& re
     IDBResultData result { requestIdentifier };
     result.m_type = IDBResultType::OpenDatabaseSuccess;
     result.m_databaseConnectionIdentifier = connection.identifier();
-    result.m_databaseInfo = std::make_unique<IDBDatabaseInfo>(connection.database().info());
+    result.m_databaseInfo = std::make_unique<IDBDatabaseInfo>(connection.database()->info());
     return result;
 }
 
@@ -119,7 +121,7 @@ IDBResultData IDBResultData::openDatabaseUpgradeNeeded(const IDBResourceIdentifi
     IDBResultData result { requestIdentifier };
     result.m_type = IDBResultType::OpenDatabaseUpgradeNeeded;
     result.m_databaseConnectionIdentifier = transaction.databaseConnection().identifier();
-    result.m_databaseInfo = std::make_unique<IDBDatabaseInfo>(transaction.databaseConnection().database().info());
+    result.m_databaseInfo = std::make_unique<IDBDatabaseInfo>(transaction.databaseConnection().database()->info());
     result.m_transactionInfo = std::make_unique<IDBTransactionInfo>(transaction.info());
     return result;
 }
@@ -226,6 +228,12 @@ const IDBTransactionInfo& IDBResultData::transactionInfo() const
 }
 
 const IDBGetResult& IDBResultData::getResult() const
+{
+    RELEASE_ASSERT(m_getResult);
+    return *m_getResult;
+}
+
+IDBGetResult& IDBResultData::getResultRef()
 {
     RELEASE_ASSERT(m_getResult);
     return *m_getResult;

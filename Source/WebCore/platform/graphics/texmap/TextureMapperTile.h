@@ -23,7 +23,6 @@
 #include "FloatRect.h"
 #include "Image.h"
 #include "TextureMapper.h"
-#include "TextureMapperPlatformLayer.h"
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
@@ -37,18 +36,18 @@ public:
     inline void setTexture(BitmapTexture* texture) { m_texture = texture; }
     inline void setRect(const FloatRect& rect) { m_rect = rect; }
 
-    void updateContents(TextureMapper&, Image*, const IntRect&, BitmapTexture::UpdateContentsFlag UpdateCanModifyOriginalImageData);
-    void updateContents(TextureMapper&, GraphicsLayer*, const IntRect&, BitmapTexture::UpdateContentsFlag UpdateCanModifyOriginalImageData, float scale = 1);
-    virtual void paint(TextureMapper&, const TransformationMatrix&, float, const unsigned exposedEdges);
-    virtual ~TextureMapperTile() { }
+    void updateContents(TextureMapper&, Image*, const IntRect&);
+    void updateContents(TextureMapper&, GraphicsLayer*, const IntRect&, float scale = 1);
+    WEBCORE_EXPORT virtual void paint(TextureMapper&, const TransformationMatrix&, float, const unsigned exposedEdges);
+    virtual ~TextureMapperTile() = default;
 
     explicit TextureMapperTile(const FloatRect& rect)
         : m_rect(rect)
     {
     }
-
-private:
+protected:
     RefPtr<BitmapTexture> m_texture;
+private:
     FloatRect m_rect;
 };
 

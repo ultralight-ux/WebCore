@@ -25,6 +25,7 @@
 #include "Document.h"
 #include "HTMLNames.h"
 #include "HTMLStyleElement.h"
+#include "ShadowRoot.h"
 #include "StyleScope.h"
 #include <wtf/text/WTFString.h>
 
@@ -32,26 +33,46 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-StyleSheetList::StyleSheetList(Document* document)
-    : m_document(document)
+StyleSheetList::StyleSheetList(Document& document)
+    : m_document(makeWeakPtr(document))
 {
 }
 
-StyleSheetList::~StyleSheetList()
+StyleSheetList::StyleSheetList(ShadowRoot& shadowRoot)
+    : m_shadowRoot(&shadowRoot)
 {
 }
+
+StyleSheetList::~StyleSheetList() = default;
 
 inline const Vector<RefPtr<StyleSheet>>& StyleSheetList::styleSheets() const
 {
-    if (!m_document)
-        return m_detachedStyleSheets;
-    return m_document->styleScope().styleSheetsForStyleSheetList();
+    if (m_document)
+        return m_document->styleScope().styleSheetsForStyleSheetList();
+    if (m_shadowRoot)
+        return m_shadowRoot->styleScope().styleSheetsForStyleSheetList();
+    return m_detachedStyleSheets;
 }
 
-void StyleSheetList::detachFromDocument()
+Node* StyleSheetList::ownerNode() const
 {
-    m_detachedStyleSheets = m_document->styleScope().styleSheetsForStyleSheetList();
-    m_document = nullptr;
+    if (m_document)
+        return m_document.get();
+    return m_shadowRoot;
+}
+
+void StyleSheetList::detach()
+{
+    if (m_document) {
+        ASSERT(!m_shadowRoot);
+        m_detachedStyleSheets = m_document->styleScope().styleSheetsForStyleSheetList();
+        m_document = nullptr;
+    } else if (m_shadowRoot) {
+        ASSERT(!m_document);
+        m_detachedStyleSheets = m_shadowRoot->styleScope().styleSheetsForStyleSheetList();
+        m_shadowRoot = nullptr;
+    } else
+        ASSERT_NOT_REACHED();
 }
 
 unsigned StyleSheetList::length() const
@@ -65,8 +86,9 @@ StyleSheet* StyleSheetList::item(unsigned index)
     return index < sheets.size() ? sheets[index].get() : 0;
 }
 
-HTMLStyleElement* StyleSheetList::getNamedItem(const String& name) const
+CSSStyleSheet* StyleSheetList::namedItem(const AtomString& name) const
 {
+    // Support the named getter on document for backwards compatibility.
     if (!m_document)
         return nullptr;
 
@@ -77,14 +99,14 @@ HTMLStyleElement* StyleSheetList::getNamedItem(const String& name) const
     // But unicity of stylesheet ids is good practice anyway ;)
     Element* element = m_document->getElementById(name);
     if (is<HTMLStyleElement>(element))
-        return downcast<HTMLStyleElement>(element);
+        return downcast<HTMLStyleElement>(element)->sheet();
     return nullptr;
 }
 
-Vector<AtomicString> StyleSheetList::supportedPropertyNames()
+Vector<AtomString> StyleSheetList::supportedPropertyNames()
 {
     // FIXME: Should be implemented.
-    return Vector<AtomicString>();
+    return Vector<AtomString>();
 }
 
 } // namespace WebCore

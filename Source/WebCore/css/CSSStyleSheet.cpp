@@ -21,30 +21,21 @@
 #include "config.h"
 #include "CSSStyleSheet.h"
 
-#include "CSSFontFaceRule.h"
 #include "CSSImportRule.h"
 #include "CSSKeyframesRule.h"
 #include "CSSParser.h"
 #include "CSSRuleList.h"
-#include "CSSStyleRule.h"
-#include "CachedCSSStyleSheet.h"
 #include "Document.h"
-#include "ExceptionCode.h"
-#include "ExtensionStyleSheets.h"
 #include "HTMLLinkElement.h"
-#include "HTMLNames.h"
 #include "HTMLStyleElement.h"
 #include "MediaList.h"
 #include "Node.h"
-#include "SVGNames.h"
 #include "SVGStyleElement.h"
 #include "SecurityOrigin.h"
-#include "ShadowRoot.h"
 #include "StyleResolver.h"
 #include "StyleRule.h"
 #include "StyleScope.h"
 #include "StyleSheetContents.h"
-
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
@@ -83,7 +74,7 @@ Ref<CSSStyleSheet> CSSStyleSheet::create(Ref<StyleSheetContents>&& sheet, CSSImp
     return adoptRef(*new CSSStyleSheet(WTFMove(sheet), ownerRule));
 }
 
-Ref<CSSStyleSheet> CSSStyleSheet::create(Ref<StyleSheetContents>&& sheet, Node& ownerNode, const std::optional<bool>& isCleanOrigin)
+Ref<CSSStyleSheet> CSSStyleSheet::create(Ref<StyleSheetContents>&& sheet, Node& ownerNode, const Optional<bool>& isCleanOrigin)
 {
     return adoptRef(*new CSSStyleSheet(WTFMove(sheet), ownerNode, TextPosition(), false, isCleanOrigin));
 }
@@ -105,7 +96,7 @@ CSSStyleSheet::CSSStyleSheet(Ref<StyleSheetContents>&& contents, CSSImportRule* 
     m_contents->registerClient(this);
 }
 
-CSSStyleSheet::CSSStyleSheet(Ref<StyleSheetContents>&& contents, Node& ownerNode, const TextPosition& startPosition, bool isInlineStylesheet, const std::optional<bool>& isOriginClean)
+CSSStyleSheet::CSSStyleSheet(Ref<StyleSheetContents>&& contents, Node& ownerNode, const TextPosition& startPosition, bool isInlineStylesheet, const Optional<bool>& isOriginClean)
     : m_contents(WTFMove(contents))
     , m_isInlineStylesheet(isInlineStylesheet)
     , m_isDisabled(false)
@@ -237,12 +228,12 @@ CSSRule* CSSStyleSheet::item(unsigned index)
 {
     unsigned ruleCount = length();
     if (index >= ruleCount)
-        return 0;
+        return nullptr;
 
-    if (m_childRuleCSSOMWrappers.isEmpty())
+    ASSERT(m_childRuleCSSOMWrappers.isEmpty() || m_childRuleCSSOMWrappers.size() == ruleCount);
+    if (m_childRuleCSSOMWrappers.size() < ruleCount)
         m_childRuleCSSOMWrappers.grow(ruleCount);
-    ASSERT(m_childRuleCSSOMWrappers.size() == ruleCount);
-    
+
     RefPtr<CSSRule>& cssRule = m_childRuleCSSOMWrappers[index];
     if (!cssRule)
         cssRule = m_contents->ruleAt(index)->createCSSOMWrapper(this);
@@ -260,7 +251,7 @@ bool CSSStyleSheet::canAccessRules() const
     Document* document = ownerDocument();
     if (!document)
         return true;
-    return document->securityOrigin()->canRequest(baseURL);
+    return document->securityOrigin().canRequest(baseURL);
 }
 
 RefPtr<CSSRuleList> CSSStyleSheet::rules()
@@ -268,19 +259,11 @@ RefPtr<CSSRuleList> CSSStyleSheet::rules()
     if (!canAccessRules())
         return nullptr;
     // IE behavior.
-    RefPtr<StaticCSSRuleList> ruleList = StaticCSSRuleList::create();
+    auto ruleList = StaticCSSRuleList::create();
     unsigned ruleCount = length();
     for (unsigned i = 0; i < ruleCount; ++i)
         ruleList->rules().append(item(i));
     return ruleList;
-}
-
-ExceptionOr<unsigned> CSSStyleSheet::deprecatedInsertRule(const String& ruleString)
-{
-    if (auto* document = ownerDocument())
-        document->addConsoleMessage(MessageSource::JS, MessageLevel::Warning, ASCIILiteral("Calling CSSStyleSheet.insertRule() with one argument is deprecated. Please pass the index argument as well: insertRule(x, 0)."));
-
-    return insertRule(ruleString, 0);
 }
 
 ExceptionOr<unsigned> CSSStyleSheet::insertRule(const String& ruleString, unsigned index)
@@ -288,17 +271,17 @@ ExceptionOr<unsigned> CSSStyleSheet::insertRule(const String& ruleString, unsign
     ASSERT(m_childRuleCSSOMWrappers.isEmpty() || m_childRuleCSSOMWrappers.size() == m_contents->ruleCount());
 
     if (index > length())
-        return Exception { INDEX_SIZE_ERR };
+        return Exception { IndexSizeError };
     RefPtr<StyleRuleBase> rule = CSSParser::parseRule(m_contents.get().parserContext(), m_contents.ptr(), ruleString);
 
     if (!rule)
-        return Exception { SYNTAX_ERR };
+        return Exception { SyntaxError };
 
     RuleMutationScope mutationScope(this, RuleInsertion, is<StyleRuleKeyframes>(*rule) ? downcast<StyleRuleKeyframes>(rule.get()) : nullptr);
 
     bool success = m_contents.get().wrapperInsertRule(rule.releaseNonNull(), index);
     if (!success)
-        return Exception { HIERARCHY_REQUEST_ERR };
+        return Exception { HierarchyRequestError };
     if (!m_childRuleCSSOMWrappers.isEmpty())
         m_childRuleCSSOMWrappers.insert(index, RefPtr<CSSRule>());
 
@@ -310,7 +293,7 @@ ExceptionOr<void> CSSStyleSheet::deleteRule(unsigned index)
     ASSERT(m_childRuleCSSOMWrappers.isEmpty() || m_childRuleCSSOMWrappers.size() == m_contents->ruleCount());
 
     if (index >= length())
-        return Exception { INDEX_SIZE_ERR };
+        return Exception { IndexSizeError };
     RuleMutationScope mutationScope(this);
 
     m_contents->wrapperDeleteRule(index);
@@ -324,7 +307,7 @@ ExceptionOr<void> CSSStyleSheet::deleteRule(unsigned index)
     return { };
 }
 
-ExceptionOr<int> CSSStyleSheet::addRule(const String& selector, const String& style, std::optional<unsigned> index)
+ExceptionOr<int> CSSStyleSheet::addRule(const String& selector, const String& style, Optional<unsigned> index)
 {
     StringBuilder text;
     text.append(selector);
@@ -333,7 +316,7 @@ ExceptionOr<int> CSSStyleSheet::addRule(const String& selector, const String& st
     if (!style.isEmpty())
         text.append(' ');
     text.append('}');
-    auto insertRuleResult = insertRule(text.toString(), index.value_or(length()));
+    auto insertRuleResult = insertRule(text.toString(), index.valueOr(length()));
     if (insertRuleResult.hasException())
         return insertRuleResult.releaseException();
     

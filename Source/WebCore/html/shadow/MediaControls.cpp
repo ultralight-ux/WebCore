@@ -30,11 +30,16 @@
 #include "MediaControls.h"
 
 #include "EventNames.h"
+#include "MouseEvent.h"
 #include "Page.h"
 #include "RenderElement.h"
+#include "RenderTheme.h"
 #include "Settings.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(MediaControls);
 
 MediaControls::MediaControls(Document& document)
     : HTMLDivElement(HTMLNames::divTag, document)
@@ -54,7 +59,7 @@ MediaControls::MediaControls(Document& document)
     , m_isFullscreen(false)
     , m_isMouseOverControls(false)
 {
-    setPseudo(AtomicString("-webkit-media-controls", AtomicString::ConstructFromLiteral));
+    setPseudo(AtomString("-webkit-media-controls", AtomString::ConstructFromLiteral));
 }
 
 void MediaControls::setMediaController(MediaControllerInterface* controller)
@@ -87,21 +92,17 @@ void MediaControls::setMediaController(MediaControllerInterface* controller)
 
 void MediaControls::reset()
 {
-    Page* page = document().page();
-    if (!page)
-        return;
-
     m_playButton->updateDisplayType();
 
     updateCurrentTimeDisplay();
 
     double duration = m_mediaController->duration();
-    if (std::isfinite(duration) || page->theme().hasOwnDisabledStateHandlingFor(MediaSliderPart)) {
+    if (std::isfinite(duration) || RenderTheme::singleton().hasOwnDisabledStateHandlingFor(MediaSliderPart)) {
         m_timeline->setDuration(duration);
         m_timeline->setPosition(m_mediaController->currentTime());
     }
 
-    if (m_mediaController->hasAudio() || page->theme().hasOwnDisabledStateHandlingFor(MediaMuteButtonPart))
+    if (m_mediaController->hasAudio() || RenderTheme::singleton().hasOwnDisabledStateHandlingFor(MediaMuteButtonPart))
         m_panelMuteButton->show();
     else
         m_panelMuteButton->hide();
@@ -129,19 +130,16 @@ void MediaControls::reset()
 
 void MediaControls::reportedError()
 {
-    Page* page = document().page();
-    if (!page)
-        return;
-
-    if (!page->theme().hasOwnDisabledStateHandlingFor(MediaMuteButtonPart)) {
+    auto& theme = RenderTheme::singleton();
+    if (!theme.hasOwnDisabledStateHandlingFor(MediaMuteButtonPart)) {
         m_panelMuteButton->hide();
         m_volumeSlider->hide();
     }
 
-    if (m_toggleClosedCaptionsButton && !page->theme().hasOwnDisabledStateHandlingFor(MediaToggleClosedCaptionsButtonPart))
+    if (m_toggleClosedCaptionsButton && !theme.hasOwnDisabledStateHandlingFor(MediaToggleClosedCaptionsButtonPart))
         m_toggleClosedCaptionsButton->hide();
 
-    if (m_fullScreenButton && !page->theme().hasOwnDisabledStateHandlingFor(MediaEnterFullscreenButtonPart))
+    if (m_fullScreenButton && !theme.hasOwnDisabledStateHandlingFor(MediaEnterFullscreenButtonPart))
         m_fullScreenButton->hide();
 }
 
@@ -218,12 +216,7 @@ void MediaControls::playbackStopped()
 void MediaControls::updateCurrentTimeDisplay()
 {
     double now = m_mediaController->currentTime();
-
-    Page* page = document().page();
-    if (!page)
-        return;
-
-    m_currentTimeDisplay->setInnerText(page->theme().formatMediaControlsTime(now));
+    m_currentTimeDisplay->setInnerText(RenderTheme::singleton().formatMediaControlsTime(now));
     m_currentTimeDisplay->setCurrentValue(now);
 }
 
@@ -370,10 +363,8 @@ bool MediaControls::containsRelatedTarget(Event& event)
 {
     if (!is<MouseEvent>(event))
         return false;
-    EventTarget* relatedTarget = downcast<MouseEvent>(event).relatedTarget();
-    if (!relatedTarget)
-        return false;
-    return contains(relatedTarget->toNode());
+    auto relatedTarget = downcast<MouseEvent>(event).relatedTarget();
+    return is<Node>(relatedTarget) && contains(&downcast<Node>(*relatedTarget));
 }
 
 #if ENABLE(VIDEO_TRACK)
@@ -420,6 +411,12 @@ void MediaControls::textTrackPreferencesChanged()
     closedCaptionTracksChanged();
     if (m_textDisplayContainer)
         m_textDisplayContainer->updateSizes(true);
+}
+
+void MediaControls::clearTextDisplayContainer()
+{
+    if (m_textDisplayContainer)
+        m_textDisplayContainer->removeChildren();
 }
 
 #endif

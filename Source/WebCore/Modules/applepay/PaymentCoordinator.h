@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,51 +27,67 @@
 
 #if ENABLE(APPLE_PAY)
 
-#include "PaymentRequest.h"
-#include <functional>
+#include "ApplePaySessionPaymentRequest.h"
+#include <wtf/Function.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
-class ApplePaySession;
+class Document;
 class Payment;
 class PaymentCoordinatorClient;
 class PaymentContact;
 class PaymentMerchantSession;
 class PaymentMethod;
-class URL;
+class PaymentMethodUpdate;
+class PaymentSession;
+class PaymentSessionError;
 enum class PaymentAuthorizationStatus;
+struct PaymentAuthorizationResult;
+struct ShippingContactUpdate;
+struct ShippingMethodUpdate;
 
-class PaymentCoordinator {
+class PaymentCoordinator : public CanMakeWeakPtr<PaymentCoordinator> {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit PaymentCoordinator(PaymentCoordinatorClient&);
-    ~PaymentCoordinator();
+    WEBCORE_EXPORT explicit PaymentCoordinator(PaymentCoordinatorClient&);
+    WEBCORE_EXPORT ~PaymentCoordinator();
 
-    bool supportsVersion(unsigned version);
-    bool canMakePayments();
-    void canMakePaymentsWithActiveCard(const String& merchantIdentifier, const String& domainName, std::function<void (bool)> completionHandler);
-    void openPaymentSetup(const String& merchantIdentifier, const String& domainName, std::function<void (bool)> completionHandler);
+    PaymentCoordinatorClient& client() { return m_client; }
+
+    bool supportsVersion(Document&, unsigned version) const;
+    bool canMakePayments(Document&);
+    void canMakePaymentsWithActiveCard(Document&, const String& merchantIdentifier, WTF::Function<void(bool)>&& completionHandler);
+    void openPaymentSetup(Document&, const String& merchantIdentifier, WTF::Function<void(bool)>&& completionHandler);
 
     bool hasActiveSession() const { return m_activeSession; }
 
-    bool beginPaymentSession(ApplePaySession&, const URL& originatingURL, const Vector<URL>& linkIconURLs, const PaymentRequest&);
+    bool beginPaymentSession(Document&, PaymentSession&, const ApplePaySessionPaymentRequest&);
     void completeMerchantValidation(const PaymentMerchantSession&);
-    void completeShippingMethodSelection(PaymentAuthorizationStatus, std::optional<PaymentRequest::TotalAndLineItems> newItems);
-    void completeShippingContactSelection(PaymentAuthorizationStatus, const Vector<PaymentRequest::ShippingMethod>& newShippingMethods, std::optional<PaymentRequest::TotalAndLineItems> newItems);
-    void completePaymentMethodSelection(std::optional<PaymentRequest::TotalAndLineItems> newItems);
-    void completePaymentSession(PaymentAuthorizationStatus);
+    void completeShippingMethodSelection(Optional<ShippingMethodUpdate>&&);
+    void completeShippingContactSelection(Optional<ShippingContactUpdate>&&);
+    void completePaymentMethodSelection(Optional<PaymentMethodUpdate>&&);
+    void completePaymentSession(Optional<PaymentAuthorizationResult>&&);
     void abortPaymentSession();
+    void cancelPaymentSession();
 
-    WEBCORE_EXPORT void validateMerchant(const URL& validationURL);
+    WEBCORE_EXPORT void validateMerchant(URL&& validationURL);
     WEBCORE_EXPORT void didAuthorizePayment(const Payment&);
     WEBCORE_EXPORT void didSelectPaymentMethod(const PaymentMethod&);
-    WEBCORE_EXPORT void didSelectShippingMethod(const PaymentRequest::ShippingMethod&);
+    WEBCORE_EXPORT void didSelectShippingMethod(const ApplePaySessionPaymentRequest::ShippingMethod&);
     WEBCORE_EXPORT void didSelectShippingContact(const PaymentContact&);
-    WEBCORE_EXPORT void didCancelPayment();
+    WEBCORE_EXPORT void didCancelPaymentSession(PaymentSessionError&&);
+
+    Optional<String> validatedPaymentNetwork(Document&, unsigned version, const String&) const;
+
+    bool shouldEnableApplePayAPIs(Document&) const;
+    WEBCORE_EXPORT bool shouldAllowUserAgentScripts(Document&) const;
 
 private:
-    PaymentCoordinatorClient& m_client;
+    bool setApplePayIsActiveIfAllowed(Document&) const;
 
-    RefPtr<ApplePaySession> m_activeSession;
+    PaymentCoordinatorClient& m_client;
+    RefPtr<PaymentSession> m_activeSession;
 };
 
 }

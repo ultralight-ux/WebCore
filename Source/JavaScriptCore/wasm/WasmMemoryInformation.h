@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,12 @@
 #if ENABLE(WEBASSEMBLY)
 
 #include "GPRInfo.h"
+#include "RegisterSet.h"
+#include "WasmMemory.h"
 #include "WasmPageCount.h"
+
+#include <wtf/Forward.h>
+#include <wtf/Ref.h>
 #include <wtf/Vector.h>
 
 namespace JSC { namespace Wasm {
@@ -38,12 +43,26 @@ struct PinnedSizeRegisterInfo {
     unsigned sizeOffset;
 };
 
-// FIXME: We should support more than one memory size register. Right now we take a vector with only one
-// entry. Specifically an entry where the sizeOffset == 0. If we have more than one size register,
-// we can have one for each load size class. see: https://bugs.webkit.org/show_bug.cgi?id=162952
-struct PinnedRegisterInfo {
-    Vector<PinnedSizeRegisterInfo> sizeRegisters;
+class PinnedRegisterInfo {
+public:
+    PinnedRegisterInfo(GPRReg, GPRReg, GPRReg);
+
+    static const PinnedRegisterInfo& get();
+
+    RegisterSet toSave(MemoryMode mode) const
+    {
+        RegisterSet result;
+        result.set(baseMemoryPointer);
+        if (wasmContextInstancePointer != InvalidGPRReg)
+            result.set(wasmContextInstancePointer);
+        if (mode != MemoryMode::Signaling)
+            result.set(sizeRegister);
+        return result;
+    }
+
+    GPRReg sizeRegister;
     GPRReg baseMemoryPointer;
+    GPRReg wasmContextInstancePointer;
 };
 
 class MemoryInformation {
@@ -53,9 +72,8 @@ public:
         ASSERT(!*this);
     }
 
-    MemoryInformation(PageCount initial, PageCount maximum, const Vector<unsigned>& pinnedSizeRegisters, bool isImport);
+    MemoryInformation(PageCount initial, PageCount maximum, bool isImport);
 
-    const PinnedRegisterInfo& pinnedRegisters() const { return m_pinnedRegisters; }
     PageCount initial() const { return m_initial; }
     PageCount maximum() const { return m_maximum; }
     bool isImport() const { return m_isImport; }
@@ -65,10 +83,9 @@ public:
 private:
     PageCount m_initial { };
     PageCount m_maximum { };
-    PinnedRegisterInfo m_pinnedRegisters { };
     bool m_isImport { false };
 };
 
 } } // namespace JSC::Wasm
 
-#endif // ENABLE(WASM)
+#endif // ENABLE(WEBASSEMBLY)

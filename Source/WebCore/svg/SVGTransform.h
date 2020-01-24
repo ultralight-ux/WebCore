@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,129 +25,132 @@
 
 #pragma once
 
-#include "ExceptionCode.h"
 #include "SVGMatrix.h"
-#include "SVGPropertyTearOff.h"
 #include "SVGTransformValue.h"
+#include "SVGValueProperty.h"
 
 namespace WebCore {
 
-class SVGTransform : public SVGPropertyTearOff<SVGTransformValue> {
+class SVGTransform : public SVGValueProperty<SVGTransformValue>, public SVGPropertyOwner {
 public:
-    static Ref<SVGTransform> create(SVGAnimatedProperty& animatedProperty, SVGPropertyRole role, SVGTransformValue& value)
+    static Ref<SVGTransform> create(SVGTransformValue::SVGTransformType type)
     {
-        return adoptRef(*new SVGTransform(animatedProperty, role, value));
+        return adoptRef(*new SVGTransform(type));
     }
 
-    static Ref<SVGTransform> create(const SVGTransformValue& initialValue = { })
+    static Ref<SVGTransform> create(const AffineTransform& transform = { })
     {
-        return adoptRef(*new SVGTransform(initialValue));
+        return adoptRef(*new SVGTransform(SVGTransformValue::SVG_TRANSFORM_MATRIX, transform));
     }
 
-    static Ref<SVGTransform> create(const SVGTransformValue* initialValue)
+    static Ref<SVGTransform> create(const SVGTransformValue& value)
     {
-        return adoptRef(*new SVGTransform(initialValue));
+        return adoptRef(*new SVGTransform(value.type(), value.matrix()->value(), value.angle(), value.rotationCenter()));
     }
 
-    template<typename T> static ExceptionOr<Ref<SVGTransform>> create(ExceptionOr<T>&& initialValue)
+    template<typename T>
+    static ExceptionOr<Ref<SVGTransform>> create(ExceptionOr<T>&& value)
     {
-        if (initialValue.hasException())
-            return initialValue.releaseException();
-        return create(initialValue.releaseReturnValue());
+        if (value.hasException())
+            return value.releaseException();
+        return create(value.releaseReturnValue());
     }
 
-    unsigned short type()
+    ~SVGTransform()
     {
-        return propertyReference().type();
+        m_value.matrix()->detach();
     }
 
-    Ref<SVGMatrix> matrix();
-
-    float angle()
+    Ref<SVGTransform> clone() const
     {
-        return propertyReference().angle();
+        return SVGTransform::create(m_value);
     }
+
+    unsigned short type() { return m_value.type(); }
+    float angle() { return m_value.angle(); }
+    const Ref<SVGMatrix>& matrix() { return m_value.matrix(); }
 
     ExceptionOr<void> setMatrix(SVGMatrix& matrix)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        propertyReference().setMatrix(matrix.propertyReference());
+        m_value.setMatrix(matrix.value());
         commitChange();
-
         return { };
     }
 
     ExceptionOr<void> setTranslate(float tx, float ty)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        propertyReference().setTranslate(tx, ty);
+        m_value.setTranslate(tx, ty);
         commitChange();
-
         return { };
     }
 
     ExceptionOr<void> setScale(float sx, float sy)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        propertyReference().setScale(sx, sy);
+        m_value.setScale(sx, sy);
         commitChange();
-
         return { };
     }
 
     ExceptionOr<void> setRotate(float angle, float cx, float cy)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        propertyReference().setRotate(angle, cx, cy);
+        m_value.setRotate(angle, cx, cy);
         commitChange();
-
         return { };
     }
 
     ExceptionOr<void> setSkewX(float angle)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        propertyReference().setSkewX(angle);
+        m_value.setSkewX(angle);
         commitChange();
-
         return { };
     }
 
     ExceptionOr<void> setSkewY(float angle)
     {
         if (isReadOnly())
-            return Exception { NO_MODIFICATION_ALLOWED_ERR };
+            return Exception { NoModificationAllowedError };
 
-        propertyReference().setSkewY(angle);
+        m_value.setSkewY(angle);
         commitChange();
-
         return { };
     }
 
 private:
-    SVGTransform(SVGAnimatedProperty& animatedProperty, SVGPropertyRole role, SVGTransformValue& value)
-        : SVGPropertyTearOff<SVGTransformValue>(&animatedProperty, role, value)
+    using Base = SVGValueProperty<SVGTransformValue>;
+
+    SVGTransform(SVGTransformValue::SVGTransformType type, const AffineTransform& transform = { }, float angle = 0, const FloatPoint& rotationCenter = { })
+        : Base(SVGTransformValue(type, SVGMatrix::create(this, SVGPropertyAccess::ReadWrite, transform), angle, rotationCenter))
     {
     }
 
-    explicit SVGTransform(const SVGTransformValue& initialValue)
-        : SVGPropertyTearOff<SVGTransformValue>(initialValue)
+    SVGPropertyOwner* owner() const override { return m_owner; }
+
+    void commitPropertyChange(SVGProperty* property) override
     {
+        ASSERT_UNUSED(property, property == m_value.matrix().ptr());
+        if (owner())
+            owner()->commitPropertyChange(this);
+        m_value.matrixDidChange();
     }
 
-    explicit SVGTransform(const SVGTransformValue* initialValue)
-        : SVGPropertyTearOff<SVGTransformValue>(initialValue)
+    String valueAsString() const override
     {
+        return m_value.valueAsString();
     }
 };
 

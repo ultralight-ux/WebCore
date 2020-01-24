@@ -26,27 +26,23 @@
 #include "config.h"
 #include "WheelEventDeltaFilter.h"
 
-#if HAVE(NSSCROLLING_FILTERS)
+#include "FloatSize.h"
+#include "Logging.h"
+#include <wtf/text/TextStream.h>
+
+#if PLATFORM(MAC)
 #include "WheelEventDeltaFilterMac.h"
 #endif
 
-#include "FloatSize.h"
-#include "Logging.h"
-#include "TextStream.h"
-
 namespace WebCore {
     
-WheelEventDeltaFilter::WheelEventDeltaFilter()
-{
-}
+WheelEventDeltaFilter::WheelEventDeltaFilter() = default;
 
-WheelEventDeltaFilter::~WheelEventDeltaFilter()
-{
-}
+WheelEventDeltaFilter::~WheelEventDeltaFilter() = default;
 
 std::unique_ptr<WheelEventDeltaFilter> WheelEventDeltaFilter::create()
 {
-#if HAVE(NSSCROLLING_FILTERS)
+#if PLATFORM(MAC)
     return std::make_unique<WheelEventDeltaFilterMac>();
 #else
     return std::make_unique<BasicWheelEventDeltaFilter>();

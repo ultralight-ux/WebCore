@@ -10,7 +10,7 @@ namespace WebCore {
 
 class CanvasImage final : public Image {
 public:
-  static PassRefPtr<CanvasImage> create(const IntSize& size, bool isDeferred)
+  static RefPtr<CanvasImage> create(const IntSize& size, bool isDeferred)
   {
     return adoptRef(new CanvasImage(size, isDeferred));
   }
@@ -30,7 +30,8 @@ public:
   void destroyDecodedData(bool /*destroyAll*/ = true) override { }
 
 protected:
-  void draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator, BlendMode, ImageOrientationDescription) override;
+  ImageDrawResult draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator,
+    BlendMode, DecodingMode, ImageOrientationDescription) override;
   void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform,
     const FloatPoint& phase, const FloatSize& spacing, CompositeOperator, BlendMode) override;
 

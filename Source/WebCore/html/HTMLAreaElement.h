@@ -33,6 +33,7 @@ class HitTestResult;
 class Path;
 
 class HTMLAreaElement final : public HTMLAnchorElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLAreaElement);
 public:
     static Ref<HTMLAreaElement> create(const QualifiedName&, Document&);
 
@@ -51,13 +52,13 @@ public:
 private:
     HTMLAreaElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
     bool supportsFocus() const final;
     String target() const final;
-    bool isKeyboardFocusable(KeyboardEvent&) const final;
+    bool isKeyboardFocusable(KeyboardEvent*) const final;
     bool isMouseFocusable() const final;
     bool isFocusable() const final;
-    void updateFocusAppearance(SelectionRestorationMode, SelectionRevealMode) final;
+    RefPtr<Element> focusAppearanceUpdateTarget() final;
     void setFocus(bool) final;
 
     enum Shape { Default, Poly, Rect, Circle, Unknown };

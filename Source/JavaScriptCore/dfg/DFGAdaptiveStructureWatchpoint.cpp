@@ -33,27 +33,29 @@
 
 namespace JSC { namespace DFG {
 
-AdaptiveStructureWatchpoint::AdaptiveStructureWatchpoint(
-    const ObjectPropertyCondition& key,
-    CodeBlock* codeBlock)
-    : m_key(key)
+AdaptiveStructureWatchpoint::AdaptiveStructureWatchpoint(const ObjectPropertyCondition& key, CodeBlock* codeBlock)
+    : Watchpoint(Watchpoint::Type::AdaptiveStructure)
     , m_codeBlock(codeBlock)
+    , m_key(key)
 {
     RELEASE_ASSERT(key.watchingRequiresStructureTransitionWatchpoint());
     RELEASE_ASSERT(!key.watchingRequiresReplacementWatchpoint());
 }
 
-void AdaptiveStructureWatchpoint::install()
+void AdaptiveStructureWatchpoint::install(VM& vm)
 {
     RELEASE_ASSERT(m_key.isWatchable());
     
-    m_key.object()->structure()->addTransitionWatchpoint(this);
+    m_key.object()->structure(vm)->addTransitionWatchpoint(this);
 }
 
-void AdaptiveStructureWatchpoint::fireInternal(const FireDetail& detail)
+void AdaptiveStructureWatchpoint::fireInternal(VM& vm, const FireDetail& detail)
 {
+    if (!m_codeBlock->isLive())
+        return;
+
     if (m_key.isWatchable(PropertyCondition::EnsureWatchability)) {
-        install();
+        install(vm);
         return;
     }
     
@@ -61,14 +63,11 @@ void AdaptiveStructureWatchpoint::fireInternal(const FireDetail& detail)
         dataLog(
             "Firing watchpoint ", RawPointer(this), " (", m_key, ") on ", *m_codeBlock, "\n");
     }
-    
-    StringPrintStream out;
-    out.print("Adaptation of ", m_key, " failed: ", detail);
-    
-    StringFireDetail stringDetail(out.toCString().data());
-    
+
+    auto lazyDetail = createLazyFireDetail("Adaptation of ", m_key, " failed: ", detail);
+
     m_codeBlock->jettison(
-        Profiler::JettisonDueToUnprofiledWatchpoint, CountReoptimization, &stringDetail);
+        Profiler::JettisonDueToUnprofiledWatchpoint, CountReoptimization, &lazyDetail);
 }
 
 } } // namespace JSC::DFG

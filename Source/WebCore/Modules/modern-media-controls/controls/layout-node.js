@@ -23,12 +23,14 @@ class LayoutNode
         this._width = 0;
         this._height = 0;
         this._visible = true;
-    
+
         this._needsLayout = false;
         this._dirtyProperties = new Set;
 
         this._pendingDOMManipulation = LayoutNode.DOMManipulation.None;
     }
+
+    // Public
 
     get x()
     {
@@ -70,6 +72,7 @@ class LayoutNode
 
         this._width = width;
         this.markDirtyProperty("width");
+        this.layout();
     }
 
     get height()
@@ -84,6 +87,7 @@ class LayoutNode
 
         this._height = height;
         this.markDirtyProperty("height");
+        this.layout();
     }
 
     get visible()
@@ -126,11 +130,28 @@ class LayoutNode
 
     set children(children)
     {
+        if (children.length === this._children.length) {
+            let arraysDiffer = false;
+            for (let i = children.length - 1; i >= 0; --i) {
+                if (children[i] !== this._children[i]) {
+                    arraysDiffer = true;
+                    break;
+                }
+            }
+            if (!arraysDiffer)
+                return;
+        }
+
+        this._updatingChildren = true;
+
         while (this._children.length)
             this.removeChild(this._children[0]);
-        
+
         for (let child of children)
             this.addChild(child);
+
+        delete this._updatingChildren;
+        this.didChangeChildren();
     }
 
     parentOfType(type)
@@ -152,6 +173,9 @@ class LayoutNode
 
         this._children.splice(index, 0, child);
         child._parent = this;
+
+        if (!this._updatingChildren)
+            this.didChangeChildren();
 
         child._markNodeManipulation(LayoutNode.DOMManipulation.Addition);
 
@@ -178,8 +202,12 @@ class LayoutNode
         if (index === -1)
             return;
 
+        this.willRemoveChild(child);
         this._children.splice(index, 1);
         child._parent = null;
+
+        if (!this._updatingChildren)
+            this.didChangeChildren();
 
         child._markNodeManipulation(LayoutNode.DOMManipulation.Removal);
 
@@ -201,6 +229,30 @@ class LayoutNode
             this._updateDirtyState();
     }
 
+    // Protected
+
+    layout()
+    {
+        // Implemented by subclasses.
+    }
+
+    commit()
+    {
+        if (this._pendingDOMManipulation === LayoutNode.DOMManipulation.Removal) {
+            const parent = this.element.parentNode;
+            if (parent)
+                parent.removeChild(this.element);
+        }
+    
+        for (let propertyName of this._dirtyProperties)
+            this.commitProperty(propertyName);
+
+        this._dirtyProperties.clear();
+
+        if (this._pendingDOMManipulation === LayoutNode.DOMManipulation.Addition)
+            nodesRequiringChildrenUpdate.add(this.parent);
+    }
+
     commitProperty(propertyName)
     {
         const style = this.element.style;
@@ -219,26 +271,22 @@ class LayoutNode
             style.height = `${this._height}px`;
             break;
         case "visible":
-            style.display = this._visible ? "inherit" : "none";
+            if (this._visible)
+                style.removeProperty("display");
+            else
+                style.display = "none";
             break;
         }
     }
 
-    layout()
+    willRemoveChild(child)
     {
-        if (this._pendingDOMManipulation === LayoutNode.DOMManipulation.Removal) {
-            const parent = this.element.parentNode;
-            if (parent)
-                parent.removeChild(this.element);
-        }
-    
-        for (let propertyName of this._dirtyProperties)
-            this.commitProperty(propertyName);
+        // Implemented by subclasses.
+    }
 
-        this._dirtyProperties.clear();
-
-        if (this._pendingDOMManipulation === LayoutNode.DOMManipulation.Addition)
-            nodesRequiringChildrenUpdate.add(this.parent);
+    didChangeChildren()
+    {
+        // Implemented by subclasses.
     }
 
     // Private
@@ -268,7 +316,7 @@ class LayoutNode
         for (let i = this.children.length - 1; i >= 0; --i) {
             let child = this.children[i];
             let childElement = child.element;
-        
+
             if (child._pendingDOMManipulation === LayoutNode.DOMManipulation.Addition) {
                 element.insertBefore(childElement, nextChildElement);
                 child._pendingDOMManipulation = LayoutNode.DOMManipulation.None;
@@ -293,6 +341,7 @@ function performScheduledLayout()
     previousDirtyNodes.forEach(node => {
         node._needsLayout = false;
         node.layout();
+        node.commit();
     });
 
     nodesRequiringChildrenUpdate.forEach(node => node._updateChildren());

@@ -39,14 +39,12 @@
 
 namespace WebCore {
 
-NavigatorStorageQuota::NavigatorStorageQuota(Frame* frame)
-    : DOMWindowProperty(frame)
+NavigatorStorageQuota::NavigatorStorageQuota(DOMWindow* window)
+    : DOMWindowProperty(window)
 {
 }
 
-NavigatorStorageQuota::~NavigatorStorageQuota()
-{
-}
+NavigatorStorageQuota::~NavigatorStorageQuota() = default;
 
 const char* NavigatorStorageQuota::supplementName()
 {

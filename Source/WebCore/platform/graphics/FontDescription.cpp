@@ -30,36 +30,18 @@
 #include "config.h"
 #include "FontDescription.h"
 
+#include "FontCascadeDescription.h"
 #include "LocaleToScriptMapping.h"
 
 namespace WebCore {
 
-struct SameSizeAsFontCascadeDescription {
-    Vector<void*> vector;
-#if ENABLE(VARIATION_FONTS)
-    Vector<void*> vector2;
-#else
-    char c;
-#endif
-    AtomicString string;
-    float size;
-    unsigned bitfields1;
-    unsigned bitfields2 : 22;
-    void* array;
-    float size2;
-    unsigned bitfields3 : 10;
-};
-
-COMPILE_ASSERT(sizeof(FontCascadeDescription) == sizeof(SameSizeAsFontCascadeDescription), FontCascadeDescription_should_stay_small);
-
 FontDescription::FontDescription()
-    : m_orientation(Horizontal)
+    : m_fontSelectionRequest { FontCascadeDescription::initialWeight(), FontCascadeDescription::initialStretch(), FontCascadeDescription::initialItalic() }
+    , m_orientation(static_cast<unsigned>(FontOrientation::Horizontal))
     , m_nonCJKGlyphOrientation(static_cast<unsigned>(NonCJKGlyphOrientation::Mixed))
-    , m_widthVariant(RegularWidth)
-    , m_italic(FontItalicOff)
-    , m_weight(FontWeightNormal)
+    , m_widthVariant(static_cast<unsigned>(FontWidthVariant::RegularWidth))
     , m_renderingMode(static_cast<unsigned>(FontRenderingMode::Normal))
-    , m_textRendering(AutoTextRendering)
+    , m_textRendering(static_cast<unsigned>(TextRenderingMode::AutoTextRendering))
     , m_script(USCRIPT_COMMON)
     , m_fontSynthesis(FontSynthesisWeight | FontSynthesisStyle | FontSynthesisSmallCaps)
     , m_variantCommonLigatures(static_cast<unsigned>(FontVariantLigatures::Normal))
@@ -77,93 +59,24 @@ FontDescription::FontDescription()
     , m_variantEastAsianVariant(static_cast<unsigned>(FontVariantEastAsianVariant::Normal))
     , m_variantEastAsianWidth(static_cast<unsigned>(FontVariantEastAsianWidth::Normal))
     , m_variantEastAsianRuby(static_cast<unsigned>(FontVariantEastAsianRuby::Normal))
+    , m_opticalSizing(static_cast<unsigned>(FontOpticalSizing::Enabled))
+    , m_fontStyleAxis(FontCascadeDescription::initialFontStyleAxis() == FontStyleAxis::ital)
+    , m_shouldAllowUserInstalledFonts(static_cast<unsigned>(AllowUserInstalledFonts::No))
+    , m_shouldAllowDesignSystemUIFonts(false)
 {
 }
 
-FontTraitsMask FontDescription::traitsMask() const
-{
-    return static_cast<FontTraitsMask>((m_italic ? FontStyleItalicMask : FontStyleNormalMask)
-        | (FontWeight100Mask << (m_weight - FontWeight100)));
-    
-}
-
-void FontDescription::setLocale(const AtomicString& locale)
+void FontDescription::setLocale(const AtomString& locale)
 {
     m_locale = locale;
     m_script = localeToScriptCodeForFontSelection(m_locale);
 }
 
-FontCascadeDescription::FontCascadeDescription()
-    : m_isAbsoluteSize(false)
-    , m_kerning(static_cast<unsigned>(Kerning::Auto))
-    , m_keywordSize(0)
-    , m_fontSmoothing(AutoSmoothing)
-    , m_isSpecifiedFont(false)
+#if !PLATFORM(COCOA)
+AtomString FontDescription::platformResolveGenericFamily(UScriptCode, const AtomString&, const AtomString&)
 {
+    return nullAtom();
 }
-
-FontWeight FontCascadeDescription::lighterWeight(void) const
-{
-    switch (weight()) {
-    case FontWeight100:
-    case FontWeight200:
-    case FontWeight300:
-    case FontWeight400:
-    case FontWeight500:
-        return FontWeight100;
-
-    case FontWeight600:
-    case FontWeight700:
-        return FontWeight400;
-
-    case FontWeight800:
-    case FontWeight900:
-        return FontWeight700;
-    }
-    ASSERT_NOT_REACHED();
-    return FontWeightNormal;
-}
-
-FontWeight FontCascadeDescription::bolderWeight(void) const
-{
-    switch (weight()) {
-    case FontWeight100:
-    case FontWeight200:
-    case FontWeight300:
-        return FontWeight400;
-
-    case FontWeight400:
-    case FontWeight500:
-        return FontWeight700;
-
-    case FontWeight600:
-    case FontWeight700:
-    case FontWeight800:
-    case FontWeight900:
-        return FontWeight900;
-    }
-    ASSERT_NOT_REACHED();
-    return FontWeightNormal;
-}
-
-#if ENABLE(TEXT_AUTOSIZING)
-
-bool FontCascadeDescription::familiesEqualForTextAutoSizing(const FontCascadeDescription& other) const
-{
-    unsigned thisFamilyCount = familyCount();
-    unsigned otherFamilyCount = other.familyCount();
-
-    if (thisFamilyCount != otherFamilyCount)
-        return false;
-
-    for (unsigned i = 0; i < thisFamilyCount; ++i) {
-        if (!equalIgnoringASCIICase(familyAt(i), other.familyAt(i)))
-            return false;
-    }
-
-    return true;
-}
-
-#endif // ENABLE(TEXT_AUTOSIZING)
+#endif
 
 } // namespace WebCore

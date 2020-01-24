@@ -50,6 +50,8 @@ public:
     IDBRequestData(const IDBClient::IDBConnectionProxy&, const IDBOpenDBRequest&);
     explicit IDBRequestData(IDBClient::TransactionOperation&);
     IDBRequestData(const IDBRequestData&);
+    IDBRequestData(IDBRequestData&&) = default;
+    IDBRequestData& operator=(IDBRequestData&&) = default;
 
     enum IsolatedCopyTag { IsolatedCopy };
     IDBRequestData(const IDBRequestData&, IsolatedCopyTag);
@@ -126,8 +128,11 @@ bool IDBRequestData::decode(Decoder& decoder, IDBRequestData& request)
     if (!decoder.decode(request.m_indexIdentifier))
         return false;
 
-    if (!decoder.decode(request.m_databaseIdentifier))
+    Optional<IDBDatabaseIdentifier> databaseIdentifier;
+    decoder >> databaseIdentifier;
+    if (!databaseIdentifier)
         return false;
+    request.m_databaseIdentifier = WTFMove(*databaseIdentifier);
 
     if (!decoder.decode(request.m_requestedVersion))
         return false;

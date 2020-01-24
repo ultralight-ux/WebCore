@@ -30,7 +30,6 @@
 #include "config.h"
 #include "CSSParserIdioms.h"
 #include "CSSValueKeywords.h"
-#include "TextEncoding.h"
 
 namespace WebCore {
 
@@ -48,11 +47,7 @@ bool isValueAllowedInMode(unsigned short id, CSSParserMode mode)
 
 URL completeURL(const CSSParserContext& context, const String& url)
 {
-    if (url.isNull())
-        return URL();
-    if (context.charset.isEmpty())
-        return URL(context.baseURL, url);
-    return URL(context.baseURL, url, context.charset);
+    return context.completeURL(url);
 }
 
 } // namespace WebCore

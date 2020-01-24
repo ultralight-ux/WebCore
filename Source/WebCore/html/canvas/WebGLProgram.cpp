@@ -24,15 +24,34 @@
  */
 
 #include "config.h"
+#include "WebGLProgram.h"
 
 #if ENABLE(WEBGL)
 
-#include "WebGLProgram.h"
-
 #include "WebGLContextGroup.h"
 #include "WebGLRenderingContextBase.h"
+#include "WebGLShader.h"
+#include <wtf/HashMap.h>
+#include <wtf/Lock.h>
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
+
+HashMap<WebGLProgram*, WebGLRenderingContextBase*>& WebGLProgram::instances(const LockHolder&)
+{
+    static NeverDestroyed<HashMap<WebGLProgram*, WebGLRenderingContextBase*>> instances;
+    return instances;
+}
+
+Lock& WebGLProgram::instancesMutex()
+{
+    static LazyNeverDestroyed<Lock> mutex;
+    static std::once_flag initializeMutex;
+    std::call_once(initializeMutex, [] {
+        mutex.construct();
+    });
+    return mutex.get();
+}
 
 Ref<WebGLProgram> WebGLProgram::create(WebGLRenderingContextBase& ctx)
 {
@@ -41,16 +60,24 @@ Ref<WebGLProgram> WebGLProgram::create(WebGLRenderingContextBase& ctx)
 
 WebGLProgram::WebGLProgram(WebGLRenderingContextBase& ctx)
     : WebGLSharedObject(ctx)
-    , m_linkStatus(false)
-    , m_linkCount(0)
-    , m_infoValid(true)
 {
+    {
+        LockHolder lock(instancesMutex());
+        instances(lock).add(this, &ctx);
+    }
+
     setObject(ctx.graphicsContext3D()->createProgram());
 }
 
 WebGLProgram::~WebGLProgram()
 {
     deleteObject(0);
+
+    {
+        LockHolder lock(instancesMutex());
+        ASSERT(instances(lock).contains(this));
+        instances(lock).remove(this);
+    }
 }
 
 void WebGLProgram::deleteObjectImpl(GraphicsContext3D* context3d, Platform3DObject obj)

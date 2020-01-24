@@ -46,7 +46,7 @@ ResourceUsageThread& ResourceUsageThread::singleton()
     return resourceUsageThread;
 }
 
-void ResourceUsageThread::addObserver(void* key, std::function<void (const ResourceUsageData&)> function)
+void ResourceUsageThread::addObserver(void* key, ResourceUsageCollectionMode mode, std::function<void (const ResourceUsageData&)> function)
 {
     auto& resourceUsageThread = ResourceUsageThread::singleton();
     resourceUsageThread.createThreadIfNeeded();
@@ -54,10 +54,14 @@ void ResourceUsageThread::addObserver(void* key, std::function<void (const Resou
     {
         LockHolder locker(resourceUsageThread.m_lock);
         bool wasEmpty = resourceUsageThread.m_observers.isEmpty();
-        resourceUsageThread.m_observers.set(key, function);
+        resourceUsageThread.m_observers.set(key, std::make_pair(mode, function));
 
-        if (wasEmpty)
+        resourceUsageThread.recomputeCollectionMode();
+
+        if (wasEmpty) {
+            resourceUsageThread.platformSaveStateBeforeStarting();
             resourceUsageThread.m_condition.notifyAll();
+        }
     }
 }
 
@@ -68,61 +72,82 @@ void ResourceUsageThread::removeObserver(void* key)
     {
         LockHolder locker(resourceUsageThread.m_lock);
         resourceUsageThread.m_observers.remove(key);
+
+        resourceUsageThread.recomputeCollectionMode();
     }
 }
 
 void ResourceUsageThread::waitUntilObservers()
 {
     LockHolder locker(m_lock);
-    while (m_observers.isEmpty())
+    while (m_observers.isEmpty()) {
         m_condition.wait(m_lock);
+
+        // Wait a bit after waking up for the first time.
+        WTF::sleep(10_ms);
+    }
 }
 
 void ResourceUsageThread::notifyObservers(ResourceUsageData&& data)
 {
     callOnMainThread([data = WTFMove(data)]() mutable {
-        Vector<std::function<void (const ResourceUsageData&)>> functions;
-        
+        Vector<std::pair<ResourceUsageCollectionMode, std::function<void (const ResourceUsageData&)>>> pairs;
+
         {
             auto& resourceUsageThread = ResourceUsageThread::singleton();
             LockHolder locker(resourceUsageThread.m_lock);
-            copyValuesToVector(resourceUsageThread.m_observers, functions);
+            pairs = copyToVector(resourceUsageThread.m_observers.values());
         }
 
-        for (auto& function : functions)
-            function(data);
+        for (auto& pair : pairs)
+            pair.second(data);
     });
+}
+
+void ResourceUsageThread::recomputeCollectionMode()
+{
+    m_collectionMode = None;
+
+    for (auto& pair : m_observers.values())
+        m_collectionMode = static_cast<ResourceUsageCollectionMode>(m_collectionMode | pair.first);
 }
 
 void ResourceUsageThread::createThreadIfNeeded()
 {
-    if (m_threadIdentifier)
+    if (m_thread)
         return;
 
     m_vm = &commonVM();
-    m_threadIdentifier = createThread(threadCallback, this, "WebCore: ResourceUsage");
-}
-
-void ResourceUsageThread::threadCallback(void* resourceUsageThread)
-{
-    static_cast<ResourceUsageThread*>(resourceUsageThread)->threadBody();
+    m_thread = Thread::create("WebCore: ResourceUsage", [this] {
+        threadBody();
+    });
 }
 
 NO_RETURN void ResourceUsageThread::threadBody()
 {
+    // Wait a bit after waking up for the first time.
+    WTF::sleep(10_ms);
+    
     while (true) {
         // Only do work if we have observers.
         waitUntilObservers();
 
-        auto start = std::chrono::system_clock::now();
+        auto start = WallTime::now();
 
         ResourceUsageData data;
-        platformThreadBody(m_vm, data);
+        ResourceUsageCollectionMode mode = m_collectionMode;
+        if (mode & CPU)
+            platformCollectCPUData(m_vm, data);
+        if (mode & Memory)
+            platformCollectMemoryData(m_vm, data);
+
         notifyObservers(WTFMove(data));
 
-        auto duration = std::chrono::system_clock::now() - start;
-        auto difference = 500ms - duration;
-        std::this_thread::sleep_for(difference);
+        // NOTE: Web Inspector expects this interval to be 500ms (CPU / Memory timelines),
+        // so if this interval changes Web Inspector may need to change.
+        auto duration = WallTime::now() - start;
+        auto difference = 500_ms - duration;
+        WTF::sleep(difference);
     }
 }
 

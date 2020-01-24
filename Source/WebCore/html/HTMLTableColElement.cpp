@@ -31,8 +31,15 @@
 #include "HTMLTableElement.h"
 #include "RenderTableCol.h"
 #include "Text.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLTableColElement);
+
+const unsigned defaultSpan { 1 };
+const unsigned minSpan { 1 };
+const unsigned maxSpan { 1000 };
 
 using namespace HTMLNames;
 
@@ -54,7 +61,7 @@ bool HTMLTableColElement::isPresentationAttribute(const QualifiedName& name) con
     return HTMLTablePartElement::isPresentationAttribute(name);
 }
 
-void HTMLTableColElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStyleProperties& style)
+void HTMLTableColElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == widthAttr)
         addHTMLLengthToStyle(style, CSSPropertyWidth, value);
@@ -62,10 +69,10 @@ void HTMLTableColElement::collectStyleForPresentationAttribute(const QualifiedNa
         HTMLTablePartElement::collectStyleForPresentationAttribute(name, value, style);
 }
 
-void HTMLTableColElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void HTMLTableColElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     if (name == spanAttr) {
-        m_span = limitToOnlyHTMLNonNegativeNumbersGreaterThanZero(value);
+        m_span = clampHTMLNonNegativeIntegerToRange(value, minSpan, maxSpan, defaultSpan);
         if (is<RenderTableCol>(renderer()))
             downcast<RenderTableCol>(*renderer()).updateFromElement();
     } else if (name == widthAttr) {
@@ -85,14 +92,14 @@ const StyleProperties* HTMLTableColElement::additionalPresentationAttributeStyle
 {
     if (!hasTagName(colgroupTag))
         return nullptr;
-    if (HTMLTableElement* table = findParentTable())
+    if (RefPtr<HTMLTableElement> table = findParentTable())
         return table->additionalGroupStyle(false);
     return nullptr;
 }
 
-void HTMLTableColElement::setSpan(unsigned n)
+void HTMLTableColElement::setSpan(unsigned span)
 {
-    setUnsignedIntegralAttribute(spanAttr, limitToOnlyHTMLNonNegativeNumbersGreaterThanZero(n));
+    setUnsignedIntegralAttribute(spanAttr, limitToOnlyHTMLNonNegative(span, defaultSpan));
 }
 
 String HTMLTableColElement::width() const

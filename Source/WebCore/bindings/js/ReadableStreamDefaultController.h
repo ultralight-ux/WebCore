@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Canon Inc.
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted, provided that the following conditions
@@ -30,11 +31,11 @@
 
 #if ENABLE(STREAMS_API)
 
-#include "JSDOMBinding.h"
+#include "JSDOMConvertBufferSource.h"
 #include "JSReadableStreamDefaultController.h"
-#include <runtime/JSCJSValue.h>
-#include <runtime/JSCJSValueInlines.h>
-#include <runtime/TypedArrays.h>
+#include <JavaScriptCore/JSCJSValue.h>
+#include <JavaScriptCore/JSCJSValueInlines.h>
+#include <JavaScriptCore/TypedArrays.h>
 
 namespace WebCore {
 
@@ -48,12 +49,9 @@ public:
 
     bool enqueue(RefPtr<JSC::ArrayBuffer>&&);
 
-    template<class ResolveResultType>
-    void error(const ResolveResultType&);
+    void error(const Exception&);
 
     void close() { invoke(*globalObject().globalExec(), jsController(), "close", JSC::jsUndefined()); }
-
-    bool isControlledReadableStreamLocked() const;
 
 private:
     void error(JSC::ExecState& state, JSC::JSValue value) { invoke(state, jsController(), "error", value); }
@@ -100,18 +98,16 @@ inline bool ReadableStreamDefaultController::enqueue(RefPtr<JSC::ArrayBuffer>&& 
     }
     auto length = buffer->byteLength();
     auto chunk = JSC::Uint8Array::create(WTFMove(buffer), 0, length);
-    ASSERT(chunk);
-    enqueue(state, toJS(&state, &globalObject, chunk.get()));
-    ASSERT_UNUSED(scope, !scope.exception());
+    enqueue(state, toJS(&state, &globalObject, chunk.ptr()));
+    scope.assertNoException();
     return true;
 }
 
-template<>
-inline void ReadableStreamDefaultController::error<String>(const String& errorMessage)
+inline void ReadableStreamDefaultController::error(const Exception& exception)
 {
     JSC::ExecState& state = globalExec();
     JSC::JSLockHolder locker(&state);
-    error(state, JSC::createTypeError(&state, errorMessage));
+    error(state, createDOMException(&state, exception.code(), exception.message()));
 }
 
 } // namespace WebCore

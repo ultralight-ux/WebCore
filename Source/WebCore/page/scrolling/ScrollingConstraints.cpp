@@ -26,7 +26,7 @@
 #include "config.h"
 #include "ScrollingConstraints.h"
 
-#include "TextStream.h"
+#include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
@@ -98,6 +98,23 @@ FloatPoint StickyPositionViewportConstraints::layerPositionForConstrainingRect(c
 {
     FloatSize offset = computeStickyOffset(constrainingRect);
     return m_layerPositionAtLastLayout + offset - m_stickyOffsetAtLastLayout;
+}
+
+TextStream& operator<<(TextStream& ts, ScrollPositioningBehavior behavior)
+{
+    switch (behavior) {
+    case ScrollPositioningBehavior::None: ts << "none"; break;
+    case ScrollPositioningBehavior::Stationary: ts << "stationary"; break;
+    case ScrollPositioningBehavior::Moves: ts << "moves"; break;
+    }
+    return ts;
+}
+
+TextStream& operator<<(TextStream& ts, const AbsolutePositionConstraints& constraints)
+{
+    ts.dumpProperty("layer-position-at-last-layout", constraints.layerPositionAtLastLayout());
+
+    return ts;
 }
 
 TextStream& operator<<(TextStream& ts, const FixedPositionViewportConstraints& constraints)

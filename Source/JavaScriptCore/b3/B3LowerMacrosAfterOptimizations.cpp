@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 
 #if ENABLE(B3_JIT)
 
+#include "AirArg.h"
 #include "B3BasicBlockInlines.h"
 #include "B3BlockInsertionSet.h"
 #include "B3CCallValue.h"
@@ -36,14 +37,19 @@
 #include "B3ConstPtrValue.h"
 #include "B3InsertionSetInlines.h"
 #include "B3PhaseScope.h"
+#include "B3ValueInlines.h"
 
 namespace JSC { namespace B3 {
 
+using Arg = Air::Arg;
+using Code = Air::Code;
+using Tmp = Air::Tmp;
+
 namespace {
 
-class LowerMacros {
+class LowerMacrosAfterOptimizations {
 public:
-    LowerMacros(Procedure& proc)
+    LowerMacrosAfterOptimizations(Procedure& proc)
         : m_proc(proc)
         , m_blockInsertionSet(proc)
         , m_insertionSet(proc)
@@ -94,9 +100,9 @@ private:
                 Value* functionAddress = nullptr;
                 if (m_value->type() == Double) {
                     double (*ceilDouble)(double) = ceil;
-                    functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, ceilDouble);
+                    functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, tagCFunctionPtr(ceilDouble, B3CCallPtrTag));
                 } else if (m_value->type() == Float)
-                    functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, ceilf);
+                    functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, tagCFunctionPtr(ceilf, B3CCallPtrTag));
                 else
                     RELEASE_ASSERT_NOT_REACHED();
 
@@ -116,9 +122,9 @@ private:
                 Value* functionAddress = nullptr;
                 if (m_value->type() == Double) {
                     double (*floorDouble)(double) = floor;
-                    functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, floorDouble);
+                    functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, tagCFunctionPtr(floorDouble, B3CCallPtrTag));
                 } else if (m_value->type() == Float)
-                    functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, floorf);
+                    functionAddress = m_insertionSet.insert<ConstPtrValue>(m_index, m_origin, tagCFunctionPtr(floorf, B3CCallPtrTag));
                 else
                     RELEASE_ASSERT_NOT_REACHED();
 
@@ -156,15 +162,14 @@ private:
             case RotL: {
                 // ARM64 doesn't have a rotate left.
                 if (isARM64()) {
-                    if (isARM64()) {
-                        Value* newShift = m_insertionSet.insert<Value>(m_index, Neg, m_value->origin(), m_value->child(1));
-                        Value* rotate = m_insertionSet.insert<Value>(m_index, RotR, m_value->origin(), m_value->child(0), newShift);
-                        m_value->replaceWithIdentity(rotate);
-                        break;
-                    }
+                    Value* newShift = m_insertionSet.insert<Value>(m_index, Neg, m_value->origin(), m_value->child(1));
+                    Value* rotate = m_insertionSet.insert<Value>(m_index, RotR, m_value->origin(), m_value->child(0), newShift);
+                    m_value->replaceWithIdentity(rotate);
+                    break;
                 }
                 break;
             }
+                
             default:
                 break;
             }
@@ -184,7 +189,7 @@ private:
 
 bool lowerMacrosImpl(Procedure& proc)
 {
-    LowerMacros lowerMacros(proc);
+    LowerMacrosAfterOptimizations lowerMacros(proc);
     return lowerMacros.run();
 }
 

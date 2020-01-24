@@ -144,19 +144,16 @@ public:
 protected:
     explicit AccessibilityNodeObject(Node*);
 
-    AccessibilityRole m_ariaRole;
-    bool m_childrenDirty;
-    mutable AccessibilityRole m_roleForMSAA;
+    AccessibilityRole m_ariaRole { AccessibilityRole::Unknown };
+    mutable AccessibilityRole m_roleForMSAA { AccessibilityRole::Unknown };
 #ifndef NDEBUG
-    bool m_initialized;
+    bool m_initialized { false };
 #endif
 
     bool isDetached() const override { return !m_node; }
 
     virtual AccessibilityRole determineAccessibilityRole();
     void addChildren() override;
-    void addChild(AccessibilityObject*) override;
-    void insertChild(AccessibilityObject*, unsigned index) override;
 
     bool canHaveChildren() const override;
     AccessibilityRole ariaRoleAttribute() const override;
@@ -180,11 +177,11 @@ protected:
     Element* menuItemElementForMenu() const;
     AccessibilityObject* menuButtonForMenu() const;
     AccessibilityObject* captionForFigure() const;
+    virtual void titleElementText(Vector<AccessibilityText>&) const;
 
 private:
     bool isAccessibilityNodeObject() const final { return true; }
-    void accessibilityText(Vector<AccessibilityText>&) override;
-    virtual void titleElementText(Vector<AccessibilityText>&) const;
+    void accessibilityText(Vector<AccessibilityText>&) const override;
     void alternativeText(Vector<AccessibilityText>&) const;
     void visibleText(Vector<AccessibilityText>&) const;
     void helpText(Vector<AccessibilityText>&) const;
@@ -192,7 +189,8 @@ private:
     void ariaLabeledByText(Vector<AccessibilityText>&) const;
     bool computeAccessibilityIsIgnored() const override;
     bool usesAltTagForTextComputation() const;
-
+    bool roleIgnoresTitle() const;
+    
     Node* m_node;
 };
 

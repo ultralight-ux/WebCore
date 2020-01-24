@@ -25,9 +25,9 @@
 
 #pragma once
 
-#include <runtime/ConsoleTypes.h>
+#include "ScriptElementCachedScriptFetcher.h"
+#include <JavaScriptCore/ConsoleTypes.h>
 #include <wtf/HashCountedSet.h>
-#include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -35,12 +35,14 @@ namespace WebCore {
 class LoadableScriptClient;
 class ScriptElement;
 
-class LoadableScript : public RefCounted<LoadableScript> {
+class LoadableScript : public ScriptElementCachedScriptFetcher {
 public:
     enum class ErrorType {
         CachedScript,
         CrossOriginLoad,
+        MIMEType,
         Nosniff,
+        FailedIntegrityCheck,
     };
 
     struct ConsoleMessage {
@@ -51,13 +53,13 @@ public:
 
     struct Error {
         ErrorType type;
-        std::optional<ConsoleMessage> consoleMessage;
+        Optional<ConsoleMessage> consoleMessage;
     };
 
-    virtual ~LoadableScript() { }
+    virtual ~LoadableScript() = default;
 
     virtual bool isLoaded() const = 0;
-    virtual std::optional<Error> error() const = 0;
+    virtual Optional<Error> error() const = 0;
     virtual bool wasCanceled() const = 0;
 
     virtual void execute(ScriptElement&) = 0;
@@ -65,10 +67,12 @@ public:
     void addClient(LoadableScriptClient&);
     void removeClient(LoadableScriptClient&);
 
-    virtual bool isClassicScript() const { return false; }
-    virtual bool isModuleScript() const { return false; }
-
 protected:
+    LoadableScript(const String& nonce, const String& crossOriginMode, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree)
+        : ScriptElementCachedScriptFetcher(nonce, crossOriginMode, charset, initiatorName, isInUserAgentShadowTree)
+    {
+    }
+
     void notifyClientFinished();
 
 private:

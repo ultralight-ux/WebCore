@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "CodeSpecializationKind.h"
 
 namespace JSC {
 
@@ -34,7 +33,7 @@ class VM;
 
 namespace LLInt {
 
-void setEntrypoint(VM&, CodeBlock*);
+void setEntrypoint(CodeBlock*);
 
 unsigned frameRegisterCountFor(CodeBlock*);
 

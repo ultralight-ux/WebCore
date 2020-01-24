@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,11 +28,13 @@
 #include "CollectionTraversal.h"
 #include "HTMLCollection.h"
 #include "HTMLElement.h"
+#include <wtf/IsoMalloc.h>
 
 namespace WebCore {
 
 template <typename HTMLCollectionClass, CollectionTraversalType traversalType>
 class CachedHTMLCollection : public HTMLCollection {
+    WTF_MAKE_ISO_NONALLOCATABLE(CachedHTMLCollection);
 public:
     CachedHTMLCollection(ContainerNode& base, CollectionType);
 
@@ -40,8 +42,14 @@ public:
 
     unsigned length() const final { return m_indexCache.nodeCount(collection()); }
     Element* item(unsigned offset) const override { return m_indexCache.nodeAt(collection(), offset); }
-    Element* namedItem(const AtomicString& name) const override;
-    size_t memoryCost() const final { return m_indexCache.memoryCost() + HTMLCollection::memoryCost(); }
+    Element* namedItem(const AtomString& name) const override;
+    size_t memoryCost() const final
+    {
+        // memoryCost() may be invoked concurrently from a GC thread, and we need to be careful about what data we access here and how.
+        // Accessing m_indexCache.memoryCost() is safe because because it doesn't involve any pointer chasing.
+        // HTMLCollection::memoryCost() ensures its own thread safety.
+        return m_indexCache.memoryCost() + HTMLCollection::memoryCost();
+    }
 
     // For CollectionIndexCache; do not use elsewhere.
     using CollectionTraversalIterator = typename CollectionTraversal<traversalType>::Iterator;
@@ -53,7 +61,7 @@ public:
     bool collectionCanTraverseBackward() const { return traversalType != CollectionTraversalType::CustomForwardOnly; }
     void willValidateIndexCache() const { document().registerCollection(const_cast<CachedHTMLCollection<HTMLCollectionClass, traversalType>&>(*this)); }
 
-    void invalidateCache(Document&) override;
+    void invalidateCacheForDocument(Document&) override;
 
     bool elementMatches(Element&) const;
 
@@ -78,9 +86,9 @@ CachedHTMLCollection<HTMLCollectionClass, traversalType>::~CachedHTMLCollection(
 }
 
 template <typename HTMLCollectionClass, CollectionTraversalType traversalType>
-void CachedHTMLCollection<HTMLCollectionClass, traversalType>::invalidateCache(Document& document)
+void CachedHTMLCollection<HTMLCollectionClass, traversalType>::invalidateCacheForDocument(Document& document)
 {
-    HTMLCollection::invalidateCache(document);
+    HTMLCollection::invalidateCacheForDocument(document);
     if (m_indexCache.hasValidCache(collection())) {
         document.unregisterCollection(*this);
         m_indexCache.invalidate(collection());
@@ -97,15 +105,22 @@ bool CachedHTMLCollection<HTMLCollectionClass, traversalType>::elementMatches(El
 
 static inline bool nameShouldBeVisibleInDocumentAll(HTMLElement& element)
 {
-    // The document.all collection returns only certain types of elements by name,
-    // although it returns any type of element by id.
-    return element.hasTagName(HTMLNames::appletTag)
+    // https://html.spec.whatwg.org/multipage/infrastructure.html#all-named-elements
+    return element.hasTagName(HTMLNames::aTag)
+        || element.hasTagName(HTMLNames::appletTag)
+        || element.hasTagName(HTMLNames::buttonTag)
         || element.hasTagName(HTMLNames::embedTag)
         || element.hasTagName(HTMLNames::formTag)
+        || element.hasTagName(HTMLNames::frameTag)
+        || element.hasTagName(HTMLNames::framesetTag)
+        || element.hasTagName(HTMLNames::iframeTag)
         || element.hasTagName(HTMLNames::imgTag)
         || element.hasTagName(HTMLNames::inputTag)
+        || element.hasTagName(HTMLNames::mapTag)
+        || element.hasTagName(HTMLNames::metaTag)
         || element.hasTagName(HTMLNames::objectTag)
-        || element.hasTagName(HTMLNames::selectTag);
+        || element.hasTagName(HTMLNames::selectTag)
+        || element.hasTagName(HTMLNames::textareaTag);
 }
 
 static inline bool nameShouldBeVisibleInDocumentAll(Element& element)
@@ -114,7 +129,7 @@ static inline bool nameShouldBeVisibleInDocumentAll(Element& element)
 }
 
 template <typename HTMLCollectionClass, CollectionTraversalType traversalType>
-Element* CachedHTMLCollection<HTMLCollectionClass, traversalType>::namedItem(const AtomicString& name) const
+Element* CachedHTMLCollection<HTMLCollectionClass, traversalType>::namedItem(const AtomString& name) const
 {
     // http://msdn.microsoft.com/workshop/author/dhtml/reference/methods/nameditem.asp
     // This method first searches for an object with a matching id

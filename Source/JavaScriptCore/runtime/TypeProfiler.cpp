@@ -32,7 +32,9 @@
 
 namespace JSC {
 
+namespace TypeProfilerInternal {
 static const bool verbose = false;
+}
 
 TypeProfiler::TypeProfiler()
     : m_nextUniqueVariableID(1)
@@ -59,7 +61,7 @@ void TypeProfiler::logTypesForTypeLocation(TypeLocation* location, VM& vm)
 
 void TypeProfiler::insertNewLocation(TypeLocation* location)
 {
-    if (verbose)
+    if (TypeProfilerInternal::verbose)
         dataLogF("Registering location:: divotStart:%u, divotEnd:%u\n", location->m_divotStart, location->m_divotEnd);
 
     if (!m_bucketMap.contains(location->m_sourceID)) {
@@ -122,8 +124,7 @@ TypeLocation* TypeProfiler::findLocation(unsigned divot, intptr_t sourceID, Type
     Vector<TypeLocation*>& bucket = m_bucketMap.find(sourceID)->value;
     TypeLocation* bestMatch = nullptr;
     unsigned distance = UINT_MAX; // Because assignments may be nested, make sure we find the closest enclosing assignment to this character offset.
-    for (size_t i = 0, size = bucket.size(); i < size; i++) {
-        TypeLocation* location = bucket.at(i);
+    for (auto* location : bucket) {
         // We found the type location that correlates to the convergence of all return statements in a function.
         // This text offset is the offset of the opening brace in a function declaration.
         if (descriptor == TypeProfilerSearchDescriptorFunctionReturn && location->m_globalVariableID == TypeProfilerReturnStatement && location->m_divotForFunctionOffsetIfReturnStatement == divot)
@@ -147,13 +148,13 @@ TypeLocation* TypeProfiler::nextTypeLocation()
     return m_typeLocationInfo.add(); 
 }
 
-void TypeProfiler::invalidateTypeSetCache()
+void TypeProfiler::invalidateTypeSetCache(VM& vm)
 {
     for (Bag<TypeLocation>::iterator iter = m_typeLocationInfo.begin(); !!iter; ++iter) {
         TypeLocation* location = *iter;
-        location->m_instructionTypeSet->invalidateCache();
+        location->m_instructionTypeSet->invalidateCache(vm);
         if (location->m_globalTypeSet)
-            location->m_globalTypeSet->invalidateCache();
+            location->m_globalTypeSet->invalidateCache(vm);
     }
 }
 

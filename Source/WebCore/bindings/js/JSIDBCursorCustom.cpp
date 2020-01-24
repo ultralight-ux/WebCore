@@ -28,28 +28,35 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
+#include "IDBBindingUtilities.h"
 #include "JSDOMBinding.h"
 #include "JSIDBCursorWithValue.h"
-#include "JSIDBIndex.h"
-#include "JSIDBObjectStore.h"
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
+
+JSC::JSValue JSIDBCursor::key(JSC::ExecState& state) const
+{
+    return cachedPropertyValue(state, *this, wrapped().keyWrapper(), [&] {
+        return toJS(state, *state.lexicalGlobalObject(), wrapped().key());
+    });
+}
+
+JSC::JSValue JSIDBCursor::primaryKey(JSC::ExecState& state) const
+{
+    return cachedPropertyValue(state, *this, wrapped().primaryKeyWrapper(), [&] {
+        return toJS(state, *state.lexicalGlobalObject(), wrapped().primaryKey());
+    });
+}
 
 void JSIDBCursor::visitAdditionalChildren(SlotVisitor& visitor)
 {
     auto& cursor = wrapped();
     if (auto* request = cursor.request())
         visitor.addOpaqueRoot(request);
-}
-
-JSValue JSIDBCursor::source(ExecState& state) const
-{
-    auto& cursor = wrapped();
-    if (auto* index = cursor.index())
-        return toJS(&state, globalObject(), *index);
-    return toJS(&state, globalObject(), cursor.objectStore());
+    cursor.keyWrapper().visit(visitor);
+    cursor.primaryKeyWrapper().visit(visitor);
 }
 
 JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, Ref<IDBCursor>&& cursor)

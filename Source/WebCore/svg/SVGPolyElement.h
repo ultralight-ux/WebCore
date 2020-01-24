@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,22 +21,19 @@
 
 #pragma once
 
-#include "SVGAnimatedBoolean.h"
 #include "SVGExternalResourcesRequired.h"
-#include "SVGGraphicsElement.h"
+#include "SVGGeometryElement.h"
 #include "SVGNames.h"
-#include "SVGPointListValues.h"
 
 namespace WebCore {
 
-class SVGPolyElement : public SVGGraphicsElement, public SVGExternalResourcesRequired {
+class SVGPolyElement : public SVGGeometryElement, public SVGExternalResourcesRequired {
+    WTF_MAKE_ISO_ALLOCATED(SVGPolyElement);
 public:
-    Ref<SVGPointList> points();
-    Ref<SVGPointList> animatedPoints();
+    const SVGPointList& points() const { return m_points->currentValue(); }
 
-    SVGPointListValues& pointList() const { return m_points.value; }
-
-    static const SVGPropertyInfo* pointsPropertyInfo();
+    SVGPointList& points() { return m_points->baseVal(); }
+    SVGPointList& animatedPoints() { return *m_points->animVal(); }
 
     size_t approximateMemoryCost() const override;
 
@@ -43,23 +41,17 @@ protected:
     SVGPolyElement(const QualifiedName&, Document&);
 
 private:
-    bool isValid() const override { return SVGTests::isValid(); }
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGPolyElement, SVGGeometryElement, SVGExternalResourcesRequired>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override; 
+    void parseAttribute(const QualifiedName&, const AtomString&) override; 
     void svgAttributeChanged(const QualifiedName&) override;
 
+    bool isValid() const override { return SVGTests::isValid(); }
     bool supportsMarkers() const override { return true; }
 
-    // Custom 'points' property
-    static void synchronizePoints(SVGElement* contextElement);
-    static Ref<SVGAnimatedProperty> lookupOrCreatePointsWrapper(SVGElement* contextElement);
-
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGPolyElement)
-        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)
-    END_DECLARE_ANIMATED_PROPERTIES
-
-protected:
-    mutable SVGSynchronizableAnimatedProperty<SVGPointListValues> m_points;
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedPointList> m_points { SVGAnimatedPointList::create(this) };
 };
 
 } // namespace WebCore

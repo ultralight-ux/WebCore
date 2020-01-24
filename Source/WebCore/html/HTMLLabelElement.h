@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -28,11 +28,12 @@
 namespace WebCore {
 
 class HTMLLabelElement final : public HTMLElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLLabelElement);
 public:
     static Ref<HTMLLabelElement> create(const QualifiedName&, Document&);
 
-    WEBCORE_EXPORT LabelableElement* control();
-    WEBCORE_EXPORT HTMLFormElement* form();
+    WEBCORE_EXPORT RefPtr<LabelableElement> control() const;
+    WEBCORE_EXPORT HTMLFormElement* form() const final;
 
     bool willRespondToMouseClickEvents() final;
 

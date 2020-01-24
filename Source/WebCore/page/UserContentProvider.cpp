@@ -26,14 +26,17 @@
 #include "config.h"
 #include "UserContentProvider.h"
 
+#include "CustomHeaderFields.h"
 #include "Document.h"
 #include "DocumentLoader.h"
-#include "MainFrame.h"
+#include "Frame.h"
+#include "FrameLoader.h"
 #include "Page.h"
 
 #if ENABLE(CONTENT_EXTENSIONS)
 #include "ContentExtensionCompiler.h"
 #include "ContentExtensionsBackend.h"
+#include "ContentRuleListResults.h"
 #endif
 
 namespace WebCore {
@@ -100,21 +103,30 @@ static bool contentExtensionsEnabled(const DocumentLoader& documentLoader)
     return true;
 }
     
-ContentExtensions::BlockedStatus UserContentProvider::processContentExtensionRulesForLoad(const URL& url, ResourceType resourceType, DocumentLoader& initiatingDocumentLoader)
+ContentRuleListResults UserContentProvider::processContentRuleListsForLoad(const URL& url, OptionSet<ContentExtensions::ResourceType> resourceType, DocumentLoader& initiatingDocumentLoader)
 {
     if (!contentExtensionsEnabled(initiatingDocumentLoader))
         return { };
 
-    return userContentExtensionBackend().processContentExtensionRulesForLoad(url, resourceType, initiatingDocumentLoader);
+    return userContentExtensionBackend().processContentRuleListsForLoad(url, resourceType, initiatingDocumentLoader);
 }
 
-Vector<ContentExtensions::Action> UserContentProvider::actionsForResourceLoad(const ResourceLoadInfo& resourceLoadInfo, DocumentLoader& initiatingDocumentLoader)
+Vector<ContentExtensions::ActionsFromContentRuleList> UserContentProvider::actionsForResourceLoad(const ContentExtensions::ResourceLoadInfo& resourceLoadInfo, DocumentLoader& initiatingDocumentLoader)
 {
     if (!contentExtensionsEnabled(initiatingDocumentLoader))
         return { };
 
     return userContentExtensionBackend().actionsForResourceLoad(resourceLoadInfo);
 }
+
+void UserContentProvider::forEachContentExtension(const WTF::Function<void(const String&, ContentExtensions::ContentExtension&)>& apply, DocumentLoader& initiatingDocumentLoader)
+{
+    if (!contentExtensionsEnabled(initiatingDocumentLoader))
+        return;
+
+    userContentExtensionBackend().forEach(apply);
+}
+
 #endif
 
 } // namespace WebCore

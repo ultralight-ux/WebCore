@@ -26,29 +26,32 @@
  *
  */
 
+#if defined(ENABLE_SERVICE_WORKER) && ENABLE_SERVICE_WORKER
+typedef (WindowProxy or MessagePort or ServiceWorker) MessageEventSource;
+#else
+typedef (WindowProxy or MessagePort) MessageEventSource;
+#endif
+
 [
     Constructor(DOMString type, optional MessageEventInit eventInitDict),
-    ConstructorCallWith=ScriptState,
     Exposed=(Window,Worker),
+    JSCustomMarkFunction,
 ] interface MessageEvent : Event {
     readonly attribute USVString origin;
     readonly attribute DOMString lastEventId;
-    readonly attribute EventTarget? source;
-    [CachedAttribute, CustomGetter] readonly attribute any data;
-    readonly attribute FrozenArray<MessagePort> ports;
+    readonly attribute MessageEventSource? source;
+    [CustomGetter] readonly attribute any data;
+    [CustomGetter] readonly attribute FrozenArray<MessagePort> ports;
 
-    [Custom] void initMessageEvent(optional DOMString typeArg, optional boolean canBubbleArg, optional boolean cancelableArg,
-        optional any dataArg, optional USVString originArg, optional DOMString lastEventIdArg, optional (DOMWindow or MessagePort)? sourceArg,
-        optional sequence<MessagePort> messagePorts);
-    [Custom] void webkitInitMessageEvent(optional DOMString typeArg, optional boolean canBubbleArg, optional boolean cancelableArg,
-        optional any dataArg, optional USVString originArg, optional DOMString lastEventIdArg, optional (DOMWindow or MessagePort)? sourceArg,
-        optional sequence<MessagePort> messagePorts);
+    void initMessageEvent(DOMString type, optional boolean bubbles = false, optional boolean cancelable = false,
+        optional any data = null, optional USVString originArg = "", optional DOMString lastEventId = "", optional MessageEventSource? source = null,
+        optional sequence<MessagePort> messagePorts = []);
 };
 
 dictionary MessageEventInit : EventInit {
-      any data = null;
-      USVString origin = "";
-      DOMString lastEventId = "";
-      (DOMWindow or MessagePort)? source = null;
-      sequence<MessagePort> ports = [];
+    any data = null;
+    USVString origin = "";
+    DOMString lastEventId = "";
+    MessageEventSource? source = null;
+    sequence<MessagePort> ports = [];
 };

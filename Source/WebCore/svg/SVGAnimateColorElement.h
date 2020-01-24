@@ -26,12 +26,12 @@
 namespace WebCore {
 
 class SVGAnimateColorElement final : public SVGAnimateElementBase {
+    WTF_MAKE_ISO_ALLOCATED(SVGAnimateColorElement);
 public:
     static Ref<SVGAnimateColorElement> create(const QualifiedName&, Document&);
 
 private:
     SVGAnimateColorElement(const QualifiedName&, Document&);
-    void determinePropertyValueTypes(const String& from, const String& to) override;
 };
 
 } // namespace WebCore

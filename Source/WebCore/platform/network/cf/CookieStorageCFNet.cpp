@@ -26,27 +26,29 @@
 #include "config.h"
 #include "CookieStorage.h"
 
-#include "NetworkStorageSession.h"
-#include <wtf/MainThread.h>
-
-#if PLATFORM(COCOA)
-#include "WebCoreSystemInterface.h"
-#elif PLATFORM(WIN)
 #include "LoaderRunLoopCF.h"
+#include "NetworkStorageSession.h"
 #include <CFNetwork/CFHTTPCookiesPriv.h>
-#include <WebKitSystemInterface/WebKitSystemInterface.h>
-#endif
+#include <pal/spi/cf/CFNetworkSPI.h>
+#include <wtf/Function.h>
+#include <wtf/HashMap.h>
+#include <wtf/MainThread.h>
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-#if PLATFORM(WIN)
-
-static CookieChangeCallbackPtr cookieChangeCallback;
-
-static void notifyCookiesChanged(CFHTTPCookieStorageRef, void *)
+static HashMap<CFHTTPCookieStorageRef, WTF::Function<void ()>>& cookieChangeCallbackMap()
 {
-    callOnMainThread([] {
-        cookieChangeCallback();
+    static NeverDestroyed<HashMap<CFHTTPCookieStorageRef, WTF::Function<void ()>>> map;
+    return map;
+}
+
+static void notifyCookiesChanged(CFHTTPCookieStorageRef cookieStorage, void *)
+{
+    callOnMainThread([cookieStorage] {
+        auto it = cookieChangeCallbackMap().find(cookieStorage);
+        if (it != cookieChangeCallbackMap().end())
+            it->value();
     });
 }
 
@@ -61,39 +63,37 @@ static inline CFRunLoopRef cookieStorageObserverRunLoop()
     return loaderRunLoop();
 }
 
-void startObservingCookieChanges(CookieChangeCallbackPtr callback)
+void startObservingCookieChanges(const NetworkStorageSession& storageSession, WTF::Function<void ()>&& callback)
 {
     ASSERT(isMainThread());
-
-    ASSERT(!cookieChangeCallback);
-    cookieChangeCallback = callback;
 
     CFRunLoopRef runLoop = cookieStorageObserverRunLoop();
     ASSERT(runLoop);
 
-    RetainPtr<CFHTTPCookieStorageRef> cookieStorage = NetworkStorageSession::defaultStorageSession().cookieStorage();
+    RetainPtr<CFHTTPCookieStorageRef> cookieStorage = storageSession.cookieStorage();
     ASSERT(cookieStorage);
+
+    ASSERT(cookieChangeCallbackMap().contains(cookieStorage.get()));
+    cookieChangeCallbackMap().add(cookieStorage.get(), WTFMove(callback));
 
     CFHTTPCookieStorageScheduleWithRunLoop(cookieStorage.get(), runLoop, kCFRunLoopCommonModes);
     CFHTTPCookieStorageAddObserver(cookieStorage.get(), runLoop, kCFRunLoopDefaultMode, notifyCookiesChanged, 0);
 }
 
-void stopObservingCookieChanges()
+void stopObservingCookieChanges(const NetworkStorageSession& storageSession)
 {
     ASSERT(isMainThread());
-
-    cookieChangeCallback = 0;
 
     CFRunLoopRef runLoop = cookieStorageObserverRunLoop();
     ASSERT(runLoop);
 
-    RetainPtr<CFHTTPCookieStorageRef> cookieStorage = NetworkStorageSession::defaultStorageSession().cookieStorage();
+    RetainPtr<CFHTTPCookieStorageRef> cookieStorage = storageSession.cookieStorage();
     ASSERT(cookieStorage);
+
+    cookieChangeCallbackMap().remove(cookieStorage.get());
 
     CFHTTPCookieStorageRemoveObserver(cookieStorage.get(), runLoop, kCFRunLoopDefaultMode, notifyCookiesChanged, 0);
     CFHTTPCookieStorageUnscheduleFromRunLoop(cookieStorage.get(), runLoop, kCFRunLoopCommonModes);
 }
-
-#endif // PLATFORM(WIN)
 
 } // namespace WebCore

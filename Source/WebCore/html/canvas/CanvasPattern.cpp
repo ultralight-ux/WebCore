@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2006, 2008, 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,6 +26,8 @@
 #include "config.h"
 #include "CanvasPattern.h"
 
+#include "DOMMatrix2DInit.h"
+#include "DOMMatrixReadOnly.h"
 #include "Image.h"
 #include "Pattern.h"
 #include <wtf/text/WTFString.h>
@@ -43,9 +45,7 @@ CanvasPattern::CanvasPattern(Ref<Image>&& image, bool repeatX, bool repeatY, boo
 {
 }
 
-CanvasPattern::~CanvasPattern()
-{
-}
+CanvasPattern::~CanvasPattern() = default;
 
 bool CanvasPattern::parseRepetitionType(const String& type, bool& repeatX, bool& repeatY)
 {
@@ -70,6 +70,16 @@ bool CanvasPattern::parseRepetitionType(const String& type, bool& repeatX, bool&
         return true;
     }
     return false;
+}
+
+ExceptionOr<void> CanvasPattern::setTransform(DOMMatrix2DInit&& matrixInit)
+{
+    auto checkValid = DOMMatrixReadOnly::validateAndFixup(matrixInit);
+    if (checkValid.hasException())
+        return checkValid.releaseException();
+
+    m_pattern->setPatternSpaceTransform({ matrixInit.a.valueOr(1), matrixInit.b.valueOr(0), matrixInit.c.valueOr(0), matrixInit.d.valueOr(1), matrixInit.e.valueOr(0), matrixInit.f.valueOr(0) });
+    return { };
 }
 
 } // namespace WebCore

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google, Inc. All rights reserved.
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,11 +45,6 @@ static bool isDirectiveValueCharacter(UChar c)
     return isASCIISpace(c) || (c >= 0x21 && c <= 0x7e); // Whitespace + VCHAR
 }
 
-static bool isNotASCIISpace(UChar c)
-{
-    return !isASCIISpace(c);
-}
-
 static inline bool checkEval(ContentSecurityPolicySourceListDirective* directive)
 {
     return !directive || directive->allowEval();
@@ -75,13 +70,36 @@ static inline bool checkNonce(ContentSecurityPolicySourceListDirective* directiv
     return !directive || directive->allows(nonce);
 }
 
+// Used to compute the comparison URL when checking frame-ancestors. We do this weird conversion so that child
+// frames of a page with a unique origin (e.g. about:blank) are not blocked due to their frame-ancestors policy
+// and do not need to add the parent's URL to their policy. The latter could allow the child page to be framed
+// by anyone. See <https://github.com/w3c/webappsec/issues/311> for more details.
+static inline URL urlFromOrigin(const SecurityOrigin& origin)
+{
+    return { URL { }, origin.toString() };
+}
+
 static inline bool checkFrameAncestors(ContentSecurityPolicySourceListDirective* directive, const Frame& frame)
 {
     if (!directive)
         return true;
     bool didReceiveRedirectResponse = false;
     for (Frame* current = frame.tree().parent(); current; current = current->tree().parent()) {
-        if (!directive->allows(current->document()->url(), didReceiveRedirectResponse, ContentSecurityPolicySourceListDirective::ShouldAllowEmptyURLIfSourceListIsNotNone::No))
+        URL origin = urlFromOrigin(current->document()->securityOrigin());
+        if (!origin.isValid() || !directive->allows(origin, didReceiveRedirectResponse, ContentSecurityPolicySourceListDirective::ShouldAllowEmptyURLIfSourceListIsNotNone::No))
+            return false;
+    }
+    return true;
+}
+
+static inline bool checkFrameAncestors(ContentSecurityPolicySourceListDirective* directive, const Vector<RefPtr<SecurityOrigin>>& ancestorOrigins)
+{
+    if (!directive)
+        return true;
+    bool didReceiveRedirectResponse = false;
+    for (auto& origin : ancestorOrigins) {
+        URL originURL = urlFromOrigin(*origin);
+        if (!originURL.isValid() || !directive->allows(originURL, didReceiveRedirectResponse, ContentSecurityPolicySourceListDirective::ShouldAllowEmptyURLIfSourceListIsNotNone::No))
             return false;
     }
     return true;
@@ -109,8 +127,10 @@ std::unique_ptr<ContentSecurityPolicyDirectiveList> ContentSecurityPolicyDirecti
     directives->parse(header, from);
 
     if (!checkEval(directives->operativeDirective(directives->m_scriptSrc.get()))) {
-        String message = makeString("Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed source of script in the following Content Security Policy directive: \"", directives->operativeDirective(directives->m_scriptSrc.get())->text(), "\".\n");
-        directives->setEvalDisabledErrorMessage(message);
+        String evalDisabledMessage = makeString("Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed source of script in the following Content Security Policy directive: \"", directives->operativeDirective(directives->m_scriptSrc.get())->text(), "\".\n");
+        directives->setEvalDisabledErrorMessage(evalDisabledMessage);
+        String webAssemblyDisabledMessage = makeString("Refused to create a WebAssembly object because 'unsafe-eval' is not an allowed source of script in the following Content Security Policy directive: \"", directives->operativeDirective(directives->m_scriptSrc.get())->text(), "\".\n");
+        directives->setWebAssemblyDisabledErrorMessage(webAssemblyDisabledMessage);
     }
 
     if (directives->isReportOnly() && directives->reportURIs().isEmpty())
@@ -220,7 +240,7 @@ const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violat
 
 const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violatedDirectiveForFrame(const URL& url, bool didReceiveRedirectResponse) const
 {
-    if (url.isBlankURL())
+    if (url.protocolIsAbout())
         return nullptr;
 
     // We must enforce the frame-src directive (if specified) before enforcing the child-src directive for a nested browsing
@@ -238,6 +258,13 @@ const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violat
     return m_frameAncestors.get();
 }
 
+const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violatedDirectiveForFrameAncestorOrigins(const Vector<RefPtr<SecurityOrigin>>& ancestorOrigins) const
+{
+    if (checkFrameAncestors(m_frameAncestors.get(), ancestorOrigins))
+        return nullptr;
+    return m_frameAncestors.get();
+}
+
 const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violatedDirectiveForImage(const URL& url, bool didReceiveRedirectResponse) const
 {
     ContentSecurityPolicySourceListDirective* operativeDirective = this->operativeDirective(m_imgSrc.get());
@@ -245,6 +272,16 @@ const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violat
         return nullptr;
     return operativeDirective;
 }
+
+#if ENABLE(APPLICATION_MANIFEST)
+const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violatedDirectiveForManifest(const URL& url, bool didReceiveRedirectResponse) const
+{
+    ContentSecurityPolicySourceListDirective* operativeDirective = this->operativeDirective(m_manifestSrc.get());
+    if (checkSource(operativeDirective, url, didReceiveRedirectResponse))
+        return nullptr;
+    return operativeDirective;
+}
+#endif // ENABLE(APPLICATION_MANIFEST)
 
 const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violatedDirectiveForMedia(const URL& url, bool didReceiveRedirectResponse) const
 {
@@ -256,7 +293,7 @@ const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violat
 
 const ContentSecurityPolicyDirective* ContentSecurityPolicyDirectiveList::violatedDirectiveForObjectSource(const URL& url, bool didReceiveRedirectResponse, ContentSecurityPolicySourceListDirective::ShouldAllowEmptyURLIfSourceListIsNotNone shouldAllowEmptyURLIfSourceListEmpty) const
 {
-    if (url.isBlankURL())
+    if (url.protocolIsAbout())
         return nullptr;
     ContentSecurityPolicySourceListDirective* operativeDirective = this->operativeDirective(m_objectSrc.get());
     if (checkSource(operativeDirective, url, didReceiveRedirectResponse, shouldAllowEmptyURLIfSourceListEmpty))
@@ -317,6 +354,10 @@ void ContentSecurityPolicyDirectiveList::parse(const String& policy, ContentSecu
                     m_policy.reportInvalidDirectiveInHTTPEquivMeta(name);
                     continue;
                 }
+            } else if (policyFrom == ContentSecurityPolicy::PolicyFrom::InheritedForPluginDocument) {
+                if (!equalIgnoringASCIICase(name, ContentSecurityPolicyDirectiveNames::pluginTypes)
+                    && !equalIgnoringASCIICase(name, ContentSecurityPolicyDirectiveNames::reportURI))
+                    continue;
             }
             addDirective(name, value);
         }
@@ -478,6 +519,10 @@ void ContentSecurityPolicyDirectiveList::addDirective(const String& name, const 
         setCSPDirective<ContentSecurityPolicySourceListDirective>(name, value, m_imgSrc);
     else if (equalIgnoringASCIICase(name, ContentSecurityPolicyDirectiveNames::fontSrc))
         setCSPDirective<ContentSecurityPolicySourceListDirective>(name, value, m_fontSrc);
+#if ENABLE(APPLICATION_MANIFEST)
+    else if (equalIgnoringASCIICase(name, ContentSecurityPolicyDirectiveNames::manifestSrc))
+        setCSPDirective<ContentSecurityPolicySourceListDirective>(name, value, m_manifestSrc);
+#endif
     else if (equalIgnoringASCIICase(name, ContentSecurityPolicyDirectiveNames::mediaSrc))
         setCSPDirective<ContentSecurityPolicySourceListDirective>(name, value, m_mediaSrc);
     else if (equalIgnoringASCIICase(name, ContentSecurityPolicyDirectiveNames::connectSrc))

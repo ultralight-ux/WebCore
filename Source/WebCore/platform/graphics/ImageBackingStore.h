@@ -36,6 +36,12 @@
 
 namespace WebCore {
 
+#if USE(CAIRO)
+// Due to the pixman 16.16 floating point representation, cairo is not able to handle
+// images whose size is bigger than 32768.
+static const int cairoMaxImageSize = 32768;
+#endif
+
 class ImageBackingStore {
   WTF_MAKE_FAST_ALLOCATED;
 public:

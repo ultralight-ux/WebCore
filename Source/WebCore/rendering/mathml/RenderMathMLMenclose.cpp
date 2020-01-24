@@ -32,11 +32,14 @@
 #include "GraphicsContext.h"
 #include "MathMLNames.h"
 #include "PaintInfo.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/MathExtras.h>
 
 namespace WebCore {
 
 using namespace MathMLNames;
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(RenderMathMLMenclose);
 
 // The MathML in HTML5 implementation note suggests drawing the left part of longdiv with a parenthesis.
 // For now, we use a Bezier curve and this somewhat arbitrary value.
@@ -56,7 +59,7 @@ RenderMathMLMenclose::RenderMathMLMenclose(MathMLMencloseElement& element, Rende
 // See https://bugs.webkit.org/show_bug.cgi?id=122297
 LayoutUnit RenderMathMLMenclose::ruleThickness() const
 {
-    return 0.05f * style().fontCascade().size();
+    return LayoutUnit(0.05f * style().fontCascade().size());
 }
 
 RenderMathMLMenclose::SpaceAroundContent RenderMathMLMenclose::spaceAroundContent(LayoutUnit contentWidth, LayoutUnit contentHeight) const
@@ -136,7 +139,7 @@ RenderMathMLMenclose::SpaceAroundContent RenderMathMLMenclose::spaceAroundConten
     // - We add extra margin of \xi_8
     // Then for example the top space is \sqrt{2}contentHeight/2 - contentHeight/2 + \xi_8/2 + \xi_8.
     if (hasNotation(MathMLMencloseElement::Circle)) {
-        LayoutUnit extraSpace = (contentWidth * (sqrtOfTwoFloat - 1) + 3 * thickness) / 2;
+        LayoutUnit extraSpace { (contentWidth * (sqrtOfTwoFloat - 1) + 3 * thickness) / 2 };
         space.left = std::max(space.left, extraSpace);
         space.right = std::max(space.right, extraSpace);
         extraSpace = (contentHeight * (sqrtOfTwoFloat - 1) + 3 * thickness) / 2;
@@ -170,11 +173,10 @@ void RenderMathMLMenclose::layoutBlock(bool relayoutChildren, LayoutUnit)
     if (!relayoutChildren && simplifiedLayout())
         return;
 
-    LayoutUnit contentAscent = 0;
-    LayoutUnit contentDescent = 0;
-    RenderMathMLRow::computeLineVerticalStretch(contentAscent, contentDescent);
-    RenderMathMLRow::layoutRowItems(contentAscent, contentDescent);
-    LayoutUnit contentWidth = logicalWidth();
+    LayoutUnit contentWidth, contentAscent, contentDescent;
+    stretchVerticalOperatorsAndLayoutChildren();
+    getContentBoundingBox(contentWidth, contentAscent, contentDescent);
+    layoutRowItems(contentWidth, contentAscent);
 
     SpaceAroundContent space = spaceAroundContent(contentWidth, contentAscent + contentDescent);
     setLogicalWidth(space.left + contentWidth + space.right);
@@ -185,6 +187,10 @@ void RenderMathMLMenclose::layoutBlock(bool relayoutChildren, LayoutUnit)
         child->setLocation(child->location() + contentLocation);
 
     m_contentRect = LayoutRect(space.left, space.top, contentWidth, contentAscent + contentDescent);
+
+    layoutPositionedObjects(relayoutChildren);
+
+    updateScrollInfoAfterLayout();
 
     clearNeedsLayout();
 }
@@ -203,7 +209,7 @@ void RenderMathMLMenclose::paint(PaintInfo& info, const LayoutPoint& paintOffset
 {
     RenderMathMLRow::paint(info, paintOffset);
 
-    if (info.context().paintingDisabled() || info.phase != PaintPhaseForeground || style().visibility() != VISIBLE)
+    if (info.context().paintingDisabled() || info.phase != PaintPhase::Foreground || style().visibility() != Visibility::Visible)
         return;
 
     LayoutUnit thickness = ruleThickness();
@@ -214,7 +220,7 @@ void RenderMathMLMenclose::paint(PaintInfo& info, const LayoutPoint& paintOffset
 
     paintInfo.context().setStrokeThickness(thickness);
     paintInfo.context().setStrokeStyle(SolidStroke);
-    paintInfo.context().setStrokeColor(style().visitedDependentColor(CSSPropertyColor));
+    paintInfo.context().setStrokeColor(style().visitedDependentColorWithColorFilter(CSSPropertyColor));
     paintInfo.context().setFillColor(Color::transparent);
     paintInfo.applyTransform(AffineTransform().translate(paintOffset + location()));
 

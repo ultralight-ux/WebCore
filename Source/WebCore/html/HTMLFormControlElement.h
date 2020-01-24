@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2018 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -33,7 +33,7 @@
 
 namespace WebCore {
 
-class FormDataList;
+class DOMFormData;
 class HTMLFieldSetElement;
 class HTMLFormElement;
 class HTMLLegendElement;
@@ -43,10 +43,11 @@ class ValidationMessage;
 // and form-associated element implementations should use HTMLFormControlElement
 // unless there is a special reason.
 class HTMLFormControlElement : public LabelableElement, public FormAssociatedElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLFormControlElement);
 public:
     virtual ~HTMLFormControlElement();
 
-    HTMLFormElement* form() const { return FormAssociatedElement::form(); }
+    HTMLFormElement* form() const final { return FormAssociatedElement::form(); }
 
     WEBCORE_EXPORT String formEnctype() const;
     WEBCORE_EXPORT void setFormEnctype(const String&);
@@ -54,7 +55,7 @@ public:
     WEBCORE_EXPORT void setFormMethod(const String&);
     bool formNoValidate() const;
     WEBCORE_EXPORT String formAction() const;
-    WEBCORE_EXPORT void setFormAction(const AtomicString&);
+    WEBCORE_EXPORT void setFormAction(const AtomString&);
 
     void setAncestorDisabled(bool isDisabled);
 
@@ -72,20 +73,19 @@ public:
 
     bool isDisabledFormControl() const override;
 
-    bool isFocusable() const override;
     bool isEnumeratable() const override { return false; }
 
     bool isRequired() const;
 
-    const AtomicString& type() const { return formControlType(); }
+    const AtomString& type() const { return formControlType(); }
 
-    virtual const AtomicString& formControlType() const = 0;
+    virtual const AtomString& formControlType() const = 0;
 
     virtual bool canTriggerImplicitSubmission() const { return false; }
 
     // Override in derived classes to get the encoded name=value pair for submitting.
     // Return true for a successful control (see HTML4-17.13.2).
-    bool appendFormData(FormDataList&, bool) override { return false; }
+    bool appendFormData(DOMFormData&, bool) override { return false; }
 
     virtual bool isSuccessfulSubmitButton() const { return false; }
     virtual bool isActivatedSubmit() const { return false; }
@@ -102,6 +102,7 @@ public:
     WEBCORE_EXPORT bool checkValidity(Vector<RefPtr<HTMLFormControlElement>>* unhandledInvalidControls = nullptr);
     bool reportValidity();
     void focusAndShowValidationMessage();
+    bool isShowingValidationMessage() const;
     // This must be called when a validation constraint or control value is changed.
     void updateValidity();
     void setCustomValidity(const String&) override;
@@ -129,19 +130,19 @@ protected:
 
     bool disabledByAncestorFieldset() const { return m_disabledByAncestorFieldset; }
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     virtual void disabledAttributeChanged();
     virtual void disabledStateChanged();
-    virtual void readOnlyAttributeChanged();
-    virtual void requiredAttributeChanged();
+    virtual void readOnlyStateChanged();
+    virtual void requiredStateChanged();
     void didAttachRenderers() override;
-    InsertionNotificationRequest insertedInto(ContainerNode&) override;
-    void finishedInsertingSubtree() override;
-    void removedFrom(ContainerNode&) override;
-    void didMoveToNewDocument(Document& oldDocument) override;
+    InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) override;
+    void didFinishInsertingNode() override;
+    void removedFromAncestor(RemovalType, ContainerNode&) override;
+    void didMoveToNewDocument(Document& oldDocument, Document& newDocument) override;
 
     bool supportsFocus() const override;
-    bool isKeyboardFocusable(KeyboardEvent&) const override;
+    bool isKeyboardFocusable(KeyboardEvent*) const override;
     bool isMouseFocusable() const override;
 
     void didRecalcStyle(Style::Change) override;
@@ -165,18 +166,19 @@ private:
     bool matchesInvalidPseudoClass() const override;
 
     bool isFormControlElement() const final { return true; }
-    bool alwaysCreateUserAgentShadowRoot() const override { return true; }
 
     int tabIndex() const final;
 
-    HTMLFormElement* virtualForm() const override;
     bool isValidFormControlElement() const;
 
     bool computeIsDisabledByFieldsetAncestor() const;
 
     HTMLElement& asHTMLElement() final { return *this; }
     const HTMLFormControlElement& asHTMLElement() const final { return *this; }
-    HTMLFormControlElement* asFormNamedItem() final { return this; }
+    FormNamedItem* asFormNamedItem() final { return this; }
+    FormAssociatedElement* asFormAssociatedElement() final { return this; }
+
+    bool needsMouseFocusableQuirk() const;
 
     std::unique_ptr<ValidationMessage> m_validationMessage;
     unsigned m_disabled : 1;

@@ -31,7 +31,6 @@
 
 #include "AccessibilityObject.h"
 #include "AccessibilityTable.h"
-#include "RenderObject.h"
 
 namespace WebCore {
     
@@ -40,9 +39,7 @@ AccessibilityARIAGridRow::AccessibilityARIAGridRow(RenderObject* renderer)
 {
 }
 
-AccessibilityARIAGridRow::~AccessibilityARIAGridRow()
-{
-}
+AccessibilityARIAGridRow::~AccessibilityARIAGridRow() = default;
 
 Ref<AccessibilityARIAGridRow> AccessibilityARIAGridRow::create(RenderObject* renderer)
 {
@@ -55,7 +52,7 @@ bool AccessibilityARIAGridRow::isARIATreeGridRow() const
     if (!parent)
         return false;
     
-    return parent->ariaRoleAttribute() == TreeGridRole;
+    return parent->isTreeGrid();
 }
     
 void AccessibilityARIAGridRow::disclosedRows(AccessibilityChildrenVector& disclosedRows)
@@ -125,9 +122,10 @@ AccessibilityTable* AccessibilityARIAGridRow::parentTable() const
     // only have "row" elements, but if not, we still should handle it gracefully by finding the right table.
     for (AccessibilityObject* parent = parentObject(); parent; parent = parent->parentObject()) {
         // The parent table for an ARIA grid row should be an ARIA table.
+        // Unless the row is a native tr element.
         if (is<AccessibilityTable>(*parent)) {
             AccessibilityTable& tableParent = downcast<AccessibilityTable>(*parent);
-            if (tableParent.isExposableThroughAccessibility() && tableParent.isAriaTable())
+            if (tableParent.isExposableThroughAccessibility() && (tableParent.isAriaTable() || node()->hasTagName(HTMLNames::trTag)))
                 return &tableParent;
         }
     }
@@ -138,7 +136,7 @@ AccessibilityTable* AccessibilityARIAGridRow::parentTable() const
 AccessibilityObject* AccessibilityARIAGridRow::headerObject()
 {
     for (const auto& child : children()) {
-        if (child->ariaRoleAttribute() == RowHeaderRole)
+        if (child->ariaRoleAttribute() == AccessibilityRole::RowHeader)
             return child.get();
     }
     

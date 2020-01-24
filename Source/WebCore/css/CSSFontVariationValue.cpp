@@ -43,11 +43,11 @@ CSSFontVariationValue::CSSFontVariationValue(FontTag tag, float value)
 String CSSFontVariationValue::customCSSText() const
 {
     StringBuilder builder;
-    builder.append('\'');
+    builder.append('"');
     for (char c : m_tag)
         builder.append(c);
-    builder.appendLiteral("' ");
-    builder.appendNumber(m_value);
+    builder.appendLiteral("\" ");
+    builder.appendFixedPrecisionNumber(m_value);
     return builder.toString();
 }
 

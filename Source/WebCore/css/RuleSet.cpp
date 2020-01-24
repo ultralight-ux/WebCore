@@ -61,8 +61,8 @@ static inline MatchBasedOnRuleHash computeMatchBasedOnRuleHash(const CSSSelector
 
     if (selector.match() == CSSSelector::Tag) {
         const QualifiedName& tagQualifiedName = selector.tagQName();
-        const AtomicString& selectorNamespace = tagQualifiedName.namespaceURI();
-        if (selectorNamespace == starAtom || selectorNamespace == xhtmlNamespaceURI) {
+        const AtomString& selectorNamespace = tagQualifiedName.namespaceURI();
+        if (selectorNamespace == starAtom() || selectorNamespace == xhtmlNamespaceURI) {
             if (tagQualifiedName == anyQName())
                 return MatchBasedOnRuleHash::Universal;
             return MatchBasedOnRuleHash::ClassC;
@@ -135,51 +135,50 @@ static inline bool containsUncommonAttributeSelector(const CSSSelector& rootSele
     return containsUncommonAttributeSelector(rootSelector, true);
 }
 
-static inline PropertyWhitelistType determinePropertyWhitelistType(const AddRuleFlags addRuleFlags, const CSSSelector* selector)
+static inline PropertyWhitelistType determinePropertyWhitelistType(const CSSSelector* selector)
 {
-    if (addRuleFlags & RuleIsInRegionRule)
-        return PropertyWhitelistRegion;
-#if ENABLE(VIDEO_TRACK)
     for (const CSSSelector* component = selector; component; component = component->tagHistory()) {
+#if ENABLE(VIDEO_TRACK)
         if (component->match() == CSSSelector::PseudoElement && (component->pseudoElementType() == CSSSelector::PseudoElementCue || component->value() == TextTrackCue::cueShadowPseudoId()))
             return PropertyWhitelistCue;
-    }
-#else
-    UNUSED_PARAM(selector);
 #endif
+        if (component->match() == CSSSelector::PseudoElement && component->pseudoElementType() == CSSSelector::PseudoElementMarker)
+            return PropertyWhitelistMarker;
+
+        if (const auto* selectorList = selector->selectorList()) {
+            for (const auto* subSelector = selectorList->first(); subSelector; subSelector = CSSSelectorList::next(subSelector)) {
+                auto whitelistType = determinePropertyWhitelistType(subSelector);
+                if (whitelistType != PropertyWhitelistNone)
+                    return whitelistType;
+            }
+        }
+    }
     return PropertyWhitelistNone;
 }
 
-RuleData::RuleData(StyleRule* rule, unsigned selectorIndex, unsigned position, AddRuleFlags addRuleFlags)
+RuleData::RuleData(StyleRule* rule, unsigned selectorIndex, unsigned selectorListIndex, unsigned position)
     : m_rule(rule)
     , m_selectorIndex(selectorIndex)
-    , m_hasDocumentSecurityOrigin(addRuleFlags & RuleHasDocumentSecurityOrigin)
+    , m_selectorListIndex(selectorListIndex)
     , m_position(position)
     , m_matchBasedOnRuleHash(static_cast<unsigned>(computeMatchBasedOnRuleHash(*selector())))
     , m_canMatchPseudoElement(selectorCanMatchPseudoElement(*selector()))
     , m_containsUncommonAttributeSelector(WebCore::containsUncommonAttributeSelector(*selector()))
     , m_linkMatchType(SelectorChecker::determineLinkMatchType(selector()))
-    , m_propertyWhitelistType(determinePropertyWhitelistType(addRuleFlags, selector()))
-#if ENABLE(CSS_SELECTOR_JIT) && CSS_SELECTOR_JIT_PROFILING
-    , m_compiledSelectorUseCount(0)
-#endif
+    , m_propertyWhitelistType(determinePropertyWhitelistType(selector()))
+    , m_descendantSelectorIdentifierHashes(SelectorFilter::collectHashes(*selector()))
 {
     ASSERT(m_position == position);
     ASSERT(m_selectorIndex == selectorIndex);
-    SelectorFilter::collectIdentifierHashes(selector(), m_descendantSelectorIdentifierHashes, maximumIdentifierCount);
 }
 
-RuleSet::RuleSet()
-{
-}
+RuleSet::RuleSet() = default;
 
-RuleSet::~RuleSet()
-{
-}
+RuleSet::~RuleSet() = default;
 
-void RuleSet::addToRuleSet(AtomicStringImpl* key, AtomRuleMap& map, const RuleData& ruleData)
+void RuleSet::addToRuleSet(const AtomString& key, AtomRuleMap& map, const RuleData& ruleData)
 {
-    if (!key)
+    if (key.isNull())
         return;
     auto& rules = map.add(key, nullptr).iterator->value;
     if (!rules)
@@ -187,16 +186,30 @@ void RuleSet::addToRuleSet(AtomicStringImpl* key, AtomRuleMap& map, const RuleDa
     rules->append(ruleData);
 }
 
-static unsigned rulesCountForName(const RuleSet::AtomRuleMap& map, AtomicStringImpl* name)
+static unsigned rulesCountForName(const RuleSet::AtomRuleMap& map, const AtomString& name)
 {
     if (const auto* rules = map.get(name))
         return rules->size();
     return 0;
 }
 
-void RuleSet::addRule(StyleRule* rule, unsigned selectorIndex, AddRuleFlags addRuleFlags)
+static bool isHostSelectorMatchingInShadowTree(const CSSSelector& startSelector)
 {
-    RuleData ruleData(rule, selectorIndex, m_ruleCount++, addRuleFlags);
+    auto* leftmostSelector = &startSelector;
+    bool hasDescendantOrChildRelation = false;
+    while (auto* previous = leftmostSelector->tagHistory()) {
+        hasDescendantOrChildRelation = leftmostSelector->hasDescendantOrChildRelation();
+        leftmostSelector = previous;
+    }
+    if (!hasDescendantOrChildRelation)
+        return false;
+
+    return leftmostSelector->match() == CSSSelector::PseudoClass && leftmostSelector->pseudoClassType() == CSSSelector::PseudoClassHost;
+}
+
+void RuleSet::addRule(StyleRule* rule, unsigned selectorIndex, unsigned selectorListIndex)
+{
+    RuleData ruleData(rule, selectorIndex, selectorListIndex, m_ruleCount++);
     m_features.collectFeatures(ruleData);
 
     unsigned classBucketSize = 0;
@@ -218,7 +231,7 @@ void RuleSet::addRule(StyleRule* rule, unsigned selectorIndex, AddRuleFlags addR
             idSelector = selector;
             break;
         case CSSSelector::Class: {
-            auto* className = selector->value().impl();
+            auto& className = selector->value();
             if (!classSelector) {
                 classSelector = selector;
                 classBucketSize = rulesCountForName(m_classRules, className);
@@ -232,12 +245,11 @@ void RuleSet::addRule(StyleRule* rule, unsigned selectorIndex, AddRuleFlags addR
             break;
         }
         case CSSSelector::Tag:
-            if (selector->tagQName().localName() != starAtom)
+            if (selector->tagQName().localName() != starAtom())
                 tagSelector = selector;
             break;
         case CSSSelector::PseudoElement:
             switch (selector->pseudoElementType()) {
-            case CSSSelector::PseudoElementUserAgentCustom:
             case CSSSelector::PseudoElementWebKitCustom:
             case CSSSelector::PseudoElementWebKitCustomLegacyPrefixed:
                 customPseudoElementSelector = selector;
@@ -305,9 +317,12 @@ void RuleSet::addRule(StyleRule* rule, unsigned selectorIndex, AddRuleFlags addR
     if (customPseudoElementSelector) {
         // FIXME: Custom pseudo elements are handled by the shadow tree's selector filter. It doesn't know about the main DOM.
         ruleData.disableSelectorFiltering();
-        addToRuleSet(customPseudoElementSelector->value().impl(), m_shadowPseudoElementRules, ruleData);
+        addToRuleSet(customPseudoElementSelector->value(), m_shadowPseudoElementRules, ruleData);
         return;
     }
+
+    if (!m_hasHostPseudoClassRulesMatchingInShadowTree)
+        m_hasHostPseudoClassRulesMatchingInShadowTree = isHostSelectorMatchingInShadowTree(*ruleData.selector());
 
     if (hostPseudoClassSelector) {
         m_hostPseudoClassRules.append(ruleData);
@@ -315,12 +330,12 @@ void RuleSet::addRule(StyleRule* rule, unsigned selectorIndex, AddRuleFlags addR
     }
 
     if (idSelector) {
-        addToRuleSet(idSelector->value().impl(), m_idRules, ruleData);
+        addToRuleSet(idSelector->value(), m_idRules, ruleData);
         return;
     }
 
     if (classSelector) {
-        addToRuleSet(classSelector->value().impl(), m_classRules, ruleData);
+        addToRuleSet(classSelector->value(), m_classRules, ruleData);
         return;
     }
 
@@ -335,8 +350,8 @@ void RuleSet::addRule(StyleRule* rule, unsigned selectorIndex, AddRuleFlags addR
     }
 
     if (tagSelector) {
-        addToRuleSet(tagSelector->tagQName().localName().impl(), m_tagLocalNameRules, ruleData);
-        addToRuleSet(tagSelector->tagLowercaseLocalName().impl(), m_tagLowercaseLocalNameRules, ruleData);
+        addToRuleSet(tagSelector->tagQName().localName(), m_tagLocalNameRules, ruleData);
+        addToRuleSet(tagSelector->tagLowercaseLocalName(), m_tagLowercaseLocalNameRules, ruleData);
         return;
     }
 
@@ -349,40 +364,17 @@ void RuleSet::addPageRule(StyleRulePage* rule)
     m_pageRules.append(rule);
 }
 
-void RuleSet::addRegionRule(StyleRuleRegion* regionRule, bool hasDocumentSecurityOrigin)
-{
-    auto regionRuleSet = std::make_unique<RuleSet>();
-    // The region rule set should take into account the position inside the parent rule set.
-    // Otherwise, the rules inside region block might be incorrectly positioned before other similar rules from
-    // the stylesheet that contains the region block.
-    regionRuleSet->m_ruleCount = m_ruleCount;
-
-    // Collect the region rules into a rule set
-    // FIXME: Should this add other types of rules? (i.e. use addChildRules() directly?)
-    const Vector<RefPtr<StyleRuleBase>>& childRules = regionRule->childRules();
-    AddRuleFlags addRuleFlags = hasDocumentSecurityOrigin ? RuleHasDocumentSecurityOrigin : RuleHasNoSpecialState;
-    addRuleFlags = static_cast<AddRuleFlags>(addRuleFlags | RuleIsInRegionRule);
-    for (auto& childRule : childRules) {
-        if (is<StyleRule>(*childRule))
-            regionRuleSet->addStyleRule(downcast<StyleRule>(childRule.get()), addRuleFlags);
-    }
-    // Update the "global" rule count so that proper order is maintained
-    m_ruleCount = regionRuleSet->m_ruleCount;
-
-    m_regionSelectorsAndRuleSets.append(RuleSetSelectorPair(regionRule->selectorList().first(), WTFMove(regionRuleSet)));
-}
-
-void RuleSet::addChildRules(const Vector<RefPtr<StyleRuleBase>>& rules, const MediaQueryEvaluator& medium, StyleResolver* resolver, bool hasDocumentSecurityOrigin, bool isInitiatingElementInUserAgentShadowTree, AddRuleFlags addRuleFlags)
+void RuleSet::addChildRules(const Vector<RefPtr<StyleRuleBase>>& rules, const MediaQueryEvaluator& medium, StyleResolver* resolver, bool isInitiatingElementInUserAgentShadowTree)
 {
     for (auto& rule : rules) {
         if (is<StyleRule>(*rule))
-            addStyleRule(downcast<StyleRule>(rule.get()), addRuleFlags);
+            addStyleRule(downcast<StyleRule>(rule.get()));
         else if (is<StyleRulePage>(*rule))
             addPageRule(downcast<StyleRulePage>(rule.get()));
         else if (is<StyleRuleMedia>(*rule)) {
             auto& mediaRule = downcast<StyleRuleMedia>(*rule);
             if ((!mediaRule.mediaQueries() || medium.evaluate(*mediaRule.mediaQueries(), resolver)))
-                addChildRules(mediaRule.childRules(), medium, resolver, hasDocumentSecurityOrigin, isInitiatingElementInUserAgentShadowTree, addRuleFlags);
+                addChildRules(mediaRule.childRules(), medium, resolver, isInitiatingElementInUserAgentShadowTree);
         } else if (is<StyleRuleFontFace>(*rule) && resolver) {
             // Add this font face to our set.
             resolver->document().fontSelector().addFontFaceRule(downcast<StyleRuleFontFace>(*rule.get()), isInitiatingElementInUserAgentShadowTree);
@@ -390,12 +382,7 @@ void RuleSet::addChildRules(const Vector<RefPtr<StyleRuleBase>>& rules, const Me
         } else if (is<StyleRuleKeyframes>(*rule) && resolver)
             resolver->addKeyframeStyle(downcast<StyleRuleKeyframes>(*rule));
         else if (is<StyleRuleSupports>(*rule) && downcast<StyleRuleSupports>(*rule).conditionIsSupported())
-            addChildRules(downcast<StyleRuleSupports>(*rule).childRules(), medium, resolver, hasDocumentSecurityOrigin, isInitiatingElementInUserAgentShadowTree, addRuleFlags);
-#if ENABLE(CSS_REGIONS)
-        else if (is<StyleRuleRegion>(*rule) && resolver) {
-            addRegionRule(downcast<StyleRuleRegion>(rule.get()), hasDocumentSecurityOrigin);
-        }
-#endif
+            addChildRules(downcast<StyleRuleSupports>(*rule).childRules(), medium, resolver, isInitiatingElementInUserAgentShadowTree);
 #if ENABLE(CSS_DEVICE_ADAPTATION)
         else if (is<StyleRuleViewport>(*rule) && resolver) {
             resolver->viewportStyleResolver()->addViewportRule(downcast<StyleRuleViewport>(rule.get()));
@@ -411,22 +398,20 @@ void RuleSet::addRulesFromSheet(StyleSheetContents& sheet, const MediaQueryEvalu
             addRulesFromSheet(*rule->styleSheet(), medium, resolver);
     }
 
-    bool hasDocumentSecurityOrigin = resolver && resolver->document().securityOrigin()->canRequest(sheet.baseURL());
-    AddRuleFlags addRuleFlags = static_cast<AddRuleFlags>((hasDocumentSecurityOrigin ? RuleHasDocumentSecurityOrigin : 0));
-
     // FIXME: Skip Content Security Policy check when stylesheet is in a user agent shadow tree.
     // See <https://bugs.webkit.org/show_bug.cgi?id=146663>.
     bool isInitiatingElementInUserAgentShadowTree = false;
-    addChildRules(sheet.childRules(), medium, resolver, hasDocumentSecurityOrigin, isInitiatingElementInUserAgentShadowTree, addRuleFlags);
+    addChildRules(sheet.childRules(), medium, resolver, isInitiatingElementInUserAgentShadowTree);
 
     if (m_autoShrinkToFitEnabled)
         shrinkToFit();
 }
 
-void RuleSet::addStyleRule(StyleRule* rule, AddRuleFlags addRuleFlags)
+void RuleSet::addStyleRule(StyleRule* rule)
 {
+    unsigned selectorListIndex = 0;
     for (size_t selectorIndex = 0; selectorIndex != notFound; selectorIndex = rule->selectorList().indexOfNextSelectorAfter(selectorIndex))
-        addRule(rule, selectorIndex, addRuleFlags);
+        addRule(rule, selectorIndex, selectorListIndex++);
 }
 
 bool RuleSet::hasShadowPseudoElementRules() const
@@ -463,7 +448,6 @@ void RuleSet::shrinkToFit()
     m_universalRules.shrinkToFit();
     m_pageRules.shrinkToFit();
     m_features.shrinkToFit();
-    m_regionSelectorsAndRuleSets.shrinkToFit();
 }
 
 } // namespace WebCore

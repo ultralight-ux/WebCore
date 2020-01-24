@@ -40,14 +40,14 @@ class HTMLSelectElement;
 class RenderText;
 
 class RenderMenuList final : public RenderFlexibleBox, private PopupMenuClient {
-
+    WTF_MAKE_ISO_ALLOCATED(RenderMenuList);
 public:
     RenderMenuList(HTMLSelectElement&, RenderStyle&&);
     virtual ~RenderMenuList();
 
     HTMLSelectElement& selectElement() const;
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     bool popupIsVisible() const { return m_popupIsVisible; }
 #endif
     void showPopup();
@@ -59,13 +59,18 @@ public:
 
     String text() const;
 
+    RenderBlock* innerRenderer() const { return m_innerBlock.get(); }
+    void setInnerRenderer(RenderBlock&);
+
+    void didAttachChild(RenderObject& child, RenderObject* beforeChild);
+
 private:
+    void willBeDestroyed() override;
+
     void element() const = delete;
 
     bool isMenuList() const override { return true; }
 
-    void addChild(RenderObject* newChild, RenderObject* beforeChild = 0) override;
-    void removeChild(RenderObject&) override;
     bool createsAnonymousWrapper() const override { return true; }
 
     void updateFromElement() override;
@@ -80,8 +85,6 @@ private:
     void computePreferredLogicalWidths() override;
 
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
-
-    bool requiresForcedStyleRecalcPropagation() const override { return true; }
 
     // PopupMenuClient methods
     void valueChanged(unsigned listIndex, bool fireOnChange = true) override;
@@ -122,12 +125,11 @@ private:
     {
         return RenderBlock::baselinePosition(baseline, firstLine, direction, position);
     }
-    std::optional<int> firstLineBaseline() const override { return RenderBlock::firstLineBaseline(); }
-    std::optional<int> inlineBlockBaseline(LineDirectionMode direction) const override { return RenderBlock::inlineBlockBaseline(direction); }
+    Optional<int> firstLineBaseline() const override { return RenderBlock::firstLineBaseline(); }
+    Optional<int> inlineBlockBaseline(LineDirectionMode direction) const override { return RenderBlock::inlineBlockBaseline(direction); }
 
     void getItemBackgroundColor(unsigned listIndex, Color&, bool& itemHasCustomBackgroundColor) const;
 
-    void createInnerBlock();
     void adjustInnerStyle();
     void setText(const String&);
     void setTextFromOption(int optionIndex);
@@ -137,17 +139,17 @@ private:
 
     bool isFlexibleBoxImpl() const override { return true; }
 
-    RenderText* m_buttonText;
-    RenderBlock* m_innerBlock;
+    WeakPtr<RenderText> m_buttonText;
+    WeakPtr<RenderBlock> m_innerBlock;
 
     bool m_needsOptionsWidthUpdate;
     int m_optionsWidth;
 
-    int m_lastActiveIndex;
+    Optional<int> m_lastActiveIndex;
 
     std::unique_ptr<RenderStyle> m_optionStyle;
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     RefPtr<PopupMenu> m_popup;
     bool m_popupIsVisible;
 #endif

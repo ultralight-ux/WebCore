@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,133 +29,111 @@
 #if ENABLE(WEBASSEMBLY)
 
 #include "B3Compilation.h"
-#include "JSCInlines.h"
-#include "JSGlobalObject.h"
-#include "JSWebAssemblyCallee.h"
 #include "WasmB3IRGenerator.h"
 #include "WasmBinding.h"
+#include "WasmCallee.h"
 #include "WasmCallingConvention.h"
+#include "WasmFaultSignalHandler.h"
 #include "WasmMemory.h"
 #include "WasmModuleParser.h"
 #include "WasmValidate.h"
 #include <wtf/DataLog.h>
+#include <wtf/Locker.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/StdLibExtras.h>
-#include <wtf/text/StringBuilder.h>
+#include <wtf/SystemTracing.h>
 
 namespace JSC { namespace Wasm {
 
+namespace WasmPlanInternal {
 static const bool verbose = false;
-    
-Plan::Plan(VM* vm, Vector<uint8_t> source)
-    : Plan(vm, source.data(), source.size())
+}
+
+Plan::Plan(Context* context, Ref<ModuleInformation> info, CompletionTask&& task, CreateEmbedderWrapper&& createEmbedderWrapper, ThrowWasmException throwWasmException)
+    : m_moduleInformation(WTFMove(info))
+    , m_createEmbedderWrapper(WTFMove(createEmbedderWrapper))
+    , m_throwWasmException(throwWasmException)
+{
+    m_completionTasks.append(std::make_pair(context, WTFMove(task)));
+}
+
+Plan::Plan(Context* context, Ref<ModuleInformation> info, CompletionTask&& task)
+    : Plan(context, WTFMove(info), WTFMove(task), nullptr, nullptr)
 {
 }
 
-Plan::Plan(VM* vm, const uint8_t* source, size_t sourceLength)
-    : m_vm(vm)
-    , m_source(source)
-    , m_sourceLength(sourceLength)
+Plan::Plan(Context* context, CompletionTask&& task)
+    : m_moduleInformation(ModuleInformation::create())
 {
+    m_completionTasks.append(std::make_pair(context, WTFMove(task)));
 }
 
-void Plan::run()
+void Plan::runCompletionTasks(const AbstractLocker&)
 {
-    {
-        ModuleParser moduleParser(m_vm, m_source, m_sourceLength);
-        auto parseResult = moduleParser.parse();
-        if (!parseResult) {
-            m_errorMessage = parseResult.error();
-            return; // FIXME return an Expected.
-        }
-        m_moduleInformation = WTFMove(parseResult->module);
-        m_functionLocationInBinary = WTFMove(parseResult->functionLocationInBinary);
-        m_functionIndexSpace.size = parseResult->functionIndexSpace.size();
-        m_functionIndexSpace.buffer = parseResult->functionIndexSpace.releaseBuffer();
+    ASSERT(isComplete() && !hasWork());
+
+    for (auto& task : m_completionTasks)
+        task.second->run(*this);
+    m_completionTasks.clear();
+    m_completed.notifyAll();
+}
+
+void Plan::addCompletionTask(Context* context, CompletionTask&& task)
+{
+    LockHolder locker(m_lock);
+    if (!isComplete())
+        m_completionTasks.append(std::make_pair(context, WTFMove(task)));
+    else
+        task->run(*this);
+}
+
+void Plan::waitForCompletion()
+{
+    LockHolder locker(m_lock);
+    if (!isComplete()) {
+        m_completed.wait(m_lock);
+    }
+}
+
+bool Plan::tryRemoveContextAndCancelIfLast(Context& context)
+{
+    LockHolder locker(m_lock);
+
+    if (!ASSERT_DISABLED) {
+        // We allow the first completion task to not have a Context.
+        for (unsigned i = 1; i < m_completionTasks.size(); ++i)
+            ASSERT(m_completionTasks[i].first);
     }
 
-    auto tryReserveCapacity = [this] (auto& vector, size_t size, const char* what) {
-        if (UNLIKELY(!vector.tryReserveCapacity(size))) {
-            StringBuilder builder;
-            builder.appendLiteral("Failed allocating enough space for ");
-            builder.appendNumber(size);
-            builder.append(what);
-            m_errorMessage = builder.toString();
-            return false;
-        }
+    bool removedAnyTasks = false;
+    m_completionTasks.removeAllMatching([&] (const std::pair<Context*, CompletionTask>& pair) {
+        bool shouldRemove = pair.first == &context;
+        removedAnyTasks |= shouldRemove;
+        return shouldRemove;
+    });
+
+    if (!removedAnyTasks)
+        return false;
+
+    if (isComplete()) {
+        // We trivially cancel anything that's completed.
         return true;
-    };
-    Vector<Vector<UnlinkedWasmToWasmCall>> unlinkedWasmToWasmCalls;
-    if (!tryReserveCapacity(m_wasmToJSStubs, m_moduleInformation->importFunctions.size(), " WebAssembly to JavaScript stubs")
-        || !tryReserveCapacity(unlinkedWasmToWasmCalls, m_functionLocationInBinary.size(), " unlinked WebAssembly to WebAssembly calls")
-        || !tryReserveCapacity(m_wasmInternalFunctions, m_functionLocationInBinary.size(), " WebAssembly functions"))
-        return;
-
-    for (unsigned importIndex = 0; importIndex < m_moduleInformation->imports.size(); ++importIndex) {
-        Import* import = &m_moduleInformation->imports[importIndex];
-        if (import->kind != ExternalKind::Function)
-            continue;
-        unsigned importFunctionIndex = m_wasmToJSStubs.size();
-        if (verbose)
-            dataLogLn("Processing import function number ", importFunctionIndex, ": ", import->module, ": ", import->field);
-        Signature* signature = m_moduleInformation->importFunctions.at(import->kindIndex);
-        m_wasmToJSStubs.uncheckedAppend(importStubGenerator(m_vm, m_callLinkInfos, signature, importFunctionIndex));
-        m_functionIndexSpace.buffer.get()[importFunctionIndex].code = m_wasmToJSStubs[importFunctionIndex].code().executableAddress();
     }
 
-    for (unsigned functionIndex = 0; functionIndex < m_functionLocationInBinary.size(); ++functionIndex) {
-        if (verbose)
-            dataLogLn("Processing function starting at: ", m_functionLocationInBinary[functionIndex].start, " and ending at: ", m_functionLocationInBinary[functionIndex].end);
-        const uint8_t* functionStart = m_source + m_functionLocationInBinary[functionIndex].start;
-        size_t functionLength = m_functionLocationInBinary[functionIndex].end - m_functionLocationInBinary[functionIndex].start;
-        ASSERT(functionLength <= m_sourceLength);
-        Signature* signature = m_moduleInformation->internalFunctionSignatures[functionIndex];
-        unsigned functionIndexSpace = m_wasmToJSStubs.size() + functionIndex;
-        ASSERT(m_functionIndexSpace.buffer.get()[functionIndexSpace].signature == signature);
-
-        auto validateResult = validateFunction(functionStart, functionLength, signature, m_functionIndexSpace, *m_moduleInformation);
-        if (!validateResult) {
-            if (verbose) {
-                for (unsigned i = 0; i < functionLength; ++i)
-                    dataLog(RawPointer(reinterpret_cast<void*>(functionStart[i])), ", ");
-                dataLogLn();
-            }
-            m_errorMessage = validateResult.error(); // FIXME make this an Expected.
-            return;
-        }
-
-        unlinkedWasmToWasmCalls.uncheckedAppend(Vector<UnlinkedWasmToWasmCall>());
-        auto parseAndCompileResult = parseAndCompile(*m_vm, functionStart, functionLength, signature, unlinkedWasmToWasmCalls.at(functionIndex), m_functionIndexSpace, *m_moduleInformation);
-        if (UNLIKELY(!parseAndCompileResult)) {
-            m_errorMessage = parseAndCompileResult.error();
-            return; // FIXME make this an Expected.
-        }
-        m_wasmInternalFunctions.uncheckedAppend(WTFMove(*parseAndCompileResult));
-        m_functionIndexSpace.buffer.get()[functionIndexSpace].code = m_wasmInternalFunctions[functionIndex]->wasmEntrypoint.compilation->code().executableAddress();
+    // FIXME: Make 0 index not so magical: https://bugs.webkit.org/show_bug.cgi?id=171395
+    if (m_completionTasks.isEmpty() || (m_completionTasks.size() == 1 && !m_completionTasks[0].first)) {
+        fail(locker, "WebAssembly Plan was cancelled. If you see this error message please file a bug at bugs.webkit.org!"_s);
+        return true;
     }
 
-    // Patch the call sites for each WebAssembly function.
-    for (auto& unlinked : unlinkedWasmToWasmCalls) {
-        for (auto& call : unlinked)
-            MacroAssembler::repatchCall(call.callLocation, CodeLocationLabel(m_functionIndexSpace.buffer.get()[call.functionIndex].code));
-    }
-
-    m_failed = false;
+    return false;
 }
 
-void Plan::initializeCallees(JSGlobalObject* globalObject, std::function<void(unsigned, JSWebAssemblyCallee*, JSWebAssemblyCallee*)> callback)
+void Plan::fail(const AbstractLocker& locker, String&& errorMessage)
 {
-    ASSERT(!failed());
-    for (unsigned internalFunctionIndex = 0; internalFunctionIndex < m_wasmInternalFunctions.size(); ++internalFunctionIndex) {
-        WasmInternalFunction* function = m_wasmInternalFunctions[internalFunctionIndex].get();
-
-        JSWebAssemblyCallee* jsEntrypointCallee = JSWebAssemblyCallee::create(globalObject->vm(), WTFMove(function->jsToWasmEntrypoint));
-        MacroAssembler::repatchPointer(function->jsToWasmCalleeMoveLocation, jsEntrypointCallee);
-
-        JSWebAssemblyCallee* wasmEntrypointCallee = JSWebAssemblyCallee::create(globalObject->vm(), WTFMove(function->wasmEntrypoint));
-        MacroAssembler::repatchPointer(function->wasmCalleeMoveLocation, wasmEntrypointCallee);
-
-        callback(internalFunctionIndex, jsEntrypointCallee, wasmEntrypointCallee);
-    }
+    dataLogLnIf(WasmPlanInternal::verbose, "failing with message: ", errorMessage);
+    m_errorMessage = WTFMove(errorMessage);
+    complete(locker);
 }
 
 Plan::~Plan() { }

@@ -33,6 +33,7 @@
 namespace WebCore {
 
 class RenderMedia : public RenderImage {
+    WTF_MAKE_ISO_ALLOCATED(RenderMedia);
 public:
     RenderMedia(HTMLMediaElement&, RenderStyle&&);
     RenderMedia(HTMLMediaElement&, RenderStyle&&, const IntSize& intrinsicSize);
@@ -52,8 +53,6 @@ private:
     bool isMedia() const final { return true; }
     bool isImage() const final { return false; }
     void paintReplaced(PaintInfo&, const LayoutPoint&) override;
-
-    bool requiresForcedStyleRecalcPropagation() const final { return true; }
 
     bool shadowControlsNeedCustomLayoutMetrics() const override { return true; }
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) final;

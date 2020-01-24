@@ -28,49 +28,27 @@
 
 #if ENABLE(ENCRYPTED_MEDIA)
 
+#include "CDMFactory.h"
 #include "CDMPrivate.h"
 #include "Document.h"
-#include "MediaKeysRestrictions.h"
+#include "InitDataRegistry.h"
+#include "MediaKeysRequirement.h"
 #include "MediaPlayer.h"
 #include "NotImplemented.h"
+#include "Page.h"
 #include "ParsedContentType.h"
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
+#include "SecurityOriginData.h"
+#include "Settings.h"
+#include <wtf/FileSystem.h>
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-static Vector<CDMFactory*>& cdmFactories()
-{
-    static NeverDestroyed<Vector<CDMFactory*>> factories;
-    return factories;
-}
-
-static std::unique_ptr<CDMPrivate> createCDMPrivateForKeySystem(const String& keySystem, CDM& cdm)
-{
-    for (auto* factory : cdmFactories()) {
-        if (factory->supportsKeySystem(keySystem))
-            return factory->createCDM(cdm);
-    }
-    ASSERT_NOT_REACHED();
-    return nullptr;
-}
-
-void CDM::registerCDMFactory(CDMFactory& factory)
-{
-    ASSERT(!cdmFactories().contains(&factory));
-    cdmFactories().append(&factory);
-}
-
-void CDM::unregisterCDMFactory(CDMFactory& factory)
-{
-    ASSERT(cdmFactories().contains(&factory));
-    cdmFactories().removeAll(&factory);
-}
-
 bool CDM::supportsKeySystem(const String& keySystem)
 {
-    for (auto* factory : cdmFactories()) {
+    for (auto* factory : CDMFactory::registeredFactories()) {
         if (factory->supportsKeySystem(keySystem))
             return true;
     }
@@ -85,14 +63,13 @@ Ref<CDM> CDM::create(Document& document, const String& keySystem)
 CDM::CDM(Document& document, const String& keySystem)
     : ContextDestructionObserver(&document)
     , m_keySystem(keySystem)
-    , m_private(createCDMPrivateForKeySystem(keySystem, *this))
-    , m_weakPtrFactory(this)
 {
     ASSERT(supportsKeySystem(keySystem));
-    for (auto* factory : cdmFactories()) {
-        if (!factory->supportsKeySystem(keySystem))
-            continue;
-        m_private = factory->createCDM(*this);
+    for (auto* factory : CDMFactory::registeredFactories()) {
+        if (factory->supportsKeySystem(keySystem)) {
+            m_private = factory->createCDM(keySystem);
+            break;
+        }
     }
 }
 
@@ -125,13 +102,13 @@ void CDM::doSupportedConfigurationStep(MediaKeySystemConfiguration&& candidateCo
     // restrictions and origin.
     auto optionalConfiguration = getSupportedConfiguration(candidateConfiguration, restrictions);
     if (!optionalConfiguration) {
-        callback(std::nullopt);
+        callback(WTF::nullopt);
         return;
     }
 
-    auto consentCallback = [weakThis = createWeakPtr(), callback = WTFMove(callback)] (ConsentStatus status, MediaKeySystemConfiguration&& configuration, MediaKeysRestrictions&& restrictions) mutable {
+    auto consentCallback = [weakThis = makeWeakPtr(*this), callback = WTFMove(callback)] (ConsentStatus status, MediaKeySystemConfiguration&& configuration, MediaKeysRestrictions&& restrictions) mutable {
         if (!weakThis) {
-            callback(std::nullopt);
+            callback(WTF::nullopt);
             return;
         }
         // 3.1.1.2 Get Supported Configuration and Consent, ctd.
@@ -160,7 +137,7 @@ void CDM::doSupportedConfigurationStep(MediaKeySystemConfiguration&& candidateCo
         // 23. Return accumulated configuration.
         callback(WTFMove(configuration));
     };
-    getConsentStatus(WTFMove(optionalConfiguration.value()), WTFMove(restrictions), consentCallback);
+    getConsentStatus(WTFMove(optionalConfiguration.value()), WTFMove(restrictions), WTFMove(consentCallback));
 }
 
 bool CDM::isPersistentType(MediaKeySessionType sessionType)
@@ -180,16 +157,19 @@ bool CDM::isPersistentType(MediaKeySessionType sessionType)
         // ↳ "persistent-license"
         return true;
     }
+
+    ASSERT_NOT_REACHED();
+    return false;
 }
 
-std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const MediaKeySystemConfiguration& candidateConfiguration, MediaKeysRestrictions& restrictions)
+Optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const MediaKeySystemConfiguration& candidateConfiguration, MediaKeysRestrictions& restrictions)
 {
     // https://w3c.github.io/encrypted-media/#get-supported-configuration-and-consent
     // W3C Editor's Draft 09 November 2016
 
     ASSERT(m_private);
     if (!m_private)
-        return std::nullopt;
+        return WTF::nullopt;
 
     // 3.1.1.2 Get Supported Configuration and Consent
     // Given a Key Systems implementation implementation, MediaKeySystemConfiguration candidate configuration,
@@ -221,7 +201,7 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
 
         // 3.3. If supported types is empty, return NotSupported.
         if (supportedTypes.isEmpty())
-            return std::nullopt;
+            return WTF::nullopt;
 
         // 3.4. Set the initDataTypes member of accumulated configuration to supported types.
         accumulatedConfiguration.initDataTypes = WTFMove(supportedTypes);
@@ -242,7 +222,7 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
         // If the implementation does not support use of Distinctive Identifier(s) in combination
         // with accumulated configuration and restrictions, return NotSupported.
         if (m_private->distinctiveIdentifiersRequirement(accumulatedConfiguration, restrictions) == MediaKeysRequirement::NotAllowed)
-            return std::nullopt;
+            return WTF::nullopt;
         break;
 
     case MediaKeysRequirement::Optional:
@@ -255,7 +235,7 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
         // If the implementation requires use Distinctive Identifier(s) or Distinctive Permanent Identifier(s)
         // in combination with accumulated configuration and restrictions, return NotSupported.
         if (m_private->distinctiveIdentifiersRequirement(accumulatedConfiguration, restrictions) == MediaKeysRequirement::Required)
-            return std::nullopt;
+            return WTF::nullopt;
         break;
     }
 
@@ -277,7 +257,7 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
         // If the implementation does not support persisting state in combination with accumulated configuration
         // and restrictions, return NotSupported.
         if (m_private->persistentStateRequirement(accumulatedConfiguration, restrictions) == MediaKeysRequirement::NotAllowed)
-            return std::nullopt;
+            return WTF::nullopt;
         break;
 
     case MediaKeysRequirement::Optional:
@@ -290,7 +270,7 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
         // If the implementation requires persisting state in combination with accumulated configuration
         // and restrictions, return NotSupported
         if (m_private->persistentStateRequirement(accumulatedConfiguration, restrictions) == MediaKeysRequirement::Required)
-            return std::nullopt;
+            return WTF::nullopt;
         break;
     }
 
@@ -316,12 +296,12 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
         // 13.2. If accumulated configuration's persistentState value is "not-allowed" and the
         //       Is persistent session type? algorithm returns true for session type return NotSupported.
         if (accumulatedConfiguration.persistentState == MediaKeysRequirement::NotAllowed && isPersistentType(sessionType))
-            return std::nullopt;
+            return WTF::nullopt;
 
         // 13.3. If the implementation does not support session type in combination with accumulated configuration
         //       and restrictions for other reasons, return NotSupported.
         if (!m_private->supportsSessionTypeWithConfiguration(sessionType, accumulatedConfiguration))
-            return std::nullopt;
+            return WTF::nullopt;
 
         // 13.4 If accumulated configuration's persistentState value is "optional" and the result of running the Is
         //      persistent session type? algorithm on session type is true, change accumulated configuration's persistentState
@@ -335,7 +315,7 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
 
     // 15. If the videoCapabilities and audioCapabilities members in candidate configuration are both empty, return NotSupported.
     if (candidateConfiguration.videoCapabilities.isEmpty() && candidateConfiguration.audioCapabilities.isEmpty())
-        return std::nullopt;
+        return WTF::nullopt;
 
     // 16. ↳ If the videoCapabilities member in candidate configuration is non-empty:
     if (!candidateConfiguration.videoCapabilities.isEmpty()) {
@@ -345,7 +325,7 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
 
         // 16.2. If video capabilities is null, return NotSupported.
         if (!videoCapabilities)
-            return std::nullopt;
+            return WTF::nullopt;
 
         // 16.3 Set the videoCapabilities member of accumulated configuration to video capabilities.
         accumulatedConfiguration.videoCapabilities = WTFMove(videoCapabilities.value());
@@ -363,7 +343,7 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
 
         // 17.2. If audio capabilities is null, return NotSupported.
         if (!audioCapabilities)
-            return std::nullopt;
+            return WTF::nullopt;
 
         // 17.3 Set the audioCapabilities member of accumulated configuration to audio capabilities.
         accumulatedConfiguration.audioCapabilities = WTFMove(audioCapabilities.value());
@@ -405,32 +385,30 @@ std::optional<MediaKeySystemConfiguration> CDM::getSupportedConfiguration(const 
     // 20. If implementation in the configuration specified by the combination of the values in accumulated configuration
     //     is not supported or not allowed in the origin, return NotSupported.
     if (!m_private->supportsConfiguration(accumulatedConfiguration))
-        return std::nullopt;
+        return WTF::nullopt;
 
     Document* document = downcast<Document>(m_scriptExecutionContext);
     if (!document)
-        return std::nullopt;
+        return WTF::nullopt;
 
-    SecurityOrigin* origin = document->securityOrigin();
-    SecurityOrigin* topOrigin = document->topOrigin();
-    if (!origin || !topOrigin)
-        return std::nullopt;
+    SecurityOrigin& origin = document->securityOrigin();
+    SecurityOrigin& topOrigin = document->topOrigin();
 
-    if ((accumulatedConfiguration.distinctiveIdentifier == MediaKeysRequirement::Required || accumulatedConfiguration.persistentState == MediaKeysRequirement::Required) && !origin->canAccessLocalStorage(topOrigin))
-        return std::nullopt;
+    if ((accumulatedConfiguration.distinctiveIdentifier == MediaKeysRequirement::Required || accumulatedConfiguration.persistentState == MediaKeysRequirement::Required) && !origin.canAccessLocalStorage(&topOrigin))
+        return WTF::nullopt;
 
-    return WTFMove(accumulatedConfiguration);
+    return accumulatedConfiguration;
     // NOTE: Continued in getConsentStatus().
 }
 
-std::optional<Vector<MediaKeySystemMediaCapability>> CDM::getSupportedCapabilitiesForAudioVideoType(CDM::AudioVideoType type, const Vector<MediaKeySystemMediaCapability>& requestedCapabilities, const MediaKeySystemConfiguration& partialConfiguration, MediaKeysRestrictions& restrictions)
+Optional<Vector<MediaKeySystemMediaCapability>> CDM::getSupportedCapabilitiesForAudioVideoType(CDM::AudioVideoType type, const Vector<MediaKeySystemMediaCapability>& requestedCapabilities, const MediaKeySystemConfiguration& partialConfiguration, MediaKeysRestrictions& restrictions)
 {
     // https://w3c.github.io/encrypted-media/#get-supported-capabilities-for-audio-video-type
     // W3C Editor's Draft 09 November 2016
 
     ASSERT(m_private);
     if (!m_private)
-        return std::nullopt;
+        return WTF::nullopt;
 
     // 3.1.1.3 Get Supported Capabilities for Audio/Video Type
 
@@ -452,15 +430,15 @@ std::optional<Vector<MediaKeySystemMediaCapability>> CDM::getSupportedCapabiliti
 
         // 3.3. If content type is the empty string, return null.
         if (requestedCapability.contentType.isEmpty())
-            return std::nullopt;
+            return WTF::nullopt;
 
         // 3.4. If content type is an invalid or unrecognized MIME type, continue to the next iteration.
-        if (!isValidContentType(requestedCapability.contentType))
+        Optional<ParsedContentType> contentType = ParsedContentType::create(requestedCapability.contentType, Mode::Rfc2045);
+        if (!contentType)
             continue;
 
         // 3.5. Let container be the container type specified by content type.
-        ParsedContentType contentType { requestedCapability.contentType };
-        String container = contentType.mimeType();
+        String container = contentType->mimeType();
 
         // 3.6. If the user agent does not support container, continue to the next iteration. The case-sensitivity
         //      of string comparisons is determined by the appropriate RFC.
@@ -468,8 +446,8 @@ std::optional<Vector<MediaKeySystemMediaCapability>> CDM::getSupportedCapabiliti
         // 3.8. If the user agent does not recognize one or more parameters, continue to the next iteration.
         // 3.9. Let media types be the set of codecs and codec constraints specified by parameters. The case-sensitivity
         //      of string comparisons is determined by the appropriate RFC or other specification.
-        String codecs = contentType.parameterValueForName("codecs");
-        if (contentType.parameterCount() > (codecs.isEmpty() ? 0 : 1))
+        String codecs = contentType->parameterValueForName("codecs");
+        if (contentType->parameterCount() > (codecs.isEmpty() ? 0 : 1))
             continue;
 
         // 3.10. If media types is empty:
@@ -489,12 +467,11 @@ std::optional<Vector<MediaKeySystemMediaCapability>> CDM::getSupportedCapabiliti
         //       combination of container, media types, robustness and local accumulated configuration in combination
         //       with restrictions:
         MediaEngineSupportParameters parameters;
-        parameters.type = contentType.mimeType();
-        parameters.codecs = codecs;
-        if (!MediaPlayer::supportsType(parameters, nullptr)) {
+        parameters.type = ContentType(contentType->mimeType());
+        if (!MediaPlayer::supportsType(parameters)) {
             // Try with Media Source:
             parameters.isMediaSource = true;
-            if (!MediaPlayer::supportsType(parameters, nullptr))
+            if (!MediaPlayer::supportsType(parameters))
                 continue;
         }
 
@@ -516,7 +493,7 @@ std::optional<Vector<MediaKeySystemMediaCapability>> CDM::getSupportedCapabiliti
 
     // 4. If supported media capabilities is empty, return null.
     if (supportedMediaCapabilities.isEmpty())
-        return std::nullopt;
+        return WTF::nullopt;
 
     // 5. Return supported media capabilities.
     return supportedMediaCapabilities;
@@ -534,7 +511,7 @@ void CDM::getConsentStatus(MediaKeySystemConfiguration&& accumulatedConfiguratio
     // NOTE: In the future, these checks belowe will involve asking the page client, possibly across a process boundary.
     // They will by necessity be asynchronous with callbacks. For now, imply this behavior by performing it in an async task.
 
-    m_scriptExecutionContext->postTask([this, weakThis = createWeakPtr(), accumulatedConfiguration = WTFMove(accumulatedConfiguration), restrictions = WTFMove(restrictions), callback = WTFMove(callback)] (ScriptExecutionContext&) mutable {
+    m_scriptExecutionContext->postTask([this, weakThis = makeWeakPtr(*this), accumulatedConfiguration = WTFMove(accumulatedConfiguration), restrictions = WTFMove(restrictions), callback = WTFMove(callback)] (ScriptExecutionContext&) mutable {
         if (!weakThis || !m_private) {
             callback(ConsentStatus::ConsentDenied, WTFMove(accumulatedConfiguration), WTFMove(restrictions));
             return;
@@ -546,12 +523,8 @@ void CDM::getConsentStatus(MediaKeySystemConfiguration&& accumulatedConfiguratio
             return;
         }
 
-        SecurityOrigin* origin = document->securityOrigin();
-        SecurityOrigin* topOrigin = document->topOrigin();
-        if (!origin || !topOrigin) {
-            callback(ConsentStatus::ConsentDenied, WTFMove(accumulatedConfiguration), WTFMove(restrictions));
-            return;
-        }
+        SecurityOrigin& origin = document->securityOrigin();
+        SecurityOrigin& topOrigin = document->topOrigin();
 
         // 3.1.1.2 Get Supported Configuration and Consent, ctd.
         // 21. If accumulated configuration's distinctiveIdentifier value is "required" and the Distinctive Identifier(s) associated
@@ -591,7 +564,7 @@ void CDM::getConsentStatus(MediaKeySystemConfiguration&& accumulatedConfiguratio
         // 3.2.1. Update restrictions to reflect the configurations for which consent was denied.
         // 3.2.1. Return ConsentDenied and restrictions.
         // NOTE: assume implied consent if the combination of origin and topOrigin allows it.
-        if (accumulatedConfiguration.distinctiveIdentifier == MediaKeysRequirement::Required && !origin->canAccessLocalStorage(topOrigin)) {
+        if (accumulatedConfiguration.distinctiveIdentifier == MediaKeysRequirement::Required && !origin.canAccessLocalStorage(&topOrigin)) {
             restrictions.distinctiveIdentifierDenied = true;
             callback(ConsentStatus::ConsentDenied, WTFMove(accumulatedConfiguration), WTFMove(restrictions));
             return;
@@ -609,6 +582,77 @@ void CDM::getConsentStatus(MediaKeySystemConfiguration&& accumulatedConfiguratio
         // 6. Return Allowed.
         callback(ConsentStatus::Allowed, WTFMove(accumulatedConfiguration), WTFMove(restrictions));
     });
+}
+
+void CDM::loadAndInitialize()
+{
+    if (m_private)
+        m_private->loadAndInitialize();
+}
+
+RefPtr<CDMInstance> CDM::createInstance()
+{
+    if (!m_private)
+        return nullptr;
+    auto instance = m_private->createInstance();
+    instance->setStorageDirectory(storageDirectory());
+    return instance;
+}
+
+bool CDM::supportsServerCertificates() const
+{
+    return m_private && m_private->supportsServerCertificates();
+}
+
+bool CDM::supportsSessions() const
+{
+    return m_private && m_private->supportsSessions();
+}
+
+bool CDM::supportsInitDataType(const AtomString& initDataType) const
+{
+    return m_private && m_private->supportsInitDataType(initDataType);
+}
+
+RefPtr<SharedBuffer> CDM::sanitizeInitData(const AtomString& initDataType, const SharedBuffer& initData)
+{
+    return InitDataRegistry::shared().sanitizeInitData(initDataType, initData);
+}
+
+bool CDM::supportsInitData(const AtomString& initDataType, const SharedBuffer& initData)
+{
+    return m_private && m_private->supportsInitData(initDataType, initData);
+}
+
+RefPtr<SharedBuffer> CDM::sanitizeResponse(const SharedBuffer& response)
+{
+    if (!m_private)
+        return nullptr;
+    return m_private->sanitizeResponse(response);
+}
+
+Optional<String> CDM::sanitizeSessionId(const String& sessionId)
+{
+    if (!m_private)
+        return WTF::nullopt;
+    return m_private->sanitizeSessionId(sessionId);
+}
+
+String CDM::storageDirectory() const
+{
+    auto* document = downcast<Document>(scriptExecutionContext());
+    if (!document)
+        return emptyString();
+
+    auto* page = document->page();
+    if (!page || page->usesEphemeralSession())
+        return emptyString();
+
+    auto storageDirectory = document->settings().mediaKeysStorageDirectory();
+    if (storageDirectory.isEmpty())
+        return emptyString();
+
+    return FileSystem::pathByAppendingComponent(storageDirectory, document->securityOrigin().data().databaseIdentifier());
 }
 
 }

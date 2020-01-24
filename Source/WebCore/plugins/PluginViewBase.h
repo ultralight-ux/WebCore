@@ -31,6 +31,10 @@
 #include "Widget.h"
 #include <wtf/text/WTFString.h>
 
+#if PLATFORM(COCOA)
+typedef struct objc_object* id;
+#endif
+
 namespace JSC {
     class ExecState;
     class JSGlobalObject;
@@ -46,7 +50,7 @@ class Scrollbar;
 class PluginViewBase : public Widget {
 public:
     virtual PlatformLayer* platformLayer() const { return 0; }
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     virtual bool willProvidePluginLayer() const { return false; }
     virtual void attachPluginLayer() { }
     virtual void detachPluginLayer() { }
@@ -81,8 +85,12 @@ public:
 
     virtual RefPtr<JSC::Bindings::Instance> bindingInstance() { return nullptr; }
     
-    virtual void willDetatchRenderer() { }
+    virtual void willDetachRenderer() { }
 
+#if PLATFORM(COCOA)
+    virtual id accessibilityAssociatedPluginParentForElement(Element*) const { return nullptr; }
+#endif
+    
 protected:
     explicit PluginViewBase(PlatformWidget widget = 0) : Widget(widget) { }
 };

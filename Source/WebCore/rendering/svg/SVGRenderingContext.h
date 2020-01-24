@@ -45,20 +45,10 @@ public:
 
     // Does not start rendering.
     SVGRenderingContext()
-        : m_renderingFlags(0)
-        , m_renderer(nullptr)
-        , m_paintInfo(nullptr)
-        , m_savedContext(nullptr)
-        , m_filter(nullptr)
     {
     }
 
     SVGRenderingContext(RenderElement& object, PaintInfo& paintinfo, NeedsGraphicsContextSave needsGraphicsContextSave = DontSaveGraphicsContext)
-        : m_renderingFlags(0)
-        , m_renderer(nullptr)
-        , m_paintInfo(nullptr)
-        , m_savedContext(nullptr)
-        , m_filter(nullptr)
     {
         prepareToRenderSVGContent(object, paintinfo, needsGraphicsContextSave);
     }
@@ -70,8 +60,8 @@ public:
     void prepareToRenderSVGContent(RenderElement&, PaintInfo&, NeedsGraphicsContextSave = DontSaveGraphicsContext);
     bool isRenderingPrepared() const { return m_renderingFlags & RenderingPrepared; }
 
-    static std::unique_ptr<ImageBuffer> createImageBuffer(const FloatRect& targetRect, const AffineTransform& absoluteTransform, ColorSpace, RenderingMode);
-    static std::unique_ptr<ImageBuffer> createImageBuffer(const FloatRect& targetRect, const FloatRect& clampedRect, ColorSpace, RenderingMode);
+    static std::unique_ptr<ImageBuffer> createImageBuffer(const FloatRect& targetRect, const AffineTransform& absoluteTransform, ColorSpace, RenderingMode, const GraphicsContext* = nullptr);
+    static std::unique_ptr<ImageBuffer> createImageBuffer(const FloatRect& targetRect, const FloatRect& clampedRect, ColorSpace, RenderingMode, const GraphicsContext* = nullptr);
 
     static void renderSubtreeToImageBuffer(ImageBuffer*, RenderElement&, const AffineTransform&);
     static void clipToImageBuffer(GraphicsContext&, const AffineTransform& absoluteTransform, const FloatRect& targetRect, std::unique_ptr<ImageBuffer>&, bool safeToClear);
@@ -102,12 +92,12 @@ private:
     // List of those flags which require actions during the destructor.
     const static int ActionsNeeded = RestoreGraphicsContext | EndOpacityLayer | EndShadowLayer | EndFilterLayer;
 
-    int m_renderingFlags;
-    RenderElement* m_renderer;
-    PaintInfo* m_paintInfo;
-    GraphicsContext* m_savedContext;
+    RenderElement* m_renderer { nullptr };
+    PaintInfo* m_paintInfo { nullptr };
+    GraphicsContext* m_savedContext  { nullptr };
+    RenderSVGResourceFilter* m_filter  { nullptr };
     LayoutRect m_savedPaintRect;
-    RenderSVGResourceFilter* m_filter;
+    int m_renderingFlags { 0 };
 };
 
 } // namespace WebCore

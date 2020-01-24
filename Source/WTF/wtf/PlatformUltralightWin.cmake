@@ -1,17 +1,39 @@
 set(WTF_LIBRARY_TYPE STATIC)
 
 list(APPEND WTF_SOURCES
-    PlatformUserPreferredLanguagesWin.cpp
+    #PlatformUserPreferredLanguagesWin.cpp
 
-    generic/MainThreadGeneric.cpp
-	generic/RunLoopGeneric.cpp
-	generic/WorkQueueGeneric.cpp
+    #generic/MainThreadGeneric.cpp
+	#generic/RunLoopGeneric.cpp
+	#generic/WorkQueueGeneric.cpp
+
+    win/MainThreadWin.cpp
+    win/RunLoopWin.cpp
+    win/WorkQueueWin.cpp
+
+    win/ThreadSpecificWin.cpp
+    win/ThreadingWin.cpp
+    win/OSAllocatorWin.cpp
+
+    win/MemoryFootprintWin.cpp
+    win/MemoryPressureHandlerWin.cpp
+
+    win/LanguageWin.cpp
+
+    win/FileSystemWin.cpp
+    win/PathWalker.cpp
+
+    win/DbgHelperWin.cpp
+
+    text/win/StringWin.cpp
 	
 	text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
 )
 
 list(APPEND WTF_LIBRARIES
+   DbgHelp
    winmm
+   shlwapi
 )
 
 set(WTF_PRE_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/wtf/preBuild.cmd")

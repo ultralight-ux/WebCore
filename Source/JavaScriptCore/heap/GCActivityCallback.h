@@ -28,7 +28,7 @@
 
 #pragma once
 
-#include "HeapTimer.h"
+#include "JSRunLoopTimer.h"
 #include <wtf/RefPtr.h>
 
 #if USE(CF)
@@ -40,75 +40,45 @@ namespace JSC {
 class FullGCActivityCallback;
 class Heap;
 
-class JS_EXPORT_PRIVATE GCActivityCallback : public HeapTimer {
+class JS_EXPORT_PRIVATE GCActivityCallback : public JSRunLoopTimer {
 public:
-    static RefPtr<FullGCActivityCallback> createFullTimer(Heap*);
-    static RefPtr<GCActivityCallback> createEdenTimer(Heap*);
+    using Base = JSRunLoopTimer;
+    static RefPtr<FullGCActivityCallback> tryCreateFullTimer(Heap*);
+    static RefPtr<GCActivityCallback> tryCreateEdenTimer(Heap*);
 
     GCActivityCallback(Heap*);
 
-    void doWork() override;
+    void doWork(VM&) override;
 
-    virtual void doCollection() = 0;
+    virtual void doCollection(VM&) = 0;
 
-    virtual void didAllocate(size_t);
-    virtual void willCollect();
-    virtual void cancel();
+    void didAllocate(Heap&, size_t);
+    void willCollect();
+    void cancel();
     bool isEnabled() const { return m_enabled; }
     void setEnabled(bool enabled) { m_enabled = enabled; }
 
     static bool s_shouldCreateGCTimer;
 
-#if USE(CF) || PLATFORM(EFL)
-    double nextFireTime() const { return m_nextFireTime; }
-#endif
-
 protected:
-    virtual double lastGCLength() = 0;
+    virtual Seconds lastGCLength(Heap&) = 0;
     virtual double gcTimeSlice(size_t bytes) = 0;
-    virtual double deathRate() = 0;
+    virtual double deathRate(Heap&) = 0;
 
-#if USE(CF)
     GCActivityCallback(VM* vm)
-        : HeapTimer(vm)
+        : Base(vm)
         , m_enabled(true)
         , m_delay(s_decade)
     {
     }
-#elif PLATFORM(EFL)
-    static constexpr double s_hour = 3600;
-    GCActivityCallback(VM* vm, bool flag)
-        : HeapTimer(vm)
-        , m_enabled(flag)
-        , m_delay(s_hour)
-    {
-    }
-#elif USE(GLIB)
-    GCActivityCallback(VM* vm)
-        : HeapTimer(vm)
-        , m_enabled(true)
-        , m_delay(-1)
-    {
-    }
-#else
-    GCActivityCallback(VM* vm)
-        : HeapTimer(vm)
-        , m_enabled(true)
-    {
-    }
-#endif
 
     bool m_enabled;
 
-#if USE(CF) || USE(GLIB)
 protected:
-    void cancelTimer();
-    void scheduleTimer(double);
+    void scheduleTimer(Seconds);
 
 private:
-    double m_delay;
-    double m_nextFireTime { 0 };
-#endif
+    Seconds m_delay;
 };
 
 } // namespace JSC

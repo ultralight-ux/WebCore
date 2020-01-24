@@ -30,14 +30,12 @@
 
 #if ENABLE(ENCRYPTED_MEDIA)
 
-#include <wtf/text/WTFString.h>
+#include "CDMMediaCapability.h"
+#include "MediaKeyEncryptionScheme.h"
 
 namespace WebCore {
 
-struct MediaKeySystemMediaCapability {
-    String contentType;
-    String robustness;
-};
+using MediaKeySystemMediaCapability = CDMMediaCapability;
 
 } // namespace WebCore
 

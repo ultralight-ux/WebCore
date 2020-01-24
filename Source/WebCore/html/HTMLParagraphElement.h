@@ -27,6 +27,7 @@
 namespace WebCore {
 
 class HTMLParagraphElement final : public HTMLElement {
+    WTF_MAKE_ISO_ALLOCATED(HTMLParagraphElement);
 public:
     static Ref<HTMLParagraphElement> create(Document&);
     static Ref<HTMLParagraphElement> create(const QualifiedName&, Document&);
@@ -34,8 +35,7 @@ public:
 private:
     HTMLParagraphElement(const QualifiedName&, Document&);
 
-    bool isPresentationAttribute(const QualifiedName&) const final;
-    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
 };
 
 } // namespace WebCore

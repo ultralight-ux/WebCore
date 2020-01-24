@@ -25,21 +25,29 @@
 
 #pragma once
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #include "RenderThemeCocoa.h"
+
+#if USE(SYSTEM_PREVIEW)
+#if HAVE(IOSURFACE)
+#include "IOSurface.h"
+#endif
+#include <wtf/RetainPtr.h>
+#endif
+
+OBJC_CLASS CIContext;
 
 namespace WebCore {
     
 class RenderStyle;
 class GraphicsContext;
+
 struct AttachmentLayout;
 
 class RenderThemeIOS final : public RenderThemeCocoa {
 public:
-    static Ref<RenderTheme> create();
-
-    LengthBox popupInternalPaddingBox(const RenderStyle&) const override;
+    friend NeverDestroyed<RenderThemeIOS>;
 
     static void adjustRoundBorderRadius(RenderStyle&, RenderBox&);
 
@@ -47,7 +55,13 @@ public:
 
     WEBCORE_EXPORT static void setContentSizeCategory(const String&);
 
+#if USE(SYSTEM_PREVIEW)
+    void paintSystemPreviewBadge(Image&, const PaintInfo&, const FloatRect&) override;
+#endif
+
 protected:
+    LengthBox popupInternalPaddingBox(const RenderStyle&) const override;
+    
     FontCascadeDescription& cachedSystemFontDescription(CSSValueID systemFontID) const override;
     void updateCachedSystemFontDescription(CSSValueID, FontCascadeDescription&) const override;
     int baselinePosition(const RenderBox&) const override;
@@ -81,9 +95,9 @@ protected:
     bool paintSliderThumbDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
     // Returns the repeat interval of the animation for the progress bar.
-    double animationRepeatIntervalForProgressBar(RenderProgress&) const override;
+    Seconds animationRepeatIntervalForProgressBar(RenderProgress&) const override;
     // Returns the duration of the animation for the progress bar.
-    double animationDurationForProgressBar(RenderProgress&) const override;
+    Seconds animationDurationForProgressBar(RenderProgress&) const override;
 
     bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
@@ -95,20 +109,25 @@ protected:
     void adjustSearchFieldStyle(StyleResolver&, RenderStyle&, const Element*) const override;
     bool paintSearchFieldDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
-    Color platformActiveSelectionBackgroundColor() const override;
-    Color platformInactiveSelectionBackgroundColor() const override;
+    bool supportsFocusRing(const RenderStyle&) const final;
+
+    Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+#if ENABLE(FULL_KEYBOARD_ACCESS)
+    Color platformFocusRingColor(OptionSet<StyleColor::Options>) const final;
+#endif
 
 #if ENABLE(TOUCH_EVENTS)
     Color platformTapHighlightColor() const override { return 0x4D1A1A1A; }
 #endif
 
     bool shouldHaveSpinButton(const HTMLInputElement&) const override;
-    bool shouldHaveCapsLockIndicator(const HTMLInputElement&) const override;
 
 #if ENABLE(VIDEO)
     String mediaControlsStyleSheet() override;
+    String modernMediaControlsStyleSheet() override;
     String mediaControlsScript() override;
-    String mediaControlsBase64StringForIconAndPlatform(const String&, const String&) override;
+    String mediaControlsBase64StringForIconNameAndType(const String&, const String&) override;
 #endif
 
 #if ENABLE(ATTACHMENT_ELEMENT)
@@ -117,23 +136,40 @@ protected:
     bool paintAttachment(const RenderObject&, const PaintInfo&, const IntRect&) override;
 #endif
 
+    bool shouldMockBoldSystemFontForAccessibility() const override { return m_shouldMockBoldSystemFontForAccessibility; }
+    void setShouldMockBoldSystemFontForAccessibility(bool shouldMockBoldSystemFontForAccessibility) override { m_shouldMockBoldSystemFontForAccessibility = shouldMockBoldSystemFontForAccessibility; }
+
 private:
     RenderThemeIOS();
-    virtual ~RenderThemeIOS() { }
+    virtual ~RenderThemeIOS() = default;
+
+    void purgeCaches() override;
+
+#if PLATFORM(WATCHOS)
+    String extraDefaultStyleSheet() final;
+#endif
 
     const Color& shadowColor() const;
     FloatRect addRoundedBorderClip(const RenderObject& box, GraphicsContext&, const IntRect&);
 
-    Color systemColor(CSSValueID) const override;
+    Color systemColor(CSSValueID, OptionSet<StyleColor::Options>) const override;
 
     String m_legacyMediaControlsScript;
     String m_mediaControlsScript;
     String m_legacyMediaControlsStyleSheet;
     String m_mediaControlsStyleSheet;
 
-    mutable HashMap<int, Color> m_systemColorCache;
+#if USE(SYSTEM_PREVIEW)
+    RetainPtr<CIContext> m_ciContext;
+#if HAVE(IOSURFACE)
+    std::unique_ptr<IOSurface> m_largeBadgeSurface;
+    std::unique_ptr<IOSurface> m_smallBadgeSurface;
+#endif
+#endif
+
+    bool m_shouldMockBoldSystemFontForAccessibility { false };
 };
 
 }
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

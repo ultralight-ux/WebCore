@@ -26,8 +26,6 @@
 #pragma once
 
 #include "IDLTypes.h"
-#include <bytecode/SpeculatedType.h>
-#include <domjit/DOMJITSignature.h>
 
 namespace WebCore { namespace DOMJIT {
 
@@ -36,14 +34,26 @@ struct DirectConverter;
 
 template<>
 struct DirectConverter<IDLDOMString> {
-    template<StringConversionConfiguration>
-    static String directConvert(JSC::ExecState&, JSC::JSString*);
+    static String directConvert(JSC::ExecState& state, JSC::JSString* string)
+    {
+        return string->value(&state);
+    }
 };
 
 template<>
-inline String DirectConverter<IDLDOMString>::directConvert<StringConversionConfiguration::Normal>(JSC::ExecState& state, JSC::JSString* string)
-{
-    return string->value(&state);
-}
+struct DirectConverter<IDLAtomStringAdaptor<IDLDOMString>> {
+    static String directConvert(JSC::ExecState& state, JSC::JSString* string)
+    {
+        return string->toAtomString(&state);
+    }
+};
+
+template<>
+struct DirectConverter<IDLRequiresExistingAtomStringAdaptor<IDLDOMString>> {
+    static String directConvert(JSC::ExecState& state, JSC::JSString* string)
+    {
+        return string->toExistingAtomString(&state);
+    }
+};
 
 } }

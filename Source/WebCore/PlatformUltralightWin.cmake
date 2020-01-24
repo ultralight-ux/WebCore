@@ -4,35 +4,29 @@ add_definitions(/bigobj -D__STDC_CONSTANT_MACROS -DSTATICALLY_LINKED_WITH_WTF
 
 include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
+include(platform/Curl.cmake)
 
-list(APPEND WebCore_INCLUDE_DIRECTORIES
+list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_BINARY_DIR}/../include/private"
     "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/ANGLE"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/ANGLE/include/KHR"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/ForwardingHeaders"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/API"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/assembler"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/builtins"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/bytecode"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/bytecompiler"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/dfg"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/disassembler"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/heap"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/debugger"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/interpreter"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/jit"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/llint"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/parser"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/profiler"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/runtime"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/yarr"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/WTF"
-    "${WEBCORE_DIR}/ForwardingHeaders"
-    "${WEBCORE_DIR}/platform/cf"
-	
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore"
+    "${WEBCORE_DIR}/platform/graphics/egl"
+    "${WEBCORE_DIR}/platform/graphics/opengl"
+    "${WEBCORE_DIR}/platform/graphics/opentype"
+    "${WEBCORE_DIR}/platform/mediacapabilities"
+)
+
+list(APPEND WebCore_INCLUDE_DIRECTORIES
+    "${DERIVED_SOURCES_DIR}/ForwardingHeaders"
+)
+
+if (USE_CF)
+    list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+        "${WEBCORE_DIR}/platform/cf"
+#        "${WEBCORE_DIR}/platform/cf/win"
+    )
+endif ()
+
+list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${DirectX_INCLUDE_DIRS}"
     "${WEBKIT_LIBRARIES_DIR}/include"
     "${WEBKIT_LIBRARIES_DIR}/include/SQLite"
@@ -40,12 +34,12 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 	"${WEBKIT_LIBRARIES_DIR}/include/harfbuzz"
 	"${WEBKIT_LIBRARIES_DIR}/include/libjpeg"
 	"${WEBKIT_LIBRARIES_DIR}/include/libpng"
-    "${JAVASCRIPTCORE_DIR}/wtf/text"
-    "${WEBCORE_DIR}/loader/archive/cf"
-    "${WEBCORE_DIR}/platform/cf"
-    "${WEBCORE_DIR}/platform/network/curl"
+#    "${JAVASCRIPTCORE_DIR}/wtf/text"
+#    "${WEBCORE_DIR}/loader/archive/cf"
+#    "${WEBCORE_DIR}/platform/cf"
+#    "${WEBCORE_DIR}/platform/network/curl"
 	
-	"${WTF_DIR}"
+#	"${WTF_DIR}"
     "${WEBCORE_DIR}/platform/ultralight"
 	"${WEBCORE_DIR}/platform/graphics/ultralight"
 	"${WEBCORE_DIR}/platform/graphics/harfbuzz"
@@ -126,33 +120,19 @@ list(APPEND WebCore_SOURCES
 	
 	platform/image-decoders/ultralight/ImageBackingStoreUltralight.cpp
 	
-	platform/graphics/harfbuzz/HarfBuzzFace.cpp
-	platform/graphics/harfbuzz/HarfBuzzFace.h
+	#platform/graphics/harfbuzz/HarfBuzzFace.cpp
+	#platform/graphics/harfbuzz/HarfBuzzFace.h
 	platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
-	platform/graphics/harfbuzz/HarfBuzzShaper.cpp
-	platform/graphics/harfbuzz/HarfBuzzShaper.h
+	#platform/graphics/harfbuzz/HarfBuzzShaper.cpp
+	#platform/graphics/harfbuzz/HarfBuzzShaper.h
 	
     platform/Cursor.cpp
-    platform/KillRingNone.cpp
+    #platform/KillRingNone.cpp
     platform/LocalizedStrings.cpp
 	
 	platform/text/LocaleNone.cpp
 	
-	platform/network/NetworkStorageSessionStub.cpp
-	
-	platform/network/curl/CookieJarCurl.cpp
-    platform/network/curl/CredentialStorageCurl.cpp
-    platform/network/curl/CurlCacheEntry.cpp
-    platform/network/curl/CurlCacheManager.cpp
-    platform/network/curl/CurlDownload.cpp
-    platform/network/curl/DNSCurl.cpp
-    platform/network/curl/FormDataStreamCurl.cpp
-    platform/network/curl/MultipartHandle.cpp
-    platform/network/curl/ProxyServerCurl.cpp
-    platform/network/curl/ResourceHandleCurl.cpp
-    platform/network/curl/ResourceHandleManager.cpp
-    platform/network/curl/SSLHandle.cpp
-    platform/network/curl/SocketStreamHandleImplCurl.cpp
+	#platform/network/NetworkStorageSessionStub.cpp
 )
 
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
@@ -282,8 +262,8 @@ list(APPEND WebCore_LIBRARIES
 
 make_directory(${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/en.lproj)
 file(COPY
-    "${WEBCORE_DIR}/English.lproj/Localizable.strings"
-    "${WEBCORE_DIR}/English.lproj/mediaControlsLocalizedStrings.js"
+    "${WEBCORE_DIR}/en.lproj/Localizable.strings"
+    "${WEBCORE_DIR}/en.lproj/mediaControlsLocalizedStrings.js"
     DESTINATION
     ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/en.lproj
 )
@@ -327,5 +307,5 @@ list(APPEND WebCore_LIBRARIES WTF${DEBUG_SUFFIX})
 list(APPEND WebCore_LIBRARIES JavaScriptCore${DEBUG_SUFFIX})
 list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
 list(APPEND WebCore_LIBRARIES UltralightCore)
-list(APPEND WebCore_LIBRARIES bmalloc)
+#list(APPEND WebCore_LIBRARIES bmalloc)
 list(APPEND WebCoreTestSupport_LIBRARIES WTF${DEBUG_SUFFIX})

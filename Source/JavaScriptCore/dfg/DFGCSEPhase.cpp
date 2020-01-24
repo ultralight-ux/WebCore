@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,7 +33,6 @@
 #include "DFGClobberSet.h"
 #include "DFGClobberize.h"
 #include "DFGDominators.h"
-#include "DFGEdgeUsesStructure.h"
 #include "DFGGraph.h"
 #include "DFGPhase.h"
 #include "JSCInlines.h"
@@ -48,7 +47,9 @@ namespace JSC { namespace DFG {
 
 namespace {
 
-const bool verbose = false;
+namespace DFGCSEPhaseInternal {
+static const bool verbose = false;
+}
 
 class ImpureDataSlot {
     WTF_MAKE_NONCOPYABLE(ImpureDataSlot);
@@ -135,7 +136,7 @@ public:
         return result;
     }
 
-    void clobber(AbstractHeap heap)
+    void clobber(AbstractHeap heap, bool clobberConservatively)
     {
         switch (heap.kind()) {
         case World: {
@@ -148,15 +149,45 @@ public:
             ASSERT(!heap.payload().isTop());
             ASSERT(heap.payload().value() == heap.payload().value32());
             m_abstractHeapStackMap.remove(heap.payload().value32());
-            clobber(m_fallbackStackMap, heap);
+            if (clobberConservatively)
+                m_fallbackStackMap.clear();
+            else
+                clobber(m_fallbackStackMap, heap);
             break;
         }
         default:
-            clobber(m_heapMap, heap);
+            if (clobberConservatively)
+                m_heapMap.clear();
+            else
+                clobber(m_heapMap, heap);
             break;
         }
 #if !defined(NDEBUG)
-        m_debugImpureData.removeIf([heap](const HashMap<HeapLocation, LazyNode>::KeyValuePairType& pair) -> bool {
+        m_debugImpureData.removeIf([heap, clobberConservatively, this](const HashMap<HeapLocation, LazyNode>::KeyValuePairType& pair) -> bool {
+            switch (heap.kind()) {
+            case World:
+            case SideState:
+                break;
+            case Stack: {
+                if (!clobberConservatively)
+                    break;
+                if (pair.key.heap().kind() == Stack) {
+                    auto iterator = m_abstractHeapStackMap.find(pair.key.heap().payload().value32());
+                    if (iterator != m_abstractHeapStackMap.end() && iterator->value->key == pair.key)
+                        return false;
+                    return true;
+                }
+                break;
+            }
+            default: {
+                if (!clobberConservatively)
+                    break;
+                AbstractHeapKind kind = pair.key.heap().kind();
+                if (kind != World && kind != SideState && kind != Stack)
+                    return true;
+                break;
+            }
+            }
             return heap.overlaps(pair.key.heap());
         });
         ASSERT(m_debugImpureData.size()
@@ -256,7 +287,7 @@ private:
         });
     }
 
-    // The majority of Impure Stack Slotsare unique per value.
+    // The majority of Impure Stack Slots are unique per value.
     // This is very useful for fast clobber(), we can just remove the slot addressed by AbstractHeap
     // in O(1).
     //
@@ -283,6 +314,7 @@ public:
         : Phase(graph, "local common subexpression elimination")
         , m_smallBlock(graph)
         , m_largeBlock(graph)
+        , m_hugeBlock(graph)
     {
     }
     
@@ -302,8 +334,10 @@ public:
             
             if (block->size() <= SmallMaps::capacity)
                 changed |= m_smallBlock.run(block);
-            else
+            else if (block->size() <= Options::maxDFGNodesInBasicBlockForPreciseAnalysis())
                 changed |= m_largeBlock.run(block);
+            else
+                changed |= m_hugeBlock.run(block);
         }
         
         return changed;
@@ -399,7 +433,8 @@ private:
     
         void write(AbstractHeap heap)
         {
-            m_impureMap.clobber(heap);
+            bool clobberConservatively = false;
+            m_impureMap.clobber(heap, clobberConservatively);
         }
     
         Node* addPure(PureValue value, Node* node)
@@ -415,6 +450,52 @@ private:
             return m_impureMap.get(location);
         }
     
+        LazyNode addImpure(const HeapLocation& location, const LazyNode& node)
+        {
+            if (const ImpureDataSlot* slot = m_impureMap.add(location, node))
+                return slot->value;
+            return LazyNode();
+        }
+
+    private:
+        HashMap<PureValue, Node*> m_pureMap;
+        ImpureMap m_impureMap;
+    };
+
+    // This is used only for huge basic blocks. Our usual CSE is quadratic complexity for # of DFG nodes in a basic block.
+    // HugeMaps model results conservatively to avoid an O(N^2) algorithm. In particular, we clear all the slots of the specified heap kind
+    // in ImpureMap instead of iterating slots and removing a matched slot. This change makes the complexity O(N).
+    // FIXME: We can make LargeMap O(N) without introducing conservative behavior if we track clobbering by hierarchical epochs.
+    // https://bugs.webkit.org/show_bug.cgi?id=200014
+    class HugeMaps {
+    public:
+        HugeMaps() = default;
+
+        void clear()
+        {
+            m_pureMap.clear();
+            m_impureMap.clear();
+        }
+
+        void write(AbstractHeap heap)
+        {
+            bool clobberConservatively = true;
+            m_impureMap.clobber(heap, clobberConservatively);
+        }
+
+        Node* addPure(PureValue value, Node* node)
+        {
+            auto result = m_pureMap.add(value, node);
+            if (result.isNewEntry)
+                return nullptr;
+            return result.iterator->value;
+        }
+
+        LazyNode findReplacement(HeapLocation location)
+        {
+            return m_impureMap.get(location);
+        }
+
         LazyNode addImpure(const HeapLocation& location, const LazyNode& node)
         {
             if (const ImpureDataSlot* slot = m_impureMap.add(location, node))
@@ -446,8 +527,8 @@ private:
                 m_node = block->at(nodeIndex);
                 m_graph.performSubstitution(m_node);
             
-                if (m_node->op() == Identity) {
-                    m_node->replaceWith(m_node->child1().node());
+                if (m_node->op() == Identity || m_node->op() == IdentityWithProfile) {
+                    m_node->replaceWith(m_graph, m_node->child1().node());
                     m_changed = true;
                 } else {
                     // This rule only makes sense for local CSE, since in SSA form we have already
@@ -467,22 +548,21 @@ private:
                         case Array::Int32:
                             if (!mode.isInBounds())
                                 break;
-                            heap = HeapLocation(
-                                indexedPropertyLoc, IndexedInt32Properties, base, index);
+                            heap = HeapLocation(indexedPropertyLoc, IndexedInt32Properties, base, index);
                             break;
                             
-                        case Array::Double:
+                        case Array::Double: {
                             if (!mode.isInBounds())
                                 break;
-                            heap = HeapLocation(
-                                indexedPropertyLoc, IndexedDoubleProperties, base, index);
+                            LocationKind kind = mode.isSaneChain() ? IndexedPropertyDoubleSaneChainLoc : IndexedPropertyDoubleLoc;
+                            heap = HeapLocation(kind, IndexedDoubleProperties, base, index);
                             break;
+                        }
                             
                         case Array::Contiguous:
                             if (!mode.isInBounds())
                                 break;
-                            heap = HeapLocation(
-                                indexedPropertyLoc, IndexedContiguousProperties, base, index);
+                            heap = HeapLocation(indexedPropertyLoc, IndexedContiguousProperties, base, index);
                             break;
                             
                         case Array::Int8Array:
@@ -530,7 +610,7 @@ private:
             if (!match)
                 return;
 
-            m_node->replaceWith(match);
+            m_node->replaceWith(m_graph, match);
             m_changed = true;
         }
     
@@ -562,7 +642,7 @@ private:
             if (value.isNode() && value.asNode() == m_node) {
                 match.ensureIsNode(m_insertionSet, m_block, 0)->owner = m_block;
                 ASSERT(match.isNode());
-                m_node->replaceWith(match.asNode());
+                m_node->replaceWith(m_graph, match.asNode());
                 m_changed = true;
             }
         }
@@ -581,6 +661,7 @@ private:
 
     BlockCSE<SmallMaps> m_smallBlock;
     BlockCSE<LargeMaps> m_largeBlock;
+    BlockCSE<HugeMaps> m_hugeBlock;
 };
 
 class GlobalCSEPhase : public Phase {
@@ -598,7 +679,7 @@ public:
         ASSERT(m_graph.m_form == SSA);
         
         m_graph.initializeNodeOwners();
-        m_graph.ensureDominators();
+        m_graph.ensureSSADominators();
         
         m_preOrder = m_graph.blocksInPreOrder();
         
@@ -627,7 +708,7 @@ public:
     
     bool iterate()
     {
-        if (verbose)
+        if (DFGCSEPhaseInternal::verbose)
             dataLog("Performing iteration.\n");
         
         m_changed = false;
@@ -638,19 +719,19 @@ public:
             m_impureData = &m_impureDataMap[m_block];
             m_writesSoFar.clear();
             
-            if (verbose)
+            if (DFGCSEPhaseInternal::verbose)
                 dataLog("Processing block ", *m_block, ":\n");
 
             for (unsigned nodeIndex = 0; nodeIndex < m_block->size(); ++nodeIndex) {
                 m_nodeIndex = nodeIndex;
                 m_node = m_block->at(nodeIndex);
-                if (verbose)
+                if (DFGCSEPhaseInternal::verbose)
                     dataLog("  Looking at node ", m_node, ":\n");
                 
                 m_graph.performSubstitution(m_node);
                 
-                if (m_node->op() == Identity) {
-                    m_node->replaceWith(m_node->child1().node());
+                if (m_node->op() == Identity || m_node->op() == IdentityWithProfile) {
+                    m_node->replaceWith(m_graph, m_node->child1().node());
                     m_changed = true;
                 } else
                     clobberize(m_graph, m_node, *this);
@@ -668,7 +749,8 @@ public:
     
     void write(AbstractHeap heap)
     {
-        m_impureData->availableAtTail.clobber(heap);
+        bool clobberConservatively = false;
+        m_impureData->availableAtTail.clobber(heap, clobberConservatively);
         m_writesSoFar.add(heap);
     }
     
@@ -690,8 +772,8 @@ public:
         
         for (unsigned i = result.iterator->value.size(); i--;) {
             Node* candidate = result.iterator->value[i];
-            if (m_graph.m_dominators->dominates(candidate->owner, m_block)) {
-                m_node->replaceWith(candidate);
+            if (m_graph.m_ssaDominators->dominates(candidate->owner, m_block)) {
+                m_node->replaceWith(m_graph, candidate);
                 m_changed = true;
                 return;
             }
@@ -707,7 +789,7 @@ public:
         // a global search.
         LazyNode match = m_impureData->availableAtTail.get(location);
         if (!!match) {
-            if (verbose)
+            if (DFGCSEPhaseInternal::verbose)
                 dataLog("      Found local match: ", match, "\n");
             return match;
         }
@@ -715,7 +797,7 @@ public:
         // If it's not available at this point in the block, and at some prior point in the block
         // we have clobbered this heap location, then there is no point in doing a global search.
         if (m_writesSoFar.overlaps(location.heap())) {
-            if (verbose)
+            if (DFGCSEPhaseInternal::verbose)
                 dataLog("      Not looking globally because of local clobber: ", m_writesSoFar, "\n");
             return nullptr;
         }
@@ -772,20 +854,20 @@ public:
             BasicBlock* block = worklist.takeLast();
             seenList.append(block);
             
-            if (verbose)
+            if (DFGCSEPhaseInternal::verbose)
                 dataLog("      Searching in block ", *block, "\n");
             ImpureBlockData& data = m_impureDataMap[block];
             
             // We require strict domination because this would only see things in our own block if
             // they came *after* our position in the block. Clearly, while our block dominates
             // itself, the things in the block after us don't dominate us.
-            if (m_graph.m_dominators->strictlyDominates(block, m_block)) {
-                if (verbose)
+            if (m_graph.m_ssaDominators->strictlyDominates(block, m_block)) {
+                if (DFGCSEPhaseInternal::verbose)
                     dataLog("        It strictly dominates.\n");
                 DFG_ASSERT(m_graph, m_node, data.didVisit);
                 DFG_ASSERT(m_graph, m_node, !match);
                 match = data.availableAtTail.get(location);
-                if (verbose)
+                if (DFGCSEPhaseInternal::verbose)
                     dataLog("        Availability: ", match, "\n");
                 if (!!match) {
                     // Don't examine the predecessors of a match. At this point we just want to
@@ -795,10 +877,10 @@ public:
                 }
             }
             
-            if (verbose)
+            if (DFGCSEPhaseInternal::verbose)
                 dataLog("        Dealing with write set ", data.writes, "\n");
             if (data.writes.overlaps(location.heap())) {
-                if (verbose)
+                if (DFGCSEPhaseInternal::verbose)
                     dataLog("        Clobbered.\n");
                 return nullptr;
             }
@@ -830,16 +912,16 @@ public:
     
     void def(HeapLocation location, LazyNode value)
     {
-        if (verbose)
+        if (DFGCSEPhaseInternal::verbose)
             dataLog("    Got heap location def: ", location, " -> ", value, "\n");
         
         LazyNode match = findReplacement(location);
         
-        if (verbose)
+        if (DFGCSEPhaseInternal::verbose)
             dataLog("      Got match: ", match, "\n");
         
         if (!match) {
-            if (verbose)
+            if (DFGCSEPhaseInternal::verbose)
                 dataLog("      Adding at-tail mapping: ", location, " -> ", value, "\n");
             auto result = m_impureData->availableAtTail.add(location, value);
             ASSERT_UNUSED(result, !result);
@@ -856,9 +938,9 @@ public:
                 if (!result.isNewEntry) {
                     for (unsigned i = result.iterator->value.size(); i--;) {
                         Node* candidate = result.iterator->value[i];
-                        if (m_graph.m_dominators->dominates(candidate->owner, m_block)) {
+                        if (m_graph.m_ssaDominators->dominates(candidate->owner, m_block)) {
                             ASSERT(candidate);
-                            match->replaceWith(candidate);
+                            match->replaceWith(m_graph, candidate);
                             match.setNode(candidate);
                             replaced = true;
                             break;
@@ -869,7 +951,7 @@ public:
                     result.iterator->value.append(match.asNode());
             }
             ASSERT(match.asNode());
-            m_node->replaceWith(match.asNode());
+            m_node->replaceWith(m_graph, match.asNode());
             m_changed = true;
         }
     }

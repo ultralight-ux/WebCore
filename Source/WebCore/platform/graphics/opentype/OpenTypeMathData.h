@@ -27,11 +27,13 @@
 #pragma once
 
 #include "Glyph.h"
-#include <wtf/PassRefPtr.h>
+#include <wtf/Forward.h>
+#include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
-#include <wtf/Vector.h>
+#include <wtf/RefPtr.h>
 
 #if !ENABLE(OPENTYPE_MATH) && USE(HARFBUZZ)
+#include "HbUniquePtr.h"
 #include <hb-ot.h>
 #endif
 
@@ -43,9 +45,9 @@ class Font;
 
 class OpenTypeMathData : public RefCounted<OpenTypeMathData> {
 public:
-    static PassRefPtr<OpenTypeMathData> create(const FontPlatformData& font)
+    static Ref<OpenTypeMathData> create(const FontPlatformData& font)
     {
-        return adoptRef(new OpenTypeMathData(font));
+        return adoptRef(*new OpenTypeMathData(font));
     }
     ~OpenTypeMathData();
 
@@ -133,13 +135,7 @@ private:
 #if ENABLE(OPENTYPE_MATH)
     RefPtr<SharedBuffer> m_mathBuffer;
 #elif USE(HARFBUZZ)
-    struct HbFontDeleter {
-        void operator()(hb_font_t* font)
-        {
-            hb_font_destroy(font);
-        }
-    };
-    std::unique_ptr<hb_font_t, HbFontDeleter> m_mathFont;
+    HbUniquePtr<hb_font_t> m_mathFont;
 #endif
 };
 

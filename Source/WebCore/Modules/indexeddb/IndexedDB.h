@@ -27,6 +27,8 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
+#include <wtf/EnumTraits.h>
+
 namespace WebCore {
 
 namespace IndexedDB {
@@ -40,10 +42,10 @@ enum class TransactionState {
 };
 
 enum class CursorDirection {
-    Next = 0,
-    NextNoDuplicate = 1,
-    Prev = 2,
-    PrevNoDuplicate = 3,
+    Next,
+    Nextunique,
+    Prev,
+    Prevunique,
 };
 const unsigned CursorDirectionMaximum = 3;
 
@@ -105,5 +107,18 @@ enum class GetAllType {
 } // namespace IndexedDB
 
 } // namespace WebCore
+
+namespace WTF {
+
+template<> struct EnumTraits<WebCore::IndexedDB::ObjectStoreOverwriteMode> {
+    using values = EnumValues<
+        WebCore::IndexedDB::ObjectStoreOverwriteMode,
+        WebCore::IndexedDB::ObjectStoreOverwriteMode::Overwrite,
+        WebCore::IndexedDB::ObjectStoreOverwriteMode::OverwriteForCursor,
+        WebCore::IndexedDB::ObjectStoreOverwriteMode::NoOverwrite
+    >;
+};
+
+}
 
 #endif // ENABLED(INDEXED_DATABASE)

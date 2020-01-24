@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,39 +31,40 @@
 
 #import "CommonVM.h"
 #import "Event.h"
+#import "Frame.h"
 #import "HTMLPlugInElement.h"
 #import "HTMLVideoElement.h"
 #import "JSDOMBinding.h"
+#import "JSDOMConvertNullable.h"
+#import "JSDOMConvertSequences.h"
+#import "JSDOMConvertStrings.h"
 #import "JSDOMGlobalObject.h"
 #import "JSHTMLVideoElement.h"
 #import "JSQuickTimePluginReplacement.h"
 #import "Logging.h"
-#import "MainFrame.h"
-#import "Page.h"
 #import "RenderElement.h"
 #import "ScriptController.h"
 #import "ScriptSourceCode.h"
 #import "Settings.h"
+#import "ShadowRoot.h"
 #import "UserAgentScripts.h"
-#import <objc/runtime.h>
-#import <AVFoundation/AVFoundation.h>
+#import <AVFoundation/AVMetadataItem.h>
 #import <Foundation/NSString.h>
-#import <JavaScriptCore/JavaScriptCore.h>
 #import <JavaScriptCore/APICast.h>
+#import <JavaScriptCore/CatchScope.h>
+#import <JavaScriptCore/JavaScriptCore.h>
+#import <objc/runtime.h>
 #import <wtf/text/Base64.h>
 
-#import "CoreMediaSoftLink.h"
-
-typedef AVMetadataItem AVMetadataItemType;
-SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
-SOFT_LINK_CLASS(AVFoundation, AVMetadataItem)
-#define AVMetadataItem getAVMetadataItemClass()
+#import <pal/cf/CoreMediaSoftLink.h>
+#import <pal/cocoa/AVFoundationSoftLink.h>
 
 namespace WebCore {
+using namespace PAL;
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 static JSValue *jsValueWithValueInContext(id, JSContext *);
-static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItemType *, JSContext *);
+static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItem *, JSContext *);
 #endif
 
 static String quickTimePluginReplacementScript()
@@ -84,54 +85,41 @@ Ref<PluginReplacement> QuickTimePluginReplacement::create(HTMLPlugInElement& plu
 
 bool QuickTimePluginReplacement::supportsMimeType(const String& mimeType)
 {
-    static NeverDestroyed<HashSet<String, ASCIICaseInsensitiveHash>> typeHash = []() {
-        static const char* const types[] = {
-            "application/vnd.apple.mpegurl", "application/x-mpegurl", "audio/3gpp", "audio/3gpp2", "audio/aac", "audio/aiff",
-            "audio/amr", "audio/basic", "audio/mp3", "audio/mp4", "audio/mpeg", "audio/mpeg3", "audio/mpegurl", "audio/scpls",
-            "audio/wav", "audio/x-aac", "audio/x-aiff", "audio/x-caf", "audio/x-m4a", "audio/x-m4b", "audio/x-m4p",
-            "audio/x-m4r", "audio/x-mp3", "audio/x-mpeg", "audio/x-mpeg3", "audio/x-mpegurl", "audio/x-scpls", "audio/x-wav",
-            "video/3gpp", "video/3gpp2", "video/mp4", "video/quicktime", "video/x-m4v"
-        };
-        HashSet<String, ASCIICaseInsensitiveHash> set;
-        for (auto& type : types)
-            set.add(type);
-        return set;
-    }();
+    static const auto typeHash = makeNeverDestroyed(HashSet<String, ASCIICaseInsensitiveHash> {
+        "application/vnd.apple.mpegurl", "application/x-mpegurl", "audio/3gpp", "audio/3gpp2", "audio/aac", "audio/aiff",
+        "audio/amr", "audio/basic", "audio/mp3", "audio/mp4", "audio/mpeg", "audio/mpeg3", "audio/mpegurl", "audio/scpls",
+        "audio/wav", "audio/x-aac", "audio/x-aiff", "audio/x-caf", "audio/x-m4a", "audio/x-m4b", "audio/x-m4p",
+        "audio/x-m4r", "audio/x-mp3", "audio/x-mpeg", "audio/x-mpeg3", "audio/x-mpegurl", "audio/x-scpls", "audio/x-wav",
+        "video/3gpp", "video/3gpp2", "video/mp4", "video/quicktime", "video/x-m4v"
+    });
     return typeHash.get().contains(mimeType);
 }
 
 bool QuickTimePluginReplacement::supportsFileExtension(const String& extension)
 {
-    static NeverDestroyed<HashSet<String, ASCIICaseInsensitiveHash>> extensionSet = []() {
-        static const char* const extensions[] = {
-            "3g2", "3gp", "3gp2", "3gpp", "aac", "adts", "aif", "aifc", "aiff", "AMR", "au", "bwf", "caf", "cdda", "m3u",
-            "m3u8", "m4a", "m4b", "m4p", "m4r", "m4v", "mov", "mp3", "mp3", "mp4", "mpeg", "mpg", "mqv", "pls", "qt",
-            "snd", "swa", "ts", "ulw", "wav"
-        };
-        HashSet<String, ASCIICaseInsensitiveHash> set;
-        for (auto& extension : extensions)
-            set.add(extension);
-        return set;
-    }();
+    static const auto extensionSet = makeNeverDestroyed(HashSet<String, ASCIICaseInsensitiveHash> {
+        "3g2", "3gp", "3gp2", "3gpp", "aac", "adts", "aif", "aifc", "aiff", "AMR", "au", "bwf", "caf", "cdda", "m3u",
+        "m3u8", "m4a", "m4b", "m4p", "m4r", "m4v", "mov", "mp3", "mp3", "mp4", "mpeg", "mpg", "mqv", "pls", "qt",
+        "snd", "swa", "ts", "ulw", "wav"
+    });
     return extensionSet.get().contains(extension);
 }
 
-bool QuickTimePluginReplacement::isEnabledBySettings(const Settings* settings)
+bool QuickTimePluginReplacement::isEnabledBySettings(const Settings& settings)
 {
-    return settings->quickTimePluginReplacementEnabled();
+    return settings.quickTimePluginReplacementEnabled();
 }
 
 QuickTimePluginReplacement::QuickTimePluginReplacement(HTMLPlugInElement& plugin, const Vector<String>& paramNames, const Vector<String>& paramValues)
-    :PluginReplacement()
-    , m_parentElement(&plugin)
+    : m_parentElement(&plugin)
     , m_names(paramNames)
     , m_values(paramValues)
-    , m_scriptObject(nullptr)
 {
 }
 
 QuickTimePluginReplacement::~QuickTimePluginReplacement()
 {
+    // FIXME: Why is it useful to null out pointers in an object that is being destroyed?
     m_parentElement = nullptr;
     m_scriptObject = nullptr;
     m_mediaElement = nullptr;
@@ -167,7 +155,7 @@ bool QuickTimePluginReplacement::ensureReplacementScriptInjected()
     JSC::ExecState* exec = globalObject->globalExec();
     
     JSC::JSValue replacementFunction = globalObject->get(exec, JSC::Identifier::fromString(exec, "createPluginReplacement"));
-    if (replacementFunction.isFunction())
+    if (replacementFunction.isFunction(vm))
         return true;
     
     scriptController.evaluateInWorld(ScriptSourceCode(quickTimePluginReplacementScript()), world);
@@ -201,9 +189,9 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     if (replacementFunction.isUndefinedOrNull())
         return false;
     JSC::JSObject* replacementObject = replacementFunction.toObject(exec);
-    ASSERT(!scope.exception());
+    scope.assertNoException();
     JSC::CallData callData;
-    JSC::CallType callType = replacementObject->methodTable()->getCallData(replacementObject, callData);
+    JSC::CallType callType = replacementObject->methodTable(vm)->getCallData(replacementObject, callData);
     if (callType == JSC::CallType::None)
         return false;
 
@@ -213,6 +201,7 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     argList.append(toJS(exec, globalObject, this));
     argList.append(toJS<IDLSequence<IDLNullable<IDLDOMString>>>(*exec, *globalObject, m_names));
     argList.append(toJS<IDLSequence<IDLNullable<IDLDOMString>>>(*exec, *globalObject, m_values));
+    ASSERT(!argList.hasOverflowed());
     JSC::JSValue replacement = call(exec, replacementObject, callType, callData, globalObject, argList);
     if (UNLIKELY(scope.exception())) {
         scope.clearException();
@@ -222,7 +211,7 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     // Get the <video> created to replace the plug-in.
     JSC::JSValue value = replacement.get(exec, JSC::Identifier::fromString(exec, "video"));
     if (!scope.exception() && !value.isUndefinedOrNull())
-        m_mediaElement = JSHTMLVideoElement::toWrapped(value);
+        m_mediaElement = JSHTMLVideoElement::toWrapped(vm, value);
 
     if (!m_mediaElement) {
         LOG(Plugins, "%p - Failed to find <video> element created by QuickTime plugin replacement script.", this);
@@ -234,7 +223,7 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     value = replacement.get(exec, JSC::Identifier::fromString(exec, "scriptObject"));
     if (!scope.exception() && !value.isUndefinedOrNull()) {
         m_scriptObject = value.toObject(exec);
-        ASSERT(!scope.exception());
+        scope.assertNoException();
     }
 
     if (!m_scriptObject) {
@@ -257,11 +246,12 @@ unsigned long long QuickTimePluginReplacement::movieSize() const
 void QuickTimePluginReplacement::postEvent(const String& eventName)
 {
     Ref<HTMLPlugInElement> protect(*m_parentElement);
-    Ref<Event> event = Event::create(eventName, false, true);
+    Ref<Event> event = Event::create(eventName, Event::CanBubble::No, Event::IsCancelable::Yes);
     m_parentElement->dispatchEvent(event);
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
+
 static JSValue *jsValueWithDataInContext(NSData *data, const String& mimeType, JSContext *context)
 {
     Vector<char> base64Data;
@@ -298,7 +288,6 @@ static JSValue *jsValueWithArrayInContext(NSArray *array, JSContext *context)
     return result;
 }
 
-
 static JSValue *jsValueWithDictionaryInContext(NSDictionary *dictionary, JSContext *context)
 {
     JSValueRef exception = 0;
@@ -315,8 +304,8 @@ static JSValue *jsValueWithDictionaryInContext(NSDictionary *dictionary, JSConte
         if (!value)
             continue;
 
-        JSStringRef name = JSStringCreateWithCFString((CFStringRef)key);
-        JSObjectSetProperty([context JSGlobalContextRef], resultObject, name, [value JSValueRef], 0, &exception);
+        auto name = OpaqueJSString::tryCreate(key);
+        JSObjectSetProperty([context JSGlobalContextRef], resultObject, name.get(), [value JSValueRef], 0, &exception);
         if (exception)
             continue;
     }
@@ -336,13 +325,13 @@ static JSValue *jsValueWithValueInContext(id value, JSContext *context)
         return jsValueWithArrayInContext(value, context);
     else if ([value isKindOfClass:[NSData class]])
         return jsValueWithDataInContext(value, emptyString(), context);
-    else if ([value isKindOfClass:[AVMetadataItem class]])
+    else if ([value isKindOfClass:PAL::getAVMetadataItemClass()])
         return jsValueWithAVMetadataItemInContext(value, context);
 
     return nil;
 }
 
-static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItemType *item, JSContext *context)
+static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItem *item, JSContext *context)
 {
     NSMutableDictionary* dictionary = [NSMutableDictionary dictionaryWithDictionary:[item extraAttributes]];
 
@@ -356,12 +345,8 @@ static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItemType *item, JSC
         [dictionary setObject:item.locale forKey:@"locale"];
 
     if (CMTIME_IS_VALID(item.time)) {
-        CFDictionaryRef timeDict = CMTimeCopyAsDictionary(item.time, kCFAllocatorDefault);
-
-        if (timeDict) {
-            [dictionary setObject:(id)timeDict forKey:@"timestamp"];
-            CFRelease(timeDict);
-        }
+        if (auto timeDictionary = adoptCF(PAL::CMTimeCopyAsDictionary(item.time, kCFAllocatorDefault)))
+            [dictionary setObject:(__bridge NSDictionary *)timeDictionary.get() forKey:@"timestamp"];
     }
     
     if (item.value) {
@@ -371,18 +356,19 @@ static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItemType *item, JSC
             Vector<char> base64Data;
             base64Encode([value bytes], [value length], base64Data);
             String data64 = "data:" + String(mimeType) + ";base64," + base64Data;
-            [dictionary setObject:(id)data64.createCFString().get() forKey:@"value"];
+            [dictionary setObject:(__bridge NSString *)data64.createCFString().get() forKey:@"value"];
         } else
             [dictionary setObject:value forKey:@"value"];
     }
 
     return jsValueWithDictionaryInContext(dictionary, context);
 }
+
 #endif
 
 JSC::JSValue JSQuickTimePluginReplacement::timedMetaData(JSC::ExecState& state) const
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     HTMLVideoElement* parent = wrapped().parentElement();
     if (!parent || !parent->player())
         return JSC::jsNull();
@@ -397,7 +383,7 @@ JSC::JSValue JSQuickTimePluginReplacement::timedMetaData(JSC::ExecState& state) 
 
     JSContext *jsContext = frame->script().javaScriptContext();
     JSValue *metaDataValue = jsValueWithValueInContext(metaData, jsContext);
-    
+
     return toJS(&state, [metaDataValue JSValueRef]);
 #else
     UNUSED_PARAM(state);
@@ -407,7 +393,7 @@ JSC::JSValue JSQuickTimePluginReplacement::timedMetaData(JSC::ExecState& state) 
 
 JSC::JSValue JSQuickTimePluginReplacement::accessLog(JSC::ExecState& state) const
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     HTMLVideoElement* parent = wrapped().parentElement();
     if (!parent || !parent->player())
         return JSC::jsNull();
@@ -429,7 +415,7 @@ JSC::JSValue JSQuickTimePluginReplacement::accessLog(JSC::ExecState& state) cons
 
 JSC::JSValue JSQuickTimePluginReplacement::errorLog(JSC::ExecState& state) const
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     HTMLVideoElement* parent = wrapped().parentElement();
     if (!parent || !parent->player())
         return JSC::jsNull();

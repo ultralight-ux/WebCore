@@ -5,13 +5,13 @@
 
 namespace WebCore {
 
-bool canHyphenate(const AtomicString& localeIdentifier)
+bool canHyphenate(const AtomString& localeIdentifier)
 {
   notImplemented();
   return false;
 }
 
-size_t lastHyphenLocation(StringView text, size_t beforeIndex, const AtomicString& localeIdentifier)
+size_t lastHyphenLocation(StringView text, size_t beforeIndex, const AtomString& localeIdentifier)
 {
   notImplemented();
   return 0;

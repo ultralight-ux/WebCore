@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2011 Google Inc.  All rights reserved.
  * Copyright (C) Research In Motion Limited 2011. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -30,23 +31,20 @@
  */
 
 #include "config.h"
-
-#if ENABLE(WEB_SOCKETS)
-
 #include "WebSocketHandshake.h"
-#include "WebSocket.h"
 
 #include "Cookie.h"
 #include "CookieJar.h"
-#include "Document.h"
 #include "HTTPHeaderMap.h"
 #include "HTTPHeaderNames.h"
 #include "HTTPParsers.h"
-#include "URL.h"
+#include "InspectorInstrumentation.h"
 #include "Logging.h"
 #include "ResourceRequest.h"
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
+#include <wtf/URL.h>
+#include "WebSocket.h"
 #include <wtf/ASCIICType.h>
 #include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/MD5.h>
@@ -120,21 +118,20 @@ String WebSocketHandshake::getExpectedWebSocketAccept(const String& secWebSocket
     return base64Encode(hash.data(), SHA1::hashSize);
 }
 
-WebSocketHandshake::WebSocketHandshake(const URL& url, const String& protocol, Document* document, bool allowCookies)
+WebSocketHandshake::WebSocketHandshake(const URL& url, const String& protocol, const String& userAgent, const String& clientOrigin, bool allowCookies)
     : m_url(url)
     , m_clientProtocol(protocol)
     , m_secure(m_url.protocolIs("wss"))
-    , m_document(document)
     , m_mode(Incomplete)
+    , m_userAgent(userAgent)
+    , m_clientOrigin(clientOrigin)
     , m_allowCookies(allowCookies)
 {
     m_secWebSocketKey = generateSecWebSocketKey();
     m_expectedAccept = getExpectedWebSocketAccept(m_secWebSocketKey);
 }
 
-WebSocketHandshake::~WebSocketHandshake()
-{
-}
+WebSocketHandshake::~WebSocketHandshake() = default;
 
 const URL& WebSocketHandshake::url() const
 {
@@ -167,11 +164,6 @@ bool WebSocketHandshake::secure() const
     return m_secure;
 }
 
-String WebSocketHandshake::clientOrigin() const
-{
-    return m_document->securityOrigin()->toString();
-}
-
 String WebSocketHandshake::clientLocation() const
 {
     StringBuilder builder;
@@ -195,16 +187,12 @@ CString WebSocketHandshake::clientHandshakeMessage() const
     fields.append("Upgrade: websocket");
     fields.append("Connection: Upgrade");
     fields.append("Host: " + hostName(m_url, m_secure));
-    fields.append("Origin: " + clientOrigin());
+    fields.append("Origin: " + m_clientOrigin);
     if (!m_clientProtocol.isEmpty())
         fields.append("Sec-WebSocket-Protocol: " + m_clientProtocol);
 
-    URL url = httpURLForAuthenticationAndCookies();
-    if (m_allowCookies && m_document) {
-        String cookie = cookieRequestHeaderFieldValue(*m_document, url);
-        if (!cookie.isEmpty())
-            fields.append("Cookie: " + cookie);
-    }
+    // Note: Cookies are not retrieved in the WebContent process. Instead, a proxy object is
+    // added in the handshake, and is exchanged for actual cookies in the Network process.
 
     // Add no-cache headers to avoid compatibility issue.
     // There are some proxies that rewrite "Connection: upgrade"
@@ -220,7 +208,7 @@ CString WebSocketHandshake::clientHandshakeMessage() const
         fields.append("Sec-WebSocket-Extensions: " + extensionValue);
 
     // Add a User-Agent header.
-    fields.append("User-Agent: " + m_document->userAgent(m_document->url()));
+    fields.append(makeString("User-Agent: ", m_userAgent));
 
     // Fields in the handshake are sent by the client in a random order; the
     // order is not meaningful.  Thus, it's ok to send the order we constructed
@@ -236,7 +224,7 @@ CString WebSocketHandshake::clientHandshakeMessage() const
     return builder.toString().utf8();
 }
 
-ResourceRequest WebSocketHandshake::clientHandshakeRequest() const
+ResourceRequest WebSocketHandshake::clientHandshakeRequest(Function<String(const URL&)>&& cookieRequestHeaderFieldValue) const
 {
     // Keep the following consistent with clientHandshakeMessage().
     ResourceRequest request(m_url);
@@ -244,13 +232,13 @@ ResourceRequest WebSocketHandshake::clientHandshakeRequest() const
 
     request.setHTTPHeaderField(HTTPHeaderName::Connection, "Upgrade");
     request.setHTTPHeaderField(HTTPHeaderName::Host, hostName(m_url, m_secure));
-    request.setHTTPHeaderField(HTTPHeaderName::Origin, clientOrigin());
+    request.setHTTPHeaderField(HTTPHeaderName::Origin, m_clientOrigin);
     if (!m_clientProtocol.isEmpty())
         request.setHTTPHeaderField(HTTPHeaderName::SecWebSocketProtocol, m_clientProtocol);
 
     URL url = httpURLForAuthenticationAndCookies();
-    if (m_allowCookies && m_document) {
-        String cookie = cookieRequestHeaderFieldValue(*m_document, url);
+    if (m_allowCookies) {
+        String cookie = cookieRequestHeaderFieldValue(url);
         if (!cookie.isEmpty())
             request.setHTTPHeaderField(HTTPHeaderName::Cookie, cookie);
     }
@@ -265,7 +253,7 @@ ResourceRequest WebSocketHandshake::clientHandshakeRequest() const
         request.setHTTPHeaderField(HTTPHeaderName::SecWebSocketExtensions, extensionValue);
 
     // Add a User-Agent header.
-    request.setHTTPHeaderField(HTTPHeaderName::UserAgent, m_document->userAgent(m_document->url()));
+    request.setHTTPUserAgent(m_userAgent);
 
     return request;
 }
@@ -274,11 +262,6 @@ void WebSocketHandshake::reset()
 {
     m_mode = Incomplete;
     m_extensionDispatcher.reset();
-}
-
-void WebSocketHandshake::clearDocument()
-{
-    m_document = nullptr;
 }
 
 int WebSocketHandshake::readServerHandshake(const char* header, size_t len)
@@ -301,7 +284,7 @@ int WebSocketHandshake::readServerHandshake(const char* header, size_t len)
 
     if (statusCode != 101) {
         m_mode = Failed;
-        m_failureReason = makeString("Unexpected response code: ", String::number(statusCode));
+        m_failureReason = makeString("Unexpected response code: ", statusCode);
         return len;
     }
     m_mode = Normal;
@@ -448,10 +431,10 @@ int WebSocketHandshake::readStatusLine(const char* header, size_t headerLength, 
             // The caller isn't prepared to deal with null bytes in status
             // line. WebSockets specification doesn't prohibit this, but HTTP
             // does, so we'll just treat this as an error.
-            m_failureReason = ASCIILiteral("Status line contains embedded null");
+            m_failureReason = "Status line contains embedded null"_s;
             return p + 1 - header;
         } else if (!isASCII(*p)) {
-            m_failureReason = ASCIILiteral("Status line contains non-ASCII character");
+            m_failureReason = "Status line contains non-ASCII character"_s;
             return p + 1 - header;
         } else if (*p == '\n')
             break;
@@ -462,13 +445,13 @@ int WebSocketHandshake::readStatusLine(const char* header, size_t headerLength, 
     const char* end = p + 1;
     int lineLength = end - header;
     if (lineLength > maximumLength) {
-        m_failureReason = ASCIILiteral("Status line is too long");
+        m_failureReason = "Status line is too long"_s;
         return maximumLength;
     }
 
     // The line must end with "\r\n".
     if (lineLength < 2 || *(end - 2) != '\r') {
-        m_failureReason = ASCIILiteral("Status line does not end with CRLF");
+        m_failureReason = "Status line does not end with CRLF"_s;
         return lineLength;
     }
 
@@ -530,14 +513,14 @@ const char* WebSocketHandshake::readHTTPHeaders(const char* start, const char* e
         if ((headerName == HTTPHeaderName::SecWebSocketExtensions
             || headerName == HTTPHeaderName::SecWebSocketAccept
             || headerName == HTTPHeaderName::SecWebSocketProtocol)
-            && !value.containsOnlyASCII()) {
+            && !value.isAllASCII()) {
             m_failureReason = makeString(name, " header value should only contain ASCII characters");
             return nullptr;
         }
         
         if (headerName == HTTPHeaderName::SecWebSocketExtensions) {
             if (sawSecWebSocketExtensionsHeaderField) {
-                m_failureReason = ASCIILiteral("The Sec-WebSocket-Extensions header must not appear more than once in an HTTP response");
+                m_failureReason = "The Sec-WebSocket-Extensions header must not appear more than once in an HTTP response"_s;
                 return nullptr;
             }
             if (!m_extensionDispatcher.processHeaderValue(value)) {
@@ -548,13 +531,13 @@ const char* WebSocketHandshake::readHTTPHeaders(const char* start, const char* e
         } else {
             if (headerName == HTTPHeaderName::SecWebSocketAccept) {
                 if (sawSecWebSocketAcceptHeaderField) {
-                    m_failureReason = ASCIILiteral("The Sec-WebSocket-Accept header must not appear more than once in an HTTP response");
+                    m_failureReason = "The Sec-WebSocket-Accept header must not appear more than once in an HTTP response"_s;
                     return nullptr;
                 }
                 sawSecWebSocketAcceptHeaderField = true;
             } else if (headerName == HTTPHeaderName::SecWebSocketProtocol) {
                 if (sawSecWebSocketProtocolHeaderField) {
-                    m_failureReason = ASCIILiteral("The Sec-WebSocket-Protocol header must not appear more than once in an HTTP response");
+                    m_failureReason = "The Sec-WebSocket-Protocol header must not appear more than once in an HTTP response"_s;
                     return nullptr;
                 }
                 sawSecWebSocketProtocolHeaderField = true;
@@ -574,40 +557,39 @@ bool WebSocketHandshake::checkResponseHeaders()
     const String& serverWebSocketAccept = this->serverWebSocketAccept();
 
     if (serverUpgrade.isNull()) {
-        m_failureReason = ASCIILiteral("Error during WebSocket handshake: 'Upgrade' header is missing");
+        m_failureReason = "Error during WebSocket handshake: 'Upgrade' header is missing"_s;
         return false;
     }
     if (serverConnection.isNull()) {
-        m_failureReason = ASCIILiteral("Error during WebSocket handshake: 'Connection' header is missing");
+        m_failureReason = "Error during WebSocket handshake: 'Connection' header is missing"_s;
         return false;
     }
     if (serverWebSocketAccept.isNull()) {
-        m_failureReason = ASCIILiteral("Error during WebSocket handshake: 'Sec-WebSocket-Accept' header is missing");
+        m_failureReason = "Error during WebSocket handshake: 'Sec-WebSocket-Accept' header is missing"_s;
         return false;
     }
 
     if (!equalLettersIgnoringASCIICase(serverUpgrade, "websocket")) {
-        m_failureReason = ASCIILiteral("Error during WebSocket handshake: 'Upgrade' header value is not 'WebSocket'");
+        m_failureReason = "Error during WebSocket handshake: 'Upgrade' header value is not 'WebSocket'"_s;
         return false;
     }
     if (!equalLettersIgnoringASCIICase(serverConnection, "upgrade")) {
-        m_failureReason = ASCIILiteral("Error during WebSocket handshake: 'Connection' header value is not 'Upgrade'");
+        m_failureReason = "Error during WebSocket handshake: 'Connection' header value is not 'Upgrade'"_s;
         return false;
     }
 
     if (serverWebSocketAccept != m_expectedAccept) {
-        m_failureReason = ASCIILiteral("Error during WebSocket handshake: Sec-WebSocket-Accept mismatch");
+        m_failureReason = "Error during WebSocket handshake: Sec-WebSocket-Accept mismatch"_s;
         return false;
     }
     if (!serverWebSocketProtocol.isNull()) {
         if (m_clientProtocol.isEmpty()) {
-            m_failureReason = ASCIILiteral("Error during WebSocket handshake: Sec-WebSocket-Protocol mismatch");
+            m_failureReason = "Error during WebSocket handshake: Sec-WebSocket-Protocol mismatch"_s;
             return false;
         }
-        Vector<String> result;
-        m_clientProtocol.split(WebSocket::subprotocolSeparator(), result);
+        Vector<String> result = m_clientProtocol.split(WebSocket::subprotocolSeparator());
         if (!result.contains(serverWebSocketProtocol)) {
-            m_failureReason = ASCIILiteral("Error during WebSocket handshake: Sec-WebSocket-Protocol mismatch");
+            m_failureReason = "Error during WebSocket handshake: Sec-WebSocket-Protocol mismatch"_s;
             return false;
         }
     }
@@ -615,5 +597,3 @@ bool WebSocketHandshake::checkResponseHeaders()
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(WEB_SOCKETS)

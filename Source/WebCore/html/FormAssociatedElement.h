@@ -24,20 +24,23 @@
 #pragma once
 
 #include "FormNamedItem.h"
+#include "Node.h"
+#include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class ContainerNode;
+class DOMFormData;
 class Document;
 class FormAttributeTargetObserver;
-class FormDataList;
 class HTMLElement;
 class HTMLFormElement;
-class Node;
 class ValidityState;
 
 class FormAssociatedElement : public FormNamedItem {
+    WTF_MAKE_NONCOPYABLE(FormAssociatedElement);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     virtual ~FormAssociatedElement();
 
@@ -45,7 +48,7 @@ public:
     void deref() { derefFormAssociatedElement(); }
 
     static HTMLFormElement* findAssociatedForm(const HTMLElement*, HTMLFormElement*);
-    HTMLFormElement* form() const { return m_form; }
+    WEBCORE_EXPORT HTMLFormElement* form() const;
     ValidityState* validity();
 
     virtual bool isFormControlElement() const = 0;
@@ -55,17 +58,17 @@ public:
     // Returns the 'name' attribute value. If this element has no name
     // attribute, it returns an empty string instead of null string.
     // Note that the 'name' IDL attribute doesn't use this function.
-    virtual const AtomicString& name() const;
+    virtual const AtomString& name() const;
 
     // Override in derived classes to get the encoded name=value pair for submitting.
     // Return true for a successful control (see HTML4-17.13.2).
-    virtual bool appendFormData(FormDataList&, bool) { return false; }
+    virtual bool appendFormData(DOMFormData&, bool) { return false; }
 
     void formWillBeDestroyed();
 
     void resetFormOwner();
 
-    void formRemovedFromTree(const Node* formRoot);
+    void formOwnerRemovedFromTree(const Node&);
 
     // ValidityState attribute implementations
     bool badInput() const { return hasBadInput(); }
@@ -90,8 +93,8 @@ public:
 protected:
     FormAssociatedElement(HTMLFormElement*);
 
-    void insertedInto(ContainerNode&);
-    void removedFrom(ContainerNode&);
+    void insertedIntoAncestor(Node::InsertionType, ContainerNode&);
+    void removedFromAncestor(Node::RemovalType, ContainerNode&);
     void didMoveToNewDocument(Document& oldDocument);
 
     void setForm(HTMLFormElement*);
@@ -115,8 +118,8 @@ private:
     bool isFormAssociatedElement() const final { return true; }
 
     std::unique_ptr<FormAttributeTargetObserver> m_formAttributeTargetObserver;
-    HTMLFormElement* m_form;
-    HTMLFormElement* m_formSetByParser;
+    WeakPtr<HTMLFormElement> m_form;
+    WeakPtr<HTMLFormElement> m_formSetByParser;
     String m_customValidationMessage;
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -19,8 +19,6 @@
 
 #pragma once
 
-#include "SVGAnimatedBoolean.h"
-#include "SVGAnimatedLength.h"
 #include "SVGExternalResourcesRequired.h"
 #include "SVGGraphicsElement.h"
 #include "SVGNames.h"
@@ -28,33 +26,42 @@
 
 namespace WebCore {
 
-class SVGForeignObjectElement final : public SVGGraphicsElement,
-                                      public SVGExternalResourcesRequired {
+class SVGForeignObjectElement final : public SVGGraphicsElement, public SVGExternalResourcesRequired {
+    WTF_MAKE_ISO_ALLOCATED(SVGForeignObjectElement);
 public:
     static Ref<SVGForeignObjectElement> create(const QualifiedName&, Document&);
+
+    const SVGLengthValue& x() const { return m_x->currentValue(); }
+    const SVGLengthValue& y() const { return m_y->currentValue(); }
+    const SVGLengthValue& width() const { return m_width->currentValue(); }
+    const SVGLengthValue& height() const { return m_height->currentValue(); }
+
+    SVGAnimatedLength& xAnimated() { return m_x; }
+    SVGAnimatedLength& yAnimated() { return m_y; }
+    SVGAnimatedLength& widthAnimated() { return m_width; }
+    SVGAnimatedLength& heightAnimated() { return m_height; }
 
 private:
     SVGForeignObjectElement(const QualifiedName&, Document&);
 
-    bool isValid() const final { return SVGTests::isValid(); }
-    static bool isSupportedAttribute(const QualifiedName&);
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGForeignObjectElement, SVGGraphicsElement, SVGExternalResourcesRequired>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
     void svgAttributeChanged(const QualifiedName&) final;
 
     bool rendererIsNeeded(const RenderStyle&) final;
     bool childShouldCreateRenderer(const Node&) const final;
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 
+    bool isValid() const final { return SVGTests::isValid(); }
     bool selfHasRelativeLengths() const final { return true; }
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGForeignObjectElement)
-        DECLARE_ANIMATED_LENGTH(X, x)
-        DECLARE_ANIMATED_LENGTH(Y, y)
-        DECLARE_ANIMATED_LENGTH(Width, width)
-        DECLARE_ANIMATED_LENGTH(Height, height)
-        DECLARE_ANIMATED_STRING(Href, href)
-        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)
-    END_DECLARE_ANIMATED_PROPERTIES
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedLength> m_x { SVGAnimatedLength::create(this, SVGLengthMode::Width) };
+    Ref<SVGAnimatedLength> m_y { SVGAnimatedLength::create(this, SVGLengthMode::Height) };
+    Ref<SVGAnimatedLength> m_width { SVGAnimatedLength::create(this, SVGLengthMode::Width) };
+    Ref<SVGAnimatedLength> m_height { SVGAnimatedLength::create(this, SVGLengthMode::Height) };
 };
 
 } // namespace WebCore

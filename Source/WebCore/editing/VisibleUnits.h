@@ -26,7 +26,6 @@
 #pragma once
 
 #include "EditingBoundary.h"
-#include "TextFlags.h"
 #include "VisibleSelection.h"
 
 namespace WebCore {
@@ -76,6 +75,7 @@ WEBCORE_EXPORT VisiblePosition nextParagraphPosition(const VisiblePosition &, in
 WEBCORE_EXPORT bool isStartOfParagraph(const VisiblePosition &, EditingBoundaryCrossingRule = CannotCrossEditingBoundary);
 WEBCORE_EXPORT bool isEndOfParagraph(const VisiblePosition &, EditingBoundaryCrossingRule = CannotCrossEditingBoundary);
 bool inSameParagraph(const VisiblePosition &, const VisiblePosition &, EditingBoundaryCrossingRule = CannotCrossEditingBoundary);
+bool isBlankParagraph(const VisiblePosition &);
 
 // blocks (true paragraphs; line break elements don't break blocks)
 VisiblePosition startOfBlock(const VisiblePosition &, EditingBoundaryCrossingRule = CannotCrossEditingBoundary);

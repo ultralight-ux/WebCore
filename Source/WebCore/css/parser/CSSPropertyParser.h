@@ -32,6 +32,7 @@ class CSSProperty;
 class CSSValue;
 class StylePropertyShorthand;
 class StyleSheetContents;
+class StyleResolver;
     
 // Inputs: PropertyID, isImportant bool, CSSParserTokenRange.
 // Outputs: Vector of CSSProperties
@@ -40,19 +41,25 @@ class CSSPropertyParser {
     WTF_MAKE_NONCOPYABLE(CSSPropertyParser);
 public:
     static bool parseValue(CSSPropertyID, bool important,
-        const CSSParserTokenRange&, const CSSParserContext&, StyleSheetContents*,
+        const CSSParserTokenRange&, const CSSParserContext&,
         Vector<CSSProperty, 256>&, StyleRule::Type);
 
     // Parses a non-shorthand CSS property
-    static RefPtr<CSSValue> parseSingleValue(CSSPropertyID, const CSSParserTokenRange&, const CSSParserContext&, StyleSheetContents*);
+    static RefPtr<CSSValue> parseSingleValue(CSSPropertyID, const CSSParserTokenRange&, const CSSParserContext&);
+    static bool canParseTypedCustomPropertyValue(const String& syntax, const CSSParserTokenRange&, const CSSParserContext&);
+    static RefPtr<CSSCustomPropertyValue> parseTypedCustomPropertyValue(const String& name, const String& syntax, const CSSParserTokenRange&, const StyleResolver&, const CSSParserContext&);
+    static void collectParsedCustomPropertyValueDependencies(const String& syntax, bool isRoot, HashSet<CSSPropertyID>& dependencies, const CSSParserTokenRange&, const CSSParserContext&);
 
 private:
-    CSSPropertyParser(const CSSParserTokenRange&, const CSSParserContext&, StyleSheetContents*, Vector<CSSProperty, 256>*);
+    CSSPropertyParser(const CSSParserTokenRange&, const CSSParserContext&, Vector<CSSProperty, 256>*, bool consumeWhitespace = true);
 
     // FIXME: Rename once the CSSParserValue-based parseValue is removed
     bool parseValueStart(CSSPropertyID, bool important);
     bool consumeCSSWideKeyword(CSSPropertyID, bool important);
     RefPtr<CSSValue> parseSingleValue(CSSPropertyID, CSSPropertyID = CSSPropertyInvalid);
+    bool canParseTypedCustomPropertyValue(const String& syntax);
+    RefPtr<CSSCustomPropertyValue> parseTypedCustomPropertyValue(const String& name, const String& syntax, const StyleResolver&);
+    void collectParsedCustomPropertyValueDependencies(const String& syntax, bool isRoot, HashSet<CSSPropertyID>& dependencies);
 
     bool inQuirksMode() const { return m_context.mode == HTMLQuirksMode; }
 
@@ -62,11 +69,12 @@ private:
     void addProperty(CSSPropertyID, CSSPropertyID, Ref<CSSValue>&&, bool important, bool implicit = false);
     void addExpandedPropertyForValue(CSSPropertyID propId, Ref<CSSValue>&&, bool);
 
-    bool consumeBorder(bool important);
+    bool consumeBorder(RefPtr<CSSValue>& width, RefPtr<CSSValue>& style, RefPtr<CSSValue>& color);
 
     bool parseShorthand(CSSPropertyID, bool important);
     bool consumeShorthandGreedily(const StylePropertyShorthand&, bool important);
-    bool consume4Values(const StylePropertyShorthand&, bool important);
+    bool consume2ValueShorthand(const StylePropertyShorthand&, bool important);
+    bool consume4ValueShorthand(const StylePropertyShorthand&, bool important);
 
     // Legacy parsing allows <string>s for animation-name
     bool consumeAnimationShorthand(const StylePropertyShorthand&, bool important);
@@ -79,6 +87,10 @@ private:
     bool consumeGridTemplateShorthand(CSSPropertyID, bool important);
     bool consumeGridShorthand(bool important);
     bool consumeGridAreaShorthand(bool important);
+
+    bool consumePlaceContentShorthand(bool important);
+    bool consumePlaceItemsShorthand(bool important);
+    bool consumePlaceSelfShorthand(bool important);
 
     bool consumeFont(bool important);
     bool consumeFontVariantShorthand(bool important);
@@ -100,7 +112,6 @@ private:
     // Inputs:
     CSSParserTokenRange m_range;
     const CSSParserContext& m_context;
-    StyleSheetContents* m_styleSheetContents;
 
     // Outputs:
     Vector<CSSProperty, 256>* m_parsedProperties;
@@ -110,7 +121,7 @@ CSSPropertyID cssPropertyID(StringView);
 CSSValueID cssValueKeywordID(StringView);
 bool isCustomPropertyName(const String&);
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 void cssPropertyNameIOSAliasing(const char* propertyName, const char*& propertyNameAlias, unsigned& newLength);
 #endif
 

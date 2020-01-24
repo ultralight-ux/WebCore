@@ -31,8 +31,11 @@
 #include "HTMLOListElement.h"
 #include "HTMLUListElement.h"
 #include "RenderListItem.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLLIElement);
 
 using namespace HTMLNames;
 
@@ -60,7 +63,7 @@ bool HTMLLIElement::isPresentationAttribute(const QualifiedName& name) const
     return HTMLElement::isPresentationAttribute(name);
 }
 
-void HTMLLIElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStyleProperties& style)
+void HTMLLIElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == typeAttr) {
         if (value == "a")
@@ -79,7 +82,7 @@ void HTMLLIElement::collectStyleForPresentationAttribute(const QualifiedName& na
         HTMLElement::collectStyleForPresentationAttribute(name, value, style);
 }
 
-void HTMLLIElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void HTMLLIElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     if (name == valueAttr) {
         if (renderer() && renderer()->isListItem())
@@ -111,7 +114,7 @@ void HTMLLIElement::didAttachRenderers()
     parseValue(attributeWithoutSynchronization(valueAttr));
 }
 
-inline void HTMLLIElement::parseValue(const AtomicString& value)
+inline void HTMLLIElement::parseValue(const AtomString& value)
 {
     ASSERT(renderer());
 
@@ -120,7 +123,7 @@ inline void HTMLLIElement::parseValue(const AtomicString& value)
     if (valueOK)
         downcast<RenderListItem>(*renderer()).setExplicitValue(requestedValue);
     else
-        downcast<RenderListItem>(*renderer()).clearExplicitValue();
+        downcast<RenderListItem>(*renderer()).setExplicitValue(WTF::nullopt);
 }
 
 }

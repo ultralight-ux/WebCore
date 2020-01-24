@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2007, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,8 +21,6 @@
 
 #pragma once
 
-#include "SVGAnimatedBoolean.h"
-#include "SVGAnimatedEnumeration.h"
 #include "SVGExternalResourcesRequired.h"
 #include "SVGGraphicsElement.h"
 #include "SVGUnitTypes.h"
@@ -30,29 +29,32 @@ namespace WebCore {
 
 class RenderObject;
 
-class SVGClipPathElement final : public SVGGraphicsElement,
-                                 public SVGExternalResourcesRequired {
+class SVGClipPathElement final : public SVGGraphicsElement, public SVGExternalResourcesRequired {
+    WTF_MAKE_ISO_ALLOCATED(SVGClipPathElement);
 public:
     static Ref<SVGClipPathElement> create(const QualifiedName&, Document&);
 
+    SVGUnitTypes::SVGUnitType clipPathUnits() const { return m_clipPathUnits->currentValue<SVGUnitTypes::SVGUnitType>(); }
+    SVGAnimatedEnumeration& clipPathUnitsAnimated() { return m_clipPathUnits; }
+
 private:
     SVGClipPathElement(const QualifiedName&, Document&);
+
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGClipPathElement, SVGGraphicsElement, SVGExternalResourcesRequired>;
+    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
+
+    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void svgAttributeChanged(const QualifiedName&) final;
+    void childrenChanged(const ChildChange&) final;
 
     bool isValid() const final { return SVGTests::isValid(); }
     bool supportsFocus() const final { return false; }
     bool needsPendingResourceHandling() const final { return false; }
 
-    static bool isSupportedAttribute(const QualifiedName&);
-    void parseAttribute(const QualifiedName&, const AtomicString&) final;
-    void svgAttributeChanged(const QualifiedName&) final;
-    void childrenChanged(const ChildChange&) final;
-
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGClipPathElement)
-        DECLARE_ANIMATED_ENUMERATION(ClipPathUnits, clipPathUnits, SVGUnitTypes::SVGUnitType)
-        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)
-    END_DECLARE_ANIMATED_PROPERTIES
+    PropertyRegistry m_propertyRegistry { *this };
+    Ref<SVGAnimatedEnumeration> m_clipPathUnits { SVGAnimatedEnumeration::create(this, SVGUnitTypes::SVG_UNIT_TYPE_USERSPACEONUSE) };
 };
 
 } // namespace WebCore

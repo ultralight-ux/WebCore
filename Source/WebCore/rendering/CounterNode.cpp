@@ -177,7 +177,7 @@ void CounterNode::resetRenderers()
 {
     if (!m_rootRenderer)
         return;
-    bool skipLayoutAndPerfWidthsRecalc = m_rootRenderer->documentBeingDestroyed();
+    bool skipLayoutAndPerfWidthsRecalc = m_rootRenderer->renderTreeBeingDestroyed();
     auto* current = m_rootRenderer;
     while (current) {
         if (!skipLayoutAndPerfWidthsRecalc)
@@ -211,7 +211,7 @@ void CounterNode::recount()
     }
 }
 
-void CounterNode::insertAfter(CounterNode& newChild, CounterNode* beforeChild, const AtomicString& identifier)
+void CounterNode::insertAfter(CounterNode& newChild, CounterNode* beforeChild, const AtomString& identifier)
 {
     ASSERT(!newChild.m_parent);
     ASSERT(!newChild.m_previousSibling);

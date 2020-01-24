@@ -23,11 +23,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef IntSize_h
-#define IntSize_h
+#pragma once
 
-#include "PlatformExportMacros.h"
 #include <algorithm>
+#include <wtf/JSONValues.h>
+#include <wtf/Forward.h>
 
 #if PLATFORM(MAC) && defined __OBJC__
 #import <Foundation/NSGeometry.h>
@@ -45,7 +45,7 @@ typedef struct _NSSize NSSize;
 #endif
 #endif
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #ifndef NSSize
 #define NSSize CGSize
 #endif
@@ -61,10 +61,13 @@ struct D2D_SIZE_F;
 typedef D2D_SIZE_F D2D1_SIZE_F;
 #endif
 
+namespace WTF {
+class TextStream;
+}
+
 namespace WebCore {
 
 class FloatSize;
-class TextStream;
 
 class IntSize {
 public:
@@ -171,6 +174,9 @@ public:
     operator D2D1_SIZE_F() const;
 #endif
 
+    String toJSONString() const;
+    Ref<JSON::Object> toJSONObject() const;
+
 private:
     int m_width, m_height;
 };
@@ -214,8 +220,21 @@ inline bool operator!=(const IntSize& a, const IntSize& b)
     return a.width() != b.width() || a.height() != b.height();
 }
 
-WEBCORE_EXPORT TextStream& operator<<(TextStream&, const IntSize&);
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const IntSize&);
 
 } // namespace WebCore
 
-#endif // IntSize_h
+namespace WTF {
+template<> struct DefaultHash<WebCore::IntSize>;
+template<> struct HashTraits<WebCore::IntSize>;
+
+template<typename Type> struct LogArgument;
+template <>
+struct LogArgument<WebCore::IntSize> {
+    static String toString(const WebCore::IntSize& size)
+    {
+        return size.toJSONString();
+    }
+};
+}
+

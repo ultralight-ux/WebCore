@@ -30,6 +30,7 @@
 
 #if ENABLE(JIT)
 
+#include <wtf/Bag.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/Noncopyable.h>
 
@@ -39,34 +40,23 @@ class CodeBlock;
 class StructureStubInfo;
 class WatchpointsOnStructureStubInfo;
 
-class StructureStubClearingWatchpoint : public Watchpoint {
+class StructureStubClearingWatchpoint final : public Watchpoint {
     WTF_MAKE_NONCOPYABLE(StructureStubClearingWatchpoint);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    StructureStubClearingWatchpoint(
-        const ObjectPropertyCondition& key,
-        WatchpointsOnStructureStubInfo& holder,
-        std::unique_ptr<StructureStubClearingWatchpoint> next)
-        : m_key(key)
-        , m_holder(holder)
-        , m_next(WTFMove(next))
+    StructureStubClearingWatchpoint(const ObjectPropertyCondition& key, WatchpointsOnStructureStubInfo& holder)
+        : Watchpoint(Watchpoint::Type::StructureStubClearing)
+        , m_holder(&holder)
+        , m_key(key)
     {
     }
-    
-    virtual ~StructureStubClearingWatchpoint();
-    
-    static StructureStubClearingWatchpoint* push(
-        const ObjectPropertyCondition& key,
-        WatchpointsOnStructureStubInfo& holder,
-        std::unique_ptr<StructureStubClearingWatchpoint>& head);
 
-protected:
-    void fireInternal(const FireDetail&) override;
+    void fireInternal(VM&, const FireDetail&);
 
 private:
-    ObjectPropertyCondition m_key;
-    WatchpointsOnStructureStubInfo& m_holder;
-    std::unique_ptr<StructureStubClearingWatchpoint> m_next;
+    // Own destructor may not be called. Keep members trivially destructible.
+    JSC_WATCHPOINT_FIELD(PackedPtr<WatchpointsOnStructureStubInfo>, m_holder);
+    JSC_WATCHPOINT_FIELD(ObjectPropertyCondition, m_key);
 };
 
 class WatchpointsOnStructureStubInfo {
@@ -79,8 +69,6 @@ public:
     {
     }
     
-    ~WatchpointsOnStructureStubInfo();
-    
     StructureStubClearingWatchpoint* addWatchpoint(const ObjectPropertyCondition& key);
     
     static StructureStubClearingWatchpoint* ensureReferenceAndAddWatchpoint(
@@ -89,11 +77,13 @@ public:
     
     CodeBlock* codeBlock() const { return m_codeBlock; }
     StructureStubInfo* stubInfo() const { return m_stubInfo; }
+
+    bool isValid() const;
     
 private:
     CodeBlock* m_codeBlock;
     StructureStubInfo* m_stubInfo;
-    std::unique_ptr<StructureStubClearingWatchpoint> m_head;
+    Bag<StructureStubClearingWatchpoint> m_watchpoints;
 };
 
 } // namespace JSC

@@ -115,7 +115,7 @@ protected:
 
     void appendInstructionName(const char* instructionName)
     {
-        bufferPrintf("   %-7.7s", instructionName);
+        bufferPrintf("   %-8.8s", instructionName);
     }
 
     void appendRegisterName(unsigned registerNumber, bool is64Bit = true);
@@ -164,11 +164,21 @@ protected:
         bufferPrintf("#%d", immediate);
     }
 
+    void appendSignedImmediate64(int64_t immediate)
+    {
+        bufferPrintf("#%" PRIi64, immediate);
+    }
+    
     void appendUnsignedImmediate(unsigned immediate)
     {
         bufferPrintf("#%u", immediate);
     }
 
+    void appendUnsignedHexImmediate(unsigned immediate)
+    {
+        bufferPrintf("#0x%x", immediate);
+    }
+    
     void appendUnsignedImmediate64(uint64_t immediate)
     {
         bufferPrintf("#0x%" PRIx64, immediate);
@@ -312,7 +322,7 @@ private:
     static const char* const s_opNames[4];
 
 public:
-    static const uint32_t mask = 0x1fe00010;
+    static const uint32_t mask = 0x1fe00000;
     static const uint32_t pattern = 0x1a800000;
 
     DEFINE_STATIC_FORMAT(A64DOpcodeConditionalSelect, thisObj);
@@ -327,9 +337,29 @@ public:
     unsigned op2() { return (m_opcode >> 10) & 0x3; }
 };
 
-class A64DOpcodeDataProcessing2Source : public A64DOpcode {
+class A64DOpcodeDataProcessing1Source : public A64DOpcode {
 private:
     static const char* const s_opNames[8];
+    static const char* const s_pacAutOpNames[18];
+    
+public:
+    static const uint32_t mask = 0x5fe00000;
+    static const uint32_t pattern = 0x5ac00000;
+    
+    DEFINE_STATIC_FORMAT(A64DOpcodeDataProcessing1Source, thisObj);
+    
+    const char* format();
+    
+    const char* opName() { return s_opNames[opNameIndex()]; }
+    unsigned sBit() { return (m_opcode >> 29) & 0x1; }
+    unsigned opCode() { return (m_opcode >> 10) & 0x3f; }
+    unsigned opCode2() { return (m_opcode >> 16) & 0x1f; }
+    unsigned opNameIndex() { return (opCode() & 0x7); }
+};
+
+class A64DOpcodeDataProcessing2Source : public A64DOpcode {
+private:
+    static const char* const s_opNames[16];
 
 public:
     static const uint32_t mask = 0x5fe00000;
@@ -342,7 +372,7 @@ public:
     const char* opName() { return s_opNames[opNameIndex()]; }
     unsigned sBit() { return (m_opcode >> 29) & 0x1; }
     unsigned opCode() { return (m_opcode >> 10) & 0x3f; }
-    unsigned opNameIndex() { return ((m_opcode >> 11) & 0x4) | ((m_opcode >> 10) & 0x3); }
+    unsigned opNameIndex() { return (m_opcode >> 10) & 0xf; }
 };
 
 class A64DOpcodeDataProcessing3Source : public A64DOpcode {
@@ -358,7 +388,7 @@ public:
 
     const char* format();
 
-    const char* opName() { return ra() == 31 ? s_opNames[opNum() & 0xf] : s_pseudoOpNames[opNum() & 0xf]; }
+    const char* opName() { return ra() == 31 ? s_pseudoOpNames[opNum() & 0xf] : s_opNames[opNum() & 0xf]; }
     unsigned ra() { return (m_opcode >> 10) & 0x1f; }
     unsigned op54() { return (m_opcode >> 29) & 0x3; }
     unsigned op31() { return (m_opcode >> 21) & 0x7; }
@@ -368,7 +398,7 @@ public:
 
 class A64OpcodeExceptionGeneration : public A64DOpcode {
 public:
-    static const uint32_t mask = 0xff000010;
+    static const uint32_t mask = 0xff000000;
     static const uint32_t pattern = 0xd4000000;
 
     DEFINE_STATIC_FORMAT(A64OpcodeExceptionGeneration, thisObj);
@@ -420,6 +450,20 @@ public:
     unsigned op() { return (m_opcode >> 14) & 0x3; }
     unsigned opCode2() { return m_opcode & 0x1f; }
     unsigned opNum() { return (m_opcode >> 3) & 0x3; }
+};
+
+class A64DOpcodeFloatingPointConditionalSelect : public A64DOpcodeFloatingPointOps {
+public:
+    static const uint32_t mask = 0x5f200c00;
+    static const uint32_t pattern = 0x1e200c00;
+    
+    DEFINE_STATIC_FORMAT(A64DOpcodeFloatingPointConditionalSelect, thisObj);
+    
+    const char* format();
+    
+    const char* opName() { return "fcsel"; }
+    
+    unsigned condition() { return (m_opcode >> 12) & 0xf; }
 };
 
 class A64DOpcodeFloatingPointDataProcessing1Source : public A64DOpcodeFloatingPointOps {
@@ -493,9 +537,42 @@ public:
     unsigned opNum() { return (m_opcode >> 16) & 0x1f; }
 };
 
-class A64DOpcodeHint : public A64DOpcode {
+class A64DOpcodeSystem : public A64DOpcode {
+public:
+    unsigned lBit() { return (m_opcode >> 21) & 0x1; }
+    unsigned op0() { return (m_opcode >> 19) & 0x3; }
+    unsigned op1() { return (m_opcode >> 16) & 0x7; }
+    unsigned crN() { return (m_opcode >> 12) & 0xf; }
+    unsigned crM() { return (m_opcode >> 8) & 0xf; }
+    unsigned op2() { return (m_opcode >> 5) & 0x7; }
+};
+
+class A64DOpcodeMSRImmediate : public A64DOpcodeSystem {
+public:
+    static const uint32_t mask = 0xfff8f01f;
+    static const uint32_t pattern = 0xd500401f;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeMSRImmediate, thisObj);
+
+    const char* format();
+};
+
+class A64DOpcodeMSROrMRSRegister : public A64DOpcodeSystem {
+public:
+    static const uint32_t mask = 0xffd00000;
+    static const uint32_t pattern = 0xd5100000;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeMSROrMRSRegister, thisObj);
+
+    const char* format();
+
+    const char* opName() { return lBit() ? "mrs" : "msr"; }
+    unsigned systemRegister() { return ((op0() << 14) | (op1() << 11) | (crN() << 7) | (crM() << 3) | op2()); }
+};
+
+class A64DOpcodeHint : public A64DOpcodeSystem {
 private:
-    static const char* const s_opNames[6];
+    static const char* const s_opNames[32];
 
 public:
     static const uint32_t mask = 0xfffff01f;
@@ -505,32 +582,24 @@ public:
 
     const char* format();
 
-    const char* opName() { return immediate7() <= 5 ? s_opNames[immediate7()] : "hint"; }
+    const char* opName();
     unsigned immediate7() { return (m_opcode >> 5) & 0x7f; }
 };
 
-class A64DOpcodeDmbIsh : public A64DOpcode {
-public:
-    static const uint32_t mask = 0xffffffff;
-    static const uint32_t pattern = 0xd5033bbf;
+class A64DOpcodeSystemSync : public A64DOpcodeSystem {
+    static const char* const s_opNames[8];
+    static const char* const s_optionNames[16];
 
-    DEFINE_STATIC_FORMAT(A64DOpcodeDmbIsh, thisObj);
+public:
+    static const uint32_t mask = 0xfffff01f;
+    static const uint32_t pattern = 0xd503301f;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeSystemSync, thisObj);
 
     const char* format();
 
-    const char* opName() { return "dmb"; }
-};
-
-class A64DOpcodeDmbIshSt : public A64DOpcode {
-public:
-    static const uint32_t mask = 0xffffffff;
-    static const uint32_t pattern = 0xd5033abf;
-
-    DEFINE_STATIC_FORMAT(A64DOpcodeDmbIshSt, thisObj);
-
-    const char* format();
-
-    const char* opName() { return "dmb"; }
+    const char* opName() { return s_opNames[op2()]; }
+    const char* option() { return s_optionNames[crM()]; }
 };
 
 class A64DOpcodeLoadStore : public A64DOpcode {
@@ -548,6 +617,33 @@ protected:
     unsigned opc() { return (m_opcode >> 22) & 0x3; }
     unsigned opNumber() { return (size() <<3 ) | (vBit() << 2) | opc(); }
     bool is64BitRT() { return ((opNumber() & 0x17) == 0x02) || ((opNumber() & 0x1e) == 0x18); }
+};
+
+class A64DOpcodeLoadStoreExclusive : public A64DOpcodeLoadStore {
+private:
+    static const char* const s_opNames[64];
+
+public:
+    static const uint32_t mask = 0x3f000000;
+    static const uint32_t pattern = 0x08000000;
+
+    DEFINE_STATIC_FORMAT(A64DOpcodeLoadStoreExclusive, thisObj);
+
+    const char* format();
+
+    const char* opName()
+    {
+        return s_opNames[opNumber()];
+    }
+
+    unsigned rs() { return rm(); }
+    unsigned rt2() { return (m_opcode >> 10) & 0x1f; }
+    unsigned o0() { return (m_opcode >> 15) & 0x1; }
+    unsigned o1() { return (m_opcode >> 21) & 0x1; }
+    unsigned o2() { return (m_opcode >> 23) & 0x1; }
+    unsigned loadBit() { return (m_opcode >> 22) & 0x1; }
+    unsigned opNumber() { return (size() << 4 ) | (o2() << 3) | (loadBit() << 2) | (o1() << 1) | o0(); }
+    bool isPairOp() { return (size() & 0x10) && o1(); }
 };
 
 class A64DOpcodeLoadStoreImmediate : public A64DOpcodeLoadStore {
@@ -586,6 +682,32 @@ public:
 
     unsigned option() { return (m_opcode >> 13) & 0x7; }
     int sBit() { return (m_opcode >> 12) & 0x1; }
+};
+
+class A64DOpcodeLoadStoreAuthenticated : public A64DOpcodeLoadStore {
+private:
+    static const char* const s_opNames[2];
+    
+protected:
+    const char* opName()
+    {
+        return s_opNames[opNumber()];
+    }
+
+public:
+    static const uint32_t mask = 0xff200400;
+    static const uint32_t pattern = 0xf8200400;
+    
+    DEFINE_STATIC_FORMAT(A64DOpcodeLoadStoreAuthenticated, thisObj);
+    
+    const char* format();
+
+    unsigned opNum() { return mBit(); }
+    unsigned mBit() { return (m_opcode >> 23) & 0x1; }
+    unsigned sBit() { return (m_opcode >> 22) & 0x1; }
+    unsigned wBit() { return (m_opcode >> 11) & 0x1; }
+    int immediate10() { return (sBit() << 9) | ((m_opcode >> 12) & 0x1ff); }
+    
 };
 
 class A64DOpcodeLoadStoreRegisterPair : public A64DOpcodeLoadStore {
@@ -657,7 +779,7 @@ public:
     const char* format();
 
     bool isTst() { return ((opNumber() == 6) && (rd() == 31)); }
-    bool isMov() { return ((opNumber() == 2) && (rn() == 31)); }
+    bool isMov() { return ((opc() == 1) && (rn() == 31)); }
     unsigned opNumber() { return (opc() << 1) | nBit(); }
     unsigned shift() { return (m_opcode >> 22) & 0x3; }
     int immediate6() { return (static_cast<int>((m_opcode >> 10) & 0x3f) << 26) >> 26; }
@@ -711,9 +833,10 @@ public:
 class A64DOpcodeUnconditionalBranchRegister : public A64DOpcode {
 private:
     static const char* const s_opNames[8];
+    static const char* const s_AuthOpNames[20];
 
 public:
-    static const uint32_t mask = 0xfe1ffc1f;
+    static const uint32_t mask = 0xfe1f0000;
     static const uint32_t pattern = 0xd61f0000;
 
     DEFINE_STATIC_FORMAT(A64DOpcodeUnconditionalBranchRegister, thisObj);
@@ -721,7 +844,14 @@ public:
     const char* format();
 
     const char* opName() { return s_opNames[opc()]; }
+    const char* authOpName();
     unsigned opc() { return (m_opcode >> 21) & 0xf; }
+    unsigned authOpCode() {return (opc() << 1) | mBit(); }
+    unsigned op2() { return (m_opcode >> 16) & 0x1f; }
+    unsigned op3() { return (m_opcode >> 10) & 0x3f; }
+    unsigned op4() { return m_opcode & 0xf; }
+    unsigned mBit() { return (m_opcode >> 10) & 1; }
+    unsigned rm() { return rd(); }
 };
 
 } } // namespace JSC::ARM64Disassembler

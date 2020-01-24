@@ -27,14 +27,13 @@
 
 #include "JSCJSValue.h"
 #include "ProfilerOrigin.h"
-#include <wtf/HashMap.h>
 #include <wtf/PrintStream.h>
 #include <wtf/Vector.h>
 
 namespace JSC {
 
 class CodeBlock;
-struct CodeOrigin;
+class CodeOrigin;
 
 namespace Profiler {
 

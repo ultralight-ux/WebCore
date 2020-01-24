@@ -33,26 +33,29 @@
 #include "HTMLParserIdioms.h"
 #include "HTMLTableElement.h"
 #include "StyleProperties.h"
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLTablePartElement);
 
 using namespace HTMLNames;
 
 bool HTMLTablePartElement::isPresentationAttribute(const QualifiedName& name) const
 {
-    if (name == bgcolorAttr || name == backgroundAttr || name == valignAttr || name == alignAttr || name == heightAttr)
+    if (name == bgcolorAttr || name == backgroundAttr || name == valignAttr || name == heightAttr)
         return true;
     return HTMLElement::isPresentationAttribute(name);
 }
 
-void HTMLTablePartElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomicString& value, MutableStyleProperties& style)
+void HTMLTablePartElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == bgcolorAttr)
         addHTMLColorToStyle(style, CSSPropertyBackgroundColor, value);
     else if (name == backgroundAttr) {
         String url = stripLeadingAndTrailingHTMLSpaces(value);
         if (!url.isEmpty())
-            style.setProperty(CSSProperty(CSSPropertyBackgroundImage, CSSImageValue::create(document().completeURL(url))));
+            style.setProperty(CSSProperty(CSSPropertyBackgroundImage, CSSImageValue::create(document().completeURL(url), LoadedFromOpaqueSource::No)));
     } else if (name == valignAttr) {
         if (equalLettersIgnoringASCIICase(value, "top"))
             addPropertyToPresentationAttributeStyle(style, CSSPropertyVerticalAlign, CSSValueTop);
@@ -82,12 +85,12 @@ void HTMLTablePartElement::collectStyleForPresentationAttribute(const QualifiedN
         HTMLElement::collectStyleForPresentationAttribute(name, value, style);
 }
 
-HTMLTableElement* HTMLTablePartElement::findParentTable() const
+RefPtr<HTMLTableElement> HTMLTablePartElement::findParentTable() const
 {
-    ContainerNode* parent = parentNode();
+    RefPtr<ContainerNode> parent = parentNode();
     while (parent && !is<HTMLTableElement>(*parent))
         parent = parent->parentNode();
-    return downcast<HTMLTableElement>(parent);
+    return downcast<HTMLTableElement>(parent.get());
 }
 
 }

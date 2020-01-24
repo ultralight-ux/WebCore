@@ -29,7 +29,7 @@
 
 #include "TrackPrivateBaseGStreamer.h"
 
-#include "GStreamerUtilities.h"
+#include "GStreamerCommon.h"
 #include "Logging.h"
 #include "TrackPrivateBase.h"
 #include <glib-object.h>
@@ -44,7 +44,8 @@ GST_DEBUG_CATEGORY_EXTERN(webkit_media_player_debug);
 namespace WebCore {
 
 TrackPrivateBaseGStreamer::TrackPrivateBaseGStreamer(TrackPrivateBase* owner, gint index, GRefPtr<GstPad> pad)
-    : m_index(index)
+    : m_notifier(MainThreadNotifier<MainThreadNotification>::create())
+    , m_index(index)
     , m_pad(pad)
     , m_owner(owner)
 {
@@ -53,31 +54,47 @@ TrackPrivateBaseGStreamer::TrackPrivateBaseGStreamer(TrackPrivateBase* owner, gi
     g_signal_connect_swapped(m_pad.get(), "notify::active", G_CALLBACK(activeChangedCallback), this);
     g_signal_connect_swapped(m_pad.get(), "notify::tags", G_CALLBACK(tagsChangedCallback), this);
 
-    // We can't call notifyTrackOfTagsChanged() directly, because we need tagsChanged()
-    // to setup m_tags.
+    // We can't call notifyTrackOfTagsChanged() directly, because we need tagsChanged() to setup m_tags.
+    tagsChanged();
+}
+
+TrackPrivateBaseGStreamer::TrackPrivateBaseGStreamer(TrackPrivateBase* owner, gint index, GRefPtr<GstStream> stream)
+    : m_notifier(MainThreadNotifier<MainThreadNotification>::create())
+    , m_index(index)
+    , m_stream(stream)
+    , m_owner(owner)
+{
+    ASSERT(m_stream);
+
+    // We can't call notifyTrackOfTagsChanged() directly, because we need tagsChanged() to setup m_tags.
     tagsChanged();
 }
 
 TrackPrivateBaseGStreamer::~TrackPrivateBaseGStreamer()
 {
     disconnect();
+    m_notifier->invalidate();
 }
 
 void TrackPrivateBaseGStreamer::disconnect()
 {
+    m_tags.clear();
+
+    if (m_stream)
+        m_stream.clear();
+
+    m_notifier->cancelPendingNotifications();
+
     if (!m_pad)
         return;
 
-    m_notifier.cancelPendingNotifications();
     g_signal_handlers_disconnect_matched(m_pad.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
-
     m_pad.clear();
-    m_tags.clear();
 }
 
 void TrackPrivateBaseGStreamer::activeChangedCallback(TrackPrivateBaseGStreamer* track)
 {
-    track->m_notifier.notify(MainThreadNotification::ActiveChanged, [track] { track->notifyTrackOfActiveChanged(); });
+    track->m_notifier->notify(MainThreadNotification::ActiveChanged, [track] { track->notifyTrackOfActiveChanged(); });
 }
 
 void TrackPrivateBaseGStreamer::tagsChangedCallback(TrackPrivateBaseGStreamer* track)
@@ -88,17 +105,24 @@ void TrackPrivateBaseGStreamer::tagsChangedCallback(TrackPrivateBaseGStreamer* t
 void TrackPrivateBaseGStreamer::tagsChanged()
 {
     GRefPtr<GstTagList> tags;
-    if (g_object_class_find_property(G_OBJECT_GET_CLASS(m_pad.get()), "tags"))
-        g_object_get(m_pad.get(), "tags", &tags.outPtr(), NULL);
+    if (m_pad) {
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(m_pad.get()), "tags"))
+            g_object_get(m_pad.get(), "tags", &tags.outPtr(), nullptr);
+        else
+            tags = adoptGRef(gst_tag_list_new_empty());
+    }
+    else if (m_stream)
+        tags = adoptGRef(gst_stream_get_tags(m_stream.get()));
     else
         tags = adoptGRef(gst_tag_list_new_empty());
 
+    GST_DEBUG("Inspecting track at index %d with tags: %" GST_PTR_FORMAT, m_index, tags.get());
     {
         LockHolder lock(m_tagMutex);
         m_tags.swap(tags);
     }
 
-    m_notifier.notify(MainThreadNotification::TagsChanged, [this] { notifyTrackOfTagsChanged(); });
+    m_notifier->notify(MainThreadNotification::TagsChanged, [this] { notifyTrackOfTagsChanged(); });
 }
 
 void TrackPrivateBaseGStreamer::notifyTrackOfActiveChanged()
@@ -107,18 +131,18 @@ void TrackPrivateBaseGStreamer::notifyTrackOfActiveChanged()
         return;
 
     gboolean active = false;
-    if (m_pad && g_object_class_find_property(G_OBJECT_GET_CLASS(m_pad.get()), "active"))
-        g_object_get(m_pad.get(), "active", &active, NULL);
+    if (g_object_class_find_property(G_OBJECT_GET_CLASS(m_pad.get()), "active"))
+        g_object_get(m_pad.get(), "active", &active, nullptr);
 
     setActive(active);
 }
 
-bool TrackPrivateBaseGStreamer::getLanguageCode(GstTagList* tags, AtomicString& value)
+bool TrackPrivateBaseGStreamer::getLanguageCode(GstTagList* tags, AtomString& value)
 {
     String language;
     if (getTag(tags, GST_TAG_LANGUAGE_CODE, language)) {
         language = gst_tag_get_language_code_iso_639_1(language.utf8().data());
-        GST_INFO("Converted track %d's language code to %s.", m_index, language.utf8().data());
+        GST_DEBUG("Converted track %d's language code to %s.", m_index, language.utf8().data());
         if (language != value) {
             value = language;
             return true;
@@ -132,7 +156,7 @@ bool TrackPrivateBaseGStreamer::getTag(GstTagList* tags, const gchar* tagName, S
 {
     GUniqueOutPtr<gchar> tagValue;
     if (gst_tag_list_get_string(tags, tagName, &tagValue.outPtr())) {
-        GST_INFO("Track %d got %s %s.", m_index, tagName, tagValue.get());
+        GST_DEBUG("Track %d got %s %s.", m_index, tagName, tagValue.get());
         value = tagValue.get();
         return true;
     }
@@ -141,25 +165,21 @@ bool TrackPrivateBaseGStreamer::getTag(GstTagList* tags, const gchar* tagName, S
 
 void TrackPrivateBaseGStreamer::notifyTrackOfTagsChanged()
 {
-    if (!m_pad)
-        return;
-
     TrackPrivateBaseClient* client = m_owner->client();
-    if (!client)
-        return;
 
     GRefPtr<GstTagList> tags;
     {
         LockHolder lock(m_tagMutex);
         tags.swap(m_tags);
     }
+
     if (!tags)
         return;
 
-    if (getTag(tags.get(), GST_TAG_TITLE, m_label))
-        client->labelChanged(m_owner, m_label);
+    if (getTag(tags.get(), GST_TAG_TITLE, m_label) && client)
+        client->labelChanged(m_label);
 
-    AtomicString language;
+    AtomString language;
     if (!getLanguageCode(tags.get(), language))
         return;
 
@@ -167,7 +187,8 @@ void TrackPrivateBaseGStreamer::notifyTrackOfTagsChanged()
         return;
 
     m_language = language;
-    client->languageChanged(m_owner, m_language);
+    if (client)
+        client->languageChanged(m_language);
 }
 
 } // namespace WebCore

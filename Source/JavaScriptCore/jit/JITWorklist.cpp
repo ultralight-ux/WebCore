@@ -65,7 +65,7 @@ public:
         case CompilationSuccessful:
             if (Options::verboseOSR())
                 dataLogF("    JIT compilation successful.\n");
-            m_codeBlock->ownerScriptExecutable()->installCode(m_codeBlock);
+            m_codeBlock->ownerExecutable()->installCode(m_codeBlock);
             m_codeBlock->jitSoon();
             return;
         default:
@@ -99,15 +99,24 @@ private:
 
 class JITWorklist::Thread : public AutomaticThread {
 public:
-    Thread(const LockHolder& locker, JITWorklist& worklist)
-        : AutomaticThread(locker, worklist.m_lock, worklist.m_condition)
+    Thread(const AbstractLocker& locker, JITWorklist& worklist)
+        : AutomaticThread(locker, worklist.m_lock, worklist.m_condition.copyRef())
         , m_worklist(worklist)
     {
         m_worklist.m_numAvailableThreads++;
     }
+
+    const char* name() const override
+    {
+#if OS(LINUX)
+        return "JITWorker";
+#else
+        return "JIT Worklist Helper Thread";
+#endif
+    }
     
 protected:
-    PollResult poll(const LockHolder&) override
+    PollResult poll(const AbstractLocker&) override
     {
         RELEASE_ASSERT(m_worklist.m_numAvailableThreads);
         
@@ -222,7 +231,7 @@ void JITWorklist::poll(VM& vm)
 void JITWorklist::compileLater(CodeBlock* codeBlock, unsigned loopOSREntryBytecodeOffset)
 {
     DeferGC deferGC(codeBlock->vm()->heap);
-    RELEASE_ASSERT(codeBlock->jitType() == JITCode::InterpreterThunk);
+    RELEASE_ASSERT(codeBlock->jitType() == JITType::InterpreterThunk);
     
     if (codeBlock->m_didFailJITCompilation) {
         codeBlock->dontJITAnytimeSoon();
@@ -273,8 +282,9 @@ void JITWorklist::compileLater(CodeBlock* codeBlock, unsigned loopOSREntryByteco
 
 void JITWorklist::compileNow(CodeBlock* codeBlock, unsigned loopOSREntryBytecodeOffset)
 {
-    DeferGC deferGC(codeBlock->vm()->heap);
-    if (codeBlock->jitType() != JITCode::InterpreterThunk)
+    VM* vm = codeBlock->vm();
+    DeferGC deferGC(vm->heap);
+    if (codeBlock->jitType() != JITType::InterpreterThunk)
         return;
     
     bool isPlanned;
@@ -286,11 +296,11 @@ void JITWorklist::compileNow(CodeBlock* codeBlock, unsigned loopOSREntryBytecode
     if (isPlanned) {
         RELEASE_ASSERT(Options::useConcurrentJIT());
         // This is expensive, but probably good enough.
-        completeAllForVM(*codeBlock->vm());
+        completeAllForVM(*vm);
     }
     
     // Now it might be compiled!
-    if (codeBlock->jitType() != JITCode::InterpreterThunk)
+    if (codeBlock->jitType() != JITType::InterpreterThunk)
         return;
     
     // We do this in case we had previously attempted, and then failed, to compile with the
@@ -298,8 +308,8 @@ void JITWorklist::compileNow(CodeBlock* codeBlock, unsigned loopOSREntryBytecode
     codeBlock->resetJITData();
     
     // OK, just compile it.
-    JIT::compile(codeBlock->vm(), codeBlock, JITCompilationMustSucceed, loopOSREntryBytecodeOffset);
-    codeBlock->ownerScriptExecutable()->installCode(codeBlock);
+    JIT::compile(vm, codeBlock, JITCompilationMustSucceed, loopOSREntryBytecodeOffset);
+    codeBlock->ownerExecutable()->installCode(codeBlock);
 }
 
 void JITWorklist::finalizePlans(Plans& myPlans)
@@ -312,16 +322,24 @@ void JITWorklist::finalizePlans(Plans& myPlans)
     }
 }
 
-JITWorklist* JITWorklist::instance()
+static JITWorklist* theGlobalJITWorklist { nullptr };
+
+JITWorklist* JITWorklist::existingGlobalWorklistOrNull()
 {
-    static JITWorklist* worklist;
+    return theGlobalJITWorklist;
+}
+
+JITWorklist& JITWorklist::ensureGlobalWorklist()
+{
     static std::once_flag once;
     std::call_once(
         once,
         [] {
-            worklist = new JITWorklist();
+            auto* worklist = new JITWorklist();
+            WTF::storeStoreFence();
+            theGlobalJITWorklist = worklist;
         });
-    return worklist;
+    return *theGlobalJITWorklist;
 }
 
 } // namespace JSC

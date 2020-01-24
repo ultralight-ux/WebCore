@@ -27,25 +27,22 @@
 #include "WorkerConsoleClient.h"
 
 #include "InspectorInstrumentation.h"
-#include <inspector/ConsoleMessage.h>
-#include <inspector/ScriptArguments.h>
-#include <inspector/ScriptCallStack.h>
-#include <inspector/ScriptCallStackFactory.h>
-
-using namespace Inspector;
+#include <JavaScriptCore/ConsoleMessage.h>
+#include <JavaScriptCore/ScriptArguments.h>
+#include <JavaScriptCore/ScriptCallStack.h>
+#include <JavaScriptCore/ScriptCallStackFactory.h>
 
 namespace WebCore {
+using namespace Inspector;
 
 WorkerConsoleClient::WorkerConsoleClient(WorkerGlobalScope& workerGlobalScope)
     : m_workerGlobalScope(workerGlobalScope)
 {
 }
 
-WorkerConsoleClient::~WorkerConsoleClient()
-{
-}
+WorkerConsoleClient::~WorkerConsoleClient() = default;
 
-void WorkerConsoleClient::messageWithTypeAndLevel(MessageType type, MessageLevel level, JSC::ExecState* exec, RefPtr<Inspector::ScriptArguments>&& arguments)
+void WorkerConsoleClient::messageWithTypeAndLevel(MessageType type, MessageLevel level, JSC::ExecState* exec, Ref<Inspector::ScriptArguments>&& arguments)
 {
     String messageText;
     arguments->getFirstArgumentAsString(messageText);
@@ -53,20 +50,29 @@ void WorkerConsoleClient::messageWithTypeAndLevel(MessageType type, MessageLevel
     m_workerGlobalScope.addConsoleMessage(WTFMove(message));
 }
 
-void WorkerConsoleClient::count(JSC::ExecState* exec, RefPtr<ScriptArguments>&& arguments)
+void WorkerConsoleClient::count(JSC::ExecState* exec, const String& label)
 {
-    InspectorInstrumentation::consoleCount(m_workerGlobalScope, exec, WTFMove(arguments));
+    InspectorInstrumentation::consoleCount(m_workerGlobalScope, exec, label);
 }
 
-void WorkerConsoleClient::time(JSC::ExecState*, const String& title)
+void WorkerConsoleClient::countReset(JSC::ExecState* exec, const String& label)
 {
-    InspectorInstrumentation::startConsoleTiming(m_workerGlobalScope, title);
+    InspectorInstrumentation::consoleCountReset(m_workerGlobalScope, exec, label);
 }
 
-void WorkerConsoleClient::timeEnd(JSC::ExecState* exec, const String& title)
+void WorkerConsoleClient::time(JSC::ExecState* exec, const String& label)
 {
-    RefPtr<ScriptCallStack> callStack(createScriptCallStackForConsole(exec, 1));
-    InspectorInstrumentation::stopConsoleTiming(m_workerGlobalScope, title, WTFMove(callStack));
+    InspectorInstrumentation::startConsoleTiming(m_workerGlobalScope, exec, label);
+}
+
+void WorkerConsoleClient::timeLog(JSC::ExecState* exec, const String& label, Ref<ScriptArguments>&& arguments)
+{
+    InspectorInstrumentation::logConsoleTiming(m_workerGlobalScope, exec, label, WTFMove(arguments));
+}
+
+void WorkerConsoleClient::timeEnd(JSC::ExecState* exec, const String& label)
+{
+    InspectorInstrumentation::stopConsoleTiming(m_workerGlobalScope, exec, label);
 }
 
 // FIXME: <https://webkit.org/b/153499> Web Inspector: console.profile should use the new Sampling Profiler
@@ -75,6 +81,11 @@ void WorkerConsoleClient::profileEnd(JSC::ExecState*, const String&) { }
 
 // FIXME: <https://webkit.org/b/127634> Web Inspector: support debugging web workers
 void WorkerConsoleClient::takeHeapSnapshot(JSC::ExecState*, const String&) { }
-void WorkerConsoleClient::timeStamp(JSC::ExecState*, RefPtr<ScriptArguments>&&) { }
+void WorkerConsoleClient::timeStamp(JSC::ExecState*, Ref<ScriptArguments>&&) { }
+
+void WorkerConsoleClient::record(JSC::ExecState*, Ref<ScriptArguments>&&) { }
+void WorkerConsoleClient::recordEnd(JSC::ExecState*, Ref<ScriptArguments>&&) { }
+
+void WorkerConsoleClient::screenshot(JSC::ExecState*, Ref<ScriptArguments>&&) { }
 
 } // namespace WebCore

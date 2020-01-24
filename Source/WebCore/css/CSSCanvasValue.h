@@ -26,12 +26,13 @@
 #pragma once
 
 #include "CSSImageGeneratorValue.h"
+#include "CanvasBase.h"
 #include "HTMLCanvasElement.h"
+#include "RenderElement.h"
 
 namespace WebCore {
 
 class Document;
-class HTMLCanvasElement;
 
 class CSSCanvasValue final : public CSSImageGeneratorValue {
 public:
@@ -44,18 +45,12 @@ public:
     bool isFixedSize() const { return true; }
     FloatSize fixedSize(const RenderElement*);
 
+    HTMLCanvasElement* element() const { return m_element; }
+
     bool isPending() const { return false; }
     void loadSubimages(CachedResourceLoader&, const ResourceLoaderOptions&) { }
 
     bool equals(const CSSCanvasValue&) const;
-
-private:
-    explicit CSSCanvasValue(const String& name)
-        : CSSImageGeneratorValue(CanvasClass)
-        , m_canvasObserver(*this)
-        , m_name(name)
-    {
-    }
 
     // NOTE: We put the CanvasObserver in a member instead of inheriting from it
     // to avoid adding a vptr to CSSCanvasValue.
@@ -66,26 +61,37 @@ private:
         {
         }
 
-        virtual ~CanvasObserverProxy()
-        {
-        }
+        bool isCanvasObserverProxy() const final { return true; }
+
+        const CSSCanvasValue& ownerValue() const { return m_ownerValue; }
 
     private:
-        void canvasChanged(HTMLCanvasElement& canvas, const FloatRect& changedRect) final
+        void canvasChanged(CanvasBase& canvasBase, const FloatRect& changedRect) final
         {
-            m_ownerValue.canvasChanged(canvas, changedRect);
+            ASSERT(is<HTMLCanvasElement>(canvasBase));
+            m_ownerValue.canvasChanged(downcast<HTMLCanvasElement>(canvasBase), changedRect);
         }
-        void canvasResized(HTMLCanvasElement& canvas) final
+        void canvasResized(CanvasBase& canvasBase) final
         {
-            m_ownerValue.canvasResized(canvas);
+            ASSERT(is<HTMLCanvasElement>(canvasBase));
+            m_ownerValue.canvasResized(downcast<HTMLCanvasElement>(canvasBase));
         }
-        void canvasDestroyed(HTMLCanvasElement& canvas) final
+        void canvasDestroyed(CanvasBase& canvasBase) final
         {
-            m_ownerValue.canvasDestroyed(canvas);
+            ASSERT(is<HTMLCanvasElement>(canvasBase));
+            m_ownerValue.canvasDestroyed(downcast<HTMLCanvasElement>(canvasBase));
         }
 
         CSSCanvasValue& m_ownerValue;
     };
+
+private:
+    explicit CSSCanvasValue(const String& name)
+        : CSSImageGeneratorValue(CanvasClass)
+        , m_canvasObserver(*this)
+        , m_name(name)
+    {
+    }
 
     void canvasChanged(HTMLCanvasElement&, const FloatRect& changedRect);
     void canvasResized(HTMLCanvasElement&);
@@ -104,4 +110,8 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSCanvasValue, isCanvasValue())
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::CSSCanvasValue::CanvasObserverProxy)
+    static bool isType(const WebCore::CanvasObserver& canvasObserver) { return canvasObserver.isCanvasObserverProxy(); }
+SPECIALIZE_TYPE_TRAITS_END()
 

@@ -36,36 +36,16 @@
 #include "AudioProcessingEvent.h"
 #include "Document.h"
 #include "EventNames.h"
-#include <runtime/Float32Array.h>
+#include <JavaScriptCore/Float32Array.h>
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/MainThread.h>
 
 namespace WebCore {
 
-RefPtr<ScriptProcessorNode> ScriptProcessorNode::create(AudioContext& context, float sampleRate, size_t bufferSize, unsigned numberOfInputChannels, unsigned numberOfOutputChannels)
+WTF_MAKE_ISO_ALLOCATED_IMPL(ScriptProcessorNode);
+
+Ref<ScriptProcessorNode> ScriptProcessorNode::create(AudioContext& context, float sampleRate, size_t bufferSize, unsigned numberOfInputChannels, unsigned numberOfOutputChannels)
 {
-    // Check for valid buffer size.
-    switch (bufferSize) {
-    case 256:
-    case 512:
-    case 1024:
-    case 2048:
-    case 4096:
-    case 8192:
-    case 16384:
-        break;
-    default:
-        return nullptr;
-    }
-
-    if (!numberOfInputChannels && !numberOfOutputChannels)
-        return nullptr;
-
-    if (numberOfInputChannels > AudioContext::maxNumberOfChannels())
-        return nullptr;
-
-    if (numberOfOutputChannels > AudioContext::maxNumberOfChannels())
-        return nullptr;
-
     return adoptRef(*new ScriptProcessorNode(context, sampleRate, bufferSize, numberOfInputChannels, numberOfOutputChannels));
 }
 
@@ -87,10 +67,9 @@ ScriptProcessorNode::ScriptProcessorNode(AudioContext& context, float sampleRate
 
     ASSERT(numberOfInputChannels <= AudioContext::maxNumberOfChannels());
 
+    setNodeType(NodeTypeJavaScript);
     addInput(std::make_unique<AudioNodeInput>(this));
     addOutput(std::make_unique<AudioNodeOutput>(this, numberOfOutputChannels));
-
-    setNodeType(NodeTypeJavaScript);
 
     initialize();
 }
@@ -110,8 +89,8 @@ void ScriptProcessorNode::initialize()
     // Create double buffers on both the input and output sides.
     // These AudioBuffers will be directly accessed in the main thread by JavaScript.
     for (unsigned i = 0; i < 2; ++i) {
-        RefPtr<AudioBuffer> inputBuffer = m_numberOfInputChannels ? AudioBuffer::create(m_numberOfInputChannels, bufferSize(), sampleRate) : 0;
-        RefPtr<AudioBuffer> outputBuffer = m_numberOfOutputChannels ? AudioBuffer::create(m_numberOfOutputChannels, bufferSize(), sampleRate) : 0;
+        auto inputBuffer = m_numberOfInputChannels ? AudioBuffer::create(m_numberOfInputChannels, bufferSize(), sampleRate) : 0;
+        auto outputBuffer = m_numberOfOutputChannels ? AudioBuffer::create(m_numberOfOutputChannels, bufferSize(), sampleRate) : 0;
 
         m_inputBuffers.append(inputBuffer);
         m_outputBuffers.append(outputBuffer);
@@ -213,6 +192,9 @@ void ScriptProcessorNode::process(size_t framesToProcess)
             m_isRequestOutstanding = true;
 
             callOnMainThread([this] {
+                if (!m_hasAudioProcessListener)
+                    return;
+
                 fireProcessEvent();
 
                 // De-reference to match the ref() call in process().
@@ -240,7 +222,7 @@ void ScriptProcessorNode::fireProcessEvent()
         return;
 
     // Avoid firing the event if the document has already gone away.
-    if (context().scriptExecutionContext()) {
+    if (!context().isStopped()) {
         // Let the audio thread know we've gotten to the point where it's OK for it to make another request.
         m_isRequestOutstanding = false;
 
@@ -274,7 +256,7 @@ double ScriptProcessorNode::latencyTime() const
     return std::numeric_limits<double>::infinity();
 }
 
-bool ScriptProcessorNode::addEventListener(const AtomicString& eventType, Ref<EventListener>&& listener, const AddEventListenerOptions& options)
+bool ScriptProcessorNode::addEventListener(const AtomString& eventType, Ref<EventListener>&& listener, const AddEventListenerOptions& options)
 {
     bool success = AudioNode::addEventListener(eventType, WTFMove(listener), options);
     if (success && eventType == eventNames().audioprocessEvent)
@@ -282,7 +264,7 @@ bool ScriptProcessorNode::addEventListener(const AtomicString& eventType, Ref<Ev
     return success;
 }
 
-bool ScriptProcessorNode::removeEventListener(const AtomicString& eventType, EventListener& listener, const ListenerOptions& options)
+bool ScriptProcessorNode::removeEventListener(const AtomString& eventType, EventListener& listener, const ListenerOptions& options)
 {
     bool success = AudioNode::removeEventListener(eventType, listener, options);
     if (success && eventType == eventNames().audioprocessEvent)

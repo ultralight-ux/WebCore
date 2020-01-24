@@ -28,34 +28,51 @@
 
 #pragma once
 
-#include <thread>
+#include <wtf/Markable.h>
+#include <wtf/Threading.h>
+#include <wtf/WallTime.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class DatabaseDetails {
 public:
-    DatabaseDetails()
-        : m_expectedUsage(0)
-        , m_currentUsage(0)
-        , m_creationTime(0)
-        , m_modificationTime(0)
+    DatabaseDetails() = default;
+
+    DatabaseDetails(const DatabaseDetails& details)
+        : m_name(details.m_name)
+        , m_displayName(details.m_displayName)
+        , m_expectedUsage(details.m_expectedUsage)
+        , m_currentUsage(details.m_currentUsage)
+        , m_creationTime(details.m_creationTime)
+        , m_modificationTime(details.m_modificationTime)
 #ifndef NDEBUG
-        , m_threadID(std::this_thread::get_id())
+        , m_thread(details.m_thread.copyRef())
 #endif
     {
     }
 
-    DatabaseDetails(const String& databaseName, const String& displayName, unsigned long long expectedUsage, unsigned long long currentUsage, double creationTime, double modificationTime)
+    DatabaseDetails& operator=(const DatabaseDetails& details)
+    {
+        m_name = details.m_name;
+        m_displayName = details.m_displayName;
+        m_expectedUsage = details.m_expectedUsage;
+        m_currentUsage = details.m_currentUsage;
+        m_creationTime = details.m_creationTime;
+        m_modificationTime = details.m_modificationTime;
+#ifndef NDEBUG
+        m_thread = details.m_thread.copyRef();
+#endif
+        return *this;
+    }
+
+    DatabaseDetails(const String& databaseName, const String& displayName, unsigned long long expectedUsage, unsigned long long currentUsage, Optional<WallTime> creationTime, Optional<WallTime> modificationTime)
         : m_name(databaseName)
         , m_displayName(displayName)
         , m_expectedUsage(expectedUsage)
         , m_currentUsage(currentUsage)
         , m_creationTime(creationTime)
         , m_modificationTime(modificationTime)
-#ifndef NDEBUG
-        , m_threadID(std::this_thread::get_id())
-#endif
     {
     }
 
@@ -63,21 +80,21 @@ public:
     const String& displayName() const { return m_displayName; }
     uint64_t expectedUsage() const { return m_expectedUsage; }
     uint64_t currentUsage() const { return m_currentUsage; }
-    double creationTime() const { return m_creationTime; }
-    double modificationTime() const { return m_modificationTime; }
+    Optional<WallTime> creationTime() const { return m_creationTime; }
+    Optional<WallTime> modificationTime() const { return m_modificationTime; }
 #ifndef NDEBUG
-    std::thread::id threadID() const { return m_threadID; }
+    Thread& thread() const { return m_thread.get(); }
 #endif
 
 private:
     String m_name;
     String m_displayName;
-    uint64_t m_expectedUsage;
-    uint64_t m_currentUsage;
-    double m_creationTime;
-    double m_modificationTime;
+    uint64_t m_expectedUsage { 0 };
+    uint64_t m_currentUsage { 0 };
+    Markable<WallTime, WallTime::MarkableTraits> m_creationTime;
+    Markable<WallTime, WallTime::MarkableTraits> m_modificationTime;
 #ifndef NDEBUG
-    std::thread::id m_threadID;
+    Ref<Thread> m_thread { Thread::current() };
 #endif
 };
 

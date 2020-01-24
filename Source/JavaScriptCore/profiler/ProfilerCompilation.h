@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -70,7 +70,7 @@ public:
     void addDescription(const CompiledBytecode&);
     void addDescription(const OriginStack&, const CString& description);
     ExecutionCounter* executionCounterFor(const OriginStack&);
-    void addOSRExitSite(const Vector<const void*>& codeAddresses);
+    void addOSRExitSite(const Vector<MacroAssemblerCodePtr<JSInternalPtrTag>>& codeAddresses);
     OSRExit* addOSRExit(unsigned id, const OriginStack&, ExitKind, bool isWatchpoint);
     
     void setJettisonReason(JettisonReason, const FireDetail*);
@@ -81,10 +81,8 @@ public:
     JSValue toJS(ExecState*) const;
     
 private:
-    Bytecodes* m_bytecodes;
     CompilationKind m_kind;
-    JettisonReason m_jettisonReason;
-    CString m_additionalJettisonReason;
+    Bytecodes* m_bytecodes;
     Vector<ProfiledBytecodes> m_profiledBytecodes;
     Vector<CompiledBytecode> m_descriptions;
     HashMap<OriginStack, std::unique_ptr<ExecutionCounter>> m_counters;
@@ -93,6 +91,8 @@ private:
     unsigned m_numInlinedGetByIds;
     unsigned m_numInlinedPutByIds;
     unsigned m_numInlinedCalls;
+    JettisonReason m_jettisonReason;
+    CString m_additionalJettisonReason;
     UID m_uid;
 };
 

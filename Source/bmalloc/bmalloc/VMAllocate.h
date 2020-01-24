@@ -27,52 +27,42 @@
 #define VMAllocate_h
 
 #include "BAssert.h"
+#include "BVMTags.h"
 #include "Logging.h"
 #include "Range.h"
 #include "Sizes.h"
 #include "Syscall.h"
 #include <algorithm>
-
-#if !BOS(WINDOWS)
 #include <sys/mman.h>
 #include <unistd.h>
-#else
-#include "VMAllocateWin.h"
-#endif
 
 #if BOS(DARWIN)
 #include <mach/vm_page_size.h>
-#include <mach/vm_statistics.h>
 #endif
 
 namespace bmalloc {
 
-#if BOS(DARWIN)
-#define BMALLOC_VM_TAG VM_MAKE_TAG(VM_MEMORY_TCMALLOC)
-#else
-#define BMALLOC_VM_TAG -1
+#ifndef BMALLOC_VM_TAG
+#define BMALLOC_VM_TAG VM_TAG_FOR_TCMALLOC_MEMORY
 #endif
 
-#if BOS(WINDOWS)
-inline DWORD vmPageSize()
-{
-    static DWORD cached;
-    if (!cached) {
-        SYSTEM_INFO systemInfo;
-        GetSystemInfo(&systemInfo);
-        cached = systemInfo.dwPageSize;
-    }
-    return cached;
-}
+#if BOS(LINUX)
+#define BMALLOC_NORESERVE MAP_NORESERVE
 #else
+#define BMALLOC_NORESERVE 0
+#endif
+
 inline size_t vmPageSize()
 {
     static size_t cached;
-    if (!cached)
-        cached = sysconf(_SC_PAGESIZE);
+    if (!cached) {
+        long pageSize = sysconf(_SC_PAGESIZE);
+        if (pageSize < 0)
+            BCRASH();
+        cached = pageSize;
+    }
     return cached;
 }
-#endif
 
 inline size_t vmPageShift()
 {
@@ -89,7 +79,7 @@ inline size_t vmSize(size_t size)
 
 inline void vmValidate(size_t vmSize)
 {
-    UNUSED(vmSize);
+    BUNUSED(vmSize);
     BASSERT(vmSize);
     BASSERT(vmSize == roundUpToMultipleOf(vmPageSize(), vmSize));
 }
@@ -98,23 +88,15 @@ inline void vmValidate(void* p, size_t vmSize)
 {
     vmValidate(vmSize);
     
-    UNUSED(p);
+    BUNUSED(p);
     BASSERT(p);
     BASSERT(p == mask(p, ~(vmPageSize() - 1)));
 }
 
 inline size_t vmPageSizePhysical()
 {
-#if (BPLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 100000)
+#if BPLATFORM(IOS_FAMILY)
     return vm_kernel_page_size;
-#elif BOS(WINDOWS)
-    static DWORD cached;
-    if (!cached) {
-        SYSTEM_INFO systemInfo;
-        GetSystemInfo(&systemInfo);
-        cached = systemInfo.dwPageSize;
-    }
-    return cached;
 #else
     static size_t cached;
     if (!cached)
@@ -125,7 +107,7 @@ inline size_t vmPageSizePhysical()
 
 inline void vmValidatePhysical(size_t vmSize)
 {
-    UNUSED(vmSize);
+    BUNUSED(vmSize);
     BASSERT(vmSize);
     BASSERT(vmSize == roundUpToMultipleOf(vmPageSizePhysical(), vmSize));
 }
@@ -134,29 +116,23 @@ inline void vmValidatePhysical(void* p, size_t vmSize)
 {
     vmValidatePhysical(vmSize);
     
-    UNUSED(p);
+    BUNUSED(p);
     BASSERT(p);
     BASSERT(p == mask(p, ~(vmPageSizePhysical() - 1)));
 }
 
-inline void* tryVMAllocate(size_t vmSize)
+inline void* tryVMAllocate(size_t vmSize, VMTag usage = VMTag::Malloc)
 {
     vmValidate(vmSize);
-#if !BOS(WINDOWS)
-    void* result = mmap(0, vmSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, BMALLOC_VM_TAG, 0);
-    if (result == MAP_FAILED) {
-        logVMFailure();
+    void* result = mmap(0, vmSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | BMALLOC_NORESERVE, static_cast<int>(usage), 0);
+    if (result == MAP_FAILED)
         return nullptr;
-    }
-#else
-    void* result = VirtualAlloc(nullptr, vmSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-#endif
     return result;
 }
 
-inline void* vmAllocate(size_t vmSize)
+inline void* vmAllocate(size_t vmSize, VMTag usage = VMTag::Malloc)
 {
-    void* result = tryVMAllocate(vmSize);
+    void* result = tryVMAllocate(vmSize, usage);
     RELEASE_BASSERT(result);
     return result;
 }
@@ -164,28 +140,28 @@ inline void* vmAllocate(size_t vmSize)
 inline void vmDeallocate(void* p, size_t vmSize)
 {
     vmValidate(p, vmSize);
-#if !BOS(WINDOWS)
     munmap(p, vmSize);
-#else
-    RELEASE_BASSERT(vmDecommitAndRelease(p, vmSize));
-#endif
 }
 
 inline void vmRevokePermissions(void* p, size_t vmSize)
 {
     vmValidate(p, vmSize);
-#if !BOS(WINDOWS)
     mprotect(p, vmSize, PROT_NONE);
-#else
-    DWORD oldProtect = 0;
-    RELEASE_BASSERT(VirtualProtect(p, vmSize, PAGE_NOACCESS, &oldProtect));
-#endif
+}
+
+inline void vmZeroAndPurge(void* p, size_t vmSize, VMTag usage = VMTag::Malloc)
+{
+    vmValidate(p, vmSize);
+    // MAP_ANON guarantees the memory is zeroed. This will also cause
+    // page faults on accesses to this range following this call.
+    void* result = mmap(p, vmSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED | BMALLOC_NORESERVE, static_cast<int>(usage), 0);
+    RELEASE_BASSERT(result == p);
 }
 
 // Allocates vmSize bytes at a specified power-of-two alignment.
 // Use this function to create maskable memory regions.
 
-inline void* tryVMAllocate(size_t vmAlignment, size_t vmSize)
+inline void* tryVMAllocate(size_t vmAlignment, size_t vmSize, VMTag usage = VMTag::Malloc)
 {
     vmValidate(vmSize);
     vmValidate(vmAlignment);
@@ -194,11 +170,7 @@ inline void* tryVMAllocate(size_t vmAlignment, size_t vmSize)
     if (mappedSize < vmAlignment || mappedSize < vmSize) // Check for overflow
         return nullptr;
 
-#if !BOS(WINDOWS)
-    char* mapped = static_cast<char*>(tryVMAllocate(mappedSize));
-#else
-    char* mapped = static_cast<char*>(tryVMReserve(mappedSize));
-#endif
+    char* mapped = static_cast<char*>(tryVMAllocate(mappedSize, usage));
     if (!mapped)
         return nullptr;
     char* mappedEnd = mapped + mappedSize;
@@ -208,24 +180,18 @@ inline void* tryVMAllocate(size_t vmAlignment, size_t vmSize)
     
     RELEASE_BASSERT(alignedEnd <= mappedEnd);
     
-#if !BOS(WINDOWS)
     if (size_t leftExtra = aligned - mapped)
         vmDeallocate(mapped, leftExtra);
     
     if (size_t rightExtra = mappedEnd - alignedEnd)
         vmDeallocate(alignedEnd, rightExtra);
-#else
-    vmDeallocate(mapped, mappedSize);
 
-    aligned = static_cast<char*>(VirtualAlloc(aligned, vmSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-    RELEASE_BASSERT(aligned);
-#endif
     return aligned;
 }
 
-inline void* vmAllocate(size_t vmAlignment, size_t vmSize)
+inline void* vmAllocate(size_t vmAlignment, size_t vmSize, VMTag usage = VMTag::Malloc)
 {
-    void* result = tryVMAllocate(vmAlignment, vmSize);
+    void* result = tryVMAllocate(vmAlignment, vmSize, usage);
     RELEASE_BASSERT(result);
     return result;
 }
@@ -235,10 +201,13 @@ inline void vmDeallocatePhysicalPages(void* p, size_t vmSize)
     vmValidatePhysical(p, vmSize);
 #if BOS(DARWIN)
     SYSCALL(madvise(p, vmSize, MADV_FREE_REUSABLE));
-#elif !BOS(WINDOWS)
-    SYSCALL(madvise(p, vmSize, MADV_DONTNEED));
+#elif BOS(FREEBSD)
+    SYSCALL(madvise(p, vmSize, MADV_FREE));
 #else
-    RELEASE_BASSERT(vmDecommit(p, vmSize));
+    SYSCALL(madvise(p, vmSize, MADV_DONTNEED));
+#if BOS(LINUX)
+    SYSCALL(madvise(p, vmSize, MADV_DONTDUMP));
+#endif
 #endif
 }
 
@@ -247,11 +216,24 @@ inline void vmAllocatePhysicalPages(void* p, size_t vmSize)
     vmValidatePhysical(p, vmSize);
 #if BOS(DARWIN)
     SYSCALL(madvise(p, vmSize, MADV_FREE_REUSE));
-#elif !BOS(WINDOWS)
-    SYSCALL(madvise(p, vmSize, MADV_NORMAL));
 #else
-    RELEASE_BASSERT(vmCommit(p, vmSize));
+    SYSCALL(madvise(p, vmSize, MADV_NORMAL));
+#if BOS(LINUX)
+    SYSCALL(madvise(p, vmSize, MADV_DODUMP));
 #endif
+#endif
+}
+
+// Returns how much memory you would commit/decommit had you called
+// vmDeallocate/AllocatePhysicalPagesSloppy with p and size.
+inline size_t physicalPageSizeSloppy(void* p, size_t size)
+{
+    char* begin = roundUpToMultipleOf(vmPageSizePhysical(), static_cast<char*>(p));
+    char* end = roundDownToMultipleOf(vmPageSizePhysical(), static_cast<char*>(p) + size);
+
+    if (begin >= end)
+        return 0;
+    return end - begin;
 }
 
 // Trims requests that are un-page-aligned.

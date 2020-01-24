@@ -22,22 +22,15 @@
 #pragma once
 
 #include "ChildNodeList.h"
-#include "ClassCollection.h"
-#include "DOMTokenList.h"
 #include "HTMLCollection.h"
 #include "HTMLNames.h"
 #include "LiveNodeList.h"
-#include "MutationObserver.h"
 #include "MutationObserverRegistration.h"
-#include "Page.h"
 #include "QualifiedName.h"
 #include "TagCollection.h"
 #include <wtf/HashSet.h>
-#include <wtf/text/AtomicString.h>
-
-#if ENABLE(VIDEO_TRACK)
-#include "TextTrack.h"
-#endif
+#include <wtf/StdLibExtras.h>
+#include <wtf/text/AtomString.h>
 
 namespace WebCore {
 
@@ -103,20 +96,20 @@ public:
     }
 
     struct NodeListCacheMapEntryHash {
-        static unsigned hash(const std::pair<unsigned char, AtomicString>& entry)
+        static unsigned hash(const std::pair<unsigned char, AtomString>& entry)
         {
-            return DefaultHash<AtomicString>::Hash::hash(entry.second) + entry.first;
+            return DefaultHash<AtomString>::Hash::hash(entry.second) + entry.first;
         }
-        static bool equal(const std::pair<unsigned char, AtomicString>& a, const std::pair<unsigned char, AtomicString>& b) { return a.first == b.first && DefaultHash<AtomicString>::Hash::equal(a.second, b.second); }
-        static const bool safeToCompareToEmptyOrDeleted = DefaultHash<AtomicString>::Hash::safeToCompareToEmptyOrDeleted;
+        static bool equal(const std::pair<unsigned char, AtomString>& a, const std::pair<unsigned char, AtomString>& b) { return a.first == b.first && DefaultHash<AtomString>::Hash::equal(a.second, b.second); }
+        static const bool safeToCompareToEmptyOrDeleted = DefaultHash<AtomString>::Hash::safeToCompareToEmptyOrDeleted;
     };
 
-    typedef HashMap<std::pair<unsigned char, AtomicString>, LiveNodeList*, NodeListCacheMapEntryHash> NodeListAtomicNameCacheMap;
-    typedef HashMap<std::pair<unsigned char, AtomicString>, HTMLCollection*, NodeListCacheMapEntryHash> CollectionCacheMap;
+    typedef HashMap<std::pair<unsigned char, AtomString>, LiveNodeList*, NodeListCacheMapEntryHash> NodeListAtomicNameCacheMap;
+    typedef HashMap<std::pair<unsigned char, AtomString>, HTMLCollection*, NodeListCacheMapEntryHash> CollectionCacheMap;
     typedef HashMap<QualifiedName, TagCollectionNS*> TagCollectionNSCache;
 
     template<typename T, typename ContainerType>
-    ALWAYS_INLINE Ref<T> addCacheWithAtomicName(ContainerType& container, const AtomicString& name)
+    ALWAYS_INLINE Ref<T> addCacheWithAtomicName(ContainerType& container, const AtomString& name)
     {
         NodeListAtomicNameCacheMap::AddResult result = m_atomicNameCaches.fastAdd(namedNodeListKey<T>(name), nullptr);
         if (!result.isNewEntry)
@@ -127,9 +120,9 @@ public:
         return list;
     }
 
-    ALWAYS_INLINE Ref<TagCollectionNS> addCachedTagCollectionNS(ContainerNode& node, const AtomicString& namespaceURI, const AtomicString& localName)
+    ALWAYS_INLINE Ref<TagCollectionNS> addCachedTagCollectionNS(ContainerNode& node, const AtomString& namespaceURI, const AtomString& localName)
     {
-        QualifiedName name(nullAtom, localName, namespaceURI);
+        QualifiedName name(nullAtom(), localName, namespaceURI);
         TagCollectionNSCache::AddResult result = m_tagCollectionNSCache.fastAdd(name, nullptr);
         if (!result.isNewEntry)
             return *result.iterator->value;
@@ -140,7 +133,7 @@ public:
     }
 
     template<typename T, typename ContainerType>
-    ALWAYS_INLINE Ref<T> addCachedCollection(ContainerType& container, CollectionType collectionType, const AtomicString& name)
+    ALWAYS_INLINE Ref<T> addCachedCollection(ContainerType& container, CollectionType collectionType, const AtomString& name)
     {
         CollectionCacheMap::AddResult result = m_cachedCollections.fastAdd(namedCollectionKey(collectionType, name), nullptr);
         if (!result.isNewEntry)
@@ -154,7 +147,7 @@ public:
     template<typename T, typename ContainerType>
     ALWAYS_INLINE Ref<T> addCachedCollection(ContainerType& container, CollectionType collectionType)
     {
-        CollectionCacheMap::AddResult result = m_cachedCollections.fastAdd(namedCollectionKey(collectionType, starAtom), nullptr);
+        CollectionCacheMap::AddResult result = m_cachedCollections.fastAdd(namedCollectionKey(collectionType, starAtom()), nullptr);
         if (!result.isNewEntry)
             return static_cast<T&>(*result.iterator->value);
 
@@ -166,11 +159,11 @@ public:
     template<typename T>
     T* cachedCollection(CollectionType collectionType)
     {
-        return static_cast<T*>(m_cachedCollections.get(namedCollectionKey(collectionType, starAtom)));
+        return static_cast<T*>(m_cachedCollections.get(namedCollectionKey(collectionType, starAtom())));
     }
 
     template <class NodeListType>
-    void removeCacheWithAtomicName(NodeListType* list, const AtomicString& name = starAtom)
+    void removeCacheWithAtomicName(NodeListType* list, const AtomString& name = starAtom())
     {
         ASSERT(list == m_atomicNameCaches.get(namedNodeListKey<NodeListType>(name)));
         if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(list->ownerNode()))
@@ -178,16 +171,16 @@ public:
         m_atomicNameCaches.remove(namedNodeListKey<NodeListType>(name));
     }
 
-    void removeCachedTagCollectionNS(HTMLCollection& collection, const AtomicString& namespaceURI, const AtomicString& localName)
+    void removeCachedTagCollectionNS(HTMLCollection& collection, const AtomString& namespaceURI, const AtomString& localName)
     {
-        QualifiedName name(nullAtom, localName, namespaceURI);
+        QualifiedName name(nullAtom(), localName, namespaceURI);
         ASSERT(&collection == m_tagCollectionNSCache.get(name));
         if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(collection.ownerNode()))
             return;
         m_tagCollectionNSCache.remove(name);
     }
 
-    void removeCachedCollection(HTMLCollection* collection, const AtomicString& name = starAtom)
+    void removeCachedCollection(HTMLCollection* collection, const AtomString& name = starAtom())
     {
         ASSERT(collection == m_cachedCollections.get(namedCollectionKey(collection->type(), name)));
         if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(collection->ownerNode()))
@@ -195,7 +188,8 @@ public:
         m_cachedCollections.remove(namedCollectionKey(collection->type(), name));
     }
 
-    void invalidateCaches(const QualifiedName* attrName = nullptr);
+    void invalidateCaches();
+    void invalidateCachesForAttribute(const QualifiedName& attrName);
 
     void adoptTreeScope()
     {
@@ -210,27 +204,27 @@ public:
         }
 
         for (auto& cache : m_atomicNameCaches.values())
-            cache->invalidateCache(oldDocument);
+            cache->invalidateCacheForDocument(oldDocument);
 
         for (auto& list : m_tagCollectionNSCache.values()) {
             ASSERT(!list->isRootedAtDocument());
-            list->invalidateCache(oldDocument);
+            list->invalidateCacheForDocument(oldDocument);
         }
 
         for (auto& collection : m_cachedCollections.values())
-            collection->invalidateCache(oldDocument);
+            collection->invalidateCacheForDocument(oldDocument);
     }
 
 private:
-    std::pair<unsigned char, AtomicString> namedCollectionKey(CollectionType type, const AtomicString& name)
+    std::pair<unsigned char, AtomString> namedCollectionKey(CollectionType type, const AtomString& name)
     {
-        return std::pair<unsigned char, AtomicString>(type, name);
+        return std::pair<unsigned char, AtomString>(type, name);
     }
 
     template <class NodeListType>
-    std::pair<unsigned char, AtomicString> namedNodeListKey(const AtomicString& name)
+    std::pair<unsigned char, AtomString> namedNodeListKey(const AtomString& name)
     {
-        return std::pair<unsigned char, AtomicString>(NodeListTypeIdentifier<NodeListType>::value(), name);
+        return std::pair<unsigned char, AtomString>(NodeListTypeIdentifier<NodeListType>::value(), name);
     }
 
     bool deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(Node&);
@@ -256,6 +250,27 @@ public:
 class NodeRareData : public NodeRareDataBase {
     WTF_MAKE_NONCOPYABLE(NodeRareData); WTF_MAKE_FAST_ALLOCATED;
 public:
+#if defined(DUMP_NODE_STATISTICS) && DUMP_NODE_STATISTICS
+    enum class UseType : uint16_t {
+        ConnectedFrameCount = 1 << 0,
+        NodeList = 1 << 1,
+        MutationObserver = 1 << 2,
+
+        TabIndex = 1 << 3,
+        StyleFlags = 1 << 4,
+        MinimumSize = 1 << 5,
+        ScrollingPosition = 1 << 6,
+        ComputedStyle = 1 << 7,
+        Dataset = 1 << 8,
+        ClassList = 1 << 9,
+        ShadowRoot = 1 << 10,
+        CustomElementQueue = 1 << 11,
+        AttributeMap = 1 << 12,
+        InteractionObserver = 1 << 13,
+        PseudoElements = 1 << 14,
+    };
+#endif
+
     NodeRareData(RenderObject* renderer)
         : NodeRareDataBase(renderer)
         , m_connectedFrameCount(0)
@@ -290,8 +305,22 @@ public:
         m_connectedFrameCount -= amount;
     }
 
+#if DUMP_NODE_STATISTICS
+    OptionSet<UseType> useTypes() const
+    {
+        OptionSet<UseType> result;
+        if (m_connectedFrameCount)
+            result.add(UseType::ConnectedFrameCount);
+        if (m_nodeLists)
+            result.add(UseType::NodeList);
+        if (m_mutationObserverData)
+            result.add(UseType::MutationObserver);
+        return result;
+    }
+#endif
+
 private:
-    unsigned m_connectedFrameCount : 10; // Must fit Page::maxNumberOfFrames.
+    unsigned m_connectedFrameCount; // Must fit Page::maxNumberOfFrames.
 
     std::unique_ptr<NodeListsNodeData> m_nodeLists;
     std::unique_ptr<NodeMutationObserverData> m_mutationObserverData;
@@ -319,8 +348,5 @@ inline NodeRareData& Node::ensureRareData()
         materializeRareData();
     return *rareData();
 }
-
-// Ensure the 10 bits reserved for the m_connectedFrameCount cannot overflow
-static_assert(Page::maxNumberOfFrames < 1024, "Frame limit should fit in rare data count");
 
 } // namespace WebCore

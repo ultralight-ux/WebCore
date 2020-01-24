@@ -32,6 +32,7 @@
 namespace WebCore {
 
 class MathMLAnnotationElement final : public MathMLPresentationElement {
+    WTF_MAKE_ISO_ALLOCATED(MathMLAnnotationElement);
 public:
     static Ref<MathMLAnnotationElement> create(const QualifiedName& tagName, Document&);
 private:
@@ -41,7 +42,7 @@ private:
     bool isSemanticAnnotation() const final { return true; }
 
     bool childShouldCreateRenderer(const Node&) const final;
-    void attributeChanged(const QualifiedName&, const AtomicString& oldValue, const AtomicString& newValue, AttributeModificationReason) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
 };
 
 }

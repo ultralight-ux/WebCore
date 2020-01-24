@@ -30,7 +30,6 @@
 
 #include "Attr.h"
 #include "Document.h"
-#include "HTMLDocument.h"
 #include "HTMLElement.h"
 #include "NodeTraversal.h"
 #include "XMLNSNames.h"
@@ -53,9 +52,7 @@ Step::Step(Axis axis, NodeTest nodeTest, Vector<std::unique_ptr<Expression>> pre
 {
 }
 
-Step::~Step()
-{
-}
+Step::~Step() = default;
 
 void Step::optimize()
 {
@@ -168,14 +165,14 @@ inline bool nodeMatchesBasicTest(Node& node, Step::Axis axis, const Step::NodeTe
         case Step::NodeTest::CommentNodeTest:
             return node.nodeType() == Node::COMMENT_NODE;
         case Step::NodeTest::ProcessingInstructionNodeTest: {
-            const AtomicString& name = nodeTest.m_data;
+            const AtomString& name = nodeTest.m_data;
             return node.nodeType() == Node::PROCESSING_INSTRUCTION_NODE && (name.isEmpty() || node.nodeName() == name);
         }
         case Step::NodeTest::AnyNodeTest:
             return true;
         case Step::NodeTest::NameTest: {
-            const AtomicString& name = nodeTest.m_data;
-            const AtomicString& namespaceURI = nodeTest.m_namespaceURI;
+            const AtomString& name = nodeTest.m_data;
+            const AtomString& namespaceURI = nodeTest.m_namespaceURI;
 
             if (axis == Step::AttributeAxis) {
                 ASSERT(node.isAttributeNode());
@@ -184,7 +181,7 @@ inline bool nodeMatchesBasicTest(Node& node, Step::Axis axis, const Step::NodeTe
                 if (node.namespaceURI() == XMLNSNames::xmlnsNamespaceURI)
                     return false;
 
-                if (name == starAtom)
+                if (name == starAtom())
                     return namespaceURI.isEmpty() || node.namespaceURI() == namespaceURI;
 
                 return node.localName() == name && node.namespaceURI() == namespaceURI;
@@ -198,10 +195,10 @@ inline bool nodeMatchesBasicTest(Node& node, Step::Axis axis, const Step::NodeTe
             if (!is<Element>(node))
                 return false;
 
-            if (name == starAtom)
+            if (name == starAtom())
                 return namespaceURI.isEmpty() || namespaceURI == node.namespaceURI();
 
-            if (is<HTMLDocument>(node.document())) {
+            if (node.document().isHTMLDocument()) {
                 if (is<HTMLElement>(node)) {
                     // Paths without namespaces should match HTML elements in HTML documents despite those having an XHTML namespace. Names are compared case-insensitively.
                     return equalIgnoringASCIICase(downcast<HTMLElement>(node).localName(), name) && (namespaceURI.isNull() || namespaceURI == node.namespaceURI());
@@ -342,7 +339,7 @@ void Step::nodesInAxis(Node& context, NodeSet& nodes) const
             Element& contextElement = downcast<Element>(context);
 
             // Avoid lazily creating attribute nodes for attributes that we do not need anyway.
-            if (m_nodeTest.m_kind == NodeTest::NameTest && m_nodeTest.m_data != starAtom) {
+            if (m_nodeTest.m_kind == NodeTest::NameTest && m_nodeTest.m_data != starAtom()) {
                 auto attr = contextElement.getAttributeNodeNS(m_nodeTest.m_namespaceURI, m_nodeTest.m_data);
                 if (attr && attr->namespaceURI() != XMLNSNames::xmlnsNamespaceURI) { // In XPath land, namespace nodes are not accessible on the attribute axis.
                     if (nodeMatches(*attr, AttributeAxis, m_nodeTest)) // Still need to check merged predicates.

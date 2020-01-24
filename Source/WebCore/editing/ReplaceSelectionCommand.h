@@ -31,6 +31,7 @@
 namespace WebCore {
 
 class DocumentFragment;
+class Range;
 class ReplacementFragment;
 
 class ReplaceSelectionCommand : public CompositeEditCommand {
@@ -45,17 +46,17 @@ public:
         IgnoreMailBlockquote = 1 << 6,
     };
 
-    typedef unsigned CommandOptions;
-
-    static Ref<ReplaceSelectionCommand> create(Document& document, RefPtr<DocumentFragment>&& fragment, CommandOptions options, EditAction editingAction = EditActionInsert)
+    static Ref<ReplaceSelectionCommand> create(Document& document, RefPtr<DocumentFragment>&& fragment, OptionSet<CommandOption> options, EditAction editingAction = EditAction::Insert)
     {
         return adoptRef(*new ReplaceSelectionCommand(document, WTFMove(fragment), options, editingAction));
     }
 
     VisibleSelection visibleSelectionForInsertedText() const { return m_visibleSelectionForInsertedText; }
 
+    RefPtr<Range> insertedContentRange() const;
+
 private:
-    ReplaceSelectionCommand(Document&, RefPtr<DocumentFragment>&&, CommandOptions, EditAction);
+    ReplaceSelectionCommand(Document&, RefPtr<DocumentFragment>&&, OptionSet<CommandOption>, EditAction);
 
     String inputEventData() const final;
     RefPtr<DataTransfer> inputEventDataTransfer() const final;
@@ -69,15 +70,17 @@ private:
         void willRemoveNode(Node*);
         void didReplaceNode(Node*, Node* newNode);
 
+        bool isEmpty() { return !m_firstNodeInserted; }
         Node* firstNodeInserted() const { return m_firstNodeInserted.get(); }
-        Node* lastLeafInserted() const { return m_lastNodeInserted->lastDescendant(); }
+        Node* lastLeafInserted() const
+        {
+            ASSERT(m_lastNodeInserted);
+            return m_lastNodeInserted->lastDescendant();
+        }
         Node* pastLastLeaf() const
         {
-            if (m_lastNodeInserted) {
-                ASSERT(lastLeafInserted());
-                return NodeTraversal::next(*lastLeafInserted());
-            }
-            return nullptr;
+            ASSERT(m_lastNodeInserted);
+            return NodeTraversal::next(*lastLeafInserted());
         }
 
     private:
@@ -85,7 +88,7 @@ private:
         RefPtr<Node> m_lastNodeInserted;
     };
 
-    Node* insertAsListItems(PassRefPtr<HTMLElement> listElement, Node* insertionNode, const Position&, InsertedNodes&);
+    Node* insertAsListItems(HTMLElement& listElement, Node* insertionNode, const Position&, InsertedNodes&);
 
     void updateNodesInserted(Node*);
     bool shouldRemoveEndBR(Node*, const VisiblePosition&);
@@ -100,7 +103,7 @@ private:
     
     void removeRedundantStylesAndKeepStyleSpanInline(InsertedNodes&);
     void makeInsertedContentRoundTrippableWithHTMLTreeBuilder(InsertedNodes&);
-    void moveNodeOutOfAncestor(PassRefPtr<Node>, PassRefPtr<Node> ancestor, InsertedNodes&);
+    void moveNodeOutOfAncestor(Node&, Node& ancestor, InsertedNodes&);
     void handleStyleSpans(InsertedNodes&);
     void handlePasteAsQuotationNode();
     
@@ -108,7 +111,9 @@ private:
     VisiblePosition positionAtEndOfInsertedContent() const;
 
     bool shouldPerformSmartReplace() const;
+    bool shouldPerformSmartParagraphReplace() const;
     void addSpacesForSmartReplace();
+    void addNewLinesForSmartReplace();
     void completeHTMLReplacement(const Position& lastPositionToSelect);
     void mergeTextNodesAroundPosition(Position&, Position& positionOnlyToBeUpdated);
 

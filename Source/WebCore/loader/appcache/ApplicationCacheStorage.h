@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2010, 2011 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2017 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,10 +38,9 @@ class ApplicationCache;
 class ApplicationCacheGroup;
 class ApplicationCacheHost;
 class ApplicationCacheResource;
-class URL;
 class SecurityOrigin;
 class SharedBuffer;
-template <class T> class StorageIDJournal;
+template<typename> class StorageIDJournal;
 
 class ApplicationCacheStorage : public RefCounted<ApplicationCacheStorage> {
 public:
@@ -51,10 +50,12 @@ public:
         DiskOrOperationFailure
     };
 
-    WEBCORE_EXPORT static Ref<ApplicationCacheStorage> create(const String& cacheDirectory, const String& flatFileSubdirectoryName);
+    static Ref<ApplicationCacheStorage> create(const String& cacheDirectory, const String& flatFileSubdirectoryName)
+    {
+        return adoptRef(*new ApplicationCacheStorage(cacheDirectory, flatFileSubdirectoryName));
+    }
 
-    const String& cacheDirectory() const;
-    
+
     WEBCORE_EXPORT void setMaximumSize(int64_t size);
     WEBCORE_EXPORT int64_t maximumSize() const;
     bool isMaximumSizeReached() const;
@@ -63,8 +64,8 @@ public:
     int64_t defaultOriginQuota() const { return m_defaultOriginQuota; }
     WEBCORE_EXPORT void setDefaultOriginQuota(int64_t quota);
     WEBCORE_EXPORT bool calculateUsageForOrigin(const SecurityOrigin*, int64_t& usage);
-    WEBCORE_EXPORT bool calculateQuotaForOrigin(const SecurityOrigin*, int64_t& quota);
-    bool calculateRemainingSizeForOriginExcludingCache(const SecurityOrigin*, ApplicationCache*, int64_t& remainingSize);
+    WEBCORE_EXPORT bool calculateQuotaForOrigin(const SecurityOrigin&, int64_t& quota);
+    bool calculateRemainingSizeForOriginExcludingCache(const SecurityOrigin&, ApplicationCache*, int64_t& remainingSize);
     WEBCORE_EXPORT bool storeUpdatedQuotaForOrigin(const SecurityOrigin*, int64_t quota);
     bool checkOriginQuota(ApplicationCacheGroup*, ApplicationCache* oldCache, ApplicationCache* newCache, int64_t& totalSpaceNeeded);
 
@@ -72,26 +73,20 @@ public:
     ApplicationCacheGroup* fallbackCacheGroupForURL(const URL&); // Cache that has a fallback entry to load a main resource from if normal loading fails.
 
     ApplicationCacheGroup* findOrCreateCacheGroup(const URL& manifestURL);
-    ApplicationCacheGroup* findInMemoryCacheGroup(const URL& manifestURL) const;
-    void cacheGroupDestroyed(ApplicationCacheGroup*);
-    void cacheGroupMadeObsolete(ApplicationCacheGroup*);
-        
-    bool storeNewestCache(ApplicationCacheGroup*, ApplicationCache* oldCache, FailureReason& failureReason);
-    bool storeNewestCache(ApplicationCacheGroup*); // Updates the cache group, but doesn't remove old cache.
+    void cacheGroupDestroyed(ApplicationCacheGroup&);
+    void cacheGroupMadeObsolete(ApplicationCacheGroup&);
+
+    bool storeNewestCache(ApplicationCacheGroup&, ApplicationCache* oldCache, FailureReason&);
+    bool storeNewestCache(ApplicationCacheGroup&); // Updates the cache group, but doesn't remove old cache.
     bool store(ApplicationCacheResource*, ApplicationCache*);
     bool storeUpdatedType(ApplicationCacheResource*, ApplicationCache*);
 
     // Removes the group if the cache to be removed is the newest one (so, storeNewestCache() needs to be called beforehand when updating).
     void remove(ApplicationCache*);
-    
-    WEBCORE_EXPORT void empty();
-    
-    bool getManifestURLs(Vector<URL>* urls);
-    bool cacheGroupSize(const String& manifestURL, int64_t* size);
-    bool deleteCacheGroup(const String& manifestURL);
-    WEBCORE_EXPORT void vacuumDatabaseFile();
 
-    WEBCORE_EXPORT void getOriginsWithCache(HashSet<RefPtr<SecurityOrigin>, SecurityOriginHash>&);
+    WEBCORE_EXPORT void empty();
+
+    WEBCORE_EXPORT Vector<Ref<SecurityOrigin>> originsWithCache();
     WEBCORE_EXPORT void deleteAllEntries();
 
     // FIXME: This should be consolidated with deleteAllEntries().
@@ -105,14 +100,19 @@ public:
 
     static int64_t unknownQuota() { return -1; }
     static int64_t noQuota() { return std::numeric_limits<int64_t>::max(); }
-private:
-    ApplicationCacheStorage(const String& cacheDirectory, const String& flatFileSubdirectoryName);
 
-    PassRefPtr<ApplicationCache> loadCache(unsigned storageID);
+private:
+    WEBCORE_EXPORT ApplicationCacheStorage(const String& cacheDirectory, const String& flatFileSubdirectoryName);
+
+    RefPtr<ApplicationCache> loadCache(unsigned storageID);
     ApplicationCacheGroup* loadCacheGroup(const URL& manifestURL);
+    Optional<Vector<URL>> manifestURLs();
+    ApplicationCacheGroup* findInMemoryCacheGroup(const URL& manifestURL) const;
+    bool deleteCacheGroup(const String& manifestURL);
+    void vacuumDatabaseFile();
     
-    typedef StorageIDJournal<ApplicationCacheResource> ResourceStorageIDJournal;
-    typedef StorageIDJournal<ApplicationCacheGroup> GroupStorageIDJournal;
+    using ResourceStorageIDJournal = StorageIDJournal<ApplicationCacheResource>;
+    using GroupStorageIDJournal = StorageIDJournal<ApplicationCacheGroup>;
 
     bool store(ApplicationCacheGroup*, GroupStorageIDJournal*);
     bool store(ApplicationCache*, ResourceStorageIDJournal*);
@@ -120,7 +120,7 @@ private:
     bool deleteCacheGroupRecord(const String& manifestURL);
 
     bool ensureOriginRecord(const SecurityOrigin*);
-    bool shouldStoreResourceAsFlatFile(ApplicationCacheResource*);
+    static bool shouldStoreResourceAsFlatFile(ApplicationCacheResource*);
     void deleteTables();
     bool writeDataToUniqueFileInDirectory(SharedBuffer&, const String& directory, String& outFilename, const String& fileExtension);
 
@@ -141,10 +141,10 @@ private:
     const String m_flatFileSubdirectoryName;
     String m_cacheFile;
 
-    int64_t m_maximumSize;
-    bool m_isMaximumSizeReached;
+    int64_t m_maximumSize { noQuota() };
+    bool m_isMaximumSizeReached { false };
 
-    int64_t m_defaultOriginQuota;
+    int64_t m_defaultOriginQuota { noQuota() };
 
     SQLiteDatabase m_database;
 
@@ -152,8 +152,7 @@ private:
     // we keep a hash set of the hosts of the manifest URLs of all non-obsolete cache groups.
     HashCountedSet<unsigned, AlreadyHashed> m_cacheHostSet;
     
-    typedef HashMap<String, ApplicationCacheGroup*> CacheGroupMap;
-    CacheGroupMap m_cachesInMemory; // Excludes obsolete cache groups.
+    HashMap<String, ApplicationCacheGroup*> m_cachesInMemory; // Excludes obsolete cache groups.
 
     friend class WTF::NeverDestroyed<ApplicationCacheStorage>;
 };

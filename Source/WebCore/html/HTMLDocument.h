@@ -27,49 +27,29 @@
 namespace WebCore {
 
 class HTMLDocument : public Document {
+    WTF_MAKE_ISO_ALLOCATED(HTMLDocument);
 public:
-    static Ref<HTMLDocument> create(Frame* frame, const URL& url)
-    {
-        return adoptRef(*new HTMLDocument(frame, url, HTMLDocumentClass));
-    }
-
-    static Ref<HTMLDocument> createSynthesizedDocument(Frame* frame, const URL& url)
-    {
-        return adoptRef(*new HTMLDocument(frame, url, HTMLDocumentClass, Synthesized));
-    }
-
+    static Ref<HTMLDocument> create(Frame*, const URL&);
+    static Ref<HTMLDocument> createSynthesizedDocument(Frame&, const URL&);
     virtual ~HTMLDocument();
 
     WEBCORE_EXPORT int width();
     WEBCORE_EXPORT int height();
+    
+    Optional<Variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>>> namedItem(const AtomString&);
+    Vector<AtomString> supportedPropertyNames() const;
 
-    WEBCORE_EXPORT const AtomicString& bgColor() const;
-    WEBCORE_EXPORT void setBgColor(const String&);
-    WEBCORE_EXPORT const AtomicString& fgColor() const;
-    WEBCORE_EXPORT void setFgColor(const String&);
-    WEBCORE_EXPORT const AtomicString& alinkColor() const;
-    WEBCORE_EXPORT void setAlinkColor(const String&);
-    WEBCORE_EXPORT const AtomicString& linkColor() const;
-    WEBCORE_EXPORT void setLinkColor(const String&);
-    WEBCORE_EXPORT const AtomicString& vlinkColor() const;
-    WEBCORE_EXPORT void setVlinkColor(const String&);
+    Element* documentNamedItem(const AtomStringImpl& name) const { return m_documentNamedItem.getElementByDocumentNamedItem(name, *this); }
+    bool hasDocumentNamedItem(const AtomStringImpl& name) const { return m_documentNamedItem.contains(name); }
+    bool documentNamedItemContainsMultipleElements(const AtomStringImpl& name) const { return m_documentNamedItem.containsMultiple(name); }
+    void addDocumentNamedItem(const AtomStringImpl&, Element&);
+    void removeDocumentNamedItem(const AtomStringImpl&, Element&);
 
-    WEBCORE_EXPORT void clear();
-
-    WEBCORE_EXPORT void captureEvents();
-    WEBCORE_EXPORT void releaseEvents();
-
-    Element* documentNamedItem(const AtomicStringImpl& name) const { return m_documentNamedItem.getElementByDocumentNamedItem(name, *this); }
-    bool hasDocumentNamedItem(const AtomicStringImpl& name) const { return m_documentNamedItem.contains(name); }
-    bool documentNamedItemContainsMultipleElements(const AtomicStringImpl& name) const { return m_documentNamedItem.containsMultiple(name); }
-    void addDocumentNamedItem(const AtomicStringImpl&, Element&);
-    void removeDocumentNamedItem(const AtomicStringImpl&, Element&);
-
-    Element* windowNamedItem(const AtomicStringImpl& name) const { return m_windowNamedItem.getElementByWindowNamedItem(name, *this); }
-    bool hasWindowNamedItem(const AtomicStringImpl& name) const { return m_windowNamedItem.contains(name); }
-    bool windowNamedItemContainsMultipleElements(const AtomicStringImpl& name) const { return m_windowNamedItem.containsMultiple(name); }
-    void addWindowNamedItem(const AtomicStringImpl&, Element&);
-    void removeWindowNamedItem(const AtomicStringImpl&, Element&);
+    Element* windowNamedItem(const AtomStringImpl& name) const { return m_windowNamedItem.getElementByWindowNamedItem(name, *this); }
+    bool hasWindowNamedItem(const AtomStringImpl& name) const { return m_windowNamedItem.contains(name); }
+    bool windowNamedItemContainsMultipleElements(const AtomStringImpl& name) const { return m_windowNamedItem.containsMultiple(name); }
+    void addWindowNamedItem(const AtomStringImpl&, Element&);
+    void removeWindowNamedItem(const AtomStringImpl&, Element&);
 
     static bool isCaseSensitiveAttribute(const QualifiedName&);
 
@@ -77,13 +57,23 @@ protected:
     HTMLDocument(Frame*, const URL&, DocumentClassFlags = 0, unsigned constructionFlags = 0);
 
 private:
-    bool isFrameSet() const override;
+    bool isFrameSet() const final;
     Ref<DocumentParser> createParser() override;
     Ref<Document> cloneDocumentWithoutChildren() const final;
 
-    DocumentOrderedMap m_documentNamedItem;
-    DocumentOrderedMap m_windowNamedItem;
+    TreeScopeOrderedMap m_documentNamedItem;
+    TreeScopeOrderedMap m_windowNamedItem;
 };
+
+inline Ref<HTMLDocument> HTMLDocument::create(Frame* frame, const URL& url)
+{
+    return adoptRef(*new HTMLDocument(frame, url, HTMLDocumentClass));
+}
+
+inline Ref<HTMLDocument> HTMLDocument::createSynthesizedDocument(Frame& frame, const URL& url)
+{
+    return adoptRef(*new HTMLDocument(&frame, url, HTMLDocumentClass, Synthesized));
+}
 
 } // namespace WebCore
 

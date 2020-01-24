@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006, 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,9 +23,8 @@
 
 #include "RenderSVGResourceFilter.h"
 #include "RenderSVGResourceFilterPrimitive.h"
-#include "SVGAnimatedLength.h"
-#include "SVGAnimatedString.h"
 #include "SVGElement.h"
+#include "SVGNames.h"
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
@@ -34,17 +34,32 @@ class FilterEffect;
 class SVGFilterBuilder;
 
 class SVGFilterPrimitiveStandardAttributes : public SVGElement {
+    WTF_MAKE_ISO_ALLOCATED(SVGFilterPrimitiveStandardAttributes);
 public:
     void setStandardAttributes(FilterEffect*) const;
 
-    virtual RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) = 0;
+    virtual RefPtr<FilterEffect> build(SVGFilterBuilder*, Filter&) const = 0;
     // Returns true, if the new value is different from the old one.
     virtual bool setFilterEffectAttribute(FilterEffect*, const QualifiedName&);
+
+    using PropertyRegistry = SVGPropertyOwnerRegistry<SVGFilterPrimitiveStandardAttributes, SVGElement>;
+
+    const SVGLengthValue& x() const { return m_x->currentValue(); }
+    const SVGLengthValue& y() const { return m_y->currentValue(); }
+    const SVGLengthValue& width() const { return m_width->currentValue(); }
+    const SVGLengthValue& height() const { return m_height->currentValue(); }
+    String result() const { return m_result->currentValue(); }
+
+    SVGAnimatedLength& xAnimated() { return m_x; }
+    SVGAnimatedLength& yAnimated() { return m_y; }
+    SVGAnimatedLength& widthAnimated() { return m_width; }
+    SVGAnimatedLength& heightAnimated() { return m_height; }
+    SVGAnimatedString& resultAnimated() { return m_result; }
 
 protected:
     SVGFilterPrimitiveStandardAttributes(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomString&) override;
     void svgAttributeChanged(const QualifiedName&) override;
     void childrenChanged(const ChildChange&) override;
 
@@ -58,15 +73,13 @@ private:
     bool rendererIsNeeded(const RenderStyle&) override;
     bool childShouldCreateRenderer(const Node&) const override { return false; }
 
-    static bool isSupportedAttribute(const QualifiedName&);
-
-    BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGFilterPrimitiveStandardAttributes)
-        DECLARE_ANIMATED_LENGTH(X, x)
-        DECLARE_ANIMATED_LENGTH(Y, y)
-        DECLARE_ANIMATED_LENGTH(Width, width)
-        DECLARE_ANIMATED_LENGTH(Height, height)
-        DECLARE_ANIMATED_STRING(Result, result)
-    END_DECLARE_ANIMATED_PROPERTIES
+    // Spec: If the x/y attribute is not specified, the effect is as if a value of "0%" were specified.
+    // Spec: If the width/height attribute is not specified, the effect is as if a value of "100%" were specified.
+    Ref<SVGAnimatedLength> m_x { SVGAnimatedLength::create(this, SVGLengthMode::Width, "0%") };
+    Ref<SVGAnimatedLength> m_y { SVGAnimatedLength::create(this, SVGLengthMode::Height, "0%") };
+    Ref<SVGAnimatedLength> m_width { SVGAnimatedLength::create(this, SVGLengthMode::Width, "100%") };
+    Ref<SVGAnimatedLength> m_height { SVGAnimatedLength::create(this, SVGLengthMode::Height, "100%") };
+    Ref<SVGAnimatedString> m_result { SVGAnimatedString::create(this) };
 };
 
 void invalidateFilterPrimitiveParent(SVGElement*);

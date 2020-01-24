@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 
 #if ENABLE(WEBASSEMBLY)
 
+#include "AirCode.h"
 #include "AllowMacroScratchRegisterUsage.h"
 #include "B3ArgumentRegValue.h"
 #include "B3BasicBlock.h"
@@ -40,30 +41,31 @@
 #include "LinkBuffer.h"
 #include "RegisterSet.h"
 #include "WasmFormat.h"
+#include "WasmSignature.h"
 
 namespace JSC { namespace Wasm {
 
-typedef unsigned (*NextOffset)(unsigned currentOffset, B3::Type type);
+typedef unsigned (*NextOffset)(unsigned currentOffset);
 
 template<unsigned headerSize, NextOffset updateOffset>
 class CallingConvention {
 public:
     CallingConvention(Vector<Reg>&& gprArgs, Vector<Reg>&& fprArgs, RegisterSet&& calleeSaveRegisters)
-        : m_gprArgs(gprArgs)
-        , m_fprArgs(fprArgs)
-        , m_calleeSaveRegisters(calleeSaveRegisters)
+        : m_gprArgs(WTFMove(gprArgs))
+        , m_fprArgs(WTFMove(fprArgs))
+        , m_calleeSaveRegisters(WTFMove(calleeSaveRegisters))
     {
     }
 
 private:
-    B3::ValueRep marshallArgumentImpl(Vector<Reg> regArgs, B3::Type type, size_t& count, size_t& stackOffset) const
+    B3::ValueRep marshallArgumentImpl(const Vector<Reg>& regArgs, size_t& count, size_t& stackOffset) const
     {
         if (count < regArgs.size())
             return B3::ValueRep::reg(regArgs[count++]);
 
         count++;
         B3::ValueRep result = B3::ValueRep::stackArgument(stackOffset);
-        stackOffset = updateOffset(stackOffset, type);
+        stackOffset = updateOffset(stackOffset);
         return result;
     }
 
@@ -72,10 +74,10 @@ private:
         switch (type) {
         case B3::Int32:
         case B3::Int64:
-            return marshallArgumentImpl(m_gprArgs, type, gpArgumentCount, stackOffset);
+            return marshallArgumentImpl(m_gprArgs, gpArgumentCount, stackOffset);
         case B3::Float:
         case B3::Double:
-            return marshallArgumentImpl(m_fprArgs, type, fpArgumentCount, stackOffset);
+            return marshallArgumentImpl(m_fprArgs, fpArgumentCount, stackOffset);
         case B3::Void:
             break;
         }
@@ -83,7 +85,8 @@ private:
     }
 
 public:
-    void setupFrameInPrologue(CodeLocationDataLabelPtr* calleeMoveLocation, B3::Procedure& proc, B3::Origin origin, B3::BasicBlock* block) const
+    static unsigned headerSizeInBytes() { return headerSize; }
+    void setupFrameInPrologue(CodeLocationDataLabelPtr<WasmEntryPtrTag>* calleeMoveLocation, B3::Procedure& proc, B3::Origin origin, B3::BasicBlock* block) const
     {
         static_assert(CallFrameSlot::callee * sizeof(Register) < headerSize, "We rely on this here for now.");
         static_assert(CallFrameSlot::codeBlock * sizeof(Register) < headerSize, "We rely on this here for now.");
@@ -95,8 +98,8 @@ public:
             [=] (CCallHelpers& jit, const B3::StackmapGenerationParams& params) {
                 GPRReg result = params[0].gpr();
                 MacroAssembler::DataLabelPtr moveLocation = jit.moveWithPatch(MacroAssembler::TrustedImmPtr(nullptr), result);
-                jit.addLinkTask([=] (LinkBuffer& linkBuffer) {
-                    *calleeMoveLocation = linkBuffer.locationOf(moveLocation);
+                jit.addLinkTask([calleeMoveLocation, moveLocation] (LinkBuffer& linkBuffer) {
+                    *calleeMoveLocation = linkBuffer.locationOf<WasmEntryPtrTag>(moveLocation);
                 });
             });
 
@@ -118,7 +121,7 @@ public:
     }
 
     template<typename Functor>
-    void loadArguments(const Vector<Type>& argumentTypes, B3::Procedure& proc, B3::BasicBlock* block, B3::Origin origin, const Functor& functor) const
+    void loadArguments(const Signature& signature, B3::Procedure& proc, B3::BasicBlock* block, B3::Origin origin, const Functor& functor) const
     {
         B3::Value* framePointer = block->appendNew<B3::Value>(proc, B3::FramePointer, origin);
 
@@ -126,8 +129,8 @@ public:
         size_t fpArgumentCount = 0;
         size_t stackOffset = headerSize;
 
-        for (size_t i = 0; i < argumentTypes.size(); ++i) {
-            B3::Type type = toB3Type(argumentTypes[i]);
+        for (size_t i = 0; i < signature.argumentCount(); ++i) {
+            B3::Type type = toB3Type(signature.argument(i));
             B3::Value* argument;
             B3::ValueRep rep = marshallArgument(type, gpArgumentCount, fpArgumentCount, stackOffset);
             if (rep.isReg()) {
@@ -187,18 +190,149 @@ public:
     const RegisterSet m_callerSaveRegisters;
 };
 
-inline unsigned nextJSCOffset(unsigned currentOffset, B3::Type)
+// FIXME: Share more code with CallingConvention above:
+// https://bugs.webkit.org/show_bug.cgi?id=194065
+template<unsigned headerSize, NextOffset updateOffset>
+class CallingConventionAir {
+public:
+    CallingConventionAir(Vector<Reg>&& gprArgs, Vector<Reg>&& fprArgs, RegisterSet&& calleeSaveRegisters)
+        : m_gprArgs(WTFMove(gprArgs))
+        , m_fprArgs(WTFMove(fprArgs))
+        , m_calleeSaveRegisters(WTFMove(calleeSaveRegisters))
+    {
+        RegisterSet scratch = RegisterSet::allGPRs();
+        scratch.exclude(RegisterSet::macroScratchRegisters());
+        scratch.exclude(RegisterSet::reservedHardwareRegisters());
+        scratch.exclude(RegisterSet::stackRegisters());
+        for (Reg reg : m_gprArgs)
+            scratch.clear(reg);
+        for (Reg reg : m_calleeSaveRegisters)
+            scratch.clear(reg);
+        for (Reg reg : scratch)
+            m_scratchGPRs.append(reg);
+        RELEASE_ASSERT(m_scratchGPRs.size() >= 2);
+    }
+
+    GPRReg prologueScratch(size_t i) const { return m_scratchGPRs[i].gpr(); }
+
+private:
+    template <typename RegFunc, typename StackFunc>
+    void marshallArgumentImpl(const Vector<Reg>& regArgs, size_t& count, size_t& stackOffset, const RegFunc& regFunc, const StackFunc& stackFunc) const
+    {
+        if (count < regArgs.size()) {
+            regFunc(regArgs[count++]);
+            return;
+        }
+
+        count++;
+        stackFunc(stackOffset);
+        stackOffset = updateOffset(stackOffset);
+    }
+
+    template <typename RegFunc, typename StackFunc>
+    void marshallArgument(Type type, size_t& gpArgumentCount, size_t& fpArgumentCount, size_t& stackOffset, const RegFunc& regFunc, const StackFunc& stackFunc) const
+    {
+        switch (type) {
+        case Type::I32:
+        case Type::I64:
+        case Type::Anyref:
+        case Wasm::Funcref:
+            marshallArgumentImpl(m_gprArgs, gpArgumentCount, stackOffset, regFunc, stackFunc);
+            break;
+        case Type::F32:
+        case Type::F64:
+            marshallArgumentImpl(m_fprArgs, fpArgumentCount, stackOffset, regFunc, stackFunc);
+            break;
+        default:
+            RELEASE_ASSERT_NOT_REACHED();
+        }
+    }
+
+public:
+    static unsigned headerSizeInBytes() { return headerSize; }
+
+    template<typename Functor>
+    void loadArguments(const Signature& signature, const Functor& functor) const
+    {
+        size_t gpArgumentCount = 0;
+        size_t fpArgumentCount = 0;
+        size_t stackOffset = headerSize;
+
+        for (size_t i = 0; i < signature.argumentCount(); ++i) {
+            marshallArgument(signature.argument(i), gpArgumentCount, fpArgumentCount, stackOffset,
+                [&] (Reg reg) {
+                    functor(B3::Air::Tmp(reg), i);
+                },
+                [&] (size_t stackOffset) {
+                    functor(B3::Air::Arg::addr(B3::Air::Tmp(GPRInfo::callFrameRegister), stackOffset), i);
+                });
+        }
+    }
+
+    // It's expected that the pachpointFunctor sets the generator for the call operation.
+    template<typename Functor>
+    void setupCall(B3::Air::Code& code, Type returnType, B3::PatchpointValue* patchpoint, const Vector<B3::Air::Tmp>& args, const Functor& functor) const
+    {
+        size_t gpArgumentCount = 0;
+        size_t fpArgumentCount = 0;
+        size_t stackOffset = headerSize - sizeof(CallerFrameAndPC);
+
+        for (auto tmp : args) {
+            marshallArgument(tmp.isGP() ? Type::I64 : Type::F64, gpArgumentCount, fpArgumentCount, stackOffset,
+                [&] (Reg reg) {
+                    functor(tmp, B3::ValueRep::reg(reg));
+                },
+                [&] (size_t stackOffset) {
+                    functor(tmp, B3::ValueRep::stackArgument(stackOffset));
+                });
+        }
+
+        code.requestCallArgAreaSizeInBytes(WTF::roundUpToMultipleOf(stackAlignmentBytes(), stackOffset));
+
+        patchpoint->clobberEarly(RegisterSet::macroScratchRegisters());
+        patchpoint->clobberLate(RegisterSet::volatileRegistersForJSCall());
+
+        switch (returnType) {
+        case Type::Void:
+            break;
+        case Type::F32:
+        case Type::F64:
+            patchpoint->resultConstraint = B3::ValueRep::reg(FPRInfo::returnValueFPR);
+            break;
+        case Type::I32:
+        case Type::I64:
+        case Type::Anyref:
+        case Wasm::Funcref:
+            patchpoint->resultConstraint = B3::ValueRep::reg(GPRInfo::returnValueGPR);
+            break;
+        default:
+            RELEASE_ASSERT_NOT_REACHED();
+        }
+    }
+
+    const Vector<Reg> m_gprArgs;
+    const Vector<Reg> m_fprArgs;
+    Vector<Reg> m_scratchGPRs;
+    const RegisterSet m_calleeSaveRegisters;
+    const RegisterSet m_callerSaveRegisters;
+};
+
+inline unsigned nextJSCOffset(unsigned currentOffset)
 {
     return currentOffset + sizeof(Register);
 }
 
 constexpr unsigned jscHeaderSize = ExecState::headerSizeInRegisters * sizeof(Register);
-typedef CallingConvention<jscHeaderSize, nextJSCOffset> JSCCallingConvention;
 
-typedef JSCCallingConvention WasmCallingConvention;
-
+using JSCCallingConvention = CallingConvention<jscHeaderSize, nextJSCOffset>;
+using WasmCallingConvention = JSCCallingConvention;
 const JSCCallingConvention& jscCallingConvention();
 const WasmCallingConvention& wasmCallingConvention();
+
+using JSCCallingConventionAir = CallingConventionAir<jscHeaderSize, nextJSCOffset>;
+using WasmCallingConventionAir = JSCCallingConventionAir;
+const JSCCallingConventionAir& jscCallingConventionAir();
+const WasmCallingConventionAir& wasmCallingConventionAir();
 
 } } // namespace JSC::Wasm
 

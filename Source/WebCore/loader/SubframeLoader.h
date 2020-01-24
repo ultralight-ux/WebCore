@@ -33,7 +33,6 @@
 #include "FrameLoaderTypes.h"
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
-#include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -46,7 +45,6 @@ class HTMLFrameOwnerElement;
 class HTMLMediaElement;
 class HTMLPlugInImageElement;
 class IntSize;
-class URL;
 class Widget;
 
 // This is a slight misnomer. It handles the higher level logic of loading both subframes and plugins.
@@ -57,11 +55,11 @@ public:
 
     void clear();
 
-    bool requestFrame(HTMLFrameOwnerElement&, const String& url, const AtomicString& frameName, LockHistory = LockHistory::Yes, LockBackForwardList = LockBackForwardList::Yes);
-    bool requestObject(HTMLPlugInImageElement&, const String& url, const AtomicString& frameName,
+    bool requestFrame(HTMLFrameOwnerElement&, const String& url, const AtomString& frameName, LockHistory = LockHistory::Yes, LockBackForwardList = LockBackForwardList::Yes);
+    bool requestObject(HTMLPlugInImageElement&, const String& url, const AtomString& frameName,
         const String& serviceType, const Vector<String>& paramNames, const Vector<String>& paramValues);
 
-    PassRefPtr<Widget> createJavaAppletWidget(const IntSize&, HTMLAppletElement&, const Vector<String>& paramNames, const Vector<String>& paramValues);
+    RefPtr<Widget> createJavaAppletWidget(const IntSize&, HTMLAppletElement&, const Vector<String>& paramNames, const Vector<String>& paramValues);
 
     WEBCORE_EXPORT bool allowPlugins();
 
@@ -71,21 +69,19 @@ public:
 
 private:
     bool requestPlugin(HTMLPlugInImageElement&, const URL&, const String& serviceType, const Vector<String>& paramNames, const Vector<String>& paramValues, bool useFallback);
-    Frame* loadOrRedirectSubframe(HTMLFrameOwnerElement&, const URL&, const AtomicString& frameName, LockHistory, LockBackForwardList);
+    Frame* loadOrRedirectSubframe(HTMLFrameOwnerElement&, const URL&, const AtomString& frameName, LockHistory, LockBackForwardList);
     Frame* loadSubframe(HTMLFrameOwnerElement&, const URL&, const String& name, const String& referrer);
     bool loadPlugin(HTMLPlugInImageElement&, const URL&, const String& mimeType, const Vector<String>& paramNames, const Vector<String>& paramValues, bool useFallback);
 
     bool shouldUsePlugin(const URL&, const String& mimeType, bool hasFallback, bool& useFallback);
     bool pluginIsLoadable(const URL&, const String& mimeType);
 
-    Document* document() const;
+    URL completeURL(const String&) const;
 
     bool shouldConvertInvalidURLsToBlank() const;
 
     bool m_containsPlugins;
     Frame& m_frame;
-
-    URL completeURL(const String&) const;
 };
 
 } // namespace WebCore

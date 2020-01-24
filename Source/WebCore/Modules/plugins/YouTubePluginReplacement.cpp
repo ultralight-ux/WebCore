@@ -30,7 +30,6 @@
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
 #include "HTMLPlugInElement.h"
-#include "Page.h"
 #include "RenderElement.h"
 #include "Settings.h"
 #include "ShadowRoot.h"
@@ -86,19 +85,19 @@ bool YouTubePluginReplacement::installReplacement(ShadowRoot& root)
 
     auto iframeElement = HTMLIFrameElement::create(HTMLNames::iframeTag, m_parentElement->document());
     if (m_attributes.contains("width"))
-        iframeElement->setAttributeWithoutSynchronization(HTMLNames::widthAttr, AtomicString("100%", AtomicString::ConstructFromLiteral));
+        iframeElement->setAttributeWithoutSynchronization(HTMLNames::widthAttr, AtomString("100%", AtomString::ConstructFromLiteral));
     
     const auto& heightValue = m_attributes.find("height");
     if (heightValue != m_attributes.end()) {
-        iframeElement->setAttribute(HTMLNames::styleAttr, AtomicString("max-height: 100%", AtomicString::ConstructFromLiteral));
+        iframeElement->setAttribute(HTMLNames::styleAttr, AtomString("max-height: 100%", AtomString::ConstructFromLiteral));
         iframeElement->setAttributeWithoutSynchronization(HTMLNames::heightAttr, heightValue->value);
     }
 
     iframeElement->setAttributeWithoutSynchronization(HTMLNames::srcAttr, youTubeURL(m_attributes.get("src")));
-    iframeElement->setAttributeWithoutSynchronization(HTMLNames::frameborderAttr, AtomicString("0", AtomicString::ConstructFromLiteral));
+    iframeElement->setAttributeWithoutSynchronization(HTMLNames::frameborderAttr, AtomString("0", AtomString::ConstructFromLiteral));
     
     // Disable frame flattening for this iframe.
-    iframeElement->setAttributeWithoutSynchronization(HTMLNames::scrollingAttr, AtomicString("no", AtomicString::ConstructFromLiteral));
+    iframeElement->setAttributeWithoutSynchronization(HTMLNames::scrollingAttr, AtomString("no", AtomString::ConstructFromLiteral));
     m_embedShadowElement->appendChild(iframeElement);
 
     return true;
@@ -175,14 +174,9 @@ static YouTubePluginReplacement::KeyValueMap queryKeysAndValues(const String& qu
     return queryDictionary;
 }
     
-static bool hasCaseInsensitivePrefix(const String& input, const String& prefix)
-{
-    return input.startsWith(prefix, false);
-}
-    
 static bool isYouTubeURL(const URL& url)
 {
-    String hostName = url.host();
+    auto hostName = url.host();
     return equalLettersIgnoringASCIICase(hostName, "m.youtube.com")
         || equalLettersIgnoringASCIICase(hostName, "youtu.be")
         || equalLettersIgnoringASCIICase(hostName, "www.youtube.com")
@@ -209,7 +203,7 @@ static URL processAndCreateYouTubeURL(const URL& url, bool& isYouTubeShortenedUR
     if (!isYouTubeURL(url))
         return URL();
 
-    String hostName = url.host();
+    auto hostName = url.host();
     bool isYouTubeMobileWebAppURL = equalLettersIgnoringASCIICase(hostName, "m.youtube.com");
     isYouTubeShortenedURL = equalLettersIgnoringASCIICase(hostName, "youtu.be");
 
@@ -265,7 +259,7 @@ static URL processAndCreateYouTubeURL(const URL& url, bool& isYouTubeShortenedUR
                 }
             }
         }
-    } else if (hasCaseInsensitivePrefix(path, "/v/") || hasCaseInsensitivePrefix(path, "/e/")) {
+    } else if (startsWithLettersIgnoringASCIICase(path, "/v/") || startsWithLettersIgnoringASCIICase(path, "/e/")) {
         String lastPathComponent = url.lastPathComponent();
         String videoID;
         String pathAfterFirstAmpersand;
@@ -347,9 +341,9 @@ bool YouTubePluginReplacement::supportsURL(const URL& url)
     return isYouTubeURL(url);
 }
 
-bool YouTubePluginReplacement::isEnabledBySettings(const Settings* settings)
+bool YouTubePluginReplacement::isEnabledBySettings(const Settings& settings)
 {
-    return settings->youTubeFlashPluginReplacementEnabled();
+    return settings.youTubeFlashPluginReplacementEnabled();
 }
     
 }

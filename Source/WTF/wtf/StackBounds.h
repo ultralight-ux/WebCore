@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2013 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,10 +24,11 @@
  *
  */
 
-#ifndef StackBounds_h
-#define StackBounds_h
+#pragma once
 
 #include <algorithm>
+#include <wtf/StackPointer.h>
+#include <wtf/ThreadingPrimitives.h>
 
 namespace WTF {
 
@@ -40,12 +41,19 @@ class StackBounds {
     const static size_t s_defaultAvailabilityDelta = 64 * 1024;
 
 public:
+    enum class StackDirection { Upward, Downward };
+
+    static constexpr StackBounds emptyBounds() { return StackBounds(); }
+
+#if HAVE(STACK_BOUNDS_FOR_NEW_THREAD)
+    // This function is only effective for newly created threads. In some platform, it returns a bogus value for the main thread.
+    static StackBounds newThreadStackBounds(PlatformThreadHandle);
+#endif
     static StackBounds currentThreadStackBounds()
     {
-        StackBounds bounds;
-        bounds.initialize();
-        bounds.checkConsistency();
-        return bounds;
+        auto result = currentThreadStackBoundsInternal();
+        result.checkConsistency();
+        return result;
     }
 
     void* origin() const
@@ -65,6 +73,17 @@ public:
         if (isGrowingDownward())
             return static_cast<char*>(m_origin) - static_cast<char*>(m_bound);
         return static_cast<char*>(m_bound) - static_cast<char*>(m_origin);
+    }
+
+    bool isEmpty() const { return !m_origin; }
+
+    bool contains(void* p) const
+    {
+        if (isEmpty())
+            return false;
+        if (isGrowingDownward())
+            return (m_origin >= p) && (p > m_bound);
+        return (m_bound > p) && (p >= m_origin);
     }
 
     void* recursionLimit(size_t minAvailableDelta = s_defaultAvailabilityDelta) const
@@ -104,22 +123,30 @@ public:
     bool isGrowingDownward() const
     {
         ASSERT(m_origin && m_bound);
-        return true;
+        return m_bound <= m_origin;
     }
 
 private:
-    StackBounds()
-        : m_origin(0)
-        , m_bound(0)
+    StackBounds(void* origin, void* end)
+        : m_origin(origin)
+        , m_bound(end)
     {
     }
 
-    WTF_EXPORT_PRIVATE void initialize();
+    constexpr StackBounds()
+        : m_origin(nullptr)
+        , m_bound(nullptr)
+    {
+    }
+
+    static StackDirection stackDirection();
+
+    WTF_EXPORT_PRIVATE static StackBounds currentThreadStackBoundsInternal();
 
     void checkConsistency() const
     {
 #if !ASSERT_DISABLED
-        void* currentPosition = &currentPosition;
+        void* currentPosition = currentStackPointer();
         ASSERT(m_origin != m_bound);
         ASSERT(isGrowingDownward()
             ? (currentPosition < m_origin && currentPosition > m_bound)
@@ -136,5 +163,3 @@ private:
 } // namespace WTF
 
 using WTF::StackBounds;
-
-#endif

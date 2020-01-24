@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2000 Peter Kelly (pmk@post.com)
- * Copyright (C) 2005, 2006, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2006 Alexey Proskuryakov (ap@webkit.org)
  * Copyright (C) 2007 Samuel Weinig (sam@webkit.org)
  * Copyright (C) 2008 Nokia Corporation and/or its subsidiary(-ies)
@@ -51,7 +51,6 @@
 #include "TextResourceDecoder.h"
 #include "TreeDepthLimit.h"
 #include <wtf/Ref.h>
-#include <wtf/StringExtras.h>
 #include <wtf/Threading.h>
 #include <wtf/Vector.h>
 
@@ -148,11 +147,6 @@ void XMLDocumentParser::createLeafTextNode()
     m_currentNode->parserAppendChild(*m_leafTextNode);
 }
 
-static inline String toString(const xmlChar* string, size_t size) 
-{ 
-    return String::fromUTF8(reinterpret_cast<const char*>(string), size); 
-}
-
 bool XMLDocumentParser::updateLeafTextNode()
 {
     if (isStopped())
@@ -162,7 +156,7 @@ bool XMLDocumentParser::updateLeafTextNode()
         return true;
 
     // This operation might fire mutation event, see below.
-    m_leafTextNode->appendData(toString(m_bufferedText.data(), m_bufferedText.size()));
+    m_leafTextNode->appendData(String::fromUTF8(reinterpret_cast<const char*>(m_bufferedText.data()), m_bufferedText.size()));
     m_bufferedText = { };
 
     m_leafTextNode = nullptr;
@@ -195,7 +189,7 @@ void XMLDocumentParser::end()
     if (m_parserPaused)
         return;
 
-    if (m_sawError) {
+    if (m_sawError && !isStopped()) {
         insertErrorMessageBlock();
         if (isDetached()) // Inserting an error message may have ran arbitrary scripts.
             return;
@@ -241,8 +235,7 @@ void XMLDocumentParser::notifyFinished(PendingScript& pendingScript)
     m_pendingScript = nullptr;
     pendingScript.clearClient();
 
-    auto& scriptElement = *toScriptElementIfPossible(&pendingScript.element());
-    scriptElement.executePendingScript(pendingScript);
+    pendingScript.element().executePendingScript(pendingScript);
 
     if (!isDetached() && !m_requestingScript)
         resumeParsing();
@@ -271,12 +264,12 @@ bool XMLDocumentParser::parseDocumentFragment(const String& chunk, DocumentFragm
     // FIXME: We need to implement the HTML5 XML Fragment parsing algorithm:
     // http://www.whatwg.org/specs/web-apps/current-work/multipage/the-xhtml-syntax.html#xml-fragment-parsing-algorithm
     // For now we have a hack for script/style innerHTML support:
-    if (contextElement && (contextElement->hasLocalName(HTMLNames::scriptTag.localName()) || contextElement->hasLocalName(HTMLNames::styleTag.localName()))) {
+    if (contextElement && (contextElement->hasLocalName(HTMLNames::scriptTag->localName()) || contextElement->hasLocalName(HTMLNames::styleTag->localName()))) {
         fragment.parserAppendChild(fragment.document().createTextNode(chunk));
         return true;
     }
 
-    RefPtr<XMLDocumentParser> parser = XMLDocumentParser::create(fragment, contextElement, parserContentPolicy);
+    auto parser = XMLDocumentParser::create(fragment, contextElement, parserContentPolicy);
     bool wellFormed = parser->appendFragmentSource(chunk);
     // Do not call finish(). The finish() and doEnd() implementations touch the main document and loader and can cause crashes in the fragment case.
     parser->detach(); // Allows ~DocumentParser to assert it was detached before destruction.

@@ -42,7 +42,7 @@
 #import "runtime_root.h"
 #import <JavaScriptCore/APICast.h>
 #import <JavaScriptCore/JSContextInternal.h>
-#import <runtime/JSLock.h>
+#import <JavaScriptCore/JSLock.h>
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
 #import "c_instance.h"
@@ -53,7 +53,7 @@
 @interface NSObject (WebPlugin)
 - (id)objectForWebScript;
 - (NPObject *)createPluginScriptableObject;
-- (PassRefPtr<JSC::Bindings::Instance>)createPluginBindingsInstance:(PassRefPtr<JSC::Bindings::RootObject>)rootObject;
+- (RefPtr<JSC::Bindings::Instance>)createPluginBindingsInstance:(Ref<JSC::Bindings::RootObject>&&)rootObject;
 @end
 
 using namespace JSC::Bindings;
@@ -66,7 +66,7 @@ RefPtr<JSC::Bindings::Instance> ScriptController::createScriptInstanceForWidget(
     if (!widgetView)
         return nullptr;
 
-    auto rootObject = createRootObject(widgetView);
+    auto rootObject = createRootObject((__bridge void*)widgetView);
 
     if ([widgetView respondsToSelector:@selector(createPluginBindingsInstance:)])
         return [widgetView createPluginBindingsInstance:WTFMove(rootObject)];
@@ -85,10 +85,10 @@ RefPtr<JSC::Bindings::Instance> ScriptController::createScriptInstanceForWidget(
         NPObject* npObject = [widgetView createPluginScriptableObject];
         if (!npObject)
             return nullptr;
-        RefPtr<Instance> instance = JSC::Bindings::CInstance::create(npObject, WTFMove(rootObject));
+        auto instance = JSC::Bindings::CInstance::create(npObject, WTFMove(rootObject));
         // -createPluginScriptableObject returns a retained NPObject.  The caller is expected to release it.
         _NPN_ReleaseObject(npObject);
-        return instance;
+        return WTFMove(instance);
 #endif
     }
 
@@ -103,7 +103,7 @@ WebScriptObject *ScriptController::windowScriptObject()
     if (!m_windowScriptObject) {
         JSC::JSLockHolder lock(commonVM());
         JSC::Bindings::RootObject* root = bindingRootObject();
-        m_windowScriptObject = [WebScriptObject scriptObjectForJSObject:toRef(windowShell(pluginWorld())) originRootObject:root rootObject:root];
+        m_windowScriptObject = [WebScriptObject scriptObjectForJSObject:toRef(&jsWindowProxy(pluginWorld())) originRootObject:root rootObject:root];
     }
 
     return m_windowScriptObject.get();

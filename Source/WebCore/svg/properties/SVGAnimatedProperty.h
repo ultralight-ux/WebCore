@@ -1,100 +1,77 @@
 /*
- * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- * Copyright (C) 2013 Samsung Electronics. All rights reserved.
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2019 Apple Inc.  All rights reserved.
  *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Library General Public
- * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
  *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Library General Public License for more details.
- *
- * You should have received a copy of the GNU Library General Public License
- * along with this library; see the file COPYING.LIB.  If not, write to
- * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA 02110-1301, USA.
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #pragma once
 
-#include "SVGAnimatedPropertyDescription.h"
-#include "SVGPropertyInfo.h"
+#include "SVGPropertyOwner.h"
+#include <wtf/Optional.h>
 #include <wtf/RefCounted.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
-
+    
 class SVGElement;
-class SVGProperty;
 
-class SVGAnimatedProperty : public RefCounted<SVGAnimatedProperty> {
+class SVGAnimatedProperty : public RefCounted<SVGAnimatedProperty>, public SVGPropertyOwner {
 public:
-    SVGElement* contextElement() const { return m_contextElement.get(); }
-    const QualifiedName& attributeName() const { return m_attributeName; }
-    AnimatedPropertyType animatedPropertyType() const { return m_animatedPropertyType; }
-    bool isReadOnly() const { return m_isReadOnly; }
-    void setIsReadOnly() { m_isReadOnly = true; }
-
-    void commitChange();
-
-    virtual bool isAnimating() const { return false; }
-    virtual bool isAnimatedListTearOff() const { return false; }
-    virtual void propertyWillBeDeleted(const SVGProperty&) { }
-
-    // Caching facilities.
-    typedef HashMap<SVGAnimatedPropertyDescription, SVGAnimatedProperty*, SVGAnimatedPropertyDescriptionHash, SVGAnimatedPropertyDescriptionHashTraits> Cache;
-
-    virtual ~SVGAnimatedProperty();
-
-    template<typename OwnerType, typename TearOffType, typename PropertyType>
-    static Ref<TearOffType> lookupOrCreateWrapper(OwnerType* element, const SVGPropertyInfo* info, PropertyType& property)
-    {
-        ASSERT(info);
-        SVGAnimatedPropertyDescription key(element, info->propertyIdentifier);
-
-        auto result = animatedPropertyCache()->add(key, nullptr);
-        if (!result.isNewEntry)
-            return static_cast<TearOffType&>(*result.iterator->value);
-
-        Ref<SVGAnimatedProperty> wrapper = TearOffType::create(element, info->attributeName, info->animatedPropertyType, property);
-        if (info->animatedPropertyState == PropertyIsReadOnly)
-            wrapper->setIsReadOnly();
-
-        // Cache the raw pointer but return a Ref<>. This will break the cyclic reference
-        // between SVGAnimatedProperty and SVGElement once the property pointer is not needed.
-        result.iterator->value = wrapper.ptr();
-        return static_reference_cast<TearOffType>(wrapper);
-    }
-
-    template<typename OwnerType, typename TearOffType>
-    static RefPtr<TearOffType> lookupWrapper(OwnerType* element, const SVGPropertyInfo* info)
-    {
-        ASSERT(info);
-        SVGAnimatedPropertyDescription key(element, info->propertyIdentifier);
-        return static_cast<TearOffType*>(animatedPropertyCache()->get(key));
-    }
-
-    template<typename OwnerType, typename TearOffType>
-    static RefPtr<TearOffType> lookupWrapper(const OwnerType* element, const SVGPropertyInfo* info)
-    {
-        return lookupWrapper<OwnerType, TearOffType>(const_cast<OwnerType*>(element), info);
-    }
-
+    virtual ~SVGAnimatedProperty() = default;
+    
+    // Manage the relationship with the owner.
+    bool isAttached() const { return m_contextElement; }
+    void detach() { m_contextElement = nullptr; }
+    SVGElement* contextElement() const { return m_contextElement; }
+    
+    virtual String baseValAsString() const { return emptyString(); }
+    virtual String animValAsString() const { return emptyString(); }
+    
+    // Control the synchronization between the attribute and its reflection in baseVal.
+    virtual bool isDirty() const { return false; }
+    virtual void setDirty() { }
+    virtual Optional<String> synchronize() { return WTF::nullopt; }
+    
+    // Control the animation life cycle.
+    bool isAnimating() const { return m_isAnimating; }
+    virtual void startAnimation() { m_isAnimating = true; }
+    virtual void stopAnimation() { m_isAnimating = false; }
+    
+    // Attach/Detach the animVal of the traget element's property by the instance element's property.
+    virtual void instanceStartAnimation(SVGAnimatedProperty&) { m_isAnimating = true; }
+    virtual void instanceStopAnimation() { m_isAnimating = false; }
+    
 protected:
-    SVGAnimatedProperty(SVGElement*, const QualifiedName&, AnimatedPropertyType);
-
-private:
-    static Cache* animatedPropertyCache();
-
-    RefPtr<SVGElement> m_contextElement;
-    const QualifiedName& m_attributeName;
-    AnimatedPropertyType m_animatedPropertyType;
-
-protected:
-    bool m_isReadOnly;
+    SVGAnimatedProperty(SVGElement* contextElement)
+        : m_contextElement(contextElement)
+    {
+    }
+    
+    SVGPropertyOwner* owner() const override;
+    void commitPropertyChange(SVGProperty*) override;
+    
+    SVGElement* m_contextElement { nullptr };
+    bool m_isAnimating { false };
 };
 
 } // namespace WebCore
+

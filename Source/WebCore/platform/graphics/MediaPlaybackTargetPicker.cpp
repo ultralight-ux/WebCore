@@ -33,7 +33,7 @@
 
 namespace WebCore {
 
-static const double pendingActionInterval = 1.0 / 10.0;
+static const Seconds pendingActionInterval { 100_ms };
 
 MediaPlaybackTargetPicker::MediaPlaybackTargetPicker(Client& client)
     : m_client(&client)
@@ -70,7 +70,7 @@ void MediaPlaybackTargetPicker::addPendingAction(PendingActionFlags action)
     m_pendingActionTimer.startOneShot(pendingActionInterval);
 }
 
-void MediaPlaybackTargetPicker::showPlaybackTargetPicker(const FloatRect&, bool)
+void MediaPlaybackTargetPicker::showPlaybackTargetPicker(const FloatRect&, bool, bool)
 {
     ASSERT_NOT_REACHED();
 }

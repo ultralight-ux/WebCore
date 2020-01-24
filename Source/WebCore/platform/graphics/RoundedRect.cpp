@@ -29,10 +29,12 @@
 #include "RoundedRect.h"
 
 #include "FloatRoundedRect.h"
+#include "GeometryUtilities.h"
 #include "LayoutRect.h"
 #include "LayoutUnit.h"
-
+#include "Region.h"
 #include <algorithm>
+#include <wtf/MathExtras.h>
 
 namespace WebCore {
 
@@ -236,6 +238,50 @@ bool RoundedRect::intersectsQuad(const FloatQuad& quad) const
     return true;
 }
 
+bool RoundedRect::contains(const LayoutRect& otherRect) const
+{
+    if (!rect().contains(otherRect) || !isRenderable())
+        return false;
+
+    const LayoutSize& topLeft = m_radii.topLeft();
+    if (!topLeft.isEmpty()) {
+        FloatPoint center = { m_rect.x() + topLeft.width(), m_rect.y() + topLeft.height() };
+        if (otherRect.x() <= center.x() && otherRect.y() <= center.y()) {
+            if (!ellipseContainsPoint(center, topLeft, otherRect.minXMinYCorner()))
+                return false;
+        }
+    }
+
+    const LayoutSize& topRight = m_radii.topRight();
+    if (!topRight.isEmpty()) {
+        FloatPoint center = { m_rect.maxX() - topRight.width(), m_rect.y() + topRight.height() };
+        if (otherRect.maxX() >= center.x() && otherRect.y() <= center.y()) {
+            if (!ellipseContainsPoint(center, topRight, otherRect.maxXMinYCorner()))
+                return false;
+        }
+    }
+
+    const LayoutSize& bottomLeft = m_radii.bottomLeft();
+    if (!bottomLeft.isEmpty()) {
+        FloatPoint center = { m_rect.x() + bottomLeft.width(), m_rect.maxY() - bottomLeft.height() };
+        if (otherRect.x() <= center.x() && otherRect.maxY() >= center.y()) {
+            if (!ellipseContainsPoint(center, bottomLeft, otherRect.minXMaxYCorner()))
+                return false;
+        }
+    }
+
+    const LayoutSize& bottomRight = m_radii.bottomRight();
+    if (!bottomRight.isEmpty()) {
+        FloatPoint center = { m_rect.maxX() - bottomRight.width(), m_rect.maxY() - bottomRight.height() };
+        if (otherRect.maxX() >= center.x() && otherRect.maxY() >= center.y()) {
+            if (!ellipseContainsPoint(center, bottomRight, otherRect.maxXMaxYCorner()))
+                return false;
+        }
+    }
+
+    return true;
+}
+
 FloatRoundedRect RoundedRect::pixelSnappedRoundedRectForPainting(float deviceScaleFactor) const
 {
     LayoutRect originalRect = rect();
@@ -258,6 +304,77 @@ FloatRoundedRect RoundedRect::pixelSnappedRoundedRectForPainting(float deviceSca
     }
     ASSERT(snappedRoundedRect.isRenderable());
     return snappedRoundedRect;
+}
+
+Region approximateAsRegion(const RoundedRect& roundedRect, unsigned stepLength)
+{
+    Region region;
+
+    if (roundedRect.isEmpty())
+        return region;
+
+    auto& rect = roundedRect.rect();
+    region.unite(enclosingIntRect(rect));
+
+    if (!roundedRect.isRounded())
+        return region;
+
+    auto& radii = roundedRect.radii();
+
+    auto makeIntRect = [] (LayoutPoint a, LayoutPoint b) {
+        return enclosingIntRect(LayoutRect {
+            LayoutPoint { std::min(a.x(), b.x()), std::min(a.y(), b.y()) },
+            LayoutPoint { std::max(a.x(), b.x()), std::max(a.y(), b.y()) }
+        });
+    };
+
+    auto subtractCornerRects = [&] (LayoutPoint corner, LayoutPoint ellipsisCenter, LayoutSize axes, double fromAngle) {
+        double toAngle = fromAngle + piDouble / 2;
+
+        // Substract more rects for longer, more rounded arcs.
+        auto arcLengthFactor = roundToInt(std::min(axes.width(), axes.height()));
+        auto count = (arcLengthFactor + (stepLength / 2)) / stepLength;
+
+        constexpr auto maximumCount = 20u;
+        count = std::min(maximumCount, count);
+
+        for (auto i = 0u; i < count; ++i) {
+            auto angle = fromAngle + (i + 1) * (toAngle - fromAngle) / (count + 1);
+            auto ellipsisPoint = LayoutPoint { axes.width() * cos(angle), axes.height() * sin(angle) };
+            auto cornerRect = makeIntRect(corner, ellipsisCenter + ellipsisPoint);
+            region.subtract(cornerRect);
+        }
+    };
+
+    {
+        auto corner = rect.maxXMaxYCorner();
+        auto axes = radii.bottomRight();
+        auto ellipsisCenter = LayoutPoint(corner.x() - axes.width(), corner.y() - axes.height());
+        subtractCornerRects(corner, ellipsisCenter, axes, 0);
+    }
+
+    {
+        auto corner = rect.minXMaxYCorner();
+        auto axes = radii.bottomLeft();
+        auto ellipsisCenter = LayoutPoint(corner.x() + axes.width(), corner.y() - axes.height());
+        subtractCornerRects(corner, ellipsisCenter, axes, piDouble / 2);
+    }
+
+    {
+        auto corner = rect.minXMinYCorner();
+        auto axes = radii.topLeft();
+        auto ellipsisCenter = LayoutPoint(corner.x() + axes.width(), corner.y() + axes.height());
+        subtractCornerRects(corner, ellipsisCenter, axes, piDouble);
+    }
+
+    {
+        auto corner = rect.maxXMinYCorner();
+        auto axes = radii.topRight();
+        auto ellipsisCenter = LayoutPoint(corner.x() - axes.width(), corner.y() + axes.height());
+        subtractCornerRects(corner, ellipsisCenter, axes, piDouble * 3 / 2);
+    }
+
+    return region;
 }
 
 } // namespace WebCore

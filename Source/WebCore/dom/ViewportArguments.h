@@ -41,6 +41,12 @@ enum ViewportErrorCode {
     MaximumScaleTooLargeError
 };
 
+enum class ViewportFit {
+    Auto,
+    Contain,
+    Cover
+};
+
 struct ViewportAttributes {
     FloatSize layoutSize;
 
@@ -51,6 +57,8 @@ struct ViewportAttributes {
     float userScalable;
     float orientation;
     float shrinkToFit;
+
+    ViewportFit viewportFit;
 };
 
 struct ViewportArguments {
@@ -58,7 +66,7 @@ struct ViewportArguments {
     enum Type {
         // These are ordered in increasing importance.
         Implicit,
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
         PluginDocument,
         ImageDocument,
 #endif
@@ -94,6 +102,7 @@ struct ViewportArguments {
     float userZoom { ValueAuto };
     float orientation { ValueAuto };
     float shrinkToFit { ValueAuto };
+    ViewportFit viewportFit { ViewportFit::Auto };
     bool widthWasExplicit { false };
 
     bool operator==(const ViewportArguments& other) const
@@ -112,6 +121,7 @@ struct ViewportArguments {
             && userZoom == other.userZoom
             && orientation == other.orientation
             && shrinkToFit == other.shrinkToFit
+            && viewportFit == other.viewportFit
             && widthWasExplicit == other.widthWasExplicit;
     }
 
@@ -131,10 +141,12 @@ WEBCORE_EXPORT ViewportAttributes computeViewportAttributes(ViewportArguments ar
 
 WEBCORE_EXPORT void restrictMinimumScaleFactorToViewportSize(ViewportAttributes& result, IntSize visibleViewport, float devicePixelRatio);
 WEBCORE_EXPORT void restrictScaleFactorToInitialScaleIfNotUserScalable(ViewportAttributes& result);
-float computeMinimumScaleFactorForContentContained(const ViewportAttributes& result, const IntSize& viewportSize, const IntSize& contentSize);
+WEBCORE_EXPORT float computeMinimumScaleFactorForContentContained(const ViewportAttributes& result, const IntSize& viewportSize, const IntSize& contentSize);
 
+typedef WTF::Function<void(ViewportErrorCode, const String&)> ViewportErrorHandler;
 void setViewportFeature(ViewportArguments&, Document&, StringView key, StringView value);
+WEBCORE_EXPORT void setViewportFeature(ViewportArguments&, StringView key, StringView value, bool viewportFitEnabled, const ViewportErrorHandler&);
 
-TextStream& operator<<(TextStream&, const ViewportArguments&);
+WTF::TextStream& operator<<(WTF::TextStream&, const ViewportArguments&);
 
 } // namespace WebCore

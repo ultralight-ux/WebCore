@@ -36,12 +36,12 @@
 #include "JSDOMWindow.h"
 #include "NP_jsobject.h"
 #include "c_instance.h"
-#include <runtime/JSGlobalObject.h>
-#include <runtime/JSLock.h>
 #include "npruntime_impl.h"
 #include "npruntime_priv.h"
 #include "runtime_object.h"
 #include "runtime_root.h"
+#include <JavaScriptCore/JSGlobalObject.h>
+#include <JavaScriptCore/JSLock.h>
 #include <wtf/Assertions.h>
 #include <wtf/text/WTFString.h>
 
@@ -70,7 +70,8 @@ static String convertUTF8ToUTF16WithLatin1Fallback(const NPUTF8* UTF8Chars, int 
 void convertValueToNPVariant(ExecState* exec, JSValue value, NPVariant* result)
 {
     JSLockHolder lock(exec);
-
+    VM& vm = exec->vm();
+    
     VOID_TO_NPVARIANT(*result);
 
     if (value.isString()) {
@@ -86,7 +87,7 @@ void convertValueToNPVariant(ExecState* exec, JSValue value, NPVariant* result)
         NULL_TO_NPVARIANT(*result);
     } else if (value.isObject()) {
         JSObject* object = asObject(value);
-        if (object->classInfo() == CRuntimeObject::info()) {
+        if (object->classInfo(vm) == CRuntimeObject::info()) {
             CRuntimeObject* runtimeObject = static_cast<CRuntimeObject*>(object);
             CInstance* instance = runtimeObject->getInternalCInstance();
             if (instance) {
@@ -95,7 +96,7 @@ void convertValueToNPVariant(ExecState* exec, JSValue value, NPVariant* result)
                 OBJECT_TO_NPVARIANT(obj, *result);
             }
         } else {
-            JSGlobalObject* globalObject = exec->vmEntryGlobalObject();
+            JSGlobalObject* globalObject = vm.vmEntryGlobalObject(exec);
 
             RootObject* rootObject = findRootObject(globalObject);
             if (rootObject) {

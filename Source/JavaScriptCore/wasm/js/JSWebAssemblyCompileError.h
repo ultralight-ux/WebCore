@@ -31,14 +31,14 @@
 
 namespace JSC {
 
-class JSWebAssemblyCompileError : public ErrorInstance {
+class JSWebAssemblyCompileError final : public ErrorInstance {
 public:
     typedef ErrorInstance Base;
 
-    static JSWebAssemblyCompileError* create(ExecState*, Structure*, const String&, bool);
-    static JSWebAssemblyCompileError* create(ExecState* exec, Structure* structure, JSValue message, bool useCurrentFrame)
+    static JSWebAssemblyCompileError* create(ExecState*, VM&, Structure*, const String&);
+    static JSWebAssemblyCompileError* create(ExecState* exec, VM& vm, Structure* structure, JSValue message)
     {
-        return create(exec, structure, message.isUndefined() ? String() : message.toWTFString(exec), useCurrentFrame);
+        return create(exec, vm, structure, message.isUndefined() ? String() : message.toWTFString(exec));
     }
 
     DECLARE_INFO;
@@ -47,7 +47,7 @@ protected:
     JSWebAssemblyCompileError(VM&, Structure*);
 };
 
-JSObject* createWebAssemblyCompileError(ExecState*, const String&);
+JSObject* createJSWebAssemblyCompileError(ExecState*, VM&, const String&);
 
 } // namespace JSC
 

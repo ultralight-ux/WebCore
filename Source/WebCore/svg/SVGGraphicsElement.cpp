@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -27,30 +28,27 @@
 #include "SVGNames.h"
 #include "SVGPathData.h"
 #include "SVGRect.h"
+#include "SVGSVGElement.h"
 #include "SVGStringList.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-// Animated property definitions
-DEFINE_ANIMATED_TRANSFORM_LIST(SVGGraphicsElement, SVGNames::transformAttr, Transform, transform)
-
-BEGIN_REGISTER_ANIMATED_PROPERTIES(SVGGraphicsElement)
-    REGISTER_LOCAL_ANIMATED_PROPERTY(transform)
-    REGISTER_PARENT_ANIMATED_PROPERTIES(SVGElement)
-    REGISTER_PARENT_ANIMATED_PROPERTIES(SVGTests)
-END_REGISTER_ANIMATED_PROPERTIES
+WTF_MAKE_ISO_ALLOCATED_IMPL(SVGGraphicsElement);
 
 SVGGraphicsElement::SVGGraphicsElement(const QualifiedName& tagName, Document& document)
     : SVGElement(tagName, document)
+    , SVGTests(this)
     , m_shouldIsolateBlending(false)
 {
-    registerAnimatedPropertiesForSVGGraphicsElement();
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        PropertyRegistry::registerProperty<SVGNames::transformAttr, &SVGGraphicsElement::m_transform>();
+    });
 }
 
-SVGGraphicsElement::~SVGGraphicsElement()
-{
-}
+SVGGraphicsElement::~SVGGraphicsElement() = default;
 
 Ref<SVGMatrix> SVGGraphicsElement::getCTMForBindings()
 {
@@ -79,10 +77,26 @@ AffineTransform SVGGraphicsElement::animatedLocalTransform() const
 
     // If CSS property was set, use that, otherwise fallback to attribute (if set).
     if (style && style->hasTransform()) {
+        
+        FloatRect boundingBox;
+        switch (style->transformBox()) {
+        case TransformBox::FillBox:
+            boundingBox = renderer()->objectBoundingBox();
+            break;
+        case TransformBox::BorderBox:
+            // For SVG elements without an associated CSS layout box, the used value for border-box is view-box.
+        case TransformBox::ViewBox: {
+            FloatSize viewportSize;
+            SVGLengthContext(this).determineViewport(viewportSize);
+            boundingBox.setSize(viewportSize);
+            break;
+            }
+        }
+        
         // Note: objectBoundingBox is an emptyRect for elements like pattern or clipPath.
         // See the "Object bounding box units" section of http://dev.w3.org/csswg/css3-transforms/
         TransformationMatrix transform;
-        style->applyTransform(transform, renderer()->objectBoundingBox());
+        style->applyTransform(transform, boundingBox);
 
         // Flatten any 3D transform.
         matrix = transform.toAffineTransform();
@@ -95,7 +109,7 @@ AffineTransform SVGGraphicsElement::animatedLocalTransform() const
         }
 
     } else
-        transform().concatenate(matrix);
+        matrix = transform().concatenate();
 
     if (m_supplementalTransform)
         return *m_supplementalTransform * matrix;
@@ -109,23 +123,10 @@ AffineTransform* SVGGraphicsElement::supplementalTransform()
     return m_supplementalTransform.get();
 }
 
-bool SVGGraphicsElement::isSupportedAttribute(const QualifiedName& attrName)
-{
-    static NeverDestroyed<HashSet<QualifiedName>> supportedAttributes;
-    if (supportedAttributes.get().isEmpty()) {
-        SVGTests::addSupportedAttributes(supportedAttributes);
-        supportedAttributes.get().add(SVGNames::transformAttr);
-    }
-    return supportedAttributes.get().contains<SVGAttributeHashTranslator>(attrName);
-}
-
-void SVGGraphicsElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
+void SVGGraphicsElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
     if (name == SVGNames::transformAttr) {
-        SVGTransformListValues newList;
-        newList.parse(value);
-        detachAnimatedTransformListWrappers(newList.size());
-        setTransformBaseValue(newList);
+        m_transform->baseVal()->parse(value);
         return;
     }
 
@@ -135,27 +136,19 @@ void SVGGraphicsElement::parseAttribute(const QualifiedName& name, const AtomicS
 
 void SVGGraphicsElement::svgAttributeChanged(const QualifiedName& attrName)
 {
-    if (!isSupportedAttribute(attrName)) {
-        SVGElement::svgAttributeChanged(attrName);
-        return;
-    }
-
-    InstanceInvalidationGuard guard(*this);
-
-    if (SVGTests::handleAttributeChange(this, attrName))
-        return;
-
-    auto renderer = this->renderer();
-    if (!renderer)
-        return;
-
     if (attrName == SVGNames::transformAttr) {
-        renderer->setNeedsTransformUpdate();
-        RenderSVGResource::markForLayoutAndParentResourceInvalidation(*renderer);
+        InstanceInvalidationGuard guard(*this);
+
+        if (auto renderer = this->renderer()) {
+            renderer->setNeedsTransformUpdate();
+            RenderSVGResource::markForLayoutAndParentResourceInvalidation(*renderer);
+        }
+
         return;
     }
 
-    ASSERT_NOT_REACHED();
+    SVGElement::svgAttributeChanged(attrName);
+    SVGTests::svgAttributeChanged(attrName);
 }
 
 SVGElement* SVGGraphicsElement::nearestViewportElement() const
@@ -183,26 +176,12 @@ RenderPtr<RenderElement> SVGGraphicsElement::createElementRenderer(RenderStyle&&
     return createRenderer<RenderSVGPath>(*this, WTFMove(style));
 }
 
-void SVGGraphicsElement::toClipPath(Path& path)
+Path SVGGraphicsElement::toClipPath()
 {
-    updatePathFromGraphicsElement(this, path);
+    Path path = pathFromGraphicsElement(this);
     // FIXME: How do we know the element has done a layout?
     path.transform(animatedLocalTransform());
-}
-
-Ref<SVGStringList> SVGGraphicsElement::requiredFeatures()
-{
-    return SVGTests::requiredFeatures(*this);
-}
-
-Ref<SVGStringList> SVGGraphicsElement::requiredExtensions()
-{ 
-    return SVGTests::requiredExtensions(*this);
-}
-
-Ref<SVGStringList> SVGGraphicsElement::systemLanguage()
-{
-    return SVGTests::systemLanguage(*this);
+    return path;
 }
 
 }

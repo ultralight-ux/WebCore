@@ -29,6 +29,7 @@
 namespace WebCore {
 
 class DocumentFragment : public ContainerNode {
+    WTF_MAKE_ISO_ALLOCATED(DocumentFragment);
 public:
     static Ref<DocumentFragment> create(Document&);
 
@@ -39,7 +40,7 @@ public:
     virtual bool isTemplateContent() const { return false; }
 
     // From the NonElementParentNode interface - https://dom.spec.whatwg.org/#interface-nonelementparentnode
-    WEBCORE_EXPORT Element* getElementById(const AtomicString&) const;
+    WEBCORE_EXPORT Element* getElementById(const AtomString&) const;
 
 protected:
     DocumentFragment(Document&, ConstructionType = CreateContainer);

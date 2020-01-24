@@ -26,6 +26,8 @@
 #pragma once
 
 #include "AbstractModuleRecord.h"
+#include "SourceCode.h"
+#include "VariableEnvironment.h"
 
 namespace JSC {
 
@@ -33,29 +35,22 @@ class ModuleProgramExecutable;
 
 // Based on the Source Text Module Record
 // http://www.ecma-international.org/ecma-262/6.0/#sec-source-text-module-records
-class JSModuleRecord : public AbstractModuleRecord {
+class JSModuleRecord final : public AbstractModuleRecord {
     friend class LLIntOffsetsExtractor;
 public:
     typedef AbstractModuleRecord Base;
 
     DECLARE_EXPORT_INFO;
 
-    JSModuleEnvironment* moduleEnvironment()
-    {
-        ASSERT(m_moduleEnvironment);
-        return m_moduleEnvironment.get();
-    }
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
     static JSModuleRecord* create(ExecState*, VM&, Structure*, const Identifier&, const SourceCode&, const VariableEnvironment&, const VariableEnvironment&);
 
-    void link(ExecState*);
+    void link(ExecState*, JSValue scriptFetcher);
     JS_EXPORT_PRIVATE JSValue evaluate(ExecState*);
 
     const SourceCode& sourceCode() const { return m_sourceCode; }
     const VariableEnvironment& declaredVariables() const { return m_declaredVariables; }
     const VariableEnvironment& lexicalVariables() const { return m_lexicalVariables; }
-
-    ModuleProgramExecutable* moduleProgramExecutable() const { return m_moduleProgramExecutable.get(); }
 
 private:
     JSModuleRecord(VM&, Structure*, const Identifier&, const SourceCode&, const VariableEnvironment&, const VariableEnvironment&);
@@ -65,7 +60,7 @@ private:
     static void visitChildren(JSCell*, SlotVisitor&);
     static void destroy(JSCell*);
 
-    void instantiateDeclarations(ExecState*, ModuleProgramExecutable*);
+    void instantiateDeclarations(ExecState*, ModuleProgramExecutable*, JSValue scriptFetcher);
 
     SourceCode m_sourceCode;
     VariableEnvironment m_declaredVariables;

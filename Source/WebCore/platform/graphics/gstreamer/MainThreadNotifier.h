@@ -16,27 +16,38 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef MainThreadNotifier_h
-#define MainThreadNotifier_h
+#pragma once
 
+#include <functional>
+#include <wtf/Atomics.h>
 #include <wtf/Lock.h>
 #include <wtf/MainThread.h>
 #include <wtf/RunLoop.h>
-#include <wtf/WeakPtr.h>
+#include <wtf/ThreadSafeRefCounted.h>
 
 namespace WebCore {
 
 template <typename T>
-class MainThreadNotifier {
+class MainThreadNotifier final : public ThreadSafeRefCounted<MainThreadNotifier<T>> {
 public:
-    MainThreadNotifier()
-        : m_weakPtrFactory(this)
+    static Ref<MainThreadNotifier> create()
     {
+        return adoptRef(*new MainThreadNotifier());
     }
 
-    template<typename F>
-    void notify(T notificationType, const F& callbackFunctor)
+    ~MainThreadNotifier()
     {
+        ASSERT(!m_isValid.load());
+    }
+
+    bool isValid() const { return m_isValid.load(); }
+
+    template<typename F>
+    void notify(T notificationType, F&& callbackFunctor)
+    {
+        ASSERT(m_isValid.load());
+        // Assert that there is only one bit on at a time.
+        ASSERT(!(static_cast<int>(notificationType) & (static_cast<int>(notificationType) - 1)));
         if (isMainThread()) {
             removePendingNotification(notificationType);
             callbackFunctor();
@@ -46,16 +57,35 @@ public:
         if (!addPendingNotification(notificationType))
             return;
 
-        auto weakThis = m_weakPtrFactory.createWeakPtr();
-        std::function<void ()> callback(callbackFunctor);
-        RunLoop::main().dispatch([weakThis, notificationType, callback] {
-            if (weakThis && weakThis->removePendingNotification(notificationType))
+        RunLoop::main().dispatch([this, protectedThis = makeRef(*this), notificationType, callback = WTF::Function<void()>(WTFMove(callbackFunctor))] {
+            if (!m_isValid.load())
+                return;
+            if (removePendingNotification(notificationType))
                 callback();
         });
     }
 
+    template<typename F>
+    void notifyAndWait(T notificationType, F&& callbackFunctor)
+    {
+        Lock mutex;
+        Condition condition;
+
+        notify(notificationType, [functor = WTFMove(callbackFunctor), &condition, &mutex] {
+            functor();
+            LockHolder holder(mutex);
+            condition.notifyOne();
+        });
+
+        if (!isMainThread()) {
+            LockHolder holder(mutex);
+            condition.wait(mutex);
+        }
+    }
+
     void cancelPendingNotifications(unsigned mask = 0)
     {
+        ASSERT(m_isValid.load());
         LockHolder locker(m_pendingNotificationsLock);
         if (mask)
             m_pendingNotifications &= ~mask;
@@ -63,7 +93,17 @@ public:
             m_pendingNotifications = 0;
     }
 
+    void invalidate()
+    {
+        ASSERT(m_isValid.load());
+        m_isValid.store(false);
+    }
+
 private:
+    MainThreadNotifier()
+    {
+        m_isValid.store(true);
+    }
 
     bool addPendingNotification(T notificationType)
     {
@@ -84,12 +124,10 @@ private:
         return false;
     }
 
-    WeakPtrFactory<MainThreadNotifier> m_weakPtrFactory;
     Lock m_pendingNotificationsLock;
     unsigned m_pendingNotifications { 0 };
+    Atomic<bool> m_isValid;
 };
-
 
 } // namespace WebCore
 
-#endif // MainThreadNotifier_h

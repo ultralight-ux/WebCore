@@ -27,7 +27,7 @@
 #pragma once
 
 // FIXME (121927): This include should not be needed.
-#include <wtf/text/AtomicStringHash.h>
+#include <wtf/text/AtomStringHash.h>
 
 #include "EditingBehaviorTypes.h"
 #include "ExceptionOr.h"
@@ -61,6 +61,7 @@ public:
     ExceptionOr<void> setPictographFontFamily(const String& family, const String& script);
     ExceptionOr<void> setTextAutosizingEnabled(bool);
     ExceptionOr<void> setTextAutosizingWindowSizeOverride(int width, int height);
+    ExceptionOr<void> setTextAutosizingUsesIdempotentMode(bool);
     ExceptionOr<void> setTextAutosizingFontScaleFactor(float);
     ExceptionOr<void> setMediaTypeOverride(const String&);
     ExceptionOr<void> setCanStartMedia(bool);
@@ -72,8 +73,8 @@ public:
     ExceptionOr<void> setPDFImageCachingPolicy(const String&);
     ExceptionOr<void> setShouldDisplayTrackKind(const String& kind, bool enabled);
     ExceptionOr<bool> shouldDisplayTrackKind(const String& kind);
+    ExceptionOr<void> setUseDarkAppearance(bool);
     ExceptionOr<void> setStorageBlockingPolicy(const String&);
-    static void setLangAttributeAwareFormControlUIEnabled(bool);
     ExceptionOr<void> setImagesEnabled(bool);
     ExceptionOr<void> setMinimumTimerInterval(double intervalInSeconds);
     ExceptionOr<void> setDefaultVideoPosterURL(const String&);
@@ -82,7 +83,9 @@ public:
     ExceptionOr<void> setUseLegacyBackgroundSizeShorthandBehavior(bool);
     ExceptionOr<void> setAutoscrollForDragAndDropEnabled(bool);
     ExceptionOr<void> setFontFallbackPrefersPictographs(bool);
-    ExceptionOr<void> setWebFontsAlwaysFallBack(bool);
+    enum class FontLoadTimingOverride { Block, Swap, Failure };
+    ExceptionOr<void> setFontLoadTimingOverride(const FontLoadTimingOverride&);
+    ExceptionOr<void> setShouldIgnoreFontLoadCompletions(bool);
     ExceptionOr<void> setQuickTimePluginReplacementEnabled(bool);
     ExceptionOr<void> setYouTubeFlashPluginReplacementEnabled(bool);
     ExceptionOr<void> setBackgroundShouldExtendBeyondPage(bool);
@@ -92,14 +95,22 @@ public:
     ExceptionOr<void> setAllowsInlineMediaPlayback(bool);
     ExceptionOr<void> setAllowsInlineMediaPlaybackAfterFullscreen(bool);
     ExceptionOr<void> setInlineMediaPlaybackRequiresPlaysInlineAttribute(bool);
-    static void setIndexedDBWorkersEnabled(bool);
     ExceptionOr<String> userInterfaceDirectionPolicy();
     ExceptionOr<void> setUserInterfaceDirectionPolicy(const String&);
     ExceptionOr<String> systemLayoutDirection();
     ExceptionOr<void> setSystemLayoutDirection(const String&);
-    ExceptionOr<bool> variationFontsEnabled();
-    ExceptionOr<void> setVariationFontsEnabled(bool);
+    ExceptionOr<void> setShouldMockBoldSystemFontForAccessibility(bool);
+    ExceptionOr<void> setShouldManageAudioSessionCategory(bool);
+    ExceptionOr<void> setCustomPasteboardDataEnabled(bool);
+    ExceptionOr<void> setIncompleteImageBorderEnabled(bool);
+    ExceptionOr<void> setShouldDispatchSyntheticMouseEventsWhenModifyingSelection(bool);
+    ExceptionOr<void> setShouldDispatchSyntheticMouseOutAfterSyntheticClick(bool);
+
+    using FrameFlatteningValue = FrameFlattening;
+    ExceptionOr<void> setFrameFlattening(FrameFlatteningValue);
     
+    static void setAllowsAnySSLCertificate(bool);
+
     ExceptionOr<bool> deferredCSSParserEnabled();
     ExceptionOr<void> setDeferredCSSParserEnabled(bool);
 
@@ -111,13 +122,24 @@ public:
     ForcedAccessibilityValue forcedPrefersReducedMotionAccessibilityValue() const;
     void setForcedPrefersReducedMotionAccessibilityValue(ForcedAccessibilityValue);
 
-    static void setAllowsAnySSLCertificate(bool);
+    // RuntimeEnabledFeatures.
+    static void setIndexedDBWorkersEnabled(bool);
+    static void setWebGL2Enabled(bool);
+    static void setWebGPUEnabled(bool);
+    static void setWebVREnabled(bool);
+    static void setScreenCaptureEnabled(bool);
+
+    static bool webAnimationsCSSIntegrationEnabled();
+
+    void setShouldDeactivateAudioSession(bool);
 
 private:
     explicit InternalSettings(Page*);
 
     Settings& settings() const;
     static const char* supplementName();
+
+    void setUseDarkAppearanceInternal(bool);
 
     class Backup {
     public:
@@ -138,16 +160,16 @@ private:
 #if ENABLE(TEXT_AUTOSIZING)
         bool m_originalTextAutosizingEnabled;
         IntSize m_originalTextAutosizingWindowSizeOverride;
+        bool m_originalTextAutosizingUsesIdempotentMode;
 #endif
 
         String m_originalMediaTypeOverride;
         bool m_originalCanvasUsesAcceleratedDrawing;
         bool m_originalMockScrollbarsEnabled;
         bool m_originalUsesOverlayScrollbars;
-        bool m_langAttributeAwareFormControlUIEnabled;
         bool m_imagesEnabled;
         bool m_preferMIMETypeForImages;
-        std::chrono::milliseconds m_minimumTimerInterval;
+        Seconds m_minimumDOMTimerInterval;
 #if ENABLE(VIDEO_TRACK)
         bool m_shouldDisplaySubtitles;
         bool m_shouldDisplayCaptions;
@@ -155,14 +177,14 @@ private:
 #endif
         String m_defaultVideoPosterURL;
         bool m_forcePendingWebGLPolicy;
-        bool m_originalTimeWithoutMouseMovementBeforeHidingControls;
+        Seconds m_originalTimeWithoutMouseMovementBeforeHidingControls;
         bool m_useLegacyBackgroundSizeShorthandBehavior;
         bool m_autoscrollForDragAndDropEnabled;
         bool m_quickTimePluginReplacementEnabled;
         bool m_youTubeFlashPluginReplacementEnabled;
         bool m_shouldConvertPositionStyleOnCopy;
         bool m_fontFallbackPrefersPictographs;
-        bool m_webFontsAlwaysFallBack;
+        bool m_shouldIgnoreFontLoadCompletions;
         bool m_backgroundShouldExtendBeyondPage;
         SecurityOrigin::StorageBlockingPolicy m_storageBlockingPolicy;
         bool m_scrollingTreeIncludesFrames;
@@ -175,21 +197,32 @@ private:
         bool m_allowsInlineMediaPlayback;
         bool m_allowsInlineMediaPlaybackAfterFullscreen;
         bool m_inlineMediaPlaybackRequiresPlaysInlineAttribute;
-#if ENABLE(INDEXED_DATABASE_IN_WORKERS)
-        bool m_indexedDBWorkersEnabled;
-#endif
-#if ENABLE(VARIATION_FONTS)
-        bool m_variationFontsEnabled;
-#endif
         bool m_deferredCSSParserEnabled;
         bool m_inputEventsEnabled;
-
+        bool m_incompleteImageBorderEnabled;
+        bool m_shouldDispatchSyntheticMouseEventsWhenModifyingSelection;
+        bool m_shouldDispatchSyntheticMouseOutAfterSyntheticClick { false };
+        bool m_shouldDeactivateAudioSession;
         UserInterfaceDirectionPolicy m_userInterfaceDirectionPolicy;
         TextDirection m_systemLayoutDirection;
         PDFImageCachingPolicy m_pdfImageCachingPolicy;
         Settings::ForcedAccessibilityValue m_forcedColorsAreInvertedAccessibilityValue;
         Settings::ForcedAccessibilityValue m_forcedDisplayIsMonochromeAccessibilityValue;
         Settings::ForcedAccessibilityValue m_forcedPrefersReducedMotionAccessibilityValue;
+        Settings::FontLoadTimingOverride m_fontLoadTimingOverride;
+        FrameFlattening m_frameFlattening;
+
+        // Runtime enabled settings.
+        bool m_indexedDBWorkersEnabled;
+        bool m_webGL2Enabled;
+        bool m_webVREnabled;
+        bool m_setScreenCaptureEnabled;
+        
+        bool m_shouldMockBoldSystemFontForAccessibility;
+#if USE(AUDIO_SESSION)
+        bool m_shouldManageAudioSessionCategory;
+#endif
+        bool m_customPasteboardDataEnabled;
     };
 
     Page* m_page;
