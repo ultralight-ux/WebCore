@@ -5,7 +5,7 @@
 
 namespace WebCore {
 
-  void Editor::pasteWithPasteboard(Pasteboard* pasteboard, bool allowPlainText, MailBlockquoteHandling mailBlockquoteHandling)
+  void Editor::pasteWithPasteboard(Pasteboard*, OptionSet<PasteOption>)
   {
     // TODO
     notImplemented();
@@ -16,6 +16,18 @@ namespace WebCore {
     // TODO
     notImplemented();
     return nullptr;
+  }
+
+  void Editor::writeSelectionToPasteboard(Pasteboard &)
+  {
+	  // TODO
+	  notImplemented();
+  }
+
+  void Editor::writeImageToPasteboard(Pasteboard &, Element &, WTF::URL const &, WTF::String const &)
+  {
+	  // TODO
+	  notImplemented();
   }
 
 } // namespace WebCore

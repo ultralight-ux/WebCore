@@ -8,6 +8,7 @@
 #include "AffineTransform.h"
 #include "FloatRect.h"
 #include "GraphicsContext.h"
+#include "GraphicsContextImpl.h"
 #include "StrokeStyleApplier.h"
 #include "RefPtrUltralight.h"
 #include <Ultralight/private/Path.h>
@@ -50,6 +51,23 @@ Path::Path(const Path& other)
 
   auto path = ensurePlatformPath()->path();
   path->Set(other.platformPath()->path());
+}
+
+Path::Path(Path&& other)
+{
+	m_path = other.m_path;
+	other.m_path = nullptr;
+}
+
+Path& Path::operator=(Path&& other)
+{
+	if (this == &other)
+		return *this;
+	if (m_path)
+		delete m_path;
+	m_path = other.m_path;
+	other.m_path = nullptr;
+	return *this;
 }
 
 PlatformPathPtr Path::ensurePlatformPath() const
@@ -319,7 +337,7 @@ FloatRect Path::strokeBoundingRect(StrokeStyleApplier* applier) const
   if (!applier)
     return FloatRect();
 
-  GraphicsContext gc(GraphicsContext::NonPaintingReasons::NoReasons);
+  GraphicsContext gc;
   applier->strokeStyle(&gc);
   float stroke_width = gc.strokeThickness();
   FloatRect stroked_bounds = boundingRect();
@@ -332,7 +350,7 @@ bool Path::contains(const FloatPoint& point, WindRule rule) const
   if (isNull() || !std::isfinite(point.x()) || !std::isfinite(point.y()))
     return false;
   auto path = platformPath()->path();
-  ultralight::FillRule fill_rule = rule == RULE_NONZERO ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd;
+  ultralight::FillRule fill_rule = rule == WindRule::NonZero ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd;
   return path->IsPointFilled({ point.x(), point.y() }, fill_rule);
 }
 
@@ -345,7 +363,7 @@ bool Path::strokeContains(StrokeStyleApplier* applier, const FloatPoint& point) 
     return false;
 
   auto path = platformPath()->path();
-  GraphicsContext gc(GraphicsContext::NonPaintingReasons::NoReasons);
+  GraphicsContext gc;
   applier->strokeStyle(&gc);
   float stroke_width = gc.strokeThickness();
   float dist = path->GetDistanceToPoint({ point.x(), point.y() });

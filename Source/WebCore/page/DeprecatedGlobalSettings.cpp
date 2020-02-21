@@ -46,7 +46,7 @@ bool DeprecatedGlobalSettings::gMockScrollbarsEnabled = false;
 bool DeprecatedGlobalSettings::gUsesOverlayScrollbars = false;
 bool DeprecatedGlobalSettings::gMockScrollAnimatorEnabled = false;
 
-#if PLATFORM(WIN)
+#if OS(WINDOWS)
 bool DeprecatedGlobalSettings::gShouldUseHighResolutionTimers = true;
 #endif
     
@@ -63,7 +63,7 @@ bool DeprecatedGlobalSettings::gDisableScreenSizeOverride = false;
 #endif
 bool DeprecatedGlobalSettings::gManageAudioSession = false;
 
-#if PLATFORM(WIN)
+#if OS(WINDOWS)
 void DeprecatedGlobalSettings::setShouldUseHighResolutionTimers(bool shouldUseHighResolutionTimers)
 {
     gShouldUseHighResolutionTimers = shouldUseHighResolutionTimers;

@@ -43,6 +43,7 @@
 #include "Storage.h"
 #include "WebConsoleAgent.h"
 #include <JavaScriptCore/InspectorAgent.h>
+#include <JavaScriptCore/ConsoleMessage.h>
 #include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/JSLock.h>
 #include <JavaScriptCore/ScriptValue.h>

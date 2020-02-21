@@ -8,8 +8,6 @@
 #include "BitmapImage.h"
 #include "NotImplemented.h"
 #include "GraphicsContext.h"
-#include <runtime/JSCInlines.h>
-#include <runtime/TypedArrayInlines.h>
 #include <Ultralight/private/Canvas.h>
 #include "platform/graphics/ultralight/CanvasImage.h"
 
@@ -27,7 +25,7 @@ ImageBufferData::~ImageBufferData()
 {
 }
   
-ImageBuffer::ImageBuffer(const FloatSize& size, float /* resolutionScale */, ColorSpace, RenderingMode renderingMode, bool isDeferred, bool& success)
+ImageBuffer::ImageBuffer(const FloatSize& size, float resolutionScale, ColorSpace, RenderingMode renderingMode, const HostWindow*, bool isDeferred, bool& success)
   : m_data(IntSize(size), renderingMode, isDeferred)
   , m_size(size)
   , m_logicalSize(size)
@@ -48,12 +46,12 @@ GraphicsContext& ImageBuffer::context() const
   return *m_data.m_image->m_context;
 }
 
-RefPtr<Image> ImageBuffer::sinkIntoImage(std::unique_ptr<ImageBuffer> imageBuffer, ScaleBehavior scaleBehavior)
+RefPtr<Image> ImageBuffer::sinkIntoImage(std::unique_ptr<ImageBuffer> imageBuffer, PreserveResolution preserve)
 {
-  return imageBuffer->copyImage(DontCopyBackingStore, scaleBehavior);
+  return imageBuffer->copyImage(DontCopyBackingStore, preserve);
 }
 
-RefPtr<Image> ImageBuffer::copyImage(BackingStoreCopy copyBehavior, ScaleBehavior) const
+RefPtr<Image> ImageBuffer::copyImage(BackingStoreCopy copyBehavior, PreserveResolution) const
 {
   // TODO
   //notImplemented();
@@ -74,7 +72,7 @@ void ImageBuffer::drawConsuming(std::unique_ptr<ImageBuffer> imageBuffer, Graphi
 void ImageBuffer::draw(GraphicsContext& context, const FloatRect& destRect, const FloatRect& srcRect,
   CompositeOperator op, BlendMode blendMode)
 {
-  m_data.m_image->draw(context, destRect, srcRect, op, blendMode, ImageOrientationDescription());
+  m_data.m_image->draw(context, destRect, srcRect, op, blendMode, DecodingMode::Auto, ImageOrientationDescription());
 }
 
 void ImageBuffer::drawPattern(GraphicsContext& context, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform,
@@ -83,38 +81,45 @@ void ImageBuffer::drawPattern(GraphicsContext& context, const FloatRect& destRec
   m_data.m_image->drawPattern(context, destRect, srcRect, patternTransform, phase, spacing, op, blend);
 }
 
-void ImageBuffer::platformTransformColorSpace(const Vector<int>& lookUpTable)
+void ImageBuffer::platformTransformColorSpace(const std::array<uint8_t, 256>&)
 {
   // TODO
   notImplemented();
 }
 
-RefPtr<Uint8ClampedArray> ImageBuffer::getUnmultipliedImageData(const IntRect&, CoordinateSystem) const {
+RefPtr<Uint8ClampedArray> ImageBuffer::getUnmultipliedImageData(const IntRect&, IntSize* pixelArrayDimensions, CoordinateSystem) const {
   // TODO
   notImplemented();
 
   return nullptr;
 }
 
-RefPtr<Uint8ClampedArray> ImageBuffer::getPremultipliedImageData(const IntRect&, CoordinateSystem) const {
+RefPtr<Uint8ClampedArray> ImageBuffer::getPremultipliedImageData(const IntRect&, IntSize* pixelArrayDimensions, CoordinateSystem) const {
   // TODO
   notImplemented();
 
   return nullptr;
 }
 
-void ImageBuffer::putByteArray(Multiply multiplied, Uint8ClampedArray* source, const IntSize& sourceSize, const IntRect& sourceRect, const IntPoint& destPoint, CoordinateSystem)
+void ImageBuffer::putByteArray(const Uint8ClampedArray&, AlphaPremultiplication bufferFormat, const IntSize& sourceSize, const IntRect& sourceRect, const IntPoint& destPoint, CoordinateSystem)
 {
   // TODO
   notImplemented();
 }
 
-String ImageBuffer::toDataURL(const String& mimeType, std::optional<double> quality, CoordinateSystem) const
+String ImageBuffer::toDataURL(const String& mimeType, Optional<double> quality, PreserveResolution) const
 {
   // TODO
   notImplemented();
 
   return String();
+}
+
+Vector<uint8_t> ImageBuffer::toData(const String& mimeType, Optional<double> quality) const {
+	// TODO
+	notImplemented();
+
+	return Vector<uint8_t>();
 }
 
 #if ENABLE(ACCELERATED_2D_CANVAS) && !USE(COORDINATED_GRAPHICS_THREADED)

@@ -8,29 +8,40 @@
 #include <wtf/RefPtr.h>
 #include <Ultralight/private/Vector.h>
 #include <Ultralight/Buffer.h>
-
-typedef struct FT_FaceRec_*  FT_Face;
+#include "RefPtrFreeTypeFace.h"
 
 namespace WebCore {
 
   class FontDescription;
   class FontPlatformData;
   class SharedBuffer;
+  struct FontSelectionSpecifiedCapabilities;
+  struct FontVariantSettings;
+
+  template <typename T> class FontTaggedSettings;
+  typedef FontTaggedSettings<int> FontFeatureSettings;
 
   struct FontCustomPlatformData {
-    WTF_MAKE_NONCOPYABLE(FontCustomPlatformData);
   public:
-    FontCustomPlatformData(FT_Face, ultralight::RefPtr<ultralight::Buffer>);
+    FontCustomPlatformData(RefPtr<FT_FaceRec_>, ultralight::RefPtr<ultralight::Buffer>);
+    FontCustomPlatformData(const FontCustomPlatformData&);
+    FontCustomPlatformData(FontCustomPlatformData&&) = default;
+
+    FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic, const FontFeatureSettings&, const FontVariantSettings&, FontSelectionSpecifiedCapabilities);
+    
     ~FontCustomPlatformData();
-    FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic);
+    
     static bool supportsFormat(const String&);
 
+    FontCustomPlatformData& operator=(const FontCustomPlatformData&);
+    FontCustomPlatformData& operator=(FontCustomPlatformData&&) = default;
+
   private:
-    FT_Face m_face;
+    RefPtr<FT_FaceRec_> m_face;
     ultralight::RefPtr<ultralight::Buffer> m_data;
   };
 
-  std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer&);
+  std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer&, const String&);
 
 } // namespace WebCore
 

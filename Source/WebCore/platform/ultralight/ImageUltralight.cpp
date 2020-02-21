@@ -9,15 +9,15 @@ namespace WebCore {
   void BitmapImage::invalidatePlatformData()
   {
     // TODO
-    // notImplemented();
+    notImplemented();
   }
 
-  PassRefPtr<Image> Image::loadPlatformResource(const char *name)
+  Ref<Image> Image::loadPlatformResource(const char *name)
   {
     // TODO
-    std::cerr << "TODO: Image::loadPlatformResource " << name << std::endl;
     notImplemented();
-    return Image::nullImage();
+	WTFLogAlways("WARNING: trying to load platform resource '%s'", name);
+	return BitmapImage::create();
   }
 
 } // namespace WebCore

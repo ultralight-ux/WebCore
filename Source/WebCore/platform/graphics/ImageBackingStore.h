@@ -29,6 +29,7 @@
 #include "IntRect.h"
 #include "IntSize.h"
 #include "NativeImage.h"
+#include "SharedBuffer.h"
 #if USE(ULTRALIGHT)
 #include <Ultralight/Geometry.h>
 #include <Ultralight/Bitmap.h>

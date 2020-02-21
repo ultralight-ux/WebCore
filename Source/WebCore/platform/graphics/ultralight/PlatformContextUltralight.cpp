@@ -2,6 +2,8 @@
 #include "PlatformContextUltralight.h"
 #include "NotImplemented.h"
 #include <iostream>
+#include "rendering/BorderEdge.h"
+#include "rendering/style/BorderData.h"
 
 namespace WebCore {
 
@@ -164,39 +166,39 @@ void PlatformContextUltralight::prepareForStroking(const GraphicsContextState&, 
 
 void PlatformContextUltralight::setMask(const Path& path, WindRule clipRule) {
   ultralight::RefPtr<ultralight::Path> p = path.ultralightPath();
-  ultralight::FillRule fill_rule = clipRule == RULE_NONZERO ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd;
+  ultralight::FillRule fill_rule = clipRule == WindRule::NonZero ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd;
   canvas()->BeginMaskLayer(p);
   m_hasMask = true;
 }
 
-ultralight::BorderPaint GetBorderPaint(BorderEdge edge) {
+ultralight::BorderPaint GetBorderPaint(const BorderEdge& edge) {
   ultralight::BorderPaint result;
   Color c = edge.color();
   result.color = UltralightRGBA(c.red(), c.green(), c.blue(), c.alpha());
 
   switch (edge.style()) {
-  case INSET:
+  case BorderStyle::Inset:
     result.style = ultralight::kBorderStyle_Inset;
     break;
-  case GROOVE:
+  case BorderStyle::Groove:
     result.style = ultralight::kBorderStyle_Groove;
     break;
-  case OUTSET:
+  case BorderStyle::Outset:
     result.style = ultralight::kBorderStyle_Outset;
     break;
-  case RIDGE:
+  case BorderStyle::Ridge:
     result.style = ultralight::kBorderStyle_Ridge;
     break;
-  case DOTTED:
+  case BorderStyle::Dotted:
     result.style = ultralight::kBorderStyle_Dotted;
     break;
-  case DASHED:
+  case BorderStyle::Dashed:
     result.style = ultralight::kBorderStyle_Dashed;
     break;
-  case SOLID:
+  case BorderStyle::Solid:
     result.style = ultralight::kBorderStyle_Solid;
     break;
-  case DOUBLE:
+  case BorderStyle::Double:
     result.style = ultralight::kBorderStyle_Double;
     break;
   default:
@@ -208,7 +210,7 @@ ultralight::BorderPaint GetBorderPaint(BorderEdge edge) {
 }
 
 void PlatformContextUltralight::DrawBoxDecorations(const FloatRect& layout_rect, const FloatRoundedRect& outer_rrect,
-  const FloatRoundedRect& inner_rrect, BorderEdge edges[4], Color fill_color) {
+  const FloatRoundedRect& inner_rrect, const BorderEdge* edges, Color fill_color) {
   ultralight::RoundedRect rrect1;
   FloatRect r = outer_rrect.rect();
   rrect1.rect = { r.x(), r.y(), r.x() + r.width(), r.y() + r.height() };

@@ -31,6 +31,7 @@
 
 #if NEED_OPENSSL_THREAD_SUPPORT && OS(WINDOWS)
 #include <wtf/Threading.h>
+#include <openssl/crypto.h>
 #endif
 
 namespace WebCore {

@@ -54,7 +54,7 @@ static String getCACertPathEnv()
     }
 #endif
 
-    return String();
+    return String("cacert.pem");
 }
 
 void CurlSSLHandle::platformInitialize()

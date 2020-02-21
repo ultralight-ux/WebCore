@@ -1,5 +1,5 @@
 add_definitions(/bigobj -D__STDC_CONSTANT_MACROS -DSTATICALLY_LINKED_WITH_WTF
-                -DSTATICALLY_LINKED_WITH_JavaScriptCore -DULTRALIGHT_IMPLEMENTATION
+                -DSTATICALLY_LINKED_WITH_JavaScriptCore -DSTATICALLY_LINKED_WITH_PAL -DULTRALIGHT_IMPLEMENTATION
                 -DCURL_STATICLIB)
 
 include(platform/ImageDecoders.cmake)
@@ -50,6 +50,19 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
+    platform/win/MainThreadSharedTimerWin.cpp
+    platform/win/WebCoreInstanceHandle.cpp
+    platform/win/SSLKeyGeneratorWin.cpp
+    platform/generic/KeyedEncoderGeneric.cpp
+    platform/generic/KeyedDecoderGeneric.cpp
+    platform/generic/ScrollAnimatorGeneric.cpp
+    platform/ScrollAnimationKinetic.cpp
+    platform/ScrollAnimationSmooth.cpp
+    platform/network/win/CurlSSLHandleWin.cpp
+    platform/network/win/NetworkStateNotifierWin.cpp
+
+    platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
+
     platform/ultralight/AXObjectCacheUltralight.cpp
     platform/ultralight/CryptoDigestUltralight.cpp
     platform/ultralight/CursorUltralight.cpp
@@ -62,7 +75,7 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/ImageUltralight.cpp
 	platform/ultralight/KeyEventUltralight.cpp
 	platform/ultralight/LoggingUltralight.cpp
-	platform/ultralight/MainThreadSharedTimerUltralight.cpp
+# platform/ultralight/MainThreadSharedTimerUltralight.cpp
 	platform/ultralight/MIMETypeRegistryUltralight.cpp
 	platform/ultralight/PasteboardUltralight.cpp
 	platform/ultralight/PlatformMouseEventUltralight.cpp
@@ -77,8 +90,8 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/WidgetUltralight.cpp
 	platform/ultralight/LocalizedStringsUltralight.cpp
 	platform/ultralight/HyphenationUltralight.cpp
-	platform/ultralight/KeyedEncoderUltralight.cpp
-	platform/ultralight/KeyedDecoderUltralight.cpp
+#  platform/ultralight/KeyedEncoderUltralight.cpp
+#  platform/ultralight/KeyedDecoderUltralight.cpp
 	platform/ultralight/PreserveSymbolsUltralight.cpp
 	platform/ultralight/FileURLLoader.h
 	platform/ultralight/FileURLLoader.cpp
@@ -117,6 +130,8 @@ list(APPEND WebCore_SOURCES
 	platform/graphics/ultralight/FontRenderer.cpp
 	platform/graphics/ultralight/CanvasImage.h
 	platform/graphics/ultralight/CanvasImage.cpp
+    platform/graphics/ultralight/RefPtrFreeTypeFace.cpp
+    platform/graphics/ultralight/RefPtrFreeTypeFace.h
 	
 	platform/image-decoders/ultralight/ImageBackingStoreUltralight.cpp
 	
@@ -241,15 +256,15 @@ list(APPEND WebCore_LIBRARIES
     comctl32
     crypt32
     iphlpapi
-    libcurl_a
+    libcurl
     jpeg-static
     libpng16
     libxml2_a
 	libxslt_a
     rpcrt4
     shlwapi
-	ssleay32MD
-	libeay32MD
+	libcrypto
+	libssl
     usp10
     version
     winmm
@@ -305,7 +320,7 @@ endif ()
 
 list(APPEND WebCore_LIBRARIES WTF${DEBUG_SUFFIX})
 list(APPEND WebCore_LIBRARIES JavaScriptCore${DEBUG_SUFFIX})
-list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
+#list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
 list(APPEND WebCore_LIBRARIES UltralightCore)
 #list(APPEND WebCore_LIBRARIES bmalloc)
 list(APPEND WebCoreTestSupport_LIBRARIES WTF${DEBUG_SUFFIX})

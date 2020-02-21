@@ -202,13 +202,12 @@ void CSSAnimationControllerPrivate::updateAnimationTimer(SetChanged callSetChang
     if (!timeToNextService.value()) {
         auto* page = m_frame.page();
         bool shouldThrottle = page && page->isLowPowerModeEnabled();
+        Seconds timerDelay = animationTimerDelay;
 #if USE(ULTRALIGHT)
-        // TODO: Handle custom timer delay
-        Seconds timerDelay = ultralight::Platform::instance().config().animation_timer_delay;
-        static_assert(false);
+        timerDelay = Seconds(ultralight::Platform::instance().config().animation_timer_delay);
 #endif
 
-        Seconds delay = shouldThrottle ? animationTimerThrottledDelay : animationTimerDelay;
+        Seconds delay = shouldThrottle ? animationTimerThrottledDelay : timerDelay;
 
         if (!m_animationTimer.isActive() || m_animationTimer.repeatInterval() != delay)
             m_animationTimer.startRepeating(delay);

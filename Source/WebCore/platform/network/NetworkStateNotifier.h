@@ -37,7 +37,7 @@ OBJC_CLASS WebNetworkStateObserver;
 typedef const struct __SCDynamicStore * SCDynamicStoreRef;
 #endif
 
-#if PLATFORM(WIN)
+#if OS(WINDOWS)
 #include <windows.h>
 #endif
 
@@ -62,7 +62,7 @@ private:
     void updateStateSoon();
     void startObserving();
 
-#if PLATFORM(WIN)
+#if OS(WINDOWS)
     void registerForAddressChange();
     static void CALLBACK addressChangeCallback(void*, BOOLEAN timedOut);
 #endif
@@ -83,7 +83,7 @@ private:
     RetainPtr<SCDynamicStoreRef> m_store;
 #endif
 
-#if PLATFORM(WIN)
+#if OS(WINDOWS)
     HANDLE m_waitHandle;
     OVERLAPPED m_overlapped;
 #endif

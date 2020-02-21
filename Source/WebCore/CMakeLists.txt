@@ -1988,8 +1988,8 @@ endif ()
 #endif ()
 
 if (${WebCore_LIBRARY_TYPE} MATCHES "SHARED")
-    set_target_properties(WebCore PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
-    install(TARGETS WebCore DESTINATION "${LIB_INSTALL_DIR}")
+    #set_target_properties(WebCore PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
+    #install(TARGETS WebCore DESTINATION "${LIB_INSTALL_DIR}")
 endif ()
 
 if (MSVC)

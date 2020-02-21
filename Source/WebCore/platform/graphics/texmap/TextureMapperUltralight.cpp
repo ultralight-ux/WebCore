@@ -2,6 +2,7 @@
 #include "TextureMapperUltralight.h"
 #include "BitmapTexturePool.h"
 #include "FloatQuad.h"
+#include "NotImplemented.h"
 
 #if USE(TEXTURE_MAPPER_ULTRALIGHT)
 
@@ -52,6 +53,11 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
 
 void TextureMapperUltralight::drawSolidColor(const FloatRect&, const TransformationMatrix&, const Color&, bool) {}
 
+void TextureMapperUltralight::clearColor(const Color&) {
+  // TODO
+  notImplemented();
+}
+
 // makes a surface the target for the following drawTexture calls.
 void TextureMapperUltralight::bindSurface(BitmapTexture* surface) {
   if (!surface) {
@@ -99,6 +105,10 @@ IntRect TextureMapperUltralight::clipBounds() {
 Ref<BitmapTexture> TextureMapperUltralight::createTexture() {
     BitmapTextureUltralight* texture = new BitmapTextureUltralight();
     return *adoptRef(texture);
+}
+
+Ref<BitmapTexture> TextureMapperUltralight::createTexture(int internalFormat) {
+  return createTexture();
 }
 
 void TextureMapperUltralight::beginPainting(PaintFlags) {

@@ -57,11 +57,8 @@ AffineTransform GraphicsContext::getCTM(IncludeDeviceScale) const
   if (paintingDisabled())
     return AffineTransform();
 
-  if (isRecording()) {
-    WTFLogAlways("GraphicsContext::getCTM() is not yet compatible with recording contexts.");
-    return AffineTransform();
-  }
 
+  ASSERT(hasPlatformContext());
   ultralight::RefPtr<ultralight::Canvas> canvas = platformContext()->canvas();
   ultralight::Matrix m = canvas->GetMatrix();
   return AffineTransform(m.a(), m.b(), m.c(), m.d(), m.e(), m.f());
@@ -74,13 +71,13 @@ PlatformContextUltralight* GraphicsContext::platformContext() const
 
 void GraphicsContext::savePlatformState()
 {
-  ASSERT(!isRecording());
+  ASSERT(hasPlatformContext());
   platformContext()->save();
 }
 
 void GraphicsContext::restorePlatformState()
 {
-  ASSERT(!isRecording());
+  ASSERT(hasPlatformContext());
   platformContext()->restore();
 
   platformContext()->shadowBlur().setShadowValues(FloatSize(m_state.shadowBlur, m_state.shadowBlur),
@@ -95,24 +92,16 @@ void GraphicsContext::drawRect(const FloatRect& rect, float borderThickness)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->drawRect(rect, borderThickness);
-    return;
-  }
-
   ASSERT(!rect.isEmpty());
+  ASSERT(hasPlatformContext());
   fillRect(rect, platformContext()->fillColor());
+  // TODO, handle stroked border
 }
 
 void GraphicsContext::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
 {
   if (paintingDisabled())
     return;
-
-  if (isRecording()) {
-    m_displayListRecorder->drawNativeImage(image, imageSize, destRect, srcRect, op, blendMode, orientation);
-    return;
-  }
 
   // TODO
   notImplemented();
@@ -127,11 +116,6 @@ void GraphicsContext::drawLine(const FloatPoint& point1, const FloatPoint& point
   if (strokeStyle() == NoStroke)
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->drawLine(point1, point2);
-    return;
-  }
-
   // TODO
   notImplemented();
 }
@@ -142,11 +126,7 @@ void GraphicsContext::drawEllipse(const FloatRect& rect)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->drawEllipse(rect);
-    return;
-  }
-
+  ASSERT(hasPlatformContext());
   ultralight::Paint paint;
   WebCore::Color color = fillColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
@@ -169,18 +149,13 @@ void GraphicsContext::fillPath(const Path& path)
   if (paintingDisabled() || path.isEmpty())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->fillPath(path);
-    return;
-  }
-
-  // TODO
-  //notImplemented();
+  ASSERT(hasPlatformContext());
 
   ultralight::Paint paint;
   WebCore::Color color = fillColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
   platformContext()->canvas()->FillPath(path.ultralightPath(), paint);
+  // TODO, handle shadow state
 }
 
 void GraphicsContext::strokePath(const Path& path)
@@ -188,15 +163,13 @@ void GraphicsContext::strokePath(const Path& path)
   if (paintingDisabled() || path.isEmpty())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->strokePath(path);
-    return;
-  }
+  ASSERT(hasPlatformContext());
 
   ultralight::Paint paint;
   WebCore::Color color = strokeColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
   platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, strokeThickness());
+  // TODO, handle shadow state
 }
 
 void GraphicsContext::fillRect(const FloatRect& rect)
@@ -209,10 +182,7 @@ void GraphicsContext::fillRect(const FloatRect& rect, const Color& color)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->fillRect(rect, color);
-    return;
-  }
+  ASSERT(hasPlatformContext());
 
   if (hasShadow()) {
     FloatSize shadowOffset;
@@ -235,11 +205,7 @@ void GraphicsContext::clip(const FloatRect& rect)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->clip(rect);
-    return;
-  }
-
+  ASSERT(hasPlatformContext());
   platformContext()->canvas()->SetClip(rect, false);
 
   //fillRect(rect, makeRGBA(200, 10, 50, 128));
@@ -316,11 +282,7 @@ void GraphicsContext::clipPath(const Path& path, WindRule clipRule)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->clipPath(path, clipRule);
-    return;
-  }
-
+  ASSERT(hasPlatformContext());
   platformContext()->setMask(path, clipRule);
 }
 
@@ -391,6 +353,7 @@ void GraphicsContext::drawFocusRing(const Path& path, float width, float /* offs
   if (width <= 0.1 || path.isEmpty())
     return;
 
+  ASSERT(hasPlatformContext());
   ultralight::Paint paint;
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
   platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width * 0.5);
@@ -419,30 +382,23 @@ void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width,
   drawFocusRing(path, width, 0, color);
 }
 
-void GraphicsContext::drawLineForText(const FloatPoint& origin, float width, bool printing, bool doubleUnderlines, StrokeStyle)
+void GraphicsContext::drawLineForText(const FloatRect& rect, bool printing, bool doubleUnderlines, StrokeStyle)
 {
-  DashArray widths;
-  widths.append(width);
-  widths.append(0);
-  drawLinesForText(origin, widths, printing, doubleUnderlines);
+  drawLinesForText(rect.location(), rect.height(), DashArray{ 0, rect.width() }, printing, doubleUnderlines);
 }
 
-void GraphicsContext::drawLinesForText(const FloatPoint& point, const DashArray& widths, bool printing, bool doubleUnderlines, StrokeStyle strokeStyle)
+void GraphicsContext::drawLinesForText(const FloatPoint& point, float thickness, const DashArray& widths, bool printing, bool doubleUnderlines, StrokeStyle)
 {
   if (paintingDisabled())
     return;
 
-  if (widths.size() <= 0)
+  if (widths.isEmpty())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->drawLinesForText(point, widths, printing, doubleUnderlines, strokeThickness());
-    return;
-  }
-
+  ASSERT(hasPlatformContext());
   Color localStrokeColor(strokeColor());
 
-  float thickness = std::max(strokeThickness(), 0.5f);
+  thickness = std::max(thickness, 0.5f);
 
   FloatRect rect = FloatRect(point.x(), point.y() + thickness + 1.0f, widths[0], thickness);
   ultralight::Paint paint;
@@ -499,29 +455,16 @@ void GraphicsContext::drawLinesForText(const FloatPoint& point, const DashArray&
     */
 }
 
-void GraphicsContext::updateDocumentMarkerResources()
+void GraphicsContext::drawDotsForDocumentMarker(const FloatRect&, DocumentMarkerLineStyle)
 {
-  // Unnecessary, since our document markers don't use resources.
-}
-
-void GraphicsContext::drawLineForDocumentMarker(const FloatPoint& origin, float width, DocumentMarkerLineStyle style)
-{
-  if (paintingDisabled())
-    return;
-
-  // TODO
-  notImplemented();
+	// TODO
+	notImplemented();
 }
 
 FloatRect GraphicsContext::roundToDevicePixels(const FloatRect& frect, RoundingMode)
 {
   if (paintingDisabled())
     return frect;
-
-  if (isRecording()) {
-    WTFLogAlways("GraphicsContext::roundToDevicePixels() is not yet compatible with recording contexts.");
-    return frect;
-  }
 
   // TODO
   notImplemented();
@@ -533,11 +476,7 @@ void GraphicsContext::translate(float x, float y)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->translate(x, y);
-    return;
-  }
-
+  ASSERT(hasPlatformContext());
   AffineTransform transform;
   transform.translate(x, y);
 
@@ -549,7 +488,7 @@ void GraphicsContext::setPlatformFillColor(const Color& color)
   if (paintingDisabled())
     return;
 
-  ASSERT(!isRecording());
+  ASSERT(hasPlatformContext());
 
   platformContext()->setFillColor(color);
 }
@@ -559,7 +498,7 @@ void GraphicsContext::setPlatformStrokeColor(const Color& color)
   if (paintingDisabled())
     return;
 
-  ASSERT(!isRecording());
+  ASSERT(hasPlatformContext());
 
   platformContext()->setStrokeColor(color);
 }
@@ -569,7 +508,7 @@ void GraphicsContext::setPlatformStrokeThickness(float strokeThickness)
   if (paintingDisabled())
     return;
 
-  ASSERT(!isRecording());
+  ASSERT(hasPlatformContext());
 
   platformContext()->setStrokeThickness(strokeThickness);
 }
@@ -600,11 +539,7 @@ void GraphicsContext::concatCTM(const AffineTransform& transform)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->concatCTM(transform);
-    return;
-  }
-
+  ASSERT(hasPlatformContext());
   platformContext()->canvas()->Transform(transform);
 }
 
@@ -613,11 +548,7 @@ void GraphicsContext::setCTM(const AffineTransform& transform)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    WTFLogAlways("GraphicsContext::setCTM() is not compatible with recording contexts.");
-    return;
-  }
-
+  ASSERT(hasPlatformContext());
   platformContext()->canvas()->SetMatrix(transform);
 }
 
@@ -632,7 +563,7 @@ void GraphicsContext::setPlatformShadow(FloatSize const& size, float, Color cons
     m_state.shadowOffset = FloatSize(size.width(), -size.height());
   }
 
-  // Cairo doesn't support shadows natively, they are drawn manually in the draw* functions using ShadowBlur.
+  ASSERT(hasPlatformContext());
   platformContext()->shadowBlur().setShadowValues(FloatSize(m_state.shadowBlur, m_state.shadowBlur),
     m_state.shadowOffset,
     m_state.shadowColor,
@@ -644,6 +575,7 @@ void GraphicsContext::clearPlatformShadow()
   if (paintingDisabled())
     return;
 
+  ASSERT(hasPlatformContext());
   platformContext()->shadowBlur().clear();
 }
 
@@ -652,8 +584,7 @@ void GraphicsContext::beginPlatformTransparencyLayer(float opacity)
   if (paintingDisabled())
     return;
 
-  ASSERT(!isRecording());
-
+  ASSERT(hasPlatformContext());
   platformContext()->canvas()->BeginTransparencyLayer(opacity);
 }
 
@@ -662,8 +593,7 @@ void GraphicsContext::endPlatformTransparencyLayer()
   if (paintingDisabled())
     return;
 
-  ASSERT(!isRecording());
-
+  ASSERT(hasPlatformContext());
   platformContext()->canvas()->EndTransparencyLayer();
 
 }
@@ -678,11 +608,7 @@ void GraphicsContext::clearRect(const FloatRect& rect)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->clearRect(rect);
-    return;
-  }
-
+  ASSERT(hasPlatformContext());
   FloatRect sourceRect = rect;
 
   auto canvas = platformContext()->canvas();
@@ -708,10 +634,7 @@ void GraphicsContext::strokeRect(const FloatRect& rect, float width)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->strokeRect(rect, width);
-    return;
-  }
+  ASSERT(hasPlatformContext());
 
   if (width < 0.001)
     return;
@@ -726,17 +649,13 @@ void GraphicsContext::strokeRect(const FloatRect& rect, float width)
   WebCore::Color color = strokeColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
   platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width);
+  // TODO, handle shadow state
 }
 
 void GraphicsContext::setLineCap(LineCap lineCap)
 {
   if (paintingDisabled())
     return;
-
-  if (isRecording()) {
-    m_displayListRecorder->setLineCap(lineCap);
-    return;
-  }
 
   // TODO
   notImplemented();
@@ -756,11 +675,6 @@ void GraphicsContext::setLineDash(const DashArray& dashes, float dashOffset)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->setLineDash(dashes, dashOffset);
-    return;
-  }
-
   // TODO
   notImplemented();
 }
@@ -769,11 +683,6 @@ void GraphicsContext::setLineJoin(LineJoin lineJoin)
 {
   if (paintingDisabled())
     return;
-
-  if (isRecording()) {
-    m_displayListRecorder->setLineJoin(lineJoin);
-    return;
-  }
 
   // TODO
   notImplemented();
@@ -812,11 +721,6 @@ void GraphicsContext::clipOut(const Path& path)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->clipOut(path);
-    return;
-  }
-
   ultralight::RefPtr<ultralight::Path> p = path.ultralightPath();
   // TODO: What is the fill rule? No winding specified.
   ultralight::FillRule fill_rule = ultralight::kFillRule_EvenOdd;
@@ -827,11 +731,6 @@ void GraphicsContext::rotate(float radians)
 {
   if (paintingDisabled())
     return;
-
-  if (isRecording()) {
-    m_displayListRecorder->rotate(radians);
-    return;
-  }
 
   AffineTransform transform;
   transform.rotate(radians);
@@ -844,11 +743,6 @@ void GraphicsContext::scale(const FloatSize& size)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->scale(size);
-    return;
-  }
-
   AffineTransform transform;
   transform.scale(size);
 
@@ -860,11 +754,6 @@ void GraphicsContext::clipOut(const FloatRect& r)
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->clipOut(r);
-    return;
-  }
-
   platformContext()->canvas()->SetClip(r, true);
 }
 
@@ -873,7 +762,7 @@ void GraphicsContext::platformFillRoundedRect(const FloatRoundedRect& rect, cons
   if (paintingDisabled())
     return;
 
-  ASSERT(!isRecording());
+  ASSERT(hasPlatformContext());
 
   // TODO: Handle shadows.
   // 
@@ -908,11 +797,6 @@ void GraphicsContext::fillRectWithRoundedHole(const FloatRect& rect, const Float
 {
   if (paintingDisabled() || !color.isValid())
     return;
-
-  if (isRecording()) {
-    m_displayListRecorder->fillRectWithRoundedHole(rect, roundedHoleRect, color);
-    return;
-  }
 
   // AFAIK, this is only called from RenderBoxModelObject::paintBoxShadow when
   // it wants to draw an inset shadow.
@@ -950,10 +834,7 @@ void GraphicsContext::drawPattern(Image& image, const FloatRect& destRect, const
   if (paintingDisabled())
     return;
 
-  if (isRecording()) {
-    m_displayListRecorder->drawPattern(image, destRect, tileRect, patternTransform, phase, spacing, op, blendMode);
-    return;
-  }
+  ASSERT(hasPlatformContext());
 
   // Avoid NaN
   if (!std::isfinite(phase.x()) || !std::isfinite(phase.y()))
@@ -1008,15 +889,13 @@ void GraphicsContext::setPlatformShouldAntialias(bool enable)
   if (paintingDisabled())
     return;
 
-  ASSERT(!isRecording());
-
+  ASSERT(hasPlatformContext());
   platformContext()->setShouldAntialias(enable);
 }
 
 void GraphicsContext::setPlatformImageInterpolationQuality(InterpolationQuality quality)
 {
-  ASSERT(!isRecording());
-
+  ASSERT(hasPlatformContext());
   platformContext()->setImageInterpolationQuality(quality);
 }
 
@@ -1030,7 +909,7 @@ bool GraphicsContext::isAcceleratedContext() const
 }
 */
 
-#if ENABLE(3D_TRANSFORMS) && USE(TEXTURE_MAPPER)
+#if ENABLE(3D_TRANSFORMS) && USE(TEXTURE_MAPPER) && 0
 TransformationMatrix GraphicsContext::get3DTransform() const
 {
   // FIXME: Can we approximate the transformation better than this?

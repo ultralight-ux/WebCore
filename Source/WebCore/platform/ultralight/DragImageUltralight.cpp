@@ -5,6 +5,7 @@
 
 namespace WebCore {
 
+	/*
 IntSize dragImageSize(DragImageRef image)
 {
   return IntSize();
@@ -38,6 +39,6 @@ DragImageRef createDragImageFromImage(Image* img, ImageOrientationDescription)
 {
   return nullptr;
 }
-
+*/
 }  // namespace WebCore
 

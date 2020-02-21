@@ -27,6 +27,7 @@
 #include "IntRect.h"
 #include "SVGRenderingContext.h"
 #include <wtf/IsoMallocInlines.h>
+#include "NotImplemented.h"
 
 namespace WebCore {
 

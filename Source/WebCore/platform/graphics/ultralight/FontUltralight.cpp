@@ -3,8 +3,11 @@
 #include "NotImplemented.h"
 #include "platform/graphics/BitmapImage.h"
 #include "platform/graphics/ultralight/PlatformContextUltralight.h"
+#include "SurrogatePairAwareTextIterator.h"
+#include "CharacterProperties.h"
 #include "GlyphBuffer.h"
-#include "HarfBuzzShaper.h"
+#include "FontCache.h"
+//#include "HarfBuzzShaper.h"
 #include <Ultralight/Bitmap.h>
 #include <Ultralight/private/Canvas.h>
 #include <Ultralight/platform/Platform.h>
@@ -38,53 +41,6 @@ bool FontCascade::canExpandAroundIdeographsInComplexText()
   return false;
 }
 
-void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, unsigned from, unsigned to) const
-{
-  HarfBuzzShaper shaper(this, run);
-  if (shaper.shape()) {
-    // FIXME: This should mimic Mac port.
-    FloatRect rect = shaper.selectionRect(FloatPoint(selectionRect.location()), selectionRect.height().toInt(), from, to);
-    selectionRect = LayoutRect(rect);
-    return;
-  }
-  LOG_ERROR("Shaper couldn't shape text run.");
-}
-
-float FontCascade::getGlyphsAndAdvancesForComplexText(const TextRun& run, unsigned from, unsigned to, GlyphBuffer& glyphBuffer, ForTextEmphasisOrNot forTextEmphasis) const
-{
-  HarfBuzzShaper shaper(this, run);
-  if (!shaper.shape(&glyphBuffer)) {
-    LOG_ERROR("Shaper couldn't shape glyphBuffer.");
-    return 0.0f;
-  }
-
-  // FIXME: Mac returns an initial advance here.
-  return 0.0f;
-}
-
-void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext& /* context */, const TextRun& /* run */, const AtomicString& /* mark */, const FloatPoint& /* point */, unsigned /* from */, unsigned /* to */) const
-{
-  notImplemented();
-}
-
-float FontCascade::floatWidthForComplexText(const TextRun& run, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
-{
-  HarfBuzzShaper shaper(this, run);
-  if (shaper.shape())
-    return shaper.totalWidth();
-  LOG_ERROR("Shaper couldn't shape text run.");
-  return 0.0f;
-}
-
-int FontCascade::offsetForPositionForComplexText(const TextRun& run, float x, bool includePartialGlyphs) const
-{
-  HarfBuzzShaper shaper(this, run);
-  if (shaper.shape())
-    return shaper.offsetForPosition(x);
-  LOG_ERROR("Shaper couldn't shape text run.");
-  return 0;
-}
-
 void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const GlyphBuffer& glyphBuffer,
   unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode smoothing)
 {
@@ -98,7 +54,7 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
   FT_UInt previous = 0;
   float pen_x = point.x();
   float pen_y = point.y();
-  FT_Error error;
+  //FT_Error error;
   ultralight::RefPtr<ultralight::Font> ultraFont = platform_font.font();
 
   Vector<ultralight::Glyph>& glyphBuf = platform_font.glyphBuffer();
@@ -168,6 +124,113 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
   //context.fillRect(rect, Color::black);
   // TODO
   //notImplemented();
+}
+
+// From platform/graphics/cairo/FontCairoHarfbuzzNG.cpp
+static bool characterSequenceIsEmoji(SurrogatePairAwareTextIterator& iterator, UChar32 firstCharacter, unsigned firstClusterLength)
+{
+	UChar32 character = firstCharacter;
+	unsigned clusterLength = firstClusterLength;
+	if (!iterator.consume(character, clusterLength))
+		return false;
+
+	if (isEmojiKeycapBase(character)) {
+		iterator.advance(clusterLength);
+		UChar32 nextCharacter;
+		if (!iterator.consume(nextCharacter, clusterLength))
+			return false;
+
+		if (nextCharacter == combiningEnclosingKeycap)
+			return true;
+
+		// Variation selector 16.
+		if (nextCharacter == 0xFE0F) {
+			iterator.advance(clusterLength);
+			if (!iterator.consume(nextCharacter, clusterLength))
+				return false;
+
+			if (nextCharacter == combiningEnclosingKeycap)
+				return true;
+		}
+
+		return false;
+	}
+
+	// Regional indicator.
+	if (isEmojiRegionalIndicator(character)) {
+		iterator.advance(clusterLength);
+		UChar32 nextCharacter;
+		if (!iterator.consume(nextCharacter, clusterLength))
+			return false;
+
+		if (isEmojiRegionalIndicator(nextCharacter))
+			return true;
+
+		return false;
+	}
+
+	if (character == combiningEnclosingKeycap)
+		return true;
+
+	if (isEmojiWithPresentationByDefault(character)
+		|| isEmojiModifierBase(character)
+		|| isEmojiFitzpatrickModifier(character))
+		return true;
+
+	return false;
+}
+
+// From platform/graphics/cairo/FontCairoHarfbuzzNG.cpp
+const Font* FontCascade::fontForCombiningCharacterSequence(const UChar* originalCharacters, size_t originalLength) const
+{
+	auto normalizedString = normalizedNFC(StringView{ originalCharacters, static_cast<unsigned>(originalLength) });
+
+	// Code below relies on normalizedNFC never narrowing a 16-bit input string into an 8-bit output string.
+	// At the time of this writing, the function never does this, but in theory a future version could, and
+	// we would then need to add code paths here for the simpler 8-bit case.
+	auto characters = normalizedString.view.characters16();
+	auto length = normalizedString.view.length();
+
+	UChar32 character;
+	unsigned clusterLength = 0;
+	SurrogatePairAwareTextIterator iterator(characters, 0, length, length);
+	if (!iterator.consume(character, clusterLength))
+		return nullptr;
+
+	bool isEmoji = characterSequenceIsEmoji(iterator, character, clusterLength);
+	bool preferColoredFont = isEmoji;
+	// U+FE0E forces text style.
+	// U+FE0F forces emoji style.
+	if (characters[length - 1] == 0xFE0E)
+		preferColoredFont = false;
+	else if (characters[length - 1] == 0xFE0F)
+		preferColoredFont = true;
+
+	const Font* baseFont = glyphDataForCharacter(character, false, NormalVariant).font;
+	if (baseFont
+		&& (clusterLength == length || baseFont->canRenderCombiningCharacterSequence(characters, length))
+		&& (!preferColoredFont || baseFont->platformData().isColorBitmapFont()))
+		return baseFont;
+
+	for (unsigned i = 0; !fallbackRangesAt(i).isNull(); ++i) {
+		const Font* fallbackFont = fallbackRangesAt(i).fontForCharacter(character);
+		if (!fallbackFont || fallbackFont == baseFont)
+			continue;
+
+		if (fallbackFont->canRenderCombiningCharacterSequence(characters, length) && (!preferColoredFont || fallbackFont->platformData().isColorBitmapFont()))
+			return fallbackFont;
+	}
+
+	if (auto systemFallback = FontCache::singleton().systemFallbackForCharacters(m_fontDescription, baseFont, IsForPlatformFont::No, preferColoredFont ? FontCache::PreferColoredFont::Yes : FontCache::PreferColoredFont::No, characters, length)) {
+		if (systemFallback->canRenderCombiningCharacterSequence(characters, length) && (!preferColoredFont || systemFallback->platformData().isColorBitmapFont()))
+			return systemFallback.get();
+
+		// In case of emoji, if fallback font is colored try again without the variation selector character.
+		if (isEmoji && characters[length - 1] == 0xFE0F && systemFallback->platformData().isColorBitmapFont() && systemFallback->canRenderCombiningCharacterSequence(characters, length - 1))
+			return systemFallback.get();
+	}
+
+	return baseFont;
 }
 
 void Dump_SizeMetrics(const FT_Size_Metrics* metrics)
@@ -274,32 +337,11 @@ RefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescripti
   return nullptr;
 }
 
-#if USE(HARFBUZZ)
-bool Font::canRenderCombiningCharacterSequence(const UChar* characters, size_t length) const
+Path Font::platformPathForGlyph(Glyph glyph) const
 {
-  if (!m_combiningCharacterSequenceSupport)
-    m_combiningCharacterSequenceSupport = std::make_unique<HashMap<String, bool>>();
-
-  WTF::HashMap<String, bool>::AddResult addResult = m_combiningCharacterSequenceSupport->add(String(characters, length), false);
-  if (!addResult.isNewEntry)
-    return addResult.iterator->value;
-
-  UErrorCode error = U_ZERO_ERROR;
-  Vector<UChar, 4> normalizedCharacters(length);
-  int32_t normalizedLength = unorm_normalize(characters, length, UNORM_NFC, UNORM_UNICODE_3_2, &normalizedCharacters[0], length, &error);
-  // Can't render if we have an error or no composition occurred.
-  if (U_FAILURE(error) || (static_cast<size_t>(normalizedLength) == length))
-    return false;
-
-  FT_Face face = m_platformData.face();
-  if (!face)
-    return false;
-
-  if(FT_Get_Char_Index(face, normalizedCharacters[0]))
-    addResult.iterator->value = true;
-
-  return addResult.iterator->value;
+	// TODO
+	notImplemented();
+	return Path();
 }
-#endif
 
 } // namespace WebCore

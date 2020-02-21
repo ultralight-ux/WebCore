@@ -14,6 +14,7 @@ list(APPEND WTF_SOURCES
     win/ThreadSpecificWin.cpp
     win/ThreadingWin.cpp
     win/OSAllocatorWin.cpp
+    win/CPUTimeWin.cpp
 
     win/MemoryFootprintWin.cpp
     win/MemoryPressureHandlerWin.cpp

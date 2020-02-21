@@ -26,7 +26,7 @@
 #include "config.h"
 #include "SSLKeyGenerator.h"
 
-#if !PLATFORM(MAC) && !PLATFORM(WIN)
+#if !PLATFORM(MAC) && !PLATFORM(WIN) && !PLATFORM(ULTRALIGHT)
 
 #include "NotImplemented.h"
 

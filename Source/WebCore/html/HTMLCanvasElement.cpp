@@ -931,10 +931,10 @@ void HTMLCanvasElement::createImageBuffer() const
     RenderingMode renderingMode = shouldAccelerate(size()) ? Accelerated : Unaccelerated;
 
     auto hostWindow = (document().view() && document().view()->root()) ? document().view()->root()->hostWindow() : nullptr;
-    setImageBuffer(ImageBuffer::create(size(), renderingMode, 1, ColorSpaceSRGB, hostWindow));
 #if USE(ULTRALIGHT)
-    // TODO: Handle creation of deferred (recorder) image buffer canvas here.
-    static_assert(false);
+    setImageBuffer(ImageBuffer::create(size(), renderingMode, 1, ColorSpaceSRGB, hostWindow, true));
+#else
+    setImageBuffer(ImageBuffer::create(size(), renderingMode, 1, ColorSpaceSRGB, hostWindow));
 #endif
 }
 

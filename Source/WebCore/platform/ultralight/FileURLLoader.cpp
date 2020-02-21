@@ -2,7 +2,7 @@
 #include "FileURLLoader.h"
 
 #include "SharedBuffer.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include <wtf/MainThread.h>
 #include <wtf/WorkQueue.h>
 #include <Ultralight/platform/Platform.h>
@@ -21,6 +21,11 @@ static WorkQueue& loadQueue()
 struct LoadTask {
   WTF_MAKE_FAST_ALLOCATED;
 public:
+  LoadTask(const String& urlString, LoadCompletionHandler&& completionHandler)
+    : urlString(urlString.isolatedCopy()), completionHandler(WTFMove(completionHandler))
+  {
+  }
+
   const String urlString;
   const LoadCompletionHandler completionHandler;
 
@@ -34,10 +39,7 @@ static std::unique_ptr<LoadTask> createLoadTask(const URL& url, LoadCompletionHa
       path = path.substring(1);
   }
 
-  return std::make_unique<LoadTask>(LoadTask{
-    path.isolatedCopy(),
-    WTFMove(completionHandler)
-  });
+  return std::make_unique<LoadTask>(path, WTFMove(completionHandler));
 }
 
 void load(const URL& url, LoadCompletionHandler&& completionHandler) {

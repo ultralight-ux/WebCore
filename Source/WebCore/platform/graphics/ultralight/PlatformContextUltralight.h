@@ -5,12 +5,13 @@
 #include "GraphicsContext.h"
 #include <Ultralight/private/Canvas.h>
 #include "ShadowBlur.h"
-#include "rendering/BorderEdge.h"
-#include "rendering/style/BorderData.h"
+
 
 typedef ultralight::RefPtr<ultralight::Canvas> PlatformCanvas;
 
 namespace WebCore {
+
+  class BorderEdge;
 
   struct GraphicsContextState;
 
@@ -65,7 +66,7 @@ namespace WebCore {
     void setMask(const Path& path, WindRule clipRule);
 
     void DrawBoxDecorations(const FloatRect& layout_rect, const FloatRoundedRect& outer_rrect,
-      const FloatRoundedRect& inner_rrect, BorderEdge edges[4], Color fill_color);
+      const FloatRoundedRect& inner_rrect, const BorderEdge* edges, Color fill_color);
 
     void DrawRoundedRect(const FloatRect& layout_rect, const FloatRoundedRect& rrect,
       Color fill_color, float stroke_width, Color stroke_color);

@@ -1815,7 +1815,7 @@ static FloatRect rectToDevicePixels(const LayoutRect& rect)
 }
 
 inline FloatSize ToFloatSize(const LengthSize& val) {
-  return FloatSize(val.width().value(), val.height().value());
+  return FloatSize(val.width.value(), val.height.value());
 }
 
 /*
@@ -1860,10 +1860,6 @@ void RenderBoxModelObject::paintBorder(const PaintInfo& info, const LayoutRect& 
 
     BorderEdge edges[4];
     BorderEdge::getBorderEdgeInfo(edges, style, document().deviceScaleFactor(), includeLogicalLeftEdge, includeLogicalRightEdge);
-
-    // If no borders intersects with the dirty area, we can skip the border painting.
-    if (innerBorder.contains(info.rect))
-        return;
 
     bool haveAlphaColor = false;
     bool haveAllSolidEdges = true;
@@ -1916,6 +1912,10 @@ void RenderBoxModelObject::paintBorder(const PaintInfo& info, const LayoutRect& 
 
     RoundedRect outerBorder = style.getRoundedBorderFor(rect, includeLogicalLeftEdge, includeLogicalRightEdge);
     RoundedRect innerBorder = style.getRoundedInnerBorderFor(borderInnerRectAdjustedForBleedAvoidance(graphicsContext, rect, bleedAvoidance), includeLogicalLeftEdge, includeLogicalRightEdge);
+
+    // If no borders intersects with the dirty area, we can skip the border painting.
+    if (innerBorder.contains(info.rect))
+      return;
 
     if (!style.hasBorderRadius() && haveAllSolidEdges && (allEdgesShareColor || maxEdgeWidth < 5.0f)) {
       // Just draw a rect for each side

@@ -1,6 +1,6 @@
 @echo off
 SETLOCAL
-set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat"
+set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat"
 if "%1"=="release" GOTO CHECKTYPE
 if "%1"=="debug" GOTO CHECKTYPE
 if "%1"=="vs" GOTO CHECKTYPE
@@ -19,9 +19,9 @@ GOTO SYNTAX
 set "DIRNAME=build_%1_%2"
 if "%1"=="vs" (
   if "%2"=="x86" (
-    set "FLAGS=-G "Visual Studio 14 2015""
+    set "FLAGS=-G "Visual Studio 15 2017""
   ) else (
-    set "FLAGS=-G "Visual Studio 14 2015 Win64""
+    set "FLAGS=-G "Visual Studio 15 2017 Win64""
   )
 )
 if "%1"=="release" (

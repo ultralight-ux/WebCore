@@ -65,7 +65,6 @@ interface IDWriteFontFace;
 #endif
 
 #if USE(ULTRALIGHT)
-typedef struct FT_FaceRec_*  FT_Face;
 #include <wtf/HashFunctions.h>
 #include "SharedBuffer.h"
 #include <Ultralight/Buffer.h>
@@ -75,6 +74,8 @@ typedef struct FT_FaceRec_*  FT_Face;
 #include <wtf/Vector.h>
 #include "Glyph.h"
 #include "FloatRect.h"
+#include "HbUniquePtr.h"
+#include "RefPtrFreeTypeFace.h"
 #endif
 
 #if USE(DIRECT2D)
@@ -134,12 +135,16 @@ public:
 #endif
 
 #if USE(ULTRALIGHT)
-    FontPlatformData(FT_Face, ultralight::RefPtr<ultralight::Buffer>, const FontDescription&);
+    FontPlatformData(RefPtr<FT_FaceRec_>, ultralight::RefPtr<ultralight::Buffer>, const FontDescription&);
     FontPlatformData(const FontPlatformData&);
     FontPlatformData(FontPlatformData&&) = default;
     FontPlatformData& operator=(const FontPlatformData&);
     FontPlatformData& operator=(FontPlatformData&&) = default;
     ~FontPlatformData();
+
+#if USE(HARFBUZZ) && !ENABLE(OPENTYPE_MATH)
+    HbUniquePtr<hb_font_t> createOpenTypeMathHarfBuzzFont() const;
+#endif
 #endif
 
 #if PLATFORM(WIN)
@@ -240,7 +245,7 @@ public:
     ultralight::RefPtr<ultralight::Font> font() { return m_font; }
     Vector<ultralight::Glyph>& glyphBuffer() { return m_glyphBuffer; }
     bool isDistanceField() { return m_distanceField; }
-    float glyphWidth(Glyph glyph);
+    double glyphWidth(Glyph glyph);
     FloatRect glyphExtents(Glyph glyph);
 #endif
 
@@ -284,7 +289,7 @@ private:
     RefPtr<FcPattern> m_pattern;
 #endif
 #if USE(ULTRALIGHT)
-    FT_Face m_face { 0 };
+    RefPtr<FT_FaceRec_> m_face;
     ultralight::RefPtr<ultralight::Buffer> m_data; // We must retain the font data, Freetype won't do it
     ultralight::RefPtr<ultralight::Font> m_font;
     Vector<ultralight::Glyph> m_glyphBuffer;

@@ -53,13 +53,18 @@ void FontCache::platformInit()
   GetFreeTypeLib();
 }
 
-/*
-Vector<FontSelectionCapabilities> FontCache::getFontSelectionCapabilitiesInFamily(const AtomicString&) {
+
+Vector<FontSelectionCapabilities> FontCache::getFontSelectionCapabilitiesInFamily(const AtomString&, AllowUserInstalledFonts) {
   // TODO
   notImplemented();
   return Vector<FontSelectionCapabilities>();
 }
-*/
+
+bool FontCache::isSystemFontForbiddenForEditing(WTF::String const &) {
+	notImplemented();
+	return false;
+}
+
 
 /*
 Ref<Font> FontCache::lastResortFallbackFontForEveryCharacter(const FontDescription& fontDescription)

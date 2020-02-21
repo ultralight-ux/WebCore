@@ -1,17 +1,17 @@
 #include "config.h"
 #include "RenderTheme.h"
-#include "NeverDestroyed.h"
+#include <wtf/NeverDestroyed.h>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
 #include <Ultralight/private/Paint.h>
-#include "WebCore/platform/ultralight/StringUltralight.h"
-#include "WebCore/platform/graphics/ultralight/PlatformContextUltralight.h"
-#include "WebCore/rendering/style/RenderStyle.h"
-#include "WebCore/rendering/RenderObject.h"
-#include "WebCore/rendering/RenderView.h"
-#include "WebCore/FloatRoundedRect.h"
-#include "WebCore/rendering/RenderBox.h"
-#include "WebCore/css/CSSToLengthConversionData.h"
+#include "StringUltralight.h"
+#include "../graphics/ultralight/PlatformContextUltralight.h"
+#include "RenderStyle.h"
+#include "RenderObject.h"
+#include "RenderView.h"
+#include "FloatRoundedRect.h"
+#include "RenderBox.h"
+#include "CSSToLengthConversionData.h"
 #include "UserAgentStyleSheets.h"
 
 namespace WebCore {
@@ -66,9 +66,7 @@ public:
     return border.rect();
   }
 
-  virtual Color platformFocusRingColor() const override { return Color(0, 151, 255); }
-
-  virtual Color platformActiveSelectionBackgroundColor() const override { return Color(0, 151, 255); }
+  virtual Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override { return Color(0, 151, 255); }
 
   virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const {}
 
@@ -195,10 +193,10 @@ public:
   {
     // Buttons and MenulistButtons are styled if they contain a background image.
     if (style.appearance() == PushButtonPart || style.appearance() == MenulistButtonPart)
-      return !style.visitedDependentColor(CSSPropertyBackgroundColor).alpha() || style.backgroundLayers()->hasImage();
+      return !style.visitedDependentColor(CSSPropertyBackgroundColor).isVisible() || style.backgroundLayers().hasImage();
 
     if (style.appearance() == TextFieldPart || style.appearance() == TextAreaPart)
-      return *style.backgroundLayers() != background;
+      return style.backgroundLayers() != background;
 
     return RenderTheme::isControlStyled(style, border, background, backgroundColor);
   }
@@ -210,10 +208,9 @@ public:
     if (!style.width().isIntrinsicOrAuto() && !style.height().isAuto())
       return;
 
-    Length length = Length(static_cast<int>(ceilf(std::max(style.fontSize(), 10))), Fixed);
-
-    style.setWidth(length);
-    style.setHeight(length);
+    int size = std::max(style.computedFontPixelSize(), 10U);
+    style.setWidth({ size, Fixed });
+    style.setHeight({ size, Fixed });
   }
 
   virtual bool paintCheckbox(const RenderObject&, const PaintInfo&, const IntRect&) override { return true; }
@@ -276,10 +273,10 @@ public:
     if (!style.width().isIntrinsicOrAuto() && !style.height().isAuto())
       return;
 
-    Length length = Length(static_cast<int>(ceilf(std::max(style.fontSize(), 10))), Fixed);
-    style.setWidth(length);
-    style.setHeight(length);
-    style.setBorderRadius(IntSize(length.value() / 2.0f, length.value() / 2.0f));
+    int size = std::max(style.computedFontPixelSize(), 10U);
+    style.setWidth({ size, Fixed });
+    style.setHeight({ size, Fixed });
+    style.setBorderRadius({ size / 2, size / 2 });
   }
 
   virtual bool paintRadio(const RenderObject&, const PaintInfo&, const IntRect&) override { return true; }
@@ -329,13 +326,11 @@ public:
 
   void adjustRoundBorderRadius(RenderStyle& style, RenderBox& box) const
   {
-    if (style.appearance() == NoControlPart || style.backgroundLayers()->hasImage())
+    if (style.appearance() == NoControlPart || style.backgroundLayers().hasImage())
       return;
 
-    // FIXME: We should not be relying on border radius for the appearance of our controls <rdar://problem/7675493>
-    Length radiusWidth(static_cast<int>(std::min(box.width(), box.height()) / 2.0), Fixed);
-    Length radiusHeight(static_cast<int>(box.height() / 2.0), Fixed);
-    style.setBorderRadius(LengthSize(radiusWidth, radiusHeight));
+    // FIXME: We should not be relying on border radius for the appearance of our controls <rdar://problem/7675493>.
+    style.setBorderRadius({ { std::min(box.width(), box.height()) / 2, Fixed }, { box.height() / 2, Fixed } });
   }
 
   virtual void adjustButtonStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const override
@@ -454,8 +449,8 @@ RenderTheme& RenderTheme::singleton()
 }
 */
 
-Ref<RenderTheme> RenderTheme::themeForPage(Page*) {
-  static RenderThemeUltralight theme;
+RenderTheme& RenderTheme::singleton() {
+  static NeverDestroyed<RenderThemeUltralight> theme;
   return theme;
 }
 

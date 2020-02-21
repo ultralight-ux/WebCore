@@ -9,65 +9,160 @@ namespace WebCore {
 
 std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste()
 {
-  notImplemented();
-  // TODO
-  auto pasteboard = std::make_unique<Pasteboard>();
-  return pasteboard;
+  return std::make_unique<Pasteboard>();
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::createPrivate()
+Pasteboard::Pasteboard()
 {
-  return createForCopyAndPaste();
 }
 
-Pasteboard::Pasteboard() {
+bool Pasteboard::hasData()
+{
+  notImplemented();
+  return false;
 }
 
-bool Pasteboard::hasData() { return false; }
-Vector<String> Pasteboard::types() { return Vector<String>(); }
-String Pasteboard::readString(const String& type) { return String(); }
+Vector<String> Pasteboard::typesSafeForBindings(const String&)
+{
+  notImplemented();
+  return { };
+}
 
-void Pasteboard::writeString(const String& type, const String& data) {}
-void Pasteboard::clear() {}
-void Pasteboard::clear(const String& type) {}
+Vector<String> Pasteboard::typesForLegacyUnsafeBindings()
+{
+  notImplemented();
+  Vector<String> types;
+  return types;
+}
 
-void Pasteboard::read(PasteboardPlainText&) {}
-void Pasteboard::read(PasteboardWebContentReader&) {}
+String Pasteboard::readOrigin()
+{
+  notImplemented(); // webkit.org/b/177633: [GTK] Move to new Pasteboard API
+  return { };
+}
 
-void Pasteboard::write(const PasteboardURL&) {}
-void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&) {}
-void Pasteboard::write(const PasteboardImage&) {}
-void Pasteboard::write(const PasteboardWebContent&) {}
+String Pasteboard::readString(const String& type)
+{
+  notImplemented();
+  return String();
+}
 
-Vector<String> Pasteboard::readFilenames() { return Vector<String>(); }
-bool Pasteboard::canSmartReplace() { return false; }
+String Pasteboard::readStringInCustomData(const String&)
+{
+  notImplemented();
+  return { };
+}
 
-void Pasteboard::writeMarkup(const String& markup) {}
-void Pasteboard::writePlainText(const String&, SmartReplaceOption) {}
-void Pasteboard::writePasteboard(const Pasteboard& sourcePasteboard) {}
+void Pasteboard::writeString(const String& type, const String& text)
+{
+  notImplemented();
+}
+
+void Pasteboard::clear()
+{
+  notImplemented();
+}
+
+void Pasteboard::clear(const String&)
+{
+  notImplemented();
+}
+
+void Pasteboard::read(PasteboardPlainText& text)
+{
+  notImplemented();
+}
+
+void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy)
+{
+  notImplemented();
+}
+
+void Pasteboard::read(PasteboardFileReader&)
+{
+  notImplemented();
+}
+
+void Pasteboard::write(const PasteboardURL& url)
+{
+  notImplemented();
+}
+
+void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
+{
+  notImplemented();
+}
+
+void Pasteboard::write(const PasteboardImage&)
+{
+  notImplemented();
+}
+
+void Pasteboard::write(const PasteboardWebContent& content)
+{
+  notImplemented();
+}
+
+Pasteboard::FileContentState Pasteboard::fileContentState()
+{
+  notImplemented();
+  return FileContentState::NoFileOrImageData;
+}
+
+bool Pasteboard::canSmartReplace()
+{
+  notImplemented();
+  return false;
+}
+
+void Pasteboard::writeMarkup(const String&)
+{
+  notImplemented();
+}
+
+void Pasteboard::writePlainText(const String& text, SmartReplaceOption)
+{
+  notImplemented();
+}
+
+void Pasteboard::writeCustomData(const PasteboardCustomData&)
+{
+  notImplemented();
+}
+
+void Pasteboard::write(const Color&)
+{
+  notImplemented();
+}
 
 #if ENABLE(DRAG_SUPPORT)
 std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop() {
-  // TODO
-  notImplemented();
-  auto pasteboard = std::make_unique<Pasteboard>();
-  return pasteboard;
+  return std::make_unique<Pasteboard>();
 }
 
 std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(const DragData&) {
-  // TODO
+  return std::make_unique<Pasteboard>();
+}
+
+void Pasteboard::setDragImage(DragImage, const IntPoint& hotSpot) {
   notImplemented();
-  auto pasteboard = std::make_unique<Pasteboard>();
-  return pasteboard;
+}
+#endif // ENABLE(DRAG_SUPPORT)
+
+#if PLATFORM(WIN) || PLATFORM(ULTRALIGHT)
+RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame&, Range&, bool allowPlainText, bool& chosePlainText) {
+  notImplemented();
+  return nullptr;
 }
 
-void Pasteboard::setDragImage(DragImageRef, const IntPoint& hotSpot) {
+void Pasteboard::writeImage(Element&, const URL&, const String& title) {
+  notImplemented();
 }
-#endif
 
-RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame&, Range&, bool allowPlainText, bool& chosePlainText) { return nullptr; }
-void Pasteboard::writeImage(Element&, const URL&, const String& title) {}
-void Pasteboard::writeSelection(Range&, bool canSmartCopyOrDelete, Frame&, ShouldSerializeSelectedTextForDataTransfer) {}
+void Pasteboard::writeSelection(Range&, bool canSmartCopyOrDelete, Frame&, ShouldSerializeSelectedTextForDataTransfer) {
+  notImplemented();
+}
+#endif // PLATFORM(WIN) || PLATFORM(ULTRALIGHT)
 
 } // namespace WebCore
 

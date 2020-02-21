@@ -12,6 +12,8 @@
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_TRUETYPE_TABLES_H
+#include <hb-ft.h>
+#include <hb-ot.h>
 
 static int TwentySixDotSix2Pixel(const int i)
 {
@@ -29,10 +31,10 @@ float RoundUpDistanceFieldFontSize(float size) {
 }
 #endif
 
-FontPlatformData::FontPlatformData(FT_Face face, ultralight::RefPtr<ultralight::Buffer> data, const FontDescription& description)
+FontPlatformData::FontPlatformData(RefPtr<FT_FaceRec_> face, ultralight::RefPtr<ultralight::Buffer> data, const FontDescription& description)
   : m_face(face), m_data(data) {
   
-  m_fixedWidth = m_face->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
+  m_fixedWidth = m_face.get()->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
   auto config = ultralight::Platform::instance().config();
 
   m_size = (float)std::floor(description.computedPixelSize() * config.device_scale_hint);
@@ -51,6 +53,7 @@ FontPlatformData::FontPlatformData(FT_Face face, ultralight::RefPtr<ultralight::
 }
 
 FontPlatformData::FontPlatformData(const FontPlatformData& other) {
+  m_face = nullptr;
   *this = other;
 }
 
@@ -70,9 +73,7 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
   m_isHashTableDeletedValue = other.m_isHashTableDeletedValue;
   m_isSystemFont = other.m_isSystemFont;
   m_fixedWidth = other.m_fixedWidth;
-
   m_face = other.m_face;
-  FT_Reference_Face(m_face);
   m_font = other.m_font;
   m_data = other.m_data;
 
@@ -80,14 +81,14 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
 }
 
 FontPlatformData::~FontPlatformData() {
-  FT_Done_Face(m_face);
+  m_face = nullptr;
   m_font = nullptr;
 }
 
 FT_Face FontPlatformData::face() const {
   // We always set the current font-size before accessing the underlying FT_Face
-  FT_Set_Pixel_Sizes(m_face, 0, (FT_UInt)m_size);
-  return m_face;
+  FT_Set_Pixel_Sizes(m_face.get(), 0, (FT_UInt)m_size);
+  return m_face.get();
 }
 
 bool FontPlatformData::isFixedPitch() const
@@ -99,7 +100,7 @@ bool FontPlatformData::platformIsEqual(const FontPlatformData& platformFont) con
   return this->m_face == platformFont.m_face;
 }
 
-float FontPlatformData::glyphWidth(Glyph glyph) {
+double FontPlatformData::glyphWidth(Glyph glyph) {
   ultralight::RefPtr<ultralight::Font> ultraFont = font();
   if (!ultraFont->HasGlyph(glyph)) {
     FT_Face face = this->face();
@@ -122,7 +123,7 @@ FloatRect FontPlatformData::glyphExtents(Glyph glyph) {
 }
 
 RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const {
-  FT_Face freeTypeFace = m_face;
+  FT_Face freeTypeFace = m_face.get();
   if (!freeTypeFace)
     return nullptr;
 
@@ -145,6 +146,26 @@ RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const {
 String FontPlatformData::description() const
 {
   return String("FontPlatformDataUltralight");
+}
+#endif
+
+unsigned FontPlatformData::hash() const
+{
+  return PtrHash<ultralight::Buffer*>::hash(m_data.get());
+}
+
+#if USE(HARFBUZZ) && !ENABLE(OPENTYPE_MATH)
+HbUniquePtr<hb_font_t> FontPlatformData::createOpenTypeMathHarfBuzzFont() const
+{
+	FT_Face ftFace = m_face.get();
+	if (!ftFace)
+		return nullptr;
+
+	HbUniquePtr<hb_face_t> face(hb_ft_face_create_cached(ftFace));
+	if (!hb_ot_math_has_data(face.get()))
+		return nullptr;
+
+	return HbUniquePtr<hb_font_t>(hb_font_create(face.get()));
 }
 #endif
 

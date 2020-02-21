@@ -259,9 +259,11 @@ NativeImagePtr ScalableImageDecoder::createFrameImageAtIndex(size_t index, Subsa
     if (!buffer || buffer->isInvalid() || !buffer->hasBackingStore())
         return nullptr;
 
+    auto& frame = m_frameBufferCache[index];
+
     // Return the buffer contents as a native image. For some ports, the data
     // is already in a native container, and this just increments its refcount.
-    return buffer->backingStore()->image();
+    return buffer->backingStore()->image(frame.isComplete());
 }
 
 void ScalableImageDecoder::prepareScaleDataIfNecessary()

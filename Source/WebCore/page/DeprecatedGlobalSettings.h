@@ -34,7 +34,7 @@ class DeprecatedGlobalSettings {
 public:
     DeprecatedGlobalSettings() = delete;
 
-#if PLATFORM(WIN)
+#if OS(WINDOWS)
     static void setShouldUseHighResolutionTimers(bool);
     static bool shouldUseHighResolutionTimers() { return gShouldUseHighResolutionTimers; }
 #endif
@@ -121,7 +121,7 @@ private:
     static bool gUsesOverlayScrollbars;
     static bool gMockScrollAnimatorEnabled;
 
-#if PLATFORM(WIN)
+#if OS(WINDOWS)
     static bool gShouldUseHighResolutionTimers;
 #endif
     static bool gShouldRespectPriorityInCSSAttributeSetters;

@@ -42,6 +42,7 @@
 #include "SourceGraphic.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/text/TextStream.h>
+#include "NotImplemented.h"
 
 namespace WebCore {
 

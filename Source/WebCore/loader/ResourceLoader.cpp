@@ -307,7 +307,7 @@ void ResourceLoader::loadFileURL()
   auto url = m_request.url();
 
   RefPtr<ResourceLoader> protectedThis(this);
-  FileURLLoader::load(url, [protectedThis, url](auto loadResult) {
+  FileURLLoader::load(url, [this, protectedThis = makeRef(*this), url](auto loadResult) mutable {
     if (protectedThis->reachedTerminalState())
       return;
     if (!loadResult) {
@@ -319,17 +319,20 @@ void ResourceLoader::loadFileURL()
     auto& result = loadResult.value();
     auto dataSize = result.data ? result.data->size() : 0;
 
-    ResourceResponse dataResponse{ url, result.mimeType, dataSize, result.charset };
+    ResourceResponse dataResponse{ url, result.mimeType, static_cast<long long>(dataSize), result.charset };
     dataResponse.setHTTPStatusCode(200);
-    dataResponse.setHTTPStatusText(ASCIILiteral("OK"));
+    dataResponse.setHTTPStatusText("OK"_s);
     dataResponse.setHTTPHeaderField(HTTPHeaderName::ContentType, result.contentType);
-    protectedThis->didReceiveResponse(dataResponse);
+    dataResponse.setSource(ResourceResponse::Source::Network);
+    this->didReceiveResponse(dataResponse, [this, protectedThis = WTFMove(protectedThis), dataSize, data = result.data.releaseNonNull()]() mutable {
+      if (!this->reachedTerminalState() && dataSize)
+        this->didReceiveBuffer(WTFMove(data), dataSize, DataPayloadWholeResource);
 
-    if (!protectedThis->reachedTerminalState() && dataSize)
-      protectedThis->didReceiveBuffer(result.data.releaseNonNull(), dataSize, DataPayloadWholeResource);
-
-    if (!protectedThis->reachedTerminalState())
-      protectedThis->didFinishLoading(currentTime());
+      if (!this->reachedTerminalState()) {
+        NetworkLoadMetrics emptyMetrics;
+        this->didFinishLoading(emptyMetrics);
+      }
+    });
   });
 }
 

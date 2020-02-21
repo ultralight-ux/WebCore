@@ -7,6 +7,8 @@ INSTALL(TARGETS WebCore
 INSTALL(DIRECTORY "${DERIVED_SOURCES_DIR}" DESTINATION "." FILES_MATCHING PATTERN "*.h" PATTERN "*.js")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/ultralight"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform" FILES_MATCHING PATTERN "*.h")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/graphics/ShadowBlur.h"
+        DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/graphics/")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/graphics/ultralight"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore/platform/graphics" FILES_MATCHING PATTERN "*.h")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/platform/graphics/harfbuzz"
@@ -21,6 +23,8 @@ INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/SQLite"
         DESTINATION "DerivedSources/ForwardingHeaders" FILES_MATCHING PATTERN "*.h")
 INSTALL(DIRECTORY "${PROJECT_SOURCE_DIR}/Source/WebCore/storage"
         DESTINATION "DerivedSources/ForwardingHeaders/WebCore" FILES_MATCHING PATTERN "*.h")
+INSTALL(FILES "${PROJECT_SOURCE_DIR}/Source/WebCore/config.h"
+        DESTINATION "DerivedSources/ForwardingHeaders/WebCore/")
 
 set(JAVASCRIPTCORE_HEADERS
   "${PROJECT_SOURCE_DIR}/Source/JavaScriptCore/API/JavaScript.h"

@@ -20,7 +20,7 @@ protected:
 
   bool hasThumb(Scrollbar&) override { return true; }
 
-  virtual int scrollbarThickness(ScrollbarControlSize = RegularScrollbar) override { return thickness; }
+  virtual int scrollbarThickness(ScrollbarControlSize = RegularScrollbar, ScrollbarExpansionState = ScrollbarExpansionState::Expanded) override { return thickness; }
 
   IntRect backButtonRect(Scrollbar& scrollbar, ScrollbarPart part, bool painting) override {
     if (!enableButtons || part != BackButtonStartPart)

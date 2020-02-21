@@ -47,7 +47,7 @@ namespace WebCore {
     context.save();
 
     // Set the compositing operation.
-    if (op == CompositeSourceOver && mode == BlendModeNormal && !nativeImageHasAlpha(image))
+    if (op == CompositeSourceOver && mode == BlendMode::Normal && !nativeImageHasAlpha(image))
       context.setCompositeOperation(CompositeCopy);
     else
       context.setCompositeOperation(op, mode);

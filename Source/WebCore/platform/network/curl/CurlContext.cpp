@@ -40,7 +40,7 @@
 #include <wtf/text/CString.h>
 
 #if OS(WINDOWS)
-#include "WebCoreBundleWin.h"
+#include "../../win/WebCoreBundleWin.h"
 #include <shlobj.h>
 #include <shlwapi.h>
 #endif

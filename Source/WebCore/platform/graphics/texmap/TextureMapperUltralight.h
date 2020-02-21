@@ -26,6 +26,8 @@ public:
 
     virtual void drawSolidColor(const FloatRect&, const TransformationMatrix&, const Color&, bool) override;
 
+	virtual void clearColor(const Color&) override;
+
     // makes a surface the target for the following drawTexture calls.
     virtual void bindSurface(BitmapTexture* surface) override;
 
@@ -36,6 +38,8 @@ public:
     virtual IntRect clipBounds() override;
 
     virtual Ref<BitmapTexture> createTexture() override;
+
+	virtual Ref<BitmapTexture> createTexture(int internalFormat) override;
 
     virtual void beginPainting(PaintFlags = 0) override;
 

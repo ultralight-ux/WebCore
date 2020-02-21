@@ -26,7 +26,10 @@
 #include "config.h"
 #include "ComplexTextController.h"
 
+#if USE(CAIRO)
 #include "CairoUtilities.h"
+#elif USE(ULTRALIGHT)
+#endif
 #include "FontCascade.h"
 #include "HbUniquePtr.h"
 #include "SurrogatePairAwareTextIterator.h"
@@ -72,11 +75,15 @@ static hb_font_funcs_t* harfBuzzFontFunctions()
 
         hb_font_funcs_set_variation_glyph_func(fontFunctions, [](hb_font_t*, void* context, hb_codepoint_t unicode, hb_codepoint_t variation, hb_codepoint_t* glyph, void*) -> hb_bool_t {
             auto& font = *static_cast<Font*>(context);
+#if USE(CAIRO)
             auto* scaledFont = font.platformData().scaledFont();
             ASSERT(scaledFont);
 
             CairoFtFaceLocker cairoFtFaceLocker(scaledFont);
             if (FT_Face ftFace = cairoFtFaceLocker.ftFace()) {
+#elif USE(ULTRALIGHT)
+			if (FT_Face ftFace = font.platformData().face()) {
+#endif
                 *glyph = FT_Face_GetCharVariantIndex(ftFace, unicode, variation);
                 return !!*glyph;
             }
@@ -91,6 +98,7 @@ static hb_font_funcs_t* harfBuzzFontFunctions()
 #endif
         hb_font_funcs_set_glyph_h_advance_func(fontFunctions, [](hb_font_t*, void* context, hb_codepoint_t point, void*) -> hb_bool_t {
             auto& font = *static_cast<Font*>(context);
+#if USE(CAIRO)
             auto* scaledFont = font.platformData().scaledFont();
             ASSERT(scaledFont);
 
@@ -100,6 +108,10 @@ static hb_font_funcs_t* harfBuzzFontFunctions()
 
             bool hasVerticalGlyphs = glyphExtents.y_advance;
             return doubleToHarfBuzzPosition(hasVerticalGlyphs ? -glyphExtents.y_advance : glyphExtents.x_advance);
+#elif USE(ULTRALIGHT)
+			float width = const_cast<FontPlatformData&>(font.platformData()).glyphWidth(point);
+			return doubleToHarfBuzzPosition(width);
+#endif
         }, nullptr, nullptr);
 
         hb_font_funcs_set_glyph_h_origin_func(fontFunctions, [](hb_font_t*, void*, hb_codepoint_t, hb_position_t*, hb_position_t*, void*) -> hb_bool_t {
@@ -109,6 +121,7 @@ static hb_font_funcs_t* harfBuzzFontFunctions()
 
         hb_font_funcs_set_glyph_extents_func(fontFunctions, [](hb_font_t*, void* context, hb_codepoint_t point, hb_glyph_extents_t* extents, void*) -> hb_bool_t {
             auto& font = *static_cast<Font*>(context);
+#if USE(CAIRO)
             auto* scaledFont = font.platformData().scaledFont();
             ASSERT(scaledFont);
 
@@ -121,6 +134,13 @@ static hb_font_funcs_t* harfBuzzFontFunctions()
             extents->y_bearing = doubleToHarfBuzzPosition(hasVerticalGlyphs ? -glyphExtents.y_bearing : glyphExtents.y_bearing);
             extents->width = doubleToHarfBuzzPosition(hasVerticalGlyphs ? -glyphExtents.height : glyphExtents.width);
             extents->height = doubleToHarfBuzzPosition(hasVerticalGlyphs ? glyphExtents.width : glyphExtents.height);
+#elif USE(ULTRALIGHT)
+			FloatRect rect = const_cast<FontPlatformData&>(font.platformData()).glyphExtents(point);
+			extents->x_bearing = doubleToHarfBuzzPosition(rect.x());
+			extents->y_bearing = doubleToHarfBuzzPosition(rect.y());
+			extents->width = doubleToHarfBuzzPosition(rect.width());
+			extents->height = doubleToHarfBuzzPosition(rect.height());
+#endif
             return true;
         }, nullptr, nullptr);
 
@@ -309,9 +329,13 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cha
         return;
 
     const auto& fontPlatformData = font->platformData();
+#if USE(CAIRO)
     auto* scaledFont = fontPlatformData.scaledFont();
     CairoFtFaceLocker cairoFtFaceLocker(scaledFont);
     FT_Face ftFace = cairoFtFaceLocker.ftFace();
+#elif USE(ULTRALIGHT)
+	FT_Face ftFace = fontPlatformData.face();
+#endif
     if (!ftFace)
         return;
 

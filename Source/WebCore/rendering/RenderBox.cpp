@@ -1369,7 +1369,6 @@ void RenderBox::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& pai
 
     if (bleedAvoidance == BackgroundBleedUseTransparencyLayer)
         paintInfo.context().endTransparencyLayer();
-#endif
 }
 
 bool RenderBox::paintsOwnBackground() const

@@ -2,12 +2,12 @@
 
 #include <functional>
 #include <wtf/Optional.h>
+#include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class SharedBuffer;
-class URL;
 
 namespace FileURLLoader {
 
@@ -18,7 +18,7 @@ struct Result {
   RefPtr<SharedBuffer> data;
 };
 
-using LoadCompletionHandler = std::function<void(std::optional<Result>)>;
+using LoadCompletionHandler = WTF::Function<void(Optional<Result>)>;
 
 void load(const URL&, LoadCompletionHandler&&);
 

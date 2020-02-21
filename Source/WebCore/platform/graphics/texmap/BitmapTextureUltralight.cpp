@@ -108,8 +108,6 @@ void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
   canvas_->Save();
   {
     GraphicsContext ctx(canvas_);
-    ctx.setImageInterpolationQuality(textureMapper.imageInterpolationQuality());
-    ctx.setTextDrawingMode(textureMapper.textDrawingMode());
     ctx.applyDeviceScaleFactor(scale);
 
     sourceLayer->paintGraphicsLayerContents(ctx, sourceRect);

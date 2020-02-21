@@ -29,9 +29,10 @@ unsigned DragData::numberOfFiles() const
   return 0;
 }
 
-void DragData::asFilenames(Vector<String>& result) const
+Vector<String> DragData::asFilenames() const
 {
   notImplemented();
+  return Vector<String>();
 }
 
 bool DragData::containsPlainText() const
@@ -58,7 +59,7 @@ bool DragData::canSmartReplace() const
   return false;
 }
 
-bool DragData::containsCompatibleContent() const
+bool DragData::containsCompatibleContent(DraggingPurpose) const
 {
   notImplemented();
   return false;

@@ -48,12 +48,16 @@ CurlSSLVerifier::CurlSSLVerifier(void* sslCtx)
 #if defined(LIBRESSL_VERSION_NUMBER)
     if (auto data = WTF::get_if<CertificateInfo::Certificate>(sslHandle.getCACertInfo()))
         SSL_CTX_load_verify_mem(ctx, static_cast<void*>(const_cast<uint8_t*>(data->data())), data->size());
+#else
+    int result = SSL_CTX_load_verify_locations(ctx, "cacert.pem", NULL);
+    if (result == 0)
+      fprintf(stderr, "Error in CurlSSLVerifier.cpp, cannot load cacert.pem.\n");
 #endif
 
 #if (!defined(LIBRESSL_VERSION_NUMBER))
     const auto& signatureAlgorithmsList = sslHandle.getSignatureAlgorithmsList();
     if (!signatureAlgorithmsList.isEmpty())
-        SSL_CTX_set1_sigalgs_list(ctx, signatureAlgorithmsList->utf8().data());
+        SSL_CTX_set1_sigalgs_list(ctx, signatureAlgorithmsList.utf8().data());
 #endif
 
     const auto& curvesList = sslHandle.getCurvesList();

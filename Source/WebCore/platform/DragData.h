@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(DRAG_SUPPORT)
-
 #include "Color.h"
 #include "DragActions.h"
 #include "IntPoint.h"
@@ -143,10 +141,3 @@ private:
 };
     
 }
-<<<<<<< HEAD
-
-#endif
-
-#endif // !DragData_h
-=======
->>>>>>> upstream/master

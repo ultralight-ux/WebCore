@@ -44,6 +44,8 @@ ImageDrawResult CanvasImage::draw(GraphicsContext& context, const FloatRect& dst
   ultralight::Rect src_uv = srcCanvas->render_target().uv_coords;
   context.platformContext()->canvas()->DrawCanvas(*srcCanvas, src_uv, dstRect, paint);
   context.restore();
+
+  return ImageDrawResult::DidDraw;
 }
 
 void CanvasImage::drawPattern(GraphicsContext& context, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform,

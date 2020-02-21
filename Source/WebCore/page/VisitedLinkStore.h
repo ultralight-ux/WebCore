@@ -46,8 +46,8 @@ public:
     void addPage(Page&);
     void removePage(Page&);
 
-    WEBCORE_EXPORT void invalidateStylesForAllLinks();
-    WEBCORE_EXPORT void invalidateStylesForLink(SharedStringHash);
+    void invalidateStylesForAllLinks();
+    void invalidateStylesForLink(SharedStringHash);
 
 private:
     HashSet<Page*> m_pages;
