@@ -255,8 +255,7 @@ void AssemblyHelpers::callExceptionFuzz(VM& vm)
 #else
     move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
 #endif
-    move(TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationExceptionFuzz)), GPRInfo::nonPreservedNonReturnGPR);
-    call(GPRInfo::nonPreservedNonReturnGPR, OperationPtrTag);
+    cCall(TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationExceptionFuzz)), GPRInfo::nonPreservedNonReturnGPR, OperationPtrTag);
 
     for (unsigned i = 0; i < FPRInfo::numberOfRegisters; ++i) {
         move(TrustedImmPtr(buffer + GPRInfo::numberOfRegisters + i), GPRInfo::regT0);
@@ -940,8 +939,7 @@ void AssemblyHelpers::debugCall(VM& vm, V_DebugOperation_EPP function, void* arg
 #else
 #error "JIT not supported on this platform."
 #endif
-    move(TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(function)), scratch);
-    call(scratch, OperationPtrTag);
+    cCall(TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(function)), scratch, OperationPtrTag);
 
     move(TrustedImmPtr(scratchBuffer->addressOfActiveLength()), GPRInfo::regT0);
     storePtr(TrustedImmPtr(nullptr), GPRInfo::regT0);

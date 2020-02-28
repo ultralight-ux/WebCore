@@ -207,6 +207,14 @@ public:
     }
 #endif
 
+    Call callJIT(PtrTag)
+    {
+        DataLabelPtr label = moveWithPatch(TrustedImmPtr(nullptr), scratchRegister());
+        Call result = Call(m_assembler.call(scratchRegister()), Call::Linkable);
+        ASSERT_UNUSED(label, differenceBetween(label, result) == REPATCH_OFFSET_CALL_R11);
+        return result;
+    }
+
     Call call(PtrTag)
     {
 #if OS(WINDOWS)

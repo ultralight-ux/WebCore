@@ -245,7 +245,7 @@ RegisterSet RegisterSet::ftlCalleeSaveRegisters()
 {
     RegisterSet result;
 #if ENABLE(FTL_JIT)
-#if CPU(X86_64) && !OS(WINDOWS)
+#if CPU(X86_64)
     result.set(GPRInfo::regCS0);
     result.set(GPRInfo::regCS1);
     result.set(GPRInfo::regCS2);
@@ -253,6 +253,10 @@ RegisterSet RegisterSet::ftlCalleeSaveRegisters()
     ASSERT(GPRInfo::regCS4 == GPRInfo::tagMaskRegister);
     result.set(GPRInfo::regCS3);
     result.set(GPRInfo::regCS4);
+#if OS(WINDOWS)
+    result.set(GPRInfo::regCS5);
+    result.set(GPRInfo::regCS6);
+#endif
 #elif CPU(ARM64)
     // B3 might save and use all ARM64 callee saves specified in the ABI.
     result.set(GPRInfo::regCS0);

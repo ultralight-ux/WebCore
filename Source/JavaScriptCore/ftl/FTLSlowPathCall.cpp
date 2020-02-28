@@ -33,6 +33,7 @@
 #include "FTLThunks.h"
 #include "GPRInfo.h"
 #include "JSCInlines.h"
+#include "MaxFrameExtentForSlowPathCall.h"
 
 namespace JSC { namespace FTL {
 
@@ -58,6 +59,10 @@ SlowPathCallContext::SlowPathCallContext(
         
     m_offsetToSavingArea =
         (std::max(m_numArgs, NUMBER_OF_ARGUMENT_REGISTERS) - NUMBER_OF_ARGUMENT_REGISTERS) * wordSize;
+
+#if OS(WINDOWS)
+    m_offsetToSavingArea = std::max(m_offsetToSavingArea, maxFrameExtentForSlowPathCall);
+#endif
         
     for (unsigned i = std::min(NUMBER_OF_ARGUMENT_REGISTERS, numArgs); i--;)
         m_argumentRegisters.set(GPRInfo::toArgumentRegister(i));
@@ -121,7 +126,11 @@ SlowPathCallKey SlowPathCallContext::keyWithTarget(FunctionPtr<CFunctionPtrTag> 
 SlowPathCall SlowPathCallContext::makeCall(VM& vm, FunctionPtr<CFunctionPtrTag> callTarget)
 {
     SlowPathCallKey key = keyWithTarget(callTarget);
+#if OS(WINDOWS)
+    SlowPathCall result = SlowPathCall(m_jit.callJIT(OperationPtrTag), key);
+#else
     SlowPathCall result = SlowPathCall(m_jit.call(OperationPtrTag), key);
+#endif
 
     m_jit.addLinkTask(
         [result, &vm] (LinkBuffer& linkBuffer) {

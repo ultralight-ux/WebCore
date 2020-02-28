@@ -59,6 +59,11 @@
 #include <wtf/Box.h>
 #include <wtf/Optional.h>
 #include <wtf/StdLibExtras.h>
+#if COMPILER(MSVC)
+#include <intrin.h>
+#define __builtin_popcount __popcnt
+#define __builtin_popcountll __popcnt64
+#endif
 
 namespace JSC { namespace Wasm {
 

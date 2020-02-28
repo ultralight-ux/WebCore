@@ -8395,8 +8395,16 @@ private:
                 };
 
                 auto callWithExceptionCheck = [&] (void* callee) {
+#if OS(WINDOWS)
+                    // On Windows, use the call() method, since it includes some Win64 calling convention fixes we need.
+                    CCallHelpers::Call call = jit.call(OperationPtrTag);
+                    jit.addLinkTask([=](LinkBuffer& linkBuffer) {
+                      linkBuffer.link<OperationPtrTag>(call, FunctionPtr<OperationPtrTag>(callee));
+                    });
+#else
                     jit.move(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(callee)), GPRInfo::nonPreservedNonArgumentGPR0);
                     jit.call(GPRInfo::nonPreservedNonArgumentGPR0, OperationPtrTag);
+#endif
                     exceptions->append(jit.emitExceptionCheck(*vm, AssemblyHelpers::NormalExceptionCheck, AssemblyHelpers::FarJumpWidth));
                 };
 
@@ -8733,8 +8741,16 @@ private:
                 RELEASE_ASSERT(!allocator.numberOfReusedRegisters());
 
                 auto callWithExceptionCheck = [&] (void* callee) {
+#if OS(WINDOWS)
+                    // On Windows, use the call() method, since it includes some Win64 calling convention fixes we need.
+                    CCallHelpers::Call call = jit.call(OperationPtrTag);
+                    jit.addLinkTask([=](LinkBuffer& linkBuffer) {
+                        linkBuffer.link<OperationPtrTag>(call, FunctionPtr<OperationPtrTag>(callee));
+                    });
+#else
                     jit.move(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(callee)), GPRInfo::nonPreservedNonArgumentGPR0);
                     jit.call(GPRInfo::nonPreservedNonArgumentGPR0, OperationPtrTag);
+#endif
                     exceptions->append(jit.emitExceptionCheck(*vm, AssemblyHelpers::NormalExceptionCheck, AssemblyHelpers::FarJumpWidth));
                 };
 

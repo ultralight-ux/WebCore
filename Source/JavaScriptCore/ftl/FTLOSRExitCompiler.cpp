@@ -319,12 +319,13 @@ static void compileStub(
                 jit.storePtr(GPRInfo::regT0, materializationArguments + propertyIndex);
             }
             
+#if !OS(WINDOWS)
             static_assert(FunctionTraits<decltype(operationMaterializeObjectInOSR)>::arity < GPRInfo::numberOfArgumentRegisters, "This call assumes that we don't pass arguments on the stack.");
+#endif
             jit.setupArguments<decltype(operationMaterializeObjectInOSR)>(
                 CCallHelpers::TrustedImmPtr(materialization),
                 CCallHelpers::TrustedImmPtr(materializationArguments));
-            jit.move(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationMaterializeObjectInOSR)), GPRInfo::nonArgGPR0);
-            jit.call(GPRInfo::nonArgGPR0, OperationPtrTag);
+            jit.cCall(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationMaterializeObjectInOSR)), GPRInfo::nonArgGPR0, OperationPtrTag);
             jit.storePtr(GPRInfo::returnValueGPR, materializationToPointer.get(materialization));
 
             // Let everyone know that we're done.
@@ -346,13 +347,14 @@ static void compileStub(
             jit.storePtr(GPRInfo::regT0, materializationArguments + propertyIndex);
         }
 
+#if !OS(WINDOWS)
         static_assert(FunctionTraits<decltype(operationPopulateObjectInOSR)>::arity < GPRInfo::numberOfArgumentRegisters, "This call assumes that we don't pass arguments on the stack.");
+#endif
         jit.setupArguments<decltype(operationPopulateObjectInOSR)>(
             CCallHelpers::TrustedImmPtr(materialization),
             CCallHelpers::TrustedImmPtr(materializationToPointer.get(materialization)),
             CCallHelpers::TrustedImmPtr(materializationArguments));
-        jit.move(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationPopulateObjectInOSR)), GPRInfo::nonArgGPR0);
-        jit.call(GPRInfo::nonArgGPR0, OperationPtrTag);
+        jit.cCall(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationPopulateObjectInOSR)), GPRInfo::nonArgGPR0, OperationPtrTag);
     }
 
     // Save all state from wherever the exit data tells us it was, into the appropriate place in

@@ -1767,6 +1767,18 @@ public:
     void emitRandomThunk(VM&, GPRReg scratch0, GPRReg scratch1, GPRReg scratch2, GPRReg scratch3, FPRReg result);
 #endif
 
+    ALWAYS_INLINE void cCall(TrustedImmPtr function, GPRReg scratch, PtrTag tag)
+    {
+        move(function, scratch);
+#if OS(WINDOWS) && CPU(X86_64)
+        sub64(TrustedImm32(4 * sizeof(int64_t)), X86Registers::esp);
+#endif
+        call(scratch, tag);
+#if OS(WINDOWS) && CPU(X86_64)
+        add64(TrustedImm32(4 * sizeof(int64_t)), X86Registers::esp);
+#endif
+    }
+
     // Call this if you know that the value held in allocatorGPR is non-null. This DOES NOT mean
     // that allocator is non-null; allocator can be null as a signal that we don't know what the
     // value of allocatorGPR is. Additionally, if the allocator is not null, then there is no need

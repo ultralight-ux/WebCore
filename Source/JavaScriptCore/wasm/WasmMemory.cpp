@@ -310,11 +310,12 @@ RefPtr<Memory> Memory::tryCreate(PageCount initial, PageCount maximum, WTF::Func
     }
     
     if (fastMemory) {
-        
+#if !OS(WINDOWS)
         if (mprotect(fastMemory + initialBytes, Memory::fastMappedBytes() - initialBytes, PROT_NONE)) {
             dataLog("mprotect failed: ", strerror(errno), "\n");
             RELEASE_ASSERT_NOT_REACHED();
         }
+#endif
 
         return adoptRef(new Memory(fastMemory, initial, maximum, Memory::fastMappedBytes(), MemoryMode::Signaling, WTFMove(notifyMemoryPressure), WTFMove(syncTryToReclaimMemory), WTFMove(growSuccessCallback)));
     }
@@ -339,10 +340,12 @@ Memory::~Memory()
         memoryManager().freePhysicalBytes(m_size);
         switch (m_mode) {
         case MemoryMode::Signaling:
+#if !OS(WINDOWS)
             if (mprotect(memory(), Memory::fastMappedBytes(), PROT_READ | PROT_WRITE)) {
                 dataLog("mprotect failed: ", strerror(errno), "\n");
                 RELEASE_ASSERT_NOT_REACHED();
             }
+#endif
             memoryManager().freeFastMemory(memory());
             break;
         case MemoryMode::BoundsChecking:
@@ -435,10 +438,12 @@ Expected<PageCount, Memory::GrowFailReason> Memory::grow(PageCount delta)
         uint8_t* startAddress = static_cast<uint8_t*>(memory()) + m_size;
         
         dataLogLnIf(verbose, "Marking WebAssembly memory's ", RawPointer(memory()), " as read+write in range [", RawPointer(startAddress), ", ", RawPointer(startAddress + extraBytes), ")");
+#if !OS(WINDOWS)
         if (mprotect(startAddress, extraBytes, PROT_READ | PROT_WRITE)) {
             dataLog("mprotect failed: ", strerror(errno), "\n");
             RELEASE_ASSERT_NOT_REACHED();
         }
+#endif
         m_memory.recage(m_size, desiredSize);
         m_size = desiredSize;
         return success();

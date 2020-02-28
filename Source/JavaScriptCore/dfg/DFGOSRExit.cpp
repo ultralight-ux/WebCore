@@ -1007,16 +1007,15 @@ void OSRExit::emitRestoreArguments(CCallHelpers& jit, const Operands<ValueRecove
             AssemblyHelpers::TrustedImmPtr(inlineCallFrame), GPRInfo::regT0, GPRInfo::regT1);
         switch (recovery.technique()) {
         case DirectArgumentsThatWereNotCreated:
-            jit.move(AssemblyHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationCreateDirectArgumentsDuringExit)), GPRInfo::nonArgGPR0);
+            jit.cCall(AssemblyHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationCreateDirectArgumentsDuringExit)), GPRInfo::nonArgGPR0, OperationPtrTag);
             break;
         case ClonedArgumentsThatWereNotCreated:
-            jit.move(AssemblyHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationCreateClonedArgumentsDuringExit)), GPRInfo::nonArgGPR0);
+            jit.cCall(AssemblyHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationCreateClonedArgumentsDuringExit)), GPRInfo::nonArgGPR0, OperationPtrTag);
             break;
         default:
             RELEASE_ASSERT_NOT_REACHED();
             break;
         }
-        jit.call(GPRInfo::nonArgGPR0, OperationPtrTag);
         jit.storeCell(GPRInfo::returnValueGPR, AssemblyHelpers::addressFor(operand));
 
         alreadyAllocatedArguments.add(id, operand);

@@ -71,9 +71,7 @@ MacroAssemblerCodeRef<JITThunkPtrTag> throwExceptionFromCallSlowPathGenerator(VM
     jit.copyCalleeSavesToEntryFrameCalleeSavesBuffer(vm->topEntryFrame);
 
     jit.setupArguments<decltype(lookupExceptionHandler)>(CCallHelpers::TrustedImmPtr(vm), GPRInfo::callFrameRegister);
-    jit.move(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(lookupExceptionHandler)), GPRInfo::nonArgGPR0);
-    emitPointerValidation(jit, GPRInfo::nonArgGPR0, OperationPtrTag);
-    jit.call(GPRInfo::nonArgGPR0, OperationPtrTag);
+    jit.cCall(CCallHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(lookupExceptionHandler)), GPRInfo::nonArgGPR0, OperationPtrTag);
     jit.jumpToExceptionHandler(*vm);
 
     LinkBuffer patchBuffer(jit, GLOBAL_THUNK_ID);

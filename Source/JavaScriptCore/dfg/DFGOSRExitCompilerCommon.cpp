@@ -102,8 +102,7 @@ void handleExitCounts(CCallHelpers& jit, const OSRExitBase& exit)
     reoptimizeNow.link(&jit);
     
     jit.setupArguments<decltype(triggerReoptimizationNow)>(GPRInfo::regT0, GPRInfo::regT3, AssemblyHelpers::TrustedImmPtr(&exit));
-    jit.move(AssemblyHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(triggerReoptimizationNow)), GPRInfo::nonArgGPR0);
-    jit.call(GPRInfo::nonArgGPR0, OperationPtrTag);
+    jit.cCall(AssemblyHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(triggerReoptimizationNow)), GPRInfo::nonArgGPR0, OperationPtrTag);
     AssemblyHelpers::Jump doneAdjusting = jit.jump();
     
     tooFewFails.link(&jit);
@@ -268,8 +267,7 @@ static void osrWriteBarrier(CCallHelpers& jit, GPRReg owner, GPRReg scratch)
 #endif
 
     jit.setupArguments<decltype(operationOSRWriteBarrier)>(owner);
-    jit.move(MacroAssembler::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationOSRWriteBarrier)), scratch);
-    jit.call(scratch, OperationPtrTag);
+    jit.cCall(AssemblyHelpers::TrustedImmPtr(tagCFunctionPtr<OperationPtrTag>(operationOSRWriteBarrier)), scratch, OperationPtrTag);
 
 #if CPU(X86)
     jit.addPtr(MacroAssembler::TrustedImm32(sizeof(void*) * 4), MacroAssembler::stackPointerRegister);
