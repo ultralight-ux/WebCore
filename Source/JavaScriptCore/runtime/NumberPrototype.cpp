@@ -292,6 +292,7 @@ static char* toStringWithRadixInternal(RadixBuffer& buffer, double originalNumbe
                     break;
 
                 ASSERT(endOfResultString < (buffer + sizeof(buffer) - 1));
+
                 fraction *= radix;
                 digit = fraction.floorAndSubtract();
                 if (digit & 1)
@@ -533,7 +534,7 @@ static ALWAYS_INLINE JSString* numberToStringInternal(VM& vm, double doubleValue
     if (integerValue == doubleValue)
         return int32ToStringInternal(vm, integerValue, radix);
 
-    if (radix == 10)
+    if (radix == 10 || radix < 2 || radix > 36)
         return jsString(&vm, vm.numericStrings.add(doubleValue));
 
     if (!std::isfinite(doubleValue))
