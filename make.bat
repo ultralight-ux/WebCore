@@ -2,7 +2,9 @@
 SETLOCAL
 set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat"
 if "%1"=="release" GOTO CHECKTYPE
+if "%1"=="full_release" GOTO CHECKTYPE
 if "%1"=="debug" GOTO CHECKTYPE
+if "%1"=="full_debug" GOTO CHECKTYPE
 if "%1"=="vs" GOTO CHECKTYPE
 GOTO SYNTAX
 :CHECKTYPE
@@ -27,8 +29,14 @@ if "%1"=="vs" (
 if "%1"=="release" (
   set "FLAGS=-G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel"
 )
+if "%1"=="full_release" (
+  set "FLAGS=-G "Ninja" -DCMAKE_BUILD_TYPE=Release"
+)
 if "%1"=="debug" (
   set "FLAGS=-G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo"
+)
+if "%1"=="full_debug" (
+  set "FLAGS=-G "Ninja" -DCMAKE_BUILD_TYPE=Debug"
 )
 call "%VCVARS%" %CFG%
 if not exist %DIRNAME% mkdir %DIRNAME%
