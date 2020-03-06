@@ -176,7 +176,7 @@ endif ()
 
 set(JavaScriptCore_LIBRARY_TYPE SHARED)
 set(WTF_LIBRARY_TYPE SHARED)
-set(ICU_LIBRARIES sicuuc sicuin sicudt)
+set(ICU_LIBRARIES sicuuc sicuin)
 
 set(USE_CF 1)
 set(USE_CURL 1)

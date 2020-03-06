@@ -99,7 +99,8 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/DragDataUltralight.cpp
 	platform/ultralight/DragControllerUltralight.cpp
     platform/ultralight/UTFUltralight.cpp
-
+    platform/ultralight/ICUUtils.cpp
+    
 	platform/graphics/ultralight/GradientUltralight.cpp
 	platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h
 	platform/graphics/ultralight/GraphicsContextUltralight.cpp
