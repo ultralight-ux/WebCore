@@ -43,7 +43,7 @@ CFStringRef EventLoop::remoteInspectorRunLoopMode()
 
 void EventLoop::cycle()
 {
-#if OS(WINDOWS)
+#if OS(WINDOWS) && !defined(UWP_PLATFORM)
     MSG msg;
     if (!GetMessage(&msg, 0, 0, 0)) {
         m_ended = true;

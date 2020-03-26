@@ -21,21 +21,27 @@ endif ()
 set(WEBCORE_DEPS_REV "1.1")
 set(ULTRALIGHTCORE_REV "dbe6b43")
 
-ExternalProject_Add(WebCoreDeps
-  URL https://webcoredeps-bin.sfo2.cdn.digitaloceanspaces.com/webcoredeps-bin-${WEBCORE_DEPS_REV}-${PLATFORM}-${ARCHITECTURE}.7z
-  SOURCE_DIR "${WEBCORE_DEPS_DIR}"
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
-  BUILD_BYPRODUCTS ${WEBCORE_DEPS_PRODUCTS}
-  INSTALL_COMMAND ""
-  INSTALL_DIR ${PROJECT_BINARY_DIR}/dummyInstall
-)
+if(${USE_LOCAL_DEPS})
+  message("Using local deps.")
+  add_custom_target(WebCoreDeps)
+  add_custom_target(UltralightCoreBin)
+else ()
+  ExternalProject_Add(WebCoreDeps
+    URL https://webcoredeps-bin.sfo2.cdn.digitaloceanspaces.com/webcoredeps-bin-${WEBCORE_DEPS_REV}-${PLATFORM}-${ARCHITECTURE}.7z
+    SOURCE_DIR "${WEBCORE_DEPS_DIR}"
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
+    BUILD_BYPRODUCTS ${WEBCORE_DEPS_PRODUCTS}
+    INSTALL_COMMAND ""
+    INSTALL_DIR ${PROJECT_BINARY_DIR}/dummyInstall
+  )
 
-ExternalProject_Add(UltralightCoreBin
-  URL https://ultralightcore-bin.sfo2.cdn.digitaloceanspaces.com/ultralightcore-bin-${ULTRALIGHTCORE_REV}-${PLATFORM}-${ARCHITECTURE}.7z
-  SOURCE_DIR "${ULTRALIGHTCORE_DIR}"
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
-  INSTALL_COMMAND ""
-  INSTALL_DIR ${PROJECT_BINARY_DIR}/dummyInstall
-)
+  ExternalProject_Add(UltralightCoreBin
+    URL https://ultralightcore-bin.sfo2.cdn.digitaloceanspaces.com/ultralightcore-bin-${ULTRALIGHTCORE_REV}-${PLATFORM}-${ARCHITECTURE}.7z
+    SOURCE_DIR "${ULTRALIGHTCORE_DIR}"
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ${CMAKE_COMMAND} -E echo_append #dummy command
+    INSTALL_COMMAND ""
+    INSTALL_DIR ${PROJECT_BINARY_DIR}/dummyInstall
+  )
+endif ()

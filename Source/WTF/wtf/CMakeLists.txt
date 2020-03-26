@@ -491,7 +491,7 @@ list(APPEND WTF_SOURCES
     unicode/icu/CollatorICU.cpp
 
     # Needed for loading ICU data at runtime instead of from shared lib
-    unicode/icu/stubdata.c
+    #unicode/icu/stubdata.c
 )
 set(WTF_SYSTEM_INCLUDE_DIRECTORIES
     ${ICU_INCLUDE_DIRS}

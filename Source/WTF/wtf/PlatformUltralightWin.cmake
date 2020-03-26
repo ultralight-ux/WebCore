@@ -3,18 +3,12 @@ set(WTF_LIBRARY_TYPE STATIC)
 list(APPEND WTF_SOURCES
     #PlatformUserPreferredLanguagesWin.cpp
 
-    #generic/MainThreadGeneric.cpp
-	#generic/RunLoopGeneric.cpp
-	#generic/WorkQueueGeneric.cpp
-
-    win/MainThreadWin.cpp
-    win/RunLoopWin.cpp
-    win/WorkQueueWin.cpp
-
     win/ThreadSpecificWin.cpp
     win/ThreadingWin.cpp
     win/OSAllocatorWin.cpp
     win/CPUTimeWin.cpp
+
+    win/MainThreadWin.cpp
 
     win/MemoryFootprintWin.cpp
     win/MemoryPressureHandlerWin.cpp
@@ -30,6 +24,18 @@ list(APPEND WTF_SOURCES
 	
 	text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
 )
+
+if (UWP_PLATFORM)
+    list(APPEND WTF_SOURCES
+        generic/RunLoopGeneric.cpp
+        generic/WorkQueueGeneric.cpp
+    )
+else ()
+    list(APPEND WTF_SOURCES
+        win/RunLoopWin.cpp
+        win/WorkQueueWin.cpp
+    )
+endif ()
 
 list(APPEND WTF_LIBRARIES
    DbgHelp

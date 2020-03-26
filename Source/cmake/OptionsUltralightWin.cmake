@@ -88,9 +88,15 @@ if (MSVC)
         /wd6031 /wd6211 /wd6246 /wd6255 /wd6387 /wd4577
     )
 
-    # We do not use exceptions
-    add_definitions(-D_HAS_EXCEPTIONS=0)
-    add_compile_options(/EHa- /EHc- /EHs- /fp:except-)
+    if (UWP_PLATFORM)
+        add_compile_options(/EHsc)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /ZW")   
+        add_definitions(-DUWP_PLATFORM) 
+    else ()
+        # We do not use exceptions
+        add_definitions(-D_HAS_EXCEPTIONS=0)
+        add_compile_options(/EHa- /EHc- /EHs- /fp:except-)
+    endif ()
 
     # We have some very large object files that have to be linked
     add_compile_options(/analyze- /bigobj)
@@ -151,8 +157,10 @@ if (MSVC)
         add_definitions(/MP)
     endif ()
     if (NOT ${CMAKE_CXX_FLAGS} STREQUAL "")
-        string(REGEX REPLACE "(/EH[a-z]+) " "\\1- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable C++ exceptions
-        string(REGEX REPLACE "/EHsc$" "/EHs- /EHc- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable C++ exceptions
+        if (NOT UWP_PLATFORM)
+            string(REGEX REPLACE "(/EH[a-z]+) " "\\1- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable C++ exceptions
+            string(REGEX REPLACE "/EHsc$" "/EHs- /EHc- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable C++ exceptions
+        endif ()
         #string(REGEX REPLACE "/GR " "/GR- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable RTTI
         string(REGEX REPLACE "/W3" "/W4" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Warnings are important
     endif ()
@@ -176,7 +184,7 @@ endif ()
 
 set(JavaScriptCore_LIBRARY_TYPE SHARED)
 set(WTF_LIBRARY_TYPE SHARED)
-set(ICU_LIBRARIES sicuuc sicuin)
+set(ICU_LIBRARIES icuuc icuin icudt)
 
 set(USE_CF 1)
 set(USE_CURL 1)

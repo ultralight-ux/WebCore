@@ -250,31 +250,37 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
 )
 
 list(APPEND WebCore_LIBRARIES
-    ${DirectX_LIBRARIES}
     CFLite
+    freetype
 	harfbuzz
-	freetype
-    comctl32
-    crypt32
-    iphlpapi
-    libcurl
     jpeg-static
+	libcrypto
+    libcurl
     libpng16
+	libssl
     libxml2_a
 	libxslt_a
-    rpcrt4
-    shlwapi
-	libcrypto
-	libssl
-    usp10
-    version
-    winmm
-    ws2_32
-	wldap32
-	normaliz
     zlibstat
 	sqlite3
+
+    ${DirectX_LIBRARIES}
 )
+
+if (NOT UWP_PLATFORM)
+    list(APPEND WebCore_LIBRARIES
+        comctl32
+        crypt32
+        iphlpapi
+        rpcrt4
+        shlwapi
+        usp10
+        version
+        winmm
+        ws2_32
+        wldap32
+        normaliz
+    )
+endif ()
 
 make_directory(${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/en.lproj)
 file(COPY
@@ -317,6 +323,10 @@ if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRe
 	add_compile_options(/GL)
 	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
 	set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
+endif ()
+
+if (UWP_PLATFORM)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FI \"${WEBCORE_DIR}/UWPDefs.h\"")
 endif ()
 
 list(APPEND WebCore_LIBRARIES WTF${DEBUG_SUFFIX})

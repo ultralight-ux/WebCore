@@ -37,10 +37,44 @@
 
 namespace WTF {
 
+static ThreadIdentifier mainThread { 0 };
+
+#if defined(UWP_PLATFORM)
+void initializeMainThreadPlatform()
+{
+    if (mainThread)
+        return;
+
+    mainThread = Thread::currentID();
+
+    Thread::initializeCurrentThreadInternal("Main Thread");
+}
+
+class MainThreadDispatcher {
+public:
+    MainThreadDispatcher()
+        : m_timer(RunLoop::main(), this, &MainThreadDispatcher::fired)
+    {
+    }
+
+    void schedule()
+    {
+        m_timer.startOneShot(0_s);
+    }
+
+private:
+    void fired()
+    {
+        dispatchFunctionsFromMainThread();
+    }
+
+    RunLoop::Timer<MainThreadDispatcher> m_timer;
+};
+#else
+
 static HWND threadingWindowHandle;
 static UINT threadingFiredMessage;
 const LPCWSTR kThreadingWindowClassName = L"ThreadingWindowClass";
-static ThreadIdentifier mainThread { 0 };
 
 LRESULT CALLBACK ThreadingWindowWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -72,6 +106,8 @@ void initializeMainThreadPlatform()
     RunLoop::registerRunLoopMessageWindowClass();
 }
 
+#endif
+
 bool isMainThread()
 {
     return mainThread == Thread::currentID();
@@ -84,8 +120,15 @@ bool isMainThreadIfInitialized()
 
 void scheduleDispatchFunctionsOnMainThread()
 {
+#if defined(UWP_PLATFORM)
+    // Use a RunLoop::Timer instead of RunLoop::dispatch() to be able to use a different priority and
+    // avoid the double queue because dispatchOnMainThread also queues the functions.
+    static MainThreadDispatcher dispatcher;
+    dispatcher.schedule();
+#else
     ASSERT(threadingWindowHandle);
     PostMessage(threadingWindowHandle, threadingFiredMessage, 0, 0);
+#endif
 }
 
 } // namespace WTF
