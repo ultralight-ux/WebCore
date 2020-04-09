@@ -78,13 +78,13 @@ pipeline {
         stage('Build Windows x64 Debug') {
           agent {
             node {
-              label 'win_x64_dbg'
+              label 'win_x64'
             }
           }
           steps {
             bat '''
                rem Setup environment
-               call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64
+               call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64
                set CC=cl.exe
                set CXX=cl.exe
               
@@ -111,7 +111,7 @@ pipeline {
           steps {
             bat '''
                rem Setup environment
-               call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64
+               call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64
                set CC=cl.exe
                set CXX=cl.exe
 
@@ -129,23 +129,23 @@ pipeline {
             }
           }
         }
-        stage('Build Windows x86 Debug') {
+        stage('Build Windows x64 UWP Debug') {
           agent {
             node {
-              label 'win_x86_dbg'
+              label 'win10_x64'
             }
           }
           steps {
             bat '''
                rem Setup environment
-               call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64_x86
+               call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64 uwp
                set CC=cl.exe
                set CXX=cl.exe
               
                rem Build Debug
                if not exist build_dbg mkdir build_dbg
                cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUWP_PLATFORM=1 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0
                ninja
                cd ..
             '''
@@ -156,23 +156,23 @@ pipeline {
             }
           }
         }
-        stage('Build Windows x86') {
+        stage('Build Windows x64 UWP') {
           agent {
             node {
-              label 'win_x86'
+              label 'win10_x64'
             }
           }
           steps {
             bat '''
                rem Setup environment
-               call "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat" amd64_x86
+               call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64 uwp
                set CC=cl.exe
                set CXX=cl.exe
 
                rem Build Release
                if not exist build mkdir build
                cd build
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DUWP_PLATFORM=1 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0
                ninja
                cd ..
             '''
