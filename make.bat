@@ -16,7 +16,6 @@ if "%2"=="x64" (
   set CFG=amd64
   GOTO VALID
 )
-)
 if "%2"=="x64_uwp" (
   set CFG=amd64 uwp
   GOTO VALID
@@ -51,7 +50,7 @@ set CXX=cl.exe
 set "EXTRA_FLAGS=-DUWP_PLATFORM=0"
 if "%2"=="x64_uwp" (
   echo Using UWP Platform.
-  set "EXTRA_FLAGS=-DUWP_PLATFORM=1 -DUSE_LOCAL_DEPS=1 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0"
+  set "EXTRA_FLAGS=-DUWP_PLATFORM=1 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0"
 )
 cmake .. %FLAGS% %EXTRA_FLAGS%
 if "%1"=="vs" GOTO FINISH

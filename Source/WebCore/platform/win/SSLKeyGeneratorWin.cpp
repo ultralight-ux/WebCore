@@ -20,6 +20,28 @@
 #include "config.h"
 #include "SSLKeyGenerator.h"
 
+#if defined(UWP_PLATFORM)
+#include "NotImplemented.h"
+#include <wtf/Forward.h>
+#include <wtf/URL.h>
+
+namespace WebCore {
+
+void getSupportedKeySizes(Vector<String>&)
+{
+    notImplemented();
+}
+
+String signedPublicKeyAndChallengeString(unsigned, const String&, const URL&)
+{
+    notImplemented();
+    return { };
+}
+
+} // namespace WebCore
+
+#else
+
 #include <wtf/text/Base64.h>
 #include <wtf/text/CString.h>
 
@@ -96,3 +118,5 @@ String signedPublicKeyAndChallengeString(unsigned index, const String& challenge
 }
 
 } // namespace WebCore
+
+#endif // defined(UWP_PLATFORM)

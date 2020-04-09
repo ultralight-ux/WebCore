@@ -290,8 +290,51 @@ CString fileSystemRepresentation(const String& path)
 
 #endif // !USE(CF)
 
+#if defined(UWP_PLATFORM)
+/**
+ * Creates all directories down to the specified path using pure WinAPI calls (no Shell API).
+ *
+ * The path should be absolute and not be terminated by a path separator.
+ */
+bool createDirectoryRecursively(const std::wstring &directory) {
+  static const std::wstring separators(L"\\/");
+ 
+  // If the specified directory name doesn't exist, do our thing
+  DWORD fileAttributes = ::GetFileAttributesW(directory.c_str());
+  if(fileAttributes == INVALID_FILE_ATTRIBUTES) {
+
+    // Recursively do it all again for the parent directory, if any
+    std::size_t slashIndex = directory.find_last_of(separators);
+    if(slashIndex != std::wstring::npos) {
+      createDirectoryRecursively(directory.substr(0, slashIndex));
+    }
+ 
+    // Create the last directory on the path (the recursive calls will have taken
+    // care of the parent directories by now)
+    BOOL result = ::CreateDirectoryW(directory.c_str(), nullptr);
+    if(result == FALSE) {
+      return false; // Could not create directory
+    }
+  } else { // Specified directory name already exists as a file or directory
+
+    bool isDirectoryOrJunction =
+      ((fileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) ||
+      ((fileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+ 
+    if(!isDirectoryOrJunction) {
+      return false; // Could not create directory because a file with the same name exists
+    }
+  }
+
+  return true;
+}
+#endif // defined(UWP_PLATFORM)
+
 bool makeAllDirectories(const String& path)
 {
+#if defined(UWP_PLATFORM)
+    return createDirectoryRecursively(path.wideCharacters().data());
+#else
     String fullPath = path;
     if (SHCreateDirectoryEx(0, fullPath.wideCharacters().data(), 0) != ERROR_SUCCESS) {
         DWORD error = GetLastError();
@@ -301,6 +344,7 @@ bool makeAllDirectories(const String& path)
         }
     }
     return true;
+#endif
 }
 
 String homeDirectoryPath()
@@ -345,6 +389,21 @@ static String bundleName()
 
 static String storageDirectory(DWORD pathIdentifier)
 {
+#if defined(UWP_PLATFORM)
+    Vector<UChar> buffer(MAX_PATH);
+    DWORD len = GetCurrentDirectoryW(MAX_PATH, wcharFrom(buffer.data()));
+    if (!len)
+        return String();
+
+    buffer.shrink(wcslen(wcharFrom(buffer.data())));
+    String directory = String::adopt(WTFMove(buffer));
+
+    directory = pathByAppendingComponent(directory, "appcache\\Ultralight\\" + bundleName());
+    if (!makeAllDirectories(directory))
+        return String();
+
+    return directory;
+#else
     Vector<UChar> buffer(MAX_PATH);
     if (FAILED(SHGetFolderPathW(0, pathIdentifier | CSIDL_FLAG_CREATE, 0, 0, wcharFrom(buffer.data()))))
         return String();
@@ -352,11 +411,12 @@ static String storageDirectory(DWORD pathIdentifier)
     buffer.shrink(wcslen(wcharFrom(buffer.data())));
     String directory = String::adopt(WTFMove(buffer));
 
-    directory = pathByAppendingComponent(directory, "Apple Computer\\" + bundleName());
+    directory = pathByAppendingComponent(directory, "Ultralight\\" + bundleName());
     if (!makeAllDirectories(directory))
         return String();
 
     return directory;
+#endif // defined(UWP_PLATFORM)
 }
 
 static String cachedStorageDirectory(DWORD pathIdentifier)
@@ -573,8 +633,84 @@ String createTemporaryDirectory()
     });
 }
 
+#if defined(UWP_PLATFORM)
+class SearchHandleScope {
+  HANDLE searchHandle;
+ public:
+  SearchHandleScope(HANDLE searchHandle) : searchHandle(searchHandle) {}
+  ~SearchHandleScope() { ::FindClose(this->searchHandle); }
+};
+ 
+/**
+ * Recursively deletes the specified directory and all its contents using plain WinAPI
+ * calls (no Shell API).
+ * 
+ * The path should be absolute and not be terminated by a path separator.
+ */
+bool recursiveDeleteDirectory(const std::wstring &path) {
+  static const std::wstring allFilesMask(L"\\*");
+ 
+  WIN32_FIND_DATAW findData;
+ 
+  // First, delete the contents of the directory, recursively for subdirectories
+  std::wstring searchMask = path + allFilesMask;
+  HANDLE searchHandle = ::FindFirstFileExW(
+    searchMask.c_str(), FindExInfoBasic, &findData, FindExSearchNameMatch, nullptr, 0
+  );
+  if(searchHandle == INVALID_HANDLE_VALUE) {
+    DWORD lastError = ::GetLastError();
+    if(lastError != ERROR_FILE_NOT_FOUND) { // or ERROR_NO_MORE_FILES, ERROR_NOT_FOUND?
+      return false; //Could not start directory enumeration
+    }
+  }
+ 
+  // Did this directory have any contents? If so, delete them first
+  if(searchHandle != INVALID_HANDLE_VALUE) {
+    SearchHandleScope scope(searchHandle);
+    for(;;) {
+ 
+      // Do not process the obligatory '.' and '..' directories
+      if(findData.cFileName[0] != '.') {
+        bool isDirectory = 
+          ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) ||
+          ((findData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+ 
+        // Subdirectories need to be handled by deleting their contents first
+        std::wstring filePath = path + L'\\' + findData.cFileName;
+        if(isDirectory) {
+          recursiveDeleteDirectory(filePath);
+        } else {
+          BOOL result = ::DeleteFileW(filePath.c_str());
+          if(result == FALSE) {
+            return false; //Could not delete file
+          }
+        }
+      }
+ 
+      // Advance to the next file in the directory
+      BOOL result = ::FindNextFileW(searchHandle, &findData);
+      if(result == FALSE) {
+        DWORD lastError = ::GetLastError();
+        if(lastError != ERROR_NO_MORE_FILES) {
+          return false; // Error enumerating directory
+        }
+        break; // All directory contents enumerated and deleted
+      }
+ 
+    } // for
+  }
+ 
+  // The directory is empty, we can now safely remove it
+  BOOL result = ::RemoveDirectory(path.c_str());
+  return !!result;
+}
+#endif // defined(UWP_PLATFORM)
+
 bool deleteNonEmptyDirectory(const String& directoryPath)
 {
+#if defined(UWP_PLATFORM)
+    return recursiveDeleteDirectory(directoryPath.wideCharacters().data());
+#else
     SHFILEOPSTRUCT deleteOperation = {
         nullptr,
         FO_DELETE,
@@ -586,6 +722,7 @@ bool deleteNonEmptyDirectory(const String& directoryPath)
         L""
     };
     return !SHFileOperation(&deleteOperation);
+#endif // defined(UWP_PLATFORM)
 }
 
 MappedFileData::~MappedFileData()

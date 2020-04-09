@@ -37,6 +37,7 @@ namespace WTF {
 
 size_t memoryFootprint()
 {
+#if !defined(UWP_PLATFORM)
     // We would like to calculate size of private working set.
     // https://msdn.microsoft.com/en-us/library/windows/desktop/ms684891(v=vs.85).aspx
     // > The working set of a program is a collection of those pages in its virtual address
@@ -84,6 +85,9 @@ size_t memoryFootprint()
             return 0;
         numberOfEntries = updateNumberOfEntries(workingSets->NumberOfEntries);
     }
+#else
+    return 0;
+#endif
 }
 
 }

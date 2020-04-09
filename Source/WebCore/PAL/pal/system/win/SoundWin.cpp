@@ -30,6 +30,10 @@
 
 namespace PAL {
 
-void systemBeep() { MessageBeep(static_cast<UINT>(-1)); }
+void systemBeep() {
+#if !defined(UWP_PLATFORM)
+  MessageBeep(static_cast<UINT>(-1));
+#endif
+}
 
 } // namespace PAL

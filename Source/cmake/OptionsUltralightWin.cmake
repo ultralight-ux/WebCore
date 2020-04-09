@@ -186,7 +186,7 @@ set(JavaScriptCore_LIBRARY_TYPE SHARED)
 set(WTF_LIBRARY_TYPE SHARED)
 set(ICU_LIBRARIES icuuc icuin icudt)
 
-set(USE_CF 1)
+set(USE_CF 0)
 set(USE_CURL 1)
 set(USE_HARFBUZZ 1)
 set(USE_ICU_UNICODE 1)

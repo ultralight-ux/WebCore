@@ -33,7 +33,9 @@ namespace WTF {
 
 void MemoryPressureHandler::platformInitialize()
 {
+#if !defined(UWP_PLATFORM)
     m_lowMemoryHandle = CreateMemoryResourceNotification(LowMemoryResourceNotification);
+#endif
 }
 
 void MemoryPressureHandler::windowsMeasurementTimerFired()
@@ -42,11 +44,13 @@ void MemoryPressureHandler::windowsMeasurementTimerFired()
 
     BOOL memoryLow;
 
+#if !defined(UWP_PLATFORM)
     if (QueryMemoryResourceNotification(m_lowMemoryHandle.get(), &memoryLow) && memoryLow) {
         setUnderMemoryPressure(true);
         releaseMemory(Critical::Yes);
         return;
     }
+#endif
 
 #if CPU(X86)
     PROCESS_MEMORY_COUNTERS_EX counters;

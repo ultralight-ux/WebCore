@@ -26,6 +26,35 @@
 #include "config.h"
 #include "NetworkStateNotifier.h"
 
+#if defined(UWP_PLATFORM)
+#include "NotImplemented.h"
+
+namespace WebCore {
+
+void NetworkStateNotifier::updateStateWithoutNotifying()
+{
+    notImplemented();
+}
+
+void CALLBACK NetworkStateNotifier::addressChangeCallback(void*, BOOLEAN timedOut)
+{
+    notImplemented();
+}
+
+void NetworkStateNotifier::registerForAddressChange()
+{
+    notImplemented();
+}
+
+void NetworkStateNotifier::startObserving()
+{
+    notImplemented();
+}
+
+} // namespace WebCore
+
+#else
+
 #include <wtf/MainThread.h>
 #include <wtf/Vector.h>
 
@@ -82,3 +111,5 @@ void NetworkStateNotifier::startObserving()
 }
 
 } // namespace WebCore
+
+#endif // defined(UWP_PLATFORM)

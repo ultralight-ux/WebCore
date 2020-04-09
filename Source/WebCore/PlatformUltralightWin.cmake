@@ -50,7 +50,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
-    platform/win/MainThreadSharedTimerWin.cpp
+    #platform/win/MainThreadSharedTimerWin.cpp
     platform/win/WebCoreInstanceHandle.cpp
     platform/win/SSLKeyGeneratorWin.cpp
     platform/generic/KeyedEncoderGeneric.cpp
@@ -250,20 +250,24 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
 )
 
 list(APPEND WebCore_LIBRARIES
-    CFLite
+    brotlicommon
+    brotlidec
+    brotlienc
+    crypto
     freetype
-	harfbuzz
+    harfbuzz
+    harfbuzz-icu
     jpeg-static
-	libcrypto
     libcurl
-    libpng16
-	libssl
-    libxml2_a
-	libxslt_a
-    zlibstat
-	sqlite3
-
-    ${DirectX_LIBRARIES}
+    libpng16_static
+    nghttp2_static
+    ssl
+    tls
+    xml2
+    xslt
+    zlibstatic
+    sqlite3
+#    ${DirectX_LIBRARIES}
 )
 
 if (NOT UWP_PLATFORM)
