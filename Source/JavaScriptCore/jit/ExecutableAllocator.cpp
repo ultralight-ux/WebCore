@@ -41,6 +41,9 @@
 #if OS(DARWIN)
 #include <mach/mach_time.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #endif
 
 #if PLATFORM(IOS_FAMILY)

@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if OS(DARWIN) && !PLATFORM(GTK)
+#if OS(DARWIN) && !PLATFORM(GTK) && !PLATFORM(ULTRALIGHT)
 
 #include <libxslt/documents.h>
 #include <libxslt/imports.h>

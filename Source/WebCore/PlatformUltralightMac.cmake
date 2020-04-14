@@ -1,48 +1,49 @@
 add_definitions(-D__STDC_CONSTANT_MACROS -DSTATICALLY_LINKED_WITH_WTF
-                -DSTATICALLY_LINKED_WITH_JavaScriptCore -DULTRALIGHT_IMPLEMENTATION
+                -DSTATICALLY_LINKED_WITH_JavaScriptCore -DSTATICALLY_LINKED_WITH_PAL -DULTRALIGHT_IMPLEMENTATION
                 -DCURL_STATICLIB)
 
 include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
+include(platform/Curl.cmake)
 
-list(APPEND WebCore_INCLUDE_DIRECTORIES
+include(platform/ImageDecoders.cmake)
+include(platform/TextureMapper.cmake)
+include(platform/Curl.cmake)
+
+list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_BINARY_DIR}/../include/private"
     "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/ANGLE"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/ANGLE/include/KHR"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/ForwardingHeaders"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/API"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/assembler"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/builtins"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/bytecode"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/bytecompiler"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/dfg"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/disassembler"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/heap"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/debugger"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/interpreter"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/jit"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/llint"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/parser"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/profiler"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/runtime"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore/yarr"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/WTF"
-    "${WEBCORE_DIR}/ForwardingHeaders"
-    "${WEBCORE_DIR}/platform/cf"
-	
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore"
+    "${WEBCORE_DIR}/platform/graphics/egl"
+    "${WEBCORE_DIR}/platform/graphics/opengl"
+    "${WEBCORE_DIR}/platform/graphics/opentype"
+    "${WEBCORE_DIR}/platform/mediacapabilities"
+)
+
+list(APPEND WebCore_INCLUDE_DIRECTORIES
+    "${DERIVED_SOURCES_DIR}/ForwardingHeaders"
+)
+
+if (USE_CF)
+    list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+        "${WEBCORE_DIR}/platform/cf"
+#        "${WEBCORE_DIR}/platform/cf/win"
+    )
+endif ()
+
+list(APPEND WebCore_INCLUDE_DIRECTORIES
+    "${DirectX_INCLUDE_DIRS}"
     "${WEBKIT_LIBRARIES_DIR}/include"
     "${WEBKIT_LIBRARIES_DIR}/include/SQLite"
     "${WEBKIT_LIBRARIES_DIR}/include/zlib"
 	"${WEBKIT_LIBRARIES_DIR}/include/harfbuzz"
-    "${JAVASCRIPTCORE_DIR}/wtf/text"
-    "${WEBCORE_DIR}/loader/archive/cf"
-    "${WEBCORE_DIR}/platform/cf"
-    "${WEBCORE_DIR}/platform/network/curl"
+	"${WEBKIT_LIBRARIES_DIR}/include/libjpeg"
+	"${WEBKIT_LIBRARIES_DIR}/include/libpng"
+#    "${JAVASCRIPTCORE_DIR}/wtf/text"
+#    "${WEBCORE_DIR}/loader/archive/cf"
+#    "${WEBCORE_DIR}/platform/cf"
+#    "${WEBCORE_DIR}/platform/network/curl"
 	
-	"${WTF_DIR}"
+#	"${WTF_DIR}"
     "${WEBCORE_DIR}/platform/ultralight"
 	"${WEBCORE_DIR}/platform/graphics/ultralight"
 	"${WEBCORE_DIR}/platform/graphics/harfbuzz"
@@ -53,6 +54,25 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
+     #platform/win/MainThreadSharedTimerWin.cpp
+#    platform/win/WebCoreInstanceHandle.cpp
+#    platform/win/SSLKeyGeneratorWin.cpp
+#    platform/generic/KeyedEncoderGeneric.cpp
+#    platform/generic/KeyedDecoderGeneric.cpp
+    platform/cf/KeyedEncoderCF.cpp
+    platform/cf/KeyedDecoderCF.cpp
+    platform/generic/ScrollAnimatorGeneric.cpp
+    platform/ScrollAnimationKinetic.cpp
+    platform/ScrollAnimationSmooth.cpp
+    platform/network/ultralight/CurlSSLHandleUltralight.cpp
+    platform/network/mac/NetworkStateNotifierMac.cpp
+    platform/ultralight/SSLKeyGeneratorUltralightMac.mm
+
+    platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
+
+    platform/cf/SharedBufferCF.cpp
+    editing/SmartReplaceCF.cpp
+
     platform/ultralight/AXObjectCacheUltralight.cpp
     platform/ultralight/CryptoDigestUltralight.cpp
     platform/ultralight/CursorUltralight.cpp
@@ -65,7 +85,7 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/ImageUltralight.cpp
 	platform/ultralight/KeyEventUltralight.cpp
 	platform/ultralight/LoggingUltralight.cpp
-	platform/ultralight/MainThreadSharedTimerUltralight.cpp
+# platform/ultralight/MainThreadSharedTimerUltralight.cpp
 	platform/ultralight/MIMETypeRegistryUltralight.cpp
 	platform/ultralight/PasteboardUltralight.cpp
 	platform/ultralight/PlatformMouseEventUltralight.cpp
@@ -75,14 +95,13 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/SharedBufferUltralight.cpp
 	platform/ultralight/SoundUltralight.cpp
 	platform/ultralight/SSLKeyGeneratorUltralight.cpp
-    platform/ultralight/SSLKeyGeneratorUltralightMac.mm
 	platform/ultralight/SynchronousLoaderClientUltralight.cpp
 	platform/ultralight/TextBreakIteratorInternalICUUltralight.cpp
 	platform/ultralight/WidgetUltralight.cpp
 	platform/ultralight/LocalizedStringsUltralight.cpp
 	platform/ultralight/HyphenationUltralight.cpp
-	platform/ultralight/KeyedEncoderUltralight.cpp
-	platform/ultralight/KeyedDecoderUltralight.cpp
+#  platform/ultralight/KeyedEncoderUltralight.cpp
+#  platform/ultralight/KeyedDecoderUltralight.cpp
 	platform/ultralight/PreserveSymbolsUltralight.cpp
 	platform/ultralight/FileURLLoader.h
 	platform/ultralight/FileURLLoader.cpp
@@ -90,7 +109,8 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/DragDataUltralight.cpp
 	platform/ultralight/DragControllerUltralight.cpp
     platform/ultralight/UTFUltralight.cpp
-
+    platform/ultralight/ICUUtils.cpp
+    
 	platform/graphics/ultralight/GradientUltralight.cpp
 	platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h
 	platform/graphics/ultralight/GraphicsContextUltralight.cpp
@@ -121,38 +141,24 @@ list(APPEND WebCore_SOURCES
 	platform/graphics/ultralight/FontRenderer.cpp
 	platform/graphics/ultralight/CanvasImage.h
 	platform/graphics/ultralight/CanvasImage.cpp
+    platform/graphics/ultralight/RefPtrFreeTypeFace.cpp
+    platform/graphics/ultralight/RefPtrFreeTypeFace.h
 	
 	platform/image-decoders/ultralight/ImageBackingStoreUltralight.cpp
 	
-	platform/graphics/harfbuzz/HarfBuzzFace.cpp
-	platform/graphics/harfbuzz/HarfBuzzFace.h
+	#platform/graphics/harfbuzz/HarfBuzzFace.cpp
+	#platform/graphics/harfbuzz/HarfBuzzFace.h
 	platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
-	platform/graphics/harfbuzz/HarfBuzzShaper.cpp
-	platform/graphics/harfbuzz/HarfBuzzShaper.h
+	#platform/graphics/harfbuzz/HarfBuzzShaper.cpp
+	#platform/graphics/harfbuzz/HarfBuzzShaper.h
 	
     platform/Cursor.cpp
-    platform/KillRingNone.cpp
+    #platform/KillRingNone.cpp
     platform/LocalizedStrings.cpp
 	
 	platform/text/LocaleNone.cpp
 	
-	platform/network/NetworkStorageSessionStub.cpp
-	
-	platform/network/curl/CookieJarCurl.cpp
-    platform/network/curl/CredentialStorageCurl.cpp
-    platform/network/curl/CurlCacheEntry.cpp
-    platform/network/curl/CurlCacheManager.cpp
-    platform/network/curl/CurlDownload.cpp
-    platform/network/curl/DNSCurl.cpp
-    platform/network/curl/FormDataStreamCurl.cpp
-    platform/network/curl/MultipartHandle.cpp
-    platform/network/curl/ProxyServerCurl.cpp
-    platform/network/curl/ResourceHandleCurl.cpp
-    platform/network/curl/ResourceHandleManager.cpp
-    platform/network/curl/SSLHandle.cpp
-    platform/network/curl/SocketStreamHandleImplCurl.cpp
-
-    WebCorePrefix.cpp
+	#platform/network/NetworkStorageSessionStub.cpp
 )
 
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
@@ -253,34 +259,43 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
 
 set_source_files_properties("platform/ultralight/SSLKeyGeneratorUltralightMac.mm" PROPERTIES COMPILE_FLAGS "-x objective-c++")
 
-find_library(SECURITY_LIBRARY Security)
-find_package(zlib REQUIRED)
+find_library(SECURITY_LIBRARY Security) # used in SSLKeyGeneratorUltralightMac
+#find_package(zlib REQUIRED)
+find_library(ACCELERATE Accelerate)
+find_library(APPKIT AppKit) # used for NSBeep in PAL
+find_library(SYSCONFIG SystemConfiguration) # used in NetworkStateNotifierMac
 
 include_directories(
-    ${ZLIB_INCLUDE_DIR}
+ #   ${ZLIB_INCLUDE_DIR}
 )
 
-message(STATUS "Freetype include ${FREETYPE_INCLUDE_DIRS}")
-
+#message(STATUS "Freetype include ${FREETYPE_INCLUDE_DIRS}")
 
 list(APPEND WebCore_LIBRARIES
-    ${SECURITY_LIBRARY}
-    ${ZLIB_LIBRARIES}
-    sqlite3
+    brotlicommon
+    brotlidec
+    brotlienc
     crypto
-    ssl
     curl
-    icudata
-    icui18n
-    icuuc
     freetype
-    harfbuzz
     harfbuzz-icu
+    harfbuzz
     jpeg
+    nghttp2_static
     png16
+    ssl
+    tls
     xml2
-    iconv
     xslt
+    z
+    sqlite3
+    bz2
+    ${ACCELERATE}
+    ${APPKIT}
+    ${SYSCONFIG}
+    ${SECURITY_LIBRARY}
+#    iconv
+#    ${ZLIB_LIBRARIES}
 )
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore)
@@ -309,6 +324,6 @@ file(REMOVE_RECURSE "${BUILD_TMP}")
 
 list(APPEND WebCore_LIBRARIES WTF)
 list(APPEND WebCore_LIBRARIES JavaScriptCore)
-list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
+#list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
 list(APPEND WebCore_LIBRARIES UltralightCore)
 list(APPEND WebCoreTestSupport_LIBRARIES WTF)

@@ -21,6 +21,9 @@
 #pragma once
 
 #include <utility>
+#if USE(CF) && OS(DARWIN)
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/AtomStringImpl.h>
 #include <wtf/text/IntegerToStringConversion.h>

@@ -57,15 +57,15 @@ enum CacheStoragePolicy {
     StorageNotAllowed
 };
 
-class ResourceHandleClient {
+class WEBCORE_EXPORT ResourceHandleClient {
 public:
-    WEBCORE_EXPORT ResourceHandleClient();
-    WEBCORE_EXPORT virtual ~ResourceHandleClient();
+    ResourceHandleClient();
+    virtual ~ResourceHandleClient();
 
     virtual void didSendData(ResourceHandle*, unsigned long long /*bytesSent*/, unsigned long long /*totalBytesToBeSent*/) { }
 
     virtual void didReceiveData(ResourceHandle*, const char*, unsigned, int /*encodedDataLength*/) { }
-    WEBCORE_EXPORT virtual void didReceiveBuffer(ResourceHandle*, Ref<SharedBuffer>&&, int encodedDataLength);
+    virtual void didReceiveBuffer(ResourceHandle*, Ref<SharedBuffer>&&, int encodedDataLength);
     
     virtual void didFinishLoading(ResourceHandle*) { }
     virtual void didFail(ResourceHandle*, const ResourceError&) { }
@@ -74,12 +74,12 @@ public:
 
     virtual bool loadingSynchronousXHR() { return false; }
 
-    WEBCORE_EXPORT virtual void willSendRequestAsync(ResourceHandle*, ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&) = 0;
+    virtual void willSendRequestAsync(ResourceHandle*, ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&) = 0;
 
-    WEBCORE_EXPORT virtual void didReceiveResponseAsync(ResourceHandle*, ResourceResponse&&, CompletionHandler<void()>&&) = 0;
+    virtual void didReceiveResponseAsync(ResourceHandle*, ResourceResponse&&, CompletionHandler<void()>&&) = 0;
 
 #if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-    WEBCORE_EXPORT virtual void canAuthenticateAgainstProtectionSpaceAsync(ResourceHandle*, const ProtectionSpace&, CompletionHandler<void(bool)>&&) = 0;
+    virtual void canAuthenticateAgainstProtectionSpaceAsync(ResourceHandle*, const ProtectionSpace&, CompletionHandler<void(bool)>&&) = 0;
 #endif
 
 #if USE(CFURLCONNECTION)

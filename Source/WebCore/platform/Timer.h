@@ -42,22 +42,22 @@
 
 namespace WebCore {
 
-class TimerBase {
+class WEBCORE_EXPORT TimerBase {
     WTF_MAKE_NONCOPYABLE(TimerBase);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    WEBCORE_EXPORT TimerBase();
-    WEBCORE_EXPORT virtual ~TimerBase();
+    TimerBase();
+    virtual ~TimerBase();
 
-    WEBCORE_EXPORT void start(Seconds nextFireInterval, Seconds repeatInterval);
+    void start(Seconds nextFireInterval, Seconds repeatInterval);
 
     void startRepeating(Seconds repeatInterval) { start(repeatInterval, repeatInterval); }
     void startOneShot(Seconds interval) { start(interval, 0_s); }
 
-    WEBCORE_EXPORT void stop();
+    void stop();
     bool isActive() const;
 
-    WEBCORE_EXPORT Seconds nextFireInterval() const;
+    Seconds nextFireInterval() const;
     Seconds nextUnalignedFireInterval() const;
     Seconds repeatInterval() const { return m_repeatInterval; }
 

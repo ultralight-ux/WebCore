@@ -579,6 +579,11 @@
 #define USE_HARFBUZZ 1
 #define USE_TEXTURE_MAPPER 1
 #define USE_TEXTURE_MAPPER_ULTRALIGHT 1
+
+#if OS(DARWIN)
+#define USE_CF 1
+#define USE_FOUNDATION 1
+#endif
 #endif
 
 /* USE(CG) and PLATFORM(CI) */

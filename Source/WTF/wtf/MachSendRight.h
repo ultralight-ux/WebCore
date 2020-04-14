@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if PLATFORM(COCOA)
+#if PLATFORM(COCOA) || OS(DARWIN)
 
 #include <mach/mach_port.h>
 

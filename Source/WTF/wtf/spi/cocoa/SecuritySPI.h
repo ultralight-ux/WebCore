@@ -80,7 +80,7 @@ OSStatus SecKeyFindWithPersistentRef(CFDataRef persistentRef, SecKeyRef* lookedU
 SecAccessControlRef SecAccessControlCreateFromData(CFAllocatorRef, CFDataRef, CFErrorRef*);
 CFDataRef SecAccessControlCopyData(SecAccessControlRef);
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || (OS(DARWIN) && PLATFORM(ULTRALIGHT))
 #include <Security/SecAsn1Types.h>
 CFStringRef SecTaskCopySigningIdentifier(SecTaskRef, CFErrorRef *);
 extern const SecAsn1Template kSecAsn1AlgorithmIDTemplate[];

@@ -26,7 +26,7 @@
 #import "config.h"
 #import "Sound.h"
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || (OS(DARWIN) && PLATFORM(ULTRALIGHT))
 
 #import <AppKit/AppKit.h>
 

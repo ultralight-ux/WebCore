@@ -58,7 +58,7 @@ list(APPEND WebCore_SOURCES
     platform/generic/ScrollAnimatorGeneric.cpp
     platform/ScrollAnimationKinetic.cpp
     platform/ScrollAnimationSmooth.cpp
-    platform/network/win/CurlSSLHandleWin.cpp
+    platform/network/ultralight/CurlSSLHandleUltralight.cpp
     platform/network/win/NetworkStateNotifierWin.cpp
 
     platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp

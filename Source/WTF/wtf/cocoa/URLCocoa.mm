@@ -87,9 +87,11 @@ RetainPtr<CFURLRef> URL::createCFURL() const
     return cfURL;
 }
 
+#if !PLATFORM(ULTRALIGHT)
 bool URL::hostIsIPAddress(StringView host)
 {
     return [host.createNSStringWithoutCopying().get() _web_looksLikeIPAddress];
 }
+#endif
 
 }

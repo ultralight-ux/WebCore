@@ -33,7 +33,7 @@
 OBJC_CLASS WebNetworkStateObserver;
 #endif
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || (OS(DARWIN) && PLATFORM(ULTRALIGHT))
 typedef const struct __SCDynamicStore * SCDynamicStoreRef;
 #endif
 
@@ -79,7 +79,7 @@ private:
     RetainPtr<WebNetworkStateObserver> m_observer;
 #endif
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || (OS(DARWIN) && PLATFORM(ULTRALIGHT))
     RetainPtr<SCDynamicStoreRef> m_store;
 #endif
 

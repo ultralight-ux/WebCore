@@ -20,16 +20,14 @@
  */
 
 #if defined(HAVE_CONFIG_H) && HAVE_CONFIG_H && defined(BUILDING_WITH_CMAKE)
+#include "cmakeconfig.h"
+#endif
+
+#include <wtf/Platform.h>
 
 #if OS(WINDOWS)
 #pragma warning(disable:4005)
 #endif
-
-#include "cmakeconfig.h"
-
-#endif
-
-#include <wtf/Platform.h>
 
 #if PLATFORM(ULTRALIGHT)
 #undef WTF_PLATFORM_EFL
@@ -40,6 +38,10 @@
 #undef WTF_PLATFORM_WIN
 #undef WTF_PLATFORM_COCOA
 #undef WTF_PLATFORM_WIN_CAIRO
+#if !OS(WINDOWS)
+// Non-windows platforms don't use prefix headers so we have to force include this.
+#include "WebCorePrefix.h"
+#endif
 #endif
 
 #if PLATFORM(COCOA)

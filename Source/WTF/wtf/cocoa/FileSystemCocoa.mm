@@ -27,6 +27,7 @@
  */
 
 #import "config.h"
+#import <CoreFoundation/CoreFoundation.h>
 #import <wtf/FileSystem.h>
 
 @interface WTFWebFileManagerDelegate : NSObject <NSFileManagerDelegate>

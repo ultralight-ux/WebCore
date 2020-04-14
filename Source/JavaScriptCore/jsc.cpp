@@ -136,6 +136,12 @@
 #include <arm/arch.h>
 #endif
 
+#if OS(DARWIN)
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#endif
+
 #if __has_include(<WebKitAdditions/MemoryFootprint.h>)
 #include <WebKitAdditions/MemoryFootprint.h>
 #else

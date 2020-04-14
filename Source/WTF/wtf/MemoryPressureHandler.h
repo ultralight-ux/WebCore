@@ -38,6 +38,10 @@
 #include <wtf/win/Win32Handle.h>
 #endif
 
+#if PLATFORM(COCOA) || OS(DARWIN)
+#include <dispatch/dispatch.h>
+#endif
+
 namespace WTF {
 
 enum class MemoryUsagePolicy {
@@ -90,7 +94,7 @@ public:
 
     WTF_EXPORT_PRIVATE static MemoryUsagePolicy currentMemoryUsagePolicy();
 
-#if PLATFORM(COCOA)
+#if PLATFORM(COCOA) || OS(DARWIN)
     WTF_EXPORT_PRIVATE void setDispatchQueue(dispatch_queue_t);
 #endif
 
@@ -202,7 +206,7 @@ private:
     void holdOffTimerFired();
 #endif
 
-#if PLATFORM(COCOA)
+#if PLATFORM(COCOA) || OS(DARWIN)
     dispatch_queue_t m_dispatchQueue { nullptr };
 #endif
 };

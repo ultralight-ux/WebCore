@@ -1999,8 +1999,8 @@ if (MSVC)
 endif ()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-    include(../cmake/PrecompiledHeader.cmake)
-    add_precompiled_header(WebCore WebCorePrefix.h SOURCE_CXX WebCorePrefix.cpp FORCEINCLUDE)
+    #include(../cmake/PrecompiledHeader.cmake)
+    #add_precompiled_header(WebCore WebCorePrefix.h SOURCE_CXX WebCorePrefix.cpp FORCEINCLUDE)
 
     if(PORT MATCHES "UltralightLinux")
         set_target_properties(WebCore PROPERTIES

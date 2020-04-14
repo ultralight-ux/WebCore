@@ -26,7 +26,7 @@
 #include "config.h"
 #include "NetworkStateNotifier.h"
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || (OS(DARWIN) && PLATFORM(ULTRALIGHT))
 
 #include <SystemConfiguration/SystemConfiguration.h>
 

@@ -26,7 +26,7 @@
 #import "config.h"
 #import "KillRing.h"
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || (OS(DARWIN) && PLATFORM(ULTRALIGHT))
 
 namespace PAL {
 

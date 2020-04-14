@@ -69,7 +69,7 @@ String formatLocalizedString(String format, ...)
 #endif
 }
 
-#if !USE(CF)
+#if !USE(CF) || PLATFORM(ULTRALIGHT)
 
 String localizedString(const char* key)
 {

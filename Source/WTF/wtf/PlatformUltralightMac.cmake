@@ -1,13 +1,85 @@
 set(WTF_LIBRARY_TYPE STATIC)
 
+list(APPEND WTF_PUBLIC_HEADERS
+    WeakObjCPtr.h
+
+    cf/CFURLExtras.h
+    cf/TypeCastsCF.h
+
+    cocoa/Entitlements.h
+    cocoa/NSURLExtras.h
+    cocoa/SoftLinking.h
+
+    darwin/WeakLinking.h
+
+    mac/AppKitCompatibilityDeclarations.h
+
+    spi/cf/CFBundleSPI.h
+    spi/cf/CFStringSPI.h
+
+    spi/cocoa/CFXPCBridgeSPI.h
+    spi/cocoa/SecuritySPI.h
+    spi/cocoa/objcSPI.h
+
+    spi/darwin/DataVaultSPI.h
+    spi/darwin/SandboxSPI.h
+    spi/darwin/XPCSPI.h
+    spi/darwin/dyldSPI.h
+
+    spi/mac/MetadataSPI.h
+
+    text/cf/TextBreakIteratorCF.h
+)
+
 list(APPEND WTF_SOURCES
-    PlatformUserPreferredLanguagesStub.cpp
+    #PlatformUserPreferredLanguagesStub.cpp
     
     generic/MainThreadGeneric.cpp
 	generic/RunLoopGeneric.cpp
 	generic/WorkQueueGeneric.cpp
+
+    posix/FileSystemPOSIX.cpp
+    posix/OSAllocatorPOSIX.cpp
+    posix/ThreadingPOSIX.cpp
+
+    cocoa/AutodrainedPool.cpp
+    cocoa/CPUTimeCocoa.cpp
+    cocoa/MemoryFootprintCocoa.cpp
+    cocoa/MemoryPressureHandlerCocoa.mm
+    cocoa/MachSendRight.cpp
+    cocoa/FileSystemCocoa.mm
+    cocoa/URLCocoa.mm
+
+    cf/FileSystemCF.cpp
+    cf/URLCF.cpp
+    cf/CFURLExtras.cpp
+    cf/LanguageCF.cpp
+
+    text/cf/AtomStringImplCF.cpp
+    text/cf/StringCF.cpp
+    text/cf/StringImplCF.cpp
+    text/cf/StringViewCF.cpp
+
+    text/cocoa/StringViewCocoa.mm
 	
 	text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
+)
+
+file(COPY mac/MachExceptions.defs DESTINATION ${WTF_DERIVED_SOURCES_DIR})
+
+add_custom_command(
+    OUTPUT
+        ${WTF_DERIVED_SOURCES_DIR}/MachExceptionsServer.h
+        ${WTF_DERIVED_SOURCES_DIR}/mach_exc.h
+        ${WTF_DERIVED_SOURCES_DIR}/mach_excServer.c
+        ${WTF_DERIVED_SOURCES_DIR}/mach_excUser.c
+    MAIN_DEPENDENCY mac/MachExceptions.defs
+    WORKING_DIRECTORY ${WTF_DERIVED_SOURCES_DIR}
+    COMMAND mig -sheader MachExceptionsServer.h MachExceptions.defs
+    VERBATIM)
+list(APPEND WTF_SOURCES
+    ${WTF_DERIVED_SOURCES_DIR}/mach_excServer.c
+    ${WTF_DERIVED_SOURCES_DIR}/mach_excUser.c
 )
 
 find_library(FOUNDATION Foundation)

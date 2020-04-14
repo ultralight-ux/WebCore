@@ -37,6 +37,8 @@
 #include <wtf/CryptographicallyRandomNumber.h>
 
 #if OS(DARWIN)
+#include <CommonCrypto/CommonCryptor.h>
+#include <CommonCrypto/CommonRandom.h>
 #include "CommonCryptoUtilities.h"
 #endif
 

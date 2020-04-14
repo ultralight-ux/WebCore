@@ -1,8 +1,6 @@
-#pragma once
+#include "config.h"
 
 #if USE(ULTRALIGHT)
-
-#include "config.h"
 #include "TransformationMatrix.h"
 #include "AffineTransform.h"
 #include "FloatRect.h"
@@ -29,5 +27,3 @@ AffineTransform::operator ultralight::Matrix() const
 } // namespace WebCore
 
 #endif // USE(ULTRALIGHT)
-
-
