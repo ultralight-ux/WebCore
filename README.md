@@ -22,7 +22,7 @@ Click any of the bucket links to get an XML file listing. Download a package by 
  * CMake 3.2+ (https://cmake.org/)
  * Ninja (https://ninja-build.org/)
  * Recent GCC/Clang on macOS/Linux
- * Visual Studio 2015 on Windows
+ * Visual Studio 2019 on Windows
  * Perl 5.10+
  * Python 2.7+
  * Ruby 1.9+
@@ -30,7 +30,7 @@ Click any of the bucket links to get an XML file listing. Download a package by 
  
 ### Setting up on Windows
 
-1. Install Visual Studio 2015 (Free Community Edition works fine). Remember to select the C++ packages.
+1. Install Visual Studio 2019 (Free Community Edition works fine). Remember to select the C++ packages.
 2. Install Chocolatey (https://chocolatey.org).
 3. Run the following from command line: 
 
