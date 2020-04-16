@@ -1,14 +1,35 @@
 set(WTF_LIBRARY_TYPE STATIC)
 
 list(APPEND WTF_SOURCES
-    PlatformUserPreferredLanguagesStub.cpp
+    #PlatformUserPreferredLanguagesStub.cpp
 
     generic/MainThreadGeneric.cpp
 	generic/RunLoopGeneric.cpp
 	generic/WorkQueueGeneric.cpp
+
+    posix/FileSystemPOSIX.cpp
+    posix/OSAllocatorPOSIX.cpp
+    posix/ThreadingPOSIX.cpp
 	
 	text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
+	
+    unix/CPUTimeUnix.cpp
+    unix/LanguageUnix.cpp
+    unix/UniStdExtrasUnix.cpp
 )
+
+if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+    list(APPEND WTF_SOURCES
+        linux/CurrentProcessMemoryStatus.cpp
+        linux/MemoryFootprintLinux.cpp
+        linux/MemoryPressureHandlerLinux.cpp
+    )
+else ()
+    list(APPEND WTF_SOURCES
+        generic/MemoryFootprintGeneric.cpp
+        generic/MemoryPressureHandlerGeneric.cpp
+    )
+endif ()
 
 
 list(APPEND WTF_LIBRARIES

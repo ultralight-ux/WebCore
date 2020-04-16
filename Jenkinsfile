@@ -202,7 +202,7 @@ pipeline {
                # Build Debug
                mkdir -p build_dbg
                cd build_dbg
-               cmake .. -G "Ninja" -DBUILD_DBG=1
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_DBG=1
                ninja
                cd ..
             '''
@@ -232,7 +232,7 @@ pipeline {
                # Build Release
                mkdir -p build
                cd build
-               cmake .. -G "Ninja"
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release
                ninja
                cd ..
             '''

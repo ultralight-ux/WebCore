@@ -47,7 +47,7 @@
 
 #if USE(ULTRALIGHT)
 #include <Ultralight/platform/Platform.h>
-#include <ultralight/platform/Config.h>
+#include <Ultralight/platform/Config.h>
 #endif
 
 namespace WebCore {
