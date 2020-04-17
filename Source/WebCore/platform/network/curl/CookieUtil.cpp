@@ -82,7 +82,7 @@ bool domainMatch(const String& cookieDomain, const String& host)
 static Optional<double> parseExpires(const char* expires)
 {
     double tmp = WTF::parseDateFromNullTerminatedCharacters(expires);
-    if (isnan(tmp))
+    if (std::isnan(tmp))
         return { };
 
     return Optional<double> {tmp / WTF::msPerSecond};

@@ -210,7 +210,7 @@
 namespace JSC {
 
 #define CHECK_FEATURE_FLAG_TYPE(capitalName, lowerName, properName, instanceType, jsName, prototypeBase, featureFlag) \
-static_assert(std::is_same_v<std::remove_cv_t<decltype(featureFlag)>, bool> || std::is_same_v<std::remove_cv_t<decltype(featureFlag)>, bool&>);
+static_assert(std::is_same<std::remove_cv_t<decltype(featureFlag)>, bool>::value || std::is_same<std::remove_cv_t<decltype(featureFlag)>, bool&>::value);
 
 FOR_EACH_SIMPLE_BUILTIN_TYPE(CHECK_FEATURE_FLAG_TYPE)
 FOR_EACH_BUILTIN_DERIVED_ITERATOR_TYPE(CHECK_FEATURE_FLAG_TYPE)
