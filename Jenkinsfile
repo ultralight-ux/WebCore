@@ -10,6 +10,7 @@ pipeline {
             }
           }
           steps {
+            sleep 10
             sh '''
                # Setup environment
                export PATH="/usr/local/bin:$PATH"
@@ -46,6 +47,7 @@ pipeline {
             }
           }
           steps {
+            sleep 10
             sh '''
                # Setup environment
                export PATH="/usr/local/bin:$PATH"
@@ -82,6 +84,7 @@ pipeline {
             }
           }
           steps {
+            sleep 10
             bat '''
                rem Setup environment
                call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64
@@ -109,6 +112,7 @@ pipeline {
             }
           }
           steps {
+            sleep 10
             bat '''
                rem Setup environment
                call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64
@@ -136,6 +140,7 @@ pipeline {
             }
           }
           steps {
+            sleep 10
             bat '''
                rem Setup environment
                call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64 uwp
@@ -163,6 +168,7 @@ pipeline {
             }
           }
           steps {
+            sleep 10
             bat '''
                rem Setup environment
                call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64 uwp
@@ -190,6 +196,7 @@ pipeline {
             }
           }
           steps {
+            sleep 10
             sh '''
                # Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
                mkdir -p build_deps
@@ -220,6 +227,7 @@ pipeline {
             }
           }
           steps {
+            sleep 10
             sh '''
                # Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
                mkdir -p build_deps
