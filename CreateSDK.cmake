@@ -98,7 +98,7 @@ execute_process(
 
 # Get abbreviated commit hash of current branch
 execute_process(
-  COMMAND git rev-parse --short HEAD
+  COMMAND git rev-parse --short=8 HEAD
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
   OUTPUT_VARIABLE GIT_COMMIT_HASH
   OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -111,14 +111,6 @@ execute_process(
   OUTPUT_VARIABLE GIT_CHERRY
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-    
-if (PORT MATCHES "UltralightLinux")
-    set(PLATFORM "linux")
-elseif (PORT MATCHES "UltralightMac")
-    set(PLATFORM "mac")
-elseif (PORT MATCHES "UltralightWin")
-    set(PLATFORM "win")
-endif ()
 
 if (APPLE)
   if (NOT ${BUILD_DBG})
