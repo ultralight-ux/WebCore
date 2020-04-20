@@ -41,6 +41,8 @@ set(JAVASCRIPTCORE_HEADERS
 
 INSTALL(FILES ${JAVASCRIPTCORE_HEADERS} DESTINATION "include/JavaScriptCore/")
 
+INSTALL(FILES "${CMAKE_SOURCE_DIR}/cacert.pem" DESTINATION "bin")
+
 set(WEBINSPECTORUI_DIR "${CMAKE_SOURCE_DIR}/Source/WebInspectorUI")
 
 INSTALL(DIRECTORY "${WEBINSPECTORUI_DIR}/UserInterface/" DESTINATION "inspector")
@@ -61,16 +63,27 @@ else ()
     set(ARCHITECTURE "x86")
 endif ()
 
+set(WEBKITLIBRARIES_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries")
+
 if (PORT MATCHES "UltralightLinux")
     set(PLATFORM "linux")
+    INSTALL(FILES "${WEBKITLIBRARIES_DIR}/lib/libicudata.so" 
+                  "${WEBKITLIBRARIES_DIR}/lib/libicui18n.so"
+                  "${WEBKITLIBRARIES_DIR}/lib/libicuuc.so" DESTINATION "lib")
 elseif (PORT MATCHES "UltralightMac")
     set(PLATFORM "mac")
+    INSTALL(FILES "${WEBKITLIBRARIES_DIR}/lib/libicudata.dylib" 
+                  "${WEBKITLIBRARIES_DIR}/lib/libicui18n.dylib"
+                  "${WEBKITLIBRARIES_DIR}/lib/libicuuc.dylib" DESTINATION "lib")
 elseif (PORT MATCHES "UltralightWin")
     if (UWP_PLATFORM)
         set(PLATFORM "win-uwp")
     else ()
         set(PLATFORM "win")
     endif ()
+    INSTALL(FILES "${WEBKITLIBRARIES_DIR}/bin/icudt63.dll" 
+                  "${WEBKITLIBRARIES_DIR}/bin/icuin63.dll"
+                  "${WEBKITLIBRARIES_DIR}/bin/icuuc63.dll" DESTINATION "bin")
 endif ()
 
 set(INSTALL_DIR ${PROJECT_BINARY_DIR}/out)
