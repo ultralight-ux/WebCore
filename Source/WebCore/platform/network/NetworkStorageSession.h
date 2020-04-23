@@ -108,7 +108,7 @@ public:
     void getCredentialFromPersistentStorage(const ProtectionSpace&, GCancellable*, Function<void (Credential&&)>&& completionHandler);
     void saveCredentialToPersistentStorage(const ProtectionSpace&, const Credential&);
 #elif USE(CURL)
-    WEBCORE_EXPORT NetworkStorageSession(PAL::SessionID);
+    WEBCORE_EXPORT NetworkStorageSession(PAL::SessionID, const String& cookie_jar_path);
     WEBCORE_EXPORT ~NetworkStorageSession();
 
     const CookieJarCurl& cookieStorage() const { return m_cookieStorage; };

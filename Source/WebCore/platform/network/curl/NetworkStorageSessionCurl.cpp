@@ -40,28 +40,18 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Logger.h>
+#include <Ultralight/platform/Config.h>
+#include <Ultralight/private/util/Debug.h>
+#include "StringUltralight.h"
 
 namespace WebCore {
 
-static String defaultCookieJarPath()
-{
-    static const char* defaultFileName = "cookie.jar.db";
-    char* cookieJarPath = getenv("CURL_COOKIE_JAR_PATH");
-    if (cookieJarPath)
-        return cookieJarPath;
-
-#if PLATFORM(WIN)
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), defaultFileName);
-#else
-    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=192417
-    return defaultFileName;
-#endif
-}
-
-NetworkStorageSession::NetworkStorageSession(PAL::SessionID sessionID)
+NetworkStorageSession::NetworkStorageSession(PAL::SessionID sessionID, const String& cookie_jar_path)
     : m_sessionID(sessionID)
     , m_cookieStorage(makeUniqueRef<CookieJarCurl>())
-    , m_cookieDatabase(makeUniqueRef<CookieJarDB>(defaultCookieJarPath()))
+    , m_cookieDatabase(makeUniqueRef<CookieJarDB>(cookie_jar_path))
 {
 }
 
