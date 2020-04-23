@@ -7,6 +7,7 @@
 #include <wtf/WorkQueue.h>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/FileSystem.h>
+#include <Ultralight/private/util/Debug.h>
 #include "StringUltralight.h"
 
 namespace WebCore {
@@ -63,6 +64,9 @@ void load(const URL& url, LoadCompletionHandler&& completionHandler) {
         }
         fs->CloseFile(file);
       }
+    }
+    else {
+      UL_LOG_ERROR("Error, NULL FileSystem encountered while attempting to load a file:/// URL. Did you forget to call Platform::set_file_system()?");
     }
 
     callOnMainThread([loadTask = WTFMove(loadTask)]{

@@ -7,6 +7,8 @@
 #include <Ultralight/platform/FontLoader.h>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/private/Painter.h>
+#include <Ultralight/platform/Logger.h>
+#include <Ultralight/private/util/Debug.h>
 #include "StringUltralight.h"
 
 namespace WebCore {
@@ -30,11 +32,13 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
   const UChar* characters, unsigned length)
 {
   auto& platform = ultralight::Platform::instance();
-  auto loader = platform.font_loader();
-  if (!loader)
-    return lastResortFallbackFont(description);
+  auto font_loader = platform.font_loader();
+  UL_CHECK(font_loader, "Error, NULL FontLoader encountered, did you forget to call Platform::set_font_loader()?");
+  
+  if (!font_loader)
+    return nullptr;
 
-  auto fallback = loader->fallback_font_for_characters(
+  auto fallback = font_loader->fallback_font_for_characters(
     ultralight::String16(reinterpret_cast<const ultralight::Char16*>(characters), length),
     GetRawWeight(description.weight()), !!description.italic(), description.computedSize());
 
@@ -77,7 +81,11 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
 {
   auto& platform = ultralight::Platform::instance();
   auto font_loader = platform.font_loader();
-  return *fontForFamily(fontDescription, Convert(font_loader->fallback_font()));
+  UL_CHECK(font_loader, "Error, NULL FontLoader encountered, did you forget to call Platform::set_font_loader()?");
+  WTF::String fallback;
+  if (font_loader)
+    fallback = Convert(font_loader->fallback_font());
+  return *fontForFamily(fontDescription, fallback);
 }
 
 /*
@@ -98,15 +106,16 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
     return nullptr;
 
   auto& platform = ultralight::Platform::instance();
-  auto loader = platform.font_loader();
-  if (!loader)
+  auto font_loader = platform.font_loader();
+  UL_CHECK(font_loader, "Error, NULL FontLoader encountered, did you forget to call Platform::set_font_loader()?");
+  if (!font_loader)
     return nullptr;
 
   auto font_family = family;
   if (font_family.isEmpty())
-    font_family = Convert(loader->fallback_font());
+    font_family = Convert(font_loader->fallback_font());
 
-  auto font = loader->Load(Convert(font_family.string()), GetRawWeight(fontDescription.weight()),
+  auto font = font_loader->Load(Convert(font_family.string()), GetRawWeight(fontDescription.weight()),
     !!fontDescription.italic(), fontDescription.computedSize());
   
   size_t font_size = font->size();

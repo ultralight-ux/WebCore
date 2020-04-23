@@ -37,7 +37,7 @@ FontPlatformData::FontPlatformData(RefPtr<FT_FaceRec_> face, ultralight::RefPtr<
   m_fixedWidth = m_face.get()->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
   auto config = ultralight::Platform::instance().config();
 
-  m_size = (float)std::floor(description.computedPixelSize() * config.device_scale_hint);
+  m_size = (float)std::floor(description.computedPixelSize() * config.device_scale);
 
 #if ENABLE_DISTANCE_FIELD_FONTS
   m_distanceField = m_face->face_flags & FT_FACE_FLAG_SCALABLE;
@@ -48,7 +48,7 @@ FontPlatformData::FontPlatformData(RefPtr<FT_FaceRec_> face, ultralight::RefPtr<
 #endif
 
   auto font_cache = ultralight::FontCache::instance();
-  double font_scale = 1.0 / config.device_scale_hint;
+  double font_scale = 1.0 / config.device_scale;
   m_font = font_cache->GetFont((uint64_t)hash(), isDistanceField(), m_size, font_scale);
 }
 
