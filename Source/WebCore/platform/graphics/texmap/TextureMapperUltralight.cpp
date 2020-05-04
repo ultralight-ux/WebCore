@@ -84,8 +84,8 @@ void TextureMapperUltralight::beginClip(const TransformationMatrix& mat,
   if (!quad.isRectilinear() || bbox.isEmpty())
     return;
 
-  ultralight::Rect scissor_box = { (float)bbox.x(), (float)bbox.y(), (float)bbox.maxX(), (float)bbox.maxY() };
-  ultralight::Rect new_scissor = surface->GetScissorRect().Intersect(scissor_box);
+  ultralight::IntRect scissor_box = { bbox.x(), bbox.y(), bbox.maxX(), bbox.maxY() };
+  ultralight::IntRect new_scissor = surface->GetScissorRect().Intersect(scissor_box);
 
   surface->set_scissor_enabled(true);
   surface->SetScissorRect(new_scissor);
@@ -98,7 +98,7 @@ void TextureMapperUltralight::endClip() {
 
 IntRect TextureMapperUltralight::clipBounds() {
   auto surface = current_surface_ ? current_surface_ : default_surface_;
-  ultralight::Rect bounds = surface->GetScissorRect();
+  ultralight::IntRect bounds = surface->GetScissorRect();
   return IntRect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
 }
 

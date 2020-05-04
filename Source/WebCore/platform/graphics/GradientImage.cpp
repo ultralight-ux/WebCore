@@ -64,6 +64,10 @@ void GradientImage::drawPattern(GraphicsContext& destContext, const FloatRect& d
     AffineTransform destContextCTM = destContext.getCTM(GraphicsContext::DefinitelyIncludeDeviceScale);
     double xScale = fabs(destContextCTM.xScale());
     double yScale = fabs(destContextCTM.yScale());
+#if USE(ULTRALIGHT)
+    xScale = 1.0;
+    yScale = 1.0;
+#endif
     AffineTransform adjustedPatternCTM = patternTransform;
     adjustedPatternCTM.scale(1.0 / xScale, 1.0 / yScale);
     adjustedSrcRect.scale(xScale, yScale);

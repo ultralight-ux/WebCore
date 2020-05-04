@@ -532,18 +532,26 @@ void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded()
       is_forcing_repaint = true;
 #endif
 
-    IntRect dirtyRect = enclosingIntRect(FloatRect(FloatPoint::zero(), m_size));
+    FloatSize scaled_size = m_size;
+    scaled_size.scale(pageScaleFactor() * deviceScaleFactor());
+
+    // Round to nearest pixel to avoid rescaling artifacts
+    scaled_size.setWidth(std::round(scaled_size.width()));
+    scaled_size.setHeight(std::round(scaled_size.height()));
+
+    IntRect dirtyRect = IntRect(FloatRect(FloatPoint::zero(), scaled_size));
+
+    FloatRect scaled_needsDisplayRect = m_needsDisplayRect;
+    scaled_needsDisplayRect.scale(pageScaleFactor() * deviceScaleFactor());
 
     if (!is_forcing_repaint) {
       if (!m_needsDisplay)
-        dirtyRect.intersect(enclosingIntRect(m_needsDisplayRect));
+        dirtyRect.intersect(enclosingIntRect(scaled_needsDisplayRect));
       if (dirtyRect.isEmpty())
         return;
     }
 
     m_backingStore->updateContentsScale(pageScaleFactor() * deviceScaleFactor());
-
-    dirtyRect.scale(pageScaleFactor() * deviceScaleFactor());
     m_backingStore->updateContents(*textureMapper, this, m_size, dirtyRect);
 
     m_needsDisplay = false;

@@ -88,27 +88,28 @@ void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
   const IntPoint& offset, float scale) {
   IntRect sourceRect(targetRect);
   sourceRect.setLocation(offset);
-  sourceRect.scale(1 / scale);
-  
-  canvas_->set_scissor_enabled(true);
-  auto config = ultralight::Platform::instance().config();
-  canvas_->SetScissorRect(FloatRect(sourceRect));
-
-  // Add 2 pixel buffer around drawn area to avoid artifacts
-  sourceRect.expand(4, 4);
-  sourceRect.move(-2, -2);
+  ultralight::IntRect scissorRect = { sourceRect.x(), sourceRect.y(), sourceRect.maxX(), sourceRect.maxY() };
+  canvas_->SetScissorRect(scissorRect);
 
   // Clear rect by disabling blending and drawing a transparent quad.
+  canvas_->set_scissor_enabled(true);
   canvas_->set_blending_enabled(false);
   ultralight::Paint paint;
   paint.color = UltralightColorTRANSPARENT;
   canvas_->DrawRect(FloatRect(sourceRect), paint);
   canvas_->set_blending_enabled(true);
 
+  // Add 2 pixel buffer around drawn area to avoid artifacts
+  //sourceRect.expand(4, 4);
+  //sourceRect.move(-2, -2);
+
+  sourceRect.scale(1 / scale);
+  
   canvas_->Save();
   {
     GraphicsContext ctx(canvas_);
     ctx.applyDeviceScaleFactor(scale);
+    ctx.translate(-sourceRect.x(), -sourceRect.y());
 
     sourceLayer->paintGraphicsLayerContents(ctx, sourceRect);
   }

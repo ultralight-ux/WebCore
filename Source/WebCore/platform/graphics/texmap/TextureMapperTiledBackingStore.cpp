@@ -132,8 +132,13 @@ void TextureMapperTiledBackingStore::createOrDestroyTilesIfNeeded(const FloatSiz
             tileIndicesToRemove.removeLast();
             tile.setRect(rect);
 
-            if (tile.texture())
-                tile.texture()->reset(enclosingIntRect(tile.rect()).size(), hasAlpha ? BitmapTexture::SupportsAlpha : 0);
+            if (tile.texture()) {
+              FloatSize texSize = tile.rect().size();
+              texSize.setWidth(std::round(texSize.width()));
+              texSize.setHeight(std::round(texSize.height()));
+
+              tile.texture()->reset(IntSize(texSize), hasAlpha ? BitmapTexture::SupportsAlpha : 0);
+            }
             continue;
         }
 

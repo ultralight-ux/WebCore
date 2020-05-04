@@ -614,7 +614,8 @@ void GraphicsContext::clearRect(const FloatRect& rect)
   auto canvas = platformContext()->canvas();
 
   canvas->set_scissor_enabled(true);
-  canvas->SetScissorRect(sourceRect);
+  ultralight::IntRect ultraSourceRect = { (int)sourceRect.x(), (int)sourceRect.y(), (int)sourceRect.maxX(), (int)sourceRect.maxY() };
+  canvas->SetScissorRect(ultraSourceRect);
 
   // Add 2 pixel buffer around drawn area to avoid artifacts
   sourceRect.expand(4, 4);

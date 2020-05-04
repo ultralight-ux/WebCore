@@ -1925,7 +1925,7 @@ void RenderBoxModelObject::paintBorder(const PaintInfo& info, const LayoutRect& 
       for (int i = BSTop; i <= BSLeft; ++i) {
         const BorderEdge& edge = edges[i];
         if (edge.shouldRender() && !edge.presentButInvisible() && edge.widthForPainting()) {
-          FloatRect sideRect = rectToDevicePixels(calculateSideRect(outerBorder, edges, i));
+          FloatRect sideRect = snapRectToDevicePixels(calculateSideRect(outerBorder, edges, i), document().deviceScaleFactor());
           paint.color = UltralightRGBA(edge.color().red(), edge.color().green(), edge.color().blue(), edge.color().alpha());
           platformCtx->canvas()->DrawRect(sideRect, paint);
         }
@@ -1939,7 +1939,8 @@ void RenderBoxModelObject::paintBorder(const PaintInfo& info, const LayoutRect& 
       Color border_color = edges[0].color();
 
       RoundedRect outer_border = style.getRoundedBorderFor(rect, includeLogicalLeftEdge, includeLogicalRightEdge);
-      FloatRoundedRect rrect = FloatRoundedRect(rectToDevicePixels(outer_border.rect()), outer_border.radii());
+      //FloatRoundedRect rrect = FloatRoundedRect(rectToDevicePixels(outer_border.rect()), outer_border.radii());
+      FloatRoundedRect rrect = outerBorder.pixelSnappedRoundedRectForPainting(document().deviceScaleFactor());
 
       PlatformGraphicsContext* platformCtx = graphicsContext.platformContext();
       platformCtx->DrawRoundedRect(rect, rrect, Color::transparent, border_width, border_color);
@@ -1952,10 +1953,10 @@ void RenderBoxModelObject::paintBorder(const PaintInfo& info, const LayoutRect& 
 
     //const BorderData& borderData = style.border();
     //PlatformGraphicsContext* platformGraphicsContext = graphicsContext.platformContext();
-    FloatRoundedRect outerBorderPixels = FloatRoundedRect(rectToDevicePixels(outerBorder.rect()), outerBorder.radii());
-    FloatRoundedRect innerBorderPixels = FloatRoundedRect(rectToDevicePixels(innerBorder.rect()), innerBorder.radii());
-    //FloatRoundedRect pixelSnappedOuterBorder = outerBorder.pixelSnappedRoundedRectForPainting(document().deviceScaleFactor());
-    //FloatRoundedRect pixelSnappedInnerBorder = innerBorder.pixelSnappedRoundedRectForPainting(document().deviceScaleFactor());
+    //FloatRoundedRect outerBorderPixels = FloatRoundedRect(rectToDevicePixels(outerBorder.rect()), outerBorder.radii());
+    //FloatRoundedRect innerBorderPixels = FloatRoundedRect(rectToDevicePixels(innerBorder.rect()), innerBorder.radii());
+    FloatRoundedRect outerBorderPixels = outerBorder.pixelSnappedRoundedRectForPainting(document().deviceScaleFactor());
+    FloatRoundedRect innerBorderPixels = innerBorder.pixelSnappedRoundedRectForPainting(document().deviceScaleFactor());
     PlatformGraphicsContext* platformCtx = graphicsContext.platformContext();
     platformCtx->DrawBoxDecorations(rect, outerBorderPixels, innerBorderPixels, edges, bgColor);
     return;
