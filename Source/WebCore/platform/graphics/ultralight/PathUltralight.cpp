@@ -129,8 +129,7 @@ FloatPoint Path::currentPoint() const
 
 void Path::translate(const FloatSize& p)
 {
-  auto path = ensurePlatformPath()->path();
-  path->matrix().Translate(-p.width(), -p.height());
+  transform(AffineTransform(1, 0, 0, 1, p.width(), p.height()));
 }
 
 void Path::moveTo(const FloatPoint& p)
@@ -410,7 +409,7 @@ void Path::transform(const AffineTransform& trans)
 
   // TODO: the Cairo port inverts the matrix right here, should we do the same??
 
-  path->matrix().Transform(trans);
+  path->Transform(trans);
 }
 
 ultralight::Ref<ultralight::Path> Path::ultralightPath() const {

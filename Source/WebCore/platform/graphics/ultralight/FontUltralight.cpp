@@ -16,6 +16,7 @@
 #include <unicode/normlzr.h>
 #include "ft2build.h"
 #include FT_FREETYPE_H
+#include FT_OUTLINE_H
 
 /*
 static int TwentySixDotSix2Pixel(const int i)
@@ -339,9 +340,14 @@ RefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescripti
 
 Path Font::platformPathForGlyph(Glyph glyph) const
 {
-	// TODO
-	notImplemented();
-	return Path();
+  auto& platformData = const_cast<WebCore::FontPlatformData&>(m_platformData); 
+  auto platformPath = FontRenderer::GetPath(platformData.font(), platformData.face(), glyph, true);
+  
+  Path result;
+  if (platformPath)
+    result.ultralightPath()->Set(*platformPath);
+
+  return result;
 }
 
 } // namespace WebCore

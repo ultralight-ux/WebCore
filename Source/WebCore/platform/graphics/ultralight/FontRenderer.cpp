@@ -112,6 +112,42 @@ int CubicTo(const FT_Vector* p1, const FT_Vector* p2, const FT_Vector* p3, void*
 
 static FT_Outline_Funcs g_outline_funcs = { &MoveTo, &LineTo, &ConicTo, &CubicTo, 0, 0 };
 
+ultralight::RefPtr<ultralight::Path> FontRenderer::GetPath(ultralight::RefPtr<ultralight::Font> font, 
+  FT_Face face, FT_UInt glyph_index, bool flip_y) {
+
+  FT_Set_Pixel_Sizes(face, 0, (FT_UInt)font->font_size());
+
+  FT_Error error;
+  error = FT_Load_Glyph(face, glyph_index, FT_LOAD_NO_HINTING);
+  if (error)
+    return nullptr;
+
+  FT_GlyphSlot slot = face->glyph;
+
+  if (slot->format != FT_GLYPH_FORMAT_OUTLINE)
+    return nullptr;
+
+  RenderContext ctx;
+  ctx.path = ultralight::Path::Create();
+  // Apply font scale
+  ctx.path->matrix().Scale(font->font_scale(), font->font_scale());
+
+  if (flip_y)
+    ctx.path->matrix().Scale(1.0, -1.0);
+
+  FT_Outline outline = slot->outline;
+  error = FT_Outline_Decompose(&outline, &g_outline_funcs, &ctx);
+  if (error)
+    return nullptr;
+
+  if (ctx.path->empty())
+    return nullptr;
+
+  ctx.path->Close();
+
+  return ctx.path;
+}
+
 bool RenderDistanceFieldGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face face, FT_UInt glyph_index) {
   FT_Set_Pixel_Sizes(face, 0, (FT_UInt)font->font_size());
 

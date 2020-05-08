@@ -387,7 +387,7 @@ void GraphicsContext::drawLineForText(const FloatRect& rect, bool printing, bool
   drawLinesForText(rect.location(), rect.height(), DashArray{ 0, rect.width() }, printing, doubleUnderlines);
 }
 
-void GraphicsContext::drawLinesForText(const FloatPoint& point, float thickness, const DashArray& widths, bool printing, bool doubleUnderlines, StrokeStyle)
+void GraphicsContext::drawLinesForText(const FloatPoint& point, float thickness, const DashArray& widths, bool printing, bool doubleUnderlines, StrokeStyle strokeStyle)
 {
   if (paintingDisabled())
     return;
@@ -395,20 +395,9 @@ void GraphicsContext::drawLinesForText(const FloatPoint& point, float thickness,
   if (widths.isEmpty())
     return;
 
-  ASSERT(hasPlatformContext());
   Color localStrokeColor(strokeColor());
 
-  thickness = std::max(thickness, 0.5f);
-
-  FloatRect rect = FloatRect(point.x(), point.y() + thickness + 1.0f, widths[0], thickness);
-  ultralight::Paint paint;
-  WebCore::Color color = fillColor();
-  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->DrawRect(rect, paint);
-
-  /*
-
-  FloatRect bounds = computeLineBoundsAndAntialiasingModeForText(point, widths.last(), printing, localStrokeColor);
+  FloatRect bounds = computeLineBoundsAndAntialiasingModeForText(FloatRect(point, FloatSize(widths.last(), thickness)), printing, localStrokeColor);
 
   Vector<FloatRect, 4> dashBounds;
   ASSERT(!(widths.size() % 2));
@@ -447,12 +436,11 @@ void GraphicsContext::drawLinesForText(const FloatPoint& point, float thickness,
   }
 
   ultralight::Paint paint;
-  WebCore::Color color = fillColor();
+  WebCore::Color color = localStrokeColor;
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
 
   for (auto& dash : dashBounds)
     platformContext()->canvas()->DrawRect(dash, paint);
-    */
 }
 
 void GraphicsContext::drawDotsForDocumentMarker(const FloatRect&, DocumentMarkerLineStyle)
@@ -723,7 +711,7 @@ void GraphicsContext::clipOut(const Path& path)
     return;
 
   ultralight::RefPtr<ultralight::Path> p = path.ultralightPath();
-  // TODO: What is the fill rule? No winding specified.
+  // CoreGraphics seems to use EvenOdd rule here so we do the same.
   ultralight::FillRule fill_rule = ultralight::kFillRule_EvenOdd;
   platformContext()->canvas()->SetClip(p, fill_rule, true);
 }
