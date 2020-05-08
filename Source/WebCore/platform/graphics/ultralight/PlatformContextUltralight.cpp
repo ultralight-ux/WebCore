@@ -40,7 +40,6 @@ PlatformContextUltralight::PlatformContextUltralight(PlatformCanvas canvas) : m_
 {
   m_stateStack.append(State());
   m_state = &m_stateStack.last();
-  m_hasMask = false;
 }
 
 PlatformContextUltralight::~PlatformContextUltralight()
@@ -61,11 +60,6 @@ void PlatformContextUltralight::save()
 
 void PlatformContextUltralight::restore()
 {
-  if (m_hasMask) {
-    canvas()->EndMaskLayer();
-    m_hasMask = false;
-  }
-
   m_canvas->Restore();
 
   m_stateStack.removeLast();
@@ -167,8 +161,7 @@ void PlatformContextUltralight::prepareForStroking(const GraphicsContextState&, 
 void PlatformContextUltralight::setMask(const Path& path, WindRule clipRule) {
   ultralight::RefPtr<ultralight::Path> p = path.ultralightPath();
   ultralight::FillRule fill_rule = clipRule == WindRule::NonZero ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd;
-  canvas()->BeginMaskLayer(p);
-  m_hasMask = true;
+  canvas()->SetClip(p, fill_rule, false);
 }
 
 ultralight::BorderPaint GetBorderPaint(const BorderEdge& edge) {

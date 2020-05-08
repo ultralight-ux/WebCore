@@ -82,7 +82,6 @@ namespace WebCore {
     class State;
     State* m_state;
     WTF::Vector<State> m_stateStack;
-    bool m_hasMask;
 
     // GraphicsContext is responsible for managing the state of the ShadowBlur,
     // so it does not need to be on the state stack.
