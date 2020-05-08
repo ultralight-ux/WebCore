@@ -91,6 +91,10 @@ void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
   ultralight::IntRect scissorRect = { sourceRect.x(), sourceRect.y(), sourceRect.maxX(), sourceRect.maxY() };
   canvas_->SetScissorRect(scissorRect);
 
+  // Add 2 pixel buffer around drawn area to avoid artifacts
+  sourceRect.expand(4, 4);
+  sourceRect.move(-2, -2);
+
   // Clear rect by disabling blending and drawing a transparent quad.
   canvas_->set_scissor_enabled(true);
   canvas_->set_blending_enabled(false);
@@ -99,17 +103,12 @@ void BitmapTextureUltralight::updateContents(TextureMapper& textureMapper,
   canvas_->DrawRect(FloatRect(sourceRect), paint);
   canvas_->set_blending_enabled(true);
 
-  // Add 2 pixel buffer around drawn area to avoid artifacts
-  //sourceRect.expand(4, 4);
-  //sourceRect.move(-2, -2);
-
   sourceRect.scale(1 / scale);
   
   canvas_->Save();
   {
     GraphicsContext ctx(canvas_);
     ctx.applyDeviceScaleFactor(scale);
-    ctx.translate(-sourceRect.x(), -sourceRect.y());
 
     sourceLayer->paintGraphicsLayerContents(ctx, sourceRect);
   }
