@@ -16,7 +16,12 @@
 
 namespace WebCore {
 
+#if OS(DARWIN)
 static const float ControlBaseHeight = 20;
+#else
+// Buttons are slightly shorter on non-MacOS systems
+static const float ControlBaseHeight = 17;
+#endif
 static const float ControlBaseFontSize = 11;
 
 class RenderThemeUltralight : public RenderTheme {
@@ -29,7 +34,7 @@ public:
     WTF::String configStylesheet = Convert(config.user_stylesheet);
 
     WTF::String platformStylesheet;
-#if OS(WINDOWS)
+#if !OS(DARWIN)
     platformStylesheet = String(themeWinUserAgentStyleSheet, sizeof(themeWinUserAgentStyleSheet));
 #endif
 
@@ -38,11 +43,14 @@ public:
 
   virtual String extraQuirksStyleSheet() override { 
     WTF::String platformStylesheet; 
-#if OS(WINDOWS)
+#if !OS(DARWIN)
     platformStylesheet = String(themeWinQuirksUserAgentStyleSheet, sizeof(themeWinQuirksUserAgentStyleSheet));
 #endif
     return platformStylesheet;
   }
+
+  // Force WebCore to draw the focus ring
+  virtual bool supportsFocusRing(const RenderStyle&) const { return false; }
 
   FloatRect addRoundedBorderClip(const RenderObject& box, GraphicsContext& context, const IntRect& rect)
   {
@@ -135,49 +143,69 @@ public:
     return ultralight::Point(start.x + x * ratio, start.y + y * ratio);
   }
 
-  static void drawAxialGradient(PlatformCanvas canvas, ColorPair* colorPair, const FloatPoint& startPoint, const FloatPoint& stopPoint, const FloatRect& clip)
-  {
+  static inline ultralight::Color sampleExponential(ultralight::vec4 a, ultralight::vec4 b, float t) {
+    t *= t;
+    ultralight::vec4 sampledColor = a * (1.0f - t) + b * t;
+    return UltralightRGBA(sampledColor.x, sampledColor.y, sampledColor.z, sampledColor.w);
+  }
+
+  static ultralight::Gradient setupGradient(ColorPair* colorPair, bool simulateExponential) {
     ultralight::Gradient gradient;
-    gradient.num_stops = 2;
+    if (simulateExponential) {
+      constexpr size_t num_samples = 7;
+      gradient.num_stops = num_samples;
+      ultralight::vec4 colorA = UltralightColorGetFloat4(colorPair->color1);
+      ultralight::vec4 colorB = UltralightColorGetFloat4(colorPair->color2);
+
+      for (size_t i = 0; i < num_samples; ++i) {
+        float t = i / (num_samples - 1.0f);
+        gradient.stops[i].color = sampleExponential(colorA, colorB, t);
+        gradient.stops[i].stop = t;
+      }
+    }
+    else {
+      gradient.num_stops = 2;
+      gradient.stops[0].color = colorPair->color1;
+      gradient.stops[0].stop = 0.0f;
+      gradient.stops[1].color = colorPair->color2;
+      gradient.stops[1].stop = 1.0f;
+    }
+    return gradient;
+  }
+
+  static void drawAxialGradient(PlatformCanvas canvas, ColorPair* colorPair, const FloatPoint& startPoint, const FloatPoint& stopPoint, const FloatRect& clip, bool simulateExponential = false)
+  {
+    ultralight::Gradient gradient = setupGradient(colorPair, simulateExponential);
     gradient.is_radial = false;
     gradient.p0 = ultralight::Point(startPoint.x(), startPoint.y());
     gradient.p1 = ultralight::Point(stopPoint.x(), stopPoint.y());
-    gradient.stops[0].color = colorPair->color1;
-    gradient.stops[0].stop = 0.0f;
-    gradient.stops[1].color = colorPair->color2;
-    gradient.stops[1].stop = 1.0f;
 
     canvas->DrawGradient(&gradient, clip);
   }
 
-  static void drawRadialGradient(PlatformCanvas canvas, ColorPair* colorPair, const FloatPoint& startPoint, float startRadius, const FloatPoint& stopPoint, float stopRadius, const FloatRect& clip)
+  static void drawRadialGradient(PlatformCanvas canvas, ColorPair* colorPair, const FloatPoint& startPoint, float startRadius, const FloatPoint& stopPoint, float stopRadius, const FloatRect& clip, bool simulateExponential = false)
   {
-    ultralight::Gradient gradient;
-    gradient.num_stops = 2;
+    ultralight::Gradient gradient = setupGradient(colorPair, simulateExponential);
     gradient.is_radial = true;
     gradient.p0 = ultralight::Point(startPoint.x(), startPoint.y());
     gradient.p1 = ultralight::Point(stopPoint.x(), stopPoint.y());
     gradient.r0 = startRadius;
     gradient.r1 = stopRadius;
-    gradient.stops[0].color = colorPair->color1;
-    gradient.stops[0].stop = 0.0f;
-    gradient.stops[1].color = colorPair->color2;
-    gradient.stops[1].stop = 1.0f;
 
     canvas->DrawGradient(&gradient, clip);
   }
 
-  static void drawJoinedLines(PlatformCanvas canvas, ultralight::Point points[], unsigned count, float strokeWidth, Color color)
+  static void drawJoinedLines(PlatformCanvas canvas, const Vector<ultralight::Point>& points, bool use_square_cap, float strokeWidth, Color color)
   {
     ultralight::Ref<ultralight::Path> path = ultralight::Path::Create();
     path->MoveTo(points[0]);
-    for (unsigned i = 1; i < count; ++i)
+    for (unsigned i = 1; i < points.size(); ++i)
       path->LineTo(points[i]);
 
     ultralight::Paint paint;
     paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
 
-    canvas->StrokePath(path, paint, strokeWidth);
+    canvas->StrokePath(path, paint, strokeWidth, use_square_cap ? ultralight::kLineCap_Square : ultralight::kLineCap_Butt);
   }
 
   // Adjustments
@@ -219,52 +247,79 @@ public:
 
   virtual bool paintCheckboxDecorations(const RenderObject& box, const PaintInfo& paintInfo, const IntRect& rect) override
   {
-    GraphicsContextStateSaver stateSaver(paintInfo.context());
-    FloatRect clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+    bool checked = isChecked(box);
+    bool indeterminate = isIndeterminate(box);
     PlatformGraphicsContext* context = paintInfo.context().platformContext();
     PlatformCanvas canvas = context->canvas();
-    float width = clip.width();
-    float height = clip.height();
+    GraphicsContextStateSaver stateSaver(paintInfo.context());
 
-    if (isChecked(box)) {
-      drawAxialGradient(canvas, getConcaveGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
+    if (checked || indeterminate) {
+      auto border = box.style().getRoundedBorderFor(rect);
+#if OS(DARWIN)
+      paintInfo.context().fillRoundedRect(border.pixelSnappedRoundedRectForPainting(box.document().deviceScaleFactor()), Color(0.0f, 0.0f, 0.0f, 0.8f));
+#endif
 
-      static const float thicknessRatio = 2 / 14.0;
-      static const FloatSize size(14.0f, 14.0f);
-      static const ultralight::Point pathRatios[3] = {
-        { 2.5f / size.width(), 7.5f / size.height() },
-        { 5.5f / size.width(), 10.5f / size.height() },
-        { 11.5f / size.width(), 2.5f / size.height() }
-      };
+      auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+      auto width = clip.width();
+      auto height = clip.height();
+#if OS(DARWIN)
+      drawAxialGradient(canvas, getConcaveGradient(), clip.location(), FloatPoint{ clip.x(), clip.maxY() }, clip, false);
+#else
+      FloatPoint bottomCenter{ clip.x() + width / 2.0f, clip.maxY() };
 
+      drawAxialGradient(canvas, getShadeGradient(), clip.location(), FloatPoint{ clip.x(), clip.maxY() }, clip, false);
+      drawRadialGradient(canvas, getShineGradient(), bottomCenter, 0, bottomCenter, sqrtf((width * width) / 4.0f + height * height), clip, true);
+#endif
+
+      constexpr float thicknessRatio = 2 / 14.0;
       float lineWidth = std::min(width, height) * 2.0f * thicknessRatio;
 
-      ultralight::Point line[3] = {
-        ultralight::Point(clip.x() + width * pathRatios[0].x, clip.y() + height * pathRatios[0].y),
-        ultralight::Point(clip.x() + width * pathRatios[1].x, clip.y() + height * pathRatios[1].y),
-        ultralight::Point(clip.x() + width * pathRatios[2].x, clip.y() + height * pathRatios[2].y)
-      };
-      ultralight::Point shadow[3] = {
-        shortened(line[0], line[1], lineWidth / 4.0f),
-        line[1],
-        shortened(line[2], line[1], lineWidth / 4.0f)
-      };
+      Vector<ultralight::Point, 3> line;
+      Vector<ultralight::Point, 3> shadow;
+      if (checked) {
+        FloatSize size(14.0f, 14.0f);
+        ultralight::Point pathRatios[] = {
+            { 2.5f / size.width(), 7.5f / size.height() },
+            { 5.5f / size.width(), 10.5f / size.height() },
+            { 11.5f / size.width(), 2.5f / size.height() }
+        };
 
+        line.uncheckedAppend(ultralight::Point(clip.x() + width * pathRatios[0].x, clip.y() + height * pathRatios[0].y));
+        line.uncheckedAppend(ultralight::Point(clip.x() + width * pathRatios[1].x, clip.y() + height * pathRatios[1].y));
+        line.uncheckedAppend(ultralight::Point(clip.x() + width * pathRatios[2].x, clip.y() + height * pathRatios[2].y));
+
+        shadow.uncheckedAppend(shortened(line[0], line[1], lineWidth / 4.0f));
+        shadow.uncheckedAppend(line[1]);
+        shadow.uncheckedAppend(shortened(line[2], line[1], lineWidth / 4.0f));
+      }
+      else {
+        line.uncheckedAppend(ultralight::Point(clip.x() + 3.5, clip.center().y()));
+        line.uncheckedAppend(ultralight::Point(clip.maxX() - 3.5, clip.center().y()));
+
+        shadow.uncheckedAppend(shortened(line[0], line[1], lineWidth / 4.0f));
+        shadow.uncheckedAppend(shortened(line[1], line[0], lineWidth / 4.0f));
+      }
+
+#if OS(DARWIN)
       lineWidth = std::max<float>(lineWidth, 1);
-      // TODO: handle line cap (square)
-      drawJoinedLines(canvas, shadow, 3, lineWidth, Color(0.0f, 0.0f, 0.0f, 0.7f));
+      drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(shadow) }, true, lineWidth, Color{ 0.0f, 0.0f, 0.0f, 0.7f });
 
-      lineWidth = std::max<float>(std::min(clip.width(), clip.height()) * thicknessRatio, 1);
-      // TODO: handle line cap (butt)-- (though I think this is the default).
-      drawJoinedLines(canvas, line, 3, lineWidth, Color(1.0f, 1.0f, 1.0f, 240 / 255.0f));
+      lineWidth = std::max<float>(std::min(width, height) * thicknessRatio, 1);
+      drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(line) }, false, lineWidth, Color{ 1.0f, 1.0f, 1.0f, 240 / 255.0f });
+#else
+      lineWidth = std::max<float>(std::min(width, height) * 1.5f * thicknessRatio, 1);
+      drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(line) }, false, lineWidth, Color{ 0.0f, 0.0f, 0.0f, 0.7f });
+#endif
     }
     else {
-      FloatPoint bottomCenter(clip.x() + clip.width() / 2.0f, clip.maxY());
-      drawAxialGradient(canvas, getShadeGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
-      // TODO: handle exponential interpolation
-      drawRadialGradient(canvas, getShineGradient(), bottomCenter, 0, bottomCenter, sqrtf((width * width) / 4.0f + height * height), clip);
-    }
+      auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+      auto width = clip.width();
+      auto height = clip.height();
+      FloatPoint bottomCenter{ clip.x() + width / 2.0f, clip.maxY() };
 
+      drawAxialGradient(canvas, getShadeGradient(), clip.location(), FloatPoint{ clip.x(), clip.maxY() }, clip, false);
+      drawRadialGradient(canvas, getShineGradient(), bottomCenter, 0, bottomCenter, sqrtf((width * width) / 4.0f + height * height), clip, true);
+    }
     return false;
   }
 
@@ -283,33 +338,54 @@ public:
   virtual void setRadioSize(RenderStyle&) const override { }
   virtual bool paintRadioDecorations(const RenderObject& box, const PaintInfo& paintInfo, const IntRect& rect) override { 
     GraphicsContextStateSaver stateSaver(paintInfo.context());
-    FloatRect clip = addRoundedBorderClip(box, paintInfo.context(), rect);
     PlatformGraphicsContext* context = paintInfo.context().platformContext();
     PlatformCanvas canvas = context->canvas();
 
+    auto drawShadeAndShineGradients = [&](auto clip) {
+      FloatPoint bottomCenter(clip.x() + clip.width() / 2.0, clip.maxY());
+      drawAxialGradient(canvas, getShadeGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
+      drawRadialGradient(canvas, getShineGradient(), bottomCenter, 0, bottomCenter, std::max(clip.width(), clip.height()), clip, true);
+    };
+    
     if (isChecked(box)) {
-      drawAxialGradient(canvas, getConcaveGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
+      auto border = box.style().getRoundedBorderFor(rect);
+#if OS(DARWIN)
+      paintInfo.context().fillRoundedRect(border.pixelSnappedRoundedRectForPainting(box.document().deviceScaleFactor()), Color(0.0f, 0.0f, 0.0f, 0.8f));
+#endif
 
+      auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+#if OS(DARWIN)
+      drawAxialGradient(canvas, getConcaveGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
+#else
+      drawShadeAndShineGradients(clip);
+#endif
+
+#if OS(DARWIN)
       // The inner circle is 6 / 14 the size of the surrounding circle, 
       // leaving 8 / 14 around it. (8 / 14) / 2 = 2 / 7.
-
       static const float InnerInverseRatio = 2 / 7.0;
+#else
+      static const float InnerInverseRatio = 2 / 9.0;
+#endif
 
       clip.inflateX(-clip.width() * InnerInverseRatio);
       clip.inflateY(-clip.height() * InnerInverseRatio);
 
+#if OS(DARWIN)
       paintInfo.context().drawRaisedEllipse(clip, Color::white, shadowColor());
-
-      // TODO: Handle clipRoundedRect properly (not creating rounded clip?), bail early instead of doing extra shading...
-      return false;
 
       FloatSize radius(clip.width() / 2.0f, clip.height() / 2.0f);
       paintInfo.context().clipRoundedRect(FloatRoundedRect(clip, radius, radius, radius, radius));
+      drawShadeAndShineGradients(clip);
+#else
+      paintInfo.context().setFillColor(Color(0.0f, 0.0f, 0.0f, 0.7f));
+      paintInfo.context().drawEllipse(clip);
+#endif
     }
-    FloatPoint bottomCenter(clip.x() + clip.width() / 2.0, clip.maxY());
-    drawAxialGradient(canvas, getShadeGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
-    // TODO: handle exponential interpolation
-    drawRadialGradient(canvas, getShineGradient(), bottomCenter, 0, bottomCenter, std::max(clip.width(), clip.height()), clip);
+    else {
+      auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+      drawShadeAndShineGradients(clip);
+    }
     return false;
   }
 
@@ -321,7 +397,7 @@ public:
       return;
 
     // Use the font size to determine the intrinsic width of the control.
-    //style.setHeight(Length(static_cast<int>(ControlBaseHeight / ControlBaseFontSize * style.fontDescription().computedSize()), Fixed));
+    style.setHeight(Length(static_cast<int>(ControlBaseHeight / ControlBaseFontSize * style.fontDescription().computedSize()), Fixed));
   }
 
   void adjustRoundBorderRadius(RenderStyle& style, RenderBox& box) const
@@ -364,11 +440,14 @@ public:
 
     PlatformGraphicsContext* context = paintInfo.context().platformContext();
     PlatformCanvas canvas = context->canvas();
+    bool flip = isPressed(box);
+    FloatPoint start = flip ? FloatPoint(clip.x(), clip.maxY()) : clip.location();
+    FloatPoint end = flip ? clip.location() : FloatPoint(clip.x(), clip.maxY());
     if (box.style().visitedDependentColor(CSSPropertyBackgroundColor).isDark())
-      drawAxialGradient(canvas, getConvexGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
+      drawAxialGradient(canvas, getConvexGradient(), start, end, clip);
     else {
-      drawAxialGradient(canvas, getShadeGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
-      drawAxialGradient(canvas, getShineGradient(), FloatPoint(clip.x(), clip.maxY()), clip.location(), clip);
+      drawAxialGradient(canvas, getShadeGradient(), start, end, clip);
+      drawAxialGradient(canvas, getShineGradient(), end, start, clip);
     }
     return false;
   }
@@ -402,6 +481,7 @@ public:
   // Text fields
   virtual bool paintTextField(const RenderObject&, const PaintInfo&, const FloatRect&) override { return true; }
   virtual bool paintTextFieldDecorations(const RenderObject& box, const PaintInfo& paintInfo, const FloatRect& rect) override {
+#if OS(DARWIN)
     auto& style = box.style();
     FloatPoint point(rect.x() + style.borderLeftWidth(), rect.y() + style.borderTopWidth());
 
@@ -417,6 +497,7 @@ public:
     bool topBorderIsInvisible = !style.hasBorder() || !style.borderTopWidth() || style.borderTopIsTransparent();
     if (!box.view().printing() && !topBorderIsInvisible)
       drawAxialGradient(canvas, getInsetGradient(), point, FloatPoint(point.x(), point.y() + 3.0f), clip);
+#endif
     return false;
   }
 

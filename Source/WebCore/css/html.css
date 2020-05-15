@@ -1302,7 +1302,7 @@ attachment {
 
 /* noscript is handled internally, as it depends on settings. */
 
-/* extras for Ultralight */
+/* extras for Ultralight 
 input[type="button"], input[type="submit"], input[type="reset"], input[type="file"]::-webkit-file-upload-button, button {
     height: 1.65em;
 }
@@ -1310,6 +1310,7 @@ input[type="button"], input[type="submit"], input[type="reset"], input[type="fil
 input[type="button"]:active, input[type="submit"]:active, input[type="reset"]:active, input[type="file"]::-webkit-file-upload-button:active, button:active {
     background: linear-gradient(rgb(200, 200, 200), rgb(255, 255, 255));
 }
+*/
 
 /* Default support for "Smart Invert" where all content color except media is inverted. */ 
 @media (inverted-colors) {
