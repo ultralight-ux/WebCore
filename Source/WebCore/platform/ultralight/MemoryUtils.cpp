@@ -27,7 +27,7 @@ static const char* fmtBytes(uint64_t bytes) {
 }
 
 MemoryUtils::MemoryUtils() {
-  ResourceUsageThread::addObserver(this, All, [this](const ResourceUsageData& data) {
+  ResourceUsageThread::addObserver(this, Memory, [this](const ResourceUsageData& data) {
     gData = data;
   });
 }
