@@ -60,6 +60,7 @@ list(APPEND WebCore_SOURCES
     platform/ScrollAnimationSmooth.cpp
     platform/network/ultralight/CurlSSLHandleUltralight.cpp
     platform/network/win/NetworkStateNotifierWin.cpp
+    page/win/ResourceUsageThreadWin.cpp
 
     platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
 
@@ -100,6 +101,8 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/DragControllerUltralight.cpp
     platform/ultralight/UTFUltralight.cpp
     platform/ultralight/ICUUtils.cpp
+    platform/ultralight/MemoryUtils.cpp
+    platform/ultralight/ResourceUsageOverlayUltralight.cpp
     
 	platform/graphics/ultralight/GradientUltralight.cpp
 	platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h

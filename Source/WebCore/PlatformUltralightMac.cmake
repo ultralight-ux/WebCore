@@ -67,6 +67,7 @@ list(APPEND WebCore_SOURCES
     platform/network/ultralight/CurlSSLHandleUltralight.cpp
     platform/network/mac/NetworkStateNotifierMac.cpp
     platform/ultralight/SSLKeyGeneratorUltralightMac.mm
+    page/cocoa/ResourceUsageThreadCocoa.mm
 
     platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
 
@@ -110,6 +111,8 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/DragControllerUltralight.cpp
     platform/ultralight/UTFUltralight.cpp
     platform/ultralight/ICUUtils.cpp
+    platform/ultralight/MemoryUtils.cpp
+    platform/ultralight/ResourceUsageOverlayUltralight.cpp
     
 	platform/graphics/ultralight/GradientUltralight.cpp
 	platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h
