@@ -75,7 +75,12 @@ protected:
       r.move(3, 3);
       float minDimension = std::min(r.width(), r.height());
       FloatRoundedRect rrect(r, FloatRoundedRect::Radii(minDimension * 0.5f));
-      context.fillRoundedRect(rrect, Color(0.2f, 0.2f, 0.2f, 0.6f));
+      float alpha = 0.5f;
+      if (scrollbar.pressedPart() == ScrollbarPart::ThumbPart)
+        alpha = 0.85f;
+      else if (scrollbar.hoveredPart() == ScrollbarPart::ThumbPart)
+        alpha = 0.65f;
+      context.fillRoundedRect(rrect, Color(0.4f, 0.4f, 0.4f, alpha));
     }
   }
 
