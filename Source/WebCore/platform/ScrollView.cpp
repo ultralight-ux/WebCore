@@ -1207,7 +1207,15 @@ void ScrollView::paint(GraphicsContext& context, const IntRect& rect, SecurityOr
         documentDirtyRect.moveBy(-locationOfContents);
 
         if (!paintsEntireContents()) {
+#if USE(ULTRALIGHT)
+            FloatSize scaleFactor = context.scaleFactor();
+            FloatPoint pixelSnappedTranslation = 
+              FloatPoint(roundToDevicePixel(LayoutUnit(-scrollX()), scaleFactor.width(), true),
+                         roundToDevicePixel(LayoutUnit(-scrollY()), scaleFactor.height(), true));
+            context.translate(pixelSnappedTranslation);
+#else
             context.translate(-scrollX(), -scrollY());
+#endif
             documentDirtyRect.moveBy(scrollPosition());
 
             context.clip(visibleContentRect(LegacyIOSDocumentVisibleRect));
