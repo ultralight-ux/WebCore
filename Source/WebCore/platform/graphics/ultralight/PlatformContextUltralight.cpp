@@ -17,6 +17,9 @@ namespace WebCore {
       , m_fillColor(Color::black)
       , m_strokeColor(Color::black)
       , m_strokeThickness(1.0)
+      , m_lineCap(LineCap::ButtCap)
+      , m_lineJoin(LineJoin::MiterJoin)
+      , m_miterLimit(10.0f)
     {
     }
 
@@ -26,6 +29,9 @@ namespace WebCore {
       , m_fillColor(state.m_fillColor)
       , m_strokeColor(state.m_strokeColor)
       , m_strokeThickness(state.m_strokeThickness)
+      , m_lineCap(state.m_lineCap)
+      , m_lineJoin(state.m_lineJoin)
+      , m_miterLimit(state.m_miterLimit)
     {
     }
 
@@ -34,6 +40,9 @@ namespace WebCore {
     Color m_fillColor;
     Color m_strokeColor;
     float m_strokeThickness;
+    LineCap m_lineCap;
+    LineJoin m_lineJoin;
+    float m_miterLimit;
   };
 
 PlatformContextUltralight::PlatformContextUltralight(PlatformCanvas canvas) : m_canvas(canvas)
@@ -131,6 +140,30 @@ void PlatformContextUltralight::setStrokeThickness(float thickness)
 
 float PlatformContextUltralight::strokeThickness() const {
   return m_state->m_strokeThickness;
+}
+
+void PlatformContextUltralight::setLineCap(LineCap lineCap) {
+  m_state->m_lineCap = lineCap;
+}
+
+LineCap PlatformContextUltralight::lineCap() const {
+  return m_state->m_lineCap;
+}
+
+void PlatformContextUltralight::setLineJoin(LineJoin lineJoin) {
+  m_state->m_lineJoin = lineJoin;
+}
+
+LineJoin PlatformContextUltralight::lineJoin() const {
+  return m_state->m_lineJoin;
+}
+
+void PlatformContextUltralight::setMiterLimit(float miter) {
+  m_state->m_miterLimit = miter;
+}
+
+float PlatformContextUltralight::miterLimit() const {
+  return m_state->m_miterLimit;
 }
 
 void PlatformContextUltralight::setImageInterpolationQuality(InterpolationQuality)

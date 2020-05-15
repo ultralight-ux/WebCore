@@ -54,6 +54,15 @@ namespace WebCore {
     void setStrokeThickness(float thickness);
     float strokeThickness() const;
 
+    void setLineCap(LineCap lineCap);
+    LineCap lineCap() const;
+
+    void setLineJoin(LineJoin lineJoin);
+    LineJoin lineJoin() const;
+
+    void setMiterLimit(float miter);
+    float miterLimit() const;
+
     void setImageInterpolationQuality(InterpolationQuality);
     InterpolationQuality imageInterpolationQuality() const;
 

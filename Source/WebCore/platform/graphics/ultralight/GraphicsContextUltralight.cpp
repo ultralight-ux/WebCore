@@ -154,7 +154,8 @@ void GraphicsContext::fillPath(const Path& path)
   ultralight::Paint paint;
   WebCore::Color color = fillColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->FillPath(path.ultralightPath(), paint);
+  platformContext()->canvas()->FillPath(path.ultralightPath(), paint, 
+    fillRule() == WindRule::NonZero ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd);
   // TODO, handle shadow state
 }
 
@@ -168,7 +169,36 @@ void GraphicsContext::strokePath(const Path& path)
   ultralight::Paint paint;
   WebCore::Color color = strokeColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, strokeThickness());
+
+  ultralight::LineCap lineCap;
+  switch (platformContext()->lineCap()) {
+  case WebCore::LineCap::RoundCap:
+    lineCap = ultralight::kLineCap_Round;
+    break;
+  case WebCore::LineCap::SquareCap:
+    lineCap = ultralight::kLineCap_Square;
+    break;
+  case WebCore::LineCap::ButtCap:
+  default:
+    lineCap = ultralight::kLineCap_Butt;
+  }
+
+  ultralight::LineJoin lineJoin;
+  switch (platformContext()->lineJoin()) {
+  case WebCore::LineJoin::BevelJoin:
+    lineJoin = ultralight::kLineJoin_Bevel;
+    break;
+  case WebCore::LineJoin::RoundJoin:
+    lineJoin = ultralight::kLineJoin_Round;
+    break;
+  case WebCore::LineJoin::MiterJoin:
+  default:
+    lineJoin = ultralight::kLineJoin_Miter;
+  }
+
+  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, strokeThickness(),
+    lineCap, lineJoin, platformContext()->miterLimit());
+
   // TODO, handle shadow state
 }
 
@@ -313,21 +343,12 @@ IntRect GraphicsContext::clipBounds() const
 
 static inline void adjustFocusRingColor(Color& color)
 {
-#if !PLATFORM(GTK)
-  // Force the alpha to 50%.  This matches what the Mac does with outline rings.
-  color = Color(makeRGBA(color.red(), color.green(), color.blue(), 127));
-#else
-  UNUSED_PARAM(color);
-#endif
+  color = Color(makeRGBA(0, 150, 255, 200));
 }
 
 static inline void adjustFocusRingLineWidth(float& width)
 {
-#if PLATFORM(GTK)
-  width = 2;
-#else
-  UNUSED_PARAM(width);
-#endif
+  width = 3;
 }
 
 static inline StrokeStyle focusRingStrokeStyle()
@@ -355,7 +376,7 @@ void GraphicsContext::drawFocusRing(const Path& path, float width, float /* offs
 
   ASSERT(hasPlatformContext());
   ultralight::Paint paint;
-  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+  paint.color = UltralightRGBA(ringColor.red(), ringColor.green(), ringColor.blue(), ringColor.alpha());
   platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width * 0.5);
 }
 
@@ -646,8 +667,7 @@ void GraphicsContext::setLineCap(LineCap lineCap)
   if (paintingDisabled())
     return;
 
-  // TODO
-  notImplemented();
+  platformContext()->setLineCap(lineCap);
 }
 
 static inline bool isDashArrayAllZero(const DashArray& dashes)
@@ -673,8 +693,7 @@ void GraphicsContext::setLineJoin(LineJoin lineJoin)
   if (paintingDisabled())
     return;
 
-  // TODO
-  notImplemented();
+  platformContext()->setLineJoin(lineJoin);
 }
 
 void GraphicsContext::setMiterLimit(float miter)
@@ -682,8 +701,7 @@ void GraphicsContext::setMiterLimit(float miter)
   if (paintingDisabled())
     return;
 
-  // TODO
-  notImplemented();
+  platformContext()->setMiterLimit(miter);
 }
 
 void GraphicsContext::setPlatformAlpha(float alpha)
