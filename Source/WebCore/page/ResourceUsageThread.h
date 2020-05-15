@@ -94,7 +94,7 @@ private:
 
 };
 
-#if PLATFORM(COCOA)
+#if OS(DARWIN)
 struct TagInfo {
     TagInfo() { }
     size_t dirty { 0 };

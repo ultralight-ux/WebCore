@@ -19,6 +19,10 @@ list(APPEND WTF_SOURCES
 )
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+    list(APPEND WTF_PUBLIC_HEADERS
+        linux/CurrentProcessMemoryStatus.h
+    )
+    
     list(APPEND WTF_SOURCES
         linux/CurrentProcessMemoryStatus.cpp
         linux/MemoryFootprintLinux.cpp
