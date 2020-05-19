@@ -9,11 +9,11 @@
 #include <Ultralight/private/Vector.h>
 #include <Ultralight/Buffer.h>
 #include "RefPtrFreeTypeFace.h"
+#include "FontPlatformData.h"
 
 namespace WebCore {
 
   class FontDescription;
-  class FontPlatformData;
   class SharedBuffer;
   struct FontSelectionSpecifiedCapabilities;
   struct FontVariantSettings;
@@ -23,7 +23,7 @@ namespace WebCore {
 
   struct FontCustomPlatformData {
   public:
-    FontCustomPlatformData(RefPtr<FT_FaceRec_>, ultralight::RefPtr<ultralight::Buffer>);
+    FontCustomPlatformData(ultralight::RefPtr<ultralight::FontFace>);
     FontCustomPlatformData(const FontCustomPlatformData&);
     FontCustomPlatformData(FontCustomPlatformData&&) = default;
 
@@ -37,8 +37,7 @@ namespace WebCore {
     FontCustomPlatformData& operator=(FontCustomPlatformData&&) = default;
 
   private:
-    RefPtr<FT_FaceRec_> m_face;
-    ultralight::RefPtr<ultralight::Buffer> m_data;
+    ultralight::RefPtr<ultralight::FontFace> m_face;
   };
 
   std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer&, const String&);

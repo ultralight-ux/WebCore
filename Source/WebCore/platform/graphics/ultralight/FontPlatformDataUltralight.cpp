@@ -31,13 +31,13 @@ float RoundUpDistanceFieldFontSize(float size) {
 }
 #endif
 
-FontPlatformData::FontPlatformData(RefPtr<FT_FaceRec_> face, ultralight::RefPtr<ultralight::Buffer> data, const FontDescription& description)
-  : m_face(face), m_data(data) {
+FontPlatformData::FontPlatformData(ultralight::RefPtr<ultralight::FontFace> face, const FontDescription& description)
+  : m_face(face) {
   
-  m_fixedWidth = m_face.get()->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
+  m_fixedWidth = m_face->face()->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
   auto config = ultralight::Platform::instance().config();
 
-  m_size = (float)std::floor(description.computedPixelSize() * config.device_scale);
+  m_size = (float)std::round(description.computedPixelSize() * config.device_scale);
 
 #if ENABLE_DISTANCE_FIELD_FONTS
   m_distanceField = m_face->face_flags & FT_FACE_FLAG_SCALABLE;
@@ -75,7 +75,6 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
   m_fixedWidth = other.m_fixedWidth;
   m_face = other.m_face;
   m_font = other.m_font;
-  m_data = other.m_data;
 
   return *this;
 }
@@ -87,8 +86,9 @@ FontPlatformData::~FontPlatformData() {
 
 FT_Face FontPlatformData::face() const {
   // We always set the current font-size before accessing the underlying FT_Face
-  FT_Set_Pixel_Sizes(m_face.get(), 0, (FT_UInt)m_size);
-  return m_face.get();
+  FT_Face ft_face = m_face->face().get();
+  FT_Set_Pixel_Sizes(ft_face, 0, (FT_UInt)m_size);
+  return ft_face;
 }
 
 bool FontPlatformData::isFixedPitch() const
@@ -123,7 +123,7 @@ FloatRect FontPlatformData::glyphExtents(Glyph glyph) {
 }
 
 RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const {
-  FT_Face freeTypeFace = m_face.get();
+  FT_Face freeTypeFace = face();
   if (!freeTypeFace)
     return nullptr;
 
@@ -151,13 +151,22 @@ String FontPlatformData::description() const
 
 unsigned FontPlatformData::hash() const
 {
-  return PtrHash<ultralight::Buffer*>::hash(m_data.get());
+  uintptr_t flags = static_cast<uintptr_t>(static_cast<unsigned>(m_widthVariant) << 6
+    | m_isHashTableDeletedValue << 5
+    | static_cast<unsigned>(m_textRenderingMode) << 3
+    | static_cast<unsigned>(m_orientation) << 2
+    | m_syntheticBold << 1
+    | m_syntheticOblique);
+
+  uintptr_t font_hash = m_face->font_file()->hash();
+  uintptr_t hashCodes[] = { font_hash, flags, (FT_UInt)m_size };
+  return StringHasher::hashMemory<sizeof(hashCodes)>(hashCodes);
 }
 
 #if USE(HARFBUZZ) && !ENABLE(OPENTYPE_MATH)
 HbUniquePtr<hb_font_t> FontPlatformData::createOpenTypeMathHarfBuzzFont() const
 {
-	FT_Face ftFace = m_face.get();
+	FT_Face ftFace = face();
 	if (!ftFace)
 		return nullptr;
 

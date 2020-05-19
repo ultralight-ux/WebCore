@@ -71,6 +71,7 @@ interface IDWriteFontFace;
 #include <Ultralight/private/Font.h>
 #include <Ultralight/private/Canvas.h>
 #include <Ultralight/private/Vector.h>
+#include <Ultralight/platform/FontLoader.h>
 #include <wtf/Vector.h>
 #include "Glyph.h"
 #include "FloatRect.h"
@@ -80,6 +81,27 @@ interface IDWriteFontFace;
 
 #if USE(DIRECT2D)
 #include <dwrite.h>
+#endif
+
+#if USE(ULTRALIGHT)
+namespace ultralight {
+
+class FontFace : public RefCounted {
+public:
+  static Ref<FontFace> Create(WTF::RefPtr<FT_FaceRec_> face, Ref<FontFile> font_file);
+
+  virtual WTF::RefPtr<FT_FaceRec_> face() const = 0;
+
+  virtual Ref<FontFile> font_file() const = 0;
+
+protected:
+  FontFace();
+  virtual ~FontFace();
+  FontFace(const FontFace&) = delete;
+  void operator=(const FontFace&) = delete;
+};
+
+}  // namespace ultralight;
 #endif
 
 namespace WebCore {
@@ -135,7 +157,7 @@ public:
 #endif
 
 #if USE(ULTRALIGHT)
-    FontPlatformData(RefPtr<FT_FaceRec_>, ultralight::RefPtr<ultralight::Buffer>, const FontDescription&);
+    FontPlatformData(ultralight::RefPtr<ultralight::FontFace>, const FontDescription&);
     FontPlatformData(const FontPlatformData&);
     FontPlatformData(FontPlatformData&&) = default;
     FontPlatformData& operator=(const FontPlatformData&);
@@ -289,8 +311,7 @@ private:
     RefPtr<FcPattern> m_pattern;
 #endif
 #if USE(ULTRALIGHT)
-    RefPtr<FT_FaceRec_> m_face;
-    ultralight::RefPtr<ultralight::Buffer> m_data; // We must retain the font data, Freetype won't do it
+    ultralight::RefPtr<ultralight::FontFace> m_face;
     ultralight::RefPtr<ultralight::Font> m_font;
     Vector<ultralight::Glyph> m_glyphBuffer;
     bool m_distanceField; // Whether or not this font is rendered via SDF

@@ -9,8 +9,7 @@
 
 namespace WebCore {
 
-FontCustomPlatformData::FontCustomPlatformData(RefPtr<FT_FaceRec_> face,
-  ultralight::RefPtr<ultralight::Buffer> data) : m_face(face), m_data(data)
+FontCustomPlatformData::FontCustomPlatformData(ultralight::RefPtr<ultralight::FontFace> face) : m_face(face)
 {
 }
 
@@ -22,13 +21,12 @@ FontCustomPlatformData::FontCustomPlatformData(const FontCustomPlatformData& oth
 FontCustomPlatformData::~FontCustomPlatformData()
 {
   m_face = nullptr;
-  m_data = nullptr;
 }
 
 FontPlatformData FontCustomPlatformData::fontPlatformData(
   const FontDescription& description, bool bold, bool italic, const FontFeatureSettings&, const FontVariantSettings&, FontSelectionSpecifiedCapabilities)
 {
-  return FontPlatformData(m_face, m_data, description);
+  return FontPlatformData(m_face, description);
 }
 
 FontCustomPlatformData& FontCustomPlatformData::operator=(const FontCustomPlatformData& other) {
@@ -36,7 +34,6 @@ FontCustomPlatformData& FontCustomPlatformData::operator=(const FontCustomPlatfo
   if (this == &other)
     return *this;
 
-  m_data = other.m_data;
   m_face = other.m_face;
 
   return *this;
@@ -64,6 +61,8 @@ std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(
 
   ultralight::Ref<ultralight::Buffer> fontData = ultralight::Buffer::Create(buffer.data(), buffer.size());
 
+  ultralight::Ref<ultralight::FontFile> fontFile = ultralight::FontFile::Create(fontData);
+
   FT_Face face = nullptr;
   FT_Error error = 0;
   error = FT_New_Memory_Face(freetype,
@@ -73,7 +72,12 @@ std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(
     &face                             /* face result          */);
   assert(error == 0);
 
-  return error ? nullptr : std::make_unique<FontCustomPlatformData>(adoptRef(face), fontData);
+  if (error)
+    return nullptr;
+
+  ultralight::RefPtr<ultralight::FontFace> fontFace = ultralight::FontFace::Create(adoptRef(face), fontFile);
+
+  return std::make_unique<FontCustomPlatformData>(fontFace);
 }
 
 }

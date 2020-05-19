@@ -1,6 +1,8 @@
 #include "FontRenderer.h"
 #include <Ultralight/Bitmap.h>
 #include <Ultralight/private/Path.h>
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
 #include "FreeTypeLib.h"
 #include "ft2build.h"
 #include FT_FREETYPE_H
@@ -17,7 +19,16 @@ bool RenderBitmapGlyph(ultralight::RefPtr<ultralight::Font> font, FT_Face face, 
   FT_Set_Pixel_Sizes(face, 0, (FT_UInt)font->font_size());
 
   FT_Error error;
-  error = FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL);
+  FT_Int32 load_flags = FT_LOAD_RENDER;
+  auto& config = ultralight::Platform::instance().config();
+  if (config.font_hinting == ultralight::kFontHinting_Smooth)
+    load_flags |= FT_LOAD_TARGET_LIGHT;
+  else if (config.font_hinting == ultralight::kFontHinting_Normal)
+    load_flags |= FT_LOAD_TARGET_NORMAL;
+  else if (config.font_hinting == ultralight::kFontHinting_Monochrome)
+    load_flags |= FT_LOAD_TARGET_MONO;
+
+  error = FT_Load_Glyph(face, glyph_index, load_flags);
   if (error) {
     font->StoreGlyph(glyph_index, 0, 0, 0, 0, nullptr);
     return false;
