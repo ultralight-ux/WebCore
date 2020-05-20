@@ -2,6 +2,9 @@
 #include "Pasteboard.h"
 #include "NotImplemented.h"
 #include "DocumentFragment.h"
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Clipboard.h>
+#include "StringUltralight.h"
 
 #if PLATFORM(ULTRALIGHT)
 
@@ -60,7 +63,9 @@ void Pasteboard::writeString(const String& type, const String& text)
 
 void Pasteboard::clear()
 {
-  notImplemented();
+  ultralight::Clipboard* clipboard = ultralight::Platform::instance().clipboard();
+  if (clipboard)
+    clipboard->Clear();
 }
 
 void Pasteboard::clear(const String&)
@@ -70,7 +75,10 @@ void Pasteboard::clear(const String&)
 
 void Pasteboard::read(PasteboardPlainText& text)
 {
-  notImplemented();
+  ultralight::Clipboard* clipboard = ultralight::Platform::instance().clipboard();
+  if (clipboard) {
+    text.text = ultralight::Convert(clipboard->ReadPlainText());
+  }
 }
 
 void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy)
@@ -85,7 +93,7 @@ void Pasteboard::read(PasteboardFileReader&)
 
 void Pasteboard::write(const PasteboardURL& url)
 {
-  notImplemented();
+  writePlainText(url.url.string(), CannotSmartReplace);
 }
 
 void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
@@ -100,7 +108,7 @@ void Pasteboard::write(const PasteboardImage&)
 
 void Pasteboard::write(const PasteboardWebContent& content)
 {
-  notImplemented();
+  writePlainText(content.text, CannotSmartReplace);
 }
 
 Pasteboard::FileContentState Pasteboard::fileContentState()
@@ -115,14 +123,16 @@ bool Pasteboard::canSmartReplace()
   return false;
 }
 
-void Pasteboard::writeMarkup(const String&)
+void Pasteboard::writeMarkup(const String& markup)
 {
-  notImplemented();
+  writePlainText(markup, CannotSmartReplace);
 }
 
 void Pasteboard::writePlainText(const String& text, SmartReplaceOption)
 {
-  notImplemented();
+  ultralight::Clipboard* clipboard = ultralight::Platform::instance().clipboard();
+  if (clipboard)
+    clipboard->WritePlainText(ultralight::Convert(text));
 }
 
 void Pasteboard::writeCustomData(const PasteboardCustomData&)

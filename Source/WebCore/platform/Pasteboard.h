@@ -94,6 +94,10 @@ struct PasteboardWebContent {
     String text;
     String markup;
 #endif
+#if USE(ULTRALIGHT)
+    String text;
+    String markup;
+#endif
 };
 
 struct PasteboardURL {
