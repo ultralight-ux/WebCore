@@ -69,7 +69,8 @@ public:
 
     auto i = font_db_.find(request_hash);
     if (i != font_db_.end()) {
-      i->second->update_access();
+      if (i->second)
+        i->second->update_access();
       return i->second;
     }
 
