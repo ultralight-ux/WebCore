@@ -27,13 +27,22 @@ public:
 
   virtual Ref<FontFile> font_file() const { return font_file_; }
 
+  virtual void update_access() override {
+    last_access_ = std::chrono::steady_clock::now();
+  }
+
+  virtual std::chrono::steady_clock::time_point last_access() const { return last_access_; }
+
 protected:
-  FontFaceImpl(WTF::RefPtr<FT_FaceRec_> face, Ref<FontFile> font_file) : face_(face), font_file_(font_file) {}
+  FontFaceImpl(WTF::RefPtr<FT_FaceRec_> face, Ref<FontFile> font_file) : face_(face), font_file_(font_file) {
+    last_access_ = std::chrono::steady_clock::now();
+  }
 
   ~FontFaceImpl() {}
 
   WTF::RefPtr<FT_FaceRec_> face_;
   Ref<FontFile> font_file_;
+  std::chrono::steady_clock::time_point last_access_;
 
   friend class FontFace;
   friend class RefCountedImpl<FontFaceImpl>;
@@ -59,8 +68,10 @@ public:
     unsigned int request_hash = StringHasher::hashMemory<sizeof(hashCodes)>(hashCodes);
 
     auto i = font_db_.find(request_hash);
-    if (i != font_db_.end())
+    if (i != font_db_.end()) {
+      i->second->update_access();
       return i->second;
+    }
 
     // Doesn't exist in database, need to load and create new
     auto& platform = ultralight::Platform::instance();
@@ -119,6 +130,8 @@ public:
     
     // font_face may still be null here, that's okay-- we want to cache a request that resulted in a null load
     font_db_.insert({ request_hash, font_face });
+    if (font_face)
+      font_face->update_access();
 
     return font_face;
   }
@@ -126,10 +139,18 @@ public:
   void Recycle() {
     for (auto i = font_db_.begin(); i != font_db_.end();) {
       // Evict the entry if we are the only ones holding the reference
-      if (i->second && i->second->ref_count() <= 1)
-        i = font_db_.erase(i);
-      else
-        i++;
+      if (i->second && i->second->ref_count() <= 1) {
+        // Only remove if entry hasn't been accessed in a while.
+        auto last_access = i->second->last_access();
+        auto now = std::chrono::steady_clock::now();
+        long long age_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_access).count();
+        if (age_ms > entry_keep_alive_ms_) {
+          i = font_db_.erase(i);
+          continue;
+        }
+      }
+      
+      i++;
     }
   }
 
@@ -139,6 +160,10 @@ protected:
 
   typedef std::map<unsigned int, RefPtr<FontFace>> FontFaceMap;
   FontFaceMap font_db_;
+
+  // How long to keep an entry alive after it has been accessed and has no lingering references.
+  // Defaults to 7 seconds
+  const long long entry_keep_alive_ms_ = 7000;
 };
 
 }  // namespace ultralight

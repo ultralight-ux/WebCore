@@ -77,6 +77,7 @@ interface IDWriteFontFace;
 #include "FloatRect.h"
 #include "HbUniquePtr.h"
 #include "RefPtrFreeTypeFace.h"
+#include <chrono>
 #endif
 
 #if USE(DIRECT2D)
@@ -90,9 +91,17 @@ class FontFace : public RefCounted {
 public:
   static Ref<FontFace> Create(WTF::RefPtr<FT_FaceRec_> face, Ref<FontFile> font_file);
 
+  // Get the underling FreeType FT_Face object
   virtual WTF::RefPtr<FT_FaceRec_> face() const = 0;
 
+  // Get the underlying font file
   virtual Ref<FontFile> font_file() const = 0;
+
+  // Mark as accessed (updates last_access to now)
+  virtual void update_access() = 0;
+
+  // Last access time
+  virtual std::chrono::steady_clock::time_point last_access() const = 0;
 
 protected:
   FontFace();
