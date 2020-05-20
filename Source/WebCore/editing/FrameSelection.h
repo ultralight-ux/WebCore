@@ -218,6 +218,10 @@ public:
     // Painting.
     WEBCORE_EXPORT void updateAppearance();
 
+#if USE(ULTRALIGHT)
+    WEBCORE_EXPORT bool isCaretBlinking() const;
+#endif
+
 #if ENABLE(TREE_DEBUGGING)
     void formatForDebugger(char* buffer, unsigned length) const;
     void showTreeForThis() const;

@@ -2181,6 +2181,12 @@ void FrameSelection::updateAppearance()
     }
 }
 
+#if USE(ULTRALIGHT)
+bool FrameSelection::isCaretBlinking() const {
+  return caretIsVisible() && m_caretBlinkTimer.isActive();
+}
+#endif
+
 void FrameSelection::setCaretVisibility(CaretVisibility visibility)
 {
     if (caretVisibility() == visibility)
