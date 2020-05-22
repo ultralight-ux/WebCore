@@ -43,6 +43,8 @@
 #include <wtf/Ref.h>
 #include <wtf/SystemTracing.h>
 #include <wtf/text/StringBuilder.h>
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
 
 // Allow a little more than 60fps to make sure we can at least hit that frame rate.
 static const Seconds fullSpeedAnimationInterval { 15_ms };
@@ -240,6 +242,11 @@ Seconds ScriptedAnimationController::interval() const
 
     ASSERT(m_throttlingReasons.isEmpty());
 #endif
+
+#if USE(ULTRALIGHT)
+    return Seconds(ultralight::Platform::instance().config().animation_timer_delay);
+#endif
+
     return fullSpeedAnimationInterval;
 }
 
