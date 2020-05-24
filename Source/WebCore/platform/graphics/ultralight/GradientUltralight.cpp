@@ -50,6 +50,12 @@ namespace WebCore {
     if (!m_gradient)
       return m_gradient;
 
+    // TODO: Apply this transformation in shader instead of applying it to p0/p1
+    FloatPoint mapped_p0 = m_gradientSpaceTransformation.mapPoint(FloatPoint(m_gradient->p0.x, m_gradient->p0.y));
+    FloatPoint mapped_p1 = m_gradientSpaceTransformation.mapPoint(FloatPoint(m_gradient->p1.x, m_gradient->p1.y));
+    m_gradient->p0 = ultralight::Point(mapped_p0.x(), mapped_p0.y());
+    m_gradient->p1 = ultralight::Point(mapped_p1.x(), mapped_p1.y());
+
     size_t num_stops = m_stops.size();
 
     // Clamp to 12 stops

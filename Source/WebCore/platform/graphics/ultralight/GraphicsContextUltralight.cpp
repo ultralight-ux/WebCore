@@ -151,6 +151,14 @@ void GraphicsContext::fillPath(const Path& path)
 
   ASSERT(hasPlatformContext());
 
+  if (m_state.fillGradient) {
+    platformContext()->save();
+    platformContext()->setMask(path, fillRule());
+    m_state.fillGradient->fill(*this, path.fastBoundingRect());
+    platformContext()->restore();
+    return;
+  }
+
   ultralight::Paint paint;
   WebCore::Color color = fillColor();
   paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
@@ -348,7 +356,7 @@ static inline void adjustFocusRingColor(Color& color)
 
 static inline void adjustFocusRingLineWidth(float& width)
 {
-  width = 3;
+  width = 4;
 }
 
 static inline StrokeStyle focusRingStrokeStyle()
@@ -377,7 +385,7 @@ void GraphicsContext::drawFocusRing(const Path& path, float width, float /* offs
   ASSERT(hasPlatformContext());
   ultralight::Paint paint;
   paint.color = UltralightRGBA(ringColor.red(), ringColor.green(), ringColor.blue(), ringColor.alpha());
-  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width * 0.5);
+  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width * 0.5 / scaleFactor().width());
 }
 
 void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width, float /* offset */, const Color& color)
