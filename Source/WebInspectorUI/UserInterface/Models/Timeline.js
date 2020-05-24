@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.Timeline = class Timeline extends WebInspector.Object
+WI.Timeline = class Timeline extends WI.Object
 {
     constructor(type)
     {
@@ -38,13 +38,16 @@ WebInspector.Timeline = class Timeline extends WebInspector.Object
 
     static create(type)
     {
-        if (type === WebInspector.TimelineRecord.Type.Network)
-            return new WebInspector.NetworkTimeline(type);
+        if (type === WI.TimelineRecord.Type.Network)
+            return new WI.NetworkTimeline(type);
 
-        if (type === WebInspector.TimelineRecord.Type.Memory)
-            return new WebInspector.MemoryTimeline(type);
+        if (type === WI.TimelineRecord.Type.CPU)
+            return new WI.CPUTimeline(type);
 
-        return new WebInspector.Timeline(type);
+        if (type === WI.TimelineRecord.Type.Memory)
+            return new WI.MemoryTimeline(type);
+
+        return new WI.Timeline(type);
     }
 
     // Public
@@ -61,15 +64,15 @@ WebInspector.Timeline = class Timeline extends WebInspector.Object
         this._endTime = NaN;
 
         if (!suppressEvents) {
-            this.dispatchEventToListeners(WebInspector.Timeline.Event.TimesUpdated);
-            this.dispatchEventToListeners(WebInspector.Timeline.Event.Reset);
+            this.dispatchEventToListeners(WI.Timeline.Event.TimesUpdated);
+            this.dispatchEventToListeners(WI.Timeline.Event.Reset);
         }
     }
 
-    addRecord(record)
+    addRecord(record, options = {})
     {
         if (record.updatesDynamically)
-            record.addEventListener(WebInspector.TimelineRecord.Event.Updated, this._recordUpdated, this);
+            record.addEventListener(WI.TimelineRecord.Event.Updated, this._recordUpdated, this);
 
         // Because records can be nested, it is possible that outer records with an early start time
         // may be completed and added to the Timeline after inner records with a later start time
@@ -80,27 +83,55 @@ WebInspector.Timeline = class Timeline extends WebInspector.Object
 
         this._updateTimesIfNeeded(record);
 
-        this.dispatchEventToListeners(WebInspector.Timeline.Event.RecordAdded, {record});
+        this.dispatchEventToListeners(WI.Timeline.Event.RecordAdded, {record});
     }
 
     saveIdentityToCookie(cookie)
     {
-        cookie[WebInspector.Timeline.TimelineTypeCookieKey] = this._type;
+        cookie[WI.Timeline.TimelineTypeCookieKey] = this._type;
     }
 
     refresh()
     {
-        this.dispatchEventToListeners(WebInspector.Timeline.Event.Refreshed);
+        this.dispatchEventToListeners(WI.Timeline.Event.Refreshed);
     }
 
-    recordsInTimeRange(startTime, endTime, includeRecordBeforeStart)
+    closestRecordTo(timestamp)
     {
-        let lowerIndex = this._records.lowerBound(startTime, (time, record) => time - record.timestamp);
-        let upperIndex = this._records.upperBound(endTime, (time, record) => time - record.timestamp);
+        let lowerIndex = this._records.lowerBound(timestamp, (time, record) => time - record.endTime);
 
-        // Include the record right before the start time.
-        if (includeRecordBeforeStart && lowerIndex > 0)
+        let recordBefore = this._records[lowerIndex - 1];
+        let recordAfter = this._records[lowerIndex];
+        if (!recordBefore && !recordAfter)
+            return null;
+        if (!recordBefore && recordAfter)
+            return recordAfter;
+        if (!recordAfter && recordBefore)
+            return recordBefore;
+
+        let before = Math.abs(recordBefore.endTime - timestamp);
+        let after = Math.abs(recordAfter.startTime - timestamp);
+        return (before < after) ? recordBefore : recordAfter;
+    }
+
+    recordsInTimeRange(startTime, endTime, {includeRecordBeforeStart, includeRecordAfterEnd} = {})
+    {
+        let lowerIndex = this._records.lowerBound(startTime, (time, record) => time - record.endTime);
+        if (includeRecordBeforeStart && lowerIndex > 0) {
             lowerIndex--;
+
+            // If the record right before is a child of the same type of record, then use the parent as the before index.
+            let recordBefore = this._records[lowerIndex];
+            if (recordBefore.parent && recordBefore.parent.type === recordBefore.type) {
+                lowerIndex--;
+                while (this._records[lowerIndex] !== recordBefore.parent)
+                    lowerIndex--;
+            }
+        }
+
+        let upperIndex = this._records.upperBound(endTime, (time, record) => time - record.startTime);
+        if (includeRecordAfterEnd && upperIndex < this._records.length)
+            ++upperIndex;
 
         return this._records.slice(lowerIndex, upperIndex);
     }
@@ -122,7 +153,7 @@ WebInspector.Timeline = class Timeline extends WebInspector.Object
         }
 
         if (changed)
-            this.dispatchEventToListeners(WebInspector.Timeline.Event.TimesUpdated);
+            this.dispatchEventToListeners(WI.Timeline.Event.TimesUpdated);
     }
 
     _recordUpdated(event)
@@ -154,11 +185,11 @@ WebInspector.Timeline = class Timeline extends WebInspector.Object
     }
 };
 
-WebInspector.Timeline.Event = {
+WI.Timeline.Event = {
     Reset: "timeline-reset",
     RecordAdded: "timeline-record-added",
     TimesUpdated: "timeline-times-updated",
     Refreshed: "timeline-refreshed",
 };
 
-WebInspector.Timeline.TimelineTypeCookieKey = "timeline-type";
+WI.Timeline.TimelineTypeCookieKey = "timeline-type";

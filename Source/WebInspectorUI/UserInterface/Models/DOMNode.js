@@ -30,17 +30,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DOMNode = class DOMNode extends WebInspector.Object
+WI.DOMNode = class DOMNode extends WI.Object
 {
-    constructor(domTreeManager, doc, isInShadowTree, payload)
+    constructor(domManager, doc, isInShadowTree, payload)
     {
         super();
 
-        this._domTreeManager = domTreeManager;
+        this._domManager = domManager;
         this._isInShadowTree = isInShadowTree;
 
         this.id = payload.nodeId;
-        this._domTreeManager._idToDOMNode[this.id] = this;
+        this._domManager._idToDOMNode[this.id] = this;
 
         this._nodeType = payload.nodeType;
         this._nodeName = payload.nodeName;
@@ -48,13 +48,24 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         this._nodeValue = payload.nodeValue;
         this._pseudoType = payload.pseudoType;
         this._shadowRootType = payload.shadowRootType;
-        this._computedRole = payload.role;
+        this._computedRole = null;
         this._contentSecurityPolicyHash = payload.contentSecurityPolicyHash;
 
         if (this._nodeType === Node.DOCUMENT_NODE)
             this.ownerDocument = this;
         else
             this.ownerDocument = doc;
+
+        this._frame = null;
+
+        // COMPATIBILITY (iOS 12.2): DOM.Node.frameId was changed to represent the owner frame, not the content frame.
+        if (InspectorBackend.domains.Timeline && !InspectorBackend.domains.Timeline.hasEvent("programmaticCaptureStarted")) {
+            if (payload.frameId)
+                this._frame = WI.networkManager.frameForIdentifier(payload.frameId);
+        }
+
+        if (!this._frame && this.ownerDocument)
+            this._frame = WI.networkManager.frameForIdentifier(this.ownerDocument.frameIdentifier);
 
         this._attributes = [];
         this._attributesMap = new Map;
@@ -80,7 +91,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         if (payload.shadowRoots) {
             for (var i = 0; i < payload.shadowRoots.length; ++i) {
                 var root = payload.shadowRoots[i];
-                var node = new WebInspector.DOMNode(this._domTreeManager, this.ownerDocument, true, root);
+                var node = new WI.DOMNode(this._domManager, this.ownerDocument, true, root);
                 node.parentNode = this;
                 this._shadowRoots.push(node);
             }
@@ -92,32 +103,29 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
             this._children = this._shadowRoots.slice();
 
         if (this._nodeType === Node.ELEMENT_NODE)
-            this._customElementState = payload.customElementState || WebInspector.DOMNode.CustomElementState.Builtin;
+            this._customElementState = payload.customElementState || WI.DOMNode.CustomElementState.Builtin;
         else
             this._customElementState = null;
 
         if (payload.templateContent) {
-            this._templateContent = new WebInspector.DOMNode(this._domTreeManager, this.ownerDocument, false, payload.templateContent);
+            this._templateContent = new WI.DOMNode(this._domManager, this.ownerDocument, false, payload.templateContent);
             this._templateContent.parentNode = this;
         }
 
         this._pseudoElements = new Map;
         if (payload.pseudoElements) {
             for (var i = 0; i < payload.pseudoElements.length; ++i) {
-                var node = new WebInspector.DOMNode(this._domTreeManager, this.ownerDocument, this._isInShadowTree, payload.pseudoElements[i]);
+                var node = new WI.DOMNode(this._domManager, this.ownerDocument, this._isInShadowTree, payload.pseudoElements[i]);
                 node.parentNode = this;
                 this._pseudoElements.set(node.pseudoType(), node);
             }
         }
 
         if (payload.contentDocument) {
-            this._contentDocument = new WebInspector.DOMNode(this._domTreeManager, null, false, payload.contentDocument);
+            this._contentDocument = new WI.DOMNode(this._domManager, null, false, payload.contentDocument);
             this._children = [this._contentDocument];
             this._renumber();
         }
-
-        if (payload.frameId)
-            this._frameIdentifier = payload.frameId;
 
         if (this._nodeType === Node.ELEMENT_NODE) {
             // HTML and BODY from internal iframes should not overwrite top-level ones.
@@ -137,20 +145,58 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
             this.name = payload.name;
             this.value = payload.value;
         }
+
+        this._domEvents = [];
+        this._powerEfficientPlaybackRanges = [];
+
+        if (this._shouldListenForEventListeners())
+            WI.DOMNode.addEventListener(WI.DOMNode.Event.DidFireEvent, this._handleDOMNodeDidFireEvent, this);
     }
+
+    // Static
+
+    static getFullscreenDOMEvents(domEvents)
+    {
+        return domEvents.reduce((accumulator, current) => {
+            if (current.eventName === "webkitfullscreenchange" && current.data && (!accumulator.length || accumulator.lastValue.data.enabled !== current.data.enabled))
+                accumulator.push(current);
+            return accumulator;
+        }, []);
+    }
+
+    static isPlayEvent(eventName)
+    {
+        return eventName === "play"
+            || eventName === "playing";
+    }
+
+    static isPauseEvent(eventName)
+    {
+        return eventName === "pause"
+            || eventName === "stall";
+    }
+
+    static isStopEvent(eventName)
+    {
+        return eventName === "emptied"
+            || eventName === "ended"
+            || eventName === "suspend";
+    }
+
 
     // Public
 
-    get frameIdentifier()
-    {
-        return this._frameIdentifier || this.ownerDocument.frameIdentifier;
-    }
+    get frame() { return this._frame; }
+    get domEvents() { return this._domEvents; }
+    get powerEfficientPlaybackRanges() { return this._powerEfficientPlaybackRanges; }
 
-    get frame()
+    get attached()
     {
-        if (!this._frame)
-            this._frame = WebInspector.frameResourceManager.frameForIdentifier(this.frameIdentifier);
-        return this._frame;
+        for (let node = this; node; node = node.parentNode) {
+            if (node.ownerDocument === node)
+                return true;
+        }
+        return false;
     }
 
     get children()
@@ -158,7 +204,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         if (!this._children)
             return null;
 
-        if (WebInspector.showShadowDOMSetting.value)
+        if (WI.settings.showShadowDOM.value)
             return this._children;
 
         if (this._filteredChildrenNeedsUpdating) {
@@ -193,7 +239,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
     get nextSibling()
     {
-        if (WebInspector.showShadowDOMSetting.value)
+        if (WI.settings.showShadowDOM.value)
             return this._nextSibling;
 
         var node = this._nextSibling;
@@ -207,7 +253,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
     get previousSibling()
     {
-        if (WebInspector.showShadowDOMSetting.value)
+        if (WI.settings.showShadowDOM.value)
             return this._previousSibling;
 
         var node = this._previousSibling;
@@ -225,7 +271,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         if (children)
             return children.length;
 
-        if (WebInspector.showShadowDOMSetting.value)
+        if (WI.settings.showShadowDOM.value)
             return this._childNodeCount + this._shadowRoots.length;
 
         return this._childNodeCount;
@@ -273,7 +319,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
     isCustomElement()
     {
-        return this._customElementState === WebInspector.DOMNode.CustomElementState.Custom;
+        return this._customElementState === WI.DOMNode.CustomElementState.Custom;
     }
 
     customElementState()
@@ -288,7 +334,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
     isUserAgentShadowRoot()
     {
-        return this._shadowRootType === WebInspector.DOMNode.ShadowRootType.UserAgent;
+        return this._shadowRootType === WI.DOMNode.ShadowRootType.UserAgent;
     }
 
     ancestorShadowRoot()
@@ -360,12 +406,12 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
     beforePseudoElement()
     {
-        return this._pseudoElements.get(WebInspector.DOMNode.PseudoElementType.Before) || null;
+        return this._pseudoElements.get(WI.DOMNode.PseudoElementType.Before) || null;
     }
 
     afterPseudoElement()
     {
-        return this._pseudoElements.get(WebInspector.DOMNode.PseudoElementType.After) || null;
+        return this._pseudoElements.get(WI.DOMNode.PseudoElementType.After) || null;
     }
 
     shadowRoots()
@@ -441,21 +487,26 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         if (this.nodeType() !== Node.ELEMENT_NODE)
             return;
 
-        function resolvedNode(object)
-        {
-            if (!object)
-                return;
-
-            function inspectedPage_node_toggleClass(className, flag)
-            {
+        WI.RemoteObject.resolveNode(this).then((object) => {
+            function inspectedPage_node_toggleClass(className, flag) {
                 this.classList.toggle(className, flag);
             }
 
             object.callFunction(inspectedPage_node_toggleClass, [className, flag]);
             object.release();
-        }
+        });
+    }
 
-        WebInspector.RemoteObject.resolveNode(this, "", resolvedNode);
+    scrollIntoView()
+    {
+        WI.RemoteObject.resolveNode(this).then((object) => {
+            function inspectedPage_node_scrollIntoView() {
+                this.scrollIntoViewIfNeeded(true);
+            }
+
+            object.callFunction(inspectedPage_node_scrollIntoView);
+            object.release();
+        });
     }
 
     getChildNodes(callback)
@@ -495,6 +546,27 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         DOMAgent.setOuterHTML(this.id, html, this._makeUndoableCallback(callback));
     }
 
+    insertAdjacentHTML(position, html)
+    {
+        if (this.nodeType() !== Node.ELEMENT_NODE)
+            return;
+
+        // COMPATIBILITY (iOS 11.0): DOM.insertAdjacentHTML did not exist.
+        if (!DOMAgent.insertAdjacentHTML) {
+            WI.RemoteObject.resolveNode(this).then((object) => {
+                function inspectedPage_node_insertAdjacentHTML(position, html) {
+                    this.insertAdjacentHTML(position, html);
+                }
+
+                object.callFunction(inspectedPage_node_insertAdjacentHTML, [position, html]);
+                object.release();
+            });
+            return;
+        }
+
+        DOMAgent.insertAdjacentHTML(this.id, position, html, this._makeUndoableCallback());
+    }
+
     removeNode(callback)
     {
         DOMAgent.removeNode(this.id, this._makeUndoableCallback(callback));
@@ -512,6 +584,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
     getEventListeners(callback)
     {
+        console.assert(WI.domManager.inspectedNode === this);
         DOMAgent.getEventListenersForNode(this.id, callback);
     }
 
@@ -520,6 +593,8 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         function accessibilityPropertiesCallback(error, accessibilityProperties)
         {
             if (!error && callback && accessibilityProperties) {
+                this._computedRole = accessibilityProperties.role;
+
                 callback({
                     activeDescendantNodeId: accessibilityProperties.activeDescendantNodeId,
                     busy: accessibilityProperties.busy,
@@ -583,7 +658,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
         id = CSS.escape(id);
         if (/[\s'"]/.test(id))
-            return `[id=\"${id}\"]`;
+            return `[id="${id}"]`;
 
         return `#${id}`;
     }
@@ -610,6 +685,8 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
     get displayName()
     {
+        if (this.isPseudoElement())
+            return "::" + this._pseudoType;
         return this.nodeNameInCorrectCase() + this.escapedIdSelector + this.escapedClassSelector;
     }
 
@@ -669,6 +746,69 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         return !!this.ownerSVGElement;
     }
 
+    didFireEvent(eventName, timestamp, data)
+    {
+        // Called from WI.DOMManager.
+
+        this._addDOMEvent({
+            eventName,
+            timestamp: WI.timelineManager.computeElapsedTime(timestamp),
+            data,
+        });
+    }
+
+    powerEfficientPlaybackStateChanged(timestamp, isPowerEfficient)
+    {
+        // Called from WI.DOMManager.
+
+        console.assert(this.canEnterPowerEfficientPlaybackState());
+
+        let lastValue = this._powerEfficientPlaybackRanges.lastValue;
+
+        if (isPowerEfficient) {
+            console.assert(!lastValue || lastValue.endTimestamp);
+            if (!lastValue || lastValue.endTimestamp)
+                this._powerEfficientPlaybackRanges.push({startTimestamp: timestamp});
+        } else {
+            console.assert(!lastValue || lastValue.startTimestamp);
+            if (!lastValue)
+                this._powerEfficientPlaybackRanges.push({endTimestamp: timestamp});
+            else if (lastValue.startTimestamp)
+                lastValue.endTimestamp = timestamp;
+        }
+
+        this.dispatchEventToListeners(DOMNode.Event.PowerEfficientPlaybackStateChanged, {isPowerEfficient, timestamp});
+    }
+
+    canEnterPowerEfficientPlaybackState()
+    {
+        return this.localName() === "video" || this.nodeName().toLowerCase() === "video";
+    }
+
+    _handleDOMNodeDidFireEvent(event)
+    {
+        if (event.target === this || !event.target.isAncestor(this))
+            return;
+
+        let domEvent = Object.shallowCopy(event.data.domEvent);
+        domEvent.originator = event.target;
+
+        this._addDOMEvent(domEvent);
+    }
+
+    _addDOMEvent(domEvent)
+    {
+        this._domEvents.push(domEvent);
+
+        this.dispatchEventToListeners(WI.DOMNode.Event.DidFireEvent, {domEvent});
+    }
+
+    _shouldListenForEventListeners()
+    {
+        let lowerCaseName = this.localName() || this.nodeName().toLowerCase();
+        return lowerCaseName === "video" || lowerCaseName === "audio";
+    }
+
     _setAttributesPayload(attrs)
     {
         this._attributes = [];
@@ -679,7 +819,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
     _insertChild(prev, payload)
     {
-        var node = new WebInspector.DOMNode(this._domTreeManager, this.ownerDocument, this._isInShadowTree, payload);
+        var node = new WI.DOMNode(this._domManager, this.ownerDocument, this._isInShadowTree, payload);
         if (!prev) {
             if (!this._children) {
                 // First node
@@ -713,7 +853,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
 
         this._children = this._shadowRoots.slice();
         for (var i = 0; i < payloads.length; ++i) {
-            var node = new WebInspector.DOMNode(this._domTreeManager, this.ownerDocument, this._isInShadowTree, payloads[i]);
+            var node = new WI.DOMNode(this._domManager, this.ownerDocument, this._isInShadowTree, payloads[i]);
             this._children.push(node);
         }
         this._renumber();
@@ -792,7 +932,7 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
         function changed(error)
         {
             if (!error)
-                this.dispatchEventToListeners(WebInspector.DOMNode.Event.EnabledPseudoClassesChanged);
+                this.dispatchEventToListeners(WI.DOMNode.Event.EnabledPseudoClassesChanged);
         }
 
         CSSAgent.forcePseudoState(this.id, pseudoClasses, changed.bind(this));
@@ -811,24 +951,27 @@ WebInspector.DOMNode = class DOMNode extends WebInspector.Object
     }
 };
 
-WebInspector.DOMNode.Event = {
+WI.DOMNode.Event = {
     EnabledPseudoClassesChanged: "dom-node-enabled-pseudo-classes-did-change",
     AttributeModified: "dom-node-attribute-modified",
-    AttributeRemoved: "dom-node-attribute-removed"
+    AttributeRemoved: "dom-node-attribute-removed",
+    EventListenersChanged: "dom-node-event-listeners-changed",
+    DidFireEvent: "dom-node-did-fire-event",
+    PowerEfficientPlaybackStateChanged: "dom-node-power-efficient-playback-state-changed",
 };
 
-WebInspector.DOMNode.PseudoElementType = {
+WI.DOMNode.PseudoElementType = {
     Before: "before",
     After: "after",
 };
 
-WebInspector.DOMNode.ShadowRootType = {
+WI.DOMNode.ShadowRootType = {
     UserAgent: "user-agent",
     Closed: "closed",
     Open: "open",
 };
 
-WebInspector.DOMNode.CustomElementState = {
+WI.DOMNode.CustomElementState = {
     Builtin: "builtin",
     Custom: "custom",
     Waiting: "waiting",

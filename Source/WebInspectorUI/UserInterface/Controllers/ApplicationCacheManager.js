@@ -23,21 +23,30 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends WebInspector.Object
+// FIXME: ApplicationCacheManager lacks advanced multi-target support. (ApplciationCache objects per-target)
+
+WI.ApplicationCacheManager = class ApplicationCacheManager extends WI.Object
 {
     constructor()
     {
         super();
 
-        if (window.ApplicationCacheAgent)
-            ApplicationCacheAgent.enable();
-
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.ChildFrameWasRemoved, this._childFrameWasRemoved, this);
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+        WI.Frame.addEventListener(WI.Frame.Event.ChildFrameWasRemoved, this._childFrameWasRemoved, this);
 
         this._online = true;
 
         this.initialize();
+    }
+
+    // Target
+
+    initializeTarget(target)
+    {
+        if (target.ApplicationCacheAgent) {
+            target.ApplicationCacheAgent.enable();
+            target.ApplicationCacheAgent.getFramesWithManifests(this._framesWithManifestsLoaded.bind(this));
+        }
     }
 
     // Public
@@ -45,9 +54,6 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
     initialize()
     {
         this._applicationCacheObjects = {};
-
-        if (window.ApplicationCacheAgent)
-            ApplicationCacheAgent.getFramesWithManifests(this._framesWithManifestsLoaded.bind(this));
     }
 
     get applicationCacheObjects()
@@ -62,7 +68,7 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
     {
         this._online = isNowOnline;
 
-        this.dispatchEventToListeners(WebInspector.ApplicationCacheManager.Event.NetworkStateUpdated, {online: this._online});
+        this.dispatchEventToListeners(WI.ApplicationCacheManager.Event.NetworkStateUpdated, {online: this._online});
     }
 
     get online()
@@ -72,7 +78,7 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
 
     applicationCacheStatusUpdated(frameId, manifestURL, status)
     {
-        var frame = WebInspector.frameResourceManager.frameForIdentifier(frameId);
+        var frame = WI.networkManager.frameForIdentifier(frameId);
         if (!frame)
             return;
 
@@ -98,13 +104,13 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
 
     _mainResourceDidChange(event)
     {
-        console.assert(event.target instanceof WebInspector.Frame);
+        console.assert(event.target instanceof WI.Frame);
 
         if (event.target.isMainFrame()) {
             // If we are dealing with the main frame, we want to clear our list of objects, because we are navigating to a new page.
             this.initialize();
 
-            this.dispatchEventToListeners(WebInspector.ApplicationCacheManager.Event.Cleared);
+            this.dispatchEventToListeners(WI.ApplicationCacheManager.Event.Cleared);
 
             return;
         }
@@ -123,7 +129,7 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
         if (error)
             return;
 
-        var frame = WebInspector.frameResourceManager.frameForIdentifier(frameId);
+        var frame = WI.networkManager.frameForIdentifier(frameId);
         if (!frame)
             return;
 
@@ -137,7 +143,7 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
             return;
 
         for (var i = 0; i < framesWithManifests.length; ++i) {
-            var frame = WebInspector.frameResourceManager.frameForIdentifier(framesWithManifests[i].frameId);
+            var frame = WI.networkManager.frameForIdentifier(framesWithManifests[i].frameId);
             if (!frame)
                 continue;
 
@@ -147,7 +153,7 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
 
     _frameManifestUpdated(frame, manifestURL, status)
     {
-        if (status === WebInspector.ApplicationCacheManager.Status.Uncached) {
+        if (status === WI.ApplicationCacheManager.Status.Uncached) {
             this._frameManifestRemoved(frame);
             return;
         }
@@ -165,14 +171,14 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
             manifestFrame.status = status;
 
         if (!this._applicationCacheObjects[frame.id]) {
-            var cacheManifest = new WebInspector.ApplicationCacheManifest(manifestURL);
-            this._applicationCacheObjects[frame.id] = new WebInspector.ApplicationCacheFrame(frame, cacheManifest, status);
+            var cacheManifest = new WI.ApplicationCacheManifest(manifestURL);
+            this._applicationCacheObjects[frame.id] = new WI.ApplicationCacheFrame(frame, cacheManifest, status);
 
-            this.dispatchEventToListeners(WebInspector.ApplicationCacheManager.Event.FrameManifestAdded, {frameManifest: this._applicationCacheObjects[frame.id]});
+            this.dispatchEventToListeners(WI.ApplicationCacheManager.Event.FrameManifestAdded, {frameManifest: this._applicationCacheObjects[frame.id]});
         }
 
         if (statusChanged)
-            this.dispatchEventToListeners(WebInspector.ApplicationCacheManager.Event.FrameManifestStatusChanged, {frameManifest: this._applicationCacheObjects[frame.id]});
+            this.dispatchEventToListeners(WI.ApplicationCacheManager.Event.FrameManifestStatusChanged, {frameManifest: this._applicationCacheObjects[frame.id]});
     }
 
     _frameManifestRemoved(frame)
@@ -182,11 +188,11 @@ WebInspector.ApplicationCacheManager = class ApplicationCacheManager extends Web
 
         delete this._applicationCacheObjects[frame.id];
 
-        this.dispatchEventToListeners(WebInspector.ApplicationCacheManager.Event.FrameManifestRemoved, {frame});
+        this.dispatchEventToListeners(WI.ApplicationCacheManager.Event.FrameManifestRemoved, {frame});
     }
 };
 
-WebInspector.ApplicationCacheManager.Event = {
+WI.ApplicationCacheManager.Event = {
     Cleared: "application-cache-manager-cleared",
     FrameManifestAdded: "application-cache-manager-frame-manifest-added",
     FrameManifestRemoved: "application-cache-manager-frame-manifest-removed",
@@ -194,7 +200,7 @@ WebInspector.ApplicationCacheManager.Event = {
     NetworkStateUpdated: "application-cache-manager-network-state-updated"
 };
 
-WebInspector.ApplicationCacheManager.Status = {
+WI.ApplicationCacheManager.Status = {
     Uncached: 0,
     Idle: 1,
     Checking: 2,

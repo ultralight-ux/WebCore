@@ -23,31 +23,31 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.HeapManager = class HeapManager extends WebInspector.Object
+WI.HeapManager = class HeapManager extends WI.Object
 {
-    constructor()
-    {
-        super();
+    // Target
 
-        if (window.HeapAgent)
-            HeapAgent.enable();
+    initializeTarget(target)
+    {
+        if (target.HeapAgent)
+            target.HeapAgent.enable();
     }
 
     // Public
 
     garbageCollected(target, payload)
     {
-        // Called from WebInspector.HeapObserver.
+        // Called from WI.HeapObserver.
 
         // FIXME: <https://webkit.org/b/167323> Web Inspector: Enable Memory profiling in Workers
-        if (target !== WebInspector.mainTarget)
+        if (target !== WI.mainTarget)
             return;
 
-        let collection = WebInspector.GarbageCollection.fromPayload(payload);
-        this.dispatchEventToListeners(WebInspector.HeapManager.Event.GarbageCollected, {collection});
+        let collection = WI.GarbageCollection.fromPayload(payload);
+        this.dispatchEventToListeners(WI.HeapManager.Event.GarbageCollected, {collection});
     }
 };
 
-WebInspector.HeapManager.Event = {
+WI.HeapManager.Event = {
     GarbageCollected: "heap-manager-garbage-collected"
 };

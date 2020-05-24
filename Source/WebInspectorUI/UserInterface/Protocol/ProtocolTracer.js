@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ProtocolTracer = class ProtocolTracer extends WebInspector.Object
+WI.ProtocolTracer = class ProtocolTracer
 {
     // Public
 
@@ -32,37 +32,32 @@ WebInspector.ProtocolTracer = class ProtocolTracer extends WebInspector.Object
         // To be overridden by subclasses.
     }
 
-    logFrontendException(message, exception)
+    logFrontendException(connection, message, exception)
     {
         // To be overridden by subclasses.
     }
 
-    logProtocolError(message, error)
+    logFrontendRequest(connection, message)
     {
         // To be overridden by subclasses.
     }
 
-    logFrontendRequest(message)
+    logWillHandleResponse(connection, message)
     {
         // To be overridden by subclasses.
     }
 
-    logWillHandleResponse(message)
+    logDidHandleResponse(connection, message, timings = null)
     {
         // To be overridden by subclasses.
     }
 
-    logDidHandleResponse(message, timings = null)
+    logWillHandleEvent(connection, message)
     {
         // To be overridden by subclasses.
     }
 
-    logWillHandleEvent(message)
-    {
-        // To be overridden by subclasses.
-    }
-
-    logDidHandleEvent(message, timings = null)
+    logDidHandleEvent(connection, message, timings = null)
     {
         // To be overridden by subclasses.
     }

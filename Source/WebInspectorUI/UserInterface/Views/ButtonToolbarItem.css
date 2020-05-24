@@ -29,29 +29,21 @@
 
     margin: 4px;
     padding: 0 10px;
+
+    color: hsl(0, 0%, 45%);
+}
+
+.toolbar .item.button:not(.disabled):active {
+    color: hsl(0, 0%, 30%);
+}
+
+.toolbar .item.button:not(.disabled):matches(:focus, .activate.activated) {
+    color: var(--glyph-color-active);
 }
 
 .toolbar .item.button > .glyph {
     width: 16px;
     height: 16px;
-
-    color: hsl(0, 0%, 45%);
-}
-
-.toolbar .item.button:not(.disabled):active > .glyph {
-    color: hsl(0, 0%, 30%);
-}
-
-.toolbar .item.button:not(.disabled):matches(:focus, .activate.activated) > .glyph {
-    color: var(--selected-background-color);
-}
-
-.toolbar .item.button:not(.disabled):active:matches(:focus, .activate.activated) > .glyph {
-    color: var(--selected-background-color-active);
-}
-
-.toolbar .item.button > .label {
-    display: none;
 }
 
 body.window-inactive .toolbar .item.button {
@@ -64,4 +56,20 @@ body.window-inactive .toolbar .item.button {
 
 body.window-inactive .toolbar .item.button.disabled {
     opacity: 0.35 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    .toolbar .item.button {
+        color: var(--color-button);
+    }
+
+    .toolbar .item.button:not(.disabled):active {
+        color: var(--color-button-active);
+        background-image: none;
+        background: var(--button-background-color-pressed);
+    }
+
+    body:not(.window-inactive) .toolbar .item.button:not(.disabled):matches(:focus, .activate.activated) > .glyph {
+        filter: brightness(1.35);
+    }
 }

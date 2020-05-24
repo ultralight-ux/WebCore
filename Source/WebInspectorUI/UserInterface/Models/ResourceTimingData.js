@@ -23,20 +23,23 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ResourceTimingData = class ResourceTimingData extends WebInspector.Object
+WI.ResourceTimingData = class ResourceTimingData
 {
     constructor(resource, data)
     {
-        super();
-
         data = data || {};
 
+        console.assert(isNaN(data.startTime) || data.startTime <= data.fetchStart);
+        console.assert(isNaN(data.redirectStart) === isNaN(data.redirectEnd));
         console.assert(isNaN(data.domainLookupStart) === isNaN(data.domainLookupEnd));
         console.assert(isNaN(data.connectStart) === isNaN(data.connectEnd));
 
         this._resource = resource;
 
         this._startTime = data.startTime || NaN;
+        this._redirectStart = data.redirectStart || NaN;
+        this._redirectEnd = data.redirectEnd || NaN;
+        this._fetchStart = data.fetchStart || NaN;
         this._domainLookupStart = data.domainLookupStart || NaN;
         this._domainLookupEnd = data.domainLookupEnd || NaN;
         this._connectStart = data.connectStart || NaN;
@@ -60,16 +63,34 @@ WebInspector.ResourceTimingData = class ResourceTimingData extends WebInspector.
         payload = payload || {};
 
         // COMPATIBILITY (iOS 10): Resource Timing data was incomplete and incorrect. Do not use it.
-        // iOS 7 sent a requestTime and iOS 8-9.3 sent a navigationStart time.
-        if (typeof payload.requestTime === "number" || typeof payload.navigationStart === "number")
+        // iOS 8-9.3 sent a navigationStart time.
+        if (typeof payload.navigationStart === "number")
             payload = {};
 
+        // COMPATIBILITY (iOS 12.0): Resource Timing data was based on startTime, not fetchStart.
+        let startTime = payload.startTime;
+        let fetchStart = payload.fetchStart;
+        let redirectStart = payload.redirectStart;
+        let redirectEnd = payload.redirectEnd;
+
+        if (isNaN(fetchStart) || fetchStart < startTime)
+            fetchStart = startTime;
+
+        if (redirectStart < startTime || redirectStart > fetchStart || redirectStart > redirectEnd)
+            redirectStart = NaN;
+
+        if (redirectEnd < startTime || redirectEnd > fetchStart || redirectEnd < redirectStart)
+            redirectEnd = NaN;
+
         function offsetToTimestamp(offset) {
-            return offset > 0 ? payload.startTime + (offset / 1000) : NaN;
+            return offset > 0 ? fetchStart + (offset / 1000) : NaN;
         }
 
         let data = {
-            startTime: payload.startTime,
+            startTime,
+            redirectStart,
+            redirectEnd,
+            fetchStart,
             domainLookupStart: offsetToTimestamp(payload.domainLookupStart),
             domainLookupEnd: offsetToTimestamp(payload.domainLookupEnd),
             connectStart: offsetToTimestamp(payload.connectStart),
@@ -84,19 +105,22 @@ WebInspector.ResourceTimingData = class ResourceTimingData extends WebInspector.
         if (isNaN(data.connectStart) && !isNaN(data.secureConnectionStart))
             data.connectStart = data.secureConnectionStart;
 
-        return new WebInspector.ResourceTimingData(resource, data);
+        return new WI.ResourceTimingData(resource, data);
     }
 
     // Public
 
     get startTime() { return this._startTime || this._resource.requestSentTimestamp; }
+    get redirectStart() { return this._redirectStart; }
+    get redirectEnd() { return this._redirectEnd; }
+    get fetchStart() { return this._fetchStart || this._resource.requestSentTimestamp; }
     get domainLookupStart() { return this._domainLookupStart; }
     get domainLookupEnd() { return this._domainLookupEnd; }
     get connectStart() { return this._connectStart; }
     get connectEnd() { return this._connectEnd; }
     get secureConnectionStart() { return this._secureConnectionStart; }
     get requestStart() { return this._requestStart || this._startTime || this._resource.requestSentTimestamp; }
-    get responseStart() { return this._responseStart || this._startTime || this._resource.responseReceivedTimestamp; }
+    get responseStart() { return this._responseStart || this._startTime || this._resource.responseReceivedTimestamp || this._resource.finishedOrFailedTimestamp; }
     get responseEnd() { return this._responseEnd || this._resource.finishedOrFailedTimestamp; }
 
     markResponseEndTime(responseEnd)

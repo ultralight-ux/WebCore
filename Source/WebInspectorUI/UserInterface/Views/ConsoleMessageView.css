@@ -29,13 +29,13 @@
     min-height: 21px;
 }
 
-.console-user-command.special-user-log > .console-message-text {
+.console-user-command.special-user-log > .console-message-body {
     padding: 0 6px 1px;
     border-radius: 3px;
     border: 1px solid transparent;
     background-color: var(--selected-background-color);
     color: var(--selected-foreground-color);
-    font: 10px -apple-system, sans-serif;
+    font: 10px -webkit-system-font, sans-serif;
     -webkit-user-select: none;
 }
 
@@ -59,16 +59,27 @@
     border-radius: 7px;
 }
 
-.console-message-text {
+.console-message-body {
     white-space: pre-wrap;
 }
 
-.console-message-text > span {
+.console-message-body > span {
     -webkit-user-select: text;
 }
 
-.console-message-text > span > :matches(.console-message-enclosed, .console-message-preview, .console-message-preview-divider) {
+.console-message-body > span > :matches(.console-message-enclosed, .console-message-preview, .console-message-preview-divider) {
     -webkit-user-select: none;
+}
+
+.console-message-body > .console-image {
+    max-width: 500px;
+    max-height: 500px;
+    box-shadow: 1px 2px 6px hsla(0, 0%, 0%, 0.58);
+}
+
+.console-message-body > .show-grid {
+    /* Prevents the light blue highlight from being visible in the checkerboard. */
+    --checkerboard-light-square: white;
 }
 
 .console-message.expandable .console-top-level-message::before {
@@ -76,7 +87,7 @@
 
     vertical-align: baseline;
     margin-bottom: -2px;
-    margin-right: 2px;
+    -webkit-margin-end: 2px;
 
     width: 13px;
     height: 13px;
@@ -87,6 +98,10 @@
     background-position: center;
 
     content: "";
+}
+
+body[dir=rtl] .console-message.expandable .console-top-level-message::before {
+    transform: scaleX(-1);
 }
 
 .console-message.expandable.expanded .console-top-level-message::before {
@@ -142,9 +157,9 @@
     text-align: center;
 
     height: 13px;
-    content: "•";
+    content: "\2022"; /* &middot; */
 
-    font-family: -apple-system, sans-serif;
+    font-family: -webkit-system-font, sans-serif;
     font-size: 11px;
     color: var(--console-secondary-text-color);
 
@@ -156,12 +171,8 @@
     border-color: hsl(0, 100%, 92%);
 }
 
-.console-error-level .console-message-text {
+.console-error-level .console-message-body {
     color: hsl(0, 75%, 45%);
-}
-
-.console-debug-level .console-message-text {
-    color: blue;
 }
 
 .console-warning-level {
@@ -169,7 +180,7 @@
     border-color: hsl(40, 100%, 90%);
 }
 
-.console-warning-level .console-message-text {
+.console-warning-level .console-message-body {
     color: hsl(30, 90%, 35%);
 }
 
@@ -180,6 +191,10 @@
 
 .console-log-level::before {
     content: url(../Images/Log.svg);
+}
+
+.console-log-level.console-image-container::before {
+    content: url(../Images/ConsoleImage.svg);
 }
 
 .console-info-level::before {
@@ -212,7 +227,7 @@
     padding-top: 1px;
 }
 
-.console-user-command > .console-message-text {
+.console-user-command > .console-message-body {
     color: hsl(209, 100%, 50%);
     -webkit-user-select: text;
 }
@@ -235,7 +250,7 @@
 
 .console-message .console-message-location {
     float: right;
-    font-family: -apple-system, sans-serif;
+    font-family: -webkit-system-font, sans-serif;
     font-size: 12px;
     font-weight: normal;
 }
@@ -283,4 +298,35 @@
 
 .console-top-level-message .object-tree .object-tree {
     display: inline-block;
+}
+
+@media (prefers-color-scheme: dark) {
+    .console-message .syntax-highlighted {
+        background-color: unset;
+    }
+
+    .console-warning-level .console-message-body {
+        color: hsl(53, 80%, 55%);
+    }
+
+    .console-error-level .console-message-body {
+        color: hsl(10, 100%, 70%);
+    }
+
+    .console-user-command > .console-message-body {
+        color: hsl(209, 100%, 70%);
+    }
+
+    .console-message .repeat-count {
+        background-color: hsl(218, 70%, 48%);
+    }
+
+    .console-message .go-to-link {
+        color: var(--text-color-secondary);
+    }
+
+    .console-message .go-to-link:hover,
+    .console-message .go-to-link:focus {
+        color: var(--selected-secondary-text-color-active);
+    }
 }

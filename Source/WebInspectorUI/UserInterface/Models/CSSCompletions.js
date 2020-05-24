@@ -31,12 +31,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.CSSCompletions = class CSSCompletions
+WI.CSSCompletions = class CSSCompletions
 {
     constructor(properties, acceptEmptyPrefix)
     {
         this._values = [];
-        this._longhands = {};
         this._shorthands = {};
 
         // The `properties` parameter can be either a list of objects with 'name' / 'longhand'
@@ -51,10 +50,12 @@ WebInspector.CSSCompletions = class CSSCompletions
 
                 this._values.push(propertyName);
 
+                let aliases = property.aliases;
+                if (aliases)
+                    this._values = this._values.concat(aliases);
+
                 var longhands = property.longhands;
                 if (longhands) {
-                    this._longhands[propertyName] = longhands;
-
                     for (var j = 0; j < longhands.length; ++j) {
                         var longhandName = longhands[j];
 
@@ -77,9 +78,11 @@ WebInspector.CSSCompletions = class CSSCompletions
 
     // Static
 
-    static requestCSSCompletions()
+    static initializeCSSCompletions(target)
     {
-        if (WebInspector.CSSCompletions.cssNameCompletions)
+        console.assert(target.CSSAgent);
+
+        if (WI.CSSCompletions.cssNameCompletions)
             return;
 
         function propertyNamesCallback(error, names)
@@ -87,9 +90,9 @@ WebInspector.CSSCompletions = class CSSCompletions
             if (error)
                 return;
 
-            WebInspector.CSSCompletions.cssNameCompletions = new WebInspector.CSSCompletions(names, false);
+            WI.CSSCompletions.cssNameCompletions = new WI.CSSCompletions(names, false);
 
-            WebInspector.CSSKeywordCompletions.addCustomCompletions(names);
+            WI.CSSKeywordCompletions.addCustomCompletions(names);
 
             // CodeMirror is not included by tests so we shouldn't assume it always exists.
             // If it isn't available we skip MIME type associations.
@@ -97,7 +100,7 @@ WebInspector.CSSCompletions = class CSSCompletions
                 return;
 
             var propertyNamesForCodeMirror = {};
-            var valueKeywordsForCodeMirror = {"inherit": true, "initial": true, "unset": true, "revert": true, "var": true};
+            var valueKeywordsForCodeMirror = {"inherit": true, "initial": true, "unset": true, "revert": true, "var": true, "env": true};
             var colorKeywordsForCodeMirror = {};
 
             function nameForCodeMirror(name)
@@ -119,17 +122,17 @@ WebInspector.CSSCompletions = class CSSCompletions
             for (var property of names)
                 collectPropertyNameForCodeMirror(property.name);
 
-            for (var propertyName in WebInspector.CSSKeywordCompletions._propertyKeywordMap) {
-                var keywords = WebInspector.CSSKeywordCompletions._propertyKeywordMap[propertyName];
+            for (var propertyName in WI.CSSKeywordCompletions._propertyKeywordMap) {
+                var keywords = WI.CSSKeywordCompletions._propertyKeywordMap[propertyName];
                 for (var i = 0; i < keywords.length; ++i) {
                     // Skip numbers, like the ones defined for font-weight.
-                    if (!isNaN(Number(keywords[i])))
+                    if (keywords[i] === WI.CSSKeywordCompletions.AllPropertyNamesPlaceholder || !isNaN(Number(keywords[i])))
                         continue;
                     valueKeywordsForCodeMirror[nameForCodeMirror(keywords[i])] = true;
                 }
             }
 
-            WebInspector.CSSKeywordCompletions._colors.forEach(function(colorName) {
+            WI.CSSKeywordCompletions._colors.forEach(function(colorName) {
                 colorKeywordsForCodeMirror[nameForCodeMirror(colorName)] = true;
             });
 
@@ -157,17 +160,100 @@ WebInspector.CSSCompletions = class CSSCompletions
             if (error)
                 return;
 
-            WebInspector.CSSKeywordCompletions.addPropertyCompletionValues("font-family", fontFamilyNames);
-            WebInspector.CSSKeywordCompletions.addPropertyCompletionValues("font", fontFamilyNames);
+            WI.CSSKeywordCompletions.addPropertyCompletionValues("font-family", fontFamilyNames);
+            WI.CSSKeywordCompletions.addPropertyCompletionValues("font", fontFamilyNames);
         }
 
-        if (window.CSSAgent) {
-            CSSAgent.getSupportedCSSProperties(propertyNamesCallback);
+        target.CSSAgent.getSupportedCSSProperties(propertyNamesCallback);
 
-            // COMPATIBILITY (iOS 9): CSS.getSupportedSystemFontFamilyNames did not exist.
-            if (CSSAgent.getSupportedSystemFontFamilyNames)
-                CSSAgent.getSupportedSystemFontFamilyNames(fontFamilyNamesCallback);
+        // COMPATIBILITY (iOS 9): CSS.getSupportedSystemFontFamilyNames did not exist.
+        if (target.CSSAgent.getSupportedSystemFontFamilyNames)
+            target.CSSAgent.getSupportedSystemFontFamilyNames(fontFamilyNamesCallback);
+    }
+
+    static completeUnbalancedValue(value)
+    {
+        const State = {
+            Data: 0,
+            SingleQuoteString: 1,
+            DoubleQuoteString: 2,
+            Comment: 3
+        };
+
+        let state = State.Data;
+        let unclosedParenthesisCount = 0;
+        let trailingBackslash = false;
+        let length = value.length;
+
+        for (let i = 0; i < length; ++i) {
+            switch (value[i]) {
+            case "'":
+                if (state === State.Data)
+                    state = State.SingleQuoteString;
+                else if (state === State.SingleQuoteString)
+                    state = State.Data;
+                break;
+
+            case "\"":
+                if (state === State.Data)
+                    state = State.DoubleQuoteString;
+                else if (state === State.DoubleQuoteString)
+                    state = State.Data;
+                break;
+
+            case "(":
+                if (state === State.Data)
+                    ++unclosedParenthesisCount;
+                break;
+
+            case ")":
+                if (state === State.Data && unclosedParenthesisCount)
+                    --unclosedParenthesisCount;
+                break;
+
+            case "/":
+                if (state === State.Data) {
+                    if (value[i + 1] === "*")
+                        state = State.Comment;
+                }
+                break;
+
+            case "\\":
+                if (i === length - 1)
+                    trailingBackslash = true;
+                else
+                    ++i; // Skip next character.
+                break;
+
+            case "*":
+                if (state === State.Comment) {
+                    if (value[i + 1] === "/")
+                        state = State.Data;
+                }
+                break;
+            }
         }
+
+        let suffix = "";
+
+        if (trailingBackslash)
+            suffix += "\\";
+
+        switch (state) {
+        case State.SingleQuoteString:
+            suffix += "'";
+            break;
+        case State.DoubleQuoteString:
+            suffix += "\"";
+            break;
+        case State.Comment:
+            suffix += "*/";
+            break;
+        }
+
+        suffix += ")".repeat(unclosedParenthesisCount);
+
+        return suffix;
     }
 
     // Public
@@ -179,11 +265,14 @@ WebInspector.CSSCompletions = class CSSCompletions
 
     startsWith(prefix)
     {
-        var firstIndex = this._firstIndexOfPrefix(prefix);
+        if (!prefix)
+            return this._acceptEmptyPrefix ? this._values.slice() : [];
+
+        let firstIndex = this._firstIndexOfPrefix(prefix);
         if (firstIndex === -1)
             return [];
 
-        var results = [];
+        let results = [];
         while (firstIndex < this._values.length && this._values[firstIndex].startsWith(prefix))
             results.push(this._values[firstIndex++]);
         return results;
@@ -221,13 +310,6 @@ WebInspector.CSSCompletions = class CSSCompletions
         return foundIndex;
     }
 
-    keySet()
-    {
-        if (!this._keySet)
-            this._keySet = this._values.keySet();
-        return this._keySet;
-    }
-
     next(str, prefix)
     {
         return this._closest(str, prefix, 1);
@@ -260,7 +342,7 @@ WebInspector.CSSCompletions = class CSSCompletions
 
     isShorthandPropertyName(shorthand)
     {
-        return shorthand in this._longhands;
+        return WI.CSSKeywordCompletions.LonghandNamesForShorthandProperty.has(shorthand);
     }
 
     shorthandsForLonghand(longhand)
@@ -272,27 +354,6 @@ WebInspector.CSSCompletions = class CSSCompletions
     {
         return this._values.includes(name);
     }
-
-    propertyRequiresWebkitPrefix(name)
-    {
-        return this._values.includes("-webkit-" + name) && !this._values.includes(name);
-    }
-
-    getClosestPropertyName(name)
-    {
-        var bestMatches = [{distance: Infinity, name: null}];
-
-        for (var property of this._values) {
-            var distance = name.levenshteinDistance(property);
-
-            if (distance < bestMatches[0].distance)
-                bestMatches = [{distance, name: property}];
-            else if (distance === bestMatches[0].distance)
-                bestMatches.push({distance, name: property});
-        }
-
-        return bestMatches.length < 3 ? bestMatches[0].name : false;
-    }
 };
 
-WebInspector.CSSCompletions.cssNameCompletions = null;
+WI.CSSCompletions.cssNameCompletions = null;

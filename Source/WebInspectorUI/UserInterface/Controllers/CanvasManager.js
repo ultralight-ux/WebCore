@@ -23,58 +23,150 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.CanvasManager = class CanvasManager extends WebInspector.Object
+// FIXME: CanvasManager lacks advanced multi-target support. (Canvases per-target)
+
+WI.CanvasManager = class CanvasManager extends WI.Object
 {
     constructor()
     {
         super();
 
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
-
+        this._enabled = false;
         this._canvasIdentifierMap = new Map;
+        this._shaderProgramIdentifierMap = new Map;
+        this._savedRecordings = new Set;
 
-        if (window.CanvasAgent)
-            CanvasAgent.enable();
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+    }
+
+    // Target
+
+    initializeTarget(target)
+    {
+        if (!this._enabled)
+            return;
+
+        if (target.CanvasAgent) {
+            target.CanvasAgent.enable();
+
+            if (target.CanvasAgent.setRecordingAutoCaptureFrameCount && WI.settings.canvasRecordingAutoCaptureEnabled.value && WI.settings.canvasRecordingAutoCaptureFrameCount.value)
+                target.CanvasAgent.setRecordingAutoCaptureFrameCount(WI.settings.canvasRecordingAutoCaptureFrameCount.value);
+        }
+    }
+
+    // Static
+
+    static supportsRecordingAutoCapture()
+    {
+        return InspectorBackend.domains.Canvas && InspectorBackend.domains.Canvas.setRecordingAutoCaptureFrameCount;
     }
 
     // Public
 
+    get savedRecordings() { return this._savedRecordings; }
+
     get canvases()
     {
-        return [...this._canvasIdentifierMap.values()];
+        return Array.from(this._canvasIdentifierMap.values());
+    }
+
+    get shaderPrograms()
+    {
+        return Array.from(this._shaderProgramIdentifierMap.values());
+    }
+
+    async processJSON({filename, json, error})
+    {
+        if (error) {
+            WI.Recording.synthesizeError(error);
+            return;
+        }
+
+        if (typeof json !== "object" || json === null) {
+            WI.Recording.synthesizeError(WI.UIString("invalid JSON"));
+            return;
+        }
+
+        let recording = WI.Recording.fromPayload(json);
+        if (!recording)
+            return;
+
+        let extensionStart = filename.lastIndexOf(".");
+        if (extensionStart !== -1)
+            filename = filename.substring(0, extensionStart);
+        recording.createDisplayName(filename);
+
+        this._savedRecordings.add(recording);
+
+        this.dispatchEventToListeners(WI.CanvasManager.Event.RecordingSaved, {recording, imported: true, initiatedByUser: true});
+    }
+
+    enable()
+    {
+        console.assert(!this._enabled);
+
+        this._enabled = true;
+
+        for (let target of WI.targets)
+            this.initializeTarget(target);
+    }
+
+    disable()
+    {
+        console.assert(this._enabled);
+
+        for (let target of WI.targets) {
+            if (target.CanvasAgent)
+                target.CanvasAgent.disable();
+        }
+
+        this._canvasIdentifierMap.clear();
+        this._shaderProgramIdentifierMap.clear();
+        this._savedRecordings.clear();
+
+        this._enabled = false;
+    }
+
+    setRecordingAutoCaptureFrameCount(enabled, count)
+    {
+        console.assert(!isNaN(count) && count >= 0);
+
+        for (let target of WI.targets) {
+            if (target.CanvasAgent)
+                target.CanvasAgent.setRecordingAutoCaptureFrameCount(enabled ? count : 0);
+        }
+
+        WI.settings.canvasRecordingAutoCaptureEnabled.value = enabled && count;
+        WI.settings.canvasRecordingAutoCaptureFrameCount.value = count;
     }
 
     canvasAdded(canvasPayload)
     {
-        // Called from WebInspector.CanvasObserver.
+        // Called from WI.CanvasObserver.
 
         console.assert(!this._canvasIdentifierMap.has(canvasPayload.canvasId), `Canvas already exists with id ${canvasPayload.canvasId}.`);
 
-        let canvas = WebInspector.Canvas.fromPayload(canvasPayload);
+        let canvas = WI.Canvas.fromPayload(canvasPayload);
         this._canvasIdentifierMap.set(canvas.identifier, canvas);
 
-        canvas.frame.canvasCollection.add(canvas);
-
-        this.dispatchEventToListeners(WebInspector.CanvasManager.Event.CanvasWasAdded, {canvas});
+        this.dispatchEventToListeners(WI.CanvasManager.Event.CanvasAdded, {canvas});
     }
 
     canvasRemoved(canvasIdentifier)
     {
-        // Called from WebInspector.CanvasObserver.
+        // Called from WI.CanvasObserver.
 
         let canvas = this._canvasIdentifierMap.take(canvasIdentifier);
         console.assert(canvas);
         if (!canvas)
             return;
 
-        canvas.frame.canvasCollection.remove(canvas);
-
-        this.dispatchEventToListeners(WebInspector.CanvasManager.Event.CanvasWasRemoved, {canvas});
+        this._removeCanvas(canvas);
     }
 
     canvasMemoryChanged(canvasIdentifier, memoryCost)
     {
-        // Called from WebInspector.CanvasObserver.
+        // Called from WI.CanvasObserver.
 
         let canvas = this._canvasIdentifierMap.get(canvasIdentifier);
         console.assert(canvas);
@@ -86,7 +178,7 @@ WebInspector.CanvasManager = class CanvasManager extends WebInspector.Object
 
     cssCanvasClientNodesChanged(canvasIdentifier)
     {
-        // Called from WebInspector.CanvasObserver.
+        // Called from WI.CanvasObserver.
 
         let canvas = this._canvasIdentifierMap.get(canvasIdentifier);
         console.assert(canvas);
@@ -96,25 +188,120 @@ WebInspector.CanvasManager = class CanvasManager extends WebInspector.Object
         canvas.cssCanvasClientNodesChanged();
     }
 
+    recordingStarted(canvasIdentifier, initiator)
+    {
+        // Called from WI.CanvasObserver.
+
+        let canvas = this._canvasIdentifierMap.get(canvasIdentifier);
+        console.assert(canvas);
+        if (!canvas)
+            return;
+
+        canvas.recordingStarted(initiator);
+    }
+
+    recordingProgress(canvasIdentifier, framesPayload, bufferUsed)
+    {
+        // Called from WI.CanvasObserver.
+
+        let canvas = this._canvasIdentifierMap.get(canvasIdentifier);
+        console.assert(canvas);
+        if (!canvas)
+            return;
+
+        canvas.recordingProgress(framesPayload, bufferUsed);
+    }
+
+    recordingFinished(canvasIdentifier, recordingPayload)
+    {
+        // Called from WI.CanvasObserver.
+
+        let canvas = this._canvasIdentifierMap.get(canvasIdentifier);
+        console.assert(canvas);
+        if (!canvas)
+            return;
+
+        canvas.recordingFinished(recordingPayload);
+    }
+
+    extensionEnabled(canvasIdentifier, extension)
+    {
+        // Called from WI.CanvasObserver.
+
+        let canvas = this._canvasIdentifierMap.get(canvasIdentifier);
+        console.assert(canvas);
+        if (!canvas)
+            return;
+
+        canvas.enableExtension(extension);
+    }
+
+    programCreated(canvasIdentifier, programIdentifier)
+    {
+        // Called from WI.CanvasObserver.
+
+        let canvas = this._canvasIdentifierMap.get(canvasIdentifier);
+        console.assert(canvas);
+        if (!canvas)
+            return;
+
+        console.assert(!this._shaderProgramIdentifierMap.has(programIdentifier), `ShaderProgram already exists with id ${programIdentifier}.`);
+
+        let program = new WI.ShaderProgram(programIdentifier, canvas);
+        this._shaderProgramIdentifierMap.set(program.identifier, program);
+
+        canvas.shaderProgramCollection.add(program);
+    }
+
+    programDeleted(programIdentifier)
+    {
+        // Called from WI.CanvasObserver.
+
+        let program = this._shaderProgramIdentifierMap.take(programIdentifier);
+        console.assert(program);
+        if (!program)
+            return;
+
+        program.canvas.shaderProgramCollection.remove(program);
+    }
+
     // Private
+
+    _removeCanvas(canvas)
+    {
+        for (let program of canvas.shaderProgramCollection)
+            this._shaderProgramIdentifierMap.delete(program.identifier);
+
+        canvas.shaderProgramCollection.clear();
+
+        for (let recording of canvas.recordingCollection) {
+            recording.source = null;
+            recording.createDisplayName(recording.displayName);
+            this._savedRecordings.add(recording);
+            this.dispatchEventToListeners(WI.CanvasManager.Event.RecordingSaved, {recording});
+        }
+
+        this.dispatchEventToListeners(WI.CanvasManager.Event.CanvasRemoved, {canvas});
+    }
 
     _mainResourceDidChange(event)
     {
-        console.assert(event.target instanceof WebInspector.Frame);
+        console.assert(event.target instanceof WI.Frame);
         if (!event.target.isMainFrame())
             return;
 
-        WebInspector.Canvas.resetUniqueDisplayNameNumbers();
+        WI.Canvas.resetUniqueDisplayNameNumbers();
 
-        if (this._canvasIdentifierMap.size) {
-            this._canvasIdentifierMap.clear();
-            this.dispatchEventToListeners(WebInspector.CanvasManager.Event.Cleared);
-        }
+        for (let canvas of this._canvasIdentifierMap.values())
+            this._removeCanvas(canvas);
+
+        this._shaderProgramIdentifierMap.clear();
+        this._canvasIdentifierMap.clear();
     }
 };
 
-WebInspector.CanvasManager.Event = {
-    Cleared: "canvas-manager-cleared",
-    CanvasWasAdded: "canvas-manager-canvas-was-added",
-    CanvasWasRemoved: "canvas-manager-canvas-was-removed",
+WI.CanvasManager.Event = {
+    CanvasAdded: "canvas-manager-canvas-was-added",
+    CanvasRemoved: "canvas-manager-canvas-was-removed",
+    RecordingSaved: "canvas-manager-recording-saved",
 };

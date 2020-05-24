@@ -23,13 +23,13 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.CapturingProtocolTracer = class CapturingProtocolTracer extends WebInspector.ProtocolTracer
+WI.CapturingProtocolTracer = class CapturingProtocolTracer extends WI.ProtocolTracer
 {
     constructor()
     {
         super();
 
-        this._trace = new WebInspector.ProtocolTrace;
+        this._trace = new WI.ProtocolTrace;
     }
 
     // Public
@@ -39,22 +39,17 @@ WebInspector.CapturingProtocolTracer = class CapturingProtocolTracer extends Web
         return this._trace;
     }
 
-    logFrontendException(message, exception)
+    logFrontendException(connection, message, exception)
     {
         this._processEntry({type: "exception", message: this._stringifyMessage(message), exception});
     }
 
-    logProtocolError(message, error)
-    {
-        this._processEntry({type: "error", message: this._stringifyMessage(message), error});
-    }
-
-    logFrontendRequest(message)
+    logFrontendRequest(connection, message)
     {
         this._processEntry({type: "request", message: this._stringifyMessage(message)});
     }
 
-    logDidHandleResponse(message, timings = null)
+    logDidHandleResponse(connection, message, timings = null)
     {
         let entry = {type: "response", message: this._stringifyMessage(message)};
         if (timings)
@@ -63,7 +58,7 @@ WebInspector.CapturingProtocolTracer = class CapturingProtocolTracer extends Web
         this._processEntry(entry);
     }
 
-    logDidHandleEvent(message, timings = null)
+    logDidHandleEvent(connection, message, timings = null)
     {
         let entry = {type: "event", message: this._stringifyMessage(message)};
         if (timings)

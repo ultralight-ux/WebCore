@@ -24,27 +24,27 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DOMStorageObserver = class DOMStorageObserver
+WI.DOMStorageObserver = class DOMStorageObserver
 {
     // Events defined by the "DOMStorage" domain.
 
     domStorageItemsCleared(storageId)
     {
-        WebInspector.storageManager.itemsCleared(storageId);
+        WI.domStorageManager.itemsCleared(storageId);
     }
 
     domStorageItemRemoved(storageId, key)
     {
-        WebInspector.storageManager.itemRemoved(storageId, key);
+        WI.domStorageManager.itemRemoved(storageId, key);
     }
 
     domStorageItemAdded(storageId, key, value)
     {
-        WebInspector.storageManager.itemAdded(storageId, key, value);
+        WI.domStorageManager.itemAdded(storageId, key, value);
     }
 
     domStorageItemUpdated(storageId, key, oldValue, value)
     {
-        WebInspector.storageManager.itemUpdated(storageId, key, oldValue, value);
+        WI.domStorageManager.itemUpdated(storageId, key, oldValue, value);
     }
 };

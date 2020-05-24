@@ -24,6 +24,8 @@
  */
 
 .call-frame {
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
     cursor: pointer;
 }
@@ -33,6 +35,7 @@
     vertical-align: top;
     width: 16px;
     height: 16px;
+    -webkit-margin-end: 3px;
 }
 
 .call-frame .titles {
@@ -65,4 +68,20 @@
 .call-frame .separator {
     white-space: nowrap;
     color: hsla(0, 0%, 0%, 0.2);
+}
+
+@media (prefers-color-scheme: dark) {
+    .call-frame .subtitle,
+    .call-frame .subtitle .source-link {
+        color: hsla(0, 0%, var(--foreground-lightness), 0.6);
+    }
+
+    .call-frame:hover .subtitle .source-link,
+    .call-frame:focus .subtitle .source-link {
+        color: hsl(0, 0%, var(--foreground-lightness));
+    }
+
+    .call-frame .separator {
+        color: hsla(0, 0%, var(--foreground-lightness), 0.2);
+    }
 }

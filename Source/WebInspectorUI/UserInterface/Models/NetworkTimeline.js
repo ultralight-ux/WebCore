@@ -23,13 +23,13 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.NetworkTimeline = class NetworkTimeline extends WebInspector.Timeline
+WI.NetworkTimeline = class NetworkTimeline extends WI.Timeline
 {
     // Public
 
     recordForResource(resource)
     {
-        console.assert(resource instanceof WebInspector.Resource);
+        console.assert(resource instanceof WI.Resource);
 
         return this._resourceRecordMap.get(resource) || null;
     }
@@ -41,9 +41,9 @@ WebInspector.NetworkTimeline = class NetworkTimeline extends WebInspector.Timeli
         super.reset(suppressEvents);
     }
 
-    addRecord(record)
+    addRecord(record, options = {})
     {
-        console.assert(record instanceof WebInspector.ResourceTimelineRecord);
+        console.assert(record instanceof WI.ResourceTimelineRecord);
 
         // Don't allow duplicate records for a resource.
         if (this._resourceRecordMap.has(record.resource))
@@ -51,6 +51,6 @@ WebInspector.NetworkTimeline = class NetworkTimeline extends WebInspector.Timeli
 
         this._resourceRecordMap.set(record.resource, record);
 
-        super.addRecord(record);
+        super.addRecord(record, options);
     }
 };

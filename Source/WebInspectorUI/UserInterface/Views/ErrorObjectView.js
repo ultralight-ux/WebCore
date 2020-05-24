@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015, 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,13 +23,13 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ErrorObjectView = class ErrorObjectView extends WebInspector.Object
+WI.ErrorObjectView = class ErrorObjectView extends WI.Object
 {
     constructor(object)
     {
         super();
 
-        console.assert(object instanceof WebInspector.RemoteObject && object.subtype === "error", object);
+        console.assert(object instanceof WI.RemoteObject && object.subtype === "error", object);
 
         this._object = object;
 
@@ -38,12 +38,12 @@ WebInspector.ErrorObjectView = class ErrorObjectView extends WebInspector.Object
 
         this._element = document.createElement("div");
         this._element.classList.add("error-object");
-        var previewElement = WebInspector.FormattedValue.createElementForError(this._object);
+        var previewElement = WI.FormattedValue.createElementForError(this._object);
         this._element.append(previewElement);
         previewElement.addEventListener("click", this._handlePreviewOrTitleElementClick.bind(this));
 
         this._outlineElement = this._element.appendChild(document.createElement("div"));
-        this._outline = new WebInspector.TreeOutline(this._outlineElement);
+        this._outlineElement.className = "content";
     }
 
     // Static
@@ -55,13 +55,13 @@ WebInspector.ErrorObjectView = class ErrorObjectView extends WebInspector.Object
 
         var span = document.createElement("span");
         span.classList.add("error-object-link-container");
-        span.textContent = " — ";
+        span.textContent = ` ${emDash} `;
 
         const options = {
             ignoreNetworkTab: true,
             ignoreSearchTab: true,
         };
-        let a = WebInspector.linkifyLocation(sourceURL, new WebInspector.SourceCodePosition(parseInt(lineNumber) - 1, parseInt(columnNumber)), options);
+        let a = WI.linkifyLocation(sourceURL, new WI.SourceCodePosition(parseInt(lineNumber) - 1, parseInt(columnNumber)), options);
         a.classList.add("error-object-link");
         span.appendChild(a);
 
@@ -80,11 +80,6 @@ WebInspector.ErrorObjectView = class ErrorObjectView extends WebInspector.Object
         return this._element;
     }
 
-    get treeOutline()
-    {
-        return this._outline;
-    }
-
     get expanded()
     {
         return this._expanded;
@@ -92,14 +87,25 @@ WebInspector.ErrorObjectView = class ErrorObjectView extends WebInspector.Object
 
     update()
     {
-        this._object.getOwnPropertyDescriptorsAsObject((properties) => {
-            console.assert(properties && properties.stack && properties.stack.value);
+        if (this._hasStackTrace)
+            return;
 
-            if (!this._hasStackTrace)
-                this._buildStackTrace(properties.stack.value.value);
+        const options = {
+            ownProperties: true,
+            generatePreview: true,
+        };
+        this._object.getPropertyDescriptors((properties) => {
+            if (!properties || this._hasStackTrace)
+                return;
 
+            let stackProperty = properties.find((property) => property.name === "stack");
+            console.assert(stackProperty);
+            if (!stackProperty)
+                return;
+
+            this._buildStackTrace(stackProperty.value.value);
             this._hasStackTrace = true;
-        });
+        }, options);
     }
 
     expand()
@@ -141,8 +147,8 @@ WebInspector.ErrorObjectView = class ErrorObjectView extends WebInspector.Object
 
     _buildStackTrace(stackString)
     {
-        let stackTrace = WebInspector.StackTrace.fromString(this._object.target, stackString);
-        let stackTraceElement = new WebInspector.StackTraceView(stackTrace).element;
+        let stackTrace = WI.StackTrace.fromString(this._object.target, stackString);
+        let stackTraceElement = new WI.StackTraceView(stackTrace).element;
         this._outlineElement.appendChild(stackTraceElement);
     }
 };

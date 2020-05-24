@@ -23,20 +23,19 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.MemoryCategoryView = class MemoryCategoryView extends WebInspector.Object
+WI.MemoryCategoryView = class MemoryCategoryView extends WI.View
 {
     constructor(category, displayName)
     {
-        super();
-
         console.assert(typeof category === "string");
+
+        super();
 
         this._category = category;
 
-        this._element = document.createElement("div");
-        this._element.classList.add("memory-category-view", category);
+        this.element.classList.add("memory-category-view", category);
 
-        this._detailsElement = this._element.appendChild(document.createElement("div"));
+        this._detailsElement = this.element.appendChild(document.createElement("div"));
         this._detailsElement.classList.add("details");
 
         let detailsNameElement = this._detailsElement.appendChild(document.createElement("span"));
@@ -48,43 +47,45 @@ WebInspector.MemoryCategoryView = class MemoryCategoryView extends WebInspector.
         this._detailsMinElement = this._detailsElement.appendChild(document.createElement("span"));
         this._updateDetails(NaN, NaN);
 
-        this._graphElement = this._element.appendChild(document.createElement("div"));
+        this._graphElement = this.element.appendChild(document.createElement("div"));
         this._graphElement.classList.add("graph");
 
-        // FIXME: <https://webkit.org/b/153758> Web Inspector: Memory Timeline View should be responsive / resizable
-        let size = new WebInspector.Size(800, 75);
-        this._chart = new WebInspector.LineChart(size);
+        this._chart = new WI.AreaChart;
+        this.addSubview(this._chart);
         this._graphElement.appendChild(this._chart.element);
     }
 
     // Public
 
-    get element() { return this._element; }
     get category() { return this._category; }
 
     clear()
     {
         this._cachedMinSize = undefined;
         this._cachedMaxSize = undefined;
+        this._updateDetails(NaN, NaN);
 
         this._chart.clear();
-        this._chart.needsLayout();
     }
 
-    layoutWithDataPoints(dataPoints, lastTime, minSize, maxSize, xScale, yScale)
+    updateChart(dataPoints, size, visibleEndTime, min, max, xScale, yScale)
     {
-        console.assert(minSize >= 0);
-        console.assert(maxSize >= 0);
-        console.assert(minSize <= maxSize);
+        console.assert(size instanceof WI.Size);
+        console.assert(min >= 0);
+        console.assert(max >= 0);
+        console.assert(min <= max);
 
-        this._updateDetails(minSize, maxSize);
+        this._updateDetails(min, max);
+
         this._chart.clear();
+        this._chart.size = size;
+        this._chart.needsLayout();
 
         if (!dataPoints.length)
             return;
 
         // Ensure an empty graph is empty.
-        if (!maxSize)
+        if (!max)
             return;
 
         // Extend the first data point to the start so it doesn't look like we originate at zero size.
@@ -101,11 +102,9 @@ WebInspector.MemoryCategoryView = class MemoryCategoryView extends WebInspector.
 
         // Extend the last data point to the end time.
         let lastDataPoint = dataPoints.lastValue;
-        let lastX = Math.floor(xScale(lastTime));
+        let lastX = Math.floor(xScale(visibleEndTime));
         let lastY = yScale(lastDataPoint.size);
         this._chart.addPoint(lastX, lastY);
-
-        this._chart.updateLayout();
     }
 
     // Private
@@ -118,7 +117,7 @@ WebInspector.MemoryCategoryView = class MemoryCategoryView extends WebInspector.
         this._cachedMinSize = minSize;
         this._cachedMaxSize = maxSize;
 
-        this._detailsMaxElement.textContent = WebInspector.UIString("Highest: %s").format(Number.isFinite(maxSize) ? Number.bytesToString(maxSize) : emDash);
-        this._detailsMinElement.textContent = WebInspector.UIString("Lowest: %s").format(Number.isFinite(minSize) ? Number.bytesToString(minSize) : emDash);
+        this._detailsMaxElement.textContent = WI.UIString("Highest: %s").format(Number.isFinite(maxSize) ? Number.bytesToString(maxSize) : emDash);
+        this._detailsMinElement.textContent = WI.UIString("Lowest: %s").format(Number.isFinite(minSize) ? Number.bytesToString(minSize) : emDash);
     }
 };

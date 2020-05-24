@@ -23,16 +23,13 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ResourceQueryMatch = class QueryMatch extends WebInspector.Object
+WI.ResourceQueryMatch = class ResourceQueryMatch
 {
     constructor(type, index, queryIndex)
     {
-        super();
-
         this._type = type;
         this._index = index;
         this._queryIndex = queryIndex;
-        this._rank = undefined;
     }
 
     // Public
@@ -42,7 +39,7 @@ WebInspector.ResourceQueryMatch = class QueryMatch extends WebInspector.Object
     get queryIndex() { return this._queryIndex; }
 };
 
-WebInspector.ResourceQueryMatch.Type = {
+WI.ResourceQueryMatch.Type = {
     Normal: Symbol("normal"),
     Special: Symbol("special")
 };

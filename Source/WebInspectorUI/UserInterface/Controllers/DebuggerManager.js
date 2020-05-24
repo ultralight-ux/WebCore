@@ -23,50 +23,58 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
+WI.DebuggerManager = class DebuggerManager extends WI.Object
 {
     constructor()
     {
         super();
 
-        DebuggerAgent.enable();
+        WI.notifications.addEventListener(WI.Notification.DebugUIEnabledDidChange, this._debugUIEnabledDidChange, this);
 
-        WebInspector.notifications.addEventListener(WebInspector.Notification.DebugUIEnabledDidChange, this._debugUIEnabledDidChange, this);
+        WI.Breakpoint.addEventListener(WI.Breakpoint.Event.DisplayLocationDidChange, this._breakpointDisplayLocationDidChange, this);
+        WI.Breakpoint.addEventListener(WI.Breakpoint.Event.DisabledStateDidChange, this._breakpointDisabledStateDidChange, this);
+        WI.Breakpoint.addEventListener(WI.Breakpoint.Event.ConditionDidChange, this._breakpointEditablePropertyDidChange, this);
+        WI.Breakpoint.addEventListener(WI.Breakpoint.Event.IgnoreCountDidChange, this._breakpointEditablePropertyDidChange, this);
+        WI.Breakpoint.addEventListener(WI.Breakpoint.Event.AutoContinueDidChange, this._breakpointEditablePropertyDidChange, this);
+        WI.Breakpoint.addEventListener(WI.Breakpoint.Event.ActionsDidChange, this._handleBreakpointActionsDidChange, this);
 
-        WebInspector.Breakpoint.addEventListener(WebInspector.Breakpoint.Event.DisplayLocationDidChange, this._breakpointDisplayLocationDidChange, this);
-        WebInspector.Breakpoint.addEventListener(WebInspector.Breakpoint.Event.DisabledStateDidChange, this._breakpointDisabledStateDidChange, this);
-        WebInspector.Breakpoint.addEventListener(WebInspector.Breakpoint.Event.ConditionDidChange, this._breakpointEditablePropertyDidChange, this);
-        WebInspector.Breakpoint.addEventListener(WebInspector.Breakpoint.Event.IgnoreCountDidChange, this._breakpointEditablePropertyDidChange, this);
-        WebInspector.Breakpoint.addEventListener(WebInspector.Breakpoint.Event.AutoContinueDidChange, this._breakpointEditablePropertyDidChange, this);
-        WebInspector.Breakpoint.addEventListener(WebInspector.Breakpoint.Event.ActionsDidChange, this._breakpointEditablePropertyDidChange, this);
+        WI.timelineManager.addEventListener(WI.TimelineManager.Event.CapturingStateChanged, this._handleTimelineCapturingStateChanged, this);
 
-        WebInspector.timelineManager.addEventListener(WebInspector.TimelineManager.Event.CapturingWillStart, this._timelineCapturingWillStart, this);
-        WebInspector.timelineManager.addEventListener(WebInspector.TimelineManager.Event.CapturingStopped, this._timelineCapturingStopped, this);
+        WI.auditManager.addEventListener(WI.AuditManager.Event.TestScheduled, this._handleAuditManagerTestScheduled, this);
+        WI.auditManager.addEventListener(WI.AuditManager.Event.TestCompleted, this._handleAuditManagerTestCompleted, this);
 
-        WebInspector.targetManager.addEventListener(WebInspector.TargetManager.Event.TargetRemoved, this._targetRemoved, this);
+        WI.targetManager.addEventListener(WI.TargetManager.Event.TargetRemoved, this._targetRemoved, this);
 
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+        WI.settings.pauseForInternalScripts.addEventListener(WI.Setting.Event.Changed, this._pauseForInternalScriptsDidChange, this);
 
-        this._breakpointsSetting = new WebInspector.Setting("breakpoints", []);
-        this._breakpointsEnabledSetting = new WebInspector.Setting("breakpoints-enabled", true);
-        this._allExceptionsBreakpointEnabledSetting = new WebInspector.Setting("break-on-all-exceptions", false);
-        this._allUncaughtExceptionsBreakpointEnabledSetting = new WebInspector.Setting("break-on-all-uncaught-exceptions", false);
-        this._assertionsBreakpointEnabledSetting = new WebInspector.Setting("break-on-assertions", false);
-        this._asyncStackTraceDepthSetting = new WebInspector.Setting("async-stack-trace-depth", 200);
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
 
-        let specialBreakpointLocation = new WebInspector.SourceCodeLocation(null, Infinity, Infinity);
+        this._breakpointsEnabledSetting = new WI.Setting("breakpoints-enabled", true);
+        this._allExceptionsBreakpointEnabledSetting = new WI.Setting("break-on-all-exceptions", false);
+        this._uncaughtExceptionsBreakpointEnabledSetting = new WI.Setting("break-on-uncaught-exceptions", false);
+        this._assertionFailuresBreakpointEnabledSetting = new WI.Setting("break-on-assertion-failures", false);
+        this._asyncStackTraceDepthSetting = new WI.Setting("async-stack-trace-depth", 200);
 
-        this._allExceptionsBreakpoint = new WebInspector.Breakpoint(specialBreakpointLocation, !this._allExceptionsBreakpointEnabledSetting.value);
+        let specialBreakpointLocation = new WI.SourceCodeLocation(null, Infinity, Infinity);
+
+        this._allExceptionsBreakpoint = new WI.Breakpoint(specialBreakpointLocation, {
+            disabled: !this._allExceptionsBreakpointEnabledSetting.value,
+        });
         this._allExceptionsBreakpoint.resolved = true;
 
-        this._allUncaughtExceptionsBreakpoint = new WebInspector.Breakpoint(specialBreakpointLocation, !this._allUncaughtExceptionsBreakpointEnabledSetting.value);
+        this._uncaughtExceptionsBreakpoint = new WI.Breakpoint(specialBreakpointLocation, {
+            disabled: !this._uncaughtExceptionsBreakpointEnabledSetting.value,
+        });
+        this._uncaughtExceptionsBreakpoint.resolved = true;
 
-        this._assertionsBreakpoint = new WebInspector.Breakpoint(specialBreakpointLocation, !this._assertionsBreakpointEnabledSetting.value);
-        this._assertionsBreakpoint.resolved = true;
+        this._assertionFailuresBreakpoint = new WI.Breakpoint(specialBreakpointLocation, {
+            disabled: !this._assertionFailuresBreakpointEnabledSetting.value,
+        });
+        this._assertionFailuresBreakpoint.resolved = true;
 
         this._breakpoints = [];
-        this._breakpointContentIdentifierMap = new Map;
-        this._breakpointScriptIdentifierMap = new Map;
+        this._breakpointContentIdentifierMap = new Multimap;
+        this._breakpointScriptIdentifierMap = new Multimap;
         this._breakpointIdMap = new Map;
 
         this._breakOnExceptionsState = "none";
@@ -78,39 +86,83 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
         this._internalWebKitScripts = [];
         this._targetDebuggerDataMap = new Map;
-        this._targetDebuggerDataMap.set(WebInspector.mainTarget, new WebInspector.DebuggerData(WebInspector.mainTarget));
+
+        // Used to detect deleted probe actions.
+        this._knownProbeIdentifiersForBreakpoint = new Map;
+
+        // Main lookup tables for probes and probe sets.
+        this._probesByIdentifier = new Map;
+        this._probeSetsByBreakpoint = new Map;
 
         // Restore the correct breakpoints enabled setting if Web Inspector had
         // previously been left in a state where breakpoints were temporarily disabled.
-        this._temporarilyDisabledBreakpointsRestoreSetting = new WebInspector.Setting("temporarily-disabled-breakpoints-restore", null);
+        this._temporarilyDisabledBreakpointsRestoreSetting = new WI.Setting("temporarily-disabled-breakpoints-restore", null);
         if (this._temporarilyDisabledBreakpointsRestoreSetting.value !== null) {
             this._breakpointsEnabledSetting.value = this._temporarilyDisabledBreakpointsRestoreSetting.value;
             this._temporarilyDisabledBreakpointsRestoreSetting.value = null;
         }
-
-        DebuggerAgent.setBreakpointsActive(this._breakpointsEnabledSetting.value);
-        DebuggerAgent.setPauseOnExceptions(this._breakOnExceptionsState);
-
-        // COMPATIBILITY (iOS 10): DebuggerAgent.setPauseOnAssertions did not exist yet.
-        if (DebuggerAgent.setPauseOnAssertions)
-            DebuggerAgent.setPauseOnAssertions(this._assertionsBreakpointEnabledSetting.value);
-
-        // COMPATIBILITY (iOS 10): Debugger.setAsyncStackTraceDepth did not exist yet.
-        if (DebuggerAgent.setAsyncStackTraceDepth)
-            DebuggerAgent.setAsyncStackTraceDepth(this._asyncStackTraceDepthSetting.value);
+        this._temporarilyDisableBreakpointsRequestCount = 0;
 
         this._ignoreBreakpointDisplayLocationDidChangeEvent = false;
 
-        function restoreBreakpointsSoon() {
-            this._restoringBreakpoints = true;
-            for (let cookie of this._breakpointsSetting.value)
-                this.addBreakpoint(new WebInspector.Breakpoint(cookie));
-            this._restoringBreakpoints = false;
-        }
+        (async () => {
+            let existingSerializedBreakpoints = WI.Setting.migrateValue("breakpoints");
+            if (existingSerializedBreakpoints) {
+                for (let existingSerializedBreakpoint of existingSerializedBreakpoints)
+                    await WI.objectStores.breakpoints.putObject(WI.Breakpoint.fromJSON(existingSerializedBreakpoint));
+            }
 
-        // Ensure that all managers learn about restored breakpoints,
-        // regardless of their initialization order.
-        setTimeout(restoreBreakpointsSoon.bind(this), 0);
+            let serializedBreakpoints = await WI.objectStores.breakpoints.getAll();
+
+            this._restoringBreakpoints = true;
+            for (let serializedBreakpoint of serializedBreakpoints) {
+                let breakpoint = WI.Breakpoint.fromJSON(serializedBreakpoint);
+
+                const key = null;
+                WI.objectStores.breakpoints.associateObject(breakpoint, key, serializedBreakpoint);
+
+                this.addBreakpoint(breakpoint);
+            }
+            this._restoringBreakpoints = false;
+        })();
+    }
+
+    // Target
+
+    initializeTarget(target)
+    {
+        let targetData = this.dataForTarget(target);
+
+        // Initialize global state.
+        target.DebuggerAgent.enable();
+        target.DebuggerAgent.setBreakpointsActive(this._breakpointsEnabledSetting.value);
+        target.DebuggerAgent.setPauseOnExceptions(this._breakOnExceptionsState);
+
+        // COMPATIBILITY (iOS 10): DebuggerAgent.setPauseOnAssertions did not exist yet.
+        if (target.DebuggerAgent.setPauseOnAssertions)
+            target.DebuggerAgent.setPauseOnAssertions(this._assertionFailuresBreakpointEnabledSetting.value);
+
+        // COMPATIBILITY (iOS 10): Debugger.setAsyncStackTraceDepth did not exist yet.
+        if (target.DebuggerAgent.setAsyncStackTraceDepth)
+            target.DebuggerAgent.setAsyncStackTraceDepth(this._asyncStackTraceDepthSetting.value);
+
+        // COMPATIBILITY (iOS 12): DebuggerAgent.setPauseForInternalScripts did not exist yet.
+        if (target.DebuggerAgent.setPauseForInternalScripts)
+            target.DebuggerAgent.setPauseForInternalScripts(WI.settings.pauseForInternalScripts.value);
+
+        if (this.paused)
+            targetData.pauseIfNeeded();
+
+        // Initialize breakpoints.
+        this._restoringBreakpoints = true;
+        for (let breakpoint of this._breakpoints) {
+            if (breakpoint.disabled)
+                continue;
+            if (!breakpoint.contentIdentifier)
+                continue;
+            this._setBreakpoint(breakpoint, target);
+        }
+        this._restoringBreakpoints = false;
     }
 
     // Public
@@ -137,7 +189,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
         this._activeCallFrame = callFrame || null;
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.ActiveCallFrameDidChange);
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.ActiveCallFrameDidChange);
     }
 
     dataForTarget(target)
@@ -146,30 +198,15 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (targetData)
             return targetData;
 
-        targetData = new WebInspector.DebuggerData(target);
+        targetData = new WI.DebuggerData(target);
         this._targetDebuggerDataMap.set(target, targetData);
         return targetData;
     }
 
-    get allExceptionsBreakpoint()
-    {
-        return this._allExceptionsBreakpoint;
-    }
-
-    get allUncaughtExceptionsBreakpoint()
-    {
-        return this._allUncaughtExceptionsBreakpoint;
-    }
-
-    get assertionsBreakpoint()
-    {
-        return this._assertionsBreakpoint;
-    }
-
-    get breakpoints()
-    {
-        return this._breakpoints;
-    }
+    get allExceptionsBreakpoint() { return this._allExceptionsBreakpoint; }
+    get uncaughtExceptionsBreakpoint() { return this._uncaughtExceptionsBreakpoint; }
+    get assertionFailuresBreakpoint() { return this._assertionFailuresBreakpoint; }
+    get breakpoints() { return this._breakpoints; }
 
     breakpointForIdentifier(id)
     {
@@ -178,14 +215,10 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
     breakpointsForSourceCode(sourceCode)
     {
-        console.assert(sourceCode instanceof WebInspector.Resource || sourceCode instanceof WebInspector.Script);
+        console.assert(sourceCode instanceof WI.Resource || sourceCode instanceof WI.Script);
 
-        if (sourceCode instanceof WebInspector.SourceMapResource) {
-            let originalSourceCodeBreakpoints = this.breakpointsForSourceCode(sourceCode.sourceMap.originalSourceCode);
-            return originalSourceCodeBreakpoints.filter(function(breakpoint) {
-                return breakpoint.sourceCodeLocation.displaySourceCode === sourceCode;
-            });
-        }
+        if (sourceCode instanceof WI.SourceMapResource)
+            return Array.from(this.breakpointsForSourceCode(sourceCode.sourceMap.originalSourceCode)).filter((breakpoint) => breakpoint.sourceCodeLocation.displaySourceCode === sourceCode);
 
         let contentIdentifierBreakpoints = this._breakpointContentIdentifierMap.get(sourceCode.contentIdentifier);
         if (contentIdentifierBreakpoints) {
@@ -193,7 +226,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             return contentIdentifierBreakpoints;
         }
 
-        if (sourceCode instanceof WebInspector.Script) {
+        if (sourceCode instanceof WI.Script) {
             let scriptIdentifierBreakpoints = this._breakpointScriptIdentifierMap.get(sourceCode.id);
             if (scriptIdentifierBreakpoints) {
                 this._associateBreakpointsWithSourceCode(scriptIdentifierBreakpoints, sourceCode);
@@ -206,7 +239,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
     breakpointForSourceCodeLocation(sourceCodeLocation)
     {
-        console.assert(sourceCodeLocation instanceof WebInspector.SourceCodeLocation);
+        console.assert(sourceCodeLocation instanceof WI.SourceCodeLocation);
 
         for (let breakpoint of this.breakpointsForSourceCode(sourceCodeLocation.sourceCode)) {
             if (breakpoint.sourceCodeLocation.isEqual(sourceCodeLocation))
@@ -219,13 +252,18 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
     isBreakpointRemovable(breakpoint)
     {
         return breakpoint !== this._allExceptionsBreakpoint
-            && breakpoint !== this._allUncaughtExceptionsBreakpoint
-            && breakpoint !== this._assertionsBreakpoint;
+            && breakpoint !== this._uncaughtExceptionsBreakpoint;
+    }
+
+    isBreakpointSpecial(breakpoint)
+    {
+        return !this.isBreakpointRemovable(breakpoint)
+            || breakpoint === this._assertionFailuresBreakpoint;
     }
 
     isBreakpointEditable(breakpoint)
     {
-        return this.isBreakpointRemovable(breakpoint);
+        return !this.isBreakpointSpecial(breakpoint);
     }
 
     get breakpointsEnabled()
@@ -246,12 +284,12 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
         this._updateBreakOnExceptionsState();
 
-        for (let target of WebInspector.targets) {
+        for (let target of WI.targets) {
             target.DebuggerAgent.setBreakpointsActive(enabled);
             target.DebuggerAgent.setPauseOnExceptions(this._breakOnExceptionsState);
         }
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.BreakpointsEnabledDidChange);
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.BreakpointsEnabledDidChange);
     }
 
     get breakpointsDisabledTemporarily()
@@ -261,14 +299,14 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
     scriptForIdentifier(id, target)
     {
-        console.assert(target instanceof WebInspector.Target);
+        console.assert(target instanceof WI.Target);
         return this.dataForTarget(target).scriptForIdentifier(id);
     }
 
     scriptsForURL(url, target)
     {
         // FIXME: This may not be safe. A Resource's URL may differ from a Script's URL.
-        console.assert(target instanceof WebInspector.Target);
+        console.assert(target instanceof WI.Target);
         return this.dataForTarget(target).scriptsForURL(url);
     }
 
@@ -285,7 +323,9 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             for (let script of targetData.scripts) {
                 if (script.resource)
                     continue;
-                if (!WebInspector.isDebugUIEnabled() && isWebKitInternalScript(script.sourceURL))
+                if (isWebInspectorConsoleEvaluationScript(script.sourceURL))
+                    continue;
+                if (!WI.isDebugUIEnabled() && isWebKitInternalScript(script.sourceURL))
                     continue;
                 knownScripts.push(script);
             }
@@ -306,8 +346,18 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
         this._asyncStackTraceDepthSetting.value = x;
 
-        for (let target of WebInspector.targets)
+        for (let target of WI.targets)
             target.DebuggerAgent.setAsyncStackTraceDepth(this._asyncStackTraceDepthSetting.value);
+    }
+
+    get probeSets()
+    {
+        return [...this._probeSetsByBreakpoint.values()];
+    }
+
+    probeForIdentifier(identifier)
+    {
+        return this._probesByIdentifier.get(identifier);
     }
 
     pause()
@@ -315,12 +365,12 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (this.paused)
             return Promise.resolve();
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.WaitingToPause);
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.WaitingToPause);
 
-        let listener = new WebInspector.EventListener(this, true);
+        let listener = new WI.EventListener(this, true);
 
         let managerResult = new Promise(function(resolve, reject) {
-            listener.connect(WebInspector.debuggerManager, WebInspector.DebuggerManager.Event.Paused, resolve);
+            listener.connect(WI.debuggerManager, WI.DebuggerManager.Event.Paused, resolve);
         });
 
         let promises = [];
@@ -335,10 +385,10 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (!this.paused)
             return Promise.resolve();
 
-        let listener = new WebInspector.EventListener(this, true);
+        let listener = new WI.EventListener(this, true);
 
         let managerResult = new Promise(function(resolve, reject) {
-            listener.connect(WebInspector.debuggerManager, WebInspector.DebuggerManager.Event.Resumed, resolve);
+            listener.connect(WI.debuggerManager, WI.DebuggerManager.Event.Resumed, resolve);
         });
 
         let promises = [];
@@ -353,10 +403,10 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (!this.paused)
             return Promise.reject(new Error("Cannot step over because debugger is not paused."));
 
-        let listener = new WebInspector.EventListener(this, true);
+        let listener = new WI.EventListener(this, true);
 
         let managerResult = new Promise(function(resolve, reject) {
-            listener.connect(WebInspector.debuggerManager, WebInspector.DebuggerManager.Event.ActiveCallFrameDidChange, resolve);
+            listener.connect(WI.debuggerManager, WI.DebuggerManager.Event.ActiveCallFrameDidChange, resolve);
         });
 
         let protocolResult = this._activeCallFrame.target.DebuggerAgent.stepOver()
@@ -374,10 +424,10 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (!this.paused)
             return Promise.reject(new Error("Cannot step into because debugger is not paused."));
 
-        let listener = new WebInspector.EventListener(this, true);
+        let listener = new WI.EventListener(this, true);
 
         let managerResult = new Promise(function(resolve, reject) {
-            listener.connect(WebInspector.debuggerManager, WebInspector.DebuggerManager.Event.ActiveCallFrameDidChange, resolve);
+            listener.connect(WI.debuggerManager, WI.DebuggerManager.Event.ActiveCallFrameDidChange, resolve);
         });
 
         let protocolResult = this._activeCallFrame.target.DebuggerAgent.stepInto()
@@ -395,10 +445,10 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (!this.paused)
             return Promise.reject(new Error("Cannot step out because debugger is not paused."));
 
-        let listener = new WebInspector.EventListener(this, true);
+        let listener = new WI.EventListener(this, true);
 
         let managerResult = new Promise(function(resolve, reject) {
-            listener.connect(WebInspector.debuggerManager, WebInspector.DebuggerManager.Event.ActiveCallFrameDidChange, resolve);
+            listener.connect(WI.debuggerManager, WI.DebuggerManager.Event.ActiveCallFrameDidChange, resolve);
         });
 
         let protocolResult = this._activeCallFrame.target.DebuggerAgent.stepOut()
@@ -421,48 +471,41 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         return script.target.DebuggerAgent.continueToLocation({scriptId: script.id, lineNumber, columnNumber});
     }
 
-    addBreakpoint(breakpoint, shouldSpeculativelyResolve)
+    addBreakpoint(breakpoint)
     {
-        console.assert(breakpoint instanceof WebInspector.Breakpoint);
+        console.assert(breakpoint instanceof WI.Breakpoint);
         if (!breakpoint)
             return;
 
-        if (breakpoint.contentIdentifier) {
-            let contentIdentifierBreakpoints = this._breakpointContentIdentifierMap.get(breakpoint.contentIdentifier);
-            if (!contentIdentifierBreakpoints) {
-                contentIdentifierBreakpoints = [];
-                this._breakpointContentIdentifierMap.set(breakpoint.contentIdentifier, contentIdentifierBreakpoints);
-            }
-            contentIdentifierBreakpoints.push(breakpoint);
+        if (this.isBreakpointSpecial(breakpoint)) {
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.BreakpointAdded, {breakpoint});
+            return;
         }
 
-        if (breakpoint.scriptIdentifier) {
-            let scriptIdentifierBreakpoints = this._breakpointScriptIdentifierMap.get(breakpoint.scriptIdentifier);
-            if (!scriptIdentifierBreakpoints) {
-                scriptIdentifierBreakpoints = [];
-                this._breakpointScriptIdentifierMap.set(breakpoint.scriptIdentifier, scriptIdentifierBreakpoints);
-            }
-            scriptIdentifierBreakpoints.push(breakpoint);
-        }
+        if (breakpoint.contentIdentifier)
+            this._breakpointContentIdentifierMap.add(breakpoint.contentIdentifier, breakpoint);
+
+        if (breakpoint.scriptIdentifier)
+            this._breakpointScriptIdentifierMap.add(breakpoint.scriptIdentifier, breakpoint);
 
         this._breakpoints.push(breakpoint);
 
         if (!breakpoint.disabled) {
             const specificTarget = undefined;
-            this._setBreakpoint(breakpoint, specificTarget, () => {
-                if (shouldSpeculativelyResolve)
-                    breakpoint.resolved = true;
-            });
+            this._setBreakpoint(breakpoint, specificTarget);
         }
 
-        this._saveBreakpoints();
+        if (!this._restoringBreakpoints)
+            WI.objectStores.breakpoints.putObject(breakpoint);
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.BreakpointAdded, {breakpoint});
+        this._addProbesForBreakpoint(breakpoint);
+
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.BreakpointAdded, {breakpoint});
     }
 
     removeBreakpoint(breakpoint)
     {
-        console.assert(breakpoint instanceof WebInspector.Breakpoint);
+        console.assert(breakpoint instanceof WI.Breakpoint);
         if (!breakpoint)
             return;
 
@@ -470,36 +513,33 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (!this.isBreakpointRemovable(breakpoint))
             return;
 
+        if (this.isBreakpointSpecial(breakpoint)) {
+            breakpoint.disabled = true;
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.BreakpointRemoved, {breakpoint});
+            return;
+        }
+
         this._breakpoints.remove(breakpoint);
 
         if (breakpoint.identifier)
             this._removeBreakpoint(breakpoint);
 
-        if (breakpoint.contentIdentifier) {
-            let contentIdentifierBreakpoints = this._breakpointContentIdentifierMap.get(breakpoint.contentIdentifier);
-            if (contentIdentifierBreakpoints) {
-                contentIdentifierBreakpoints.remove(breakpoint);
-                if (!contentIdentifierBreakpoints.length)
-                    this._breakpointContentIdentifierMap.delete(breakpoint.contentIdentifier);
-            }
-        }
+        if (breakpoint.contentIdentifier)
+            this._breakpointContentIdentifierMap.delete(breakpoint.contentIdentifier, breakpoint);
 
-        if (breakpoint.scriptIdentifier) {
-            let scriptIdentifierBreakpoints = this._breakpointScriptIdentifierMap.get(breakpoint.scriptIdentifier);
-            if (scriptIdentifierBreakpoints) {
-                scriptIdentifierBreakpoints.remove(breakpoint);
-                if (!scriptIdentifierBreakpoints.length)
-                    this._breakpointScriptIdentifierMap.delete(breakpoint.scriptIdentifier);
-            }
-        }
+        if (breakpoint.scriptIdentifier)
+            this._breakpointScriptIdentifierMap.delete(breakpoint.scriptIdentifier, breakpoint);
 
         // Disable the breakpoint first, so removing actions doesn't re-add the breakpoint.
         breakpoint.disabled = true;
         breakpoint.clearActions();
 
-        this._saveBreakpoints();
+        if (!this._restoringBreakpoints)
+            WI.objectStores.breakpoints.deleteObject(breakpoint);
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.BreakpointRemoved, {breakpoint});
+        this._removeProbesForBreakpoint(breakpoint);
+
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.BreakpointRemoved, {breakpoint});
     }
 
     nextBreakpointActionIdentifier()
@@ -507,38 +547,11 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         return this._nextBreakpointActionIdentifier++;
     }
 
-    initializeTarget(target)
-    {
-        let DebuggerAgent = target.DebuggerAgent;
-        let targetData = this.dataForTarget(target);
-
-        // Initialize global state.
-        DebuggerAgent.enable();
-        DebuggerAgent.setBreakpointsActive(this._breakpointsEnabledSetting.value);
-        DebuggerAgent.setPauseOnAssertions(this._assertionsBreakpointEnabledSetting.value);
-        DebuggerAgent.setPauseOnExceptions(this._breakOnExceptionsState);
-        DebuggerAgent.setAsyncStackTraceDepth(this._asyncStackTraceDepthSetting.value);
-
-        if (this.paused)
-            targetData.pauseIfNeeded();
-
-        // Initialize breakpoints.
-        this._restoringBreakpoints = true;
-        for (let breakpoint of this._breakpoints) {
-            if (breakpoint.disabled)
-                continue;
-            if (!breakpoint.contentIdentifier)
-                continue;
-            this._setBreakpoint(breakpoint, target);
-        }
-        this._restoringBreakpoints = false;
-    }
-
-    // Protected (Called from WebInspector.DebuggerObserver)
+    // Protected (Called from WI.DebuggerObserver)
 
     breakpointResolved(target, breakpointIdentifier, location)
     {
-        // Called from WebInspector.DebuggerObserver.
+        // Called from WI.DebuggerObserver.
 
         let breakpoint = this._breakpointIdMap.get(breakpointIdentifier);
         console.assert(breakpoint);
@@ -557,11 +570,11 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
     reset()
     {
-        // Called from WebInspector.DebuggerObserver.
+        // Called from WI.DebuggerObserver.
 
         let wasPaused = this.paused;
 
-        WebInspector.Script.resetUniqueDisplayNameNumbers();
+        WI.Script.resetUniqueDisplayNameNumbers();
 
         this._internalWebKitScripts = [];
         this._targetDebuggerDataMap.clear();
@@ -578,15 +591,15 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
         this._ignoreBreakpointDisplayLocationDidChangeEvent = false;
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.ScriptsCleared);
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.ScriptsCleared);
 
         if (wasPaused)
-            this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.Resumed);
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.Resumed);
     }
 
     debuggerDidPause(target, callFramesPayload, reason, data, asyncStackTracePayload)
     {
-        // Called from WebInspector.DebuggerObserver.
+        // Called from WI.DebuggerObserver.
 
         if (this._delayedResumeTimeout) {
             clearTimeout(this._delayedResumeTimeout);
@@ -610,11 +623,11 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
                 continue;
 
             // Exclude the case where the call frame is in the inspector code.
-            if (!WebInspector.isDebugUIEnabled() && isWebKitInternalScript(sourceCodeLocation.sourceCode.sourceURL))
+            if (!WI.isDebugUIEnabled() && isWebKitInternalScript(sourceCodeLocation.sourceCode.sourceURL))
                 continue;
 
             let scopeChain = this._scopeChainFromPayload(target, callFramePayload.scopeChain);
-            let callFrame = WebInspector.CallFrame.fromDebuggerPayload(target, callFramePayload, scopeChain, sourceCodeLocation);
+            let callFrame = WI.CallFrame.fromDebuggerPayload(target, callFramePayload, scopeChain, sourceCodeLocation);
             callFrames.push(callFrame);
         }
 
@@ -633,7 +646,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             return;
         }
 
-        let asyncStackTrace = WebInspector.StackTrace.fromPayload(target, asyncStackTracePayload);
+        let asyncStackTrace = WI.StackTrace.fromPayload(target, asyncStackTracePayload);
         targetData.updateForPause(callFrames, pauseReason, pauseData, asyncStackTrace);
 
         // Pause other targets because at least one target has paused.
@@ -650,17 +663,17 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         }
 
         if (!wasPaused)
-            this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.Paused);
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.Paused);
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.CallFramesDidChange, {target});
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.CallFramesDidChange, {target});
 
         if (activeCallFrameDidChange)
-            this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.ActiveCallFrameDidChange);
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.ActiveCallFrameDidChange);
     }
 
     debuggerDidResume(target)
     {
-        // Called from WebInspector.DebuggerObserver.
+        // Called from WI.DebuggerObserver.
 
         // COMPATIBILITY (iOS 10): Debugger.resumed event was ambiguous. When stepping
         // we would receive a Debugger.resumed and we would not know if it really meant
@@ -668,7 +681,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         // 50ms, and treat it as a real resume if we haven't paused in that time frame.
         // This delay ensures the user interface does not flash between brief steps
         // or successive breakpoints.
-        if (!DebuggerAgent.setPauseOnAssertions) {
+        if (!target.DebuggerAgent.setPauseOnAssertions) {
             this._delayedResumeTimeout = setTimeout(this._didResumeInternal.bind(this, target), 50);
             return;
         }
@@ -678,14 +691,14 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
     playBreakpointActionSound(breakpointActionIdentifier)
     {
-        // Called from WebInspector.DebuggerObserver.
+        // Called from WI.DebuggerObserver.
 
         InspectorFrontendHost.beep();
     }
 
     scriptDidParse(target, scriptIdentifier, url, startLine, startColumn, endLine, endColumn, isModule, isContentScript, sourceURL, sourceMapURL)
     {
-        // Called from WebInspector.DebuggerObserver.
+        // Called from WI.DebuggerObserver.
 
         // Don't add the script again if it is already known.
         let targetData = this.dataForTarget(target);
@@ -699,20 +712,27 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             return;
         }
 
-        if (!WebInspector.isDebugUIEnabled() && isWebKitInternalScript(sourceURL))
+        if (!WI.isDebugUIEnabled() && isWebKitInternalScript(sourceURL))
             return;
 
-        let range = new WebInspector.TextRange(startLine, startColumn, endLine, endColumn);
-        let sourceType = isModule ? WebInspector.Script.SourceType.Module : WebInspector.Script.SourceType.Program;
-        let script = new WebInspector.Script(target, scriptIdentifier, range, url, sourceType, isContentScript, sourceURL, sourceMapURL);
+        let range = new WI.TextRange(startLine, startColumn, endLine, endColumn);
+        let sourceType = isModule ? WI.Script.SourceType.Module : WI.Script.SourceType.Program;
+        let script = new WI.Script(target, scriptIdentifier, range, url, sourceType, isContentScript, sourceURL, sourceMapURL);
 
         targetData.addScript(script);
 
-        if (target !== WebInspector.mainTarget && !target.mainResource) {
-            // FIXME: <https://webkit.org/b/164427> Web Inspector: WorkerTarget's mainResource should be a Resource not a Script
-            // We make the main resource of a WorkerTarget the Script instead of the Resource
-            // because the frontend may not be informed of the Resource. We should guarantee
-            // the frontend is informed of the Resource.
+        // FIXME: <https://webkit.org/b/164427> Web Inspector: WorkerTarget's mainResource should be a Resource not a Script
+        // We make the main resource of a WorkerTarget the Script instead of the Resource
+        // because the frontend may not be informed of the Resource. We should guarantee
+        // the frontend is informed of the Resource.
+        if (WI.sharedApp.debuggableType === WI.DebuggableType.ServiceWorker) {
+            // A ServiceWorker starts with a LocalScript for the main resource but we can replace it during initialization.
+            if (target.mainResource instanceof WI.LocalScript) {
+                if (script.url === target.name)
+                    target.mainResource = script;
+            }
+        } else if (!target.mainResource && target !== WI.mainTarget) {
+            // A Worker starts without a main resource and we insert one.
             if (script.url === target.name) {
                 target.mainResource = script;
                 if (script.resource)
@@ -722,7 +742,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
         if (isWebKitInternalScript(script.sourceURL)) {
             this._internalWebKitScripts.push(script);
-            if (!WebInspector.isDebugUIEnabled())
+            if (!WI.isDebugUIEnabled())
                 return;
         }
 
@@ -730,10 +750,36 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (isWebInspectorConsoleEvaluationScript(script.sourceURL))
             return;
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.ScriptAdded, {script});
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.ScriptAdded, {script});
 
-        if (target !== WebInspector.mainTarget && !script.isMainResource() && !script.resource)
+        if ((target !== WI.mainTarget || WI.sharedApp.debuggableType === WI.DebuggableType.ServiceWorker) && !script.isMainResource() && !script.resource)
             target.addScript(script);
+    }
+
+    scriptDidFail(target, url, scriptSource)
+    {
+        const sourceType = WI.Script.SourceType.Program;
+        let script = new WI.LocalScript(target, url, sourceType, scriptSource);
+
+        // If there is already a resource we don't need to have the script anymore,
+        // we only need a script to use for parser error location links.
+        if (script.resource)
+            return;
+
+        let targetData = this.dataForTarget(target);
+        targetData.addScript(script);
+        target.addScript(script);
+
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.ScriptAdded, {script});
+    }
+
+    didSampleProbe(target, sample)
+    {
+        console.assert(this._probesByIdentifier.has(sample.probeId), "Unknown probe identifier specified for sample: ", sample);
+        let probe = this._probesByIdentifier.get(sample.probeId);
+        let elapsedTime = WI.timelineManager.computeElapsedTime(sample.timestamp);
+        let object = WI.RemoteObject.fromPayload(sample.payload, target);
+        probe.addSample(new WI.ProbeSample(sample.sampleId, sample.batchId, elapsedTime, object));
     }
 
     // Private
@@ -761,77 +807,85 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         var type = null;
         switch (payload.type) {
         case DebuggerAgent.ScopeType.Global:
-            type = WebInspector.ScopeChainNode.Type.Global;
+            type = WI.ScopeChainNode.Type.Global;
             break;
         case DebuggerAgent.ScopeType.With:
-            type = WebInspector.ScopeChainNode.Type.With;
+            type = WI.ScopeChainNode.Type.With;
             break;
         case DebuggerAgent.ScopeType.Closure:
-            type = WebInspector.ScopeChainNode.Type.Closure;
+            type = WI.ScopeChainNode.Type.Closure;
             break;
         case DebuggerAgent.ScopeType.Catch:
-            type = WebInspector.ScopeChainNode.Type.Catch;
+            type = WI.ScopeChainNode.Type.Catch;
             break;
         case DebuggerAgent.ScopeType.FunctionName:
-            type = WebInspector.ScopeChainNode.Type.FunctionName;
+            type = WI.ScopeChainNode.Type.FunctionName;
             break;
         case DebuggerAgent.ScopeType.NestedLexical:
-            type = WebInspector.ScopeChainNode.Type.Block;
+            type = WI.ScopeChainNode.Type.Block;
             break;
         case DebuggerAgent.ScopeType.GlobalLexicalEnvironment:
-            type = WebInspector.ScopeChainNode.Type.GlobalLexicalEnvironment;
+            type = WI.ScopeChainNode.Type.GlobalLexicalEnvironment;
             break;
 
         // COMPATIBILITY (iOS 9): Debugger.ScopeType.Local used to be provided by the backend.
         // Newer backends no longer send this enum value, it should be computed by the frontend.
         // Map this to "Closure" type. The frontend can recalculate this when needed.
         case DebuggerAgent.ScopeType.Local:
-            type = WebInspector.ScopeChainNode.Type.Closure;
+            type = WI.ScopeChainNode.Type.Closure;
             break;
 
         default:
             console.error("Unknown type: " + payload.type);
         }
 
-        let object = WebInspector.RemoteObject.fromPayload(payload.object, target);
-        return new WebInspector.ScopeChainNode(type, [object], payload.name, payload.location, payload.empty);
+        let object = WI.RemoteObject.fromPayload(payload.object, target);
+        return new WI.ScopeChainNode(type, [object], payload.name, payload.location, payload.empty);
     }
 
     _pauseReasonFromPayload(payload)
     {
         // FIXME: Handle other backend pause reasons.
         switch (payload) {
+        case DebuggerAgent.PausedReason.AnimationFrame:
+            return WI.DebuggerManager.PauseReason.AnimationFrame;
         case DebuggerAgent.PausedReason.Assert:
-            return WebInspector.DebuggerManager.PauseReason.Assertion;
+            return WI.DebuggerManager.PauseReason.Assertion;
         case DebuggerAgent.PausedReason.Breakpoint:
-            return WebInspector.DebuggerManager.PauseReason.Breakpoint;
+            return WI.DebuggerManager.PauseReason.Breakpoint;
         case DebuggerAgent.PausedReason.CSPViolation:
-            return WebInspector.DebuggerManager.PauseReason.CSPViolation;
+            return WI.DebuggerManager.PauseReason.CSPViolation;
         case DebuggerAgent.PausedReason.DOM:
-            return WebInspector.DebuggerManager.PauseReason.DOM;
+            return WI.DebuggerManager.PauseReason.DOM;
         case DebuggerAgent.PausedReason.DebuggerStatement:
-            return WebInspector.DebuggerManager.PauseReason.DebuggerStatement;
+            return WI.DebuggerManager.PauseReason.DebuggerStatement;
+        case DebuggerAgent.PausedReason.EventListener:
+            return WI.DebuggerManager.PauseReason.EventListener;
         case DebuggerAgent.PausedReason.Exception:
-            return WebInspector.DebuggerManager.PauseReason.Exception;
+            return WI.DebuggerManager.PauseReason.Exception;
+        case DebuggerAgent.PausedReason.Fetch:
+            return WI.DebuggerManager.PauseReason.Fetch;
         case DebuggerAgent.PausedReason.PauseOnNextStatement:
-            return WebInspector.DebuggerManager.PauseReason.PauseOnNextStatement;
+            return WI.DebuggerManager.PauseReason.PauseOnNextStatement;
+        case DebuggerAgent.PausedReason.Timer:
+            return WI.DebuggerManager.PauseReason.Timer;
         case DebuggerAgent.PausedReason.XHR:
-            return WebInspector.DebuggerManager.PauseReason.XHR;
+            return WI.DebuggerManager.PauseReason.XHR;
         default:
-            return WebInspector.DebuggerManager.PauseReason.Other;
+            return WI.DebuggerManager.PauseReason.Other;
         }
     }
 
     _debuggerBreakpointActionType(type)
     {
         switch (type) {
-        case WebInspector.BreakpointAction.Type.Log:
+        case WI.BreakpointAction.Type.Log:
             return DebuggerAgent.BreakpointActionType.Log;
-        case WebInspector.BreakpointAction.Type.Evaluate:
+        case WI.BreakpointAction.Type.Evaluate:
             return DebuggerAgent.BreakpointActionType.Evaluate;
-        case WebInspector.BreakpointAction.Type.Sound:
+        case WI.BreakpointAction.Type.Sound:
             return DebuggerAgent.BreakpointActionType.Sound;
-        case WebInspector.BreakpointAction.Type.Probe:
+        case WI.BreakpointAction.Type.Probe:
             return DebuggerAgent.BreakpointActionType.Probe;
         default:
             console.assert(false);
@@ -841,45 +895,42 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
     _debuggerBreakpointOptions(breakpoint)
     {
-        const templatePlaceholderRegex = /\$\{.*?\}/;
+        let actions = breakpoint.actions;
+        actions = actions.map((action) => action.toProtocol());
+        actions = actions.filter((action) => {
+            if (action.type !== WI.BreakpointAction.Type.Log)
+                return true;
 
-        let options = breakpoint.options;
-        let invalidActions = [];
+            if (!/\$\{.*?\}/.test(action.data))
+                return true;
 
-        for (let action of options.actions) {
-            if (action.type !== WebInspector.BreakpointAction.Type.Log)
-                continue;
-
-            if (!templatePlaceholderRegex.test(action.data))
-                continue;
-
-            let lexer = new WebInspector.BreakpointLogMessageLexer;
+            let lexer = new WI.BreakpointLogMessageLexer;
             let tokens = lexer.tokenize(action.data);
-            if (!tokens) {
-                invalidActions.push(action);
-                continue;
-            }
+            if (!tokens)
+                return false;
 
             let templateLiteral = tokens.reduce((text, token) => {
-                if (token.type === WebInspector.BreakpointLogMessageLexer.TokenType.PlainText)
+                if (token.type === WI.BreakpointLogMessageLexer.TokenType.PlainText)
                     return text + token.data.escapeCharacters("`\\");
-                if (token.type === WebInspector.BreakpointLogMessageLexer.TokenType.Expression)
+                if (token.type === WI.BreakpointLogMessageLexer.TokenType.Expression)
                     return text + "${" + token.data + "}";
                 return text;
             }, "");
 
             action.data = "console.log(`" + templateLiteral + "`)";
-            action.type = WebInspector.BreakpointAction.Type.Evaluate;
-        }
+            action.type = WI.BreakpointAction.Type.Evaluate;
+            return true;
+        });
 
-        const onlyFirst = true;
-        for (let invalidAction of invalidActions)
-            options.actions.remove(invalidAction, onlyFirst);
-
-        return options;
+        return {
+            condition: breakpoint.condition,
+            ignoreCount: breakpoint.ignoreCount,
+            autoContinue: breakpoint.autoContinue,
+            actions,
+        };
     }
 
-    _setBreakpoint(breakpoint, specificTarget, callback)
+    _setBreakpoint(breakpoint, specificTarget)
     {
         console.assert(!breakpoint.disabled);
 
@@ -892,10 +943,11 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             this.breakpointsEnabled = true;
         }
 
-        function didSetBreakpoint(target, error, breakpointIdentifier, locations)
-        {
-            if (error)
+        function didSetBreakpoint(target, error, breakpointIdentifier, locations) {
+            if (error) {
+                WI.reportInternalError(error);
                 return;
+            }
 
             this._breakpointIdMap.set(breakpointIdentifier, breakpoint);
 
@@ -907,9 +959,6 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
             for (let location of locations)
                 this.breakpointResolved(target, breakpointIdentifier, location);
-
-            if (typeof callback === "function")
-                callback();
         }
 
         // The breakpoint will be resolved again by calling DebuggerAgent, so mark it as unresolved.
@@ -920,27 +969,18 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
         // Convert BreakpointAction types to DebuggerAgent protocol types.
         // NOTE: Breakpoint.options returns new objects each time, so it is safe to modify.
-        // COMPATIBILITY (iOS 7): Debugger.BreakpointActionType did not exist yet.
-        let options;
-        if (DebuggerAgent.BreakpointActionType) {
-            options = this._debuggerBreakpointOptions(breakpoint);
-            if (options.actions.length) {
-                for (let action of options.actions)
-                    action.type = this._debuggerBreakpointActionType(action.type);
-            }
-        }
+        let options = this._debuggerBreakpointOptions(breakpoint);
+        for (let action of options.actions)
+            action.type = this._debuggerBreakpointActionType(action.type);
 
-        // COMPATIBILITY (iOS 7): iOS 7 and earlier, DebuggerAgent.setBreakpoint* took a "condition" string argument.
-        // This has been replaced with an "options" BreakpointOptions object.
         if (breakpoint.contentIdentifier) {
-            let targets = specificTarget ? [specificTarget] : WebInspector.targets;
+            let targets = specificTarget ? [specificTarget] : WI.targets;
             for (let target of targets) {
                 target.DebuggerAgent.setBreakpointByUrl.invoke({
                     lineNumber: breakpoint.sourceCodeLocation.lineNumber,
                     url: breakpoint.contentIdentifier,
                     urlRegex: undefined,
                     columnNumber: breakpoint.sourceCodeLocation.columnNumber,
-                    condition: breakpoint.condition,
                     options
                 }, didSetBreakpoint.bind(this, target), target.DebuggerAgent);
             }
@@ -948,10 +988,10 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             let target = breakpoint.target;
             target.DebuggerAgent.setBreakpoint.invoke({
                 location: {scriptId: breakpoint.scriptIdentifier, lineNumber: breakpoint.sourceCodeLocation.lineNumber, columnNumber: breakpoint.sourceCodeLocation.columnNumber},
-                condition: breakpoint.condition,
                 options
             }, didSetBreakpoint.bind(this, target), target.DebuggerAgent);
-        }
+        } else
+            WI.reportInternalError("Unknown source for breakpoint.");
     }
 
     _removeBreakpoint(breakpoint, callback)
@@ -976,7 +1016,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         }
 
         if (breakpoint.contentIdentifier) {
-            for (let target of WebInspector.targets)
+            for (let target of WI.targets)
                 target.DebuggerAgent.removeBreakpoint(breakpoint.identifier, didRemoveBreakpoint.bind(this));
         } else if (breakpoint.scriptIdentifier) {
             let target = breakpoint.target;
@@ -994,50 +1034,51 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             return;
 
         // Remove the breakpoint with its old id.
-        this._removeBreakpoint(breakpoint, breakpointRemoved.bind(this));
-
-        function breakpointRemoved()
-        {
+        this._removeBreakpoint(breakpoint, () => {
             // Add the breakpoint at its new lineNumber and get a new id.
+            this._restoringBreakpoints = true;
             this._setBreakpoint(breakpoint);
+            this._restoringBreakpoints = false;
 
-            this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.BreakpointMoved, {breakpoint});
-        }
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.BreakpointMoved, {breakpoint});
+        });
     }
 
     _breakpointDisabledStateDidChange(event)
     {
-        this._saveBreakpoints();
-
         let breakpoint = event.target;
+
         if (breakpoint === this._allExceptionsBreakpoint) {
             if (!breakpoint.disabled && !this.breakpointsDisabledTemporarily)
                 this.breakpointsEnabled = true;
             this._allExceptionsBreakpointEnabledSetting.value = !breakpoint.disabled;
             this._updateBreakOnExceptionsState();
-            for (let target of WebInspector.targets)
+            for (let target of WI.targets)
                 target.DebuggerAgent.setPauseOnExceptions(this._breakOnExceptionsState);
             return;
         }
 
-        if (breakpoint === this._allUncaughtExceptionsBreakpoint) {
+        if (breakpoint === this._uncaughtExceptionsBreakpoint) {
             if (!breakpoint.disabled && !this.breakpointsDisabledTemporarily)
                 this.breakpointsEnabled = true;
-            this._allUncaughtExceptionsBreakpointEnabledSetting.value = !breakpoint.disabled;
+            this._uncaughtExceptionsBreakpointEnabledSetting.value = !breakpoint.disabled;
             this._updateBreakOnExceptionsState();
-            for (let target of WebInspector.targets)
+            for (let target of WI.targets)
                 target.DebuggerAgent.setPauseOnExceptions(this._breakOnExceptionsState);
             return;
         }
 
-        if (breakpoint === this._assertionsBreakpoint) {
+        if (breakpoint === this._assertionFailuresBreakpoint) {
             if (!breakpoint.disabled && !this.breakpointsDisabledTemporarily)
                 this.breakpointsEnabled = true;
-            this._assertionsBreakpointEnabledSetting.value = !breakpoint.disabled;
-            for (let target of WebInspector.targets)
-                target.DebuggerAgent.setPauseOnAssertions(this._assertionsBreakpointEnabledSetting.value);
+            this._assertionFailuresBreakpointEnabledSetting.value = !breakpoint.disabled;
+            for (let target of WI.targets)
+                target.DebuggerAgent.setPauseOnAssertions(this._assertionFailuresBreakpointEnabledSetting.value);
             return;
         }
+
+        if (!this._restoringBreakpoints)
+            WI.objectStores.breakpoints.putObject(breakpoint);
 
         if (breakpoint.disabled)
             this._removeBreakpoint(breakpoint);
@@ -1047,9 +1088,11 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
     _breakpointEditablePropertyDidChange(event)
     {
-        this._saveBreakpoints();
-
         let breakpoint = event.target;
+
+        if (!this._restoringBreakpoints)
+            WI.objectStores.breakpoints.putObject(breakpoint);
+
         if (breakpoint.disabled)
             return;
 
@@ -1058,20 +1101,30 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             return;
 
         // Remove the breakpoint with its old id.
-        this._removeBreakpoint(breakpoint, breakpointRemoved.bind(this));
-
-        function breakpointRemoved()
-        {
+        this._removeBreakpoint(breakpoint, () => {
             // Add the breakpoint with its new properties and get a new id.
+            this._restoringBreakpoints = true;
             this._setBreakpoint(breakpoint);
-        }
+            this._restoringBreakpoints = false;
+        });
+    }
+
+    _handleBreakpointActionsDidChange(event)
+    {
+        this._breakpointEditablePropertyDidChange(event);
+
+        this._updateProbesForBreakpoint(event.target);
     }
 
     _startDisablingBreakpointsTemporarily()
     {
+        if (++this._temporarilyDisableBreakpointsRequestCount > 1)
+            return;
+
         console.assert(!this.breakpointsDisabledTemporarily, "Already temporarily disabling breakpoints.");
         if (this.breakpointsDisabledTemporarily)
             return;
+
 
         this._temporarilyDisabledBreakpointsRestoreSetting.value = this._breakpointsEnabledSetting.value;
 
@@ -1080,6 +1133,10 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
 
     _stopDisablingBreakpointsTemporarily()
     {
+        this._temporarilyDisableBreakpointsRequestCount = Math.max(0, this._temporarilyDisableBreakpointsRequestCount - 1);
+        if (this._temporarilyDisableBreakpointsRequestCount > 0)
+            return;
+
         console.assert(this.breakpointsDisabledTemporarily, "Was not temporarily disabling breakpoints.");
         if (!this.breakpointsDisabledTemporarily)
             return;
@@ -1090,7 +1147,22 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         this.breakpointsEnabled = restoreState;
     }
 
-    _timelineCapturingWillStart(event)
+    _handleTimelineCapturingStateChanged(event)
+    {
+        switch (WI.timelineManager.capturingState) {
+        case WI.TimelineManager.CapturingState.Starting:
+            this._startDisablingBreakpointsTemporarily();
+            if (this.paused)
+                this.resume();
+            break;
+
+        case WI.TimelineManager.CapturingState.Inactive:
+            this._stopDisablingBreakpointsTemporarily();
+            break;
+        }
+    }
+
+    _handleAuditManagerTestScheduled(event)
     {
         this._startDisablingBreakpointsTemporarily();
 
@@ -1098,7 +1170,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
             this.resume();
     }
 
-    _timelineCapturingStopped(event)
+    _handleAuditManagerTestCompleted(event)
     {
         this._stopDisablingBreakpointsTemporarily();
     }
@@ -1110,7 +1182,15 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         this._targetDebuggerDataMap.delete(event.data.target);
 
         if (!this.paused && wasPaused)
-            this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.Resumed);
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.Resumed);
+    }
+
+    _pauseForInternalScriptsDidChange(event)
+    {
+        for (let target of WI.targets) {
+            if (target.DebuggerAgent.setPauseForInternalScripts)
+                target.DebuggerAgent.setPauseForInternalScripts(WI.settings.pauseForInternalScripts.value);
+        }
     }
 
     _mainResourceDidChange(event)
@@ -1118,7 +1198,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (!event.target.isMainFrame())
             return;
 
-        this._didResumeInternal(WebInspector.mainTarget);
+        this._didResumeInternal(WI.mainTarget);
     }
 
     _didResumeInternal(target)
@@ -1140,12 +1220,12 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         this.dataForTarget(target).updateForResume();
 
         if (!this.paused)
-            this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.Resumed);
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.Resumed);
 
-        this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.CallFramesDidChange, {target});
+        this.dispatchEventToListeners(WI.DebuggerManager.Event.CallFramesDidChange, {target});
 
         if (activeCallFrameDidChange)
-            this.dispatchEventToListeners(WebInspector.DebuggerManager.Event.ActiveCallFrameDidChange);
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.ActiveCallFrameDidChange);
     }
 
     _updateBreakOnExceptionsState()
@@ -1155,7 +1235,7 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         if (this._breakpointsEnabledSetting.value) {
             if (!this._allExceptionsBreakpoint.disabled)
                 state = "all";
-            else if (!this._allUncaughtExceptionsBreakpoint.disabled)
+            else if (!this._uncaughtExceptionsBreakpoint.disabled)
                 state = "uncaught";
         }
 
@@ -1165,24 +1245,14 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         case "all":
             // Mark the uncaught breakpoint as unresolved since "all" includes "uncaught".
             // That way it is clear in the user interface that the breakpoint is ignored.
-            this._allUncaughtExceptionsBreakpoint.resolved = false;
+            this._uncaughtExceptionsBreakpoint.resolved = false;
             break;
         case "uncaught":
         case "none":
             // Mark the uncaught breakpoint as resolved again.
-            this._allUncaughtExceptionsBreakpoint.resolved = true;
+            this._uncaughtExceptionsBreakpoint.resolved = true;
             break;
         }
-    }
-
-    _saveBreakpoints()
-    {
-        if (this._restoringBreakpoints)
-            return;
-
-        let breakpointsToSave = this._breakpoints.filter((breakpoint) => !!breakpoint.contentIdentifier);
-        let serializedBreakpoints = breakpointsToSave.map((breakpoint) => breakpoint.info);
-        this._breakpointsSetting.value = serializedBreakpoints;
     }
 
     _associateBreakpointsWithSourceCode(breakpoints, sourceCode)
@@ -1199,15 +1269,97 @@ WebInspector.DebuggerManager = class DebuggerManager extends WebInspector.Object
         this._ignoreBreakpointDisplayLocationDidChangeEvent = false;
     }
 
+    _addProbesForBreakpoint(breakpoint)
+    {
+        if (this._knownProbeIdentifiersForBreakpoint.has(breakpoint))
+            return;
+
+        this._knownProbeIdentifiersForBreakpoint.set(breakpoint, new Set);
+
+        this._updateProbesForBreakpoint(breakpoint);
+    }
+
+    _removeProbesForBreakpoint(breakpoint)
+    {
+        console.assert(this._knownProbeIdentifiersForBreakpoint.has(breakpoint));
+
+        this._updateProbesForBreakpoint(breakpoint);
+        this._knownProbeIdentifiersForBreakpoint.delete(breakpoint);
+    }
+
+    _updateProbesForBreakpoint(breakpoint)
+    {
+        let knownProbeIdentifiers = this._knownProbeIdentifiersForBreakpoint.get(breakpoint);
+        if (!knownProbeIdentifiers) {
+            // Sometimes actions change before the added breakpoint is fully dispatched.
+            this._addProbesForBreakpoint(breakpoint);
+            return;
+        }
+
+        let seenProbeIdentifiers = new Set;
+
+        for (let probeAction of breakpoint.probeActions) {
+            let probeIdentifier = probeAction.id;
+            console.assert(probeIdentifier, "Probe added without breakpoint action identifier: ", breakpoint);
+
+            seenProbeIdentifiers.add(probeIdentifier);
+            if (!knownProbeIdentifiers.has(probeIdentifier)) {
+                // New probe; find or create relevant probe set.
+                knownProbeIdentifiers.add(probeIdentifier);
+                let probeSet = this._probeSetForBreakpoint(breakpoint);
+                let newProbe = new WI.Probe(probeIdentifier, breakpoint, probeAction.data);
+                this._probesByIdentifier.set(probeIdentifier, newProbe);
+                probeSet.addProbe(newProbe);
+                break;
+            }
+
+            let probe = this._probesByIdentifier.get(probeIdentifier);
+            console.assert(probe, "Probe known but couldn't be found by identifier: ", probeIdentifier);
+            // Update probe expression; if it differed, change events will fire.
+            probe.expression = probeAction.data;
+        }
+
+        // Look for missing probes based on what we saw last.
+        for (let probeIdentifier of knownProbeIdentifiers) {
+            if (seenProbeIdentifiers.has(probeIdentifier))
+                break;
+
+            // The probe has gone missing, remove it.
+            let probeSet = this._probeSetForBreakpoint(breakpoint);
+            let probe = this._probesByIdentifier.get(probeIdentifier);
+            this._probesByIdentifier.delete(probeIdentifier);
+            knownProbeIdentifiers.delete(probeIdentifier);
+            probeSet.removeProbe(probe);
+
+            // Remove the probe set if it has become empty.
+            if (!probeSet.probes.length) {
+                this._probeSetsByBreakpoint.delete(probeSet.breakpoint);
+                probeSet.willRemove();
+                this.dispatchEventToListeners(WI.DebuggerManager.Event.ProbeSetRemoved, {probeSet});
+            }
+        }
+    }
+
+    _probeSetForBreakpoint(breakpoint)
+    {
+        let probeSet = this._probeSetsByBreakpoint.get(breakpoint);
+        if (!probeSet) {
+            probeSet = new WI.ProbeSet(breakpoint);
+            this._probeSetsByBreakpoint.set(breakpoint, probeSet);
+            this.dispatchEventToListeners(WI.DebuggerManager.Event.ProbeSetAdded, {probeSet});
+        }
+        return probeSet;
+    }
+
     _debugUIEnabledDidChange()
     {
-        let eventType = WebInspector.isDebugUIEnabled() ? WebInspector.DebuggerManager.Event.ScriptAdded : WebInspector.DebuggerManager.Event.ScriptRemoved;
+        let eventType = WI.isDebugUIEnabled() ? WI.DebuggerManager.Event.ScriptAdded : WI.DebuggerManager.Event.ScriptRemoved;
         for (let script of this._internalWebKitScripts)
             this.dispatchEventToListeners(eventType, {script});
     }
 };
 
-WebInspector.DebuggerManager.Event = {
+WI.DebuggerManager.Event = {
     BreakpointAdded: "debugger-manager-breakpoint-added",
     BreakpointRemoved: "debugger-manager-breakpoint-removed",
     BreakpointMoved: "debugger-manager-breakpoint-moved",
@@ -1219,17 +1371,23 @@ WebInspector.DebuggerManager.Event = {
     ScriptAdded: "debugger-manager-script-added",
     ScriptRemoved: "debugger-manager-script-removed",
     ScriptsCleared: "debugger-manager-scripts-cleared",
-    BreakpointsEnabledDidChange: "debugger-manager-breakpoints-enabled-did-change"
+    BreakpointsEnabledDidChange: "debugger-manager-breakpoints-enabled-did-change",
+    ProbeSetAdded: "debugger-manager-probe-set-added",
+    ProbeSetRemoved: "debugger-manager-probe-set-removed",
 };
 
-WebInspector.DebuggerManager.PauseReason = {
+WI.DebuggerManager.PauseReason = {
+    AnimationFrame: "animation-frame",
     Assertion: "assertion",
     Breakpoint: "breakpoint",
     CSPViolation: "CSP-violation",
     DebuggerStatement: "debugger-statement",
     DOM: "DOM",
+    EventListener: "event-listener",
     Exception: "exception",
+    Fetch: "fetch",
     PauseOnNextStatement: "pause-on-next-statement",
+    Timer: "timer",
     XHR: "xhr",
     Other: "other",
 };

@@ -23,18 +23,21 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends WebInspector.Object
+WI.CompletionSuggestionsView = class CompletionSuggestionsView extends WI.Object
 {
-    constructor(delegate)
+    constructor(delegate, {preventBlur} = {})
     {
         super();
 
         this._delegate = delegate || null;
+        this._preventBlur = preventBlur || false;
 
         this._selectedIndex = NaN;
+        this._moveIntervalIdentifier = null;
 
         this._element = document.createElement("div");
-        this._element.classList.add("completion-suggestions", WebInspector.Popover.IgnoreAutoDismissClassName);
+        this._element.setAttribute("dir", "ltr");
+        this._element.classList.add("completion-suggestions", WI.Popover.IgnoreAutoDismissClassName);
 
         this._containerElement = document.createElement("div");
         this._containerElement.classList.add("completion-suggestions-container");
@@ -65,7 +68,7 @@ WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends
     {
         var selectedItemElement = this._selectedItemElement;
         if (selectedItemElement)
-            selectedItemElement.classList.remove(WebInspector.CompletionSuggestionsView.SelectedItemStyleClassName);
+            selectedItemElement.classList.remove("selected");
 
         this._selectedIndex = index;
 
@@ -73,7 +76,7 @@ WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends
         if (!selectedItemElement)
             return;
 
-        selectedItemElement.classList.add(WebInspector.CompletionSuggestionsView.SelectedItemStyleClassName);
+        selectedItemElement.classList.add("selected");
         selectedItemElement.scrollIntoViewIfNeeded(false);
     }
 
@@ -110,6 +113,8 @@ WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends
 
     show(anchorBounds)
     {
+        let scrollTop = this._containerElement.scrollTop;
+
         // Measure the container so we can know the intrinsic size of the items.
         this._containerElement.style.position = "absolute";
         document.body.appendChild(this._containerElement);
@@ -154,11 +159,28 @@ WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends
         this._element.style.height = height + "px";
 
         document.body.appendChild(this._element);
+
+        if (scrollTop)
+            this._containerElement.scrollTop = scrollTop;
     }
 
     hide()
     {
         this._element.remove();
+        this._stopMoveTimer();
+    }
+
+    hideWhenElementMoves(element)
+    {
+        this._stopMoveTimer();
+        let initialClientRect = element.getBoundingClientRect();
+
+        this._moveIntervalIdentifier = setInterval(() => {
+            let clientRect = element.getBoundingClientRect();
+            if (clientRect.x !== initialClientRect.x || clientRect.y !== initialClientRect.y)
+                this.hide();
+        }, 200);
+
     }
 
     update(completions, selectedIndex)
@@ -170,10 +192,9 @@ WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends
 
         for (var i = 0; i < completions.length; ++i) {
             var itemElement = document.createElement("div");
-            itemElement.className = WebInspector.CompletionSuggestionsView.ItemElementStyleClassName;
+            itemElement.classList.add("item");
+            itemElement.classList.toggle("selected", i === this._selectedIndex);
             itemElement.textContent = completions[i];
-            if (i === this._selectedIndex)
-                itemElement.classList.add(WebInspector.CompletionSuggestionsView.SelectedItemStyleClassName);
             this._containerElement.appendChild(itemElement);
 
             if (this._delegate && typeof this._delegate.completionSuggestionsViewCustomizeCompletionElement === "function")
@@ -197,6 +218,10 @@ WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends
     {
         if (event.button !== 0)
             return;
+
+        if (this._preventBlur)
+            event.preventDefault();
+
         this._mouseIsDown = true;
     }
 
@@ -212,7 +237,7 @@ WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends
         if (event.button !== 0)
             return;
 
-        var itemElement = event.target.enclosingNodeOrSelfWithClass(WebInspector.CompletionSuggestionsView.ItemElementStyleClassName);
+        let itemElement = event.target.closest(".item");
         console.assert(itemElement);
         if (!itemElement)
             return;
@@ -220,7 +245,13 @@ WebInspector.CompletionSuggestionsView = class CompletionSuggestionsView extends
         if (this._delegate && typeof this._delegate.completionSuggestionsClickedCompletion === "function")
             this._delegate.completionSuggestionsClickedCompletion(this, itemElement.textContent);
     }
-};
 
-WebInspector.CompletionSuggestionsView.ItemElementStyleClassName = "item";
-WebInspector.CompletionSuggestionsView.SelectedItemStyleClassName = "selected";
+    _stopMoveTimer()
+    {
+        if (!this._moveIntervalIdentifier)
+            return;
+
+        clearInterval(this._moveIntervalIdentifier);
+        this._moveIntervalIdentifier = null;
+    }
+};

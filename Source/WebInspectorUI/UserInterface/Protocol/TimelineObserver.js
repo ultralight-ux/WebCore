@@ -23,37 +23,37 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.TimelineObserver = class TimelineObserver
+WI.TimelineObserver = class TimelineObserver
 {
     // Events defined by the "Timeline" domain.
 
     eventRecorded(record)
     {
-        WebInspector.timelineManager.eventRecorded(record);
+        WI.timelineManager.eventRecorded(record);
     }
 
     recordingStarted(startTime)
     {
-        WebInspector.timelineManager.capturingStarted(startTime);
+        WI.timelineManager.capturingStarted(startTime);
     }
 
     recordingStopped(endTime)
     {
-        WebInspector.timelineManager.capturingStopped(endTime);
+        WI.timelineManager.capturingStopped(endTime);
     }
 
     autoCaptureStarted()
     {
-        WebInspector.timelineManager.autoCaptureStarted();
+        WI.timelineManager.autoCaptureStarted();
     }
 
     programmaticCaptureStarted()
     {
-        WebInspector.timelineManager.programmaticCaptureStarted();
+        // COMPATIBILITY (iOS 12.2): Timeline.programmaticCaptureStarted was removed after iOS 12.2.
     }
 
     programmaticCaptureStopped()
     {
-        WebInspector.timelineManager.programmaticCaptureStopped();
+        // COMPATIBILITY (iOS 12.2): Timeline.programmaticCaptureStopped was removed after iOS 12.2.
     }
 };

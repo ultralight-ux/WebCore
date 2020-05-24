@@ -23,17 +23,47 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.HeapAllocationsTimelineRecord = class HeapAllocationsTimelineRecord extends WebInspector.TimelineRecord
+WI.HeapAllocationsTimelineRecord = class HeapAllocationsTimelineRecord extends WI.TimelineRecord
 {
     constructor(timestamp, heapSnapshot)
     {
-        super(WebInspector.TimelineRecord.Type.HeapAllocations, timestamp, timestamp);
+        super(WI.TimelineRecord.Type.HeapAllocations, timestamp, timestamp);
 
         console.assert(typeof timestamp === "number");
-        console.assert(heapSnapshot instanceof WebInspector.HeapSnapshotProxy);
+        console.assert(heapSnapshot instanceof WI.HeapSnapshotProxy);
 
         this._timestamp = timestamp;
         this._heapSnapshot = heapSnapshot;
+    }
+
+    // Import / Export
+
+    static fromJSON(json)
+    {
+        // NOTE: This just goes through and generates a new heap snapshot,
+        // it is not perfect but does what we want. It asynchronously creates
+        // a heap snapshot at the right time, and insert it into the active
+        // recording, which on an import should be the newly imported recording.
+        let {timestamp, title, snapshotStringData} = json;
+
+        let workerProxy = WI.HeapSnapshotWorkerProxy.singleton();
+        workerProxy.createImportedSnapshot(snapshotStringData, title, ({objectId, snapshot: serializedSnapshot}) => {
+            let snapshot = WI.HeapSnapshotProxy.deserialize(objectId, serializedSnapshot);
+            snapshot.snapshotStringData = snapshotStringData;
+            WI.timelineManager.heapSnapshotAdded(timestamp, snapshot);
+        });
+
+        return null;
+    }
+
+    toJSON()
+    {
+        return {
+            type: this.type,
+            timestamp: this._timestamp,
+            title: WI.TimelineTabContentView.displayNameForRecord(this),
+            snapshotStringData: this._heapSnapshot.snapshotStringData,
+        };
     }
 
     // Public

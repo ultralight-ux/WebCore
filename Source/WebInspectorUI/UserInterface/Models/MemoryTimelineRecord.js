@@ -23,17 +23,18 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.MemoryTimelineRecord = class MemoryTimelineRecord extends WebInspector.TimelineRecord
+WI.MemoryTimelineRecord = class MemoryTimelineRecord extends WI.TimelineRecord
 {
     constructor(timestamp, categories)
     {
-        super(WebInspector.TimelineRecord.Type.Memory, timestamp, timestamp);
+        super(WI.TimelineRecord.Type.Memory, timestamp - MemoryTimelineRecord.samplingRatePerSecond, timestamp);
 
         console.assert(typeof timestamp === "number");
         console.assert(categories instanceof Array);
 
         this._timestamp = timestamp;
-        this._categories = WebInspector.MemoryTimelineRecord.memoryCategoriesFromProtocol(categories);
+        this._categories = WI.MemoryTimelineRecord.memoryCategoriesFromProtocol(categories);
+        this._exportCategories = categories;
 
         this._totalSize = 0;
         for (let {size} of categories)
@@ -41,6 +42,12 @@ WebInspector.MemoryTimelineRecord = class MemoryTimelineRecord extends WebInspec
     }
 
     // Static
+
+    static get samplingRatePerSecond()
+    {
+        // 500ms. This matches the ResourceUsageThread sampling frequency in the backend.
+        return 0.5;
+    }
 
     static memoryCategoriesFromProtocol(categories)
     {
@@ -51,7 +58,7 @@ WebInspector.MemoryTimelineRecord = class MemoryTimelineRecord extends WebInspec
 
         for (let {type, size} of categories) {
             switch (type) {
-            case MemoryAgent.CategoryDataType.Javascript:
+            case MemoryAgent.CategoryDataType.JavaScript:
             case MemoryAgent.CategoryDataType.JIT:
                 javascriptSize += size;
                 break;
@@ -72,11 +79,28 @@ WebInspector.MemoryTimelineRecord = class MemoryTimelineRecord extends WebInspec
         }
 
         return [
-            {type: WebInspector.MemoryCategory.Type.JavaScript, size: javascriptSize},
-            {type: WebInspector.MemoryCategory.Type.Images, size: imagesSize},
-            {type: WebInspector.MemoryCategory.Type.Layers, size: layersSize},
-            {type: WebInspector.MemoryCategory.Type.Page, size: pageSize},
+            {type: WI.MemoryCategory.Type.JavaScript, size: javascriptSize},
+            {type: WI.MemoryCategory.Type.Images, size: imagesSize},
+            {type: WI.MemoryCategory.Type.Layers, size: layersSize},
+            {type: WI.MemoryCategory.Type.Page, size: pageSize},
         ];
+    }
+
+    // Import / Export
+
+    static fromJSON(json)
+    {
+        let {timestamp, categories} = json;
+        return new WI.MemoryTimelineRecord(timestamp, categories);
+    }
+
+    toJSON()
+    {
+        return {
+            type: this.type,
+            timestamp: this.startTime,
+            categories: this._exportCategories,
+        };
     }
 
     // Public
@@ -84,4 +108,10 @@ WebInspector.MemoryTimelineRecord = class MemoryTimelineRecord extends WebInspec
     get timestamp() { return this._timestamp; }
     get categories() { return this._categories; }
     get totalSize() { return this._totalSize; }
+
+    adjustStartTime(startTime)
+    {
+        console.assert(startTime < this._endTime);
+        this._startTime = startTime;
+    }
 };

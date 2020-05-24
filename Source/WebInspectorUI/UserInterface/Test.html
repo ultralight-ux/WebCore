@@ -37,20 +37,30 @@
 
     <script src="Base/WebInspector.js"></script>
     <script src="Base/Platform.js"></script>
+    <script src="Base/Debouncer.js"></script>
+    <script src="Base/DebuggableType.js"></script>
     <script src="Base/LinkedList.js"></script>
     <script src="Base/ListMultimap.js"></script>
+    <script src="Base/Multimap.js"></script>
     <script src="Base/Object.js"></script>
+    <script src="Base/Throttler.js"></script>
 
     <script src="Test/TestHarness.js"></script>
     <script src="Test/FrontendTestHarness.js"></script>
     <script src="Test/TestSuite.js"></script>
 
     <script src="Test/Test.js"></script>
+    <script src="Controllers/AppControllerBase.js"></script>
+    <script src="Test/TestAppController.js"></script>
+    <script src="Test/TestUtilities.js"></script>
 
     <script src="Base/DOMUtilities.js"></script>
     <script src="Base/EventListener.js"></script>
     <script src="Base/EventListenerSet.js"></script>
-    <script src="Base/TextUtilities.js"></script>
+    <script src="Base/FileUtilities.js"></script>
+    <script src="Base/ImageUtilities.js"></script>
+    <script src="Base/MIMETypeUtilities.js"></script>
+    <script src="Base/ObjectStore.js"></script>
     <script src="Base/URLUtilities.js"></script>
     <script src="Base/Utilities.js"></script>
     <script src="Base/Setting.js"></script>
@@ -66,10 +76,14 @@
     <script src="Protocol/MessageDispatcher.js"></script>
     <script src="Protocol/Target.js"></script>
 
-    <script src="Protocol/MainTarget.js"></script>
+    <script src="Protocol/DirectBackendTarget.js"></script>
+    <script src="Protocol/MultiplexingBackendTarget.js"></script>
+    <script src="Protocol/JavaScriptContextTarget.js"></script>
+    <script src="Protocol/PageTarget.js"></script>
     <script src="Protocol/WorkerTarget.js"></script>
 
     <script src="Protocol/InspectorObserver.js"></script>
+    <script src="Protocol/CPUProfilerObserver.js"></script>
     <script src="Protocol/CSSObserver.js"></script>
     <script src="Protocol/CanvasObserver.js"></script>
     <script src="Protocol/ConsoleObserver.js"></script>
@@ -77,10 +91,14 @@
     <script src="Protocol/DOMStorageObserver.js"></script>
     <script src="Protocol/DebuggerObserver.js"></script>
     <script src="Protocol/HeapObserver.js"></script>
+    <script src="Protocol/LayerTreeObserver.js"></script>
+    <script src="Protocol/MemoryObserver.js"></script>
     <script src="Protocol/NetworkObserver.js"></script>
     <script src="Protocol/PageObserver.js"></script>
     <script src="Protocol/RemoteObject.js"></script>
     <script src="Protocol/RuntimeObserver.js"></script>
+    <script src="Protocol/ScriptProfilerObserver.js"></script>
+    <script src="Protocol/TargetObserver.js"></script>
     <script src="Protocol/TimelineObserver.js"></script>
     <script src="Protocol/WorkerObserver.js"></script>
 
@@ -89,11 +107,19 @@
     <script src="Models/Instrument.js"></script>
     <script src="Models/SourceCode.js"></script>
     <script src="Models/SourceCodeLocation.js"></script>
+    <script src="Models/SourceCodePosition.js"></script>
     <script src="Models/Timeline.js"></script>
     <script src="Models/TimelineRange.js"></script>
     <script src="Models/TimelineRecord.js"></script>
 
+    <script src="Models/Resource.js"></script>
+    <script src="Models/Script.js"></script>
+    <script src="Models/LocalScript.js"></script>
+
     <script src="Models/Breakpoint.js"></script>
+    <script src="Models/CPUInstrument.js"></script>
+    <script src="Models/CPUTimeline.js"></script>
+    <script src="Models/CPUTimelineRecord.js"></script>
     <script src="Models/CSSCompletions.js"></script>
     <script src="Models/CSSKeywordCompletions.js"></script>
     <script src="Models/CSSMedia.js"></script>
@@ -109,9 +135,10 @@
     <script src="Models/Collection.js"></script>
     <script src="Models/CollectionEntry.js"></script>
     <script src="Models/CollectionEntryPreview.js"></script>
+    <script src="Models/CollectionTypes.js"></script>
     <script src="Models/Color.js"></script>
     <script src="Models/ConsoleCommandResultMessage.js"></script>
-    <script src="Models/ContentFlow.js"></script>
+    <script src="Models/Cookie.js"></script>
     <script src="Models/CookieStorageObject.js"></script>
     <script src="Models/DOMBreakpoint.js"></script>
     <script src="Models/DOMNode.js"></script>
@@ -119,6 +146,7 @@
     <script src="Models/DOMStorageObject.js"></script>
     <script src="Models/DOMTree.js"></script>
     <script src="Models/DebuggerData.js"></script>
+    <script src="Models/EventBreakpoint.js"></script>
     <script src="Models/ExecutionContext.js"></script>
     <script src="Models/ExecutionContextList.js"></script>
     <script src="Models/FPSInstrument.js"></script>
@@ -132,11 +160,16 @@
     <script src="Models/IndexedDatabaseObjectStore.js"></script>
     <script src="Models/IndexedDatabaseObjectStoreIndex.js"></script>
     <script src="Models/IssueMessage.js"></script>
+    <script src="Models/Layer.js"></script>
     <script src="Models/LayoutInstrument.js"></script>
     <script src="Models/LayoutTimelineRecord.js"></script>
     <script src="Models/LazySourceCodeLocation.js"></script>
+    <script src="Models/LoggingChannel.js"></script>
+    <script src="Models/MediaInstrument.js"></script>
+    <script src="Models/MediaTimelineRecord.js"></script>
     <script src="Models/MemoryCategory.js"></script>
     <script src="Models/MemoryInstrument.js"></script>
+    <script src="Models/MemoryPressureEvent.js"></script>
     <script src="Models/MemoryTimeline.js"></script>
     <script src="Models/MemoryTimelineRecord.js"></script>
     <script src="Models/NetworkInstrument.js"></script>
@@ -151,8 +184,13 @@
     <script src="Models/ProfileNodeCall.js"></script>
     <script src="Models/PropertyDescriptor.js"></script>
     <script src="Models/PropertyPreview.js"></script>
+    <script src="Models/Recording.js"></script>
+    <script src="Models/RecordingAction.js"></script>
+    <script src="Models/RecordingFrame.js"></script>
+    <script src="Models/RecordingInitialStateAction.js"></script>
+    <script src="Models/RecordingState.js"></script>
+    <script src="Models/Redirect.js"></script>
     <script src="Models/RenderingFrameTimelineRecord.js"></script>
-    <script src="Models/Resource.js"></script>
     <script src="Models/ResourceCollection.js"></script>
     <script src="Models/ResourceQueryMatch.js"></script>
     <script src="Models/ResourceQueryResult.js"></script>
@@ -160,20 +198,31 @@
     <script src="Models/ResourceTimingData.js"></script>
     <script src="Models/Revision.js"></script>
     <script src="Models/ScopeChainNode.js"></script>
-    <script src="Models/Script.js"></script>
     <script src="Models/ScriptInstrument.js"></script>
     <script src="Models/ScriptSyntaxTree.js"></script>
     <script src="Models/ScriptTimelineRecord.js"></script>
+    <script src="Models/ServerTimingEntry.js"></script>
+    <script src="Models/ShaderProgram.js"></script>
     <script src="Models/SourceCodeRevision.js"></script>
     <script src="Models/SourceCodeTimeline.js"></script>
-    <script src="Models/SourceMapResource.js"></script>
+    <script src="Models/SourceMap.js"></script>
     <script src="Models/StackTrace.js"></script>
     <script src="Models/TextRange.js"></script>
     <script src="Models/TimelineMarker.js"></script>
     <script src="Models/TimelineRecording.js"></script>
+    <script src="Models/URLBreakpoint.js"></script>
     <script src="Models/WebSocketResource.js"></script>
     <script src="Models/WrappedPromise.js"></script>
-    <script src="Models/XHRBreakpoint.js"></script>
+
+    <script src="Models/LocalResource.js"></script>
+    <script src="Models/SourceMapResource.js"></script>
+
+    <script src="Models/AuditTestBase.js"></script>
+    <script src="Models/AuditTestCase.js"></script>
+    <script src="Models/AuditTestGroup.js"></script>
+    <script src="Models/AuditTestResultBase.js"></script>
+    <script src="Models/AuditTestCaseResult.js"></script>
+    <script src="Models/AuditTestGroupResult.js"></script>
 
     <script src="Proxies/FormatterWorkerProxy.js"></script>
     <script src="Proxies/HeapSnapshotDiffProxy.js"></script>
@@ -182,32 +231,43 @@
     <script src="Proxies/HeapSnapshotProxy.js"></script>
     <script src="Proxies/HeapSnapshotWorkerProxy.js"></script>
 
+    <script src="Controllers/AuditManager.js"></script>
     <script src="Controllers/BreakpointLogMessageLexer.js"></script>
-    <script src="Controllers/CSSStyleManager.js"></script>
+    <script src="Controllers/CSSManager.js"></script>
     <script src="Controllers/CanvasManager.js"></script>
+    <script src="Controllers/ConsoleManager.js"></script>
     <script src="Controllers/DOMDebuggerManager.js"></script>
-    <script src="Controllers/DOMTreeManager.js"></script>
+    <script src="Controllers/DOMManager.js"></script>
+    <script src="Controllers/DOMStorageManager.js"></script>
     <script src="Controllers/DebuggerManager.js"></script>
-    <script src="Controllers/FrameResourceManager.js"></script>
+    <script src="Controllers/HARBuilder.js"></script>
     <script src="Controllers/HeapManager.js"></script>
-    <script src="Controllers/IssueManager.js"></script>
-    <script src="Controllers/LogManager.js"></script>
+    <script src="Controllers/LayerTreeManager.js"></script>
     <script src="Controllers/MemoryManager.js"></script>
-    <script src="Controllers/ProbeManager.js"></script>
+    <script src="Controllers/NetworkManager.js"></script>
     <script src="Controllers/RuntimeManager.js"></script>
-    <script src="Controllers/StorageManager.js"></script>
     <script src="Controllers/TargetManager.js"></script>
     <script src="Controllers/TimelineManager.js"></script>
     <script src="Controllers/WorkerManager.js"></script>
 
     <script src="Controllers/Formatter.js"></script>
     <script src="Controllers/ResourceQueryController.js"></script>
+    <script src="Controllers/SelectionController.js"></script>
     <script src="Workers/Formatter/FormatterContentBuilder.js"></script>
     <script src="Views/CodeMirrorAdditions.js"></script>
     <script src="Views/CodeMirrorFormatters.js"></script>
+    <script src="Views/EditingSupport.js"></script>
+    <script src="Views/View.js"></script>
+
+    <script src="Views/Resizer.js"></script>
+    <script src="Views/Table.js"></script>
+    <script src="Views/TableColumn.js"></script>
+    <script src="Views/TreeElement.js"></script>
+    <script src="Views/TreeOutline.js"></script>
 
     <script type="text/javascript">
-        WebInspector.loaded();
+        WI.sharedApp = new WI.TestAppController;
+        WI.sharedApp.initialize();
 
         // Debug logging is synchronous on the test page.
         InspectorTest.forceDebugLogging = false;

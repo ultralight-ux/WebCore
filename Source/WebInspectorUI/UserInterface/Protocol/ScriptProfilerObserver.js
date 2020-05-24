@@ -23,32 +23,32 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ScriptProfilerObserver = class ScriptProfilerObserver
+WI.ScriptProfilerObserver = class ScriptProfilerObserver
 {
     // Events defined by the "ScriptProfiler" domain.
 
     trackingStart(timestamp)
     {
-        WebInspector.timelineManager.scriptProfilerTrackingStarted(timestamp);
+        WI.timelineManager.scriptProfilerTrackingStarted(timestamp);
     }
 
     trackingUpdate(event)
     {
-        WebInspector.timelineManager.scriptProfilerTrackingUpdated(event);
+        WI.timelineManager.scriptProfilerTrackingUpdated(event);
     }
 
-    trackingComplete(samples)
+    trackingComplete(timestamp, samples)
     {
-        WebInspector.timelineManager.scriptProfilerTrackingCompleted(samples);
+        WI.timelineManager.scriptProfilerTrackingCompleted(timestamp, samples);
     }
 
     programmaticCaptureStarted()
     {
-        WebInspector.timelineManager.scriptProfilerProgrammaticCaptureStarted();
+        // COMPATIBILITY (iOS 12.2): ScriptProfiler.programmaticCaptureStarted was removed after iOS 12.2.
     }
 
     programmaticCaptureStopped()
     {
-        WebInspector.timelineManager.scriptProfilerProgrammaticCaptureStopped();
+        // COMPATIBILITY (iOS 12.2): ScriptProfiler.programmaticCaptureStopped was removed after iOS 12.2.
     }
 };

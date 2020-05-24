@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ConsoleObserver = class ConsoleObserver
+WI.ConsoleObserver = class ConsoleObserver
 {
     // Events defined by the "Console" domain.
 
@@ -33,27 +33,28 @@ WebInspector.ConsoleObserver = class ConsoleObserver
             return;
 
         if (message.type === "assert" && !message.text)
-            message.text = WebInspector.UIString("Assertion");
+            message.text = WI.UIString("Assertion");
 
-        WebInspector.logManager.messageWasAdded(this.target, message.source, message.level, message.text, message.type, message.url, message.line, message.column || 0, message.repeatCount, message.parameters, message.stackTrace, message.networkRequestId);
+        WI.consoleManager.messageWasAdded(this.target, message.source, message.level, message.text, message.type, message.url, message.line, message.column || 0, message.repeatCount, message.parameters, message.stackTrace, message.networkRequestId);
     }
 
     messageRepeatCountUpdated(count)
     {
-        WebInspector.logManager.messageRepeatCountUpdated(count);
+        WI.consoleManager.messageRepeatCountUpdated(count);
     }
 
     messagesCleared()
     {
-        WebInspector.logManager.messagesCleared();
+        WI.consoleManager.messagesCleared();
     }
 
     heapSnapshot(timestamp, snapshotStringData, title)
     {
-        let workerProxy = WebInspector.HeapSnapshotWorkerProxy.singleton();
+        let workerProxy = WI.HeapSnapshotWorkerProxy.singleton();
         workerProxy.createSnapshot(snapshotStringData, title || null, ({objectId, snapshot: serializedSnapshot}) => {
-            let snapshot = WebInspector.HeapSnapshotProxy.deserialize(objectId, serializedSnapshot);
-            WebInspector.timelineManager.heapSnapshotAdded(timestamp, snapshot);
+            let snapshot = WI.HeapSnapshotProxy.deserialize(objectId, serializedSnapshot);
+            snapshot.snapshotStringData = snapshotStringData;
+            WI.timelineManager.heapSnapshotAdded(timestamp, snapshot);
         });
     }
 };

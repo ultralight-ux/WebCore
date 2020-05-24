@@ -23,12 +23,10 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.FormatterWorkerProxy = class FormatterWorkerProxy extends WebInspector.Object
+WI.FormatterWorkerProxy = class FormatterWorkerProxy
 {
     constructor()
     {
-        super();
-
         this._formatterWorker = new Worker("Workers/Formatter/FormatterWorker.js");
         this._formatterWorker.addEventListener("message", this._handleMessage.bind(this));
 
@@ -50,6 +48,11 @@ WebInspector.FormatterWorkerProxy = class FormatterWorkerProxy extends WebInspec
     formatJavaScript(sourceText, isModule, indentString, includeSourceMapData)
     {
         this.performAction("formatJavaScript", ...arguments);
+    }
+
+    formatCSS(sourceText, indentString, includeSourceMapData)
+    {
+        this.performAction("formatCSS", ...arguments);
     }
 
     // Public

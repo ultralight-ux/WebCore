@@ -24,14 +24,14 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
+WI.TimelineView = class TimelineView extends WI.ContentView
 {
     constructor(representedObject)
     {
         super(representedObject);
 
         // This class should not be instantiated directly. Create a concrete subclass instead.
-        console.assert(this.constructor !== WebInspector.TimelineView && this instanceof WebInspector.TimelineView);
+        console.assert(this.constructor !== WI.TimelineView && this instanceof WI.TimelineView);
 
         this.element.classList.add("timeline-view");
 
@@ -54,6 +54,12 @@ WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
     {
         // Implemented by sub-classes if needed.
         return true;
+    }
+
+    get showsImportedRecordingMessage()
+    {
+        // Implemented by sub-classes if needed.
+        return false;
     }
 
     get showsFilterBar()
@@ -169,16 +175,16 @@ WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
     {
         if (this._timelineDataGrid) {
             this._timelineDataGrid.filterDelegate = null;
-            this._timelineDataGrid.removeEventListener(WebInspector.DataGrid.Event.SelectedNodeChanged, this._timelineDataGridSelectedNodeChanged, this);
-            this._timelineDataGrid.removeEventListener(WebInspector.DataGrid.Event.NodeWasFiltered, this._timelineDataGridNodeWasFiltered, this);
-            this._timelineDataGrid.removeEventListener(WebInspector.DataGrid.Event.FilterDidChange, this.filterDidChange, this);
+            this._timelineDataGrid.removeEventListener(WI.DataGrid.Event.SelectedNodeChanged, this._timelineDataGridSelectedNodeChanged, this);
+            this._timelineDataGrid.removeEventListener(WI.DataGrid.Event.NodeWasFiltered, this._timelineDataGridNodeWasFiltered, this);
+            this._timelineDataGrid.removeEventListener(WI.DataGrid.Event.FilterDidChange, this.filterDidChange, this);
         }
 
         this._timelineDataGrid = dataGrid;
         this._timelineDataGrid.filterDelegate = this;
-        this._timelineDataGrid.addEventListener(WebInspector.DataGrid.Event.SelectedNodeChanged, this._timelineDataGridSelectedNodeChanged, this);
-        this._timelineDataGrid.addEventListener(WebInspector.DataGrid.Event.NodeWasFiltered, this._timelineDataGridNodeWasFiltered, this);
-        this._timelineDataGrid.addEventListener(WebInspector.DataGrid.Event.FilterDidChange, this.filterDidChange, this);
+        this._timelineDataGrid.addEventListener(WI.DataGrid.Event.SelectedNodeChanged, this._timelineDataGridSelectedNodeChanged, this);
+        this._timelineDataGrid.addEventListener(WI.DataGrid.Event.NodeWasFiltered, this._timelineDataGridNodeWasFiltered, this);
+        this._timelineDataGrid.addEventListener(WI.DataGrid.Event.FilterDidChange, this.filterDidChange, this);
     }
 
     selectRecord(record)
@@ -253,12 +259,12 @@ WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
             return startTime <= itemEndTime && itemStartTime <= endTime;
         }
 
-        if (node instanceof WebInspector.ResourceTimelineDataGridNode) {
+        if (node instanceof WI.ResourceTimelineDataGridNode) {
             let resource = node.resource;
             return checkTimeBounds(resource.requestSentTimestamp, resource.finishedOrFailedTimestamp);
         }
 
-        if (node instanceof WebInspector.SourceCodeTimelineTimelineDataGridNode) {
+        if (node instanceof WI.SourceCodeTimelineTimelineDataGridNode) {
             let sourceCodeTimeline = node.sourceCodeTimeline;
 
             // Do a quick check of the timeline bounds before we check each record.
@@ -273,7 +279,7 @@ WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
             return false;
         }
 
-        if (node instanceof WebInspector.ProfileNodeDataGridNode) {
+        if (node instanceof WI.ProfileNodeDataGridNode) {
             let profileNode = node.profileNode;
             if (checkTimeBounds(profileNode.startTime, profileNode.endTime))
                 return true;
@@ -281,12 +287,12 @@ WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
             return false;
         }
 
-        if (node instanceof WebInspector.TimelineDataGridNode) {
+        if (node instanceof WI.TimelineDataGridNode) {
             let record = node.record;
             return checkTimeBounds(record.startTime, record.endTime);
         }
 
-        if (node instanceof WebInspector.ProfileDataGridNode)
+        if (node instanceof WI.ProfileDataGridNode)
             return node.callingContextTreeNode.hasStackTraceInTimeRange(startTime, endTime);
 
         console.error("Unknown DataGridNode, can't filter by time.");
@@ -294,11 +300,6 @@ WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
     }
 
     // Protected
-
-    userSelectedRecordFromOverview(timelineRecord)
-    {
-        // Implemented by sub-classes if needed.
-    }
 
     filterDidChange()
     {
@@ -309,21 +310,21 @@ WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
 
     _timelineDataGridSelectedNodeChanged(event)
     {
-        this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
+        this.dispatchEventToListeners(WI.ContentView.Event.SelectionPathComponentsDidChange);
     }
 
     _timelineDataGridNodeWasFiltered(event)
     {
         let node = event.data.node;
-        if (!(node instanceof WebInspector.TimelineDataGridNode))
+        if (!(node instanceof WI.TimelineDataGridNode))
             return;
 
-        this.dispatchEventToListeners(WebInspector.TimelineView.Event.RecordWasFiltered, {record: node.record, filtered: node.hidden});
+        this.dispatchEventToListeners(WI.TimelineView.Event.RecordWasFiltered, {record: node.record, filtered: node.hidden});
     }
 
     _timesDidChange()
     {
-        if (!WebInspector.timelineManager.isCapturing() || this.showsLiveRecordingData)
+        if (!WI.timelineManager.isCapturing() || this.showsLiveRecordingData)
             this.needsLayout();
     }
 
@@ -339,6 +340,10 @@ WebInspector.TimelineView = class TimelineView extends WebInspector.ContentView
     }
 };
 
-WebInspector.TimelineView.Event = {
-    RecordWasFiltered: "record-was-filtered"
+WI.TimelineView.Event = {
+    RecordWasFiltered: "timeline-view-record-was-filtered",
+    RecordWasSelected: "timeline-view-record-was-selected",
+    ScannerShow: "timeline-view-scanner-show",
+    ScannerHide: "timeline-view-scanner-hide",
+    NeedsEntireSelectedRange: "timeline-view-needs-entire-selected-range",
 };

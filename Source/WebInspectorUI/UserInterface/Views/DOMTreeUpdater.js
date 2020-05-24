@@ -28,15 +28,15 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DOMTreeUpdater = function(treeOutline)
+WI.DOMTreeUpdater = function(treeOutline)
 {
-    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.NodeInserted, this._nodeInserted, this);
-    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.NodeRemoved, this._nodeRemoved, this);
-    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.AttributeModified, this._attributesUpdated, this);
-    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.AttributeRemoved, this._attributesUpdated, this);
-    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.CharacterDataModified, this._characterDataModified, this);
-    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.DocumentUpdated, this._documentUpdated, this);
-    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.ChildNodeCountUpdated, this._childNodeCountUpdated, this);
+    WI.domManager.addEventListener(WI.DOMManager.Event.NodeInserted, this._nodeInserted, this);
+    WI.domManager.addEventListener(WI.DOMManager.Event.NodeRemoved, this._nodeRemoved, this);
+    WI.domManager.addEventListener(WI.DOMManager.Event.AttributeModified, this._attributesUpdated, this);
+    WI.domManager.addEventListener(WI.DOMManager.Event.AttributeRemoved, this._attributesUpdated, this);
+    WI.domManager.addEventListener(WI.DOMManager.Event.CharacterDataModified, this._characterDataModified, this);
+    WI.domManager.addEventListener(WI.DOMManager.Event.DocumentUpdated, this._documentUpdated, this);
+    WI.domManager.addEventListener(WI.DOMManager.Event.ChildNodeCountUpdated, this._childNodeCountUpdated, this);
 
     this._treeOutline = treeOutline;
 
@@ -48,12 +48,16 @@ WebInspector.DOMTreeUpdater = function(treeOutline)
 
     // Dummy "attribute" that is used to track textContent changes.
     this._textContentAttributeSymbol = Symbol("text-content-attribute");
+
+    this._updateModifiedNodesDebouncer = new Debouncer(() => {
+        this._updateModifiedNodes();
+    });
 };
 
-WebInspector.DOMTreeUpdater.prototype = {
+WI.DOMTreeUpdater.prototype = {
     close: function()
     {
-        WebInspector.domTreeManager.removeEventListener(null, null, this);
+        WI.domManager.removeEventListener(null, null, this);
     },
 
     _documentUpdated: function(event)
@@ -81,21 +85,21 @@ WebInspector.DOMTreeUpdater.prototype = {
         this._recentlyModifiedNodes.add(node);
 
         if (this._treeOutline._visible)
-            this.onNextFrame._updateModifiedNodes();
+            this._updateModifiedNodesDebouncer.delayForFrame();
       },
 
     _nodeInserted: function(event)
     {
         this._recentlyInsertedNodes.set(event.data.node, {parent: event.data.parent});
         if (this._treeOutline._visible)
-            this.onNextFrame._updateModifiedNodes();
+            this._updateModifiedNodesDebouncer.delayForFrame();
     },
 
     _nodeRemoved: function(event)
     {
         this._recentlyDeletedNodes.set(event.data.node, {parent: event.data.parent});
         if (this._treeOutline._visible)
-            this.onNextFrame._updateModifiedNodes();
+            this._updateModifiedNodesDebouncer.delayForFrame();
     },
 
     _childNodeCountUpdated: function(event)
@@ -120,8 +124,10 @@ WebInspector.DOMTreeUpdater.prototype = {
         this._recentlyDeletedNodes.forEach(markNodeParentForUpdate);
 
         for (let parentTreeElement of parentElementsToUpdate) {
-            parentTreeElement.updateTitle();
-            parentTreeElement.updateChildren();
+            if (parentTreeElement.treeOutline) {
+                parentTreeElement.updateTitle();
+                parentTreeElement.updateChildren();
+            }
         }
 
         for (let node of this._recentlyModifiedNodes.values()) {
@@ -149,7 +155,7 @@ WebInspector.DOMTreeUpdater.prototype = {
 
     _reset: function()
     {
-        WebInspector.domTreeManager.hideDOMNodeHighlight();
+        WI.domManager.hideDOMNodeHighlight();
 
         this._recentlyInsertedNodes.clear();
         this._recentlyDeletedNodes.clear();

@@ -23,95 +23,55 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ProfileNodeDataGridNode = class ProfileNodeDataGridNode extends WebInspector.TimelineDataGridNode
+WI.ProfileNodeDataGridNode = class ProfileNodeDataGridNode extends WI.TimelineDataGridNode
 {
-    constructor(profileNode, baseStartTime, rangeStartTime, rangeEndTime)
+    constructor(profileNode, options = {})
     {
-        var hasChildren = !!profileNode.childNodes.length;
+        console.assert(profileNode instanceof WI.ProfileNode);
 
-        super(false, null, hasChildren);
+        options.hasChildren = !!profileNode.childNodes.length;
+
+        super(null, options);
 
         this._profileNode = profileNode;
-        this._baseStartTime = baseStartTime || 0;
-        this._rangeStartTime = rangeStartTime || 0;
-        this._rangeEndTime = typeof rangeEndTime === "number" ? rangeEndTime : Infinity;
-
-        this._cachedData = null;
 
         this.addEventListener("populate", this._populate, this);
     }
 
     // Public
 
-    get profileNode()
-    {
-        return this._profileNode;
-    }
-
-    get records()
-    {
-        return null;
-    }
-
-    get baseStartTime()
-    {
-        return this._baseStartTime;
-    }
-
-    get rangeStartTime()
-    {
-        return this._rangeStartTime;
-    }
-
-    get rangeEndTime()
-    {
-        return this._rangeEndTime;
-    }
+    get profileNode() { return this._profileNode; }
 
     get data()
     {
-        if (!this._cachedData) {
-            this._cachedData = this._profileNode.computeCallInfoForTimeRange(this._rangeStartTime, this._rangeEndTime);
-            this._cachedData.name = this.displayName();
-            this._cachedData.location = this._profileNode.sourceCodeLocation;
+        if (this._cachedData)
+            return this._cachedData;
+
+        let baseStartTime = 0;
+        let rangeStartTime = 0;
+        let rangeEndTime = Infinity;
+        if (this.graphDataSource) {
+            baseStartTime = this.graphDataSource.zeroTime;
+            rangeStartTime = this.graphDataSource.startTime;
+            rangeEndTime = this.graphDataSource.endTime;
         }
+
+        let callInfo = this._profileNode.computeCallInfoForTimeRange(rangeStartTime, rangeEndTime);
+
+        this._cachedData = super.data;
+        for (let key in callInfo)
+            this._cachedData[key] = callInfo[key];
+        this._cachedData.startTime -= baseStartTime;
+        this._cachedData.name = this.displayName();
+        this._cachedData.location = this._profileNode.sourceCodeLocation;
 
         return this._cachedData;
     }
 
-    updateRangeTimes(startTime, endTime)
-    {
-        var oldRangeStartTime = this._rangeStartTime;
-        var oldRangeEndTime = this._rangeEndTime;
-
-        if (oldRangeStartTime === startTime && oldRangeEndTime === endTime)
-            return;
-
-        this._rangeStartTime = startTime;
-        this._rangeEndTime = endTime;
-
-        // We only need a refresh if the new range time changes the visible portion of this record.
-        var profileStart = this._profileNode.startTime;
-        var profileEnd = this._profileNode.endTime;
-        var oldStartBoundary = Number.constrain(oldRangeStartTime, profileStart, profileEnd);
-        var oldEndBoundary = Number.constrain(oldRangeEndTime, profileStart, profileEnd);
-        var newStartBoundary = Number.constrain(startTime, profileStart, profileEnd);
-        var newEndBoundary = Number.constrain(endTime, profileStart, profileEnd);
-
-        if (oldStartBoundary !== newStartBoundary || oldEndBoundary !== newEndBoundary)
-            this.needsRefresh();
-    }
-
-    refresh()
-    {
-        this._data = this._profileNode.computeCallInfoForTimeRange(this._rangeStartTime, this._rangeEndTime);
-        this._data.location = this._profileNode.sourceCodeLocation;
-
-        super.refresh();
-    }
-
     createCellContent(columnIdentifier, cell)
     {
+        const higherResolution = true;
+
         var value = this.data[columnIdentifier];
 
         switch (columnIdentifier) {
@@ -120,12 +80,10 @@ WebInspector.ProfileNodeDataGridNode = class ProfileNodeDataGridNode extends Web
             return value;
 
         case "startTime":
-            return isNaN(value) ? emDash : Number.secondsToString(value - this._baseStartTime, true);
-
         case "selfTime":
         case "totalTime":
         case "averageTime":
-            return isNaN(value) ? emDash : Number.secondsToString(value, true);
+            return isNaN(value) ? emDash : Number.secondsToString(value, higherResolution);
         }
 
         return super.createCellContent(columnIdentifier, cell);
@@ -136,14 +94,14 @@ WebInspector.ProfileNodeDataGridNode = class ProfileNodeDataGridNode extends Web
         let title = this._profileNode.functionName;
         if (!title) {
             switch (this._profileNode.type) {
-            case WebInspector.ProfileNode.Type.Function:
-                title = WebInspector.UIString("(anonymous function)");
+            case WI.ProfileNode.Type.Function:
+                title = WI.UIString("(anonymous function)");
                 break;
-            case WebInspector.ProfileNode.Type.Program:
-                title = WebInspector.UIString("(program)");
+            case WI.ProfileNode.Type.Program:
+                title = WI.UIString("(program)");
                 break;
             default:
-                title = WebInspector.UIString("(anonymous function)");
+                title = WI.UIString("(anonymous function)");
                 console.error("Unknown ProfileNode type: " + this._profileNode.type);
             }
         }
@@ -155,13 +113,13 @@ WebInspector.ProfileNodeDataGridNode = class ProfileNodeDataGridNode extends Web
     {
         let className;
         switch (this._profileNode.type) {
-        case WebInspector.ProfileNode.Type.Function:
-            className = WebInspector.CallFrameView.FunctionIconStyleClassName;
+        case WI.ProfileNode.Type.Function:
+            className = WI.CallFrameView.FunctionIconStyleClassName;
             if (!this._profileNode.sourceCodeLocation)
-                className = WebInspector.CallFrameView.NativeIconStyleClassName;
+                className = WI.CallFrameView.NativeIconStyleClassName;
             break;
-        case WebInspector.ProfileNode.Type.Program:
-            className = WebInspector.TimelineRecordTreeElement.EvaluatedRecordIconStyleClass;
+        case WI.ProfileNode.Type.Program:
+            className = WI.TimelineRecordTreeElement.EvaluatedRecordIconStyleClass;
             break;
         }
 
@@ -170,7 +128,7 @@ WebInspector.ProfileNodeDataGridNode = class ProfileNodeDataGridNode extends Web
         // This is more than likely an event listener function with an "on" prefix and it is
         // as long or longer than the shortest event listener name -- "oncut".
         if (this._profileNode.functionName && this._profileNode.functionName.startsWith("on") && this._profileNode.functionName.length >= 5)
-            className = WebInspector.CallFrameView.EventListenerIconStyleClassName;
+            className = WI.CallFrameView.EventListenerIconStyleClassName;
 
         return [className];
     }
@@ -186,6 +144,8 @@ WebInspector.ProfileNodeDataGridNode = class ProfileNodeDataGridNode extends Web
         this.removeChildren();
 
         for (let node of this._profileNode.childNodes)
-            this.appendChild(new WebInspector.ProfileNodeDataGridNode(node, this.baseStartTime, this.rangeStartTime, this.rangeEndTime));
+            this.appendChild(new WI.ProfileNodeDataGridNode(node, {
+                graphDataSource: this.graphDataSource,
+            }));
     }
 };

@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.TimelineMarker = class TimelineMarker extends WebInspector.Object
+WI.TimelineMarker = class TimelineMarker extends WI.Object
 {
     constructor(time, type, details)
     {
@@ -36,7 +36,27 @@ WebInspector.TimelineMarker = class TimelineMarker extends WebInspector.Object
         this._details = details || null;
     }
 
+    // Import / Export
+
+    static fromJSON(json)
+    {
+        let {time, type, details} = json;
+        return new WI.TimelineMarker(time, type, details);
+    }
+
+    toJSON()
+    {
+        return {
+            time: this._time,
+            type: this._type,
+            details: this._details || undefined,
+        };
+    }
+
     // Public
+
+    get type() { return this._type; }
+    get details() { return this._details; }
 
     get time()
     {
@@ -54,27 +74,18 @@ WebInspector.TimelineMarker = class TimelineMarker extends WebInspector.Object
 
         this._time = x;
 
-        this.dispatchEventToListeners(WebInspector.TimelineMarker.Event.TimeChanged);
-    }
-
-    get type()
-    {
-        return this._type;
-    }
-
-    get details()
-    {
-        return this._details;
+        this.dispatchEventToListeners(WI.TimelineMarker.Event.TimeChanged);
     }
 };
 
-WebInspector.TimelineMarker.Event = {
+WI.TimelineMarker.Event = {
     TimeChanged: "timeline-marker-time-changed"
 };
 
-WebInspector.TimelineMarker.Type = {
+WI.TimelineMarker.Type = {
     CurrentTime: "current-time",
     LoadEvent: "load-event",
     DOMContentEvent: "dom-content-event",
-    TimeStamp: "timestamp"
+    TimeStamp: "timestamp",
+    Scanner: "scanner",
 };

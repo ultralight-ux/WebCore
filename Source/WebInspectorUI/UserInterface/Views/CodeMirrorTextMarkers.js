@@ -23,11 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-function createCodeMirrorTextMarkers(type, pattern, matchFunction, codeMirror, range, callback)
+function createCodeMirrorTextMarkers({codeMirror, range, type, pattern, matchFunction, allowedTokens, callback})
 {
     var createdMarkers = [];
-    var start = range instanceof WebInspector.TextRange ? range.startLine : 0;
-    var end = range instanceof WebInspector.TextRange ? range.endLine + 1 : codeMirror.lineCount();
+    var start = range instanceof WI.TextRange ? range.startLine : 0;
+    var end = range instanceof WI.TextRange ? range.endLine + 1 : codeMirror.lineCount();
     for (var lineNumber = start; lineNumber < end; ++lineNumber) {
         var lineContent = codeMirror.getLine(lineNumber);
         var match = pattern.exec(lineContent);
@@ -43,7 +43,7 @@ function createCodeMirrorTextMarkers(type, pattern, matchFunction, codeMirror, r
             var foundMarker = false;
             var markers = codeMirror.findMarksAt(to);
             for (var j = 0; j < markers.length; ++j) {
-                if (WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker(markers[j]).type === WebInspector.TextMarker.Type[type]) {
+                if (WI.TextMarker.textMarkerForCodeMirrorTextMarker(markers[j]).type === WI.TextMarker.Type[type]) {
                     foundMarker = true;
                     break;
                 }
@@ -56,20 +56,20 @@ function createCodeMirrorTextMarkers(type, pattern, matchFunction, codeMirror, r
 
             // We're not interested if the value is not inside a keyword.
             var tokenType = codeMirror.getTokenTypeAt(from);
-            if (tokenType && !tokenType.includes("keyword")) {
+            if (tokenType && !tokenType.includes("keyword") && (!allowedTokens || !allowedTokens.test(tokenType))) {
                 match = pattern.exec(lineContent);
                 continue;
             }
 
             let valueString = match[1];
-            let value = WebInspector[type] ? WebInspector[type].fromString(valueString) : null;
-            if (WebInspector[type] && !value) {
+            let value = WI[type] ? WI[type].fromString(valueString) : null;
+            if (WI[type] && !value) {
                 match = pattern.exec(lineContent);
                 continue;
             }
 
             var marker = codeMirror.markText(from, to);
-            marker = new WebInspector.TextMarker(marker, WebInspector.TextMarker.Type[type]);
+            marker = new WI.TextMarker(marker, WI.TextMarker.Type[type]);
             createdMarkers.push(marker);
 
             if (typeof callback === "function")
@@ -82,10 +82,10 @@ function createCodeMirrorTextMarkers(type, pattern, matchFunction, codeMirror, r
     return createdMarkers;
 }
 
-function createCodeMirrorColorTextMarkers(codeMirror, range, callback)
+function createCodeMirrorColorTextMarkers(codeMirror, range, options = {})
 {
     // Matches rgba(0, 0, 0, 0.5), rgb(0, 0, 0), hsl(), hsla(), #fff, #ffff, #ffffff, #ffffffff, white
-    let colorRegex = /((?:rgb|hsl)a?\([^)]+\)|#[0-9a-fA-F]{8}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3,4}|\b\w+\b(?![-.]))/g;
+    const pattern = /((?:rgb|hsl)a?\([^)]+\)|#[0-9a-fA-F]{8}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3,4}|\b\w+\b(?![-.]))/g;
     function matchFunction(lineContent, match) {
         if (!lineContent || !lineContent.length)
             return false;
@@ -118,15 +118,15 @@ function createCodeMirrorColorTextMarkers(codeMirror, range, callback)
         return !(match.index > 0 && /[-.\"\']/.test(lineContent[match.index - 1]));
     }
 
-    return createCodeMirrorTextMarkers("Color", colorRegex, matchFunction, codeMirror, range, callback);
+    return createCodeMirrorTextMarkers({codeMirror, range, type: "Color", pattern, matchFunction, ...options});
 }
 
-function createCodeMirrorGradientTextMarkers(codeMirror, range, callback)
+function createCodeMirrorGradientTextMarkers(codeMirror, range, options = {})
 {
     var createdMarkers = [];
 
-    var start = range instanceof WebInspector.TextRange ? range.startLine : 0;
-    var end = range instanceof WebInspector.TextRange ? range.endLine + 1 : codeMirror.lineCount();
+    var start = range instanceof WI.TextRange ? range.startLine : 0;
+    var end = range instanceof WI.TextRange ? range.endLine + 1 : codeMirror.lineCount();
 
     var gradientRegex = /(repeating-)?(linear|radial)-gradient\s*\(\s*/g;
 
@@ -170,18 +170,18 @@ function createCodeMirrorGradientTextMarkers(codeMirror, range, callback)
             var to = {line: lineNumber, ch: endChar};
 
             var gradientString = codeMirror.getRange(from, to);
-            var gradient = WebInspector.Gradient.fromString(gradientString);
+            var gradient = WI.Gradient.fromString(gradientString);
             if (!gradient) {
                 match = gradientRegex.exec(lineContent);
                 continue;
             }
 
-            var marker = new WebInspector.TextMarker(codeMirror.markText(from, to), WebInspector.TextMarker.Type.Gradient);
+            var marker = new WI.TextMarker(codeMirror.markText(from, to), WI.TextMarker.Type.Gradient);
 
             createdMarkers.push(marker);
 
             if (typeof callback === "function")
-                callback(marker, gradient, gradientString);
+                options.callback(marker, gradient, gradientString);
 
             match = gradientRegex.exec(lineContent);
         }
@@ -190,20 +190,14 @@ function createCodeMirrorGradientTextMarkers(codeMirror, range, callback)
     return createdMarkers;
 }
 
-function createCodeMirrorCubicBezierTextMarkers(codeMirror, range, callback)
+function createCodeMirrorCubicBezierTextMarkers(codeMirror, range, options = {})
 {
-    var cubicBezierRegex = /(cubic-bezier\([^)]+\)|\b\w+\b(?:-\b\w+\b){0,2})/g;
-    return createCodeMirrorTextMarkers("CubicBezier", cubicBezierRegex, null, codeMirror, range, callback);
+    const pattern = /(cubic-bezier\([^)]+\)|\b\w+\b(?:-\b\w+\b){0,2})/g;
+    return createCodeMirrorTextMarkers({codeMirror, range, type: "CubicBezier", pattern, ...options});
 }
 
-function createCodeMirrorSpringTextMarkers(codeMirror, range, callback)
+function createCodeMirrorSpringTextMarkers(codeMirror, range, options = {})
 {
-    const springRegex = /(spring\([^)]+\))/g;
-    return createCodeMirrorTextMarkers("Spring", springRegex, null, codeMirror, range, callback);
-}
-
-function createCodeMirrorVariableTextMarkers(codeMirror, range, callback)
-{
-    const variableRegex = /var\((--[\w-]+)\)/g;
-    return createCodeMirrorTextMarkers("Variable", variableRegex, null, codeMirror, range, callback);
+    const pattern = /(spring\([^)]+\))/g;
+    return createCodeMirrorTextMarkers({codeMirror, range, type: "Spring", pattern, ...options});
 }

@@ -23,66 +23,121 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DOMDebuggerManager = class DOMDebuggerManager extends WebInspector.Object
+WI.DOMDebuggerManager = class DOMDebuggerManager extends WI.Object
 {
     constructor()
     {
         super();
 
-        this._domBreakpointsSetting = new WebInspector.Setting("dom-breakpoints", []);
-        this._domBreakpointURLMap = new Map;
+        this._domBreakpointURLMap = new Multimap;
         this._domBreakpointFrameIdentifierMap = new Map;
 
-        this._xhrBreakpointsSetting = new WebInspector.Setting("xhr-breakpoints", []);
-        this._xhrBreakpoints = [];
-        this._allRequestsBreakpointEnabledSetting = new WebInspector.Setting("break-on-all-requests", false);
+        this._eventBreakpoints = [];
 
-        this._allRequestsBreakpoint = new WebInspector.XHRBreakpoint(null, null, !this._allRequestsBreakpointEnabledSetting.value);
+        this._urlBreakpoints = [];
+        this._allRequestsBreakpointEnabledSetting = new WI.Setting("break-on-all-requests", false);
 
-        WebInspector.DOMBreakpoint.addEventListener(WebInspector.DOMBreakpoint.Event.DisabledStateDidChange, this._domBreakpointDisabledStateDidChange, this);
-        WebInspector.XHRBreakpoint.addEventListener(WebInspector.XHRBreakpoint.Event.DisabledStateDidChange, this._xhrBreakpointDisabledStateDidChange, this);
+        this._allRequestsBreakpoint = new WI.URLBreakpoint(WI.URLBreakpoint.Type.Text, "", {
+            disabled: !this._allRequestsBreakpointEnabledSetting.value,
+        });
 
-        WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.NodeRemoved, this._nodeRemoved, this);
-        WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.NodeInserted, this._nodeInserted, this);
+        WI.DOMBreakpoint.addEventListener(WI.DOMBreakpoint.Event.DisabledStateChanged, this._handleDOMBreakpointDisabledStateChanged, this);
+        WI.EventBreakpoint.addEventListener(WI.EventBreakpoint.Event.DisabledStateChanged, this._handleEventBreakpointDisabledStateChanged, this);
+        WI.URLBreakpoint.addEventListener(WI.URLBreakpoint.Event.DisabledStateChanged, this._handleURLBreakpointDisabledStateChanged, this);
 
-        WebInspector.frameResourceManager.addEventListener(WebInspector.FrameResourceManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+        WI.domManager.addEventListener(WI.DOMManager.Event.NodeRemoved, this._nodeRemoved, this);
+        WI.domManager.addEventListener(WI.DOMManager.Event.NodeInserted, this._nodeInserted, this);
 
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.ChildFrameWasRemoved, this._childFrameWasRemoved, this);
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+        WI.networkManager.addEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+
+        WI.Frame.addEventListener(WI.Frame.Event.ChildFrameWasRemoved, this._childFrameWasRemoved, this);
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+
+        let loadBreakpoints = async (constructor, objectStore, oldSettings, callback) => {
+            for (let key of oldSettings) {
+                let existingSerializedBreakpoints = WI.Setting.migrateValue(key);
+                if (existingSerializedBreakpoints) {
+                    for (let existingSerializedBreakpoint of existingSerializedBreakpoints)
+                        await objectStore.putObject(constructor.deserialize(existingSerializedBreakpoint));
+                }
+            }
+
+            let serializedBreakpoints = await objectStore.getAll();
+
+            this._restoringBreakpoints = true;
+            for (let serializedBreakpoint of serializedBreakpoints) {
+                let breakpoint = constructor.deserialize(serializedBreakpoint);
+
+                const key = null;
+                objectStore.associateObject(breakpoint, key, serializedBreakpoint);
+
+                callback(breakpoint);
+            }
+            this._restoringBreakpoints = false;
+        };
 
         if (this.supported) {
-            this._restoringBreakpoints = true;
-
-            for (let cookie of this._domBreakpointsSetting.value) {
-                let breakpoint = new WebInspector.DOMBreakpoint(cookie, cookie.type, cookie.disabled);
+            loadBreakpoints(WI.DOMBreakpoint, WI.objectStores.domBreakpoints, ["dom-breakpoints"], (breakpoint) => {
                 this.addDOMBreakpoint(breakpoint);
+            });
+
+            loadBreakpoints(WI.EventBreakpoint, WI.objectStores.eventBreakpoints, ["event-breakpoints"], (breakpoint) => {
+                this.addEventBreakpoint(breakpoint);
+            });
+
+            loadBreakpoints(WI.URLBreakpoint, WI.objectStores.urlBreakpoints, ["xhr-breakpoints", "url-breakpoints"], (breakpoint) => {
+                this.addURLBreakpoint(breakpoint);
+            });
+        }
+    }
+
+    // Target
+
+    initializeTarget(target)
+    {
+        if (target.DOMDebuggerAgent) {
+            if (target === WI.assumingMainTarget() && target.mainResource)
+                this._speculativelyResolveDOMBreakpointsForURL(target.mainResource.url);
+
+            for (let breakpoint of this._eventBreakpoints) {
+                if (!breakpoint.disabled)
+                    this._updateEventBreakpoint(breakpoint, target);
             }
 
-            for (let cookie of this._xhrBreakpointsSetting.value) {
-                let breakpoint = new WebInspector.XHRBreakpoint(cookie.type, cookie.url, cookie.disabled);
-                this.addXHRBreakpoint(breakpoint);
+            for (let breakpoint of this._urlBreakpoints) {
+                if (!breakpoint.disabled)
+                    this._updateURLBreakpoint(breakpoint, target);
             }
-
-            this._restoringBreakpoints = false;
-            this._speculativelyResolveBreakpoints();
 
             if (!this._allRequestsBreakpoint.disabled)
-                this._updateXHRBreakpoint(this._allRequestsBreakpoint);
+                this._updateURLBreakpoint(this._allRequestsBreakpoint, target);
         }
+    }
+
+    // Static
+
+    static supportsEventBreakpoints()
+    {
+        return InspectorBackend.domains.DOMDebugger.setEventBreakpoint && InspectorBackend.domains.DOMDebugger.removeEventBreakpoint;
+    }
+
+    static supportsURLBreakpoints()
+    {
+        return InspectorBackend.domains.DOMDebugger.setURLBreakpoint && InspectorBackend.domains.DOMDebugger.removeURLBreakpoint;
     }
 
     // Public
 
     get supported()
     {
-        return !!window.DOMDebuggerAgent;
+        return !!InspectorBackend.domains.DOMDebugger;
     }
 
     get allRequestsBreakpoint() { return this._allRequestsBreakpoint; }
 
     get domBreakpoints()
     {
-        let mainFrame = WebInspector.frameResourceManager.mainFrame;
+        let mainFrame = WI.networkManager.mainFrame;
         if (!mainFrame)
             return [];
 
@@ -91,146 +146,260 @@ WebInspector.DOMDebuggerManager = class DOMDebuggerManager extends WebInspector.
         while (frames.length) {
             let frame = frames.shift();
             let domBreakpointNodeIdentifierMap = this._domBreakpointFrameIdentifierMap.get(frame.id);
-            if (domBreakpointNodeIdentifierMap) {
-                for (let breakpoints of domBreakpointNodeIdentifierMap.values())
-                    resolvedBreakpoints = resolvedBreakpoints.concat(breakpoints);
-            }
+            if (domBreakpointNodeIdentifierMap)
+                resolvedBreakpoints = resolvedBreakpoints.concat(Array.from(domBreakpointNodeIdentifierMap.values()));
 
-            frames = frames.concat(frame.childFrameCollection.toArray());
+            frames.push(...frame.childFrameCollection);
         }
 
         return resolvedBreakpoints;
     }
 
-    get xhrBreakpoints() { return this._xhrBreakpoints; }
+    get eventBreakpoints() { return this._eventBreakpoints; }
 
-    isBreakpointRemovable(breakpoint)
+    get urlBreakpoints() { return this._urlBreakpoints; }
+
+    isBreakpointSpecial(breakpoint)
     {
-        return breakpoint !== this._allRequestsBreakpoint;
+        return breakpoint === this._allRequestsBreakpoint;
     }
 
     domBreakpointsForNode(node)
     {
-        console.assert(node instanceof WebInspector.DOMNode);
+        console.assert(node instanceof WI.DOMNode);
 
-        if (!node)
+        if (!node || !node.frame)
             return [];
 
-        let domBreakpointNodeIdentifierMap = this._domBreakpointFrameIdentifierMap.get(node.frameIdentifier);
+        let domBreakpointNodeIdentifierMap = this._domBreakpointFrameIdentifierMap.get(node.frame.id);
         if (!domBreakpointNodeIdentifierMap)
             return [];
 
         let breakpoints = domBreakpointNodeIdentifierMap.get(node.id);
-        return breakpoints ? breakpoints.slice() : [];
+        return breakpoints ? Array.from(breakpoints) : [];
+    }
+
+    domBreakpointsInSubtree(node)
+    {
+        console.assert(node instanceof WI.DOMNode);
+
+        let breakpoints = [];
+
+        if (node.children) {
+            let children = Array.from(node.children);
+            while (children.length) {
+                let child = children.pop();
+                if (child.children)
+                    children = children.concat(child.children);
+                breakpoints = breakpoints.concat(this.domBreakpointsForNode(child));
+            }
+        }
+
+        return breakpoints;
     }
 
     addDOMBreakpoint(breakpoint)
     {
-        console.assert(breakpoint instanceof WebInspector.DOMBreakpoint);
+        console.assert(breakpoint instanceof WI.DOMBreakpoint);
         if (!breakpoint || !breakpoint.url)
             return;
 
-        let breakpoints = this._domBreakpointURLMap.get(breakpoint.url);
-        if (!breakpoints) {
-            breakpoints = [breakpoint];
-            this._domBreakpointURLMap.set(breakpoint.url, breakpoints);
-        } else
-            breakpoints.push(breakpoint);
+        if (this.isBreakpointSpecial(breakpoint)) {
+            this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.DOMBreakpointAdded, {breakpoint});
+            return;
+        }
+
+        this._domBreakpointURLMap.add(breakpoint.url, breakpoint);
 
         if (breakpoint.domNodeIdentifier)
             this._resolveDOMBreakpoint(breakpoint, breakpoint.domNodeIdentifier);
 
-        this.dispatchEventToListeners(WebInspector.DOMDebuggerManager.Event.DOMBreakpointAdded, {breakpoint});
+        this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.DOMBreakpointAdded, {breakpoint});
 
-        this._saveDOMBreakpoints();
+        if (!this._restoringBreakpoints)
+            WI.objectStores.domBreakpoints.putObject(breakpoint);
     }
 
     removeDOMBreakpoint(breakpoint)
     {
-        console.assert(breakpoint instanceof WebInspector.DOMBreakpoint);
+        console.assert(breakpoint instanceof WI.DOMBreakpoint);
         if (!breakpoint)
             return;
 
-        let nodeIdentifier = breakpoint.domNodeIdentifier;
-        console.assert(nodeIdentifier, "Cannot remove unresolved DOM breakpoint.");
-        if (!nodeIdentifier)
+        if (this.isBreakpointSpecial(breakpoint)) {
+            breakpoint.disabled = true;
+            this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.DOMBreakpointRemoved, {breakpoint});
             return;
+        }
 
         this._detachDOMBreakpoint(breakpoint);
 
-        let urlBreakpoints = this._domBreakpointURLMap.get(breakpoint.url);
-        urlBreakpoints.remove(breakpoint, true);
+        this._domBreakpointURLMap.delete(breakpoint.url);
 
-        if (!breakpoint.disabled)
-            DOMDebuggerAgent.removeDOMBreakpoint(nodeIdentifier, breakpoint.type);
+        if (!breakpoint.disabled) {
+            // We should get the target associated with the nodeIdentifier of this breakpoint.
+            let target = WI.assumingMainTarget();
+            target.DOMDebuggerAgent.removeDOMBreakpoint(breakpoint.domNodeIdentifier, breakpoint.type);
+        }
 
-        if (!urlBreakpoints.length)
-            this._domBreakpointURLMap.delete(breakpoint.url);
-
-        this.dispatchEventToListeners(WebInspector.DOMDebuggerManager.Event.DOMBreakpointRemoved, {breakpoint});
+        this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.DOMBreakpointRemoved, {breakpoint});
 
         breakpoint.domNodeIdentifier = null;
 
-        this._saveDOMBreakpoints();
+        if (!this._restoringBreakpoints)
+            WI.objectStores.domBreakpoints.deleteObject(breakpoint);
     }
 
     removeDOMBreakpointsForNode(node)
     {
-        this._restoringBreakpoints = true;
-
         this.domBreakpointsForNode(node).forEach(this.removeDOMBreakpoint, this);
-
-        this._restoringBreakpoints = false;
-        this._saveDOMBreakpoints();
     }
 
-    xhrBreakpointForURL(url)
+    eventBreakpointForTypeAndEventName(type, eventName)
     {
-        return this._xhrBreakpoints.find((breakpoint) => breakpoint.url === url) || null;
+        return this._eventBreakpoints.find((breakpoint) => breakpoint.type === type && breakpoint.eventName === eventName) || null;
     }
 
-    addXHRBreakpoint(breakpoint)
+    addEventBreakpoint(breakpoint)
     {
-        console.assert(breakpoint instanceof WebInspector.XHRBreakpoint);
+        console.assert(breakpoint instanceof WI.EventBreakpoint);
         if (!breakpoint)
             return;
 
-        console.assert(!this._xhrBreakpoints.includes(breakpoint), "Already added XHR breakpoint.", breakpoint);
-        if (this._xhrBreakpoints.includes(breakpoint))
+        if (this.isBreakpointSpecial(breakpoint)) {
+            this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointAdded, {breakpoint});
+            return;
+        }
+
+        if (this.eventBreakpointForTypeAndEventName(breakpoint.type, breakpoint.eventName))
             return;
 
-        if (this._xhrBreakpoints.some((entry) => entry.type === breakpoint.type && entry.url === breakpoint.url))
-            return;
+        this._eventBreakpoints.push(breakpoint);
 
-        this._xhrBreakpoints.push(breakpoint);
+        this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointAdded, {breakpoint});
 
-        this.dispatchEventToListeners(WebInspector.DOMDebuggerManager.Event.XHRBreakpointAdded, {breakpoint});
+        if (!breakpoint.disabled) {
+            for (let target of WI.targets) {
+                if (target.DOMDebuggerAgent)
+                    this._updateEventBreakpoint(breakpoint, target);
+            }
+        }
 
-        this._resolveXHRBreakpoint(breakpoint);
-        this._saveXHRBreakpoints();
+        if (!this._restoringBreakpoints)
+            WI.objectStores.eventBreakpoints.putObject(breakpoint);
     }
 
-    removeXHRBreakpoint(breakpoint)
+    removeEventBreakpoint(breakpoint)
     {
-        console.assert(breakpoint instanceof WebInspector.XHRBreakpoint);
+        console.assert(breakpoint instanceof WI.EventBreakpoint);
         if (!breakpoint)
             return;
 
-        if (!this._xhrBreakpoints.includes(breakpoint))
+        if (this.isBreakpointSpecial(breakpoint)) {
+            breakpoint.disabled = true;
+            this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointRemoved, {breakpoint});
+            return;
+        }
+
+        if (!this._eventBreakpoints.includes(breakpoint))
             return;
 
-        this._xhrBreakpoints.remove(breakpoint, true);
+        this._eventBreakpoints.remove(breakpoint);
 
-        this._saveXHRBreakpoints();
-        this.dispatchEventToListeners(WebInspector.DOMDebuggerManager.Event.XHRBreakpointRemoved, {breakpoint});
+        if (!this._restoringBreakpoints)
+            WI.objectStores.eventBreakpoints.deleteObject(breakpoint);
+
+        this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointRemoved, {breakpoint});
 
         if (breakpoint.disabled)
             return;
 
-        DOMDebuggerAgent.removeXHRBreakpoint(breakpoint.url, (error) => {
-            if (error)
-                console.error(error);
-        });
+        for (let target of WI.targets) {
+            if (target.DOMDebuggerAgent) {
+                // Compatibility (iOS 12): DOMDebuggerAgent.removeEventBreakpoint did not exist.
+                if (!WI.DOMDebuggerManager.supportsEventBreakpoints()) {
+                    console.assert(breakpoint.type === WI.EventBreakpoint.Type.Listener);
+                    target.DOMDebuggerAgent.removeEventListenerBreakpoint(breakpoint.eventName);
+                    continue;
+                }
+
+                target.DOMDebuggerAgent.removeEventBreakpoint(breakpoint.type, breakpoint.eventName);
+            }
+        }
+    }
+
+    urlBreakpointForURL(url)
+    {
+        return this._urlBreakpoints.find((breakpoint) => breakpoint.url === url) || null;
+    }
+
+    addURLBreakpoint(breakpoint)
+    {
+        console.assert(breakpoint instanceof WI.URLBreakpoint);
+        if (!breakpoint)
+            return;
+
+        if (this.isBreakpointSpecial(breakpoint)) {
+            this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.URLBreakpointAdded, {breakpoint});
+            return;
+        }
+
+        console.assert(!this._urlBreakpoints.includes(breakpoint), "Already added URL breakpoint.", breakpoint);
+        if (this._urlBreakpoints.includes(breakpoint))
+            return;
+
+        if (this._urlBreakpoints.some((entry) => entry.type === breakpoint.type && entry.url === breakpoint.url))
+            return;
+
+        this._urlBreakpoints.push(breakpoint);
+
+        this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.URLBreakpointAdded, {breakpoint});
+
+        if (!breakpoint.disabled) {
+            for (let target of WI.targets) {
+                if (target.DOMDebuggerAgent)
+                    this._updateURLBreakpoint(breakpoint, target);
+            }
+        }
+
+        if (!this._restoringBreakpoints)
+            WI.objectStores.urlBreakpoints.putObject(breakpoint);
+    }
+
+    removeURLBreakpoint(breakpoint)
+    {
+        console.assert(breakpoint instanceof WI.URLBreakpoint);
+        if (!breakpoint)
+            return;
+
+        if (this.isBreakpointSpecial(breakpoint)) {
+            breakpoint.disabled = true;
+            this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.URLBreakpointRemoved, {breakpoint});
+            return;
+        }
+
+        if (!this._urlBreakpoints.includes(breakpoint))
+            return;
+
+        this._urlBreakpoints.remove(breakpoint, true);
+
+        if (!this._restoringBreakpoints)
+            WI.objectStores.urlBreakpoints.deleteObject(breakpoint);
+
+        this.dispatchEventToListeners(WI.DOMDebuggerManager.Event.URLBreakpointRemoved, {breakpoint});
+
+        if (breakpoint.disabled)
+            return;
+
+        for (let target of WI.targets) {
+            if (target.DOMDebuggerAgent) {
+                // Compatibility (iOS 12.1): DOMDebuggerAgent.removeURLBreakpoint did not exist.
+                if (WI.DOMDebuggerManager.supportsURLBreakpoints())
+                    target.DOMDebuggerAgent.removeURLBreakpoint(breakpoint.url);
+                else
+                    target.DOMDebuggerAgent.removeXHRBreakpoint(breakpoint.url);
+            }
+        }
     }
 
     // Private
@@ -238,31 +407,21 @@ WebInspector.DOMDebuggerManager = class DOMDebuggerManager extends WebInspector.
     _detachDOMBreakpoint(breakpoint)
     {
         let nodeIdentifier = breakpoint.domNodeIdentifier;
-        let node = WebInspector.domTreeManager.nodeForId(nodeIdentifier);
+        let node = WI.domManager.nodeForId(nodeIdentifier);
         console.assert(node, "Missing DOM node for breakpoint.", breakpoint);
-        if (!node)
+        if (!node || !node.frame)
             return;
 
-        let frameIdentifier = node.frameIdentifier;
+        let frameIdentifier = node.frame.id;
         let domBreakpointNodeIdentifierMap = this._domBreakpointFrameIdentifierMap.get(frameIdentifier);
         console.assert(domBreakpointNodeIdentifierMap, "Missing DOM breakpoints for node parent frame.", node);
         if (!domBreakpointNodeIdentifierMap)
             return;
 
-        let breakpoints = domBreakpointNodeIdentifierMap.get(nodeIdentifier);
-        console.assert(breakpoints, "Missing DOM breakpoints for node.", node);
-        if (!breakpoints)
-            return;
-
-        breakpoints.remove(breakpoint, true);
-
-        if (breakpoints.length)
-            return;
-
-        domBreakpointNodeIdentifierMap.delete(nodeIdentifier);
+        domBreakpointNodeIdentifierMap.delete(nodeIdentifier, breakpoint);
 
         if (!domBreakpointNodeIdentifierMap.size)
-            this._domBreakpointFrameIdentifierMap.delete(frameIdentifier)
+            this._domBreakpointFrameIdentifierMap.delete(frameIdentifier);
     }
 
     _detachBreakpointsForFrame(frame)
@@ -273,145 +432,177 @@ WebInspector.DOMDebuggerManager = class DOMDebuggerManager extends WebInspector.
 
         this._domBreakpointFrameIdentifierMap.delete(frame.id);
 
-        for (let breakpoints of domBreakpointNodeIdentifierMap.values()) {
-            for (let breakpoint of breakpoints)
-                breakpoint.domNodeIdentifier = null;
-        }
+        for (let breakpoint of domBreakpointNodeIdentifierMap.values())
+            breakpoint.domNodeIdentifier = null;
     }
 
-    _speculativelyResolveBreakpoints()
+    _speculativelyResolveDOMBreakpointsForURL(url)
     {
-        let mainFrame = WebInspector.frameResourceManager.mainFrame;
-        if (!mainFrame)
+        let domBreakpoints = this._domBreakpointURLMap.get(url);
+        if (!domBreakpoints)
             return;
 
-        let domBreakpoints = this._domBreakpointURLMap.get(mainFrame.url);
-        if (domBreakpoints) {
-            for (let breakpoint of domBreakpoints) {
-                if (breakpoint.domNodeIdentifier)
-                    continue;
+        for (let breakpoint of domBreakpoints) {
+            if (breakpoint.domNodeIdentifier)
+                continue;
 
-                WebInspector.domTreeManager.pushNodeByPathToFrontend(breakpoint.path, (nodeIdentifier) => {
-                    if (!nodeIdentifier)
-                        return;
+            WI.domManager.pushNodeByPathToFrontend(breakpoint.path, (nodeIdentifier) => {
+                if (breakpoint.domNodeIdentifier) {
+                    // This breakpoint may have been resolved by a node being inserted before this
+                    // callback is invoked.  If so, the `nodeIdentifier` should match, so don't try
+                    // to resolve it again as it would've already been resolved.
+                    console.assert(breakpoint.domNodeIdentifier === nodeIdentifier);
+                    return;
+                }
 
+                if (nodeIdentifier)
                     this._resolveDOMBreakpoint(breakpoint, nodeIdentifier);
-                });
-            }
+            });
         }
-
-        for (let breakpoint of this._xhrBreakpoints)
-            this._resolveXHRBreakpoint(breakpoint);
     }
 
     _resolveDOMBreakpoint(breakpoint, nodeIdentifier)
     {
-        let node = WebInspector.domTreeManager.nodeForId(nodeIdentifier);
+        let node = WI.domManager.nodeForId(nodeIdentifier);
         console.assert(node, "Missing DOM node for nodeIdentifier.", nodeIdentifier);
-        if (!node)
+        if (!node || !node.frame)
             return;
 
-        let frameIdentifier = node.frameIdentifier;
+        let frameIdentifier = node.frame.id;
         let domBreakpointNodeIdentifierMap = this._domBreakpointFrameIdentifierMap.get(frameIdentifier);
         if (!domBreakpointNodeIdentifierMap) {
-            domBreakpointNodeIdentifierMap = new Map;
+            domBreakpointNodeIdentifierMap = new Multimap;
             this._domBreakpointFrameIdentifierMap.set(frameIdentifier, domBreakpointNodeIdentifierMap);
         }
 
-        let breakpoints = domBreakpointNodeIdentifierMap.get(nodeIdentifier);
-        if (breakpoints)
-            breakpoints.push(breakpoint);
-        else
-            domBreakpointNodeIdentifierMap.set(nodeIdentifier, [breakpoint]);
+        domBreakpointNodeIdentifierMap.add(nodeIdentifier, breakpoint);
 
         breakpoint.domNodeIdentifier = nodeIdentifier;
 
-        this._updateDOMBreakpoint(breakpoint);
+        if (!breakpoint.disabled) {
+            // We should get the target associated with the nodeIdentifier of this breakpoint.
+            let target = WI.assumingMainTarget();
+            if (target && target.DOMDebuggerAgent)
+                this._updateDOMBreakpoint(breakpoint, target);
+        }
     }
 
-    _updateDOMBreakpoint(breakpoint)
+    _updateDOMBreakpoint(breakpoint, target)
     {
-        let nodeIdentifier = breakpoint.domNodeIdentifier;
-        if (!nodeIdentifier)
+        console.assert(target.DOMDebuggerAgent);
+
+        if (!breakpoint.domNodeIdentifier)
             return;
 
-        function breakpointUpdated(error)
-        {
-            if (error)
-                console.error(error);
-        }
-
         if (breakpoint.disabled)
-            DOMDebuggerAgent.removeDOMBreakpoint(nodeIdentifier, breakpoint.type, breakpointUpdated);
-        else
-            DOMDebuggerAgent.setDOMBreakpoint(nodeIdentifier, breakpoint.type, breakpointUpdated);
-    }
-
-    _updateXHRBreakpoint(breakpoint, callback)
-    {
-        function breakpointUpdated(error)
-        {
-            if (error)
-                console.error(error);
-
-            if (callback && typeof callback === "function")
-                callback(error);
-        }
-
-        if (breakpoint.disabled)
-            DOMDebuggerAgent.removeXHRBreakpoint(breakpoint.url, breakpointUpdated);
+            target.DOMDebuggerAgent.removeDOMBreakpoint(breakpoint.domNodeIdentifier, breakpoint.type);
         else {
-            let isRegex = breakpoint.type === WebInspector.XHRBreakpoint.Type.RegularExpression;
-            DOMDebuggerAgent.setXHRBreakpoint(breakpoint.url, isRegex, breakpointUpdated);
+            if (!this._restoringBreakpoints && !WI.debuggerManager.breakpointsDisabledTemporarily)
+                WI.debuggerManager.breakpointsEnabled = true;
+
+            target.DOMDebuggerAgent.setDOMBreakpoint(breakpoint.domNodeIdentifier, breakpoint.type);
         }
     }
 
-    _resolveXHRBreakpoint(breakpoint)
+    _updateEventBreakpoint(breakpoint, target)
     {
+        console.assert(target.DOMDebuggerAgent);
+
+        // Compatibility (iOS 12): DOMDebuggerAgent.removeEventBreakpoint did not exist.
+        if (!WI.DOMDebuggerManager.supportsEventBreakpoints()) {
+            console.assert(breakpoint.type === WI.EventBreakpoint.Type.Listener);
+            if (breakpoint.disabled)
+                target.DOMDebuggerAgent.removeEventListenerBreakpoint(breakpoint.eventName);
+            else {
+                if (!this._restoringBreakpoints && !WI.debuggerManager.breakpointsDisabledTemporarily)
+                    WI.debuggerManager.breakpointsEnabled = true;
+
+                target.DOMDebuggerAgent.setEventListenerBreakpoint(breakpoint.eventName);
+            }
+            return;
+        }
+
         if (breakpoint.disabled)
-            return;
+            target.DOMDebuggerAgent.removeEventBreakpoint(breakpoint.type, breakpoint.eventName);
+        else {
+            if (!this._restoringBreakpoints && !WI.debuggerManager.breakpointsDisabledTemporarily)
+                WI.debuggerManager.breakpointsEnabled = true;
 
-        this._updateXHRBreakpoint(breakpoint, () => {
-            breakpoint.dispatchEventToListeners(WebInspector.XHRBreakpoint.Event.ResolvedStateDidChange);
-        });
+            target.DOMDebuggerAgent.setEventBreakpoint(breakpoint.type, breakpoint.eventName);
+        }
     }
 
-    _saveDOMBreakpoints()
+    _updateURLBreakpoint(breakpoint, target)
     {
-        if (this._restoringBreakpoints)
+        console.assert(target.DOMDebuggerAgent);
+
+        // Compatibility (iOS 12.1): DOMDebuggerAgent.removeURLBreakpoint did not exist.
+        if (!WI.DOMDebuggerManager.supportsURLBreakpoints()) {
+            if (breakpoint.disabled)
+                target.DOMDebuggerAgent.removeXHRBreakpoint(breakpoint.url);
+            else {
+                if (!this._restoringBreakpoints && !WI.debuggerManager.breakpointsDisabledTemporarily)
+                    WI.debuggerManager.breakpointsEnabled = true;
+
+                let isRegex = breakpoint.type === WI.URLBreakpoint.Type.RegularExpression;
+                target.DOMDebuggerAgent.setXHRBreakpoint(breakpoint.url, isRegex);
+            }
             return;
+        }
 
-        let breakpointsToSave = [];
-        for (let breakpoints of this._domBreakpointURLMap.values())
-            breakpointsToSave = breakpointsToSave.concat(breakpoints);
+        if (breakpoint.disabled)
+            target.DOMDebuggerAgent.removeURLBreakpoint(breakpoint.url);
+        else {
+            if (!this._restoringBreakpoints && !WI.debuggerManager.breakpointsDisabledTemporarily)
+                WI.debuggerManager.breakpointsEnabled = true;
 
-        this._domBreakpointsSetting.value = breakpointsToSave.map((breakpoint) => breakpoint.serializableInfo);
+            let isRegex = breakpoint.type === WI.URLBreakpoint.Type.RegularExpression;
+            target.DOMDebuggerAgent.setURLBreakpoint(breakpoint.url, isRegex);
+        }
     }
 
-    _saveXHRBreakpoints()
-    {
-        if (this._restoringBreakpoints)
-            return;
-
-        this._xhrBreakpointsSetting.value = this._xhrBreakpoints.map((breakpoint) => breakpoint.serializableInfo);
-    }
-
-    _domBreakpointDisabledStateDidChange(event)
+    _handleDOMBreakpointDisabledStateChanged(event)
     {
         let breakpoint = event.target;
-        this._updateDOMBreakpoint(breakpoint);
-        this._saveDOMBreakpoints();
+        let target = WI.assumingMainTarget();
+        if (target && target.DOMDebuggerAgent)
+            this._updateDOMBreakpoint(breakpoint, target);
+
+        if (!this._restoringBreakpoints)
+            WI.objectStores.domBreakpoints.putObject(breakpoint);
     }
 
-    _xhrBreakpointDisabledStateDidChange(event)
+    _handleEventBreakpointDisabledStateChanged(event)
+    {
+        let breakpoint = event.target;
+
+        // Specific event listener breakpoints are handled by `DOMManager`.
+        if (breakpoint.eventListener)
+            return;
+
+        for (let target of WI.targets) {
+            if (target.DOMDebuggerAgent)
+                this._updateEventBreakpoint(breakpoint, target);
+        }
+
+        if (!this._restoringBreakpoints)
+            WI.objectStores.eventBreakpoints.putObject(breakpoint);
+    }
+
+    _handleURLBreakpointDisabledStateChanged(event)
     {
         let breakpoint = event.target;
 
         if (breakpoint === this._allRequestsBreakpoint)
             this._allRequestsBreakpointEnabledSetting.value = !breakpoint.disabled;
 
-        this._updateXHRBreakpoint(breakpoint);
-        this._saveXHRBreakpoints();
+        for (let target of WI.targets) {
+            if (target.DOMDebuggerAgent)
+                this._updateURLBreakpoint(breakpoint, target);
+        }
+
+        if (!this._restoringBreakpoints)
+            WI.objectStores.urlBreakpoints.putObject(breakpoint);
     }
 
     _childFrameWasRemoved(event)
@@ -420,32 +611,32 @@ WebInspector.DOMDebuggerManager = class DOMDebuggerManager extends WebInspector.
         this._detachBreakpointsForFrame(frame);
     }
 
-    _mainFrameDidChange()
+    _mainFrameDidChange(event)
     {
-        this._speculativelyResolveBreakpoints();
+        this._speculativelyResolveDOMBreakpointsForURL(WI.networkManager.mainFrame.url);
     }
 
     _mainResourceDidChange(event)
     {
         let frame = event.target;
         if (frame.isMainFrame()) {
-            for (let breakpoints of this._domBreakpointURLMap.values())
-                breakpoints.forEach((breakpoint) => { breakpoint.domNodeIdentifier = null; });
+            for (let breakpoint of this._domBreakpointURLMap.values())
+                breakpoint.domNodeIdentifier = null;
 
             this._domBreakpointFrameIdentifierMap.clear();
         } else
             this._detachBreakpointsForFrame(frame);
 
-        this._speculativelyResolveBreakpoints();
+        this._speculativelyResolveDOMBreakpointsForURL(frame.url);
     }
 
     _nodeInserted(event)
     {
         let node = event.data.node;
-        if (node.nodeType() !== Node.ELEMENT_NODE || !node.ownerDocument)
+        if (node.nodeType() !== Node.ELEMENT_NODE || !node.frame)
             return;
 
-        let url = node.ownerDocument.documentURL;
+        let url = node.frame.url;
         let breakpoints = this._domBreakpointURLMap.get(url);
         if (!breakpoints)
             return;
@@ -464,10 +655,10 @@ WebInspector.DOMDebuggerManager = class DOMDebuggerManager extends WebInspector.
     _nodeRemoved(event)
     {
         let node = event.data.node;
-        if (node.nodeType() !== Node.ELEMENT_NODE || !node.ownerDocument)
+        if (node.nodeType() !== Node.ELEMENT_NODE || !node.frame)
             return;
 
-        let domBreakpointNodeIdentifierMap = this._domBreakpointFrameIdentifierMap.get(node.frameIdentifier);
+        let domBreakpointNodeIdentifierMap = this._domBreakpointFrameIdentifierMap.get(node.frame.id);
         if (!domBreakpointNodeIdentifierMap)
             return;
 
@@ -478,16 +669,18 @@ WebInspector.DOMDebuggerManager = class DOMDebuggerManager extends WebInspector.
         domBreakpointNodeIdentifierMap.delete(node.id);
 
         if (!domBreakpointNodeIdentifierMap.size)
-            this._domBreakpointFrameIdentifierMap.delete(node.frameIdentifier);
+            this._domBreakpointFrameIdentifierMap.delete(node.frame.id);
 
         for (let breakpoint of breakpoints)
             breakpoint.domNodeIdentifier = null;
     }
 };
 
-WebInspector.DOMDebuggerManager.Event = {
+WI.DOMDebuggerManager.Event = {
     DOMBreakpointAdded: "dom-debugger-manager-dom-breakpoint-added",
     DOMBreakpointRemoved: "dom-debugger-manager-dom-breakpoint-removed",
-    XHRBreakpointAdded: "dom-debugger-manager-xhr-breakpoint-added",
-    XHRBreakpointRemoved: "dom-debugger-manager-xhr-breakpoint-removed",
+    EventBreakpointAdded: "dom-debugger-manager-event-breakpoint-added",
+    EventBreakpointRemoved: "dom-debugger-manager-event-breakpoint-removed",
+    URLBreakpointAdded: "dom-debugger-manager-url-breakpoint-added",
+    URLBreakpointRemoved: "dom-debugger-manager-url-breakpoint-removed",
 };

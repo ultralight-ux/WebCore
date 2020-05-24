@@ -1,6 +1,7 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl
 
 use strict;
+use warnings;
 use Getopt::Long;
 use File::Copy qw/move/;
 use File::Temp qw/tempfile/;
@@ -48,12 +49,18 @@ sub removeConsoleAssertsInFile($$)
             }
         }
 
-        s/\s*console\.assert\(.*\);\s*//g;
+        s/^\s*console\.assert\(.*\);\s*//g;
         print $out $_;
         $previousLine = $_ if $_ !~ /^\s*$/;
 
         # If console.assert is still on the line, either we missed a semicolon or it is multi-line. These did not get stripped.
         if ($_ =~ /\s*console\.assert\(/) {
+            # Allow "console.assert()" to be used as part of a string.
+            next if /^.*?["'`].*?console\.assert/;
+
+            # Allow "console.assert()" to be used as part of a comment.
+            next if /^.*?(\/\/|\/\*).*?console\.assert/;
+
             if ($_ =~ /\)\s*$/) {
                 print "WARNING: console.assert missing trailing semicolon on line $.: $_" ;
             } else {

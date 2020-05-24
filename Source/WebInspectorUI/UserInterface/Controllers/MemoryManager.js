@@ -23,27 +23,27 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.MemoryManager = class MemoryManager extends WebInspector.Object
+WI.MemoryManager = class MemoryManager extends WI.Object
 {
-    constructor()
-    {
-        super();
+    // Target
 
-        if (window.MemoryAgent)
-            MemoryAgent.enable();
+    initializeTarget(target)
+    {
+        if (target.MemoryAgent)
+            target.MemoryAgent.enable();
     }
 
     // Public
 
     memoryPressure(timestamp, protocolSeverity)
     {
-        // Called from WebInspector.MemoryObserver.
+        // Called from WI.MemoryObserver.
 
-        let memoryPressureEvent = WebInspector.MemoryPressureEvent.fromPayload(timestamp, protocolSeverity);
-        this.dispatchEventToListeners(WebInspector.MemoryManager.Event.MemoryPressure, {memoryPressureEvent});
+        let memoryPressureEvent = WI.MemoryPressureEvent.fromPayload(timestamp, protocolSeverity);
+        this.dispatchEventToListeners(WI.MemoryManager.Event.MemoryPressure, {memoryPressureEvent});
     }
 };
 
-WebInspector.MemoryManager.Event = {
+WI.MemoryManager.Event = {
     MemoryPressure: "memory-manager-memory-pressure",
 };

@@ -23,9 +23,9 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ScopeBarItem = class ScopeBarItem extends WebInspector.Object
+WI.ScopeBarItem = class ScopeBarItem extends WI.Object
 {
-    constructor(id, label, exclusive, className)
+    constructor(id, label, {className, exclusive, independent, hidden} = {})
     {
         super();
 
@@ -38,11 +38,14 @@ WebInspector.ScopeBarItem = class ScopeBarItem extends WebInspector.Object
 
         this._id = id;
         this._label = label;
-        this._exclusive = exclusive;
+        this._exclusive = !!exclusive;
+        this._independent = !!independent;
+        this._hidden = !!hidden;
 
-        this._selectedSetting = new WebInspector.Setting("scopebaritem-" + id, false);
+        this._selectedSetting = new WI.Setting("scopebaritem-" + id, false);
 
         this._element.classList.toggle("selected", this._selectedSetting.value);
+        this._element.classList.toggle("hidden", this._hidden);
     }
 
     // Public
@@ -74,18 +77,32 @@ WebInspector.ScopeBarItem = class ScopeBarItem extends WebInspector.Object
 
     set selected(selected)
     {
-        this.setSelected(selected, false);
-    }
-
-    setSelected(selected, withModifier)
-    {
         if (this._selectedSetting.value === selected)
             return;
 
         this._element.classList.toggle("selected", selected);
         this._selectedSetting.value = selected;
 
-        this.dispatchEventToListeners(WebInspector.ScopeBarItem.Event.SelectionChanged, {withModifier});
+        this.dispatchEventToListeners(WI.ScopeBarItem.Event.SelectionChanged, {
+            extendSelection: this._independent || (WI.modifierKeys.metaKey && !WI.modifierKeys.ctrlKey && !WI.modifierKeys.altKey && !WI.modifierKeys.shiftKey),
+        });
+    }
+
+    get hidden()
+    {
+        return this._hidden;
+    }
+
+    set hidden(flag)
+    {
+        if (this._hidden === flag)
+            return;
+
+        this._hidden = flag;
+
+        this._element.classList.toggle("hidden", flag);
+
+        this.dispatchEventToListeners(WI.ScopeBarItem.Event.HiddenChanged);
     }
 
     // Private
@@ -96,10 +113,11 @@ WebInspector.ScopeBarItem = class ScopeBarItem extends WebInspector.Object
         if (event.button !== 0)
             return;
 
-        this.setSelected(!this.selected, event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey);
+        this.selected = !this.selected;
     }
 };
 
-WebInspector.ScopeBarItem.Event = {
-    SelectionChanged: "scope-bar-item-selection-did-change"
+WI.ScopeBarItem.Event = {
+    SelectionChanged: "scope-bar-item-selection-changed",
+    HiddenChanged: "scope-bar-item-hidden-changed",
 };

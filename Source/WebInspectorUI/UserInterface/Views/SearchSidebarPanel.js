@@ -23,13 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.NavigationSidebarPanel
+WI.SearchSidebarPanel = class SearchSidebarPanel extends WI.NavigationSidebarPanel
 {
-    constructor(contentBrowser)
+    constructor()
     {
-        super("search", WebInspector.UIString("Search"), true, true);
+        super("search", WI.UIString("Search"), true, true);
 
-        this.contentBrowser = contentBrowser;
+        this._searchInputSettings = WI.SearchUtilities.createSettings("search-sidebar", {
+            handleChanged: (event) => {
+                this.focusSearchField(true);
+            },
+        });
 
         var searchElement = document.createElement("div");
         searchElement.classList.add("search-bar");
@@ -42,17 +46,17 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
         this._inputElement.addEventListener("input", this._searchFieldInput.bind(this));
         this._inputElement.setAttribute("results", 5);
         this._inputElement.setAttribute("autosave", "inspector-search-autosave");
-        this._inputElement.setAttribute("placeholder", WebInspector.UIString("Search Resource Content"));
+        this._inputElement.setAttribute("placeholder", WI.UIString("Search Resource Content"));
         searchElement.appendChild(this._inputElement);
 
-        this.filterBar.placeholder = WebInspector.UIString("Filter Search Results");
+        searchElement.appendChild(WI.SearchUtilities.createSettingsButton(this._searchInputSettings));
 
-        this._searchQuerySetting = new WebInspector.Setting("search-sidebar-query", "");
+        this._searchQuerySetting = new WI.Setting("search-sidebar-query", "");
         this._inputElement.value = this._searchQuerySetting.value;
 
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
 
-        this.contentTreeOutline.addEventListener(WebInspector.TreeOutline.Event.SelectionDidChange, this._treeSelectionDidChange, this);
+        this.contentTreeOutline.addEventListener(WI.TreeOutline.Event.SelectionDidChange, this._treeSelectionDidChange, this);
     }
 
     // Public
@@ -61,12 +65,16 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
     {
         super.closed();
 
-        WebInspector.Frame.removeEventListener(null, null, this);
+        WI.Frame.removeEventListener(null, null, this);
     }
 
     focusSearchField(performSearch)
     {
-        this.show();
+        if (!this.parentSidebar)
+            return;
+
+        this.parentSidebar.selectedSidebarPanel = this;
+        this.parentSidebar.collapsed = false;
 
         this._inputElement.select();
 
@@ -89,20 +97,51 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
         if (this._changedBanner)
             this._changedBanner.remove();
 
-        searchQuery = searchQuery.trim();
         if (!searchQuery.length)
             return;
 
-        // FIXME: Provide UI to toggle regex and case sensitive searches.
-        var isCaseSensitive = false;
-        var isRegex = false;
+        let createSearchingPlaceholder = () => {
+            let searchingPlaceholder = WI.createMessageTextView("");
+            String.format(WI.UIString("Searching %s"), [(new WI.IndeterminateProgressSpinner).element], String.standardFormatters, searchingPlaceholder, (a, b) => {
+                a.append(b);
+                return a;
+            });
+            this.updateEmptyContentPlaceholder(searchingPlaceholder);
+        };
 
-        var updateEmptyContentPlaceholderTimeout = null;
+        if (!WI.targetsAvailable()) {
+            createSearchingPlaceholder();
+            WI.whenTargetsAvailable().then(() => {
+                if (this._searchQuerySetting.value === searchQuery)
+                    this.performSearch(searchQuery);
+            });
+            return;
+        }
+
+        let promiseCount = 0;
+        let countPromise = async (promise, callback) => {
+            ++promiseCount;
+            if (promiseCount === 1)
+                createSearchingPlaceholder();
+
+            let value = await promise;
+
+            if (callback)
+                callback(value);
+
+            --promiseCount;
+            console.assert(promiseCount >= 0);
+            if (promiseCount === 0)
+                this.updateEmptyContentPlaceholder(WI.UIString("No Search Results"));
+        };
+
+        let isCaseSensitive = !!this._searchInputSettings.caseSensitive.value;
+        let isRegex = !!this._searchInputSettings.regularExpression.value;
 
         function createTreeElementForMatchObject(matchObject, parentTreeElement)
         {
-            let matchTreeElement = new WebInspector.SearchResultTreeElement(matchObject);
-            matchTreeElement.addEventListener(WebInspector.TreeElement.Event.DoubleClick, this._treeElementDoubleClick, this);
+            let matchTreeElement = new WI.SearchResultTreeElement(matchObject);
+            matchTreeElement.addEventListener(WI.TreeElement.Event.DoubleClick, this._treeElementDoubleClick, this);
 
             parentTreeElement.appendChild(matchTreeElement);
 
@@ -110,137 +149,109 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
                 matchTreeElement.revealAndSelect(false, true);
         }
 
-        function updateEmptyContentPlaceholderSoon()
-        {
-            if (updateEmptyContentPlaceholderTimeout)
-                return;
-            updateEmptyContentPlaceholderTimeout = setTimeout(updateEmptyContentPlaceholder.bind(this), 100);
-        }
-
-        function updateEmptyContentPlaceholder()
-        {
-            if (updateEmptyContentPlaceholderTimeout) {
-                clearTimeout(updateEmptyContentPlaceholderTimeout);
-                updateEmptyContentPlaceholderTimeout = null;
-            }
-
-            this.updateEmptyContentPlaceholder(WebInspector.UIString("No Search Results"));
-        }
-
         function forEachMatch(searchQuery, lineContent, callback)
         {
             var lineMatch;
-            var searchRegex = new RegExp(searchQuery.escapeForRegExp(), "gi");
+            let searchRegex = WI.SearchUtilities.regExpForString(searchQuery, {
+                caseSensitive: isCaseSensitive,
+                regularExpression: isRegex,
+            });
             while ((searchRegex.lastIndex < lineContent.length) && (lineMatch = searchRegex.exec(lineContent)))
                 callback(lineMatch, searchRegex.lastIndex);
         }
 
-        function resourcesCallback(error, result)
-        {
-            updateEmptyContentPlaceholderSoon.call(this);
-
-            if (error)
+        let resourceCallback = (frameId, url, {result}) => {
+            if (!result || !result.length)
                 return;
 
-            function resourceCallback(frameId, url, error, resourceMatches)
-            {
-                updateEmptyContentPlaceholderSoon.call(this);
+            var frame = WI.networkManager.frameForIdentifier(frameId);
+            if (!frame)
+                return;
 
-                if (error || !resourceMatches || !resourceMatches.length)
-                    return;
+            var resource = frame.url === url ? frame.mainResource : frame.resourceForURL(url);
+            if (!resource)
+                return;
 
-                var frame = WebInspector.frameResourceManager.frameForIdentifier(frameId);
-                if (!frame)
-                    return;
-
-                var resource = frame.url === url ? frame.mainResource : frame.resourceForURL(url);
-                if (!resource)
-                    return;
-
-                var resourceTreeElement = this._searchTreeElementForResource(resource);
-
-                for (var i = 0; i < resourceMatches.length; ++i) {
-                    var match = resourceMatches[i];
-                    forEachMatch(searchQuery, match.lineContent, (lineMatch, lastIndex) => {
-                        var matchObject = new WebInspector.SourceCodeSearchMatchObject(resource, match.lineContent, searchQuery, new WebInspector.TextRange(match.lineNumber, lineMatch.index, match.lineNumber, lastIndex));
-                        createTreeElementForMatchObject.call(this, matchObject, resourceTreeElement);
-                    });
-                }
-
-                updateEmptyContentPlaceholder.call(this);
-            }
+            var resourceTreeElement = this._searchTreeElementForResource(resource);
 
             for (var i = 0; i < result.length; ++i) {
-                var searchResult = result[i];
+                var match = result[i];
+                forEachMatch(searchQuery, match.lineContent, (lineMatch, lastIndex) => {
+                    var matchObject = new WI.SourceCodeSearchMatchObject(resource, match.lineContent, searchQuery, new WI.TextRange(match.lineNumber, lineMatch.index, match.lineNumber, lastIndex));
+                    createTreeElementForMatchObject.call(this, matchObject, resourceTreeElement);
+                });
+            }
+
+            if (!resourceTreeElement.children.length)
+                this.contentTreeOutline.removeChild(resourceTreeElement);
+        };
+
+        let resourcesCallback = ({result}) => {
+            let preventDuplicates = new Set;
+
+            for (let searchResult of result) {
                 if (!searchResult.url || !searchResult.frameId)
                     continue;
 
+                // FIXME: Backend sometimes searches files twice.
+                // <https://webkit.org/b/188287> Web Inspector: [Backend] Page.searchInResources sometimes returns duplicate results for a resource
+                // Note we will still want this to fix legacy backends.
+                let key = searchResult.frameId + ":" + searchResult.url;
+                if (preventDuplicates.has(key))
+                    continue;
+                preventDuplicates.add(key);
+
                 // COMPATIBILITY (iOS 9): Page.searchInResources did not have the optional requestId parameter.
-                PageAgent.searchInResource(searchResult.frameId, searchResult.url, searchQuery, isCaseSensitive, isRegex, searchResult.requestId, resourceCallback.bind(this, searchResult.frameId, searchResult.url));
+                countPromise(PageAgent.searchInResource(searchResult.frameId, searchResult.url, searchQuery, isCaseSensitive, isRegex, searchResult.requestId), resourceCallback.bind(this, searchResult.frameId, searchResult.url));
             }
 
             let promises = [
-                WebInspector.Frame.awaitEvent(WebInspector.Frame.Event.ResourceWasAdded),
-                WebInspector.Target.awaitEvent(WebInspector.Target.Event.ResourceAdded)
+                WI.Frame.awaitEvent(WI.Frame.Event.ResourceWasAdded),
+                WI.Target.awaitEvent(WI.Target.Event.ResourceAdded)
             ];
             Promise.race(promises).then(this._contentChanged.bind(this));
-        }
+        };
 
-        function searchScripts(scriptsToSearch)
-        {
-            updateEmptyContentPlaceholderSoon.call(this);
+        let scriptCallback = (script, {result}) => {
+            if (!result || !result.length)
+                return;
 
+            var scriptTreeElement = this._searchTreeElementForScript(script);
+
+            for (let match of result) {
+                forEachMatch(searchQuery, match.lineContent, (lineMatch, lastIndex) => {
+                    var matchObject = new WI.SourceCodeSearchMatchObject(script, match.lineContent, searchQuery, new WI.TextRange(match.lineNumber, lineMatch.index, match.lineNumber, lastIndex));
+                    createTreeElementForMatchObject.call(this, matchObject, scriptTreeElement);
+                });
+            }
+
+            if (!scriptTreeElement.children.length)
+                this.contentTreeOutline.removeChild(scriptTreeElement);
+        };
+
+        let searchScripts = (scriptsToSearch) => {
             if (!scriptsToSearch.length)
                 return;
 
-            function scriptCallback(script, error, scriptMatches)
-            {
-                updateEmptyContentPlaceholderSoon.call(this);
-
-                if (error || !scriptMatches || !scriptMatches.length)
-                    return;
-
-                var scriptTreeElement = this._searchTreeElementForScript(script);
-
-                for (var i = 0; i < scriptMatches.length; ++i) {
-                    var match = scriptMatches[i];
-                    forEachMatch(searchQuery, match.lineContent, (lineMatch, lastIndex) => {
-                        var matchObject = new WebInspector.SourceCodeSearchMatchObject(script, match.lineContent, searchQuery, new WebInspector.TextRange(match.lineNumber, lineMatch.index, match.lineNumber, lastIndex));
-                        createTreeElementForMatchObject.call(this, matchObject, scriptTreeElement);
-                    });
-                }
-
-                updateEmptyContentPlaceholder.call(this);
-            }
-
             for (let script of scriptsToSearch)
-                script.target.DebuggerAgent.searchInContent(script.id, searchQuery, isCaseSensitive, isRegex, scriptCallback.bind(this, script));
-        }
+                countPromise(script.target.DebuggerAgent.searchInContent(script.id, searchQuery, isCaseSensitive, isRegex), scriptCallback.bind(this, script));
+        };
 
-        function domCallback(error, searchId, resultsCount)
-        {
-            updateEmptyContentPlaceholderSoon.call(this);
-
-            if (error || !resultsCount)
+        let domCallback = ({searchId, resultCount}) => {
+            if (!resultCount)
                 return;
 
             console.assert(searchId);
 
             this._domSearchIdentifier = searchId;
 
-            function domSearchResults(error, nodeIds)
-            {
-                updateEmptyContentPlaceholderSoon.call(this);
-
-                if (error)
+            let domSearchResults = ({nodeIds}) => {
+                // If someone started a new search, then return early and stop showing search results from the old query.
+                if (this._domSearchIdentifier !== searchId)
                     return;
 
-                for (var i = 0; i < nodeIds.length; ++i) {
-                    // If someone started a new search, then return early and stop showing seach results from the old query.
-                    if (this._domSearchIdentifier !== searchId)
-                        return;
-
-                    var domNode = WebInspector.domTreeManager.nodeForId(nodeIds[i]);
+                for (let nodeId of nodeIds) {
+                    let domNode = WI.domManager.nodeForId(nodeId);
                     if (!domNode || !domNode.ownerDocument)
                         continue;
 
@@ -249,41 +260,43 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
                         continue;
 
                     // FIXME: This should use a frame to do resourceForURL, but DOMAgent does not provide a frameId.
-                    var resource = WebInspector.frameResourceManager.resourceForURL(domNode.ownerDocument.documentURL);
+                    var resource = WI.networkManager.resourceForURL(domNode.ownerDocument.documentURL);
                     if (!resource)
                         continue;
 
                     var resourceTreeElement = this._searchTreeElementForResource(resource);
-                    var domNodeTitle = WebInspector.DOMSearchMatchObject.titleForDOMNode(domNode);
+                    var domNodeTitle = WI.DOMSearchMatchObject.titleForDOMNode(domNode);
 
                     // Textual matches.
                     var didFindTextualMatch = false;
                     forEachMatch(searchQuery, domNodeTitle, (lineMatch, lastIndex) => {
-                        var matchObject = new WebInspector.DOMSearchMatchObject(resource, domNode, domNodeTitle, searchQuery, new WebInspector.TextRange(0, lineMatch.index, 0, lastIndex));
+                        var matchObject = new WI.DOMSearchMatchObject(resource, domNode, domNodeTitle, searchQuery, new WI.TextRange(0, lineMatch.index, 0, lastIndex));
                         createTreeElementForMatchObject.call(this, matchObject, resourceTreeElement);
                         didFindTextualMatch = true;
                     });
 
                     // Non-textual matches are CSS Selector or XPath matches. In such cases, display the node entirely highlighted.
                     if (!didFindTextualMatch) {
-                        var matchObject = new WebInspector.DOMSearchMatchObject(resource, domNode, domNodeTitle, domNodeTitle, new WebInspector.TextRange(0, 0, 0, domNodeTitle.length));
+                        var matchObject = new WI.DOMSearchMatchObject(resource, domNode, domNodeTitle, domNodeTitle, new WI.TextRange(0, 0, 0, domNodeTitle.length));
                         createTreeElementForMatchObject.call(this, matchObject, resourceTreeElement);
                     }
 
-                    updateEmptyContentPlaceholder.call(this);
-                }
-            }
+                    if (!resourceTreeElement.children.length)
+                        this.contentTreeOutline.removeChild(resourceTreeElement);
 
-            DOMAgent.getSearchResults(searchId, 0, resultsCount, domSearchResults.bind(this));
-        }
+                }
+            };
+
+            countPromise(DOMAgent.getSearchResults(searchId, 0, resultCount), domSearchResults);
+        };
 
         if (window.DOMAgent)
-            WebInspector.domTreeManager.ensureDocument();
+            WI.domManager.ensureDocument();
 
         if (window.PageAgent)
-            PageAgent.searchInResources(searchQuery, isCaseSensitive, isRegex, resourcesCallback.bind(this));
+            countPromise(PageAgent.searchInResources(searchQuery, isCaseSensitive, isRegex), resourcesCallback);
 
-        setTimeout(searchScripts.bind(this, WebInspector.debuggerManager.searchableScripts), 0);
+        setTimeout(searchScripts.bind(this, WI.debuggerManager.searchableScripts), 0);
 
         if (window.DOMAgent) {
             if (this._domSearchIdentifier) {
@@ -291,13 +304,15 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
                 this._domSearchIdentifier = undefined;
             }
 
-            DOMAgent.performSearch(searchQuery, domCallback.bind(this));
+            let commandArguments = {
+                query: searchQuery,
+                caseSensitive: isCaseSensitive,
+            };
+            countPromise(DOMAgent.performSearch.invoke(commandArguments), domCallback);
         }
 
         // FIXME: Resource search should work in JSContext inspection.
         // <https://webkit.org/b/131252> Web Inspector: JSContext inspection Resource search does not work
-        if (!window.DOMAgent && !window.PageAgent)
-            updateEmptyContentPlaceholderSoon.call(this);
     }
 
     // Private
@@ -318,7 +333,7 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
     {
         var resourceTreeElement = this.contentTreeOutline.getCachedTreeElement(resource);
         if (!resourceTreeElement) {
-            resourceTreeElement = new WebInspector.ResourceTreeElement(resource);
+            resourceTreeElement = new WI.ResourceTreeElement(resource);
             resourceTreeElement.hasChildren = true;
             resourceTreeElement.expand();
 
@@ -332,7 +347,7 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
     {
         var scriptTreeElement = this.contentTreeOutline.getCachedTreeElement(script);
         if (!scriptTreeElement) {
-            scriptTreeElement = new WebInspector.ScriptTreeElement(script);
+            scriptTreeElement = new WI.ScriptTreeElement(script);
             scriptTreeElement.hasChildren = true;
             scriptTreeElement.expand();
 
@@ -363,31 +378,31 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
 
     _treeSelectionDidChange(event)
     {
-        if (!this.visible)
+        if (!this.selected)
             return;
 
-        let treeElement = event.data.selectedElement;
-        if (!treeElement || treeElement instanceof WebInspector.FolderTreeElement)
+        let treeElement = this.contentTreeOutline.selectedTreeElement;
+        if (!treeElement || treeElement instanceof WI.FolderTreeElement)
             return;
 
         const options = {
             ignoreNetworkTab: true,
         };
 
-        if (treeElement instanceof WebInspector.ResourceTreeElement || treeElement instanceof WebInspector.ScriptTreeElement) {
+        if (treeElement instanceof WI.ResourceTreeElement || treeElement instanceof WI.ScriptTreeElement) {
             const cookie = null;
-            WebInspector.showRepresentedObject(treeElement.representedObject, cookie, options);
+            WI.showRepresentedObject(treeElement.representedObject, cookie, options);
             return;
         }
 
-        console.assert(treeElement instanceof WebInspector.SearchResultTreeElement);
-        if (!(treeElement instanceof WebInspector.SearchResultTreeElement))
+        console.assert(treeElement instanceof WI.SearchResultTreeElement);
+        if (!(treeElement instanceof WI.SearchResultTreeElement))
             return;
 
-        if (treeElement.representedObject instanceof WebInspector.DOMSearchMatchObject)
-            WebInspector.showMainFrameDOMTree(treeElement.representedObject.domNode);
-        else if (treeElement.representedObject instanceof WebInspector.SourceCodeSearchMatchObject)
-            WebInspector.showOriginalOrFormattedSourceCodeTextRange(treeElement.representedObject.sourceCodeTextRange, options);
+        if (treeElement.representedObject instanceof WI.DOMSearchMatchObject)
+            WI.showMainFrameDOMTree(treeElement.representedObject.domNode);
+        else if (treeElement.representedObject instanceof WI.SourceCodeSearchMatchObject)
+            WI.showOriginalOrFormattedSourceCodeTextRange(treeElement.representedObject.sourceCodeTextRange, options);
     }
 
     _treeElementDoubleClick(event)
@@ -396,12 +411,12 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
         if (!treeElement)
             return;
 
-        if (treeElement.representedObject instanceof WebInspector.DOMSearchMatchObject) {
-            WebInspector.showMainFrameDOMTree(treeElement.representedObject.domNode, {
+        if (treeElement.representedObject instanceof WI.DOMSearchMatchObject) {
+            WI.showMainFrameDOMTree(treeElement.representedObject.domNode, {
                 ignoreSearchTab: true,
             });
-        } else if (treeElement.representedObject instanceof WebInspector.SourceCodeSearchMatchObject) {
-            WebInspector.showOriginalOrFormattedSourceCodeTextRange(treeElement.representedObject.sourceCodeTextRange, {
+        } else if (treeElement.representedObject instanceof WI.SourceCodeSearchMatchObject) {
+            WI.showOriginalOrFormattedSourceCodeTextRange(treeElement.representedObject.sourceCodeTextRange, {
                 ignoreNetworkTab: true,
                 ignoreSearchTab: true,
             });
@@ -415,10 +430,10 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
         if (!this._changedBanner) {
             this._changedBanner = document.createElement("div");
             this._changedBanner.classList.add("banner");
-            this._changedBanner.append(WebInspector.UIString("The page's content has changed"), document.createElement("br"));
+            this._changedBanner.append(WI.UIString("The page's content has changed"), document.createElement("br"));
 
             let performSearchLink = this._changedBanner.appendChild(document.createElement("a"));
-            performSearchLink.textContent = WebInspector.UIString("Search Again");
+            performSearchLink.textContent = WI.UIString("Search Again");
             performSearchLink.addEventListener("click", () => {
                 const performSearch = true;
                 this.focusSearchField(performSearch);

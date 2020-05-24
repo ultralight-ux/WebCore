@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.Dialog = class Dialog extends WebInspector.View
+WI.Dialog = class Dialog extends WI.View
 {
     constructor(delegate)
     {
@@ -70,8 +70,10 @@ WebInspector.Dialog = class Dialog extends WebInspector.View
 
         this.element.remove();
 
-        if (this._delegate && typeof this._delegate.dialogWasDismissed === "function")
-            this._delegate.dialogWasDismissed(this);
+        if (this.representedObjectIsValid(this._representedObject)) {
+            if (this._delegate && typeof this._delegate.dialogWasDismissedWithRepresentedObject === "function")
+                this._delegate.dialogWasDismissedWithRepresentedObject(this, this._representedObject);
+        }
 
         this._dismissing = false;
 

@@ -27,11 +27,15 @@
     "extends": "eslint:recommended",
     "env": {
         "browser": true,
-        "es6": true,
         "worker": true,
+        "es6": true,
+    },
+    "parserOptions": {
+        "ecmaVersion": 2018,
     },
     "globals": {
         // Agents
+        "AuditAgent": true,
         "ApplicationCacheAgent": true,
         "CSSAgent": true,
         "CanvasAgent": true,
@@ -48,13 +52,19 @@
         "MemoryAgent": true,
         "NetworkAgent": true,
         "PageAgent": true,
+        "RecordingAgent": true,
         "RuntimeAgent": true,
         "ScriptProfilerAgent": true,
+        "ServiceWorkerAgent": true,
         "TimelineAgent": true,
         "WorkerAgent": true,
 
+        // Namespace
+        "WI": true,
+
         // WebInspector
         "AsyncTestSuite": true,
+        "Debouncer": true,
         "Formatter": true,
         "FormatterContentBuilder": true,
         "FrontendTestHarness": true,
@@ -66,60 +76,89 @@
         "InspectorTest": true,
         "LinkedList": true,
         "ListMultimap": true,
+        "Multimap": true,
         "ProtocolTest": true,
         "ProtocolTestHarness": true,
         "SyncTestSuite": true,
         "TestHarness": true,
         "TestSuite": true,
-        "WebInspector": true,
+        "Throttler": true,
 
         // Externals
         "CodeMirror": true,
+        "THREE": true,
         "esprima": true,
+
+        // Formatters
+        "CSSFormatter": true,
+        "ESTreeWalker": true,
+        "EsprimaFormatter": true,
+        "FormatterWorker": true,
+
+        // Heap Snapshot
+        "HeapSnapshot": true,
+        "HeapSnapshotDiff": true,
+        "HeapSnapshotWorker": true,
 
         // DOM
         "CSSPrimitiveValue": true,
         "Exception": true,
-        "SQLException": true,
         "WebKitPoint": true,
+        "SQLError": true,
 
         // Utilities
-        "figureDash": true,
+        "appendWebInspectorConsoleEvaluationSourceURL": true,
+        "appendWebInspectorSourceURL": true,
+        "clamp": true,
+        "doubleQuotedString": true,
         "ellipsis": true,
         "emDash": true,
         "enDash": true,
-        "clamp": true,
-        "isEnterKey": true,
-        "isEmptyObject": true,
-        "insertionIndexForObjectInListSortedByFunction": true,
-        "isFunctionStringNativeCode": true,
-        "parseMIMEType": true,
-        "doubleQuotedString": true,
-        "isWebKitInternalScript": true,
-        "isWebInspectorInternalScript": true,
-        "isWebInspectorConsoleEvaluationScript": true,
-        "appendWebInspectorSourceURL": true,
-        "appendWebInspectorConsoleEvaluationSourceURL": true,
-        "timestamp": true,
+        "figureDash": true,
         "handlePromiseException": true,
+        "insertionIndexForObjectInListSortedByFunction": true,
         "insertObjectIntoSortedArray": true,
+        "isEmptyObject": true,
+        "isEnterKey": true,
+        "isFunctionStringNativeCode": true,
+        "isTextLikelyMinified": true,
+        "isWebInspectorConsoleEvaluationScript": true,
+        "isWebInspectorInternalScript": true,
+        "isWebKitInternalScript": true,
+        "multiplicationSign": true,
+        "parseMIMEType": true,
+        "resolveDotsInPath": true,
+        "simpleGlobStringToRegExp": true,
+        "textToBlob": true,
+        "timestamp": true,
+        "zeroWidthSpace": true,
 
-        // Image Utilities
-        "platformImagePath": true,
-        "wrappedSVGDocument": true,
+        // DOM Utilities
         "createSVGElement": true,
-        "useSVGSymbol": true,
 
         // URL Utilities
         "absoluteURL": true,
-        "parseQueryString": true,
-        "parseURL": true,
-        "parseSecurityOrigin": true,
-        "removeURLFragment": true,
         "decodeBase64ToBlob": true,
-        "relativePath": true,
         "parseDataURL": true,
         "parseLocationQueryParameters": true,
+        "parseQueryString": true,
+        "parseSecurityOrigin": true,
+        "parseURL": true,
+        "relativePath": true,
+        "removeURLFragment": true,
+
+        // Formatter Utilities
+        "isECMAScriptLineTerminator": true,
+        "isECMAScriptWhitespace": true,
+
+        // Debug
+        "handleInternalException": true,
+
+        // CodeMirror
+        "createCodeMirrorColorTextMarkers": true,
+        "createCodeMirrorCubicBezierTextMarkers": true,
+        "createCodeMirrorGradientTextMarkers": true,
+        "createCodeMirrorSpringTextMarkers": true,
     },
     "rules": {
         "array-bracket-spacing": [2, "never"],

@@ -23,12 +23,10 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.MemoryPressureEvent = class MemoryPressureEvent extends WebInspector.Object
+WI.MemoryPressureEvent = class MemoryPressureEvent
 {
     constructor(timestamp, severity)
     {
-        super();
-
         this._timestamp = timestamp;
         this._severity = severity;
     }
@@ -40,18 +38,35 @@ WebInspector.MemoryPressureEvent = class MemoryPressureEvent extends WebInspecto
         let severity;
         switch (protocolSeverity) {
         case MemoryAgent.MemoryPressureSeverity.Critical:
-            severity = WebInspector.MemoryPressureEvent.Severity.Critical;
+            severity = WI.MemoryPressureEvent.Severity.Critical;
             break;
         case MemoryAgent.MemoryPressureSeverity.NonCritical:
-            severity = WebInspector.MemoryPressureEvent.Severity.NonCritical;
+            severity = WI.MemoryPressureEvent.Severity.NonCritical;
             break;
         default:
             console.error("Unexpected memory pressure severity", protocolSeverity);
-            severity = WebInspector.MemoryPressureEvent.Severity.NonCritical;
+            severity = WI.MemoryPressureEvent.Severity.NonCritical;
             break;
         }
 
-        return new WebInspector.MemoryPressureEvent(timestamp, severity);
+        return new WI.MemoryPressureEvent(timestamp, severity);
+    }
+
+    // Import / Export
+
+
+    static fromJSON(json)
+    {
+        let {timestamp, severity} = json;
+        return new WI.MemoryPressureEvent(timestamp, severity);
+    }
+
+    toJSON()
+    {
+        return {
+            timestamp: this._timestamp,
+            severity: this._severity,
+        };
     }
 
     // Public
@@ -60,7 +75,7 @@ WebInspector.MemoryPressureEvent = class MemoryPressureEvent extends WebInspecto
     get severity() { return this._severity; }
 };
 
-WebInspector.MemoryPressureEvent.Severity = {
-    Critical: Symbol("Critical"),
-    NonCritical: Symbol("NonCritical"),
+WI.MemoryPressureEvent.Severity = {
+    Critical: "critical",
+    NonCritical: "non-critical",
 };

@@ -23,28 +23,33 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.PageObserver = class PageObserver
+WI.PageObserver = class PageObserver
 {
     // Events defined by the "Page" domain.
 
     domContentEventFired(timestamp)
     {
-        WebInspector.timelineManager.pageDOMContentLoadedEventFired(timestamp);
+        WI.timelineManager.pageDOMContentLoadedEventFired(timestamp);
     }
 
     loadEventFired(timestamp)
     {
-        WebInspector.timelineManager.pageLoadEventFired(timestamp);
+        WI.timelineManager.pageLoadEventFired(timestamp);
     }
 
     frameNavigated(frame, loaderId)
     {
-        WebInspector.frameResourceManager.frameDidNavigate(frame, loaderId);
+        WI.networkManager.frameDidNavigate(frame, loaderId);
     }
 
     frameDetached(frameId)
     {
-        WebInspector.frameResourceManager.frameDidDetach(frameId);
+        WI.networkManager.frameDidDetach(frameId);
+    }
+
+    defaultAppearanceDidChange(appearance)
+    {
+        WI.cssManager.defaultAppearanceDidChange(appearance);
     }
 
     frameStartedLoading(frameId)

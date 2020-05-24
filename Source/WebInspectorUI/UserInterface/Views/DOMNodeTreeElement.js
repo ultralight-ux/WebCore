@@ -23,22 +23,31 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DOMNodeTreeElement = class DOMNodeTreeElement extends WebInspector.GeneralTreeElement
+WI.DOMNodeTreeElement = class DOMNodeTreeElement extends WI.GeneralTreeElement
 {
     constructor(domNode)
     {
-        console.assert(domNode instanceof WebInspector.DOMNode);
+        console.assert(domNode instanceof WI.DOMNode);
 
-        super("dom-node", domNode.displayName, null, domNode, true);
+        const subtitle = null;
+        super("dom-node", domNode.displayName, subtitle, domNode, {hasChildren: true});
 
-        this.status = WebInspector.linkifyNodeReferenceElement(domNode, WebInspector.createGoToArrowButton());
+        this.status = WI.linkifyNodeReferenceElement(domNode, WI.createGoToArrowButton());
+        this.tooltipHandledSeparately = true;
     }
 
     // Protected
 
     ondelete()
     {
-        WebInspector.domDebuggerManager.removeDOMBreakpointsForNode(this.representedObject);
+        // We set this flag so that TreeOutlines that will remove this
+        // BreakpointTreeElement will know whether it was deleted from
+        // within the TreeOutline or from outside it (e.g. TextEditor).
+        this.__deletedViaDeleteKeyboardShortcut = true;
+
+        WI.domDebuggerManager.removeDOMBreakpointsForNode(this.representedObject);
+        WI.domManager.removeEventListenerBreakpointsForNode(this.representedObject);
+
         return true;
     }
 
@@ -46,13 +55,12 @@ WebInspector.DOMNodeTreeElement = class DOMNodeTreeElement extends WebInspector.
     {
         contextMenu.appendSeparator();
 
-        const allowEditing = true;
-        WebInspector.DOMBreakpointTreeController.appendBreakpointContextMenuItems(contextMenu, this.representedObject, allowEditing);
+        WI.appendContextMenuItemsForDOMNodeBreakpoints(contextMenu, this.representedObject);
 
         contextMenu.appendSeparator();
 
-        contextMenu.appendItem(WebInspector.UIString("Reveal in DOM Tree"), () => {
-            WebInspector.domTreeManager.inspectElement(this.representedObject.id);
+        contextMenu.appendItem(WI.repeatedUIString.revealInDOMTree(), () => {
+            WI.domManager.inspectElement(this.representedObject.id);
         });
     }
 };

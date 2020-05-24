@@ -23,13 +23,13 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SourceCodeTreeElement = class SourceCodeTreeElement extends WebInspector.FolderizedTreeElement
+WI.SourceCodeTreeElement = class SourceCodeTreeElement extends WI.FolderizedTreeElement
 {
-    constructor(sourceCode, classNames, title, subtitle, representedObject, hasChildren)
+    constructor(sourceCode, classNames, title, subtitle, representedObject)
     {
-        console.assert(sourceCode instanceof WebInspector.SourceCode);
+        console.assert(sourceCode instanceof WI.SourceCode);
 
-        super(classNames, title, subtitle, representedObject || sourceCode, hasChildren);
+        super(classNames, title, subtitle, representedObject || sourceCode);
 
         this._updateSourceCode(sourceCode);
     }
@@ -80,7 +80,7 @@ WebInspector.SourceCodeTreeElement = class SourceCodeTreeElement extends WebInsp
             components.push(topFolder.mainTitle);
 
             var folderName = components.reverse().join("/");
-            var newFolder = new WebInspector.FolderTreeElement(folderName);
+            var newFolder = new WI.FolderTreeElement(folderName);
 
             var folderIndex = topFolder.parent.children.indexOf(topFolder);
             topFolder.parent.insertChild(newFolder, folderIndex);
@@ -94,7 +94,7 @@ WebInspector.SourceCodeTreeElement = class SourceCodeTreeElement extends WebInsp
 
         function findAndCombineFolderChains(treeElement, previousSingleTreeElement)
         {
-            if (!(treeElement instanceof WebInspector.FolderTreeElement)) {
+            if (!(treeElement instanceof WI.FolderTreeElement)) {
                 if (previousSingleTreeElement && previousSingleTreeElement !== treeElement.parent)
                     combineFolderChain(previousSingleTreeElement, treeElement.parent);
                 return;
@@ -119,8 +119,8 @@ WebInspector.SourceCodeTreeElement = class SourceCodeTreeElement extends WebInsp
                 var sourceMapResource = sourceMap.resources[j];
                 var relativeSubpath = sourceMapResource.sourceMapDisplaySubpath;
                 var folderTreeElement = this.createFoldersAsNeededForSubpath(relativeSubpath);
-                var sourceMapTreeElement = new WebInspector.SourceMapResourceTreeElement(sourceMapResource);
-                folderTreeElement.insertChild(sourceMapTreeElement, insertionIndexForObjectInListSortedByFunction(sourceMapTreeElement, folderTreeElement.children, WebInspector.ResourceTreeElement.compareFolderAndResourceTreeElements));
+                var sourceMapTreeElement = new WI.SourceMapResourceTreeElement(sourceMapResource);
+                folderTreeElement.insertChild(sourceMapTreeElement, insertionIndexForObjectInListSortedByFunction(sourceMapTreeElement, folderTreeElement.children, WI.ResourceTreeElement.compareFolderAndResourceTreeElements));
             }
         }
 
@@ -129,43 +129,6 @@ WebInspector.SourceCodeTreeElement = class SourceCodeTreeElement extends WebInsp
     }
 
     // Protected
-
-    createFoldersAsNeededForSubpath(subpath)
-    {
-        if (!subpath)
-            return this;
-
-        var components = subpath.split("/");
-        if (components.length === 1)
-            return this;
-
-        if (!this._subpathFolderTreeElementMap)
-            this._subpathFolderTreeElementMap = {};
-
-        var currentPath = "";
-        var currentFolderTreeElement = this;
-
-        for (var i = 0; i < components.length - 1; ++i) {
-            var componentName = components[i];
-            currentPath += (i ? "/" : "") + componentName;
-
-            var cachedFolder = this._subpathFolderTreeElementMap[currentPath];
-            if (cachedFolder) {
-                currentFolderTreeElement = cachedFolder;
-                continue;
-            }
-
-            var newFolder = new WebInspector.FolderTreeElement(componentName);
-            newFolder.__path = currentPath;
-            this._subpathFolderTreeElementMap[currentPath] = newFolder;
-
-            var index = insertionIndexForObjectInListSortedByFunction(newFolder, currentFolderTreeElement.children, WebInspector.ResourceTreeElement.compareFolderAndResourceTreeElements);
-            currentFolderTreeElement.insertChild(newFolder, index);
-            currentFolderTreeElement = newFolder;
-        }
-
-        return currentFolderTreeElement;
-    }
 
     descendantResourceTreeElementTypeDidChange(childTreeElement, oldType)
     {
@@ -179,28 +142,28 @@ WebInspector.SourceCodeTreeElement = class SourceCodeTreeElement extends WebInsp
         let wasSelected = childTreeElement.selected;
 
         parentTreeElement.removeChild(childTreeElement, true, true);
-        parentTreeElement.insertChild(childTreeElement, insertionIndexForObjectInListSortedByFunction(childTreeElement, parentTreeElement.children, WebInspector.ResourceTreeElement.compareFolderAndResourceTreeElements));
+        parentTreeElement.insertChild(childTreeElement, insertionIndexForObjectInListSortedByFunction(childTreeElement, parentTreeElement.children, WI.ResourceTreeElement.compareFolderAndResourceTreeElements));
 
         if (wasParentExpanded)
             parentTreeElement.expand();
         if (wasSelected)
-            childTreeElement.revealAndSelect(true, false, true, true);
+            childTreeElement.revealAndSelect(true, false, true);
     }
 
     // Protected (ResourceTreeElement calls this when its Resource changes dynamically for Frames)
 
     _updateSourceCode(sourceCode)
     {
-        console.assert(sourceCode instanceof WebInspector.SourceCode);
+        console.assert(sourceCode instanceof WI.SourceCode);
 
         if (this._sourceCode === sourceCode)
             return;
 
         if (this._sourceCode)
-            this._sourceCode.removeEventListener(WebInspector.SourceCode.Event.SourceMapAdded, this.updateSourceMapResources, this);
+            this._sourceCode.removeEventListener(WI.SourceCode.Event.SourceMapAdded, this.updateSourceMapResources, this);
 
         this._sourceCode = sourceCode;
-        this._sourceCode.addEventListener(WebInspector.SourceCode.Event.SourceMapAdded, this.updateSourceMapResources, this);
+        this._sourceCode.addEventListener(WI.SourceCode.Event.SourceMapAdded, this.updateSourceMapResources, this);
 
         this.updateSourceMapResources();
     }

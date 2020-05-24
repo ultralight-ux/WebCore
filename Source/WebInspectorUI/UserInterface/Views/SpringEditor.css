@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Devin Rousso <dcrousso+webkit@gmail.com>. All rights reserved.
+ * Copyright (C) 2016 Devin Rousso <webkit@devinrousso.com>. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,14 +33,14 @@
     width: calc(100% - 10px);
     height: 25px;
     margin: 5px var(--spring-editor-horizontal-margin) 0;
-    border-bottom: 1px solid lightgrey;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .spring-editor > .spring-preview > div {
     position: relative;
     width: 20px;
     height: 20px;
-    background-color: var(--selected-background-color);
+    background-color: var(--glyph-color-active);
     border-radius: 50%;
 }
 
@@ -57,7 +57,7 @@
     width: 0;
     border-left: 4px solid transparent;
     border-right: 4px solid transparent;
-    border-top: 4px solid black;
+    border-top: 4px solid var(--text-color);
     transition-timing-function: linear;
 }
 

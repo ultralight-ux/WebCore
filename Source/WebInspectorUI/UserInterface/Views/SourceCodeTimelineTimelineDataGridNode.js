@@ -23,14 +23,15 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SourceCodeTimelineTimelineDataGridNode = class SourceCodeTimelineTimelineDataGridNode extends WebInspector.TimelineDataGridNode
+WI.SourceCodeTimelineTimelineDataGridNode = class SourceCodeTimelineTimelineDataGridNode extends WI.TimelineDataGridNode
 {
-    constructor(sourceCodeTimeline, graphDataSource)
+    constructor(sourceCodeTimeline, options = {})
     {
-        super(true, graphDataSource);
+        const records = [];
+        super(records, {includesGraph: true, ...options});
 
         this._sourceCodeTimeline = sourceCodeTimeline;
-        this._sourceCodeTimeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._timelineRecordAdded, this);
+        this._sourceCodeTimeline.addEventListener(WI.Timeline.Event.RecordAdded, this._timelineRecordAdded, this);
     }
 
     // Public
@@ -47,7 +48,12 @@ WebInspector.SourceCodeTimelineTimelineDataGridNode = class SourceCodeTimelineTi
 
     get data()
     {
-        return {graph: this._sourceCodeTimeline.startTime};
+        if (this._cachedData)
+            return this._cachedData;
+
+        this._cachedData = super.data;
+        this._cachedData.graph = this._sourceCodeTimeline.startTime;
+        return this._cachedData;
     }
 
     createCellContent(columnIdentifier, cell)
@@ -85,14 +91,14 @@ WebInspector.SourceCodeTimelineTimelineDataGridNode = class SourceCodeTimelineTi
         if (sourceCodeLocation) {
             let subtitleElement = document.createElement("span");
             subtitleElement.classList.add("subtitle");
-            sourceCodeLocation.populateLiveDisplayLocationString(subtitleElement, "textContent", null, WebInspector.SourceCodeLocation.NameStyle.None, WebInspector.UIString("line "));
+            sourceCodeLocation.populateLiveDisplayLocationString(subtitleElement, "textContent", null, WI.SourceCodeLocation.NameStyle.None, WI.UIString("line "));
 
             const options = {
                 useGoToArrowButton: true,
                 ignoreNetworkTab: true,
                 ignoreSearchTab: true,
             };
-            let goToArrowButtonLink = WebInspector.createSourceCodeLocationLink(sourceCodeLocation, options);
+            let goToArrowButtonLink = WI.createSourceCodeLocationLink(sourceCodeLocation, options);
             fragment.append(goToArrowButtonLink, subtitleElement);
 
             // Give the whole cell a tooltip and keep it up to date.

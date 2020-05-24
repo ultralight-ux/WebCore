@@ -23,11 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WebInspector.DetailsSectionRow
+WI.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends WI.DetailsSectionRow
 {
     constructor()
     {
-        super(WebInspector.UIString("No Box Model Information"));
+        super(WI.UIString("No Box Model Information"));
 
         this.element.classList.add("box-model");
 
@@ -44,11 +44,11 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
     set nodeStyles(nodeStyles)
     {
         if (this._nodeStyles && this._nodeStyles.computedStyle)
-            this._nodeStyles.computedStyle.removeEventListener(WebInspector.CSSStyleDeclaration.Event.PropertiesChanged, this._refresh, this);
+            this._nodeStyles.computedStyle.removeEventListener(WI.CSSStyleDeclaration.Event.PropertiesChanged, this._refresh, this);
 
         this._nodeStyles = nodeStyles;
         if (this._nodeStyles && this._nodeStyles.computedStyle)
-            this._nodeStyles.computedStyle.addEventListener(WebInspector.CSSStyleDeclaration.Event.PropertiesChanged, this._refresh, this);
+            this._nodeStyles.computedStyle.addEventListener(WI.CSSStyleDeclaration.Event.PropertiesChanged, this._refresh, this);
 
         this._refresh();
     }
@@ -94,10 +94,10 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
             if (this._highlightMode === mode)
                 return;
             this._highlightMode = mode;
-            WebInspector.domTreeManager.highlightDOMNode(nodeId, mode);
+            WI.domManager.highlightDOMNode(nodeId, mode);
         } else {
             this._highlightMode = null;
-            WebInspector.domTreeManager.hideDOMNodeHighlight();
+            WI.domManager.hideDOMNodeHighlight();
         }
 
         for (var i = 0; this._boxElements && i < this._boxElements.length; ++i) {
@@ -137,7 +137,11 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
         {
             let suffix = this._getComponentSuffix(name);
             let propertyName = (name !== "position" ? name + "-" : "") + side + suffix;
-            let value = style.propertyForName(propertyName).value;
+            let property = style.propertyForName(propertyName);
+            if (!property)
+                return null;
+
+            let value = property.value;
             if (value === "" || (name !== "position" && value === "0px") || (name === "position" && value === "auto"))
                 value = "";
             else
@@ -152,7 +156,11 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
         {
             console.assert(name === "width" || name === "height");
 
-            let size = style.propertyForName(name).value.replace(/px$/, "");
+            let property = style.propertyForName(name);
+            if (!property)
+                return null;
+
+            let size = property.value.replace(/px$/, "");
             if (style.propertyForName("box-sizing").value === "border-box") {
                 let borderBox = this._getBox(style, "border");
                 let paddingBox = this._getBox(style, "padding");
@@ -192,21 +200,29 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
 
         this._boxElements = [];
 
-        if (!style.hasProperties()) {
+        if (style.enabledProperties.length === 0) {
+            this.showEmptyMessage();
+            return;
+        }
+
+        let displayProperty = style.propertyForName("display");
+        let positionProperty = style.propertyForName("position");
+        if (!displayProperty || !positionProperty) {
             this.showEmptyMessage();
             return;
         }
 
         var previousBox = null;
         for (let name of ["content", "padding", "border", "margin", "position"]) {
-            if (name === "margin" && noMarginDisplayType[style.propertyForName("display").value])
+
+            if (name === "margin" && noMarginDisplayType[displayProperty.value])
                 continue;
-            if (name === "padding" && noPaddingDisplayType[style.propertyForName("display").value])
+            if (name === "padding" && noPaddingDisplayType[displayProperty.value])
                 continue;
-            if (name === "position" && noPositionType[style.propertyForName("position").value])
+            if (name === "position" && noPositionType[positionProperty.value])
                 continue;
 
-            var boxElement = document.createElement("div");
+            let boxElement = document.createElement("div");
             boxElement.className = name;
             boxElement._name = name;
             boxElement.addEventListener("mouseover", this._highlightDOMNode.bind(this, true, name === "position" ? "all" : name), false);
@@ -215,23 +231,37 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
             if (name === "content") {
                 let widthElement = createContentAreaElement.call(this, "width");
                 let heightElement = createContentAreaElement.call(this, "height");
+                if (!widthElement || !heightElement) {
+                    this.showEmptyMessage();
+                    return;
+                }
+
                 boxElement.append(widthElement, " \u00D7 ", heightElement);
             } else {
-                var labelElement = document.createElement("div");
+                let topElement = createBoxPartElement.call(this, name, "top");
+                let leftElement = createBoxPartElement.call(this, name, "left");
+                let rightElement = createBoxPartElement.call(this, name, "right");
+                let bottomElement = createBoxPartElement.call(this, name, "bottom");
+                if (!topElement || !leftElement || !rightElement || !bottomElement) {
+                    this.showEmptyMessage();
+                    return;
+                }
+
+                let labelElement = document.createElement("div");
                 labelElement.className = "label";
                 labelElement.textContent = name;
                 boxElement.appendChild(labelElement);
 
-                boxElement.appendChild(createBoxPartElement.call(this, name, "top"));
+                boxElement.appendChild(topElement);
                 boxElement.appendChild(document.createElement("br"));
-                boxElement.appendChild(createBoxPartElement.call(this, name, "left"));
+                boxElement.appendChild(leftElement);
 
                 if (previousBox)
                     boxElement.appendChild(previousBox);
 
-                boxElement.appendChild(createBoxPartElement.call(this, name, "right"));
+                boxElement.appendChild(rightElement);
                 boxElement.appendChild(document.createElement("br"));
-                boxElement.appendChild(createBoxPartElement.call(this, name, "bottom"));
+                boxElement.appendChild(bottomElement);
             }
 
             previousBox = boxElement;
@@ -246,7 +276,7 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
 
     _startEditing(targetElement, box, styleProperty, computedStyle)
     {
-        if (WebInspector.isBeingEdited(targetElement))
+        if (WI.isBeingEdited(targetElement))
             return;
 
         // If the target element has a title use it as the editing value
@@ -261,8 +291,8 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
 
         this._isEditingMetrics = true;
 
-        var config = new WebInspector.EditingConfig(this._editingCommitted.bind(this), this._editingCancelled.bind(this), context);
-        WebInspector.startEditing(targetElement, config);
+        var config = new WI.EditingConfig(this._editingCommitted.bind(this), this._editingCancelled.bind(this), context);
+        WI.startEditing(targetElement, config);
 
         window.getSelection().setBaseAndExtent(targetElement, 0, targetElement, 1);
     }
@@ -287,7 +317,7 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
         // Make the new number and constrain it to a precision of 6, this matches numbers the engine returns.
         // Use the Number constructor to forget the fixed precision, so 1.100000 will print as 1.1.
         var result = Number((number + changeAmount).toFixed(6));
-        if (!String(result).match(WebInspector.EditingSupport.NumberRegex))
+        if (!String(result).match(WI.EditingSupport.NumberRegex))
             return null;
 
         return result;
@@ -305,14 +335,15 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
             return;
 
         var selectionRange = selection.getRangeAt(0);
-        if (!selectionRange.commonAncestorContainer.isSelfOrDescendant(element))
+        console.assert(selectionRange, "We should have a range if we are handling a key down event");
+        if (!element.contains(selectionRange.commonAncestorContainer))
             return;
 
         var originalValue = element.textContent;
-        var wordRange = selectionRange.startContainer.rangeOfWord(selectionRange.startOffset, WebInspector.EditingSupport.StyleValueDelimiters, element);
+        var wordRange = selectionRange.startContainer.rangeOfWord(selectionRange.startOffset, WI.EditingSupport.StyleValueDelimiters, element);
         var wordString = wordRange.toString();
 
-        var matches = WebInspector.EditingSupport.NumberRegex.exec(wordString);
+        var matches = WI.EditingSupport.NumberRegex.exec(wordString);
         var replacementString;
         if (matches && matches.length) {
             var prefix = matches[1];
@@ -404,26 +435,18 @@ WebInspector.BoxModelDetailsSectionRow = class BoxModelDetailsSectionRow extends
             userInput = userValuePx + "px";
         }
 
-        function resolvedNode(object)
-        {
-            if (!object)
-                return;
-
-            function toggleInlineStyleProperty(property, value)
-            {
+        WI.RemoteObject.resolveNode(this._nodeStyles.node).then((object) => {
+            function inspectedPage_node_toggleInlineStyleProperty(property, value) {
                 this.style.setProperty(property, value, "important");
             }
 
-            function didToggle()
-            {
+            let didToggle = () => {
                 this._nodeStyles.refresh();
-            }
+            };
 
-            object.callFunction(toggleInlineStyleProperty, [styleProperty, userInput], false, didToggle.bind(this));
+            object.callFunction(inspectedPage_node_toggleInlineStyleProperty, [styleProperty, userInput], false, didToggle);
             object.release();
-        }
-
-        WebInspector.RemoteObject.resolveNode(this._nodeStyles.node, "", resolvedNode.bind(this));
+        });
     }
 
     _editingCommitted(element, userInput, previousContent, context)

@@ -23,77 +23,108 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DOMObserver = class DOMObserver
+WI.DOMObserver = class DOMObserver
 {
     // Events defined by the "DOM" domain.
 
     documentUpdated()
     {
-        WebInspector.domTreeManager._documentUpdated();
+        WI.domManager._documentUpdated();
     }
 
-    setChildNodes(parentId, payloads)
+    inspect(nodeId)
     {
-        WebInspector.domTreeManager._setChildNodes(parentId, payloads);
+        WI.domManager.inspectElement(nodeId);
+    }
+
+    setChildNodes(parentId, nodes)
+    {
+        WI.domManager._setChildNodes(parentId, nodes);
     }
 
     attributeModified(nodeId, name, value)
     {
-        WebInspector.domTreeManager._attributeModified(nodeId, name, value);
+        WI.domManager._attributeModified(nodeId, name, value);
     }
 
     attributeRemoved(nodeId, name)
     {
-        WebInspector.domTreeManager._attributeRemoved(nodeId, name);
+        WI.domManager._attributeRemoved(nodeId, name);
     }
 
     inlineStyleInvalidated(nodeIds)
     {
-        WebInspector.domTreeManager._inlineStyleInvalidated(nodeIds);
+        WI.domManager._inlineStyleInvalidated(nodeIds);
     }
 
     characterDataModified(nodeId, characterData)
     {
-        WebInspector.domTreeManager._characterDataModified(nodeId, characterData);
+        WI.domManager._characterDataModified(nodeId, characterData);
     }
 
     childNodeCountUpdated(nodeId, childNodeCount)
     {
-        WebInspector.domTreeManager._childNodeCountUpdated(nodeId, childNodeCount);
+        WI.domManager._childNodeCountUpdated(nodeId, childNodeCount);
     }
 
-    childNodeInserted(parentNodeId, previousNodeId, payload)
+    childNodeInserted(parentNodeId, previousNodeId, node)
     {
-        WebInspector.domTreeManager._childNodeInserted(parentNodeId, previousNodeId, payload);
+        WI.domManager._childNodeInserted(parentNodeId, previousNodeId, node);
     }
 
     childNodeRemoved(parentNodeId, nodeId)
     {
-        WebInspector.domTreeManager._childNodeRemoved(parentNodeId, nodeId);
+        WI.domManager._childNodeRemoved(parentNodeId, nodeId);
     }
 
-    shadowRootPushed(parentNodeId, nodeId)
+    shadowRootPushed(hostId, root)
     {
-        WebInspector.domTreeManager._childNodeInserted(parentNodeId, 0, nodeId);
+        WI.domManager._childNodeInserted(hostId, 0, root);
     }
 
-    shadowRootPopped(parentNodeId, nodeId)
+    shadowRootPopped(hostId, rootId)
     {
-        WebInspector.domTreeManager._childNodeRemoved(parentNodeId, nodeId);
+        WI.domManager._childNodeRemoved(hostId, rootId);
     }
 
     customElementStateChanged(nodeId, customElementState)
     {
-        WebInspector.domTreeManager._customElementStateChanged(nodeId, customElementState);
+        WI.domManager._customElementStateChanged(nodeId, customElementState);
     }
 
     pseudoElementAdded(parentNodeId, pseudoElement)
     {
-        WebInspector.domTreeManager._pseudoElementAdded(parentNodeId, pseudoElement);
+        WI.domManager._pseudoElementAdded(parentNodeId, pseudoElement);
     }
 
     pseudoElementRemoved(parentNodeId, pseudoElementId)
     {
-        WebInspector.domTreeManager._pseudoElementRemoved(parentNodeId, pseudoElementId);
+        WI.domManager._pseudoElementRemoved(parentNodeId, pseudoElementId);
+    }
+
+    didAddEventListener(nodeId)
+    {
+        WI.domManager.didAddEventListener(nodeId);
+    }
+
+    willRemoveEventListener(nodeId)
+    {
+        WI.domManager.willRemoveEventListener(nodeId);
+    }
+
+    didFireEvent(nodeId, eventName, timestamp, data)
+    {
+        WI.domManager.didFireEvent(nodeId, eventName, timestamp, data);
+    }
+
+    videoLowPowerChanged(nodeId, timestamp, isLowPower)
+    {
+        // COMPATIBILITY (iOS 12.2): DOM.videoLowPowerChanged was renamed to DOM.powerEfficientPlaybackStateChanged.
+        WI.domManager.powerEfficientPlaybackStateChanged(nodeId, timestamp, isLowPower);
+    }
+
+    powerEfficientPlaybackStateChanged(nodeId, timestamp, isPowerEfficient)
+    {
+        WI.domManager.powerEfficientPlaybackStateChanged(nodeId, timestamp, isPowerEfficient);
     }
 };

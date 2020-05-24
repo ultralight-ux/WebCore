@@ -23,17 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.LayoutTimelineRecord = class LayoutTimelineRecord extends WebInspector.TimelineRecord
+WI.LayoutTimelineRecord = class LayoutTimelineRecord extends WI.TimelineRecord
 {
     constructor(eventType, startTime, endTime, callFrames, sourceCodeLocation, quad)
     {
-        super(WebInspector.TimelineRecord.Type.Layout, startTime, endTime, callFrames, sourceCodeLocation);
+        super(WI.TimelineRecord.Type.Layout, startTime, endTime, callFrames, sourceCodeLocation);
 
         console.assert(eventType);
-        console.assert(!quad || quad instanceof WebInspector.Quad);
+        console.assert(!quad || quad instanceof WI.Quad);
 
-        if (eventType in WebInspector.LayoutTimelineRecord.EventType)
-            eventType = WebInspector.LayoutTimelineRecord.EventType[eventType];
+        if (eventType in WI.LayoutTimelineRecord.EventType)
+            eventType = WI.LayoutTimelineRecord.EventType[eventType];
 
         this._eventType = eventType;
         this._quad = quad || null;
@@ -44,20 +44,43 @@ WebInspector.LayoutTimelineRecord = class LayoutTimelineRecord extends WebInspec
     static displayNameForEventType(eventType)
     {
         switch (eventType) {
-        case WebInspector.LayoutTimelineRecord.EventType.InvalidateStyles:
-            return WebInspector.UIString("Styles Invalidated");
-        case WebInspector.LayoutTimelineRecord.EventType.RecalculateStyles:
-            return WebInspector.UIString("Styles Recalculated");
-        case WebInspector.LayoutTimelineRecord.EventType.InvalidateLayout:
-            return WebInspector.UIString("Layout Invalidated");
-        case WebInspector.LayoutTimelineRecord.EventType.ForcedLayout:
-            return WebInspector.UIString("Forced Layout");
-        case WebInspector.LayoutTimelineRecord.EventType.Layout:
-            return WebInspector.UIString("Layout");
-        case WebInspector.LayoutTimelineRecord.EventType.Paint:
-            return WebInspector.UIString("Paint");
-        case WebInspector.LayoutTimelineRecord.EventType.Composite:
-            return WebInspector.UIString("Composite");
+        case WI.LayoutTimelineRecord.EventType.InvalidateStyles:
+            return WI.UIString("Styles Invalidated");
+        case WI.LayoutTimelineRecord.EventType.RecalculateStyles:
+            return WI.UIString("Styles Recalculated");
+        case WI.LayoutTimelineRecord.EventType.InvalidateLayout:
+            return WI.UIString("Layout Invalidated");
+        case WI.LayoutTimelineRecord.EventType.ForcedLayout:
+            return WI.UIString("Forced Layout", "Layout phase records that were imperative (forced)");
+        case WI.LayoutTimelineRecord.EventType.Layout:
+            return WI.repeatedUIString.timelineRecordLayout();
+        case WI.LayoutTimelineRecord.EventType.Paint:
+            return WI.repeatedUIString.timelineRecordPaint();
+        case WI.LayoutTimelineRecord.EventType.Composite:
+            return WI.repeatedUIString.timelineRecordComposite();
+        }
+    }
+
+    // Import / Export
+
+    static fromJSON(json)
+    {
+        let {eventType, startTime, endTime, callFrames, sourceCodeLocation, quad} = json;
+        quad = quad ? WI.Quad.fromJSON(quad) : null;
+        return new WI.LayoutTimelineRecord(eventType, startTime, endTime, callFrames, sourceCodeLocation, quad);
+    }
+
+    toJSON()
+    {
+        // FIXME: CallFrames
+        // FIXME: SourceCodeLocation
+
+        return {
+            type: this.type,
+            eventType: this._eventType,
+            startTime: this.startTime,
+            endTime: this.endTime,
+            quad: this._quad || undefined,
         }
     }
 
@@ -92,19 +115,19 @@ WebInspector.LayoutTimelineRecord = class LayoutTimelineRecord extends WebInspec
     {
         super.saveIdentityToCookie(cookie);
 
-        cookie[WebInspector.LayoutTimelineRecord.EventTypeCookieKey] = this._eventType;
+        cookie[WI.LayoutTimelineRecord.EventTypeCookieKey] = this._eventType;
     }
 };
 
-WebInspector.LayoutTimelineRecord.EventType = {
-    InvalidateStyles: "layout-timeline-record-invalidate-styles",
-    RecalculateStyles: "layout-timeline-record-recalculate-styles",
-    InvalidateLayout: "layout-timeline-record-invalidate-layout",
-    ForcedLayout: "layout-timeline-record-forced-layout",
-    Layout: "layout-timeline-record-layout",
-    Paint: "layout-timeline-record-paint",
-    Composite: "layout-timeline-record-composite"
+WI.LayoutTimelineRecord.EventType = {
+    InvalidateStyles: "invalidate-styles",
+    RecalculateStyles: "recalculate-styles",
+    InvalidateLayout: "invalidate-layout",
+    ForcedLayout: "forced-layout",
+    Layout: "layout",
+    Paint: "paint",
+    Composite: "composite"
 };
 
-WebInspector.LayoutTimelineRecord.TypeIdentifier = "layout-timeline-record";
-WebInspector.LayoutTimelineRecord.EventTypeCookieKey = "layout-timeline-record-event-type";
+WI.LayoutTimelineRecord.TypeIdentifier = "layout-timeline-record";
+WI.LayoutTimelineRecord.EventTypeCookieKey = "layout-timeline-record-event-type";

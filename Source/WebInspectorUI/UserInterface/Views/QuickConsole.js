@@ -23,27 +23,33 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
+WI.QuickConsole = class QuickConsole extends WI.View
 {
     constructor(element)
     {
         super(element);
 
-        this._toggleOrFocusKeyboardShortcut = new WebInspector.KeyboardShortcut(null, WebInspector.KeyboardShortcut.Key.Escape, this._toggleOrFocus.bind(this));
+        this._toggleOrFocusKeyboardShortcut = new WI.KeyboardShortcut(null, WI.KeyboardShortcut.Key.Escape, this._toggleOrFocus.bind(this));
+        this._toggleOrFocusKeyboardShortcut.implicitlyPreventsDefault = false;
 
-        this._mainExecutionContextPathComponent = this._createExecutionContextPathComponent(WebInspector.mainTarget.executionContext);
+        this._automaticExecutionContextPathComponent = this._createExecutionContextPathComponent(null, WI.UIString("Auto"));
+        this._automaticExecutionContextPathComponent.tooltip = WI.UIString("Execution context for $0");
 
+        this._mainExecutionContextPathComponent = null;
         this._otherExecutionContextPathComponents = [];
+
         this._frameToPathComponent = new Map;
         this._targetToPathComponent = new Map;
 
+        this._shouldAutomaticallySelectExecutionContext = true;
         this._restoreSelectedExecutionContextForFrame = false;
 
         this.element.classList.add("quick-console");
         this.element.addEventListener("mousedown", this._handleMouseDown.bind(this));
+        this.element.addEventListener("dragover", this._handleDragOver.bind(this));
+        this.element.addEventListener("drop", this._handleDrop.bind(this), true); // Ensure that dropping a DOM node doesn't copy text.
 
-        this.prompt = new WebInspector.ConsolePrompt(null, "text/javascript");
-        this.prompt.element.classList.add("text-prompt");
+        this.prompt = new WI.ConsolePrompt(null, "text/javascript");
         this.addSubview(this.prompt);
 
         // FIXME: CodeMirror 4 has a default "Esc" key handler that always prevents default.
@@ -51,33 +57,36 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
         // and not toggle the console. Install our own Escape key handler that will trigger
         // when the ConsolePrompt is empty, to restore toggling behavior. A better solution
         // would be for CodeMirror's event handler to pass if it doesn't do anything.
-        this.prompt.escapeKeyHandlerWhenEmpty = function() { WebInspector.toggleSplitConsole(); };
+        this.prompt.escapeKeyHandlerWhenEmpty = function() { WI.toggleSplitConsole(); };
 
-        this._navigationBar = new WebInspector.QuickConsoleNavigationBar;
+        this._navigationBar = new WI.QuickConsoleNavigationBar;
         this.addSubview(this._navigationBar);
 
-        this._executionContextSelectorItem = new WebInspector.HierarchicalPathNavigationItem;
+        this._executionContextSelectorItem = new WI.HierarchicalPathNavigationItem;
         this._executionContextSelectorItem.showSelectorArrows = true;
         this._navigationBar.addNavigationItem(this._executionContextSelectorItem);
 
-        this._executionContextSelectorDivider = new WebInspector.DividerNavigationItem;
+        this._executionContextSelectorDivider = new WI.DividerNavigationItem;
         this._navigationBar.addNavigationItem(this._executionContextSelectorDivider);
 
-        this._rebuildExecutionContextPathComponents();
+        this.initializeMainExecutionContextPathComponent();
 
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.PageExecutionContextChanged, this._framePageExecutionContextsChanged, this);
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.ExecutionContextsCleared, this._frameExecutionContextsCleared, this);
+        WI.consoleDrawer.toggleButtonShortcutTooltip(this._toggleOrFocusKeyboardShortcut);
+        WI.consoleDrawer.addEventListener(WI.ConsoleDrawer.Event.CollapsedStateChanged, this._updateStyles, this);
 
-        WebInspector.debuggerManager.addEventListener(WebInspector.DebuggerManager.Event.ActiveCallFrameDidChange, this._debuggerActiveCallFrameDidChange, this);
+        WI.Frame.addEventListener(WI.Frame.Event.PageExecutionContextChanged, this._framePageExecutionContextsChanged, this);
+        WI.Frame.addEventListener(WI.Frame.Event.ExecutionContextsCleared, this._frameExecutionContextsCleared, this);
 
-        WebInspector.runtimeManager.addEventListener(WebInspector.RuntimeManager.Event.ActiveExecutionContextChanged, this._activeExecutionContextChanged, this);
+        WI.debuggerManager.addEventListener(WI.DebuggerManager.Event.ActiveCallFrameDidChange, this._debuggerActiveCallFrameDidChange, this);
 
-        WebInspector.targetManager.addEventListener(WebInspector.TargetManager.Event.TargetAdded, this._targetAdded, this);
-        WebInspector.targetManager.addEventListener(WebInspector.TargetManager.Event.TargetRemoved, this._targetRemoved, this);
+        WI.runtimeManager.addEventListener(WI.RuntimeManager.Event.ActiveExecutionContextChanged, this._activeExecutionContextChanged, this);
 
-        WebInspector.consoleDrawer.addEventListener(WebInspector.ConsoleDrawer.Event.CollapsedStateChanged, this._updateStyles, this);
+        WI.targetManager.addEventListener(WI.TargetManager.Event.TargetAdded, this._targetAdded, this);
+        WI.targetManager.addEventListener(WI.TargetManager.Event.TargetRemoved, this._targetRemoved, this);
 
-        WebInspector.TabBrowser.addEventListener(WebInspector.TabBrowser.Event.SelectedTabContentViewDidChange, this._updateStyles, this);
+        WI.domManager.addEventListener(WI.DOMManager.Event.InspectedNodeChanged, this._handleInspectedNodeChanged, this);
+
+        WI.TabBrowser.addEventListener(WI.TabBrowser.Event.SelectedTabContentViewDidChange, this._updateStyles, this);
     }
 
     // Public
@@ -87,14 +96,31 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
         return this._navigationBar;
     }
 
-    get selectedExecutionContext()
+    closed()
     {
-        return WebInspector.runtimeManager.activeExecutionContext;
+        WI.Frame.removeEventListener(null, null, this);
+        WI.debuggerManager.removeEventListener(null, null, this);
+        WI.runtimeManager.removeEventListener(null, null, this);
+        WI.targetManager.removeEventListener(null, null, this);
+        WI.consoleDrawer.removeEventListener(null, null, this);
+        WI.TabBrowser.removeEventListener(null, null, this);
+
+        super.closed();
     }
 
-    set selectedExecutionContext(executionContext)
+    initializeMainExecutionContextPathComponent()
     {
-        WebInspector.runtimeManager.activeExecutionContext = executionContext;
+        if (!WI.mainTarget || !WI.mainTarget.executionContext)
+            return;
+
+        this._mainExecutionContextPathComponent = this._createExecutionContextPathComponent(WI.mainTarget.executionContext);
+        this._mainExecutionContextPathComponent.previousSibling = this._automaticExecutionContextPathComponent;
+
+        this._automaticExecutionContextPathComponent.nextSibling = this._mainExecutionContextPathComponent;
+
+        this._shouldAutomaticallySelectExecutionContext = true;
+        this._selectExecutionContext(WI.mainTarget.executionContext);
+        this._rebuildExecutionContextPathComponents();
     }
 
     // Protected
@@ -108,6 +134,36 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
 
     // Private
 
+    _preferredNameForFrame(frame)
+    {
+        if (frame.name)
+            return WI.UIString("%s (%s)").format(frame.name, frame.mainResource.displayName);
+        return frame.mainResource.displayName;
+    }
+
+    _selectExecutionContext(executionContext)
+    {
+        let preferredName = null;
+
+        let inspectedNode = WI.domManager.inspectedNode;
+        if (inspectedNode) {
+            let frame = inspectedNode.frame;
+            if (frame) {
+                if (this._shouldAutomaticallySelectExecutionContext)
+                    executionContext = frame.pageExecutionContext;
+                preferredName = this._preferredNameForFrame(frame);
+            }
+        }
+
+        console.assert(executionContext);
+        if (!executionContext)
+            executionContext = WI.mainTarget.executionContext;
+
+        WI.runtimeManager.activeExecutionContext = executionContext;
+
+        this._automaticExecutionContextPathComponent.displayName = WI.UIString("Auto - %s").format(preferredName || executionContext.name);
+    }
+
     _handleMouseDown(event)
     {
         if (event.target !== this.element)
@@ -117,20 +173,49 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
         this.prompt.focus();
     }
 
+    _handleDragOver(event)
+    {
+        if (event.dataTransfer.types.includes(WI.DOMTreeOutline.DOMNodeIdDragType)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+        }
+    }
+
+    _handleDrop(event)
+    {
+        let domNodeId = event.dataTransfer.getData(WI.DOMTreeOutline.DOMNodeIdDragType);
+        if (domNodeId) {
+            event.preventDefault();
+
+            let domNode = WI.domManager.nodeForId(domNodeId);
+            WI.RemoteObject.resolveNode(domNode, WI.RuntimeManager.ConsoleObjectGroup)
+            .then((remoteObject) => {
+                let text = domNode.nodeType() === Node.ELEMENT_NODE ? WI.UIString("Dropped Element") : WI.UIString("Dropped Node");
+                const addSpecialUserLogClass = true;
+                WI.consoleLogViewController.appendImmediateExecutionWithResult(text, remoteObject, addSpecialUserLogClass);
+
+                this.prompt.focus();
+            });
+        }
+    }
+
     _executionContextPathComponentsToDisplay()
     {
         // If we are in the debugger the console will use the active call frame, don't show the selector.
-        if (WebInspector.debuggerManager.activeCallFrame)
+        if (WI.debuggerManager.activeCallFrame)
             return [];
 
         // If there is only the Main ExecutionContext, don't show the selector.
         if (!this._otherExecutionContextPathComponents.length)
             return [];
 
-        if (this.selectedExecutionContext === WebInspector.mainTarget.executionContext)
+        if (this._shouldAutomaticallySelectExecutionContext)
+            return [this._automaticExecutionContextPathComponent];
+
+        if (WI.runtimeManager.activeExecutionContext === WI.mainTarget.executionContext)
             return [this._mainExecutionContextPathComponent];
 
-        return this._otherExecutionContextPathComponents.filter((component) => component.representedObject === this.selectedExecutionContext);
+        return this._otherExecutionContextPathComponents.filter((component) => component.representedObject === WI.runtimeManager.activeExecutionContext);
     }
 
     _rebuildExecutionContextPathComponents()
@@ -138,23 +223,24 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
         let components = this._executionContextPathComponentsToDisplay();
         let isEmpty = !components.length;
 
+        this._executionContextSelectorItem.element.classList.toggle("automatic-execution-context", this._shouldAutomaticallySelectExecutionContext);
         this._executionContextSelectorItem.components = components;
 
         this._executionContextSelectorItem.hidden = isEmpty;
         this._executionContextSelectorDivider.hidden = isEmpty;
+
     }
 
     _framePageExecutionContextsChanged(event)
     {
         let frame = event.target;
 
-        let shouldAutomaticallySelect = this._restoreSelectedExecutionContextForFrame === frame;
+        let newExecutionContextPathComponent = this._insertExecutionContextPathComponentForFrame(frame);
 
-        let newExecutionContextPathComponent = this._insertExecutionContextPathComponentForFrame(frame, shouldAutomaticallySelect);
-
-        if (shouldAutomaticallySelect) {
+        if (this._restoreSelectedExecutionContextForFrame === frame) {
             this._restoreSelectedExecutionContextForFrame = null;
-            this.selectedExecutionContext = newExecutionContextPathComponent.representedObject;
+
+            this._selectExecutionContext(newExecutionContextPathComponent.representedObject);
         }
     }
 
@@ -165,10 +251,12 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
         // If this frame is navigating and it is selected in the UI we want to reselect its new item after navigation.
         if (event.data.committingProvisionalLoad && !this._restoreSelectedExecutionContextForFrame) {
             let executionContextPathComponent = this._frameToPathComponent.get(frame);
-            if (executionContextPathComponent && executionContextPathComponent.representedObject === this.selectedExecutionContext) {
+            if (executionContextPathComponent && executionContextPathComponent.representedObject === WI.runtimeManager.activeExecutionContext) {
                 this._restoreSelectedExecutionContextForFrame = frame;
                 // As a fail safe, if the frame never gets an execution context, clear the restore value.
-                setTimeout(() => { this._restoreSelectedExecutionContextForFrame = false; }, 10);
+                setTimeout(() => {
+                    this._restoreSelectedExecutionContextForFrame = false;
+                }, 10);
             }
         }
 
@@ -182,19 +270,13 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
 
     _createExecutionContextPathComponent(executionContext, preferredName)
     {
-        console.assert(executionContext instanceof WebInspector.ExecutionContext);
+        console.assert(!executionContext || executionContext instanceof WI.ExecutionContext);
 
-        let pathComponent = new WebInspector.HierarchicalPathComponent(preferredName || executionContext.name, "execution-context", executionContext, true, true);
-        pathComponent.addEventListener(WebInspector.HierarchicalPathComponent.Event.SiblingWasSelected, this._pathComponentSelected, this);
-        pathComponent.addEventListener(WebInspector.HierarchicalPathComponent.Event.Clicked, this._pathComponentClicked, this);
+        let pathComponent = new WI.HierarchicalPathComponent(preferredName || executionContext.name, "execution-context", executionContext, true, true);
+        pathComponent.addEventListener(WI.HierarchicalPathComponent.Event.SiblingWasSelected, this._pathComponentSelected, this);
+        pathComponent.addEventListener(WI.HierarchicalPathComponent.Event.Clicked, this._pathComponentClicked, this);
         pathComponent.truncatedDisplayNameLength = 50;
         return pathComponent;
-    }
-
-    _createExecutionContextPathComponentFromFrame(frame)
-    {
-        let preferredName = frame.name ? frame.name + " \u2014 " + frame.mainResource.displayName : frame.mainResource.displayName;
-        return this._createExecutionContextPathComponent(frame.pageExecutionContext, preferredName);
     }
 
     _compareExecutionContextPathComponents(a, b)
@@ -203,8 +285,8 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
         let bExecutionContext = b.representedObject;
 
         // "Targets" (workers) at the top.
-        let aNonMainTarget = aExecutionContext.target !== WebInspector.mainTarget;
-        let bNonMainTarget = bExecutionContext.target !== WebInspector.mainTarget;
+        let aNonMainTarget = aExecutionContext.target !== WI.mainTarget;
+        let bNonMainTarget = bExecutionContext.target !== WI.mainTarget;
         if (aNonMainTarget && !bNonMainTarget)
             return -1;
         if (bNonMainTarget && !aNonMainTarget)
@@ -213,9 +295,9 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
             return a.displayName.extendedLocaleCompare(b.displayName);
 
         // "Main Frame" follows.
-        if (aExecutionContext === WebInspector.mainTarget.executionContext)
+        if (aExecutionContext === WI.mainTarget.executionContext)
             return -1;
-        if (bExecutionContext === WebInspector.mainTarget.executionContext)
+        if (bExecutionContext === WI.mainTarget.executionContext)
             return 1;
 
         // Only Frame contexts remain.
@@ -231,7 +313,7 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
         return a.displayName.extendedLocaleCompare(b.displayName);
     }
 
-    _insertOtherExecutionContextPathComponent(executionContextPathComponent, skipRebuild)
+    _insertOtherExecutionContextPathComponent(executionContextPathComponent)
     {
         let index = insertionIndexForObjectInListSortedByFunction(executionContextPathComponent, this._otherExecutionContextPathComponents, this._compareExecutionContextPathComponents);
 
@@ -248,14 +330,13 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
 
         this._otherExecutionContextPathComponents.splice(index, 0, executionContextPathComponent);
 
-        if (!skipRebuild)
-            this._rebuildExecutionContextPathComponents();
+        this._rebuildExecutionContextPathComponents();
     }
 
-    _removeOtherExecutionContextPathComponent(executionContextPathComponent, skipRebuild)
+    _removeOtherExecutionContextPathComponent(executionContextPathComponent)
     {
-        executionContextPathComponent.removeEventListener(WebInspector.HierarchicalPathComponent.Event.SiblingWasSelected, this._pathComponentSelected, this);
-        executionContextPathComponent.removeEventListener(WebInspector.HierarchicalPathComponent.Event.Clicked, this._pathComponentClicked, this);
+        executionContextPathComponent.removeEventListener(WI.HierarchicalPathComponent.Event.SiblingWasSelected, this._pathComponentSelected, this);
+        executionContextPathComponent.removeEventListener(WI.HierarchicalPathComponent.Event.Clicked, this._pathComponentClicked, this);
 
         let prev = executionContextPathComponent.previousSibling;
         let next = executionContextPathComponent.nextSibling;
@@ -266,36 +347,39 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
 
         this._otherExecutionContextPathComponents.remove(executionContextPathComponent, true);
 
-        if (!skipRebuild)
-            this._rebuildExecutionContextPathComponents();
+        this._rebuildExecutionContextPathComponents();
     }
 
-    _insertExecutionContextPathComponentForFrame(frame, skipRebuild)
+    _insertExecutionContextPathComponentForFrame(frame)
     {
         if (frame.isMainFrame())
             return this._mainExecutionContextPathComponent;
 
-        let executionContextPathComponent = this._createExecutionContextPathComponentFromFrame(frame);
-        this._insertOtherExecutionContextPathComponent(executionContextPathComponent, skipRebuild);
+        let executionContextPathComponent = this._createExecutionContextPathComponent(frame.pageExecutionContext, this._preferredNameForFrame(frame));
+        this._insertOtherExecutionContextPathComponent(executionContextPathComponent);
         this._frameToPathComponent.set(frame, executionContextPathComponent);
-
         return executionContextPathComponent;
     }
 
-    _removeExecutionContextPathComponentForFrame(frame, skipRebuild)
+    _removeExecutionContextPathComponentForFrame(frame)
     {
-        if (frame.isMainFrame())
+        if (frame.isMainFrame()) {
+            this._shouldAutomaticallySelectExecutionContext = true;
             return;
+        }
 
         let executionContextPathComponent = this._frameToPathComponent.take(frame);
-        this._removeOtherExecutionContextPathComponent(executionContextPathComponent, skipRebuild);
+        this._removeOtherExecutionContextPathComponent(executionContextPathComponent);
     }
 
     _targetAdded(event)
     {
         let target = event.data.target;
-        console.assert(target.type === WebInspector.Target.Type.Worker);
-        let preferredName = WebInspector.UIString("Worker \u2014 %s").format(target.displayName);
+        if (target.type !== WI.Target.Type.Worker)
+            return;
+
+        console.assert(target.type === WI.Target.Type.Worker);
+        let preferredName = WI.UIString("Worker \u2014 %s").format(target.displayName);
         let executionContextPathComponent = this._createExecutionContextPathComponent(target.executionContext, preferredName);
 
         this._targetToPathComponent.set(target, executionContextPathComponent);
@@ -305,17 +389,23 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
     _targetRemoved(event)
     {
         let target = event.data.target;
-        let executionContextPathComponent = this._targetToPathComponent.take(target);
-        this._removeOtherExecutionContextPathComponent(executionContextPathComponent);
+        if (target.type !== WI.Target.Type.Worker)
+            return;
 
-        if (this.selectedExecutionContext === executionContextPathComponent.representedObject)
-            this.selectedExecutionContext = WebInspector.mainTarget.executionContext;
+        let executionContextPathComponent = this._targetToPathComponent.take(target);
+
+        if (WI.runtimeManager.activeExecutionContext === executionContextPathComponent.representedObject) {
+            this._shouldAutomaticallySelectExecutionContext = true;
+            this._selectExecutionContext();
+        }
+
+        this._removeOtherExecutionContextPathComponent(executionContextPathComponent);
     }
 
     _pathComponentSelected(event)
     {
-        let executionContext = event.data.pathComponent.representedObject;
-        this.selectedExecutionContext = executionContext;
+        this._shouldAutomaticallySelectExecutionContext = event.data.pathComponent === this._automaticExecutionContextPathComponent;
+        this._selectExecutionContext(event.data.pathComponent.representedObject);
     }
 
     _pathComponentClicked(event)
@@ -330,14 +420,22 @@ WebInspector.QuickConsole = class QuickConsole extends WebInspector.View
 
     _toggleOrFocus(event)
     {
-        if (this.prompt.focused)
-            WebInspector.toggleSplitConsole();
-        else if (!WebInspector.isEditingAnyField() && !WebInspector.isEventTargetAnEditableField(event))
+        if (this.prompt.focused) {
+            WI.toggleSplitConsole();
+            event.preventDefault();
+        } else if (!WI.isEditingAnyField() && !WI.isEventTargetAnEditableField(event)) {
             this.prompt.focus();
+            event.preventDefault();
+        }
     }
 
     _updateStyles()
     {
-        this.element.classList.toggle("showing-log", WebInspector.isShowingConsoleTab() || WebInspector.isShowingSplitConsole());
+        this.element.classList.toggle("showing-log", WI.isShowingConsoleTab() || WI.isShowingSplitConsole());
+    }
+
+    _handleInspectedNodeChanged(event)
+    {
+        this._selectExecutionContext(WI.runtimeManager.activeExecutionContext);
     }
 };

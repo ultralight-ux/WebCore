@@ -23,92 +23,18 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends WebInspector.StyleDetailsPanel
+WI.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends WI.StyleDetailsPanel
 {
     constructor(delegate)
     {
-        super(delegate, WebInspector.ComputedStyleDetailsPanel.StyleClassName, "computed", WebInspector.UIString("Styles \u2014 Computed"));
+        super(delegate, WI.ComputedStyleDetailsPanel.StyleClassName, "computed", WI.UIString("Styles \u2014 Computed"));
 
-        this._computedStyleShowAllSetting = new WebInspector.Setting("computed-style-show-all", false);
+        this._computedStyleShowAllSetting = new WI.Setting("computed-style-show-all", false);
 
-        this.cssStyleDeclarationTextEditorShouldAddPropertyGoToArrows = true;
+        this._filterText = null;
     }
 
     // Public
-
-    get regionFlow() { return this._regionFlow; }
-    set regionFlow(regionFlow)
-    {
-        this._regionFlow = regionFlow;
-        this._regionFlowNameLabelValue.textContent = regionFlow ? regionFlow.name : "";
-        this._regionFlowNameRow.value = regionFlow ? this._regionFlowFragment : null;
-        this._updateFlowNamesSectionVisibility();
-    }
-
-    get contentFlow() { return this._contentFlow; }
-    set contentFlow(contentFlow)
-    {
-        this._contentFlow = contentFlow;
-        this._contentFlowNameLabelValue.textContent = contentFlow ? contentFlow.name : "";
-        this._contentFlowNameRow.value = contentFlow ? this._contentFlowFragment : null;
-        this._updateFlowNamesSectionVisibility();
-    }
-
-    get containerRegions() { return this._containerRegions; }
-    set containerRegions(regions)
-    {
-        this._containerRegions = regions;
-
-        if (!regions || !regions.length) {
-            this._containerRegionsFlowSection.element.classList.add("hidden");
-            return;
-        }
-
-        this._containerRegionsDataGrid.removeChildren();
-        for (var regionNode of regions)
-            this._containerRegionsDataGrid.appendChild(new WebInspector.DOMTreeDataGridNode(regionNode));
-
-        this._containerRegionsFlowSection.element.classList.remove("hidden");
-
-        this._containerRegionsDataGrid.updateLayoutIfNeeded();
-    }
-
-    cssStyleDeclarationTextEditorShowProperty(property, showSource)
-    {
-        function delegateShowProperty() {
-            if (typeof this._delegate.computedStyleDetailsPanelShowProperty === "function")
-                this._delegate.computedStyleDetailsPanelShowProperty(property);
-        }
-
-        if (!showSource) {
-            delegateShowProperty.call(this);
-            return;
-        }
-
-        let effectiveProperty = this._nodeStyles.effectivePropertyForName(property.name);
-        if (!effectiveProperty || !effectiveProperty.styleSheetTextRange) {
-            if (!effectiveProperty.relatedShorthandProperty) {
-                delegateShowProperty.call(this);
-                return;
-            }
-            effectiveProperty = effectiveProperty.relatedShorthandProperty;
-        }
-
-        let ownerRule = effectiveProperty.ownerStyle.ownerRule;
-        if (!ownerRule) {
-            delegateShowProperty.call(this);
-            return;
-        }
-
-        let sourceCode = ownerRule.sourceCodeLocation.sourceCode;
-        let {startLine, startColumn} = effectiveProperty.styleSheetTextRange;
-
-        const options = {
-            ignoreNetworkTab: true,
-            ignoreSearchTab: true,
-        };
-        WebInspector.showSourceCodeLocation(sourceCode.createSourceCodeLocation(startLine, startColumn), options);
-    }
 
     refresh(significantChange)
     {
@@ -119,21 +45,37 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
             return;
         }
 
-        this._propertiesTextEditor.style = this.nodeStyles.computedStyle;
+        this._computedStyleSection.styleTraces = this._computePropertyTraces(this.nodeStyles.uniqueOrderedStyles);
+        this._computedStyleSection.style = this.nodeStyles.computedStyle;
+
         this._variablesTextEditor.style = this.nodeStyles.computedStyle;
-        this._refreshFlowDetails(this.nodeStyles.node);
+        this._variablesSection.element.classList.toggle("hidden", !this._variablesTextEditor.propertiesToRender.length);
+
         this._boxModelDiagramRow.nodeStyles = this.nodeStyles;
 
-        super.refresh();
+        if (this._filterText)
+            this.applyFilter(this._filterText);
 
-        this._variablesSection.element.classList.toggle("hidden", !this._variablesTextEditor.shownProperties.length);
+        super.refresh();
     }
 
-    filterDidChange(filterBar)
+    applyFilter(filterText)
     {
-        let filterText = filterBar.filters.text;
-        this._propertiesTextEditor.removeNonMatchingProperties(filterText);
-        this._variablesTextEditor.removeNonMatchingProperties(filterText);
+        this._filterText = filterText;
+
+        if (!this.didInitialLayout)
+            return;
+
+        this._computedStyleSection.applyFilter(filterText);
+        this._variablesTextEditor.applyFilter(filterText);
+    }
+
+    // SpreadsheetCSSStyleDeclarationEditor delegate
+
+    spreadsheetCSSStyleDeclarationEditorShowProperty(editor, property)
+    {
+        if (this._delegate.computedStyleDetailsPanelShowProperty)
+            this._delegate.computedStyleDetailsPanelShowProperty(property);
     }
 
     // Protected
@@ -141,7 +83,7 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
     initialLayout()
     {
         let computedStyleShowAllLabel = document.createElement("label");
-        computedStyleShowAllLabel.textContent = WebInspector.UIString("Show All");
+        computedStyleShowAllLabel.textContent = WI.UIString("Show All");
 
         this._computedStyleShowAllCheckbox = document.createElement("input");
         this._computedStyleShowAllCheckbox.type = "checkbox";
@@ -149,154 +91,104 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
         this._computedStyleShowAllCheckbox.addEventListener("change", this._computedStyleShowAllCheckboxValueChanged.bind(this));
         computedStyleShowAllLabel.appendChild(this._computedStyleShowAllCheckbox);
 
-        this._propertiesTextEditor = new WebInspector.CSSStyleDeclarationTextEditor(this);
-        this._propertiesTextEditor.propertyVisibilityMode = WebInspector.CSSStyleDeclarationTextEditor.PropertyVisibilityMode.HideVariables;
-        this._propertiesTextEditor.showsImplicitProperties = this._computedStyleShowAllSetting.value;
-        this._propertiesTextEditor.alwaysShowPropertyNames = ["display", "width", "height"];
-        this._propertiesTextEditor.sortProperties = true;
+        this._computedStyleSection = new WI.ComputedStyleSection(this);
+        this._computedStyleSection.propertyVisibilityMode = WI.ComputedStyleSection.PropertyVisibilityMode.HideVariables;
+        this._computedStyleSection.addEventListener(WI.ComputedStyleSection.Event.FilterApplied, this._handleEditorFilterApplied, this);
+        this._computedStyleSection.showsImplicitProperties = this._computedStyleShowAllSetting.value;
+        this._computedStyleSection.alwaysShowPropertyNames = ["display", "width", "height"];
+        this._computedStyleSection.hideFilterNonMatchingProperties = true;
 
-        let propertiesRow = new WebInspector.DetailsSectionRow;
-        let propertiesGroup = new WebInspector.DetailsSectionGroup([propertiesRow]);
-        let propertiesSection = new WebInspector.DetailsSection("computed-style-properties", WebInspector.UIString("Properties"), [propertiesGroup], computedStyleShowAllLabel);
-        propertiesSection.addEventListener(WebInspector.DetailsSection.Event.CollapsedStateChanged, this._handlePropertiesSectionCollapsedStateChanged, this);
+        let propertiesRow = new WI.DetailsSectionRow;
+        let propertiesGroup = new WI.DetailsSectionGroup([propertiesRow]);
+        this._propertiesSection = new WI.DetailsSection("computed-style-properties", WI.UIString("Properties"), [propertiesGroup], computedStyleShowAllLabel);
+        this._propertiesSection.addEventListener(WI.DetailsSection.Event.CollapsedStateChanged, this._handlePropertiesSectionCollapsedStateChanged, this);
 
-        this.addSubview(this._propertiesTextEditor);
+        this.addSubview(this._computedStyleSection);
 
-        propertiesRow.element.appendChild(this._propertiesTextEditor.element);
+        propertiesRow.element.appendChild(this._computedStyleSection.element);
 
-        this._variablesTextEditor = new WebInspector.CSSStyleDeclarationTextEditor(this);
-        this._variablesTextEditor.propertyVisibilityMode = WebInspector.CSSStyleDeclarationTextEditor.PropertyVisibilityMode.HideNonVariables;
-        this._variablesTextEditor.sortProperties = true;
+        this._variablesTextEditor = new WI.SpreadsheetCSSStyleDeclarationEditor(this);
+        this._variablesTextEditor.propertyVisibilityMode = WI.SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideNonVariables;
+        this._variablesTextEditor.hideFilterNonMatchingProperties = true;
+        this._variablesTextEditor.sortPropertiesByName = true;
+        this._variablesTextEditor.addEventListener(WI.SpreadsheetCSSStyleDeclarationEditor.Event.FilterApplied, this._handleEditorFilterApplied, this);
 
-        let variablesRow = new WebInspector.DetailsSectionRow;
-        let variablesGroup = new WebInspector.DetailsSectionGroup([variablesRow]);
-        this._variablesSection = new WebInspector.DetailsSection("computed-style-properties", WebInspector.UIString("Variables"), [variablesGroup]);
-        this._variablesSection.addEventListener(WebInspector.DetailsSection.Event.CollapsedStateChanged, this._handleVariablesSectionCollapsedStateChanged, this);
+        let variablesRow = new WI.DetailsSectionRow;
+        let variablesGroup = new WI.DetailsSectionGroup([variablesRow]);
+        this._variablesSection = new WI.DetailsSection("computed-style-properties", WI.UIString("Variables"), [variablesGroup]);
+        this._variablesSection.addEventListener(WI.DetailsSection.Event.CollapsedStateChanged, this._handleVariablesSectionCollapsedStateChanged, this);
 
         this.addSubview(this._variablesTextEditor);
 
         variablesRow.element.appendChild(this._variablesTextEditor.element);
 
-        // Region flow name is used to display the "flow-from" property of the Region Containers.
-        this._regionFlowFragment = document.createElement("span");
-        this._regionFlowFragment.appendChild(document.createElement("img")).className = "icon";
-        this._regionFlowNameLabelValue = this._regionFlowFragment.appendChild(document.createElement("span"));
-
-        let goToRegionFlowButton = this._regionFlowFragment.appendChild(WebInspector.createGoToArrowButton());
-        goToRegionFlowButton.addEventListener("click", this._goToRegionFlowArrowWasClicked.bind(this));
-
-        this._regionFlowNameRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Region Flow"));
-        this._regionFlowNameRow.element.classList.add("content-flow-link");
-
-        // Content flow name is used to display the "flow-into" property of the Content nodes.
-        this._contentFlowFragment = document.createElement("span");
-        this._contentFlowFragment.appendChild(document.createElement("img")).className = "icon";
-        this._contentFlowNameLabelValue = this._contentFlowFragment.appendChild(document.createElement("span"));
-
-        let goToContentFlowButton = this._contentFlowFragment.appendChild(WebInspector.createGoToArrowButton());
-        goToContentFlowButton.addEventListener("click", this._goToContentFlowArrowWasClicked.bind(this));
-
-        this._contentFlowNameRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Content Flow"));
-        this._contentFlowNameRow.element.classList.add("content-flow-link");
-
-        let flowNamesGroup = new WebInspector.DetailsSectionGroup([this._regionFlowNameRow, this._contentFlowNameRow]);
-        this._flowNamesSection = new WebInspector.DetailsSection("content-flow", WebInspector.UIString("Flows"), [flowNamesGroup]);
-
-        this._containerRegionsDataGrid = new WebInspector.DOMTreeDataGrid;
-        this._containerRegionsDataGrid.headerVisible = false;
-
-        this._containerRegionsRow = new WebInspector.DetailsSectionDataGridRow(this._containerRegionsDataGrid);
-        let containerRegionsGroup = new WebInspector.DetailsSectionGroup([this._containerRegionsRow]);
-        this._containerRegionsFlowSection = new WebInspector.DetailsSection("container-regions", WebInspector.UIString("Container Regions"), [containerRegionsGroup]);
-
-        this.element.appendChild(propertiesSection.element);
+        this.element.appendChild(this._propertiesSection.element);
         this.element.appendChild(this._variablesSection.element);
-        this.element.appendChild(this._flowNamesSection.element);
-        this.element.appendChild(this._containerRegionsFlowSection.element);
 
-        this._resetFlowDetails();
+        this._boxModelDiagramRow = new WI.BoxModelDetailsSectionRow;
 
-        this._boxModelDiagramRow = new WebInspector.BoxModelDetailsSectionRow;
-
-        let boxModelGroup = new WebInspector.DetailsSectionGroup([this._boxModelDiagramRow]);
-        let boxModelSection = new WebInspector.DetailsSection("style-box-model", WebInspector.UIString("Box Model"), [boxModelGroup]);
+        let boxModelGroup = new WI.DetailsSectionGroup([this._boxModelDiagramRow]);
+        let boxModelSection = new WI.DetailsSection("computed-style-box-model", WI.UIString("Box Model"), [boxModelGroup]);
 
         this.element.appendChild(boxModelSection.element);
     }
 
-    sizeDidChange()
+    filterDidChange(filterBar)
     {
-        super.sizeDidChange();
+        super.filterDidChange(filterBar);
 
-        // FIXME: <https://webkit.org/b/152269> Web Inspector: Convert DetailsSection classes to use View
-        this._containerRegionsRow.sizeDidChange();
+        this.applyFilter(filterBar.filters.text);
     }
 
     // Private
+
+    _computePropertyTraces(orderedDeclarations)
+    {
+        let result = new Map();
+        for (let rule of orderedDeclarations) {
+            for (let property of rule.properties) {
+                let properties = result.get(property.name);
+                if (!properties) {
+                    properties = [];
+                    result.set(property.name, properties);
+                }
+                properties.push(property);
+            }
+        }
+
+        return result;
+    }
 
     _computedStyleShowAllCheckboxValueChanged(event)
     {
         let checked = this._computedStyleShowAllCheckbox.checked;
         this._computedStyleShowAllSetting.value = checked;
-        this._propertiesTextEditor.showsImplicitProperties = checked;
-        this._propertiesTextEditor.updateLayout();
+        this._computedStyleSection.showsImplicitProperties = checked;
     }
 
     _handlePropertiesSectionCollapsedStateChanged(event)
     {
         if (event && event.data && !event.data.collapsed)
-            this._propertiesTextEditor.refresh();
+            this._computedStyleSection.needsLayout();
     }
 
     _handleVariablesSectionCollapsedStateChanged(event)
     {
         if (event && event.data && !event.data.collapsed)
-            this._variablesTextEditor.refresh();
+            this._variablesTextEditor.needsLayout();
     }
 
-    _updateFlowNamesSectionVisibility()
+    _handleEditorFilterApplied(event)
     {
-        this._flowNamesSection.element.classList.toggle("hidden", !this._contentFlow && !this._regionFlow);
-    }
+        let section = null;
+        if (event.target === this._computedStyleSection)
+            section = this._propertiesSection;
+        else if (event.target === this._variablesTextEditor)
+            section = this._variablesSection;
 
-    _resetFlowDetails ()
-    {
-        this.regionFlow = null;
-        this.contentFlow = null;
-        this.containerRegions = null;
-    }
-
-    _refreshFlowDetails(domNode)
-    {
-        this._resetFlowDetails();
-        if (!domNode)
-            return;
-
-        function contentFlowInfoReady(error, flowData)
-        {
-            // Element is not part of any flow.
-            if (error || !flowData) {
-                this._resetFlowDetails();
-                return;
-            }
-
-            this.regionFlow = flowData.regionFlow;
-            this.contentFlow = flowData.contentFlow;
-            this.containerRegions = flowData.regions;
-        }
-
-        WebInspector.domTreeManager.getNodeContentFlowInfo(domNode, contentFlowInfoReady.bind(this));
-    }
-
-    _goToRegionFlowArrowWasClicked()
-    {
-        WebInspector.showRepresentedObject(this._regionFlow);
-    }
-
-    _goToContentFlowArrowWasClicked()
-    {
-        WebInspector.showRepresentedObject(this._contentFlow, {nodeToSelect: this.nodeStyles.node});
+        if (section)
+            section.element.classList.toggle("hidden", !event.data.matches);
     }
 };
 
-WebInspector.ComputedStyleDetailsPanel.StyleClassName = "computed";
+WI.ComputedStyleDetailsPanel.StyleClassName = "computed";

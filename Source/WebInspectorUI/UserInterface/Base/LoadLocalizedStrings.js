@@ -24,7 +24,7 @@
  */
 
 (function() {
-    if (WebInspector.dontLocalizeUserInterface)
+    if (WI.dontLocalizeUserInterface)
         return;
 
     let localizedStringsURL = InspectorFrontendHost.localizedStringsURL();
@@ -33,7 +33,7 @@
         document.write("<script src=\"" + localizedStringsURL + "\"></script>");
 })();
 
-WebInspector.unlocalizedString = function(string)
+WI.unlocalizedString = function(string)
 {
     // Intentionally do nothing, since this is for engineering builds
     // (such as in Debug UI) or in text that is standardized in English.
@@ -41,24 +41,72 @@ WebInspector.unlocalizedString = function(string)
     return string;
 };
 
-WebInspector.UIString = function(string, vararg)
+WI.UIString = function(string, key, comment)
 {
-    if (WebInspector.dontLocalizeUserInterface)
+    "use strict";
+
+    if (WI.dontLocalizeUserInterface)
         return string;
 
-    if (window.localizedStrings && string in window.localizedStrings)
-        return window.localizedStrings[string];
+    // UIString(string, comment)
+    if (arguments.length === 2) {
+        comment = key;
+        key = undefined;
+    }
+
+    key = key || string;
+
+    if (window.localizedStrings && key in window.localizedStrings)
+        return window.localizedStrings[key];
 
     if (!window.localizedStrings)
-        console.error(`Attempted to load localized string "${string}" before localizedStrings was initialized.`);
+        console.error(`Attempted to load localized string "${key}" before localizedStrings was initialized.`, comment);
 
     if (!this._missingLocalizedStrings)
         this._missingLocalizedStrings = {};
 
-    if (!(string in this._missingLocalizedStrings)) {
-        console.error("Localized string \"" + string + "\" was not found.");
-        this._missingLocalizedStrings[string] = true;
+    if (!(key in this._missingLocalizedStrings)) {
+        console.error(`Localized string "${key}" was not found.`, comment);
+        this._missingLocalizedStrings[key] = true;
     }
 
     return "LOCALIZED STRING NOT FOUND";
+};
+
+WI.repeatedUIString = {};
+
+WI.repeatedUIString.timelineRecordLayout = function() {
+    return WI.UIString("Layout", "Layout @ Timeline record", "Layout phase timeline records");
+};
+
+WI.repeatedUIString.timelineRecordPaint = function() {
+    return WI.UIString("Paint", "Paint @ Timeline record", "Paint (render) phase timeline records");
+};
+
+WI.repeatedUIString.timelineRecordComposite = function() {
+    return WI.UIString("Composite", "Composite @ Timeline record", "Composite phase timeline records, where graphic layers are combined");
+};
+
+WI.repeatedUIString.allExceptions = function() {
+    return WI.UIString("All Exceptions", "Break (pause) on all exceptions");
+};
+
+WI.repeatedUIString.uncaughtExceptions = function() {
+    return WI.UIString("Uncaught Exceptions", "Break (pause) on uncaught (unhandled) exceptions");
+};
+
+WI.repeatedUIString.assertionFailures = function() {
+    return WI.UIString("Assertion Failures", "Break (pause) when console.assert() fails");
+};
+
+WI.repeatedUIString.allRequests = function() {
+    return WI.UIString("All Requests", "A submenu item of 'Break on' that breaks (pauses) before all network requests");
+};
+
+WI.repeatedUIString.fetch = function() {
+    return WI.UIString("Fetch", "Resource loaded via 'fetch' method");
+};
+
+WI.repeatedUIString.revealInDOMTree = function() {
+    return WI.UIString("Reveal in DOM Tree", "Open Elements tab and select this node in DOM tree");
 };

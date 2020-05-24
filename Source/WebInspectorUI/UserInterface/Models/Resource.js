@@ -24,35 +24,42 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.Resource = class Resource extends WebInspector.SourceCode
+WI.Resource = class Resource extends WI.SourceCode
 {
-    constructor(url, mimeType, type, loaderIdentifier, targetId, requestIdentifier, requestMethod, requestHeaders, requestData, requestSentTimestamp, initiatorSourceCodeLocation, originalRequestWillBeSentTimestamp)
+    constructor(url, {mimeType, type, loaderIdentifier, targetId, requestIdentifier, requestMethod, requestHeaders, requestData, requestSentTimestamp, requestSentWalltime, initiatorCallFrames, initiatorSourceCodeLocation, initiatorNode, originalRequestWillBeSentTimestamp} = {})
     {
         super();
 
         console.assert(url);
 
-        if (type in WebInspector.Resource.Type)
-            type = WebInspector.Resource.Type[type];
+        if (type in WI.Resource.Type)
+            type = WI.Resource.Type[type];
 
         this._url = url;
         this._urlComponents = null;
         this._mimeType = mimeType;
         this._mimeTypeComponents = null;
-        this._type = type || WebInspector.Resource.typeFromMIMEType(mimeType);
+        this._type = Resource.resolvedType(type, mimeType);
         this._loaderIdentifier = loaderIdentifier || null;
         this._requestIdentifier = requestIdentifier || null;
+        this._queryStringParameters = undefined;
+        this._requestFormParameters = undefined;
         this._requestMethod = requestMethod || null;
         this._requestData = requestData || null;
         this._requestHeaders = requestHeaders || {};
         this._responseHeaders = {};
+        this._requestCookies = null;
+        this._responseCookies = null;
+        this._serverTimingEntries = null;
         this._parentFrame = null;
+        this._initiatorCallFrames = initiatorCallFrames || null;
         this._initiatorSourceCodeLocation = initiatorSourceCodeLocation || null;
+        this._initiatorNode = initiatorNode || null;
         this._initiatedResources = [];
         this._originalRequestWillBeSentTimestamp = originalRequestWillBeSentTimestamp || null;
         this._requestSentTimestamp = requestSentTimestamp || NaN;
+        this._requestSentWalltime = requestSentWalltime || NaN;
         this._responseReceivedTimestamp = NaN;
-        this._lastRedirectReceivedTimestamp = NaN;
         this._lastDataReceivedTimestamp = NaN;
         this._finishedOrFailedTimestamp = NaN;
         this._finishThenRequestContentPromise = null;
@@ -60,16 +67,19 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         this._statusText = null;
         this._cached = false;
         this._canceled = false;
+        this._finished = false;
         this._failed = false;
         this._failureReasonText = null;
         this._receivedNetworkLoadMetrics = false;
-        this._responseSource = WebInspector.Resource.ResponseSource.Unknown;
-        this._timingData = new WebInspector.ResourceTimingData(this);
+        this._responseSource = WI.Resource.ResponseSource.Unknown;
+        this._security = null;
+        this._timingData = new WI.ResourceTimingData(this);
         this._protocol = null;
-        this._priority = WebInspector.Resource.NetworkPriority.Unknown;
+        this._priority = WI.Resource.NetworkPriority.Unknown;
         this._remoteAddress = null;
         this._connectionIdentifier = null;
-        this._target = targetId ? WebInspector.targetManager.targetForIdentifier(targetId) : WebInspector.mainTarget;
+        this._target = targetId ? WI.targetManager.targetForIdentifier(targetId) : WI.mainTarget;
+        this._redirects = [];
 
         // Exact sizes if loaded over the network or cache.
         this._requestHeadersTransferSize = NaN;
@@ -84,72 +94,97 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         this._estimatedTransferSize = NaN;
         this._estimatedResponseHeadersSize = NaN;
 
-        if (this._initiatorSourceCodeLocation && this._initiatorSourceCodeLocation.sourceCode instanceof WebInspector.Resource)
+        if (this._initiatorSourceCodeLocation && this._initiatorSourceCodeLocation.sourceCode instanceof WI.Resource)
             this._initiatorSourceCodeLocation.sourceCode.addInitiatedResource(this);
     }
 
     // Static
 
+    static resolvedType(type, mimeType)
+    {
+        if (type && type !== WI.Resource.Type.Other)
+            return type;
+
+        return Resource.typeFromMIMEType(mimeType);
+    }
+
     static typeFromMIMEType(mimeType)
     {
         if (!mimeType)
-            return WebInspector.Resource.Type.Other;
+            return WI.Resource.Type.Other;
 
         mimeType = parseMIMEType(mimeType).type;
 
-        if (mimeType in WebInspector.Resource._mimeTypeMap)
-            return WebInspector.Resource._mimeTypeMap[mimeType];
+        if (mimeType in WI.Resource._mimeTypeMap)
+            return WI.Resource._mimeTypeMap[mimeType];
 
         if (mimeType.startsWith("image/"))
-            return WebInspector.Resource.Type.Image;
+            return WI.Resource.Type.Image;
 
         if (mimeType.startsWith("font/"))
-            return WebInspector.Resource.Type.Font;
+            return WI.Resource.Type.Font;
 
-        return WebInspector.Resource.Type.Other;
+        return WI.Resource.Type.Other;
     }
 
     static displayNameForType(type, plural)
     {
         switch (type) {
-        case WebInspector.Resource.Type.Document:
+        case WI.Resource.Type.Document:
             if (plural)
-                return WebInspector.UIString("Documents");
-            return WebInspector.UIString("Document");
-        case WebInspector.Resource.Type.Stylesheet:
+                return WI.UIString("Documents");
+            return WI.UIString("Document");
+        case WI.Resource.Type.Stylesheet:
             if (plural)
-                return WebInspector.UIString("Stylesheets");
-            return WebInspector.UIString("Stylesheet");
-        case WebInspector.Resource.Type.Image:
+                return WI.UIString("Stylesheets");
+            return WI.UIString("Stylesheet");
+        case WI.Resource.Type.Image:
             if (plural)
-                return WebInspector.UIString("Images");
-            return WebInspector.UIString("Image");
-        case WebInspector.Resource.Type.Font:
+                return WI.UIString("Images");
+            return WI.UIString("Image");
+        case WI.Resource.Type.Font:
             if (plural)
-                return WebInspector.UIString("Fonts");
-            return WebInspector.UIString("Font");
-        case WebInspector.Resource.Type.Script:
+                return WI.UIString("Fonts");
+            return WI.UIString("Font");
+        case WI.Resource.Type.Script:
             if (plural)
-                return WebInspector.UIString("Scripts");
-            return WebInspector.UIString("Script");
-        case WebInspector.Resource.Type.XHR:
+                return WI.UIString("Scripts");
+            return WI.UIString("Script");
+        case WI.Resource.Type.XHR:
             if (plural)
-                return WebInspector.UIString("XHRs");
-            return WebInspector.UIString("XHR");
-        case WebInspector.Resource.Type.Fetch:
+                return WI.UIString("XHRs");
+            return WI.UIString("XHR");
+        case WI.Resource.Type.Fetch:
             if (plural)
-                return WebInspector.UIString("Fetches");
-            return WebInspector.UIString("Fetch");
-        case WebInspector.Resource.Type.WebSocket:
+                return WI.UIString("Fetches", "Resources loaded via 'fetch' method");
+            return WI.repeatedUIString.fetch();
+        case WI.Resource.Type.Ping:
             if (plural)
-                return WebInspector.UIString("Sockets");
-            return WebInspector.UIString("Socket");
-        case WebInspector.Resource.Type.Other:
-            return WebInspector.UIString("Other");
+                return WI.UIString("Pings");
+            return WI.UIString("Ping");
+        case WI.Resource.Type.Beacon:
+            if (plural)
+                return WI.UIString("Beacons");
+            return WI.UIString("Beacon");
+        case WI.Resource.Type.WebSocket:
+            if (plural)
+                return WI.UIString("Sockets");
+            return WI.UIString("Socket");
+        case WI.Resource.Type.Other:
+            return WI.UIString("Other");
         default:
             console.error("Unknown resource type", type);
             return null;
         }
+    }
+
+    static classNameForResource(resource)
+    {
+        if (resource.type === WI.Resource.Type.Other) {
+            if (resource.requestedByteRange)
+                return "resource-type-range";
+        }
+        return resource.type;
     }
 
     static displayNameForProtocol(protocol)
@@ -178,10 +213,10 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         console.assert(typeof b === "symbol");
 
         const map = {
-            [WebInspector.Resource.NetworkPriority.Unknown]: 0,
-            [WebInspector.Resource.NetworkPriority.Low]: 1,
-            [WebInspector.Resource.NetworkPriority.Medium]: 2,
-            [WebInspector.Resource.NetworkPriority.High]: 3,
+            [WI.Resource.NetworkPriority.Unknown]: 0,
+            [WI.Resource.NetworkPriority.Low]: 1,
+            [WI.Resource.NetworkPriority.Medium]: 2,
+            [WI.Resource.NetworkPriority.High]: 3,
         };
 
         let aNum = map[a] || 0;
@@ -192,12 +227,12 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     static displayNameForPriority(priority)
     {
         switch (priority) {
-        case WebInspector.Resource.NetworkPriority.Low:
-            return WebInspector.UIString("Low");
-        case WebInspector.Resource.NetworkPriority.Medium:
-            return WebInspector.UIString("Medium");
-        case WebInspector.Resource.NetworkPriority.High:
-            return WebInspector.UIString("High");
+        case WI.Resource.NetworkPriority.Low:
+            return WI.UIString("Low");
+        case WI.Resource.NetworkPriority.Medium:
+            return WI.UIString("Medium");
+        case WI.Resource.NetworkPriority.High:
+            return WI.UIString("High");
         default:
             return null;
         }
@@ -206,20 +241,22 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     static responseSourceFromPayload(source)
     {
         if (!source)
-            return WebInspector.Resource.ResponseSource.Unknown;
+            return WI.Resource.ResponseSource.Unknown;
 
         switch (source) {
         case NetworkAgent.ResponseSource.Unknown:
-            return WebInspector.Resource.ResponseSource.Unknown;
+            return WI.Resource.ResponseSource.Unknown;
         case NetworkAgent.ResponseSource.Network:
-            return WebInspector.Resource.ResponseSource.Network;
+            return WI.Resource.ResponseSource.Network;
         case NetworkAgent.ResponseSource.MemoryCache:
-            return WebInspector.Resource.ResponseSource.MemoryCache;
+            return WI.Resource.ResponseSource.MemoryCache;
         case NetworkAgent.ResponseSource.DiskCache:
-            return WebInspector.Resource.ResponseSource.DiskCache;
+            return WI.Resource.ResponseSource.DiskCache;
+        case NetworkAgent.ResponseSource.ServiceWorker:
+            return WI.Resource.ResponseSource.ServiceWorker;
         default:
             console.error("Unknown response source type", source);
-            return WebInspector.Resource.ResponseSource.Unknown;
+            return WI.Resource.ResponseSource.Unknown;
         }
     }
 
@@ -227,55 +264,77 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     {
         switch (priority) {
         case NetworkAgent.MetricsPriority.Low:
-            return WebInspector.Resource.NetworkPriority.Low;
+            return WI.Resource.NetworkPriority.Low;
         case NetworkAgent.MetricsPriority.Medium:
-            return WebInspector.Resource.NetworkPriority.Medium;
+            return WI.Resource.NetworkPriority.Medium;
         case NetworkAgent.MetricsPriority.High:
-            return WebInspector.Resource.NetworkPriority.High;
+            return WI.Resource.NetworkPriority.High;
         default:
             console.error("Unknown metrics priority", priority);
-            return WebInspector.Resource.NetworkPriority.Unknown;
+            return WI.Resource.NetworkPriority.Unknown;
         }
     }
 
     static connectionIdentifierFromPayload(connectionIdentifier)
     {
         // Map backend connection identifiers to an easier to read number.
-        if (!WebInspector.Resource.connectionIdentifierMap) {
-            WebInspector.Resource.connectionIdentifierMap = new Map;
-            WebInspector.Resource.nextConnectionIdentifier = 1;
+        if (!WI.Resource.connectionIdentifierMap) {
+            WI.Resource.connectionIdentifierMap = new Map;
+            WI.Resource.nextConnectionIdentifier = 1;
         }
 
-        let id = WebInspector.Resource.connectionIdentifierMap.get(connectionIdentifier);
+        let id = WI.Resource.connectionIdentifierMap.get(connectionIdentifier);
         if (id)
             return id;
 
-        id = WebInspector.Resource.nextConnectionIdentifier++;
-        WebInspector.Resource.connectionIdentifierMap.set(connectionIdentifier, id);
+        id = WI.Resource.nextConnectionIdentifier++;
+        WI.Resource.connectionIdentifierMap.set(connectionIdentifier, id);
         return id;
     }
 
     // Public
 
+    get url() { return this._url; }
+    get mimeType() { return this._mimeType; }
     get target() { return this._target; }
     get type() { return this._type; }
     get loaderIdentifier() { return this._loaderIdentifier; }
     get requestIdentifier() { return this._requestIdentifier; }
     get requestMethod() { return this._requestMethod; }
     get requestData() { return this._requestData; }
+    get initiatorCallFrames() { return this._initiatorCallFrames; }
+    get initiatorSourceCodeLocation() { return this._initiatorSourceCodeLocation; }
+    get initiatorNode() { return this._initiatorNode; }
+    get initiatedResources() { return this._initiatedResources; }
+    get originalRequestWillBeSentTimestamp() { return this._originalRequestWillBeSentTimestamp; }
     get statusCode() { return this._statusCode; }
     get statusText() { return this._statusText; }
     get responseSource() { return this._responseSource; }
+    get security() { return this._security; }
     get timingData() { return this._timingData; }
     get protocol() { return this._protocol; }
     get priority() { return this._priority; }
     get remoteAddress() { return this._remoteAddress; }
     get connectionIdentifier() { return this._connectionIdentifier; }
-
-    get url()
-    {
-        return this._url;
-    }
+    get parentFrame() { return this._parentFrame; }
+    get finished() { return this._finished; }
+    get failed() { return this._failed; }
+    get canceled() { return this._canceled; }
+    get failureReasonText() { return this._failureReasonText; }
+    get requestHeaders() { return this._requestHeaders; }
+    get responseHeaders() { return this._responseHeaders; }
+    get requestSentTimestamp() { return this._requestSentTimestamp; }
+    get requestSentWalltime() { return this._requestSentWalltime; }
+    get responseReceivedTimestamp() { return this._responseReceivedTimestamp; }
+    get lastDataReceivedTimestamp() { return this._lastDataReceivedTimestamp; }
+    get finishedOrFailedTimestamp() { return this._finishedOrFailedTimestamp; }
+    get cached() { return this._cached; }
+    get requestHeadersTransferSize() { return this._requestHeadersTransferSize; }
+    get requestBodyTransferSize() { return this._requestBodyTransferSize; }
+    get responseHeadersTransferSize() { return this._responseHeadersTransferSize; }
+    get responseBodyTransferSize() { return this._responseBodyTransferSize; }
+    get cachedResponseBodySize() { return this._cachedResponseBodySize; }
+    get redirects() { return this._redirects; }
 
     get urlComponents()
     {
@@ -284,36 +343,25 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         return this._urlComponents;
     }
 
+    get loadedSecurely()
+    {
+        if (this.urlComponents.scheme !== "https" && this.urlComponents.scheme !== "wss" && this.urlComponents.scheme !== "sftp")
+            return false;
+        if (isNaN(this._timingData.secureConnectionStart) && !isNaN(this._timingData.connectionStart))
+            return false;
+        return true;
+    }
+
     get displayName()
     {
-        return WebInspector.displayNameForURL(this._url, this.urlComponents);
+        return WI.displayNameForURL(this._url, this.urlComponents);
     }
 
     get displayURL()
     {
         const isMultiLine = true;
         const dataURIMaxSize = 64;
-        return WebInspector.truncateURL(this._url, isMultiLine, dataURIMaxSize);
-    }
-
-    get initiatorSourceCodeLocation()
-    {
-        return this._initiatorSourceCodeLocation;
-    }
-
-    get initiatedResources()
-    {
-        return this._initiatedResources;
-    }
-
-    get originalRequestWillBeSentTimestamp()
-    {
-        return this._originalRequestWillBeSentTimestamp;
-    }
-
-    get mimeType()
-    {
-        return this._mimeType;
+        return WI.truncateURL(this._url, isMultiLine, dataURIMaxSize);
     }
 
     get mimeTypeComponents()
@@ -326,19 +374,19 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     get syntheticMIMEType()
     {
         // Resources are often transferred with a MIME-type that doesn't match the purpose the
-        // resource was loaded for, which is what WebInspector.Resource.Type represents.
+        // resource was loaded for, which is what WI.Resource.Type represents.
         // This getter generates a MIME-type, if needed, that matches the resource type.
 
         // If the type matches the Resource.Type of the MIME-type, then return the actual MIME-type.
-        if (this._type === WebInspector.Resource.typeFromMIMEType(this._mimeType))
+        if (this._type === WI.Resource.typeFromMIMEType(this._mimeType))
             return this._mimeType;
 
         // Return the default MIME-types for the Resource.Type, since the current MIME-type
         // does not match what is expected for the Resource.Type.
         switch (this._type) {
-        case WebInspector.Resource.Type.Stylesheet:
+        case WI.Resource.Type.Stylesheet:
             return "text/css";
-        case WebInspector.Resource.Type.Script:
+        case WI.Resource.Type.Script:
             return "text/javascript";
         }
 
@@ -357,6 +405,11 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         if (content instanceof Blob)
             return URL.createObjectURL(content);
 
+        if (typeof content === "string") {
+            let blob = textToBlob(content, this._mimeType);
+            return URL.createObjectURL(blob);
+        }
+
         return null;
     }
 
@@ -367,37 +420,26 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
 
     addInitiatedResource(resource)
     {
-        if (!(resource instanceof WebInspector.Resource))
+        if (!(resource instanceof WI.Resource))
             return;
 
         this._initiatedResources.push(resource);
 
-        this.dispatchEventToListeners(WebInspector.Resource.Event.InitiatedResourcesDidChange);
+        this.dispatchEventToListeners(WI.Resource.Event.InitiatedResourcesDidChange);
     }
 
-    get parentFrame()
+    get queryStringParameters()
     {
-        return this._parentFrame;
+        if (this._queryStringParameters === undefined)
+            this._queryStringParameters = parseQueryString(this.urlComponents.queryString, true);
+        return this._queryStringParameters;
     }
 
-    get finished()
+    get requestFormParameters()
     {
-        return this._finished;
-    }
-
-    get failed()
-    {
-        return this._failed;
-    }
-
-    get canceled()
-    {
-        return this._canceled;
-    }
-
-    get failureReasonText()
-    {
-        return this._failureReasonText;
+        if (this._requestFormParameters === undefined)
+            this._requestFormParameters = this.hasRequestFormParameters() ? parseQueryString(this.requestData, true) : null;
+        return this._requestFormParameters;
     }
 
     get requestDataContentType()
@@ -405,39 +447,44 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         return this._requestHeaders.valueForCaseInsensitiveKey("Content-Type") || null;
     }
 
-    get requestHeaders()
+    get requestCookies()
     {
-        return this._requestHeaders;
+        if (!this._requestCookies)
+            this._requestCookies = WI.Cookie.parseCookieRequestHeader(this._requestHeaders.valueForCaseInsensitiveKey("Cookie"));
+
+        return this._requestCookies;
     }
 
-    get responseHeaders()
+    get responseCookies()
     {
-        return this._responseHeaders;
+        if (!this._responseCookies) {
+            // FIXME: The backend sends multiple "Set-Cookie" headers in one "Set-Cookie" with multiple values
+            // separated by ", ". This doesn't allow us to safely distinguish between a ", " that separates
+            // multiple headers or one that may be valid part of a Cookie's value or attribute, such as the
+            // ", " in the the date format "Expires=Tue, 03-Oct-2017 04:39:21 GMT". To improve heuristics
+            // we do a negative lookahead for numbers, but we can still fail on cookie values containing ", ".
+            let rawCombinedHeader = this._responseHeaders.valueForCaseInsensitiveKey("Set-Cookie") || "";
+            let setCookieHeaders = rawCombinedHeader.split(/, (?![0-9])/);
+            let cookies = [];
+            for (let header of setCookieHeaders) {
+                let cookie = WI.Cookie.parseSetCookieResponseHeader(header);
+                if (cookie)
+                    cookies.push(cookie);
+            }
+            this._responseCookies = cookies;
+        }
+
+        return this._responseCookies;
     }
 
-    get requestSentTimestamp()
+    get requestSentDate()
     {
-        return this._requestSentTimestamp;
+        return isNaN(this._requestSentWalltime) ? null : new Date(this._requestSentWalltime * 1000);
     }
 
     get lastRedirectReceivedTimestamp()
     {
-        return this._lastRedirectReceivedTimestamp;
-    }
-
-    get responseReceivedTimestamp()
-    {
-        return this._responseReceivedTimestamp;
-    }
-
-    get lastDataReceivedTimestamp()
-    {
-        return this._lastDataReceivedTimestamp;
-    }
-
-    get finishedOrFailedTimestamp()
-    {
-        return this._finishedOrFailedTimestamp;
+        return this._redirects.length ? this._redirects.lastValue.timestamp : NaN;
     }
 
     get firstTimestamp()
@@ -450,11 +497,6 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         return this.timingData.responseEnd || this.lastDataReceivedTimestamp || this.responseReceivedTimestamp || this.lastRedirectReceivedTimestamp || this.requestSentTimestamp;
     }
 
-    get duration()
-    {
-        return this.timingData.responseEnd - this.timingData.requestStart;
-    }
-
     get latency()
     {
         return this.timingData.responseStart - this.timingData.requestStart;
@@ -465,16 +507,10 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         return this.timingData.responseEnd - this.timingData.responseStart;
     }
 
-    get cached()
+    get totalDuration()
     {
-        return this._cached;
+        return this.timingData.responseEnd - this.timingData.startTime;
     }
-
-    get requestHeadersTransferSize() { return this._requestHeadersTransferSize; }
-    get requestBodyTransferSize() { return this._requestBodyTransferSize; }
-    get responseHeadersTransferSize() { return this._responseHeadersTransferSize; }
-    get responseBodyTransferSize() { return this._responseBodyTransferSize; }
-    get cachedResponseBodySize() { return this._cachedResponseBodySize; }
 
     get size()
     {
@@ -504,7 +540,7 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
 
     get estimatedNetworkEncodedSize()
     {
-        let exact = this.networkEncodedSize; 
+        let exact = this.networkEncodedSize;
         if (!isNaN(exact))
             return exact;
 
@@ -515,7 +551,7 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         // macOS provides the decoded transfer size instead of the encoded size
         // for estimatedTransferSize. So prefer the "Content-Length" property
         // on mac if it is available.
-        if (WebInspector.Platform.name === "mac") {
+        if (WI.Platform.name === "mac") {
             let contentLength = Number(this._responseHeaders.valueForCaseInsensitiveKey("Content-Length"));
             if (!isNaN(contentLength))
                 return contentLength;
@@ -559,14 +595,42 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         return !!(contentEncoding && /\b(?:gzip|deflate)\b/.test(contentEncoding));
     }
 
+    get requestedByteRange()
+    {
+        let range = this._requestHeaders.valueForCaseInsensitiveKey("Range");
+        if (!range)
+            return null;
+
+        let rangeValues = range.match(/bytes=(\d+)-(\d+)/);
+        if (!rangeValues)
+            return null;
+
+        let start = parseInt(rangeValues[1]);
+        if (isNaN(start))
+            return null;
+
+        let end = parseInt(rangeValues[2]);
+        if (isNaN(end))
+            return null;
+
+        return {start, end};
+    }
+
     get scripts()
     {
         return this._scripts || [];
     }
 
+    get serverTiming()
+    {
+        if (!this._serverTimingEntries)
+            this._serverTimingEntries = WI.ServerTimingEntry.parseHeaders(this._responseHeaders.valueForCaseInsensitiveKey("Server-Timing"));
+        return this._serverTimingEntries;
+    }
+
     scriptForLocation(sourceCodeLocation)
     {
-        console.assert(!(this instanceof WebInspector.SourceMapResource));
+        console.assert(!(this instanceof WI.SourceMapResource));
         console.assert(sourceCodeLocation.sourceCode === this, "SourceCodeLocation must be in this Resource");
         if (sourceCodeLocation.sourceCode !== this)
             return null;
@@ -587,35 +651,45 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         return null;
     }
 
-    updateForRedirectResponse(url, requestHeaders, elapsedTime)
+    updateForRedirectResponse(request, response, elapsedTime, walltime)
     {
         console.assert(!this._finished);
         console.assert(!this._failed);
         console.assert(!this._canceled);
 
-        var oldURL = this._url;
+        let oldURL = this._url;
+        let oldHeaders = this._requestHeaders;
 
-        this._url = url;
-        this._requestHeaders = requestHeaders || {};
-        this._lastRedirectReceivedTimestamp = elapsedTime || NaN;
+        if (request.url)
+            this._url = request.url;
 
-        if (oldURL !== url) {
+        this._requestHeaders = request.headers || {};
+        this._requestCookies = null;
+        this._redirects.push(new WI.Redirect(oldURL, request.method, oldHeaders, response.status, response.statusText, response.headers, elapsedTime));
+
+        if (oldURL !== request.url) {
             // Delete the URL components so the URL is re-parsed the next time it is requested.
             this._urlComponents = null;
 
-            this.dispatchEventToListeners(WebInspector.Resource.Event.URLDidChange, {oldURL});
+            this.dispatchEventToListeners(WI.Resource.Event.URLDidChange, {oldURL});
         }
 
-        this.dispatchEventToListeners(WebInspector.Resource.Event.RequestHeadersDidChange);
-        this.dispatchEventToListeners(WebInspector.Resource.Event.TimestampsDidChange);
+        this.dispatchEventToListeners(WI.Resource.Event.RequestHeadersDidChange);
+        this.dispatchEventToListeners(WI.Resource.Event.TimestampsDidChange);
     }
 
     hasResponse()
     {
-        return !isNaN(this._statusCode);
+        return !isNaN(this._statusCode) || this._finished || this._failed;
     }
 
-    updateForResponse(url, mimeType, type, responseHeaders, statusCode, statusText, elapsedTime, timingData, source)
+    hasRequestFormParameters()
+    {
+        let requestDataContentType = this.requestDataContentType;
+        return requestDataContentType && requestDataContentType.match(/^application\/x-www-form-urlencoded\s*(;.*)?$/i);
+    }
+
+    updateForResponse(url, mimeType, type, responseHeaders, statusCode, statusText, elapsedTime, timingData, source, security)
     {
         console.assert(!this._finished);
         console.assert(!this._failed);
@@ -625,20 +699,26 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         let oldMIMEType = this._mimeType;
         let oldType = this._type;
 
-        if (type in WebInspector.Resource.Type)
-            type = WebInspector.Resource.Type[type];
+        if (type in WI.Resource.Type)
+            type = WI.Resource.Type[type];
 
-        this._url = url;
+        if (url)
+            this._url = url;
+
         this._mimeType = mimeType;
-        this._type = type || WebInspector.Resource.typeFromMIMEType(mimeType);
+        this._type = Resource.resolvedType(type, mimeType);
         this._statusCode = statusCode;
         this._statusText = statusText;
         this._responseHeaders = responseHeaders || {};
+        this._responseCookies = null;
+        this._serverTimingEntries = null;
         this._responseReceivedTimestamp = elapsedTime || NaN;
-        this._timingData = WebInspector.ResourceTimingData.fromPayload(timingData, this);
+        this._timingData = WI.ResourceTimingData.fromPayload(timingData, this);
 
         if (source)
-            this._responseSource = WebInspector.Resource.responseSourceFromPayload(source);
+            this._responseSource = WI.Resource.responseSourceFromPayload(source);
+
+        this._security = security || {};
 
         const headerBaseSize = 12; // Length of "HTTP/1.1 ", " ", and "\r\n".
         const headerPad = 4; // Length of ": " and "\r\n".
@@ -647,7 +727,7 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
             this._estimatedResponseHeadersSize += name.length + this._responseHeaders[name].length + headerPad;
 
         if (!this._cached) {
-            if (statusCode === 304 || (this._responseSource === WebInspector.Resource.ResponseSource.MemoryCache || this._responseSource === WebInspector.Resource.ResponseSource.DiskCache))
+            if (statusCode === 304 || (this._responseSource === WI.Resource.ResponseSource.MemoryCache || this._responseSource === WI.Resource.ResponseSource.DiskCache))
                 this.markAsCached();
         }
 
@@ -655,18 +735,18 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
             // Delete the URL components so the URL is re-parsed the next time it is requested.
             this._urlComponents = null;
 
-            this.dispatchEventToListeners(WebInspector.Resource.Event.URLDidChange, {oldURL});
+            this.dispatchEventToListeners(WI.Resource.Event.URLDidChange, {oldURL});
         }
 
         if (oldMIMEType !== mimeType) {
             // Delete the MIME-type components so the MIME-type is re-parsed the next time it is requested.
             this._mimeTypeComponents = null;
 
-            this.dispatchEventToListeners(WebInspector.Resource.Event.MIMETypeDidChange, {oldMIMEType});
+            this.dispatchEventToListeners(WI.Resource.Event.MIMETypeDidChange, {oldMIMEType});
         }
 
         if (oldType !== type)
-            this.dispatchEventToListeners(WebInspector.Resource.Event.TypeDidChange, {oldType});
+            this.dispatchEventToListeners(WI.Resource.Event.TypeDidChange, {oldType});
 
         console.assert(isNaN(this._estimatedSize));
         console.assert(isNaN(this._estimatedTransferSize));
@@ -674,10 +754,10 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         // The transferSize becomes 0 when status is 304 or Content-Length is available, so
         // notify listeners of that change.
         if (statusCode === 304 || this._responseHeaders.valueForCaseInsensitiveKey("Content-Length"))
-            this.dispatchEventToListeners(WebInspector.Resource.Event.TransferSizeDidChange);
+            this.dispatchEventToListeners(WI.Resource.Event.TransferSizeDidChange);
 
-        this.dispatchEventToListeners(WebInspector.Resource.Event.ResponseReceived);
-        this.dispatchEventToListeners(WebInspector.Resource.Event.TimestampsDidChange);
+        this.dispatchEventToListeners(WI.Resource.Event.ResponseReceived);
+        this.dispatchEventToListeners(WI.Resource.Event.TimestampsDidChange);
     }
 
     updateWithMetrics(metrics)
@@ -687,14 +767,15 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         if (metrics.protocol)
             this._protocol = metrics.protocol;
         if (metrics.priority)
-            this._priority = WebInspector.Resource.networkPriorityFromPayload(metrics.priority);
+            this._priority = WI.Resource.networkPriorityFromPayload(metrics.priority);
         if (metrics.remoteAddress)
             this._remoteAddress = metrics.remoteAddress;
         if (metrics.connectionIdentifier)
-            this._connectionIdentifier = WebInspector.Resource.connectionIdentifierFromPayload(metrics.connectionIdentifier);
+            this._connectionIdentifier = WI.Resource.connectionIdentifierFromPayload(metrics.connectionIdentifier);
         if (metrics.requestHeaders) {
             this._requestHeaders = metrics.requestHeaders;
-            this.dispatchEventToListeners(WebInspector.Resource.Event.RequestHeadersDidChange);
+            this._requestCookies = null;
+            this.dispatchEventToListeners(WI.Resource.Event.RequestHeadersDidChange);
         }
 
         if ("requestHeaderBytesSent" in metrics) {
@@ -710,9 +791,21 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
             console.assert(this._responseBodyTransferSize >= 0);
             console.assert(this._responseBodySize >= 0);
 
-            this.dispatchEventToListeners(WebInspector.Resource.Event.SizeDidChange, {previousSize: this._estimatedSize});
-            this.dispatchEventToListeners(WebInspector.Resource.Event.TransferSizeDidChange);
+            // There may have been no size updates received during load if Content-Length was 0.
+            if (isNaN(this._estimatedSize))
+                this._estimatedSize = 0;
+
+            this.dispatchEventToListeners(WI.Resource.Event.SizeDidChange, {previousSize: this._estimatedSize});
+            this.dispatchEventToListeners(WI.Resource.Event.TransferSizeDidChange);
         }
+
+        if (metrics.securityConnection) {
+            if (!this._security)
+                this._security = {};
+            this._security.connection = metrics.securityConnection;
+        }
+
+        this.dispatchEventToListeners(WI.Resource.Event.MetricsDidChange);
     }
 
     setCachedResponseBodySize(size)
@@ -752,11 +845,11 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
 
         this._lastDataReceivedTimestamp = elapsedTime || NaN;
 
-        this.dispatchEventToListeners(WebInspector.Resource.Event.SizeDidChange, {previousSize});
+        this.dispatchEventToListeners(WI.Resource.Event.SizeDidChange, {previousSize});
 
         // The estimatedTransferSize is based off of size when status is not 304 or Content-Length is missing.
         if (isNaN(this._estimatedTransferSize) && this._statusCode !== 304 && !this._responseHeaders.valueForCaseInsensitiveKey("Content-Length"))
-            this.dispatchEventToListeners(WebInspector.Resource.Event.TransferSizeDidChange);
+            this.dispatchEventToListeners(WI.Resource.Event.TransferSizeDidChange);
     }
 
     increaseTransferSize(encodedDataLength)
@@ -768,18 +861,18 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
             this._estimatedTransferSize = 0;
         this._estimatedTransferSize += encodedDataLength;
 
-        this.dispatchEventToListeners(WebInspector.Resource.Event.TransferSizeDidChange);
+        this.dispatchEventToListeners(WI.Resource.Event.TransferSizeDidChange);
     }
 
     markAsCached()
     {
         this._cached = true;
 
-        this.dispatchEventToListeners(WebInspector.Resource.Event.CacheStatusDidChange);
+        this.dispatchEventToListeners(WI.Resource.Event.CacheStatusDidChange);
 
         // The transferSize starts returning 0 when cached is true, unless status is 304.
         if (this._statusCode !== 304)
-            this.dispatchEventToListeners(WebInspector.Resource.Event.TransferSizeDidChange);
+            this.dispatchEventToListeners(WI.Resource.Event.TransferSizeDidChange);
     }
 
     markAsFinished(elapsedTime)
@@ -794,8 +887,8 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         if (this._finishThenRequestContentPromise)
             this._finishThenRequestContentPromise = null;
 
-        this.dispatchEventToListeners(WebInspector.Resource.Event.LoadingDidFinish);
-        this.dispatchEventToListeners(WebInspector.Resource.Event.TimestampsDidChange);
+        this.dispatchEventToListeners(WI.Resource.Event.LoadingDidFinish);
+        this.dispatchEventToListeners(WI.Resource.Event.TimestampsDidChange);
     }
 
     markAsFailed(canceled, elapsedTime, errorText)
@@ -809,8 +902,8 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         if (!this._failureReasonText)
             this._failureReasonText = errorText || null;
 
-        this.dispatchEventToListeners(WebInspector.Resource.Event.LoadingDidFail);
-        this.dispatchEventToListeners(WebInspector.Resource.Event.TimestampsDidChange);
+        this.dispatchEventToListeners(WI.Resource.Event.LoadingDidFail);
+        this.dispatchEventToListeners(WI.Resource.Event.TimestampsDidChange);
     }
 
     revertMarkAsFinished()
@@ -826,9 +919,9 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     legacyMarkServedFromMemoryCache()
     {
         // COMPATIBILITY (iOS 10.3): This is a legacy code path where we know the resource came from the MemoryCache.
-        console.assert(this._responseSource === WebInspector.Resource.ResponseSource.Unknown);
+        console.assert(this._responseSource === WI.Resource.ResponseSource.Unknown);
 
-        this._responseSource = WebInspector.Resource.ResponseSource.MemoryCache;
+        this._responseSource = WI.Resource.ResponseSource.MemoryCache;
 
         this.markAsCached();
     }
@@ -836,11 +929,16 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     legacyMarkServedFromDiskCache()
     {
         // COMPATIBILITY (iOS 10.3): This is a legacy code path where we know the resource came from the DiskCache.
-        console.assert(this._responseSource === WebInspector.Resource.ResponseSource.Unknown);
+        console.assert(this._responseSource === WI.Resource.ResponseSource.Unknown);
 
-        this._responseSource = WebInspector.Resource.ResponseSource.DiskCache;
+        this._responseSource = WI.Resource.ResponseSource.DiskCache;
 
         this.markAsCached();
+    }
+
+    isLoading()
+    {
+        return !this._finished && !this._failed;
     }
 
     hadLoadingError()
@@ -851,7 +949,7 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     getImageSize(callback)
     {
         // Throw an error in the case this resource is not an image.
-        if (this.type !== WebInspector.Resource.Type.Image)
+        if (this.type !== WI.Resource.Type.Image)
             throw "Resource is not an image.";
 
         // See if we've already computed and cached the image size,
@@ -900,13 +998,13 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
             return super.requestContent();
 
         if (this._failed)
-            return Promise.resolve({error: WebInspector.UIString("An error occurred trying to load the resource.")});
+            return Promise.resolve({error: WI.UIString("An error occurred trying to load the resource.")});
 
         if (!this._finishThenRequestContentPromise) {
             this._finishThenRequestContentPromise = new Promise((resolve, reject) => {
-                this.addEventListener(WebInspector.Resource.Event.LoadingDidFinish, resolve);
-                this.addEventListener(WebInspector.Resource.Event.LoadingDidFail, reject);
-            }).then(WebInspector.SourceCode.prototype.requestContent.bind(this));
+                this.addEventListener(WI.Resource.Event.LoadingDidFinish, resolve);
+                this.addEventListener(WI.Resource.Event.LoadingDidFail, reject);
+            }).then(WI.SourceCode.prototype.requestContent.bind(this));
         }
 
         return this._finishThenRequestContentPromise;
@@ -919,17 +1017,17 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
 
         this._scripts.push(script);
 
-        if (this._type === WebInspector.Resource.Type.Other || this._type === WebInspector.Resource.Type.XHR) {
+        if (this._type === WI.Resource.Type.Other || this._type === WI.Resource.Type.XHR) {
             let oldType = this._type;
-            this._type = WebInspector.Resource.Type.Script;
-            this.dispatchEventToListeners(WebInspector.Resource.Event.TypeDidChange, {oldType});
+            this._type = WI.Resource.Type.Script;
+            this.dispatchEventToListeners(WI.Resource.Event.TypeDidChange, {oldType});
         }
     }
 
     saveIdentityToCookie(cookie)
     {
-        cookie[WebInspector.Resource.URLCookieKey] = this.url.hash;
-        cookie[WebInspector.Resource.MainResourceCookieKey] = this.isMainResource();
+        cookie[WI.Resource.URLCookieKey] = this.url.hash;
+        cookie[WI.Resource.MainResourceCookieKey] = this.isMainResource();
     }
 
     generateCURLCommand()
@@ -949,6 +1047,7 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
                                  .replace(/'/g, "\\'")
                                  .replace(/\n/g, "\\n")
                                  .replace(/\r/g, "\\r")
+                                 .replace(/!/g, "\\041")
                                  .replace(/[^\x20-\x7E]/g, escapeCharacter) + "'";
             } else {
                 // Use single quote syntax.
@@ -969,17 +1068,80 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
                 command.push("--data-binary " + escapeStringPosix(this.requestData));
         }
 
-        let curlCommand = command.join(" \\\n");
-        InspectorFrontendHost.copyText(curlCommand);
-        return curlCommand;
+        return command.join(" \\\n");
+    }
+
+    stringifyHTTPRequest()
+    {
+        let lines = [];
+
+        let protocol = this.protocol || "";
+        if (protocol === "h2") {
+            // HTTP/2 Request pseudo headers:
+            // https://tools.ietf.org/html/rfc7540#section-8.1.2.3
+            lines.push(`:method: ${this.requestMethod}`);
+            lines.push(`:scheme: ${this.urlComponents.scheme}`);
+            lines.push(`:authority: ${WI.h2Authority(this.urlComponents)}`);
+            lines.push(`:path: ${WI.h2Path(this.urlComponents)}`);
+        } else {
+            // HTTP/1.1 request line:
+            // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+            lines.push(`${this.requestMethod} ${this.urlComponents.path}${protocol ? " " + protocol.toUpperCase() : ""}`);
+        }
+
+        for (let key in this.requestHeaders)
+            lines.push(`${key}: ${this.requestHeaders[key]}`);
+
+        return lines.join("\n") + "\n";
+    }
+
+    stringifyHTTPResponse()
+    {
+        let lines = [];
+
+        let protocol = this.protocol || "";
+        if (protocol === "h2") {
+            // HTTP/2 Response pseudo headers:
+            // https://tools.ietf.org/html/rfc7540#section-8.1.2.4
+            lines.push(`:status: ${this.statusCode}`);
+        } else {
+            // HTTP/1.1 response status line:
+            // https://www.w3.org/Protocols/rfc2616/rfc2616-sec6.html#sec6.1
+            lines.push(`${protocol ? protocol.toUpperCase() + " " : ""}${this.statusCode} ${this.statusText}`);
+        }
+
+        for (let key in this.responseHeaders)
+            lines.push(`${key}: ${this.responseHeaders[key]}`);
+
+        return lines.join("\n") + "\n";
+    }
+
+    async showCertificate()
+    {
+        let errorString = WI.UIString("Unable to show certificate for \u201C%s\u201D").format(this.url);
+
+        try {
+            let {serializedCertificate} = await NetworkAgent.getSerializedCertificate(this._requestIdentifier);
+            if (InspectorFrontendHost.showCertificate(serializedCertificate))
+                return;
+        } catch (e) {
+            console.error(e);
+            throw errorString;
+        }
+
+        let consoleMessage = new WI.ConsoleMessage(this._target, WI.ConsoleMessage.MessageSource.Other, WI.ConsoleMessage.MessageLevel.Error, errorString);
+        consoleMessage.shouldRevealConsole = true;
+        WI.consoleLogViewController.appendConsoleMessage(consoleMessage);
+
+        throw errorString;
     }
 };
 
-WebInspector.Resource.TypeIdentifier = "resource";
-WebInspector.Resource.URLCookieKey = "resource-url";
-WebInspector.Resource.MainResourceCookieKey = "resource-is-main-resource";
+WI.Resource.TypeIdentifier = "resource";
+WI.Resource.URLCookieKey = "resource-url";
+WI.Resource.MainResourceCookieKey = "resource-is-main-resource";
 
-WebInspector.Resource.Event = {
+WI.Resource.Event = {
     URLDidChange: "resource-url-did-change",
     MIMETypeDidChange: "resource-mime-type-did-change",
     TypeDidChange: "resource-type-did-change",
@@ -991,11 +1153,12 @@ WebInspector.Resource.Event = {
     SizeDidChange: "resource-size-did-change",
     TransferSizeDidChange: "resource-transfer-size-did-change",
     CacheStatusDidChange: "resource-cached-did-change",
+    MetricsDidChange: "resource-metrics-did-change",
     InitiatedResourcesDidChange: "resource-initiated-resources-did-change",
 };
 
 // Keep these in sync with the "ResourceType" enum defined by the "Page" domain.
-WebInspector.Resource.Type = {
+WI.Resource.Type = {
     Document: "resource-type-document",
     Stylesheet: "resource-type-stylesheet",
     Image: "resource-type-image",
@@ -1003,61 +1166,72 @@ WebInspector.Resource.Type = {
     Script: "resource-type-script",
     XHR: "resource-type-xhr",
     Fetch: "resource-type-fetch",
+    Ping: "resource-type-ping",
+    Beacon: "resource-type-beacon",
     WebSocket: "resource-type-websocket",
-    Other: "resource-type-other"
+    Other: "resource-type-other",
 };
 
-WebInspector.Resource.ResponseSource = {
+WI.Resource.ResponseSource = {
     Unknown: Symbol("unknown"),
     Network: Symbol("network"),
     MemoryCache: Symbol("memory-cache"),
     DiskCache: Symbol("disk-cache"),
+    ServiceWorker: Symbol("service-worker"),
 };
 
-WebInspector.Resource.NetworkPriority = {
+WI.Resource.NetworkPriority = {
     Unknown: Symbol("unknown"),
     Low: Symbol("low"),
     Medium: Symbol("medium"),
     High: Symbol("high"),
 };
 
-// This MIME Type map is private, use WebInspector.Resource.typeFromMIMEType().
-WebInspector.Resource._mimeTypeMap = {
-    "text/html": WebInspector.Resource.Type.Document,
-    "text/xml": WebInspector.Resource.Type.Document,
-    "text/plain": WebInspector.Resource.Type.Document,
-    "application/xhtml+xml": WebInspector.Resource.Type.Document,
-    "image/svg+xml": WebInspector.Resource.Type.Document,
+WI.Resource.GroupingMode = {
+    Path: "group-resource-by-path",
+    Type: "group-resource-by-type",
+};
+WI.settings.resourceGroupingMode = new WI.Setting("resource-grouping-mode", WI.Resource.GroupingMode.Type);
 
-    "text/css": WebInspector.Resource.Type.Stylesheet,
-    "text/xsl": WebInspector.Resource.Type.Stylesheet,
-    "text/x-less": WebInspector.Resource.Type.Stylesheet,
-    "text/x-sass": WebInspector.Resource.Type.Stylesheet,
-    "text/x-scss": WebInspector.Resource.Type.Stylesheet,
+// This MIME Type map is private, use WI.Resource.typeFromMIMEType().
+WI.Resource._mimeTypeMap = {
+    "text/html": WI.Resource.Type.Document,
+    "text/xml": WI.Resource.Type.Document,
+    "text/plain": WI.Resource.Type.Document,
+    "application/xhtml+xml": WI.Resource.Type.Document,
 
-    "application/pdf": WebInspector.Resource.Type.Image,
+    "text/css": WI.Resource.Type.Stylesheet,
+    "text/xsl": WI.Resource.Type.Stylesheet,
+    "text/x-less": WI.Resource.Type.Stylesheet,
+    "text/x-sass": WI.Resource.Type.Stylesheet,
+    "text/x-scss": WI.Resource.Type.Stylesheet,
 
-    "application/x-font-type1": WebInspector.Resource.Type.Font,
-    "application/x-font-ttf": WebInspector.Resource.Type.Font,
-    "application/x-font-woff": WebInspector.Resource.Type.Font,
-    "application/x-truetype-font": WebInspector.Resource.Type.Font,
+    "application/pdf": WI.Resource.Type.Image,
+    "image/svg+xml": WI.Resource.Type.Image,
 
-    "text/javascript": WebInspector.Resource.Type.Script,
-    "text/ecmascript": WebInspector.Resource.Type.Script,
-    "application/javascript": WebInspector.Resource.Type.Script,
-    "application/ecmascript": WebInspector.Resource.Type.Script,
-    "application/x-javascript": WebInspector.Resource.Type.Script,
-    "application/json": WebInspector.Resource.Type.Script,
-    "application/x-json": WebInspector.Resource.Type.Script,
-    "text/x-javascript": WebInspector.Resource.Type.Script,
-    "text/x-json": WebInspector.Resource.Type.Script,
-    "text/javascript1.1": WebInspector.Resource.Type.Script,
-    "text/javascript1.2": WebInspector.Resource.Type.Script,
-    "text/javascript1.3": WebInspector.Resource.Type.Script,
-    "text/jscript": WebInspector.Resource.Type.Script,
-    "text/livescript": WebInspector.Resource.Type.Script,
-    "text/x-livescript": WebInspector.Resource.Type.Script,
-    "text/typescript": WebInspector.Resource.Type.Script,
-    "text/x-clojure": WebInspector.Resource.Type.Script,
-    "text/x-coffeescript": WebInspector.Resource.Type.Script
+    "application/x-font-type1": WI.Resource.Type.Font,
+    "application/x-font-ttf": WI.Resource.Type.Font,
+    "application/x-font-woff": WI.Resource.Type.Font,
+    "application/x-truetype-font": WI.Resource.Type.Font,
+
+    "text/javascript": WI.Resource.Type.Script,
+    "text/ecmascript": WI.Resource.Type.Script,
+    "application/javascript": WI.Resource.Type.Script,
+    "application/ecmascript": WI.Resource.Type.Script,
+    "application/x-javascript": WI.Resource.Type.Script,
+    "application/json": WI.Resource.Type.Script,
+    "application/x-json": WI.Resource.Type.Script,
+    "text/x-javascript": WI.Resource.Type.Script,
+    "text/x-json": WI.Resource.Type.Script,
+    "text/javascript1.1": WI.Resource.Type.Script,
+    "text/javascript1.2": WI.Resource.Type.Script,
+    "text/javascript1.3": WI.Resource.Type.Script,
+    "text/jscript": WI.Resource.Type.Script,
+    "text/livescript": WI.Resource.Type.Script,
+    "text/x-livescript": WI.Resource.Type.Script,
+    "text/typescript": WI.Resource.Type.Script,
+    "text/typescript-jsx": WI.Resource.Type.Script,
+    "text/jsx": WI.Resource.Type.Script,
+    "text/x-clojure": WI.Resource.Type.Script,
+    "text/x-coffeescript": WI.Resource.Type.Script,
 };

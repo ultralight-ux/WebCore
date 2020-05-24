@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.StyleDetailsPanel = class StyleDetailsPanel extends WebInspector.View
+WI.StyleDetailsPanel = class StyleDetailsPanel extends WI.View
 {
     constructor(delegate, className, identifier, label)
     {
@@ -31,8 +31,7 @@ WebInspector.StyleDetailsPanel = class StyleDetailsPanel extends WebInspector.Vi
 
         this._delegate = delegate || null;
 
-        // Add this offset-sections class name so the sticky headers don't overlap the navigation bar.
-        this.element.classList.add(className, "offset-sections");
+        this.element.classList.add(className);
 
         this._navigationInfo = {identifier, label};
 
@@ -80,18 +79,18 @@ WebInspector.StyleDetailsPanel = class StyleDetailsPanel extends WebInspector.Vi
 
         if (!this._nodeStyles || this._nodeStyles.node !== domNode) {
             if (this._nodeStyles) {
-                this._nodeStyles.removeEventListener(WebInspector.DOMNodeStyles.Event.Refreshed, this.nodeStylesRefreshed, this);
-                this._nodeStyles.removeEventListener(WebInspector.DOMNodeStyles.Event.NeedsRefresh, this._nodeStylesNeedsRefreshed, this);
+                this._nodeStyles.removeEventListener(WI.DOMNodeStyles.Event.Refreshed, this.nodeStylesRefreshed, this);
+                this._nodeStyles.removeEventListener(WI.DOMNodeStyles.Event.NeedsRefresh, this._nodeStylesNeedsRefreshed, this);
             }
 
-            this._nodeStyles = WebInspector.cssStyleManager.stylesForNode(domNode);
+            this._nodeStyles = WI.cssManager.stylesForNode(domNode);
 
             console.assert(this._nodeStyles);
             if (!this._nodeStyles)
                 return;
 
-            this._nodeStyles.addEventListener(WebInspector.DOMNodeStyles.Event.Refreshed, this.nodeStylesRefreshed, this);
-            this._nodeStyles.addEventListener(WebInspector.DOMNodeStyles.Event.NeedsRefresh, this._nodeStylesNeedsRefreshed, this);
+            this._nodeStyles.addEventListener(WI.DOMNodeStyles.Event.Refreshed, this.nodeStylesRefreshed, this);
+            this._nodeStyles.addEventListener(WI.DOMNodeStyles.Event.NeedsRefresh, this._nodeStylesNeedsRefreshed, this);
 
             this._forceSignificantChange = true;
         }
@@ -103,7 +102,7 @@ WebInspector.StyleDetailsPanel = class StyleDetailsPanel extends WebInspector.Vi
     refresh(significantChange)
     {
         // Implemented by subclasses.
-        this.dispatchEventToListeners(WebInspector.StyleDetailsPanel.Event.Refreshed);
+        this.dispatchEventToListeners(WI.StyleDetailsPanel.Event.Refreshed);
     }
 
     // Protected
@@ -114,13 +113,18 @@ WebInspector.StyleDetailsPanel = class StyleDetailsPanel extends WebInspector.Vi
             this._refreshPreservingScrollPosition(event.data.significantChange);
     }
 
+    filterDidChange(filterBar)
+    {
+        // Implemented by subclasses.
+    }
+
     // Private
 
     get _initialScrollOffset()
     {
-        if (!WebInspector.cssStyleManager.canForcePseudoClasses())
+        if (!WI.cssManager.canForcePseudoClasses())
             return 0;
-        return this.nodeStyles.node.enabledPseudoClasses.length ? 0 : WebInspector.CSSStyleDetailsSidebarPanel.NoForcedPseudoClassesScrollOffset;
+        return this.nodeStyles.node.enabledPseudoClasses.length ? 0 : WI.GeneralStyleDetailsSidebarPanel.NoForcedPseudoClassesScrollOffset;
     }
 
     _refreshNodeStyles()
@@ -157,6 +161,6 @@ WebInspector.StyleDetailsPanel = class StyleDetailsPanel extends WebInspector.Vi
     }
 };
 
-WebInspector.StyleDetailsPanel.Event = {
+WI.StyleDetailsPanel.Event = {
     Refreshed: "style-details-panel-refreshed"
 };

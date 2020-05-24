@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SidebarPanel = class SidebarPanel extends WebInspector.View
+WI.SidebarPanel = class SidebarPanel extends WI.View
 {
     constructor(identifier, displayName)
     {
@@ -40,7 +40,7 @@ WebInspector.SidebarPanel = class SidebarPanel extends WebInspector.View
         this.element.setAttribute("role", "group");
         this.element.setAttribute("aria-label", displayName);
 
-        this._contentView = new WebInspector.View;
+        this._contentView = new WI.View;
         this._contentView.element.classList.add("content");
         this.addSubview(this._contentView);
     }
@@ -92,41 +92,9 @@ WebInspector.SidebarPanel = class SidebarPanel extends WebInspector.View
         return 0;
     }
 
-    show()
-    {
-        if (!this.parentSidebar)
-            return;
-
-        this.parentSidebar.collapsed = false;
-        this.parentSidebar.selectedSidebarPanel = this;
-    }
-
-    hide()
-    {
-        if (!this.parentSidebar)
-            return;
-
-        this.parentSidebar.collapsed = true;
-        this.parentSidebar.selectedSidebarPanel = null;
-    }
-
-    added()
-    {
-        console.assert(this.parentSidebar);
-
-        // Implemented by subclasses.
-    }
-
-    removed()
-    {
-        console.assert(!this.parentSidebar);
-
-        // Implemented by subclasses.
-    }
-
     shown()
     {
-        this._contentView.element.scrollTop = this._savedScrollPosition;
+        this.scrollElement.scrollTop = this._savedScrollPosition;
 
         // FIXME: remove once <https://webkit.org/b/150741> is fixed.
         this.updateLayoutIfNeeded();
@@ -136,7 +104,7 @@ WebInspector.SidebarPanel = class SidebarPanel extends WebInspector.View
 
     hidden()
     {
-        this._savedScrollPosition = this._contentView.element.scrollTop;
+        this._savedScrollPosition = this.scrollElement.scrollTop;
 
         // Implemented by subclasses.
     }
@@ -144,5 +112,13 @@ WebInspector.SidebarPanel = class SidebarPanel extends WebInspector.View
     visibilityDidChange()
     {
         // Implemented by subclasses.
+    }
+
+    // Protected
+
+    get scrollElement()
+    {
+        // Overridden by sub-classes if needed.
+        return this.contentView.element;
     }
 };

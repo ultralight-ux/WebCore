@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -78,7 +78,7 @@ body.window-inactive .tab-bar > .top-border {
 
 .tab-bar > .item {
     display: flex;
-    flex: 1;
+    flex-grow: 1;
 
     position: relative;
 
@@ -106,6 +106,10 @@ body.window-inactive .tab-bar > .top-border {
     /* transition-delay: 50ms; */
 }
 
+.tab-bar.calculate-width > .item {
+    flex: initial;
+}
+
 body[dir=ltr] .tab-bar > :nth-child(n + 2 of .item),
 body[dir=ltr] .tab-bar.dragging-tab > .item.selected {
     border-left: var(--tab-item-medium-border-style);
@@ -122,6 +126,11 @@ body[dir=rtl] .tab-bar.dragging-tab > .item.selected {
     justify-content: center;
 }
 
+.tab-bar > .item.pinned.tab-picker {
+    width: 18px;
+    min-width: initial;
+}
+
 .tab-bar > .item:not(.disabled).selected {
     border-top-color: hsl(0, 0%, 74%);
     background-image: linear-gradient(to bottom, hsl(0, 0%, 87%), hsl(0, 0%, 82%));
@@ -129,7 +138,7 @@ body[dir=rtl] .tab-bar.dragging-tab > .item.selected {
 }
 
 .tab-bar:not(.animating) > .item:not(.selected, .disabled):hover {
-    background-position: 0 100%;
+    background-image: linear-gradient(to bottom, hsl(0, 0%, 67%), hsl(0, 0%, 64%));
     border-top-color: var(--tab-item-dark-border-color);
 }
 
@@ -183,15 +192,7 @@ body.window-inactive .tab-bar > .item.selected {
     transition-duration: 250ms, 500ms;
     transition-delay: 0, 50ms;
 
-    --tab-item-close-button-margin-end: 4px;
-}
-
-body[dir=ltr] .tab-bar > .item > .close {
-    margin-right: var(--tab-item-close-button-margin-end);
-}
-
-body[dir=rtl] .tab-bar > .item > .close {
-    margin-left: var(--tab-item-close-button-margin-end);
+    -webkit-margin-end: 4px;
 }
 
 body:not(.window-inactive) .tab-bar > .item:hover > .close {
@@ -219,16 +220,8 @@ body:not(.window-inactive) .tab-bar.single-tab > .item.default-tab:hover > .clos
     flex: 1;
 }
 
-.tab-bar > .item:not(.pinned) > .flex-space:last-child {
-    --tab-item-unpinned-trailing-flex-space-margin-end: 16px;
-}
-
-body[dir=ltr] .tab-bar > .item:not(.pinned) > .flex-space:last-child {
-    margin-right: var(--tab-item-unpinned-trailing-flex-space-margin-end);
-}
-
-body[dir=rtl] .tab-bar > .item:not(.pinned) > .flex-space:last-child {
-    margin-left: var(--tab-item-unpinned-trailing-flex-space-margin-end);
+.tab-bar > .item.ephemeral > .flex-space:last-child {
+    -webkit-margin-end: 16px;
 }
 
 .tab-bar > .item > .icon {
@@ -258,8 +251,10 @@ body[dir=rtl] .tab-bar > .item:not(.pinned) > .flex-space:last-child {
     opacity: 0.35;
 }
 
-.tab-bar:not(.animating) > .item:not(.selected, .disabled):hover > .icon {
-    opacity: 0.6;
+@media not (prefers-color-scheme: dark) {
+    .tab-bar:not(.animating) > .item:not(.selected, .disabled):hover > .icon {
+        opacity: 0.6;
+    }
 }
 
 .tab-bar > .item > .title {
@@ -269,16 +264,10 @@ body[dir=rtl] .tab-bar > .item:not(.pinned) > .flex-space:last-child {
 
     min-width: 0;
     max-width: 400px;
-
-    --tab-item-title-margin-start: 6px;
 }
 
-body[dir=ltr] .tab-bar > .item > .title {
-    margin-left: var(--tab-item-title-margin-start);
-}
-
-body[dir=rtl] .tab-bar > .item > .title {
-    margin-right: var(--tab-item-title-margin-start);
+.tab-bar:not(.collapsed) > .item > .title {
+    -webkit-margin-start: 6px;
 }
 
 .tab-bar > .item > .title > .content {
@@ -301,35 +290,30 @@ body[dir=rtl] .tab-bar > .item > .title {
     justify-content: center;
 }
 
+.tab-bar.collapsed > .item:not(.pinned) > .icon {
+    display: none;
+}
+
 .tab-bar.collapsed > .item > .flex-space {
     display: none;
 }
 
 .tab-bar.collapsed > .item > .close {
     display: none;
-    --tab-item-close-button-margin-end: 0;
+    -webkit-margin-end: 0;
 }
 
-body[dir=ltr] .tab-bar.collapsed > .item > .close {
-    margin-right: var(--tab-item-close-button-margin-end);
-}
-
-body[dir=rtl] .tab-bar.collapsed > .item > .close {
-    margin-left: var(--tab-item-close-button-margin-end);
-}
-
-.tab-bar.hide-titles > .item > .title {
-    display: none;
-}
-
-.tab-bar.collapsed:not(.hide-titles) > .item:not(.pinned):hover > .icon,
-.tab-bar.hide-titles > .item.selected:hover > .icon {
-    display: none;
-}
-
-.tab-bar.collapsed:not(.hide-titles) > .item:hover > .close,
-.tab-bar.hide-titles > .item.selected:hover > .close {
+.tab-bar.collapsed > .item:hover > .close {
     display: inline-block;
+    position: absolute;
+}
+
+.tab-bar.collapsed > .item.ephemeral:hover > .icon {
+    display: none;
+}
+
+.tab-bar.collapsed > .item.ephemeral:hover > .title {
+    visibility: hidden;
 }
 
 .tab-bar.static-layout {
@@ -374,4 +358,61 @@ body.window-inactive .tab-bar.animating.closing-tab > .item.selected {
 .tab-bar.dragging-tab > .item.selected {
     z-index: 2;
     pointer-events: none;
+}
+
+@media (prefers-color-scheme: dark) {
+    .tab-bar {
+        background-image: linear-gradient(to bottom, hsl(0, 0%, 12%), hsl(0, 0%, 10%));
+
+        --tab-item-border-color: hsl(0, 0%, 36%);
+
+        /* FIXME: <https://webkit.org/b/189769> Dark Mode: use semantic color names */
+        --tab-item-dark-border-color: var(--tab-item-border-color);
+        --tab-item-medium-border-color: var(--tab-item-border-color);
+        --tab-item-light-border-color: var(--tab-item-border-color);
+        --tab-item-extra-light-border-color: var(--tab-item-border-color);
+    }
+
+    .tab-bar > .item {
+        background-image: linear-gradient(to bottom, hsl(0, 0%, 12%), hsl(0, 0%, 10%));
+    }
+
+    .tab-bar > .item > .title {
+        color: white !important;
+    }
+
+    .tab-bar > .item:not(.disabled).selected {
+        background-image: linear-gradient(to bottom, hsl(0, 0%, 23%), hsl(0, 0%, 21%));
+        border-top-color: hsl(0, 0%, 37%);
+    }
+
+    .tab-bar:not(.animating) > .item:not(.selected):hover {
+        background-image: linear-gradient(to bottom, hsl(0, 0%, 11%), hsl(0, 0%, 9%));
+    }
+
+    .tab-bar > .item > .close,
+    .tab-bar > .item > .icon {
+        filter: var(--filter-invert);
+    }
+
+    body.window-inactive .tab-bar {
+        --tab-item-border-color: hsl(0, 0%, 34%);
+        border-bottom-color: var(--tab-item-border-color);
+
+        background-image: none !important;
+        background-color: hsl(0, 0%, 13%) !important;
+    }
+
+    body.window-inactive .tab-bar > .item {
+        background-image: none !important;
+        background-color: hsl(0, 0%, 13%) !important;
+    }
+
+    body.window-inactive .tab-bar > .item.selected {
+        background-color: hsl(0, 0%, 19%) !important;
+    }
+
+    body.window-inactive .tab-bar > .item > .title {
+        color: hsl(0, 0%, 58%) !important;
+    }
 }
