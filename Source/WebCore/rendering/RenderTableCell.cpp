@@ -1243,10 +1243,17 @@ void RenderTableCell::paintCollapsedBorders(PaintInfo& paintInfo, const LayoutPo
     BorderStyle leftStyle = collapsedBorderStyle(leftVal.style());
     BorderStyle rightStyle = collapsedBorderStyle(rightVal.style());
     
+#if USE(ULTRALIGHT)
+    bool renderTop = topStyle > BorderStyle::Hidden && !topVal.isTransparent() && topWidth.toFloat() > 0.0f;
+    bool renderBottom = bottomStyle > BorderStyle::Hidden && !bottomVal.isTransparent() && bottomWidth.toFloat() > 0.0f;
+    bool renderLeft = leftStyle > BorderStyle::Hidden && !leftVal.isTransparent() && leftWidth.toFloat() > 0.0f;
+    bool renderRight = rightStyle > BorderStyle::Hidden && !rightVal.isTransparent() && rightWidth.toFloat() > 0.0f;
+#else
     bool renderTop = topStyle > BorderStyle::Hidden && !topVal.isTransparent() && floorToDevicePixel(topWidth, deviceScaleFactor);
     bool renderBottom = bottomStyle > BorderStyle::Hidden && !bottomVal.isTransparent() && floorToDevicePixel(bottomWidth, deviceScaleFactor);
     bool renderLeft = leftStyle > BorderStyle::Hidden && !leftVal.isTransparent() && floorToDevicePixel(leftWidth, deviceScaleFactor);
     bool renderRight = rightStyle > BorderStyle::Hidden && !rightVal.isTransparent() && floorToDevicePixel(rightWidth, deviceScaleFactor);
+#endif
 
     // We never paint diagonals at the joins.  We simply let the border with the highest
     // precedence paint on top of borders with lower precedence.  
