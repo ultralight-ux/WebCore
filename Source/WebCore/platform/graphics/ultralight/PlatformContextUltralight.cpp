@@ -78,15 +78,12 @@ void PlatformContextUltralight::restore()
 
 void PlatformContextUltralight::setGlobalAlpha(float globalAlpha)
 {
-  notImplemented();
-  //m_canvas->SetOpacity(globalAlpha);
+  m_canvas->SetAlpha(globalAlpha);
 }
 
 float PlatformContextUltralight::globalAlpha() const
 {
-  notImplemented();
-  return 1.0f;
-  //return m_canvas->GetOpacity();
+  return m_canvas->alpha();
 }
 
 void PlatformContextUltralight::setShouldAntialias(bool enable) {
