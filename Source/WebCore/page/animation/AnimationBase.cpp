@@ -547,7 +547,7 @@ Optional<Seconds> AnimationBase::timeToNextService()
     
     if (m_animationState == AnimationState::StartWaitTimer) {
         double timeFromNow = m_animation->delay() - (beginAnimationUpdateTime() - m_requestedStartTime);
-        return std::max(Seconds { timeFromNow }, 0_s);
+        return Seconds(std::max(Seconds { timeFromNow }, 0_s));
     }
     
     fireAnimationEventsIfNeeded();

@@ -391,7 +391,7 @@ Optional<Seconds> CompositeAnimation::timeToNextService() const
         }
     }
 
-    return minT;
+    return std::move(minT);
 }
 
 KeyframeAnimation* CompositeAnimation::animationForProperty(CSSPropertyID property) const

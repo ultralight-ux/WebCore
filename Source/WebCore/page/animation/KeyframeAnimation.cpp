@@ -515,7 +515,7 @@ Optional<Seconds> KeyframeAnimation::timeToNextService()
 {
     Optional<Seconds> t = AnimationBase::timeToNextService();
     if (!t || t.value() != 0_s || preActive())
-        return t;
+        return std::move(t);
 
     // A return value of 0 means we need service. But if we only have accelerated animations we 
     // only need service at the end of the transition.
@@ -533,7 +533,7 @@ Optional<Seconds> KeyframeAnimation::timeToNextService()
         getTimeToNextEvent(t.value(), isLooping);
     }
 
-    return t;
+    return std::move(t);
 }
 
 } // namespace WebCore
