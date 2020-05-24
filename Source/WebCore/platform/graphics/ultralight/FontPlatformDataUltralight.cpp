@@ -97,7 +97,7 @@ bool FontPlatformData::isFixedPitch() const
 }
 
 bool FontPlatformData::platformIsEqual(const FontPlatformData& platformFont) const {
-  return this->m_face == platformFont.m_face;
+  return this->m_face == platformFont.m_face && this->m_size == platformFont.m_size && this->m_font == platformFont.m_font;
 }
 
 double FontPlatformData::glyphWidth(Glyph glyph) {
