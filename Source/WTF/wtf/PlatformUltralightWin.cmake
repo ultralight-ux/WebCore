@@ -22,20 +22,11 @@ list(APPEND WTF_SOURCES
 
     text/win/StringWin.cpp
 	
-	text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
+    text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
+    
+    generic/RunLoopGeneric.cpp
+    generic/WorkQueueGeneric.cpp
 )
-
-if (UWP_PLATFORM)
-    list(APPEND WTF_SOURCES
-        generic/RunLoopGeneric.cpp
-        generic/WorkQueueGeneric.cpp
-    )
-else ()
-    list(APPEND WTF_SOURCES
-        win/RunLoopWin.cpp
-        win/WorkQueueWin.cpp
-    )
-endif ()
 
 list(APPEND WTF_LIBRARIES
    DbgHelp
