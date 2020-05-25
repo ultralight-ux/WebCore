@@ -1362,7 +1362,7 @@
 #if USE(GLIB)
 /* Use GLib's event loop abstraction. Primarily GTK port uses it. */
 #define USE_GLIB_EVENT_LOOP 1
-#elif OS(WINDOWS) && !defined(UWP_PLATFORM)
+#elif OS(WINDOWS) && !PLATFORM(ULTRALIGHT)
 /* Use Windows message pump abstraction.
  * Even if the port is AppleWin, we use the Windows message pump system for the event loop,
  * so that USE(WINDOWS_EVENT_LOOP) && USE(CF) can be true.

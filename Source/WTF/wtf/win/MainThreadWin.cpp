@@ -39,7 +39,7 @@ namespace WTF {
 
 static ThreadIdentifier mainThread { 0 };
 
-#if defined(UWP_PLATFORM)
+#if USE(ULTRALIGHT)
 void initializeMainThreadPlatform()
 {
     if (mainThread)
@@ -120,7 +120,7 @@ bool isMainThreadIfInitialized()
 
 void scheduleDispatchFunctionsOnMainThread()
 {
-#if defined(UWP_PLATFORM)
+#if USE(ULTRALIGHT)
     // Use a RunLoop::Timer instead of RunLoop::dispatch() to be able to use a different priority and
     // avoid the double queue because dispatchOnMainThread also queues the functions.
     static MainThreadDispatcher dispatcher;
