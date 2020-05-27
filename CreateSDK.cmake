@@ -69,12 +69,12 @@ if (PORT MATCHES "UltralightLinux")
     set(PLATFORM "linux")
     INSTALL(FILES "${WEBKITLIBRARIES_DIR}/lib/libicudata.so" 
                   "${WEBKITLIBRARIES_DIR}/lib/libicui18n.so"
-                  "${WEBKITLIBRARIES_DIR}/lib/libicuuc.so" DESTINATION "lib")
+                  "${WEBKITLIBRARIES_DIR}/lib/libicuuc.so" DESTINATION "bin")
 elseif (PORT MATCHES "UltralightMac")
     set(PLATFORM "mac")
     INSTALL(FILES "${WEBKITLIBRARIES_DIR}/lib/libicudata.dylib" 
                   "${WEBKITLIBRARIES_DIR}/lib/libicui18n.dylib"
-                  "${WEBKITLIBRARIES_DIR}/lib/libicuuc.dylib" DESTINATION "lib")
+                  "${WEBKITLIBRARIES_DIR}/lib/libicuuc.dylib" DESTINATION "bin")
 elseif (PORT MATCHES "UltralightWin")
     if (UWP_PLATFORM)
         set(PLATFORM "win-uwp")
