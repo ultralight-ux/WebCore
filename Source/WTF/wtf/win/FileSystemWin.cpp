@@ -226,8 +226,17 @@ bool createSymbolicLink(const String& targetPath, const String& symbolicLinkPath
 
 bool fileExists(const String& path)
 {
+#if defined(UWP_PLATFORM)
+  auto handle = openFile(path, FileOpenMode::Read);
+  if (!isHandleValid(handle))
+    return false;
+
+  closeFile(handle);
+  return true;
+#else
     WIN32_FIND_DATAW findData;
     return getFindData(path, findData);
+#endif
 }
 
 bool deleteFile(const String& path)
