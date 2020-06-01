@@ -3,43 +3,6 @@ pipeline {
   stages {
     stage('Build') {
       parallel {
-        stage('Build macOS Debug') {
-          agent {
-            node {
-              label 'macos_dbg'
-            }
-          }
-          steps {
-            sleep 10
-            sh '''
-               # Setup environment
-               export PATH="/usr/local/bin:$PATH"
-
-               # Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
-               mkdir -p build_deps
-               cd build_deps
-               cmake ../Source/GetDeps -G "Ninja"
-               ninja
-               cd ..
-            '''
-            sh '''
-               # Setup environment
-               export PATH="/usr/local/bin:$PATH"
-    
-               # Build Debug
-               mkdir -p build_dbg
-               cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_DBG=1
-               ninja
-               cd ..
-            '''
-          }
-          post {
-            success {
-              deployDebug();
-            }
-          }
-        }
         stage('Build macOS') {
           agent {
             node {
@@ -47,7 +10,6 @@ pipeline {
             }
           }
           steps {
-            sleep 10
             sh '''
                # Setup environment
                export PATH="/usr/local/bin:$PATH"
@@ -77,34 +39,6 @@ pipeline {
             }
           }
         }
-        stage('Build Windows x64 Debug') {
-          agent {
-            node {
-              label 'win_x64'
-            }
-          }
-          steps {
-            sleep 10
-            bat '''
-               rem Setup environment
-               call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64
-               set CC=cl.exe
-               set CXX=cl.exe
-              
-               rem Build Debug
-               if not exist build_dbg mkdir build_dbg
-               cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
-               ninja
-               cd ..
-            '''
-          }
-          post {
-            success {
-              deployDebug();
-            }
-          }
-        }
         stage('Build Windows x64') {
           agent {
             node {
@@ -112,7 +46,6 @@ pipeline {
             }
           }
           steps {
-            sleep 10
             bat '''
                rem Setup environment
                call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64
@@ -133,34 +66,6 @@ pipeline {
             }
           }
         }
-        stage('Build Windows x64 UWP Debug') {
-          agent {
-            node {
-              label 'win10_x64'
-            }
-          }
-          steps {
-            sleep 10
-            bat '''
-               rem Setup environment
-               call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64 uwp
-               set CC=cl.exe
-               set CXX=cl.exe
-              
-               rem Build Debug
-               if not exist build_dbg mkdir build_dbg
-               cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUWP_PLATFORM=1 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0
-               ninja
-               cd ..
-            '''
-          }
-          post {
-            success {
-              deployDebug();
-            }
-          }
-        }
         stage('Build Windows x64 UWP') {
           agent {
             node {
@@ -168,7 +73,6 @@ pipeline {
             }
           }
           steps {
-            sleep 10
             bat '''
                rem Setup environment
                call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64 uwp
@@ -189,37 +93,6 @@ pipeline {
             }
           }
         }
-        stage('Build Linux Debug') {
-          agent {
-            node {
-              label 'linux_dbg'
-            }
-          }
-          steps {
-            sleep 10
-            sh '''
-               # Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
-               mkdir -p build_deps
-               cd build_deps
-               cmake ../Source/GetDeps -G "Ninja"
-               ninja
-               cd ..
-            '''
-            sh '''     
-               # Build Debug
-               mkdir -p build_dbg
-               cd build_dbg
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_DBG=1
-               ninja
-               cd ..
-            '''
-          }
-          post {
-            success {
-              deployDebug();
-            }
-          }
-        }
         stage('Build Linux') {
           agent {
             node {
@@ -227,7 +100,6 @@ pipeline {
             }
           }
           steps {
-            sleep 10
             sh '''
                # Get dependencies (we force it on macOS/Linux because of CMake/Ninja issue)
                mkdir -p build_deps
@@ -252,16 +124,6 @@ pipeline {
           }
         }
       }
-    }
-  }
-}
-
-def deployDebug() {
-  withAWS(endpointUrl:'https://sfo2.digitaloceanspaces.com', credentials:'jenkins-access') {
-    if (env.BRANCH_NAME == 'master') {
-      s3Upload(bucket: 'webcore-bin-dbg', workingDir:'build_dbg', includePathPattern:'*.7z', acl:'PublicRead');
-    } else if (env.BRANCH_NAME == 'dev') {
-      s3Upload(bucket: 'webcore-bin-dev-dbg', workingDir:'build_dbg', includePathPattern:'*.7z', acl:'PublicRead');
     }
   }
 }
