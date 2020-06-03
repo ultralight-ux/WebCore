@@ -273,6 +273,12 @@ list(APPEND WebCore_LIBRARIES
 #    ${DirectX_LIBRARIES}
 )
 
+if (UWP_PLATFORM)
+    list(APPEND WebCore_LIBRARIES
+        Pathcch
+    )
+endif ()
+
 if (NOT UWP_PLATFORM)
     list(APPEND WebCore_LIBRARIES
         comctl32
