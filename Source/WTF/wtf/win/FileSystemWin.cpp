@@ -42,6 +42,9 @@
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/win/WCharStringExtras.h>
 #include <wtf/win/PathWalker.h>
+#if defined(UWP_PLATFORM)
+#include "pathcch.h"
+#endif
 
 namespace WTF {
 
@@ -266,9 +269,13 @@ String pathByAppendingComponent(const String& path, const String& component)
 
     StringView(path).getCharactersWithUpconvert(buffer.data());
     buffer[path.length()] = '\0';
-
+#if defined(UWP_PLATFORM)
+    if (PathCchAppend(wcharFrom(buffer.data()), MAX_PATH, component.wideCharacters().data()) != S_OK)
+      return String();
+#else
     if (!PathAppendW(wcharFrom(buffer.data()), component.wideCharacters().data()))
         return String();
+#endif
 
     buffer.shrink(wcslen(wcharFrom(buffer.data())));
     return String::adopt(WTFMove(buffer));
@@ -363,7 +370,11 @@ String homeDirectoryPath()
 
 String pathGetFileName(const String& path)
 {
+#if defined(UWP_PLATFORM)
+    return path.substring(path.reverseFind('/') + 1);
+#else
     return String(::PathFindFileName(path.wideCharacters().data()));
+#endif
 }
 
 String directoryName(const String& path)
