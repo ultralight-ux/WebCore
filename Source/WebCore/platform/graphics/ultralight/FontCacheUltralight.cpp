@@ -120,11 +120,11 @@ public:
         FT_Error error;
         CString path8 = Convert(font_file_path).utf8();
         error = FT_New_Face(freetype, path8.data(), 0, &face);
-        assert(error = 0);
+        assert(error == 0);
         if (error != 0)
           return nullptr;
 
-        assert(error = 0);
+        assert(error == 0);
         font_face = FontFace::Create(adoptRef(face), *file);
       }
     }
