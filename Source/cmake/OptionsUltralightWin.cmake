@@ -91,14 +91,12 @@ if (MSVC)
     )
 
     if (UWP_PLATFORM)
-        add_compile_options(/EHsc)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /ZW")   
         add_definitions(-DUWP_PLATFORM) 
-    else ()
-        # We do not use exceptions
-        add_definitions(-D_HAS_EXCEPTIONS=0)
-        add_compile_options(/EHa- /EHc- /EHs- /fp:except-)
     endif ()
+
+    # We do not use exceptions
+    add_definitions(-D_HAS_EXCEPTIONS=0)
+    add_compile_options(/EHa- /EHc- /EHs- /fp:except-)
 
     # We have some very large object files that have to be linked
     add_compile_options(/analyze- /bigobj)
@@ -159,10 +157,8 @@ if (MSVC)
         add_definitions(/MP)
     endif ()
     if (NOT ${CMAKE_CXX_FLAGS} STREQUAL "")
-        if (NOT UWP_PLATFORM)
-            string(REGEX REPLACE "(/EH[a-z]+) " "\\1- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable C++ exceptions
-            string(REGEX REPLACE "/EHsc$" "/EHs- /EHc- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable C++ exceptions
-        endif ()
+        string(REGEX REPLACE "(/EH[a-z]+) " "\\1- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable C++ exceptions
+        string(REGEX REPLACE "/EHsc$" "/EHs- /EHc- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable C++ exceptions
         #string(REGEX REPLACE "/GR " "/GR- " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Disable RTTI
         string(REGEX REPLACE "/W3" "/W4" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}) # Warnings are important
     endif ()
