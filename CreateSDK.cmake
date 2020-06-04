@@ -78,12 +78,15 @@ elseif (PORT MATCHES "UltralightMac")
 elseif (PORT MATCHES "UltralightWin")
     if (UWP_PLATFORM)
         set(PLATFORM "win-uwp")
+        INSTALL(FILES "${WEBKITLIBRARIES_DIR}/bin/icudt63l.dat" 
+                      "${WEBKITLIBRARIES_DIR}/bin/icuin63.dll"
+                      "${WEBKITLIBRARIES_DIR}/bin/icuuc63.dll" DESTINATION "bin")
     else ()
         set(PLATFORM "win")
+        INSTALL(FILES "${WEBKITLIBRARIES_DIR}/bin/icudt63.dll" 
+                      "${WEBKITLIBRARIES_DIR}/bin/icuin63.dll"
+                      "${WEBKITLIBRARIES_DIR}/bin/icuuc63.dll" DESTINATION "bin")
     endif ()
-    INSTALL(FILES "${WEBKITLIBRARIES_DIR}/bin/icudt63.dll" 
-                  "${WEBKITLIBRARIES_DIR}/bin/icuin63.dll"
-                  "${WEBKITLIBRARIES_DIR}/bin/icuuc63.dll" DESTINATION "bin")
 endif ()
 
 set(INSTALL_DIR ${PROJECT_BINARY_DIR}/out)
