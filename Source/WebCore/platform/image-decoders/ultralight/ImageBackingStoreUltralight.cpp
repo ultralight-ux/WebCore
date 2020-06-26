@@ -3,6 +3,8 @@
 #include <Ultralight/Bitmap.h>
 #include <Ultralight/private/Image.h>
 #include <Ultralight/private/Paint.h>
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
 
 namespace WebCore {
 
@@ -55,9 +57,16 @@ RGBA32 ImageBackingStore::pixelValue(unsigned r, unsigned g, unsigned b, unsigne
       //
       m_buf = { (float)r, (float)g, (float)b, (float)a };
       m_buf /= 255.0f;
-      m_buf.x = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.x) * m_buf.w);
-      m_buf.y = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.y) * m_buf.w);
-      m_buf.z = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.z) * m_buf.w);
+      if (!ultralight::Platform::instance().config().use_gpu_renderer) {
+        m_buf.x *= m_buf.w;
+        m_buf.y *= m_buf.w;
+        m_buf.z *= m_buf.w;
+      }
+      else {
+        m_buf.x = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.x) * m_buf.w);
+        m_buf.y = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.y) * m_buf.w);
+        m_buf.z = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.z) * m_buf.w);
+      }
       m_buf *= 255.0f;
       return makeRGBA((int)m_buf.x, (int)m_buf.y, (int)m_buf.z, (int)m_buf.w);
   }

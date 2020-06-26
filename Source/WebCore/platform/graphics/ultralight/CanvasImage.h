@@ -4,6 +4,7 @@
 #include "Image.h"
 #include <wtf/RefPtr.h>
 #include <Ultralight/private/Canvas.h>
+#include <Ultralight/platform/Surface.h>
 #include "PlatformContextUltralight.h"
 
 namespace WebCore {
@@ -43,11 +44,9 @@ private:
   bool isCanvasImage() const override { return true; }
 
   friend class ImageBuffer;
+  std::unique_ptr<ultralight::BitmapSurface> m_backing_store;
   ultralight::RefPtr<ultralight::Canvas> m_canvas;
   std::unique_ptr<GraphicsContext> m_context;
-
-  // Only used if we are doing deferred draw calls via a CanvasRecorder
-  ultralight::RefPtr<ultralight::Canvas> m_backingStore;
 };
 
 }  // namespace WebCore
