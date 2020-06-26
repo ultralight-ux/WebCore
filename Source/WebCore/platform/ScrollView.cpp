@@ -37,6 +37,11 @@
 #include "ScrollbarTheme.h"
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/TextStream.h>
+#include <cmath>
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
+#endif
 
 namespace WebCore {
 
@@ -424,22 +429,72 @@ void ScrollView::handleDeferredScrollUpdateAfterContentSizeChange()
     m_deferredScrollOffsets = WTF::nullopt;
 }
 
+#if USE(ULTRALIGHT)
+int FindMultiple(double scale, double tol) {
+  int m = 1;
+  double fract, i;
+  fract = modf(scale * (double)m, &i);
+  const int max_multiple = 100;
+  while (fract > tol && m < max_multiple)
+    fract = modf(scale * static_cast<double>(++m), &i);
+  return m;
+}
+
+int FindBestMultiple(double scale) {
+  // Start with a tolerance of 1/100th of a pixel
+  double tol = 0.01;
+  int m = FindMultiple(scale, tol);
+  const double max_tolerance = 0.3;
+  const int max_multiple = 8;
+  while (m > max_multiple && tol < max_tolerance) {
+    tol += 0.01;
+    m = FindMultiple(scale, tol);
+  }
+  return m;
+}
+
+ScrollPosition SnapScrollPositionForScale(ScrollPosition position, float device_scale) {
+  static int multiple = 0;
+  static float last_device_scale = 0.0f;
+  if (!multiple || last_device_scale != device_scale) {
+    multiple = FindBestMultiple(device_scale);
+    last_device_scale = device_scale;
+  }
+
+  // Sanity check, should never be hit, just here to avoid div by 0
+  if (multiple < 1)
+    multiple = 1;
+
+  float m = (float)multiple;
+  position.setX(static_cast<int>(std::ceil(position.x() / m) * m));
+  position.setY(static_cast<int>(std::ceil(position.y() / m) * m));
+
+  return position;
+}
+#endif
+
 void ScrollView::scrollTo(const ScrollPosition& newPosition)
 {
-    LOG_WITH_STREAM(Scrolling, stream << "ScrollView::scrollTo " << newPosition << " min: " << minimumScrollPosition() << " max: " << maximumScrollPosition());
+  ScrollPosition snapped_position = newPosition;
+#if USE(ULTRALIGHT)
+  float device_scale = (float)ultralight::Platform::instance().config().device_scale;
+  snapped_position = SnapScrollPositionForScale(snapped_position, device_scale);
+#endif
 
-    IntSize scrollDelta = newPosition - m_scrollPosition;
+    LOG_WITH_STREAM(Scrolling, stream << "ScrollView::scrollTo " << snapped_position << " min: " << minimumScrollPosition() << " max: " << maximumScrollPosition());
+
+    IntSize scrollDelta = snapped_position - m_scrollPosition;
     if (scrollDelta.isZero())
         return;
 
-    m_scrollPosition = newPosition;
+    m_scrollPosition = snapped_position;
 
     if (scrollbarsSuppressed())
         return;
 
 #if USE(COORDINATED_GRAPHICS)
     if (delegatesScrolling()) {
-        requestScrollPositionUpdate(newPosition);
+        requestScrollPositionUpdate(snapped_position);
         return;
     }
 #endif
@@ -463,17 +518,23 @@ void ScrollView::completeUpdatesAfterScrollTo(const IntSize& scrollDelta)
 
 void ScrollView::setScrollPosition(const ScrollPosition& scrollPosition)
 {
-    LOG_WITH_STREAM(Scrolling, stream << "ScrollView::setScrollPosition " << scrollPosition);
+    ScrollPosition snapped_position = scrollPosition;
+#if USE(ULTRALIGHT)
+    float device_scale = (float)ultralight::Platform::instance().config().device_scale;
+    snapped_position = SnapScrollPositionForScale(snapped_position, device_scale);
+#endif
+
+    LOG_WITH_STREAM(Scrolling, stream << "ScrollView::setScrollPosition " << snapped_position);
 
     if (prohibitsScrolling())
         return;
 
     if (platformWidget()) {
-        platformSetScrollPosition(scrollPosition);
+        platformSetScrollPosition(snapped_position);
         return;
     }
 
-    ScrollPosition newScrollPosition = !delegatesScrolling() ? adjustScrollPositionWithinRange(scrollPosition) : scrollPosition;
+    ScrollPosition newScrollPosition = !delegatesScrolling() ? adjustScrollPositionWithinRange(snapped_position) : snapped_position;
 
     if ((!delegatesScrolling() || currentScrollType() == ScrollType::User) && newScrollPosition == this->scrollPosition())
         return;

@@ -32,11 +32,15 @@
 
 #include "FloatPoint.h"
 #include "ScrollableArea.h"
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
+#endif
 
 namespace WebCore {
 
-static const double frameRate = 60;
-static const Seconds tickTime = 1_s / frameRate;
+static double frameRate = 120;
+static Seconds tickTime = 1_s / frameRate;
 static const Seconds minimumTimerInterval { 1_ms };
 
 ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollableArea& scrollableArea, const FloatPoint& position, WTF::Function<void (FloatPoint&&)>&& notifyPositionChangedFunction)
@@ -46,6 +50,10 @@ ScrollAnimationSmooth::ScrollAnimationSmooth(ScrollableArea& scrollableArea, con
     , m_verticalData(position.y(), scrollableArea.visibleHeight())
     , m_animationTimer(*this, &ScrollAnimationSmooth::animationTimerFired)
 {
+#if USE(ULTRALIGHT)
+    frameRate = 1.0 / ultralight::Platform::instance().config().scroll_timer_delay;
+    tickTime = 1_s / frameRate;
+#endif
 }
 
 bool ScrollAnimationSmooth::scroll(ScrollbarOrientation orientation, ScrollGranularity granularity, float step, float multiplier)
@@ -209,37 +217,39 @@ static inline double releaseArea(ScrollAnimationSmooth::Curve curve, double star
 
 static inline void getAnimationParametersForGranularity(ScrollGranularity granularity, Seconds& animationTime, Seconds& repeatMinimumSustainTime, Seconds& attackTime, Seconds& releaseTime, ScrollAnimationSmooth::Curve& coastTimeCurve, Seconds& maximumCoastTime)
 {
+    static const Seconds baseTickTime = 1_s / 120.0;
+
     switch (granularity) {
     case ScrollByDocument:
-        animationTime = tickTime * 10;
-        repeatMinimumSustainTime = tickTime * 10;
-        attackTime = tickTime * 10;
-        releaseTime = tickTime * 10;
+        animationTime = baseTickTime * 20;
+        repeatMinimumSustainTime = baseTickTime * 20;
+        attackTime = baseTickTime * 20;
+        releaseTime = baseTickTime * 20;
         coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
         maximumCoastTime = 1_s;
         break;
     case ScrollByLine:
-        animationTime = tickTime * 10;
-        repeatMinimumSustainTime = tickTime * 7;
-        attackTime = tickTime * 3;
-        releaseTime = tickTime * 3;
+        animationTime = baseTickTime * 10;
+        repeatMinimumSustainTime = baseTickTime * 7;
+        attackTime = baseTickTime * 3;
+        releaseTime = baseTickTime * 3;
         coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
         maximumCoastTime = 1_s;
         break;
     case ScrollByPage:
-        animationTime = tickTime * 15;
-        repeatMinimumSustainTime = tickTime * 10;
-        attackTime = tickTime * 5;
-        releaseTime = tickTime * 5;
+        animationTime = baseTickTime * 30;
+        repeatMinimumSustainTime = baseTickTime * 20;
+        attackTime = baseTickTime * 10;
+        releaseTime = baseTickTime * 10;
         coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
         maximumCoastTime = 1_s;
         break;
     case ScrollByPixel:
-        animationTime = tickTime * 11;
-        repeatMinimumSustainTime = tickTime * 2;
-        attackTime = tickTime * 3;
-        releaseTime = tickTime * 3;
-        coastTimeCurve = ScrollAnimationSmooth::Curve::Quadratic;
+        animationTime = baseTickTime * 20;
+        repeatMinimumSustainTime = baseTickTime * 16;
+        attackTime = baseTickTime * 10;
+        releaseTime = baseTickTime * 10;
+        coastTimeCurve = ScrollAnimationSmooth::Curve::Linear;
         maximumCoastTime = 1250_ms;
         break;
     default:

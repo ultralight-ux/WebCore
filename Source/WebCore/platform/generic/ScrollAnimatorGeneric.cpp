@@ -258,7 +258,7 @@ void ScrollAnimatorGeneric::overlayScrollbarAnimationTimerFired()
     }
 
     if (m_overlayScrollbarAnimationCurrent != m_overlayScrollbarAnimationTarget) {
-        static const double frameRate = 60;
+        static const double frameRate = 120;
         static const Seconds tickTime = 1_s / frameRate;
         static const Seconds minimumTimerInterval = 1_ms;
         Seconds deltaToNextFrame = std::max(tickTime - (MonotonicTime::now() - currentTime), minimumTimerInterval);
