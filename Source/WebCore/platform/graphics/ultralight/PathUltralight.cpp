@@ -324,7 +324,7 @@ FloatRect Path::boundingRect() const
     return FloatRect();
 
   auto aabb = platformPath()->path()->aabb();
-  return FloatRect(aabb.left, aabb.top, aabb.right, aabb.bottom);
+  return FloatRect(aabb.x(), aabb.y(), aabb.width(), aabb.height());
 }
 
 FloatRect Path::strokeBoundingRect(StrokeStyleApplier* applier) const
