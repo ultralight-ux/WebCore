@@ -149,7 +149,12 @@ static MemoryUsagePolicy policyForFootprint(size_t footprint)
 
 MemoryUsagePolicy MemoryPressureHandler::currentMemoryUsagePolicy()
 {
+#if USE(ULTRALIGHT)
+    // AFAIK this is only called by WebCore::RenderLayerCompositor::updateCompositingPolicy
+    return MemoryUsagePolicy::Conservative;
+#else
     return policyForFootprint(memoryFootprint());
+#endif
 }
 
 void MemoryPressureHandler::shrinkOrDie()
