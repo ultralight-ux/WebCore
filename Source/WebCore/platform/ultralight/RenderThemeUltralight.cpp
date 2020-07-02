@@ -10,6 +10,9 @@
 #include "RenderObject.h"
 #include "RenderView.h"
 #include "FloatRoundedRect.h"
+#include "HTMLInputElement.h"
+#include "HTMLSelectElement.h"
+#include "RenderProgress.h"
 #include "RenderBox.h"
 #include "CSSToLengthConversionData.h"
 #include "UserAgentStyleSheets.h"
@@ -125,6 +128,30 @@ public:
   {
     static float end[4] = { 178 / 255.0, 178 / 255.0, 178 / 255.0, 0.65 };
     static float start[4] = { 252 / 255.0, 252 / 255.0, 252 / 255.0, 0.65 };
+    static NeverDestroyed<ColorPair> gradient(start, end);
+    return &gradient.get();
+  }
+
+  static ColorPair* getSliderTrackGradient()
+  {
+    static float end[4] = { 132 / 255.0, 132 / 255.0, 132 / 255.0, 1 };
+    static float start[4] = { 74 / 255.0, 77 / 255.0, 80 / 255.0, 1 };
+    static NeverDestroyed<ColorPair> gradient(start, end);
+    return &gradient.get();
+  }
+
+  static ColorPair* getReadonlySliderTrackGradient()
+  {
+    static float end[4] = { 132 / 255.0, 132 / 255.0, 132 / 255.0, 0.4 };
+    static float start[4] = { 74 / 255.0, 77 / 255.0, 80 / 255.0, 0.4 };
+    static NeverDestroyed<ColorPair> gradient(start, end);
+    return &gradient.get();
+  }
+
+  static ColorPair* getSliderThumbOpaquePressedGradient()
+  {
+    static float end[4] = { 144 / 255.0, 144 / 255.0, 144 / 255.0, 1 };
+    static float start[4] = { 55 / 255.0, 55 / 255.0, 55 / 255.0, 1 };
     static NeverDestroyed<ColorPair> gradient(start, end);
     return &gradient.get();
   }
@@ -409,6 +436,178 @@ public:
     style.setBorderRadius({ { std::min(box.width(), box.height()) / 2, Fixed }, { box.height() / 2, Fixed } });
   }
 
+
+  static void applyCommonButtonPaddingToStyle(RenderStyle& style, const Element& element)
+  {
+    Document& document = element.document();
+    auto emSize = CSSPrimitiveValue::create(0.5, CSSPrimitiveValue::CSS_EMS);
+    int pixels = emSize->computeLength<int>(CSSToLengthConversionData(&style, document.renderStyle(), document.renderView(), document.frame()->pageZoomFactor()));
+    style.setPaddingBox(LengthBox(0, pixels, 0, pixels));
+  }
+
+  static void adjustSelectListButtonStyle(RenderStyle& style, const Element& element)
+  {
+    // Enforce "padding: 0 0.5em".
+    applyCommonButtonPaddingToStyle(style, element);
+
+    // Enforce "line-height: normal".
+    style.setLineHeight(Length(-100.0, Percent));
+  }
+
+  static void adjustInputElementButtonStyle(RenderStyle& style, const HTMLInputElement& inputElement)
+  {
+    // Always Enforce "padding: 0 0.5em".
+    applyCommonButtonPaddingToStyle(style, inputElement);
+  }
+
+  virtual void adjustMenuListButtonStyle(StyleResolver&, RenderStyle& style, const Element* element) const override
+  {
+    // Set the min-height to be at least MenuListMinHeight.
+    if (style.height().isAuto())
+      style.setMinHeight(Length(std::max(MenuListMinHeight, static_cast<int>(MenuListBaseHeight / MenuListBaseFontSize * style.fontDescription().computedSize())), Fixed));
+    else
+      style.setMinHeight(Length(MenuListMinHeight, Fixed));
+
+    if (!element)
+      return;
+
+    // Enforce some default styles in the case that this is a non-multiple <select> element,
+    // or a date input. We don't force these if this is just an element with
+    // "-webkit-appearance: menulist-button".
+    if (is<HTMLSelectElement>(*element) && !element->hasAttributeWithoutSynchronization(HTMLNames::multipleAttr))
+      adjustSelectListButtonStyle(style, *element);
+    else if (is<HTMLInputElement>(*element))
+      adjustInputElementButtonStyle(style, downcast<HTMLInputElement>(*element));
+  }
+
+  virtual bool paintMenuListButtonDecorations(const RenderBox& box, const PaintInfo& paintInfo, const FloatRect& rect) override {
+    
+    PlatformGraphicsContext* context = paintInfo.context().platformContext();
+    PlatformCanvas canvas = context->canvas();
+
+    auto& style = box.style();
+    bool isRTL = style.direction() == TextDirection::RTL;
+    float borderTopWidth = style.borderTopWidth();
+    FloatRect clip(rect.x() + style.borderLeftWidth(), rect.y() + style.borderTopWidth(), rect.width() - style.borderLeftWidth() - style.borderRightWidth(), rect.height() - style.borderTopWidth() - style.borderBottomWidth());
+
+    float adjustLeft = 0.5;
+    float adjustRight = 0.5;
+    float adjustTop = 0.5;
+    float adjustBottom = 0.5;
+
+    // Paint title portion.
+    {
+      float leftInset = isRTL ? MenuListButtonPaddingAfter : 0;
+      FloatRect titleClip(clip.x() + leftInset - adjustLeft, clip.y() - adjustTop, clip.width() - MenuListButtonPaddingAfter + adjustLeft, clip.height() + adjustTop + adjustBottom);
+
+      GraphicsContextStateSaver stateSaver(paintInfo.context());
+
+      FloatSize topLeftRadius;
+      FloatSize topRightRadius;
+      FloatSize bottomLeftRadius;
+      FloatSize bottomRightRadius;
+
+      if (isRTL) {
+        topRightRadius = FloatSize(valueForLength(style.borderTopRightRadius().width, rect.width()) - style.borderRightWidth(), valueForLength(style.borderTopRightRadius().height, rect.height()) - style.borderTopWidth());
+        bottomRightRadius = FloatSize(valueForLength(style.borderBottomRightRadius().width, rect.width()) - style.borderRightWidth(), valueForLength(style.borderBottomRightRadius().height, rect.height()) - style.borderBottomWidth());
+      }
+      else {
+        topLeftRadius = FloatSize(valueForLength(style.borderTopLeftRadius().width, rect.width()) - style.borderLeftWidth(), valueForLength(style.borderTopLeftRadius().height, rect.height()) - style.borderTopWidth());
+        bottomLeftRadius = FloatSize(valueForLength(style.borderBottomLeftRadius().width, rect.width()) - style.borderLeftWidth(), valueForLength(style.borderBottomLeftRadius().height, rect.height()) - style.borderBottomWidth());
+      }
+
+      paintInfo.context().clipRoundedRect(FloatRoundedRect(titleClip,
+        topLeftRadius, topRightRadius,
+        bottomLeftRadius, bottomRightRadius));
+
+      drawAxialGradient(canvas, getShadeGradient(), titleClip.location(), FloatPoint(titleClip.x(), titleClip.maxY()), clip);
+      drawAxialGradient(canvas, getShineGradient(), FloatPoint(titleClip.x(), titleClip.maxY()), titleClip.location(), clip, true);
+    }
+
+    // Draw the separator after the initial padding.
+
+    float separatorPosition = isRTL ? (clip.x() + MenuListButtonPaddingAfter) : (clip.maxX() - MenuListButtonPaddingAfter);
+
+    box.drawLineForBoxSide(paintInfo.context(), FloatRect(FloatPoint(separatorPosition - borderTopWidth, clip.y()), FloatPoint(separatorPosition, clip.maxY())), BSRight, style.visitedDependentColor(CSSPropertyBorderTopColor), style.borderTopStyle(), 0, 0);
+
+    FloatRect buttonClip;
+    if (isRTL)
+      buttonClip = FloatRect(clip.x() - adjustTop, clip.y() - adjustTop, MenuListButtonPaddingAfter + adjustTop + adjustLeft, clip.height() + adjustTop + adjustBottom);
+    else
+      buttonClip = FloatRect(separatorPosition - adjustTop, clip.y() - adjustTop, MenuListButtonPaddingAfter + adjustTop + adjustRight, clip.height() + adjustTop + adjustBottom);
+
+    // Now paint the button portion.
+    {
+      GraphicsContextStateSaver stateSaver(paintInfo.context());
+
+      FloatSize topLeftRadius;
+      FloatSize topRightRadius;
+      FloatSize bottomLeftRadius;
+      FloatSize bottomRightRadius;
+
+      if (isRTL) {
+        topLeftRadius = FloatSize(valueForLength(style.borderTopLeftRadius().width, rect.width()) - style.borderLeftWidth(), valueForLength(style.borderTopLeftRadius().height, rect.height()) - style.borderTopWidth());
+        bottomLeftRadius = FloatSize(valueForLength(style.borderBottomLeftRadius().width, rect.width()) - style.borderLeftWidth(), valueForLength(style.borderBottomLeftRadius().height, rect.height()) - style.borderBottomWidth());
+      }
+      else {
+        topRightRadius = FloatSize(valueForLength(style.borderTopRightRadius().width, rect.width()) - style.borderRightWidth(), valueForLength(style.borderTopRightRadius().height, rect.height()) - style.borderTopWidth());
+        bottomRightRadius = FloatSize(valueForLength(style.borderBottomRightRadius().width, rect.width()) - style.borderRightWidth(), valueForLength(style.borderBottomRightRadius().height, rect.height()) - style.borderBottomWidth());
+      }
+
+      paintInfo.context().clipRoundedRect(FloatRoundedRect(buttonClip,
+        topLeftRadius, topRightRadius,
+        bottomLeftRadius, bottomRightRadius));
+
+      paintInfo.context().fillRect(buttonClip, style.visitedDependentColor(CSSPropertyBorderTopColor));
+
+      drawAxialGradient(canvas, isFocused(box) && !isReadOnlyControl(box) ? getConcaveGradient() : getConvexGradient(), buttonClip.location(), FloatPoint(buttonClip.x(), buttonClip.maxY()), clip);
+    }
+
+    // Paint Indicators.
+
+    if (box.isMenuList() && downcast<HTMLSelectElement>(box.element())->multiple()) {
+      int size = 2;
+      int count = 3;
+      int padding = 3;
+
+      FloatRect ellipse(buttonClip.x() + (buttonClip.width() - count * (size + padding) + padding) / 2.0, buttonClip.maxY() - 10.0, size, size);
+
+      for (int i = 0; i < count; ++i) {
+        paintInfo.context().drawRaisedEllipse(ellipse, Color::white, Color(0.0f, 0.0f, 0.0f, 0.5f));
+        ellipse.move(size + padding, 0);
+      }
+    }
+    else {
+      float centerX = floorf(buttonClip.x() + buttonClip.width() / 2.0) - 0.5;
+      float centerY = floorf(buttonClip.y() + buttonClip.height() * 3.0 / 8.0);
+
+      Vector<FloatPoint> arrow = {
+          { centerX - MenuListArrowWidth / 2, centerY },
+          { centerX + MenuListArrowWidth / 2, centerY },
+          { centerX, centerY + MenuListArrowHeight }
+      };
+
+      Vector<FloatPoint> shadow = {
+          { arrow[0].x(), arrow[0].y() + 1 },
+          { arrow[1].x(), arrow[1].y() + 1 },
+          { arrow[2].x(), arrow[2].y() + 1 }
+      };
+
+      float opacity = isReadOnlyControl(box) ? 0.2 : 0.5;
+      
+      WebCore::Path shadowPath = Path::polygonPathFromPoints(shadow);
+      ultralight::Paint paint;
+      paint.color = UltralightRGBA(0, 0, 0, 255 * opacity);
+      canvas->FillPath(shadowPath.ultralightPath(), paint, ultralight::kFillRule_EvenOdd);
+
+      WebCore::Path arrowPath = Path::polygonPathFromPoints(arrow);
+      paint.color = UltralightColorWHITE;
+      canvas->FillPath(arrowPath.ultralightPath(), paint, ultralight::kFillRule_EvenOdd);
+    }
+
+    return false;
+  }
+
   virtual void adjustButtonStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const override
   {
     RenderTheme::adjustButtonStyle(selector, style, element);
@@ -507,19 +706,226 @@ public:
     return paintTextFieldDecorations(box, paintInfo, rect);
   }
 
+  const int MenuListMinHeight = 15;
+
+  const float MenuListBaseHeight = 20;
+  const float MenuListBaseFontSize = 11;
+
+  const float MenuListArrowWidth = 7;
+  const float MenuListArrowHeight = 6;
+  const float MenuListButtonPaddingAfter = 19;
+
+  virtual LengthBox popupInternalPaddingBox(const RenderStyle& style) const override
+  {
+    if (style.appearance() == MenulistButtonPart) {
+      if (style.direction() == TextDirection::RTL)
+        return { 0, 0, 0, static_cast<int>(MenuListButtonPaddingAfter + style.borderTopWidth()) };
+      return { 0, static_cast<int>(MenuListButtonPaddingAfter + style.borderTopWidth()), 0, 0 };
+    }
+    return { 0, 0, 0, 0 };
+  }
+
   // Menu lists
   virtual bool paintMenuList(const RenderObject&, const PaintInfo&, const FloatRect&) override { return true; }
   virtual bool paintMenuListDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override { return true; }
 
+  virtual Seconds animationRepeatIntervalForProgressBar(RenderProgress&) const override
+  {
+    return 0_s;
+  }
+
+  virtual Seconds animationDurationForProgressBar(RenderProgress&) const override
+  {
+    return 0_s;
+  }
+
   // Progress bars
-  virtual bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&) override { return true; }
+  virtual bool paintProgressBar(const RenderObject& renderer, const PaintInfo& paintInfo, const IntRect& rect) override
+  {
+    if (!is<RenderProgress>(renderer))
+      return true;
+
+    const int progressBarHeight = 9;
+    const float verticalOffset = (rect.height() - progressBarHeight) / 2.0;
+
+    PlatformGraphicsContext* ctx = paintInfo.context().platformContext();
+    PlatformCanvas canvas = ctx->canvas();
+
+    GraphicsContextStateSaver stateSaver(paintInfo.context());
+    if (rect.width() < 10 || rect.height() < 9) {
+      // The rect is smaller than the standard progress bar. We clip to the element's rect to avoid
+      // leaking pixels outside the repaint rect.
+      paintInfo.context().clip(rect);
+    }
+
+    // 1) Draw the progress bar track.
+    // 1.1) Draw the light grey background with grey border.
+    GraphicsContext& context = paintInfo.context();
+
+    const float verticalRenderingPosition = rect.y() + verticalOffset;
+
+    Path trackPath;
+    FloatRect trackRect(rect.x() + 0.25, verticalRenderingPosition + 0.25, rect.width() - 0.5, progressBarHeight - 0.5);
+    FloatSize roundedCornerRadius(5, 4);
+    trackPath.addRoundedRect(trackRect, roundedCornerRadius);
+
+    ultralight::Paint paint;
+    paint.color = UltralightRGBA(240, 240, 240, 255);
+    canvas->FillPath(trackPath.ultralightPath(), paint, ultralight::kFillRule_EvenOdd);
+    paint.color = UltralightRGBA(220, 220, 220, 255);
+    canvas->StrokePath(trackPath.ultralightPath(), paint, 1.0f);
+ 
+    FloatRect border(rect.x(), rect.y() + verticalOffset, rect.width(), progressBarHeight);
+    paintInfo.context().clipRoundedRect(FloatRoundedRect(border, roundedCornerRadius, roundedCornerRadius, roundedCornerRadius, roundedCornerRadius));
+
+    const auto& renderProgress = downcast<RenderProgress>(renderer);
+    if (renderProgress.isDeterminate()) {
+      // 2) Draw the progress bar.
+      double position = clampTo(renderProgress.position(), 0.0, 1.0);
+      double barWidth = position * rect.width();
+
+      Path barPath;
+      int left = rect.x();
+      if (!renderProgress.style().isLeftToRightDirection())
+        left = rect.maxX() - barWidth;
+      FloatRect barRect(left + 0.25, verticalRenderingPosition + 0.25, std::max(barWidth - 0.5, 0.0), progressBarHeight - 0.5);
+      barPath.addRoundedRect(barRect, roundedCornerRadius);
+
+      // Blue for progress indicator
+      paint.color = UltralightRGBA(0, 151, 255, 255);
+      canvas->FillPath(barPath.ultralightPath(), paint, ultralight::kFillRule_EvenOdd);
+    }
+
+    return false;
+  }
+
+  const double kTrackThickness = 4.0;
+  const double kTrackRadius = kTrackThickness / 2.0;
+  const int kDefaultSliderThumbSize = 16;
+
+  virtual void adjustSliderTrackStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const override
+  {
+    RenderTheme::adjustSliderTrackStyle(selector, style, element);
+
+    // FIXME: We should not be relying on border radius for the appearance of our controls <rdar://problem/7675493>.
+    int radius = static_cast<int>(kTrackRadius);
+    style.setBorderRadius({ { radius, Fixed }, { radius, Fixed } });
+  }
 
   // Slider tracks
-  virtual bool paintSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) override { return true; }
+  virtual bool paintSliderTrack(const RenderObject& box, const PaintInfo& paintInfo, const IntRect& rect) override {
+    IntRect trackClip = rect;
+    auto& style = box.style();
+
+    PlatformGraphicsContext* context = paintInfo.context().platformContext();
+    PlatformCanvas canvas = context->canvas();
+
+    bool isHorizontal = true;
+    switch (style.appearance()) {
+    case SliderHorizontalPart:
+      isHorizontal = true;
+      // Inset slightly so the thumb covers the edge.
+      if (trackClip.width() > 2) {
+        trackClip.setWidth(trackClip.width() - 2);
+        trackClip.setX(trackClip.x() + 1);
+      }
+      trackClip.setHeight(static_cast<int>(kTrackThickness));
+      trackClip.setY(rect.y() + rect.height() / 2 - kTrackThickness / 2);
+      break;
+    case SliderVerticalPart:
+      isHorizontal = false;
+      // Inset slightly so the thumb covers the edge.
+      if (trackClip.height() > 2) {
+        trackClip.setHeight(trackClip.height() - 2);
+        trackClip.setY(trackClip.y() + 1);
+      }
+      trackClip.setWidth(kTrackThickness);
+      trackClip.setX(rect.x() + rect.width() / 2 - kTrackThickness / 2);
+      break;
+    default:
+      ASSERT_NOT_REACHED();
+    }
+
+    ASSERT(trackClip.width() >= 0);
+    ASSERT(trackClip.height() >= 0);
+    double cornerWidth = trackClip.width() < kTrackThickness ? trackClip.width() / 2.0f : kTrackRadius;
+    double cornerHeight = trackClip.height() < kTrackThickness ? trackClip.height() / 2.0f : kTrackRadius;
+
+    bool readonly = isReadOnlyControl(box);
+
+#if ENABLE(DATALIST_ELEMENT)
+    paintSliderTicks(box, paintInfo, trackClip);
+#endif
+
+    IntSize cornerSize(cornerWidth, cornerHeight);
+    FloatRoundedRect innerBorder(trackClip, cornerSize, cornerSize, cornerSize, cornerSize);
+
+    // Draw the track gradient.
+    {
+      GraphicsContextStateSaver stateSaver(paintInfo.context());
+      paintInfo.context().clipRoundedRect(innerBorder);
+
+      if (isHorizontal)
+        drawAxialGradient(canvas, readonly ? getReadonlySliderTrackGradient() : getSliderTrackGradient(), trackClip.location(), FloatPoint(trackClip.x(), trackClip.maxY()), trackClip);
+      else
+        drawAxialGradient(canvas, readonly ? getReadonlySliderTrackGradient() : getSliderTrackGradient(), trackClip.location(), FloatPoint(trackClip.maxX(), trackClip.y()), trackClip);
+    }
+
+    // Draw the track border.
+    {
+      GraphicsContextStateSaver stateSaver(paintInfo.context());
+
+      Path trackPath;
+      trackPath.addRoundedRect(innerBorder);
+      ultralight::Paint paint;
+
+      if (readonly)
+        paint.color = UltralightRGBA(178, 178, 178, 255);
+      else
+        paint.color = UltralightRGBA(76, 76, 76, 255);
+
+      canvas->StrokePath(trackPath.ultralightPath(), paint, 1.0f);
+    }
+
+    return false;
+  }
 
   // Slider thumbs
   virtual bool paintSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&) override { return true; }
-  virtual bool paintSliderThumbDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override { return true; }
+
+  virtual void adjustSliderThumbSize(RenderStyle& style, const Element*) const override
+  {
+    if (style.appearance() != SliderThumbHorizontalPart && style.appearance() != SliderThumbVerticalPart)
+      return;
+
+    // Enforce "border-radius: 50%".
+    style.setBorderRadius({ { 50, Percent }, { 50, Percent } });
+
+    // Enforce a 16x16 size if no size is provided.
+    if (style.width().isIntrinsicOrAuto() || style.height().isAuto()) {
+      style.setWidth({ kDefaultSliderThumbSize, Fixed });
+      style.setHeight({ kDefaultSliderThumbSize, Fixed });
+    }
+  }
+
+  virtual bool paintSliderThumbDecorations(const RenderObject& box, const PaintInfo& paintInfo, const IntRect& rect) override
+  {
+    GraphicsContextStateSaver stateSaver(paintInfo.context());
+    FloatRect clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+
+    PlatformGraphicsContext* context = paintInfo.context().platformContext();
+    PlatformCanvas canvas = context->canvas();
+
+    FloatPoint bottomCenter(clip.x() + clip.width() / 2.0f, clip.maxY());
+    if (isPressed(box))
+      drawAxialGradient(canvas, getSliderThumbOpaquePressedGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
+    else {
+      drawAxialGradient(canvas, getShadeGradient(), clip.location(), FloatPoint(clip.x(), clip.maxY()), clip);
+      drawRadialGradient(canvas, getShineGradient(), bottomCenter, 0.0f, bottomCenter, std::max(clip.width(), clip.height()), clip, true);
+    }
+
+    return false;
+  }
 };
 
 /*
