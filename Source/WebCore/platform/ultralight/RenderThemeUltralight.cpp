@@ -16,6 +16,7 @@
 #include "RenderBox.h"
 #include "CSSToLengthConversionData.h"
 #include "UserAgentStyleSheets.h"
+#include "NodeRenderStyle.h"
 
 namespace WebCore {
 
