@@ -6,8 +6,8 @@
 namespace WebCore {
 
 CanvasImage::CanvasImage(const IntSize& size, bool isDeferred) {
-  m_backing_store.reset(new ultralight::BitmapSurface(size.width(), size.height()));
-  m_canvas = ultralight::Canvas::Create(size.width(), size.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB, m_backing_store.get());
+  m_surface = ultralight::GetBitmapSurfaceFactory()->CreateSurface(size.width(), size.height());
+  m_canvas = ultralight::Canvas::Create(size.width(), size.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB, m_surface);
 
   m_context.reset(new GraphicsContext(m_canvas));
   m_canvas->Clear();
@@ -17,7 +17,7 @@ CanvasImage::~CanvasImage() {
   m_context.reset();
   m_canvas->FlushSurface();
   m_canvas = nullptr;
-  m_backing_store = nullptr;
+  ultralight::GetBitmapSurfaceFactory()->DestroySurface(m_surface);
 }
 
 void CanvasImage::computeIntrinsicDimensions(Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio) {

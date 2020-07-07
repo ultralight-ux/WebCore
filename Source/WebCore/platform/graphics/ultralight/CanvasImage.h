@@ -44,7 +44,7 @@ private:
   bool isCanvasImage() const override { return true; }
 
   friend class ImageBuffer;
-  std::unique_ptr<ultralight::BitmapSurface> m_backing_store;
+  ultralight::Surface* m_surface;
   ultralight::RefPtr<ultralight::Canvas> m_canvas;
   std::unique_ptr<GraphicsContext> m_context;
 };
