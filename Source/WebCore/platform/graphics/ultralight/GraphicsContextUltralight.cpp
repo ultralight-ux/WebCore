@@ -212,6 +212,13 @@ void GraphicsContext::strokePath(const Path& path)
 
 void GraphicsContext::fillRect(const FloatRect& rect)
 {
+  if (m_state.fillGradient) {
+    platformContext()->save();
+    m_state.fillGradient->fill(*this, rect);
+    platformContext()->restore();
+    return;
+  }
+
   fillRect(rect, fillColor());
 }
 
@@ -626,25 +633,35 @@ void GraphicsContext::clearRect(const FloatRect& rect)
     return;
 
   ASSERT(hasPlatformContext());
-  FloatRect sourceRect = rect;
 
   auto canvas = platformContext()->canvas();
+  canvas->Save();
+
+  ultralight::Matrix mat = canvas->GetMatrix();
+  ultralight::Rect aabb = rect;
+  aabb = mat.Apply(aabb);
 
   canvas->set_scissor_enabled(true);
-  ultralight::IntRect ultraSourceRect = { (int)sourceRect.x(), (int)sourceRect.y(), (int)sourceRect.maxX(), (int)sourceRect.maxY() };
-  canvas->SetScissorRect(ultraSourceRect);
+  ultralight::IntRect scissorRect = { (int)aabb.left, (int)aabb.top, (int)ceilf(aabb.right), (int)ceilf(aabb.bottom) };
+  canvas->SetScissorRect(scissorRect);
 
   // Add 2 pixel buffer around drawn area to avoid artifacts
-  sourceRect.expand(4, 4);
-  sourceRect.move(-2, -2);
+  aabb.Outset(2.0f, 2.0f);
+
+  // aabb is in pixel coordinates, reset matrix
+  ultralight::Matrix identity_mat;
+  identity_mat.SetIdentity();
+  canvas->SetMatrix(identity_mat);
 
   // Clear rect by disabling blending and drawing a transparent quad.
   canvas->set_blending_enabled(false);
   ultralight::Paint paint;
   paint.color = UltralightColorTRANSPARENT;
-  canvas->DrawRect(sourceRect, paint);
+  canvas->DrawRect(aabb, paint);
   canvas->set_blending_enabled(true);
   canvas->set_scissor_enabled(false);
+
+  canvas->Restore();
 }
 
 void GraphicsContext::strokeRect(const FloatRect& rect, float width)
@@ -747,8 +764,9 @@ void GraphicsContext::rotate(float radians)
   if (paintingDisabled())
     return;
 
-  AffineTransform transform;
-  transform.rotate(radians);
+  double cosAngle = cos(radians);
+  double sinAngle = sin(radians);
+  AffineTransform transform(cosAngle, sinAngle, -sinAngle, cosAngle, 0, 0);
 
   platformContext()->canvas()->Transform(transform);
 }
