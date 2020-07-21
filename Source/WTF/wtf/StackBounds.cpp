@@ -157,55 +157,60 @@ StackBounds StackBounds::currentThreadStackBoundsInternal()
 }
 
 #elif OS(WINDOWS)
+using GetCurrentThreadStackLimitsFN_T = void(*)(PULONG_PTR lowLimit, PULONG_PTR highLimit);
 
 StackBounds StackBounds::currentThreadStackBoundsInternal()
 {
     ASSERT(stackDirection() == StackDirection::Downward);
-    MEMORY_BASIC_INFORMATION stackOrigin { };
-    VirtualQuery(&stackOrigin, &stackOrigin, sizeof(stackOrigin));
-    // stackOrigin.AllocationBase points to the reserved stack memory base address.
 
-    void* origin = static_cast<char*>(stackOrigin.BaseAddress) + stackOrigin.RegionSize;
-    // The stack on Windows consists out of three parts (uncommitted memory, a guard page and present
-    // committed memory). The 3 regions have different BaseAddresses but all have the same AllocationBase
-    // since they are all from the same VirtualAlloc. The 3 regions are laid out in memory (from high to
-    // low) as follows:
-    //
-    //    High |-------------------|  -----
-    //         | committedMemory   |    ^
-    //         |-------------------|    |
-    //         | guardPage         | reserved memory for the stack
-    //         |-------------------|    |
-    //         | uncommittedMemory |    v
-    //    Low  |-------------------|  ----- <--- stackOrigin.AllocationBase
-    //
-    // See http://msdn.microsoft.com/en-us/library/ms686774%28VS.85%29.aspx for more information.
+    StackBounds bounds;
 
-    MEMORY_BASIC_INFORMATION uncommittedMemory;
-    VirtualQuery(stackOrigin.AllocationBase, &uncommittedMemory, sizeof(uncommittedMemory));
-    ASSERT(uncommittedMemory.State == MEM_RESERVE);
+    /*
+     * The original WebCore contained hacks to query the stack bounds, which were
+     * causing issues when running inside environment where the stack might have been
+     * modified already causing bounds to be reported wrongly.
+     *
+     * Now, on Windows 8 and higher the issue can be fixed easily using the official function
+     * called GetCurrentThreadStackLimits, which however is not available on Windows 7. To also
+     * support Windows 7, we emulate the functionality of GetCurrentThreadStackLimits.
+     */
+    static GetCurrentThreadStackLimitsFN_T GetCurrentThreadStackLimitsFN = nullptr;
+    if(!GetCurrentThreadStackLimitsFN)
+    {
+        // Try to get the GetCurrentThreadStackLimits from the kernel DLL, this will return
+        // nullptr on Windows 7, but the function on Windows 8 and higher.
+        GetCurrentThreadStackLimitsFN = reinterpret_cast<GetCurrentThreadStackLimitsFN_T>(
+            GetProcAddress(GetModuleHandleW(L"kernel32"), "GetCurrentThreadStackLimits"));
 
-    MEMORY_BASIC_INFORMATION guardPage;
-    VirtualQuery(static_cast<char*>(uncommittedMemory.BaseAddress) + uncommittedMemory.RegionSize, &guardPage, sizeof(guardPage));
-    ASSERT(guardPage.Protect & PAGE_GUARD);
+        if(!GetCurrentThreadStackLimitsFN)
+        {
+            /*
+             * The function is not available, we are running Windows 7 or earlier,
+             * Use the following trick to query the stack bounds:
+             *
+             * It can be assumed, that the stack has been allocated by one call using
+             * VirtualAlloc (or at least in general by one allocation call). To now know
+             * the size of the stack, we can simply ask windows about the allocation of
+             * an address which currently is on the stack. The allocated region contains the
+             * end of the stack (the base of the allocation, since the stack grows down), and
+             * the size of the remaining region from the base address, which will be the end of
+             * the allocation.
+             */
 
-    void* endOfStack = stackOrigin.AllocationBase;
+            // Used as output buffer and above mentioned stack variable
+            MEMORY_BASIC_INFORMATION memoryInformationLocal;
+            VirtualQuery(&memoryInformationLocal, &memoryInformationLocal, sizeof(memoryInformationLocal));
 
-#ifndef NDEBUG
-    MEMORY_BASIC_INFORMATION committedMemory;
-    VirtualQuery(static_cast<char*>(guardPage.BaseAddress) + guardPage.RegionSize, &committedMemory, sizeof(committedMemory));
-    ASSERT(committedMemory.State == MEM_COMMIT);
+            // Sums the base address and the remaining region size as mentioned above
+            bounds.m_origin = reinterpret_cast<void*>(static_cast<char*>(memoryInformationLocal.BaseAddress) + memoryInformationLocal.RegionSize);
+            bounds.m_bound = memoryInformationLocal.AllocationBase;
 
-    void* computedEnd = static_cast<char*>(origin) - (uncommittedMemory.RegionSize + guardPage.RegionSize + committedMemory.RegionSize);
+            return bounds;
+        }
+    }
 
-    ASSERT(stackOrigin.AllocationBase == uncommittedMemory.AllocationBase);
-    ASSERT(stackOrigin.AllocationBase == guardPage.AllocationBase);
-    ASSERT(stackOrigin.AllocationBase == committedMemory.AllocationBase);
-    ASSERT(stackOrigin.AllocationBase == uncommittedMemory.BaseAddress);
-    ASSERT(endOfStack == computedEnd);
-#endif // NDEBUG
-    void* bound = static_cast<char*>(endOfStack) + guardPage.RegionSize;
-    return StackBounds { origin, bound };
+    GetCurrentThreadStackLimitsFN(reinterpret_cast<PULONG_PTR>(&bounds.m_bound), reinterpret_cast<PULONG_PTR>(&bounds.m_origin));
+    return bounds;
 }
 
 #else
