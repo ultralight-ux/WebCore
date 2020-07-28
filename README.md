@@ -1,18 +1,24 @@
 # Ultralight WebCore Port
 
-This is the full source and build toolchain of the custom WebCore module for Ultralight.
+Ultralight maintains its own port of WebCore (the core layout engine of WebKit). This module statically
+links against JavaScriptCore and uses our own custom, lightweight renderer (UltralightCore) for all drawing.
+
+We've streamlined the build process to use CMake/Ninja on all platforms. Pre-built dependencies will be
+automatically fetched for your platform during build.
+
+Building typically takes 20 minutes or less on most modern machines.
 
 ## Useful Links
 
 | Link                   | URL                                 |
 | ---------------------- | ----------------------------------- |
 | __Main Website__       | <https://ultralig.ht>               |
-| __Slack Channel__      | <https://chat.ultralig.ht>          |
+| __Support Forum__      | <https://forum.ultralig.ht>         |
+| __Join our Chat!__     | <https://chat.ultralig.ht>          |
 
 ## Downloading pre-built binaries
 
 Pre-built binares are uploaded to the following S3 buckets every commit:
- * Debug Bins: https://webcore-bin-dbg.sfo2.digitaloceanspaces.com/
  * Release Bins: https://webcore-bin.sfo2.digitaloceanspaces.com/
 
 Click any of the bucket links to get an XML file listing. Download a package by appending the filename to the bucket URL.
@@ -61,7 +67,7 @@ sudo apt install cmake ninja-build gperf ruby clang libgcrypt20 libgcrypt11-dev 
  
 ### Building on Windows
 
-To build for Windows / 64-bit:
+To build WebCore for Windows / 64-bit:
 
 ```
 make release x64
@@ -69,10 +75,29 @@ make release x64
 
 OR
 
-To build for Windows / 32-bit:
+To build WebCore for Windows / 64-bit with the UWP toolchain:
 
 ```
-make release x86
+make release x64_uwp
+```
+
+#### Building Debug on Windows
+
+To build WebCore with Debug PDBs (equivalent to Release with Debug Info):
+
+```
+make debug x64
+```
+
+#### Building on Windows with locally-built dependencies
+
+By default, the build scripts in this repo fetch pre-built dependencies from our servers.
+
+To build WebCore using locally-built dependencies in the `/deps` folder (really only useful
+if you need to build against modified modules/deps):
+
+```
+make release x64 local
 ```
 
 ### Building on macOS and Linux
