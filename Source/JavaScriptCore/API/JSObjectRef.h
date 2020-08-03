@@ -435,6 +435,8 @@ typedef struct {
             JSObjectConvertToTypeCallbackEx       convertToTypeEx;
         };
     };
+
+    void* privateData; // version 1000
 } JSClassDefinition;
 
 /*! 
@@ -469,6 +471,25 @@ JS_EXPORT JSClassRef JSClassRetain(JSClassRef jsClass);
 @param jsClass The JSClass to release.
 */
 JS_EXPORT void JSClassRelease(JSClassRef jsClass);
+
+/*!
+@function
+@abstract Retrieves the private data from a class reference, only possible with classes created with version 1000 (extended callbacks).
+@param jsClass The class to get the data from
+@result The private data on the class, or NULL, if not set
+@discussion Only classes with version 1000 (extended callbacks) can store private data, for other classes always NULL will always be returned.
+*/
+JS_EXPORT void* JSClassGetPrivate(JSClassRef jsClass);
+
+/*!
+@function
+@abstract Sets the private data on a class, only possible with classes created with version 1000 (extended callbacks).
+@param jsClass The class to set the data on
+@param data A void* to set as the private data for the class
+@result true if teh data has been set on the class, false if the class has not been created with version 1000 (extended callbacks)
+@discussion Only classes with version 1000 (extended callbacks) can store private data, for other classes the function always fails. The set pointer is not touched by the engine.
+*/
+JS_EXPORT bool JSClassSetPrivate(JSClassRef jsClass, void* data);
 
 /*!
 @function

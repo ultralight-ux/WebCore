@@ -187,6 +187,8 @@ struct OpaqueJSClass : public ThreadSafeRefCounted<OpaqueJSClass> {
             JSObjectCallAsConstructorCallbackEx callAsConstructorEx;
             JSObjectHasInstanceCallbackEx hasInstanceEx;
             JSObjectConvertToTypeCallbackEx convertToTypeEx;
+
+            void* privateData;
         } v1000;
     };
 

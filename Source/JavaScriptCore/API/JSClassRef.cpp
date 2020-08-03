@@ -38,7 +38,7 @@
 
 using namespace JSC;
 
-const JSClassDefinition kJSClassDefinitionEmpty = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+const JSClassDefinition kJSClassDefinitionEmpty = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass* protoClass)
     : parentClass(definition->parentClass)
@@ -76,7 +76,8 @@ OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass*
             definition->callAsFunctionEx,
             definition->callAsConstructorEx,
             definition->hasInstanceEx,
-            definition->convertToTypeEx
+            definition->convertToTypeEx,
+            definition->privateData
         };
     }
 

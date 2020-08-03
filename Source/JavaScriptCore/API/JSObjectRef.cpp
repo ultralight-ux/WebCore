@@ -84,6 +84,22 @@ void JSClassRelease(JSClassRef jsClass)
     jsClass->deref();
 }
 
+void* JSClassGetPrivate(JSClassRef jsClass)
+{
+    return jsClass->version == 1000 ? jsClass->v1000.privateData : nullptr;
+}
+
+bool JSClassSetPrivate(JSClassRef jsClass, void* data)
+{
+    if(jsClass->version != 1000)
+    {
+        return false;
+    }
+
+    jsClass->v1000.privateData = data;
+    return true;
+}
+
 JSObjectRef JSObjectMake(JSContextRef ctx, JSClassRef jsClass, void* data)
 {
     if (!ctx) {
