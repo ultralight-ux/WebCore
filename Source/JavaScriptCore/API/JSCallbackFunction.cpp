@@ -49,6 +49,14 @@ JSCallbackFunction::JSCallbackFunction(VM& vm, Structure* structure, JSObjectCal
 {
 }
 
+JSCallbackFunction::JSCallbackFunction(VM& vm, Structure* structure, JSClassRef clazz, JSObjectCallAsFunctionCallbackEx callback)
+    : InternalFunction(vm, structure, APICallbackFunction::call_ex<JSCallbackFunction>, nullptr)
+    , m_callbackEx(callback)
+    , m_clazz(clazz)
+{
+}
+
+
 void JSCallbackFunction::finishCreation(VM& vm, const String& name)
 {
     Base::finishCreation(vm, name);
@@ -59,6 +67,14 @@ JSCallbackFunction* JSCallbackFunction::create(VM& vm, JSGlobalObject* globalObj
 {
     Structure* structure = globalObject->callbackFunctionStructure();
     JSCallbackFunction* function = new (NotNull, allocateCell<JSCallbackFunction>(vm.heap)) JSCallbackFunction(vm, structure, callback);
+    function->finishCreation(vm, name);
+    return function;
+}
+
+JSCallbackFunction* JSCallbackFunction::create(VM& vm, JSGlobalObject* globalObject, JSClassRef clazz, JSObjectCallAsFunctionCallbackEx callback, const String& name)
+{
+    Structure* structure = globalObject->callbackFunctionStructure();
+    JSCallbackFunction* function = new (NotNull, allocateCell<JSCallbackFunction>(vm.heap)) JSCallbackFunction(vm, structure, clazz, callback);
     function->finishCreation(vm, name);
     return function;
 }

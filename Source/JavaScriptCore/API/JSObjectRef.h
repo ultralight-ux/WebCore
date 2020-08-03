@@ -91,6 +91,10 @@ derived class (the parent class) first, and the most derived class last.
 typedef void
 (*JSObjectInitializeCallback) (JSContextRef ctx, JSObjectRef object);
 
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef void
+(*JSObjectInitializeCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef object);
+
 /*! 
 @typedef JSObjectFinalizeCallback
 @abstract The callback invoked when an object is finalized (prepared for garbage collection). An object may be finalized on any thread.
@@ -108,6 +112,10 @@ all functions that have a JSContextRef parameter.
 */
 typedef void            
 (*JSObjectFinalizeCallback) (JSObjectRef object);
+
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef void
+(*JSObjectFinalizeCallbackEx) (JSClassRef clazz, JSObjectRef object);
 
 /*! 
 @typedef JSObjectHasPropertyCallback
@@ -129,6 +137,10 @@ If this callback is NULL, the getProperty callback will be used to service hasPr
 typedef bool
 (*JSObjectHasPropertyCallback) (JSContextRef ctx, JSObjectRef object, JSStringRef propertyName);
 
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef bool
+(*JSObjectHasPropertyCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef object, JSStringRef propertyName);
+
 /*! 
 @typedef JSObjectGetPropertyCallback
 @abstract The callback invoked when getting a property's value.
@@ -145,6 +157,10 @@ If this function returns NULL, the get request forwards to object's statically d
 */
 typedef JSValueRef
 (*JSObjectGetPropertyCallback) (JSContextRef ctx, JSObjectRef object, JSStringRef propertyName, JSValueRef* exception);
+
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef JSValueRef
+(*JSObjectGetPropertyCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef object, JSStringRef propertyName, JSValueRef* exception);
 
 /*! 
 @typedef JSObjectSetPropertyCallback
@@ -164,6 +180,10 @@ If this function returns false, the set request forwards to object's statically 
 typedef bool
 (*JSObjectSetPropertyCallback) (JSContextRef ctx, JSObjectRef object, JSStringRef propertyName, JSValueRef value, JSValueRef* exception);
 
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef bool
+(*JSObjectSetPropertyCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef object, JSStringRef propertyName, JSValueRef value, JSValueRef* exception);
+
 /*! 
 @typedef JSObjectDeletePropertyCallback
 @abstract The callback invoked when deleting a property.
@@ -181,6 +201,10 @@ If this function returns false, the delete request forwards to object's statical
 typedef bool
 (*JSObjectDeletePropertyCallback) (JSContextRef ctx, JSObjectRef object, JSStringRef propertyName, JSValueRef* exception);
 
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef bool
+(*JSObjectDeletePropertyCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef object, JSStringRef propertyName, JSValueRef* exception);
+
 /*! 
 @typedef JSObjectGetPropertyNamesCallback
 @abstract The callback invoked when collecting the names of an object's properties.
@@ -197,6 +221,10 @@ Use JSPropertyNameAccumulatorAddName to add property names to accumulator. A cla
 */
 typedef void
 (*JSObjectGetPropertyNamesCallback) (JSContextRef ctx, JSObjectRef object, JSPropertyNameAccumulatorRef propertyNames);
+
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef void
+(*JSObjectGetPropertyNamesCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef object, JSPropertyNameAccumulatorRef propertyNames);
 
 /*! 
 @typedef JSObjectCallAsFunctionCallback
@@ -219,6 +247,11 @@ If this callback is NULL, calling your object as a function will throw an except
 typedef JSValueRef 
 (*JSObjectCallAsFunctionCallback) (JSContextRef ctx, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef JSValueRef
+(*JSObjectCallAsFunctionCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
+
+
 /*! 
 @typedef JSObjectCallAsConstructorCallback
 @abstract The callback invoked when an object is used as a constructor in a 'new' expression.
@@ -238,6 +271,10 @@ If this callback is NULL, using your object as a constructor in a 'new' expressi
 */
 typedef JSObjectRef 
 (*JSObjectCallAsConstructorCallback) (JSContextRef ctx, JSObjectRef constructor, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
+
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef JSObjectRef
+(*JSObjectCallAsConstructorCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef constructor, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
 /*! 
 @typedef JSObjectHasInstanceCallback
@@ -260,6 +297,10 @@ Standard JavaScript practice calls for objects that implement the callAsConstruc
 typedef bool 
 (*JSObjectHasInstanceCallback)  (JSContextRef ctx, JSObjectRef constructor, JSValueRef possibleInstance, JSValueRef* exception);
 
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef bool
+(*JSObjectHasInstanceCallbackEx)  (JSContextRef ctx, JSClassRef clazz, JSObjectRef constructor, JSValueRef possibleInstance, JSValueRef* exception);
+
 /*! 
 @typedef JSObjectConvertToTypeCallback
 @abstract The callback invoked when converting an object to a particular JavaScript type.
@@ -279,6 +320,10 @@ This function is only invoked when converting an object to number or string. An 
 typedef JSValueRef
 (*JSObjectConvertToTypeCallback) (JSContextRef ctx, JSObjectRef object, JSType type, JSValueRef* exception);
 
+/* Extension of the above callback with the class that the method is being invoked for. */
+typedef JSValueRef
+(*JSObjectConvertToTypeCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef object, JSType type, JSValueRef* exception);
+
 /*! 
 @struct JSStaticValue
 @abstract This structure describes a statically declared value property.
@@ -289,8 +334,16 @@ typedef JSValueRef
 */
 typedef struct {
     const char* name;
-    JSObjectGetPropertyCallback getProperty;
-    JSObjectSetPropertyCallback setProperty;
+    union {
+        JSObjectGetPropertyCallback getProperty; // version 0
+        JSObjectGetPropertyCallbackEx getPropertyEx; // version 1000
+    };
+
+    union {
+        JSObjectSetPropertyCallback setProperty; // version 0
+        JSObjectSetPropertyCallbackEx setPropertyEx; // version 1000
+    };
+
     JSPropertyAttributes attributes;
 } JSStaticValue;
 
@@ -303,7 +356,10 @@ typedef struct {
 */
 typedef struct {
     const char* name;
-    JSObjectCallAsFunctionCallback callAsFunction;
+    union {
+        JSObjectCallAsFunctionCallback callAsFunction; // version 0
+        JSObjectCallAsFunctionCallbackEx callAsFunctionEx; // version 1000
+    };
     JSPropertyAttributes attributes;
 } JSStaticFunction;
 
@@ -341,7 +397,7 @@ Standard JavaScript practice calls for storing function objects in prototypes, s
 A NULL callback specifies that the default object callback should substitute, except in the case of hasProperty, where it specifies that getProperty should substitute.
 */
 typedef struct {
-    int                                 version; /* current (and only) version is 0 */
+    int                                 version; /* current version is 0, callbacks with class extension use version 1000 */
     JSClassAttributes                   attributes;
 
     const char*                         className;
@@ -349,18 +405,36 @@ typedef struct {
         
     const JSStaticValue*                staticValues;
     const JSStaticFunction*             staticFunctions;
-    
-    JSObjectInitializeCallback          initialize;
-    JSObjectFinalizeCallback            finalize;
-    JSObjectHasPropertyCallback         hasProperty;
-    JSObjectGetPropertyCallback         getProperty;
-    JSObjectSetPropertyCallback         setProperty;
-    JSObjectDeletePropertyCallback      deleteProperty;
-    JSObjectGetPropertyNamesCallback    getPropertyNames;
-    JSObjectCallAsFunctionCallback      callAsFunction;
-    JSObjectCallAsConstructorCallback   callAsConstructor;
-    JSObjectHasInstanceCallback         hasInstance;
-    JSObjectConvertToTypeCallback       convertToType;
+
+    union {
+        struct { // version 0
+            JSObjectInitializeCallback          initialize;
+            JSObjectFinalizeCallback            finalize;
+            JSObjectHasPropertyCallback         hasProperty;
+            JSObjectGetPropertyCallback         getProperty;
+            JSObjectSetPropertyCallback         setProperty;
+            JSObjectDeletePropertyCallback      deleteProperty;
+            JSObjectGetPropertyNamesCallback    getPropertyNames;
+            JSObjectCallAsFunctionCallback      callAsFunction;
+            JSObjectCallAsConstructorCallback   callAsConstructor;
+            JSObjectHasInstanceCallback         hasInstance;
+            JSObjectConvertToTypeCallback       convertToType;
+        };
+
+        struct { // version 1000
+            JSObjectInitializeCallbackEx          initializeEx;
+            JSObjectFinalizeCallbackEx            finalizeEx;
+            JSObjectHasPropertyCallbackEx         hasPropertyEx;
+            JSObjectGetPropertyCallbackEx         getPropertyEx;
+            JSObjectSetPropertyCallbackEx         setPropertyEx;
+            JSObjectDeletePropertyCallbackEx      deletePropertyEx;
+            JSObjectGetPropertyNamesCallbackEx    getPropertyNamesEx;
+            JSObjectCallAsFunctionCallbackEx      callAsFunctionEx;
+            JSObjectCallAsConstructorCallbackEx   callAsConstructorEx;
+            JSObjectHasInstanceCallbackEx         hasInstanceEx;
+            JSObjectConvertToTypeCallbackEx       convertToTypeEx;
+        };
+    };
 } JSClassDefinition;
 
 /*! 

@@ -43,6 +43,7 @@ public:
     }
 
     static JSCallbackFunction* create(VM&, JSGlobalObject*, JSObjectCallAsFunctionCallback, const String& name);
+    static JSCallbackFunction* create(VM&, JSGlobalObject*, JSClassRef, JSObjectCallAsFunctionCallbackEx, const String& name);
 
     DECLARE_INFO;
     
@@ -55,11 +56,23 @@ public:
 
 private:
     JSCallbackFunction(VM&, Structure*, JSObjectCallAsFunctionCallback);
+    JSCallbackFunction(VM&, Structure*, JSClassRef, JSObjectCallAsFunctionCallbackEx);
     void finishCreation(VM&, const String& name);
 
     JSObjectCallAsFunctionCallback functionCallback() { return m_callback; }
 
-    JSObjectCallAsFunctionCallback m_callback { nullptr };
+    JSObjectCallAsFunctionCallbackEx functionCallbackEx() { return m_callbackEx; }
+
+    JSClassRef callClass() { return m_clazz; }
+
+    union {
+        JSObjectCallAsFunctionCallback m_callback{ nullptr };
+
+        struct {
+            JSObjectCallAsFunctionCallbackEx m_callbackEx;
+            JSClassRef m_clazz;
+        };
+    };
 };
 
 } // namespace JSC
