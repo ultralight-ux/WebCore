@@ -22,7 +22,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 if (USE_CF)
     list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/platform/cf"
-#        "${WEBCORE_DIR}/platform/cf/win"
     )
 endif ()
 
@@ -34,12 +33,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 	"${WEBKIT_LIBRARIES_DIR}/include/harfbuzz"
 	"${WEBKIT_LIBRARIES_DIR}/include/libjpeg"
 	"${WEBKIT_LIBRARIES_DIR}/include/libpng"
-#    "${JAVASCRIPTCORE_DIR}/wtf/text"
-#    "${WEBCORE_DIR}/loader/archive/cf"
-#    "${WEBCORE_DIR}/platform/cf"
-#    "${WEBCORE_DIR}/platform/network/curl"
-	
-#	"${WTF_DIR}"
     "${WEBCORE_DIR}/platform/ultralight"
 	"${WEBCORE_DIR}/platform/graphics/ultralight"
 	"${WEBCORE_DIR}/platform/graphics/harfbuzz"
@@ -50,7 +43,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
-    #platform/win/MainThreadSharedTimerWin.cpp
     platform/win/WebCoreInstanceHandle.cpp
     platform/win/SSLKeyGeneratorWin.cpp
     platform/generic/KeyedEncoderGeneric.cpp
@@ -76,7 +68,6 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/ImageUltralight.cpp
 	platform/ultralight/KeyEventUltralight.cpp
 	platform/ultralight/LoggingUltralight.cpp
-# platform/ultralight/MainThreadSharedTimerUltralight.cpp
 	platform/ultralight/MIMETypeRegistryUltralight.cpp
 	platform/ultralight/PasteboardUltralight.cpp
 	platform/ultralight/PlatformMouseEventUltralight.cpp
@@ -91,8 +82,6 @@ list(APPEND WebCore_SOURCES
 	platform/ultralight/WidgetUltralight.cpp
 	platform/ultralight/LocalizedStringsUltralight.cpp
 	platform/ultralight/HyphenationUltralight.cpp
-#  platform/ultralight/KeyedEncoderUltralight.cpp
-#  platform/ultralight/KeyedDecoderUltralight.cpp
 	platform/ultralight/PreserveSymbolsUltralight.cpp
 	platform/ultralight/FileURLLoader.h
 	platform/ultralight/FileURLLoader.cpp
@@ -138,20 +127,10 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ultralight/RefPtrFreeTypeFace.h
 	
 	platform/image-decoders/ultralight/ImageBackingStoreUltralight.cpp
-	
-	#platform/graphics/harfbuzz/HarfBuzzFace.cpp
-	#platform/graphics/harfbuzz/HarfBuzzFace.h
 	platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
-	#platform/graphics/harfbuzz/HarfBuzzShaper.cpp
-	#platform/graphics/harfbuzz/HarfBuzzShaper.h
-	
     platform/Cursor.cpp
-    #platform/KillRingNone.cpp
     platform/LocalizedStrings.cpp
-	
 	platform/text/LocaleNone.cpp
-	
-	#platform/network/NetworkStorageSessionStub.cpp
 )
 
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
@@ -270,7 +249,6 @@ list(APPEND WebCore_LIBRARIES
     xslt
     zlibstatic
     sqlite3
-#    ${DirectX_LIBRARIES}
 )
 
 if (UWP_PLATFORM)
@@ -344,7 +322,5 @@ endif ()
 
 list(APPEND WebCore_LIBRARIES WTF${DEBUG_SUFFIX})
 list(APPEND WebCore_LIBRARIES JavaScriptCore${DEBUG_SUFFIX})
-#list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
 list(APPEND WebCore_LIBRARIES UltralightCore)
-#list(APPEND WebCore_LIBRARIES bmalloc)
 list(APPEND WebCoreTestSupport_LIBRARIES WTF${DEBUG_SUFFIX})
