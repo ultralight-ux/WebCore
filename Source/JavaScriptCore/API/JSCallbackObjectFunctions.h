@@ -39,15 +39,6 @@
 #include <wtf/Vector.h>
 
 namespace JSC {
-    namespace CallbackObjectHelpers
-    {
-        struct VersionedInitRoutine
-        {
-            int version;
-            JSClassRef clazz;
-        };
-    }
-
 template <class Parent>
 inline JSCallbackObject<Parent>* JSCallbackObject<Parent>::asCallbackObject(JSValue value)
 {
