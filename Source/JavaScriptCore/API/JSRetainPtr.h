@@ -32,6 +32,10 @@
 #include <JavaScriptCore/JSStringRef.h>
 #include <algorithm>
 
+#if !defined(WARN_UNUSED_RETURN)
+#define WARN_UNUSED_RETURN
+#endif
+
 inline void JSRetain(JSStringRef string) { JSStringRetain(string); }
 inline void JSRelease(JSStringRef string) { JSStringRelease(string); }
 inline void JSRetain(JSGlobalContextRef context) { JSGlobalContextRetain(context); }
