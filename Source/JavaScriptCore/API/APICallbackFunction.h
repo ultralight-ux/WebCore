@@ -94,7 +94,8 @@ EncodedJSValue JSC_HOST_CALL APICallbackFunction::call_ex(ExecState* exec)
         JSLock::DropAllLocks dropAllLocks(exec);
         T* functionInstance = jsCast<T*>(toJS(functionRef));
 
-        result = functionInstance->functionCallbackEx()(execRef, functionInstance->callClass(), functionRef, thisObjRef, argumentCount, arguments.data(), &exception);
+        RefPtr<OpaqueJSString> name = OpaqueJSString::tryCreate(functionInstance->name());
+        result = functionInstance->functionCallbackEx()(execRef, functionInstance->callClass(), name.get(), functionRef, thisObjRef, argumentCount, arguments.data(), &exception);
     }
     if (exception)
         throwException(exec, scope, toJS(exec, exception));

@@ -588,8 +588,10 @@ EncodedJSValue JSCallbackObject<Parent>::call(ExecState* exec)
             JSValue result;
             {
                 JSLock::DropAllLocks dropAllLocks(exec);
+
+                RefPtr<OpaqueJSString> className = jsClass->version == 1000 ? OpaqueJSString::tryCreate(jsClass->className()) : nullptr;
                 result = toJS(exec, callAsFunction ? callAsFunction(execRef, functionRef, thisObjRef, argumentCount, arguments.data(), &exception) :
-                    callAsFunctionEx(execRef, jsClass, functionRef, thisObjRef, argumentCount, arguments.data(), &exception));
+                    callAsFunctionEx(execRef, jsClass, className.get(), functionRef, thisObjRef, argumentCount, arguments.data(), &exception));
             }
             if (exception)
                 throwException(exec, scope, toJS(exec, exception));

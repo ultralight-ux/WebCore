@@ -247,9 +247,9 @@ If this callback is NULL, calling your object as a function will throw an except
 typedef JSValueRef 
 (*JSObjectCallAsFunctionCallback) (JSContextRef ctx, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
-/* Extension of the above callback with the class that the method is being invoked for. */
+/* Extension of the above callback with the class that the method is being invoked for and the name of the method taht is being invoked. */
 typedef JSValueRef
-(*JSObjectCallAsFunctionCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
+(*JSObjectCallAsFunctionCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSStringRef methodName, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
 
 /*! 
