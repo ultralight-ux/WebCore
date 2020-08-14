@@ -173,6 +173,7 @@ Ref<OpaqueJSClass> OpaqueJSClass::create(const JSClassDefinition* clientDefiniti
 
     JSClassDefinition protoDefinition = kJSClassDefinitionEmpty;
     protoDefinition.finalize = 0;
+    protoDefinition.version = clientDefinition->version;
     std::swap(definition.staticFunctions, protoDefinition.staticFunctions); // Move static functions to the prototype.
 
     // We are supposed to use JSClassRetain/Release but since we know that we currently have

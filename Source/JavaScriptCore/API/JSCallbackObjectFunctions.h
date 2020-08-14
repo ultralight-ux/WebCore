@@ -309,20 +309,18 @@ bool JSCallbackObject<Parent>::put(JSCell* cell, ExecState* exec, PropertyName p
                     if (entry->attributes & kJSPropertyAttributeReadOnly)
                         return false;
 
-                    if ((entry->version == 0 && setProperty) || (entry->version == 1000 && setPropertyEx)) {
-                        if (JSObjectSetPropertyCallback setProperty = entry->v0.setProperty) {
-                            JSValueRef exception = 0;
-                            bool result;
-                            {
-                                JSLock::DropAllLocks dropAllLocks(exec);
-                                result = setProperty ? setProperty(ctx, thisRef, entry->propertyNameRef.get(), valueRef, &exception) :
-                                    setPropertyEx(ctx, jsClass, thisRef, entry->propertyNameRef.get(), valueRef, &exception);
-                            }
-                            if (exception)
-                                throwException(exec, scope, toJS(exec, exception));
-                            if (result || exception)
-                                return result;
+                    if ((entry->version == 0 && entry->v0.setProperty) || (entry->version == 1000 && entry->v1000.setPropertyEx)) {
+                        JSValueRef exception = 0;
+                        bool result;
+                        {
+                            JSLock::DropAllLocks dropAllLocks(exec);
+                            result = entry->version == 0 ? entry->v0.setProperty(ctx, thisRef, entry->propertyNameRef.get(), valueRef, &exception) :
+                                entry->v1000.setPropertyEx(ctx, jsClass, thisRef, entry->propertyNameRef.get(), valueRef, &exception);
                         }
+                        if (exception)
+                            throwException(exec, scope, toJS(exec, exception));
+                        if (result || exception)
+                            return result;
                     }
                 }
             }
