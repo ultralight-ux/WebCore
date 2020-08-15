@@ -43,6 +43,7 @@ const JSClassDefinition kJSClassDefinitionEmpty = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass* protoClass)
     : parentClass(definition->parentClass)
       , prototypeClass(0)
+      , prototypeForClass(0)
       , version(definition->version)
       , m_className(String::fromUTF8(definition->className))
 {
@@ -126,7 +127,7 @@ OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass*
                 {
                     m_staticFunctions->set(functionName.impl(), 
                         std::make_unique<StaticFunctionEntry>(
-                            staticFunction->callAsFunctionEx, staticFunction->attributes, this));
+                            staticFunction->callAsFunctionEx, staticFunction->attributes));
                 }
             }
             ++staticFunction;
@@ -160,6 +161,9 @@ OpaqueJSClass::~OpaqueJSClass()
 
     if (prototypeClass)
         JSClassRelease(prototypeClass);
+
+    if (prototypeForClass)
+        JSClassRelease(prototypeForClass);
 }
 
 Ref<OpaqueJSClass> OpaqueJSClass::createNoAutomaticPrototype(const JSClassDefinition* definition)
@@ -179,7 +183,9 @@ Ref<OpaqueJSClass> OpaqueJSClass::create(const JSClassDefinition* clientDefiniti
     // We are supposed to use JSClassRetain/Release but since we know that we currently have
     // the only reference to this class object we cheat and use a RefPtr instead.
     RefPtr<OpaqueJSClass> protoClass = adoptRef(new OpaqueJSClass(&protoDefinition, 0));
-    return adoptRef(*new OpaqueJSClass(&definition, protoClass.get()));
+    OpaqueJSClass* clazz = new OpaqueJSClass(&definition, protoClass.get());
+    protoClass->prototypeForClass = JSClassRetain(clazz);
+    return adoptRef(*clazz);
 }
 
 OpaqueJSClassContextData::OpaqueJSClassContextData(JSC::VM&, OpaqueJSClass* jsClass)
