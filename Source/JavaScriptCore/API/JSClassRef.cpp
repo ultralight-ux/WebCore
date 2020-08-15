@@ -126,7 +126,7 @@ OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass*
                 {
                     m_staticFunctions->set(functionName.impl(), 
                         std::make_unique<StaticFunctionEntry>(
-                            staticFunction->callAsFunctionEx, staticFunction->attributes));
+                            staticFunction->callAsFunctionEx, staticFunction->attributes, this));
                 }
             }
             ++staticFunction;

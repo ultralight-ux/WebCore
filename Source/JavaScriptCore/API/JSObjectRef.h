@@ -247,7 +247,7 @@ If this callback is NULL, calling your object as a function will throw an except
 typedef JSValueRef 
 (*JSObjectCallAsFunctionCallback) (JSContextRef ctx, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
-/* Extension of the above callback with the class that the method is being invoked for and the name of the method taht is being invoked. */
+/* Extension of the above callback with the class that the method is being invoked for and the name of the method that is being invoked. */
 typedef JSValueRef
 (*JSObjectCallAsFunctionCallbackEx) (JSContextRef ctx, JSClassRef clazz, JSStringRef methodName, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
@@ -486,7 +486,7 @@ JS_EXPORT void* JSClassGetPrivate(JSClassRef jsClass);
 @abstract Sets the private data on a class, only possible with classes created with version 1000 (extended callbacks).
 @param jsClass The class to set the data on
 @param data A void* to set as the private data for the class
-@result true if teh data has been set on the class, false if the class has not been created with version 1000 (extended callbacks)
+@result true if the data has been set on the class, false if the class has not been created with version 1000 (extended callbacks)
 @discussion Only classes with version 1000 (extended callbacks) can store private data, for other classes the function always fails. The set pointer is not touched by the engine.
 */
 JS_EXPORT bool JSClassSetPrivate(JSClassRef jsClass, void* data);

@@ -88,17 +88,18 @@ public:
     {
     }
 
-    StaticFunctionEntry(JSObjectCallAsFunctionCallbackEx _callAsFunction, JSPropertyAttributes _attributes)
-        : version(1000), v1000{ _callAsFunction }, attributes(_attributes)
+    StaticFunctionEntry(JSObjectCallAsFunctionCallbackEx _callAsFunction, JSPropertyAttributes _attributes, JSClassRef owner)
+        : version(1000), v1000{ _callAsFunction, owner }, attributes(_attributes)
     {
     }
 
     StaticFunctionEntry(const StaticFunctionEntry& other) : version(other.version), attributes(other.attributes)
     {
-        if(version == 0)
+        if (version == 0)
         {
             v0 = other.v0;
-        } else if(version == 1000)
+        }
+        else if (version == 1000)
         {
             v1000 = other.v1000;
         }
@@ -107,12 +108,15 @@ public:
     int version;
 
     union {
-        struct{
+        struct {
             JSObjectCallAsFunctionCallback callAsFunction;
         } v0;
 
         struct {
             JSObjectCallAsFunctionCallbackEx callAsFunctionEx;
+            // Static functions are called on their prototype, but thats not the class they really belong to.
+            // To be able to resolve the class they have been created on, there is a pointer to it
+            JSClassRef owner;
         } v1000;
     };
     JSPropertyAttributes attributes;

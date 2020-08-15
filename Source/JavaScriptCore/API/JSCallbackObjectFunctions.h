@@ -734,7 +734,7 @@ EncodedJSValue JSCallbackObject<Parent>::staticFunctionGetter(ExecState* exec, E
                         return JSValue::encode(o);
                     } else if(entry->version == 1000 && entry->v1000.callAsFunctionEx)
                     {
-                        JSObject* o = JSCallbackFunction::create(vm, thisObj->globalObject(vm), jsClass, entry->v1000.callAsFunctionEx, name);
+                        JSObject* o = JSCallbackFunction::create(vm, thisObj->globalObject(vm), entry->v1000.owner, entry->v1000.callAsFunctionEx, name);
                         thisObj->putDirect(vm, propertyName, o, entry->attributes);
                         return JSValue::encode(o);
                     }
