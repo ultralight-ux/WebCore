@@ -37,6 +37,7 @@ namespace JSC {
 struct APICallbackFunction {
 
 template <typename T> static EncodedJSValue JSC_HOST_CALL call(ExecState*);
+template <typename T> static EncodedJSValue JSC_HOST_CALL call_ex(ExecState*);
 template <typename T> static EncodedJSValue JSC_HOST_CALL construct(ExecState*);
 
 };
@@ -61,6 +62,40 @@ EncodedJSValue JSC_HOST_CALL APICallbackFunction::call(ExecState* exec)
     {
         JSLock::DropAllLocks dropAllLocks(exec);
         result = jsCast<T*>(toJS(functionRef))->functionCallback()(execRef, functionRef, thisObjRef, argumentCount, arguments.data(), &exception);
+    }
+    if (exception)
+        throwException(exec, scope, toJS(exec, exception));
+
+    // result must be a valid JSValue.
+    if (!result)
+        return JSValue::encode(jsUndefined());
+
+    return JSValue::encode(toJS(exec, result));
+}
+
+template <typename T>
+EncodedJSValue JSC_HOST_CALL APICallbackFunction::call_ex(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSContextRef execRef = toRef(exec);
+    JSObjectRef functionRef = toRef(exec->jsCallee());
+    JSObjectRef thisObjRef = toRef(jsCast<JSObject*>(exec->thisValue().toThis(exec, NotStrictMode)));
+
+    int argumentCount = static_cast<int>(exec->argumentCount());
+    Vector<JSValueRef, 16> arguments;
+    arguments.reserveInitialCapacity(argumentCount);
+    for (int i = 0; i < argumentCount; i++)
+        arguments.uncheckedAppend(toRef(exec, exec->uncheckedArgument(i)));
+
+    JSValueRef exception = 0;
+    JSValueRef result;
+    {
+        JSLock::DropAllLocks dropAllLocks(exec);
+        T* functionInstance = jsCast<T*>(toJS(functionRef));
+
+        RefPtr<OpaqueJSString> name = OpaqueJSString::tryCreate(functionInstance->name());
+        result = functionInstance->functionCallbackEx()(execRef, functionInstance->callClass(), name.get(), functionRef, thisObjRef, argumentCount, arguments.data(), &exception);
     }
     if (exception)
         throwException(exec, scope, toJS(exec, exception));
