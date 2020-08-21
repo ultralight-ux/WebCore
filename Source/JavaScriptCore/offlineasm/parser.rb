@@ -30,7 +30,7 @@ require "self_hash"
 
 class SourceFile
     @@fileNames = []
-    
+
     attr_reader :name, :fileNumber
 
     def SourceFile.outputDotFileList(outp)
@@ -56,7 +56,7 @@ end
 
 class CodeOrigin
     attr_reader :lineNumber
-    
+
     def initialize(sourceFile, lineNumber)
         @sourceFile = sourceFile
         @lineNumber = lineNumber
@@ -100,6 +100,8 @@ class IncludeFile
             if not path
                 path = ARGV.shift
             end
+            print "Include: "
+            puts path
             @@includeDirs << (path + "/")
         end
     end
@@ -107,12 +109,12 @@ end
 
 class Token
     attr_reader :codeOrigin, :string
-    
+
     def initialize(codeOrigin, string)
         @codeOrigin = codeOrigin
         @string = string
     end
-    
+
     def ==(other)
         if other.is_a? Token
             @string == other.string
@@ -120,15 +122,15 @@ class Token
             @string == other
         end
     end
-    
+
     def =~(other)
         @string =~ other
     end
-    
+
     def to_s
         "#{@string.inspect} at #{codeOrigin}"
     end
-    
+
     def parseError(*comment)
         if comment.empty?
             raise "Parse error: #{to_s}"
@@ -262,7 +264,7 @@ class Parser
         @idx = 0
         @annotation = nil
     end
-    
+
     def parseError(*comment)
         if @tokens[@idx]
             @tokens[@idx].parseError(*comment)
@@ -274,7 +276,7 @@ class Parser
             end
         end
     end
-    
+
     def consume(regexp)
         if regexp
             parseError unless @tokens[@idx] =~ regexp
@@ -283,13 +285,13 @@ class Parser
         end
         @idx += 1
     end
-    
+
     def skipNewLine
         while @tokens[@idx] == "\n"
             @idx += 1
         end
     end
-    
+
     def parsePredicateAtom
         if @tokens[@idx] == "not"
             codeOrigin = @tokens[@idx].codeOrigin
@@ -318,7 +320,7 @@ class Parser
             parseError
         end
     end
-    
+
     def parsePredicateAnd
         result = parsePredicateAtom
         while @tokens[@idx] == "and"
@@ -330,13 +332,13 @@ class Parser
         end
         result
     end
-    
+
     def parsePredicate
         # some examples of precedence:
         # not a and b -> (not a) and b
         # a and b or c -> (a and b) or c
         # a or b and c -> a or (b and c)
-        
+
         result = parsePredicateAnd
         while @tokens[@idx] == "or"
             codeOrigin = @tokens[@idx].codeOrigin
@@ -347,7 +349,7 @@ class Parser
         end
         result
     end
-    
+
     def parseVariable
         if isRegister(@tokens[@idx])
             if @tokens[@idx] =~ FPR_PATTERN
@@ -380,17 +382,17 @@ class Parser
             parseError
         end
     end
-    
+
     def parseAddress(offset)
         parseError unless @tokens[@idx] == "["
         codeOrigin = @tokens[@idx].codeOrigin
-        
+
         # Three possibilities:
         # []       -> AbsoluteAddress
         # [a]      -> Address
         # [a,b]    -> BaseIndex with scale = 1
         # [a,b,c]  -> BaseIndex
-        
+
         @idx += 1
         if @tokens[@idx] == "]"
             @idx += 1
@@ -423,7 +425,7 @@ class Parser
         @idx += 1
         result
     end
-    
+
     def parseColonColon
         skipNewLine
         codeOrigin = @tokens[@idx].codeOrigin
@@ -463,7 +465,7 @@ class Parser
         return [codeOrigin, text]
     end
 
-    
+
     def parseExpressionAtom
         skipNewLine
         if @tokens[@idx] == "-"
@@ -513,7 +515,7 @@ class Parser
             parseError
         end
     end
-    
+
     def parseExpressionMul
         skipNewLine
         result = parseExpressionAtom
@@ -527,11 +529,11 @@ class Parser
         end
         result
     end
-    
+
     def couldBeExpression
         @tokens[@idx] == "-" or @tokens[@idx] == "~" or @tokens[@idx] == "sizeof" or @tokens[@idx] == "constexpr" or isInteger(@tokens[@idx]) or isString(@tokens[@idx]) or isVariable(@tokens[@idx]) or isLabel(@tokens[@idx]) or @tokens[@idx] == "("
     end
-    
+
     def parseExpressionAdd
         skipNewLine
         result = parseExpressionMul
@@ -548,7 +550,7 @@ class Parser
         end
         result
     end
-    
+
     def parseExpressionAnd
         skipNewLine
         result = parseExpressionAdd
@@ -558,7 +560,7 @@ class Parser
         end
         result
     end
-    
+
     def parseExpression
         skipNewLine
         result = parseExpressionAnd
@@ -575,7 +577,7 @@ class Parser
         end
         result
     end
-    
+
     def parseOperand(comment)
         skipNewLine
         if couldBeExpression
@@ -595,7 +597,7 @@ class Parser
             parseError(comment)
         end
     end
-    
+
     def parseMacroVariables
         skipNewLine
         consume(/\A\(\Z/)
@@ -623,7 +625,7 @@ class Parser
         }
         variables
     end
-    
+
     def parseSequence(final, comment)
         firstCodeOrigin = @tokens[@idx].codeOrigin
         list = []
@@ -842,7 +844,7 @@ class Parser
                 moduleName = @tokens[@idx].string
                 fileName = IncludeFile.new(moduleName, @tokens[@idx].codeOrigin.fileName.dirname).fileName
                 @idx += 1
-                
+
                 fileList << fileName
             else
                 @idx += 1

@@ -1,4 +1,4 @@
-add_definitions(/bigobj -D__STDC_CONSTANT_MACROS -DSTATICALLY_LINKED_WITH_WTF
+add_definitions(-D__STDC_CONSTANT_MACROS -DSTATICALLY_LINKED_WITH_WTF
                 -DSTATICALLY_LINKED_WITH_JavaScriptCore -DSTATICALLY_LINKED_WITH_PAL -DULTRALIGHT_IMPLEMENTATION
                 -DCURL_STATICLIB)
 
@@ -36,9 +36,9 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/ultralight"
 	"${WEBCORE_DIR}/platform/graphics/ultralight"
 	"${WEBCORE_DIR}/platform/graphics/harfbuzz"
-	
+
 	"${ULTRALIGHTCORE_DIR}/include"
-	
+
 	"${SQLITE_DIR}"
 )
 
@@ -92,7 +92,7 @@ list(APPEND WebCore_SOURCES
     platform/ultralight/ICUUtils.cpp
     platform/ultralight/MemoryUtils.cpp
     platform/ultralight/ResourceUsageOverlayUltralight.cpp
-    
+
 	platform/graphics/ultralight/GradientUltralight.cpp
 	platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h
 	platform/graphics/ultralight/GraphicsContextUltralight.cpp
@@ -125,7 +125,7 @@ list(APPEND WebCore_SOURCES
 	platform/graphics/ultralight/CanvasImage.cpp
     platform/graphics/ultralight/RefPtrFreeTypeFace.cpp
     platform/graphics/ultralight/RefPtrFreeTypeFace.h
-	
+
 	platform/image-decoders/ultralight/ImageBackingStoreUltralight.cpp
 	platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
     platform/Cursor.cpp
@@ -310,10 +310,12 @@ set(WebCore_OUTPUT_NAME
     WebCore${DEBUG_SUFFIX}
 )
 
-if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRel)
-	add_compile_options(/GL)
-	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
-	set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
+if (MSVC)
+	if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRel)
+		add_compile_options(/GL)
+		set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
+		set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
+	endif ()
 endif ()
 
 if (UWP_PLATFORM)

@@ -20,10 +20,11 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "config.h"
+#include "BytecodeStructs.h"
 #include "DFGOSRExit.h"
 
 #if ENABLE(DFG_JIT)
@@ -1049,7 +1050,7 @@ void JIT_OPERATION OSRExit::compileOSRExit(ExecState* exec)
 
     ASSERT(!vm->callFrameForCatch || exit.m_kind == GenericUnwind);
     EXCEPTION_ASSERT_UNUSED(scope, !!scope.exception() || !exit.isExceptionHandler());
-    
+
     prepareCodeOriginForOSRExit(exec, exit.m_codeOrigin);
 
     // Compute the value recoveries.
@@ -1278,10 +1279,10 @@ void OSRExit::compileExit(CCallHelpers& jit, VM& vm, const OSRExit& exit, const 
                 jit.pushToSave(scratchTag);
 
                 JSValueRegs scratch(scratchTag, scratchPayload);
-                
+
                 jit.loadValue(exit.m_jsValueSource.asAddress(), scratch);
                 profile.emitReportValue(jit, scratch);
-                
+
                 jit.popToRestore(scratchTag);
                 jit.popToRestore(scratchPayload);
             } else if (exit.m_jsValueSource.hasKnownTag()) {
@@ -1356,7 +1357,7 @@ void OSRExit::compileExit(CCallHelpers& jit, VM& vm, const OSRExit& exit, const 
                 recovery.gpr(),
                 &bitwise_cast<EncodedValueDescriptor*>(scratch + index)->asBits.payload);
             break;
-            
+
         case InPair:
             jit.store32(
                 recovery.tagGPR(),

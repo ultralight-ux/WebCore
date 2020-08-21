@@ -59,7 +59,8 @@ elseif (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "s390")
 elseif (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "s390x")
     set(WTF_CPU_S390X 1)
 else ()
-    message(FATAL_ERROR "Unknown CPU '${LOWERCASE_CMAKE_SYSTEM_PROCESSOR}'")
+   # message(FATAL_ERROR "Unknown CPU '${LOWERCASE_CMAKE_SYSTEM_PROCESSOR}'")
+   set(WTF_CPU_X86_64 1)
 endif ()
 
 # -----------------------------------------------------------------------------

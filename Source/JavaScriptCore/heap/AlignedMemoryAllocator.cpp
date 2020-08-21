@@ -20,7 +20,7 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "config.h"
@@ -30,7 +30,9 @@
 #include "Heap.h"
 #include "Subspace.h"
 
-namespace JSC { 
+#include "HeapInlines.h"
+
+namespace JSC {
 
 AlignedMemoryAllocator::AlignedMemoryAllocator()
 {
@@ -43,13 +45,13 @@ AlignedMemoryAllocator::~AlignedMemoryAllocator()
 void AlignedMemoryAllocator::registerDirectory(BlockDirectory* directory)
 {
     RELEASE_ASSERT(!directory->nextDirectoryInAlignedMemoryAllocator());
-    
+
     if (m_directories.isEmpty()) {
         ASSERT(!Thread::mayBeGCThread() || directory->heap()->worldIsStopped());
         for (Subspace* subspace = m_subspaces.first(); subspace; subspace = subspace->nextSubspaceInAlignedMemoryAllocator())
             subspace->didCreateFirstDirectory(directory);
     }
-    
+
     m_directories.append(std::mem_fn(&BlockDirectory::setNextDirectoryInAlignedMemoryAllocator), directory);
 }
 

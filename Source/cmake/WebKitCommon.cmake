@@ -10,6 +10,8 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
     # Find common packages (used by all ports)
     # -----------------------------------------------------------------------------
     if (WIN32)
+        list(APPEND CMAKE_PROGRAM_PATH $ENV{SystemDrive}/ProgramData/msys64/mingw64/bin)
+        list(APPEND CMAKE_PROGRAM_PATH $ENV{SystemDrive}/msys64/mingw64/bin)
         list(APPEND CMAKE_PROGRAM_PATH $ENV{SystemDrive}/cygwin/bin)
     endif ()
 

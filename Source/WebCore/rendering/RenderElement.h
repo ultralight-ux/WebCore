@@ -242,7 +242,7 @@ protected:
         RenderBlockFlag             = 1 << 4,
         RenderBlockFlowFlag         = 1 << 5,
     };
-    
+
     typedef unsigned BaseTypeFlags;
 
     RenderElement(Element&, RenderStyle&&, BaseTypeFlags);
@@ -286,7 +286,7 @@ protected:
 
     void removeFromRenderFragmentedFlowIncludingDescendants(bool shouldUpdateState);
     void adjustFragmentedFlowStateOnContainingBlockChangeIfNeeded();
-    
+
     bool isVisibleInViewport() const;
 
 private:
@@ -324,7 +324,7 @@ private:
     bool getTrailingCorner(FloatPoint& output, bool& insideFixed) const;
 
     void clearSubtreeLayoutRootIfNeeded() const;
-    
+
     bool shouldWillChangeCreateStackingContext() const;
     void issueRepaintForOutlineAuto(float outlineSize);
 
@@ -365,7 +365,9 @@ inline void RenderElement::setAncestorLineBoxDirty(bool f)
 
 inline void RenderElement::setChildNeedsLayout(MarkingBehavior markParents)
 {
+#if !defined(NDEBUG)
     ASSERT(!isSetNeedsLayoutForbidden());
+#endif
     if (normalChildNeedsLayout())
         return;
     setNormalChildNeedsLayoutBit(true);

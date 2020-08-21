@@ -55,7 +55,7 @@ public:
     void dump(WTF::PrintStream&) const;
 
     explicit operator bool() const { return !!m_memory; }
-    
+
     enum NotifyPressure { NotifyPressureTag };
     enum SyncTryToReclaim { SyncTryToReclaimTag };
     enum GrowSuccess { GrowSuccessTag };
@@ -87,7 +87,11 @@ public:
     Expected<PageCount, GrowFailReason> grow(PageCount);
     void registerInstance(Instance*);
 
-    void check() {  ASSERT(!deletionHasBegun()); }
+    inline void check() {
+#if CHECK_REF_COUNTED_LIFECYCLE
+        ASSERT(!deletionHasBegun());
+#endif
+    }
 
     static ptrdiff_t offsetOfMemory() { return OBJECT_OFFSETOF(Memory, m_memory); }
     static ptrdiff_t offsetOfSize() { return OBJECT_OFFSETOF(Memory, m_size); }

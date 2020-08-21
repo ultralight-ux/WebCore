@@ -70,7 +70,7 @@ class Assembler
         @state = :asm
         SourceFile.outputDotFileList(@outp) if $enableDebugAnnotations
     end
-    
+
     def leaveAsm
         putsProcEndIfNeeded if $emitWinAsm
         if !$emitWinAsm
@@ -87,7 +87,7 @@ class Assembler
         @outp.puts "OFFLINE_ASM_END" if !$emitWinAsm
         @state = :cpp
     end
-    
+
     def deferAction(&proc)
         @deferredActions << proc
     end
@@ -95,19 +95,19 @@ class Assembler
     def deferNextLabelAction(&proc)
         @deferredNextLabelActions << proc
     end
-    
+
     def newUID
         @count += 1
         @count
     end
-    
+
     def inAsm
         resetAsm
         enterAsm
         yield
         leaveAsm
     end
-    
+
     # Concatenates all the various components of the comment to dump.
     def lastComment
         separator = " "
@@ -137,13 +137,13 @@ class Assembler
         @internalComment = nil
         result
     end
-    
+
     # Puts a C Statement in the output stream.
     def putc(*line)
         raise unless @state == :asm
         @outp.puts(formatDump("    " + line.join(''), lastComment))
     end
-    
+
     def formatDump(dumpStr, comment, commentColumns=$preferredCommentStartColumn)
         if comment.length > 0
             "%-#{commentColumns}s %s" % [dumpStr, comment]
@@ -176,7 +176,7 @@ class Assembler
             @outp.puts comment
         end
     end
-    
+
     def puts(*line)
         raise unless @state == :asm
         if !$emitWinAsm
@@ -185,12 +185,12 @@ class Assembler
             @outp.puts(formatDump("    " + line.join(''), lastComment))
         end
     end
-    
+
     def print(line)
         raise unless @state == :asm
         @outp.print("\"" + line + "\"")
     end
-    
+
     def putsNewlineSpacerIfAppropriate(state)
         if @newlineSpacerState != state
             @outp.puts("\n")
@@ -228,14 +228,14 @@ class Assembler
                 @outp.puts(formatDump("OFFLINE_ASM_GLOBAL_LABEL(#{labelName})", lastComment))
             else
                 putsProc(labelName, lastComment)
-            end            
+            end
         elsif /\Allint_op_/.match(labelName)
             if !$emitWinAsm
                 @outp.puts(formatDump("OFFLINE_ASM_OPCODE_LABEL(op_#{$~.post_match})", lastComment))
             else
                 label = "llint_" + "op_#{$~.post_match}"
                 @outp.puts(formatDump("  _#{label}:", lastComment))
-            end            
+            end
         else
             if !$emitWinAsm
                 @outp.puts(formatDump("OFFLINE_ASM_GLUE_LABEL(#{labelName})", lastComment))
@@ -245,7 +245,7 @@ class Assembler
         end
         @newlineSpacerState = :none # After a global label, we can use another spacer.
     end
-    
+
     def putsLocalLabel(labelName)
         raise unless @state == :asm
         @numLocalLabels += 1
@@ -273,7 +273,7 @@ class Assembler
             "_#{labelName}"
         end
     end
-    
+
     def self.localLabelReference(labelName)
         if !$emitWinAsm
             "\" LOCAL_LABEL_STRING(#{labelName}) \""
@@ -281,7 +281,7 @@ class Assembler
             "#{labelName}"
         end
     end
-    
+
     def self.cLabelReference(labelName)
         if /\Allint_op_/.match(labelName)
             "op_#{$~.post_match}"  # strip opcodes of their llint_ prefix.
@@ -289,11 +289,11 @@ class Assembler
             "#{labelName}"
         end
     end
-    
+
     def self.cLocalLabelReference(labelName)
         "#{labelName}"
     end
-    
+
     def codeOrigin(text)
         case @commentState
         when :none
@@ -331,6 +331,13 @@ IncludeFile.processIncludeOptions()
 asmFile = ARGV.shift
 offsetsFile = ARGV.shift
 outputFlnm = ARGV.shift
+
+print "ASM: "
+puts asmFile
+print "Offsets: "
+puts offsetsFile
+print "Output: "
+puts outputFlnm
 
 $options = {}
 OptionParser.new do |opts|
@@ -379,7 +386,7 @@ File.open(outputFlnm, "w") {
     $output.puts inputHash
 
     $asm = Assembler.new($output)
-    
+
     ast = parse(asmFile)
     settingsCombinations = computeSettingsCombinations(ast)
 

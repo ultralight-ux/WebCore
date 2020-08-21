@@ -1,4 +1,8 @@
-add_definitions(/bigobj -D__STDC_CONSTANT_MACROS)
+add_definitions(-D__STDC_CONSTANT_MACROS)
+
+if (MSVC)
+    add_definitions(/bigobj)
+endif ()
 
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_BINARY_DIR}/../include/private"

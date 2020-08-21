@@ -1,3 +1,6 @@
+
+if (MSVC)
+
 add_compile_options(
     /wd4018 /wd4068 /wd4099 /wd4100 /wd4127 /wd4138 /wd4146 /wd4180 /wd4189
     /wd4201 /wd4206 /wd4244 /wd4251 /wd4267 /wd4275 /wd4288 /wd4291 /wd4305
@@ -106,4 +109,10 @@ if (COMPILER_IS_CLANG_CL)
     # FIXME: Building with clang-cl seemed to fail with 128 bit int support
     set(HAVE_INT128_T OFF)
     list(REMOVE_ITEM _WEBKIT_CONFIG_FILE_VARIABLES HAVE_INT128_T)
+endif ()
+
+else ()
+
+    message(FATAL_ERROR, "MSVC options being used on non-MSVC compatible compiler.")
+
 endif ()

@@ -50,7 +50,7 @@ float linearToSRGBColorComponent(float c)
     if (c < 0.0031308f)
         return 12.92f * c;
 
-    return clampTo<float>(1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f, 0, 1);
+    return clampTo<float>(1.055f * wtf_pow(c, 1.0f / 2.4f) - 0.055f, 0, 1);
 }
 
 float sRGBToLinearColorComponent(float c)
@@ -58,7 +58,7 @@ float sRGBToLinearColorComponent(float c)
     if (c <= 0.04045f)
         return c / 12.92f;
 
-    return clampTo<float>(std::pow((c + 0.055f) / 1.055f, 2.4f), 0, 1);
+    return clampTo<float>(wtf_pow((c + 0.055f) / 1.055f, 2.4f), 0, 1);
 }
 
 FloatComponents sRGBColorToLinearComponents(const Color& color)
@@ -101,7 +101,7 @@ static float sRGBToLinearColorComponentForLuminance(float c)
     if (c <= 0.03928f)
         return c / 12.92f;
 
-    return clampTo<float>(std::pow((c + 0.055f) / 1.055f, 2.4f), 0, 1);
+    return clampTo<float>(wtf_pow((c + 0.055f) / 1.055f, 2.4f), 0, 1);
 }
 
 float luminance(const FloatComponents& sRGBComponents)
@@ -202,10 +202,10 @@ FloatComponents HSLToSRGB(const FloatComponents& hslColor)
             hslColor.components[3]
         };
     }
-    
+
     float temp2 = lightness <= 0.5f ? lightness * (1.0f + saturation) : lightness + saturation - lightness * saturation;
     float temp1 = 2.0f * lightness - temp2;
-    
+
     hue *= 6.0f; // calcHue() wants hue in the 0-6 range.
     return {
         calcHue(temp1, temp2, hue + 2.0f),
@@ -274,7 +274,7 @@ ColorMatrix ColorMatrix::grayscaleMatrix(float amount)
     matrix.m_matrix[2][0] = 0.2126f - 0.2126f * oneMinusAmount;
     matrix.m_matrix[2][1] = 0.7152f - 0.7152f * oneMinusAmount;
     matrix.m_matrix[2][2] = 0.0722f + 0.9278f * oneMinusAmount;
-    
+
     return matrix;
 }
 

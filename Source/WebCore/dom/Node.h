@@ -146,7 +146,7 @@ public:
     Node* pseudoAwareLastChild() const;
 
     WEBCORE_EXPORT const URL& baseURI() const;
-    
+
     void getSubresourceURLs(ListHashSet<URL>&) const;
 
     WEBCORE_EXPORT ExceptionOr<void> insertBefore(Node& newChild, Node* refChild);
@@ -179,7 +179,7 @@ public:
 
     WEBCORE_EXPORT String textContent(bool convertBRsToNewlines = false) const;
     WEBCORE_EXPORT ExceptionOr<void> setTextContent(const String&);
-    
+
     Node* lastDescendant() const;
     Node* firstDescendant() const;
 
@@ -263,7 +263,7 @@ public:
         bool composed;
     };
     Node& getRootNode(const GetRootNodeOptions&) const;
-    
+
     void* opaqueRoot() const;
 
     // Use when it's guaranteed to that shadowHost is null.
@@ -372,7 +372,7 @@ public:
     // Returns true if this node is associated with a document and is in its associated document's
     // node tree, false otherwise (https://dom.spec.whatwg.org/#connected).
     bool isConnected() const
-    { 
+    {
         return getFlag(IsConnectedFlag);
     }
     bool isInUserAgentShadowTree() const;
@@ -422,7 +422,7 @@ public:
     // Use these two methods with caution.
     WEBCORE_EXPORT RenderBox* renderBox() const;
     RenderBoxModelObject* renderBoxModelObject() const;
-    
+
     // Wrapper for nodes that don't have a renderer, but still cache the style (like HTMLOptionElement).
     const RenderStyle* renderStyle() const;
 
@@ -593,8 +593,8 @@ protected:
     };
 
     bool getFlag(NodeFlags mask) const { return m_nodeFlags & mask; }
-    void setFlag(bool f, NodeFlags mask) const { m_nodeFlags = (m_nodeFlags & ~mask) | (-(int32_t)f & mask); } 
-    void setFlag(NodeFlags mask) const { m_nodeFlags |= mask; } 
+    void setFlag(bool f, NodeFlags mask) const { m_nodeFlags = (m_nodeFlags & ~mask) | (-(int32_t)f & mask); }
+    void setFlag(NodeFlags mask) const { m_nodeFlags |= mask; }
     void clearFlag(NodeFlags mask) const { m_nodeFlags &= ~mask; }
 
     bool isParsingChildrenFinished() const { return getFlag(IsParsingChildrenFinishedFlag); }
@@ -604,8 +604,8 @@ protected:
     enum ConstructionType {
         CreateOther = DefaultNodeFlags,
         CreateText = DefaultNodeFlags | IsTextFlag,
-        CreateContainer = DefaultNodeFlags | IsContainerFlag, 
-        CreateElement = CreateContainer | IsElementFlag, 
+        CreateContainer = DefaultNodeFlags | IsContainerFlag,
+        CreateElement = CreateContainer | IsElementFlag,
         CreatePseudoElement =  CreateElement | IsConnectedFlag,
         CreateShadowRoot = CreateContainer | IsShadowRootFlag | IsInShadowTreeFlag,
         CreateDocumentFragment = CreateContainer,
@@ -694,9 +694,11 @@ inline void adopted(Node* node)
 ALWAYS_INLINE void Node::ref()
 {
     ASSERT(isMainThread());
+#if !defined(NDEBUG)
     ASSERT(!m_deletionHasBegun);
     ASSERT(!m_inRemovedLastRefFunction);
     ASSERT(!m_adoptionIsRequired);
+#endif
     m_refCountAndParentBit += s_refCountIncrement;
 }
 
@@ -704,9 +706,11 @@ ALWAYS_INLINE void Node::deref()
 {
     ASSERT(isMainThread());
     ASSERT(refCount());
+#if !defined(NDEBUG)
     ASSERT(!m_deletionHasBegun);
     ASSERT(!m_inRemovedLastRefFunction);
     ASSERT(!m_adoptionIsRequired);
+#endif
     auto updatedRefCount = m_refCountAndParentBit - s_refCountIncrement;
     if (!updatedRefCount) {
         // Don't update m_refCountAndParentBit to avoid double destruction through use of Ref<T>/RefPtr<T>.
@@ -722,8 +726,10 @@ ALWAYS_INLINE void Node::deref()
 
 ALWAYS_INLINE bool Node::hasOneRef() const
 {
+#if !defined(NDEBUG)
     ASSERT(!m_deletionHasBegun);
     ASSERT(!m_inRemovedLastRefFunction);
+#endif
     return refCount() == 1;
 }
 
@@ -786,7 +792,9 @@ inline void Node::setHasValidStyle()
 inline void Node::setTreeScopeRecursively(TreeScope& newTreeScope)
 {
     ASSERT(!isDocumentNode());
+#if !defined(NDEBUG)
     ASSERT(!m_deletionHasBegun);
+#endif
     if (m_treeScope != &newTreeScope)
         moveTreeToNewScope(*this, *m_treeScope, newTreeScope);
 }
