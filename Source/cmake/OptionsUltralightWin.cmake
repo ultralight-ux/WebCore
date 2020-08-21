@@ -5,6 +5,7 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_3D_TRANSFORMS PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ACCELERATED_2D_CANVAS PUBLIC OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ACCESSIBILITY PUBLIC OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_API_TESTS PUBLIC OFF)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_RELEASE_ASSERTIONS PUBLIC OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ATTACHMENT_ELEMENT PUBLIC OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_CHANNEL_MESSAGING PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_CSS3_TEXT PUBLIC OFF)
@@ -91,7 +92,7 @@ if (MSVC)
     )
 
     if (UWP_PLATFORM)
-        add_definitions(-DUWP_PLATFORM) 
+        add_definitions(-DUWP_PLATFORM)
     endif ()
 
     # We do not use exceptions
@@ -103,19 +104,19 @@ if (MSVC)
 
     # Use CRT security features
     add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES=1)
-	
+
     # Turn off certain link features
     #add_compile_options(/Gy- /openmp- /GF-)
-	
+
 	IF( NOT CMAKE_BUILD_TYPE )
        SET( CMAKE_BUILD_TYPE Release )
     ENDIF()
-	
+
 	# Force CMake to use the actual linker for linking instead of the C Compiler front-end
 	# See Modules/CMakeCInformation.cmake in CMake's source distribution
 	#set(CMAKE_C_LINK_EXECUTABLE
 	#	"<CMAKE_LINKER> <FLAGS> <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS>  -o <TARGET> <LINK_LIBRARIES>")
-	
+
 	# Force CMake to use the actual linker for linking instead of the CXX Compiler front-end
 	# See Modules/CMakeCXXInformation.cmake in CMake's source distribution
 	#set(CMAKE_CXX_LINK_EXECUTABLE
@@ -124,11 +125,11 @@ if (MSVC)
 	# Needed for bmalloc on Windows
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LARGEADDRESSAWARE")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /LARGEADDRESSAWARE")
-	
+
 	if (${CMAKE_BUILD_TYPE} MATCHES Debug OR ${CMAKE_BUILD_TYPE} MATCHES RelWithDebInfo)
 		# Create pdb files for debugging purposes
 		# add_compile_options(/Zi /GS)
-		
+
 		set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF /DEBUG:FASTLINK")
 		set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF /DEBUG:FASTLINK")
 
@@ -143,7 +144,7 @@ if (MSVC)
 		#set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /OPT:REF /OPT:ICF /LTCG /INCREMENTAL:NO")
 		#set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /OPT:REF /OPT:ICF /LTCG /INCREMENTAL:NO")
 		add_compile_options(/Os /cgthreads8)
-        
+
         # Uncomment this block to add PDB to optimized release builds
         #add_compile_options(/Zi)
         #set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /OPT:REF /OPT:ICF /DEBUG")

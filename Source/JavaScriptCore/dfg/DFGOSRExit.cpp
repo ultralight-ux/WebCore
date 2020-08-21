@@ -24,7 +24,7 @@
  */
 
 #include "config.h"
-#include "../BytecodeStructs.h"
+#include "BytecodeStructs.h"
 #include "DFGOSRExit.h"
 
 #if ENABLE(DFG_JIT)
