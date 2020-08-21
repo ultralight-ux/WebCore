@@ -21,7 +21,7 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #pragma once
@@ -37,8 +37,8 @@
 #include <wtf/URL.h>
 
 #if OS(WINDOWS)
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 #endif
 
 #include <curl/curl.h>
@@ -60,7 +60,7 @@ protected:
     {
         curl_global_init(CURL_GLOBAL_ALL);
     }
-    
+
     virtual ~CurlGlobal()
     {
         curl_global_cleanup();

@@ -58,7 +58,7 @@ namespace JSC {
 #endif
         {
         }
-        
+
         explicit RegisterID(int index)
             : m_refCount(0)
             , m_virtualRegister(VirtualRegister(index))
@@ -84,7 +84,9 @@ namespace JSC {
 
         int index() const
         {
+#ifndef NDEBUG
             ASSERT(m_didSetIndex);
+#endif
             return m_virtualRegister.offset();
         }
 

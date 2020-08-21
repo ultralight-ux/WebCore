@@ -242,7 +242,19 @@ list(APPEND JavaScriptCore_HEADERS
 )
 
 if (WIN32)
-    set(OFFLINE_ASM_BACKEND "X86_WIN, X86_64_WIN, C_LOOP_WIN")
+    if (MSVC)
+        if (ENABLE_C_LOOP)
+            set(OFFLINE_ASM_BACKEND "X86_64_WIN, C_LOOP_WIN")
+        else ()
+            set(OFFLINE_ASM_BACKEND "X86_64_WIN")
+        endif ()
+    else ()
+        if (ENABLE_C_LOOP)
+            set(OFFLINE_ASM_BACKEND "X86_64, C_LOOP")
+        else ()
+            set(OFFLINE_ASM_BACKEND "X86_64")
+        endif ()
+    endif ()
 else ()
     if (WTF_CPU_X86)
         set(OFFLINE_ASM_BACKEND "X86")
@@ -1349,7 +1361,7 @@ if (USE_VERSION_STAMPER)
         VERBATIM)
 endif ()
 
-if(CMAKE_COMPILER_IS_GNUCXX OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+if(CMAKE_COMPILER_IS_GNUCXX OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang") AND !WIN32)
     set_target_properties(JavaScriptCore PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION 0
         LINK_FLAGS "-Wl,-dead_strip"

@@ -147,6 +147,12 @@ EOS
 
 $inputFileName = ARGV.shift
 $outputFileName = ARGV.shift
+
+print "Input: "
+puts $inputFileName
+print "Output: "
+puts $outputFileName
+
 File.open($outputFileName, "w") {|output|
     File.open($inputFileName, "rb") {|file|
         tree = YAML::load(file.read())

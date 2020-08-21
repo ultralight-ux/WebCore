@@ -180,7 +180,7 @@ public:
     // Obtains the nearest enclosing block (including this block) that contributes a first-line style to our inline
     // children.
     virtual RenderBlock* firstLineBlock() const;
-    
+
     // RenderObject tree manipulation
     //////////////////////////////////////////
     virtual bool canHaveChildren() const = 0;
@@ -297,7 +297,7 @@ public:
 
     bool childrenInline() const { return m_bitfields.childrenInline(); }
     void setChildrenInline(bool b) { m_bitfields.setChildrenInline(b); }
-    
+
     enum FragmentedFlowState {
         NotInsideFragmentedFlow = 0,
         InsideInFragmentedFlow = 1,
@@ -391,7 +391,7 @@ public:
         // This function is kept in sync with anonymous block creation conditions in
         // RenderBlock::createAnonymousBlock(). This includes creating an anonymous
         // RenderBlock having a DisplayType::Block or DisplayType::Box display. Other classes such as RenderTextFragment
-        // are not RenderBlocks and will return false. See https://bugs.webkit.org/show_bug.cgi?id=56709. 
+        // are not RenderBlocks and will return false. See https://bugs.webkit.org/show_bug.cgi?id=56709.
         return isAnonymous() && (style().display() == DisplayType::Block || style().display() == DisplayType::Box) && style().styleType() == PseudoId::None && isRenderBlock() && !isListMarker() && !isRenderFragmentedFlow() && !isRenderMultiColumnSet() && !isRenderView()
 #if ENABLE(FULLSCREEN_API)
             && !isRenderFullScreen()
@@ -462,7 +462,7 @@ public:
     bool needsSimplifiedNormalFlowLayout() const { return m_bitfields.needsSimplifiedNormalFlowLayout(); }
     bool needsSimplifiedNormalFlowLayoutOnly() const;
     bool normalChildNeedsLayout() const { return m_bitfields.normalChildNeedsLayout(); }
-    
+
     bool preferredLogicalWidthsDirty() const { return m_bitfields.preferredLogicalWidthsDirty(); }
 
     bool isSelectionBorder() const;
@@ -507,7 +507,7 @@ public:
     void clearNeedsLayout();
     void setPreferredLogicalWidthsDirty(bool, MarkingBehavior = MarkContainingBlockChain);
     void invalidateContainerPreferredLogicalWidths();
-    
+
     void setNeedsLayoutAndPrefWidthsRecalc()
     {
         setNeedsLayout();
@@ -618,7 +618,7 @@ public:
     // Anonymous blocks that are part of of a continuation chain will return their inline continuation's outline style instead.
     // This is typically only relevant when repainting.
     virtual const RenderStyle& outlineStyleForRepaint() const { return style(); }
-    
+
     virtual CursorDirective getCursor(const LayoutPoint&, Cursor&) const;
 
     // Return the RenderLayerModelObject in the container chain which is responsible for painting this object, or nullptr
@@ -628,7 +628,7 @@ public:
     // Actually do the repaint of rect r for this object which has been computed in the coordinate space
     // of repaintContainer. If repaintContainer is nullptr, repaint via the view.
     void repaintUsingContainer(const RenderLayerModelObject* repaintContainer, const LayoutRect&, bool shouldClipToLayer = true) const;
-    
+
     // Repaint the entire object.  Called when, e.g., the color of a border changes, or when a border
     // style changes.
     void repaint() const;
@@ -762,10 +762,10 @@ public:
     // Pushes state onto RenderGeometryMap about how to map coordinates from this renderer to its container, or ancestorToStopAt (whichever is encountered first).
     // Returns the renderer which was mapped to (container or ancestorToStopAt).
     virtual const RenderObject* pushMappingToContainer(const RenderLayerModelObject* ancestorToStopAt, RenderGeometryMap&) const;
-    
+
     bool shouldUseTransformFromContainer(const RenderObject* container) const;
     void getTransformFromContainer(const RenderObject* container, const LayoutSize& offsetInContainer, TransformationMatrix&) const;
-    
+
     virtual void addFocusRingRects(Vector<LayoutRect>&, const LayoutPoint& /* additionalOffset */, const RenderLayerModelObject* /* paintContainer */ = nullptr) { };
 
     LayoutRect absoluteOutlineBounds() const
@@ -899,7 +899,7 @@ private:
         }
 
         ADD_BOOLEAN_BITFIELD(hasRareData, HasRareData);
-        
+
         ADD_BOOLEAN_BITFIELD(beingDestroyed, BeingDestroyed);
         ADD_BOOLEAN_BITFIELD(needsLayout, NeedsLayout);
         ADD_BOOLEAN_BITFIELD(needsPositionedMovementLayout, NeedsPositionedMovementLayout);
@@ -926,7 +926,7 @@ private:
 
         // from RenderBlock
         ADD_BOOLEAN_BITFIELD(childrenInline, ChildrenInline);
-        
+
         ADD_BOOLEAN_BITFIELD(isExcludedFromNormalLayout, IsExcludedFromNormalLayout);
 
     private:
@@ -950,7 +950,7 @@ private:
 
         ALWAYS_INLINE SelectionState selectionState() const { return static_cast<SelectionState>(m_selectionState); }
         ALWAYS_INLINE void setSelectionState(SelectionState selectionState) { m_selectionState = selectionState; }
-        
+
         ALWAYS_INLINE FragmentedFlowState fragmentedFlowState() const { return static_cast<FragmentedFlowState>(m_fragmentedFlowState); }
         ALWAYS_INLINE void setFragmentedFlowState(FragmentedFlowState fragmentedFlowState) { m_fragmentedFlowState = fragmentedFlowState; }
 
@@ -979,11 +979,11 @@ private:
         // From RenderElement
         std::unique_ptr<RenderStyle> cachedFirstLineStyle;
     };
-    
+
     const RenderObject::RenderObjectRareData& rareData() const;
     RenderObjectRareData& ensureRareData();
     void removeRareData();
-    
+
     typedef HashMap<const RenderObject*, std::unique_ptr<RenderObjectRareData>> RareDataMap;
 
     static RareDataMap& rareDataMap();
@@ -1046,7 +1046,9 @@ inline bool RenderObject::isBeforeOrAfterContent() const
 
 inline void RenderObject::setNeedsLayout(MarkingBehavior markParents)
 {
+#if !defined(NDEBUG)
     ASSERT(!isSetNeedsLayoutForbidden());
+#endif
     if (m_bitfields.needsLayout())
         return;
     m_bitfields.setNeedsLayout(true);
@@ -1060,7 +1062,7 @@ inline bool RenderObject::preservesNewline() const
 {
     if (isSVGInlineText())
         return false;
-        
+
     return style().preserveNewline();
 }
 

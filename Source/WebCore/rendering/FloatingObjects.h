@@ -59,15 +59,21 @@ public:
     LayoutUnit width() const { return m_frameRect.width(); }
     LayoutUnit height() const { return m_frameRect.height(); }
 
-    void setX(LayoutUnit x) { ASSERT(!isInPlacedTree()); m_frameRect.setX(x); }
-    void setY(LayoutUnit y) { ASSERT(!isInPlacedTree()); m_frameRect.setY(y); }
-    void setWidth(LayoutUnit width) { ASSERT(!isInPlacedTree()); m_frameRect.setWidth(width); }
-    void setHeight(LayoutUnit height) { ASSERT(!isInPlacedTree()); m_frameRect.setHeight(height); }
+    inline void checkIsInPlacedTree() {
+#if !defined(NDEBUG)
+        ASSERT(!isInPlacedTree());
+#endif
+    }
 
-    void setMarginOffset(LayoutSize offset) { ASSERT(!isInPlacedTree()); m_marginOffset = offset; }
+    void setX(LayoutUnit x) { checkIsInPlacedTree(); m_frameRect.setX(x); }
+    void setY(LayoutUnit y) { checkIsInPlacedTree(); m_frameRect.setY(y); }
+    void setWidth(LayoutUnit width) { checkIsInPlacedTree(); m_frameRect.setWidth(width); }
+    void setHeight(LayoutUnit height) { checkIsInPlacedTree(); m_frameRect.setHeight(height); }
+
+    void setMarginOffset(LayoutSize offset) { checkIsInPlacedTree(); m_marginOffset = offset; }
 
     const LayoutRect& frameRect() const { ASSERT(isPlaced()); return m_frameRect; }
-    void setFrameRect(const LayoutRect& frameRect) { ASSERT(!isInPlacedTree()); m_frameRect = frameRect; }
+    void setFrameRect(const LayoutRect& frameRect) { checkIsInPlacedTree(); m_frameRect = frameRect; }
 
     LayoutUnit paginationStrut() const { return m_paginationStrut; }
     void setPaginationStrut(LayoutUnit strut) { m_paginationStrut = strut; }

@@ -363,16 +363,20 @@ public:
     // pointer without introducing reference cycles.
     void incrementReferencingNodeCount()
     {
+#if !defined(NDEBUG)
         ASSERT(!m_deletionHasBegun);
+#endif
         ++m_referencingNodeCount;
     }
 
     void decrementReferencingNodeCount()
     {
+#if !defined(NDEBUG)
         ASSERT(!m_deletionHasBegun || !m_referencingNodeCount);
+#endif
         --m_referencingNodeCount;
         if (!m_referencingNodeCount && !refCount()) {
-#if !ASSERT_DISABLED
+#if !defined(NDEBUG) && !ASSERT_DISABLED
             m_deletionHasBegun = true;
 #endif
             m_refCountAndParentBit = s_refCountIncrement; // Avoid double destruction through use of Ref<T>/RefPtr<T>. (This is a security mitigation in case of programmer error. It will ASSERT in debug builds.)
@@ -422,7 +426,7 @@ public:
     WEBCORE_EXPORT DocumentType* doctype() const;
 
     WEBCORE_EXPORT DOMImplementation& implementation();
-    
+
     Element* documentElement() const { return m_documentElement.get(); }
     static ptrdiff_t documentElementMemoryOffset() { return OBJECT_OFFSETOF(Document, m_documentElement); }
 
@@ -430,7 +434,7 @@ public:
     WEBCORE_EXPORT bool hasFocus() const;
 
     bool hasManifest() const;
-    
+
     WEBCORE_EXPORT ExceptionOr<Ref<Element>> createElementForBindings(const AtomString& tagName);
     WEBCORE_EXPORT Ref<DocumentFragment> createDocumentFragment();
     WEBCORE_EXPORT Ref<Text> createTextNode(const String& data);
@@ -591,7 +595,7 @@ public:
     unsigned lastStyleUpdateSizeForTesting() const { return m_lastStyleUpdateSizeForTesting; }
 
     WEBCORE_EXPORT void updateLayout();
-    
+
     // updateLayoutIgnorePendingStylesheets() forces layout even if we are waiting for pending stylesheet loads,
     // so calling this may cause a flash of unstyled content (FOUC).
     enum class RunPostLayoutTasks { Asynchronously, Synchronously };
@@ -627,9 +631,9 @@ public:
 
     bool renderTreeBeingDestroyed() const { return m_renderTreeBeingDestroyed; }
     bool hasLivingRenderTree() const { return renderView() && !renderTreeBeingDestroyed(); }
-    
+
     bool updateLayoutIfDimensionsOutOfDate(Element&, DimensionsCheck = AllDimensionsCheck);
-    
+
     AXObjectCache* existingAXObjectCache() const;
     WEBCORE_EXPORT AXObjectCache* axObjectCache() const;
     void clearAXObjectCache();
@@ -638,7 +642,7 @@ public:
     // to get visually ordered hebrew and arabic pages right
     void setVisuallyOrdered();
     bool visuallyOrdered() const { return m_visuallyOrdered; }
-    
+
     WEBCORE_EXPORT DocumentLoader* loader() const;
 
     WEBCORE_EXPORT ExceptionOr<RefPtr<WindowProxy>> openForBindings(DOMWindow& activeWindow, DOMWindow& firstDOMWindow, const String& url, const AtomString& name, const String& features);
@@ -698,17 +702,17 @@ public:
 
     bool usesStyleBasedEditability() const;
     void setHasElementUsingStyleBasedEditability();
-    
+
     virtual Ref<DocumentParser> createParser();
     DocumentParser* parser() const { return m_parser.get(); }
     ScriptableDocumentParser* scriptableDocumentParser() const;
-    
+
     bool printing() const { return m_printing; }
     void setPrinting(bool p) { m_printing = p; }
 
     bool paginatedForScreen() const { return m_paginatedForScreen; }
     void setPaginatedForScreen(bool p) { m_paginatedForScreen = p; }
-    
+
     bool paginated() const { return printing() || paginatedForScreen(); }
 
     void setCompatibilityMode(DocumentCompatibilityMode);
@@ -729,7 +733,7 @@ public:
     bool shouldScheduleLayout();
     bool isLayoutTimerActive();
     Seconds timeSinceDocumentCreation() const;
-    
+
     void setTextColor(const Color& color) { m_textColor = color; }
     const Color& textColor() const { return m_textColor; }
 
@@ -888,7 +892,7 @@ public:
     DOMTimerHoldingTank* domTimerHoldingTankIfExists() { return m_domTimerHoldingTank.get(); }
     DOMTimerHoldingTank& domTimerHoldingTank();
 #endif
-    
+
     void processViewport(const String& features, ViewportArguments::Type origin);
     void processDisabledAdaptations(const String& adaptations);
     void updateViewportArguments();
@@ -961,7 +965,7 @@ public:
     // URL. For the top-level document, it is set to the document's URL.
     const URL& siteForCookies() const { return m_siteForCookies; }
     void setSiteForCookies(const URL& url) { m_siteForCookies = url; }
-    
+
     // The following implements the rule from HTML 4 for what valid names are.
     // To get this right for all the XML cases, we probably have to improve this or move it
     // and make it sensitive to the type of document.
@@ -1001,7 +1005,7 @@ public:
     UndoManager& undoManager() const { return m_undoManager.get(); }
 
     // designMode support
-    enum InheritedBool { off = false, on = true, inherit };    
+    enum InheritedBool { off = false, on = true, inherit };
     void setDesignMode(InheritedBool value);
     InheritedBool getDesignMode() const;
     bool inDesignMode() const;
@@ -1010,7 +1014,7 @@ public:
 
     Document* parentDocument() const;
     WEBCORE_EXPORT Document& topDocument() const;
-    
+
     ScriptRunner& scriptRunner() { return *m_scriptRunner; }
     ScriptModuleLoader& moduleLoader() { return *m_moduleLoader; }
 
@@ -1468,7 +1472,7 @@ public:
     WEBCORE_EXPORT DocumentTimeline& timeline();
     DocumentTimeline* existingTimeline() const { return m_timeline.get(); }
     Vector<RefPtr<WebAnimation>> getAnimations();
-        
+
 #if ENABLE(ATTACHMENT_ELEMENT)
     void registerAttachmentIdentifier(const String&);
     void didInsertAttachmentElement(HTMLAttachmentElement&);
@@ -1709,7 +1713,7 @@ private:
 
     std::unique_ptr<AXObjectCache> m_axObjectCache;
     const std::unique_ptr<DocumentMarkerController> m_markers;
-    
+
     Timer m_styleRecalcTimer;
 
     Element* m_cssTarget { nullptr };
@@ -1717,7 +1721,7 @@ private:
     RefPtr<SerializedScriptValue> m_pendingStateObject;
     MonotonicTime m_documentCreationTime;
     bool m_overMinimumLayoutThreshold { false };
-    
+
     std::unique_ptr<ScriptRunner> m_scriptRunner;
     std::unique_ptr<ScriptModuleLoader> m_moduleLoader;
 
@@ -1816,7 +1820,7 @@ private:
     DocumentTiming m_documentTiming;
 
     RefPtr<MediaQueryMatcher> m_mediaQueryMatcher;
-    
+
 #if ENABLE(TOUCH_EVENTS)
     std::unique_ptr<EventTargetSet> m_touchEventTargets;
 #endif
@@ -2023,12 +2027,12 @@ private:
 #endif
 
     HashSet<ApplicationStateChangeListener*> m_applicationStateChangeListeners;
-    
+
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     RegistrableDomain m_registrableDomainRequestedPageSpecificStorageAccessWithUserInteraction { };
     String m_referrerOverride;
 #endif
-    
+
     CSSRegisteredCustomPropertySet m_CSSRegisteredPropertySet;
 
 #if ENABLE(CSS_PAINTING_API)

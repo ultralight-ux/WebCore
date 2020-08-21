@@ -20,7 +20,7 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "config.h"
@@ -31,7 +31,7 @@
 #include "ProbeContext.h"
 #include <wtf/InlineASM.h>
 
-#if COMPILER(MSVC)
+#if OS(WINDOWS) //COMPILER(MSVC)
 #include <intrin.h>
 #endif
 
@@ -340,7 +340,7 @@ asm (
 );
 #endif
 
-#if COMPILER(MSVC)
+#if COMPILER(MSVC) && !defined(__GNUC__)
 extern "C" __declspec(naked) void ctiMasmProbeTrampoline()
 {
     __asm {
@@ -745,7 +745,7 @@ asm (
 //
 // Specifically, the saved stack pointer register will point to the stack
 // position before we push the Probe::State frame. The saved rip will point to
-// the address of the instruction immediately following the probe. 
+// the address of the instruction immediately following the probe.
 
 void MacroAssembler::probe(Probe::Function function, void* arg)
 {
@@ -769,7 +769,7 @@ MacroAssemblerX86Common::CPUID MacroAssemblerX86Common::getCPUID(unsigned level)
 MacroAssemblerX86Common::CPUID MacroAssemblerX86Common::getCPUIDEx(unsigned level, unsigned count)
 {
     CPUID result { };
-#if COMPILER(MSVC)
+#if OS(WINDOWS) //COMPILER(MSVC)
     __cpuidex(bitwise_cast<int*>(result.data()), level, count);
 #else
     __asm__ (

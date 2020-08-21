@@ -39,8 +39,16 @@ IncludeFile.processIncludeOptions()
 inputFlnm = ARGV.shift
 outputFlnm = ARGV.shift
 
+print "Input: "
+puts inputFlnm
+print "Output: "
+puts outputFlnm
+
 validBackends = canonicalizeBackendNames(ARGV.shift.split(/[,\s]+/))
 includeOnlyBackends(validBackends)
+
+print "Backends: "
+puts validBackends
 
 inputHash = "// SettingsExtractor input hash: #{parseHash(inputFlnm)} #{selfHash}"
 

@@ -110,14 +110,18 @@ void JSPromiseDeferred::resolve(ExecState* exec, JSValue value)
 {
     callFunction(exec, m_resolve.get(), value);
     bool wasPending = exec->vm().promiseDeferredTimer->cancelPendingPromise(this);
+#ifndef NDEBUG
     ASSERT_UNUSED(wasPending, wasPending == m_promiseIsAsyncPending);
+#endif
 }
 
 void JSPromiseDeferred::reject(ExecState* exec, JSValue reason)
 {
     callFunction(exec, m_reject.get(), reason);
     bool wasPending = exec->vm().promiseDeferredTimer->cancelPendingPromise(this);
+#ifndef NDEBUG
     ASSERT_UNUSED(wasPending, wasPending == m_promiseIsAsyncPending);
+#endif
 }
 
 void JSPromiseDeferred::reject(ExecState* exec, Exception* reason)

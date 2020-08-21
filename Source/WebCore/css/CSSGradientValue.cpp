@@ -127,7 +127,7 @@ public:
         : m_data(data)
     {
     }
-    
+
     float gradientLength() const
     {
         auto gradientSize = m_data.point0 - m_data.point1;
@@ -237,7 +237,7 @@ public:
     void normalizeStopsAndEndpointsOutsideRange(Vector<GradientStop>& stops)
     {
         auto numStops = stops.size();
-        
+
         size_t firstZeroOrGreaterIndex = numStops;
         for (size_t i = 0; i < numStops; ++i) {
             if (stops[i].offset >= 0) {
@@ -250,11 +250,11 @@ public:
             if (firstZeroOrGreaterIndex < numStops && stops[firstZeroOrGreaterIndex].offset > 0) {
                 float prevOffset = stops[firstZeroOrGreaterIndex - 1].offset;
                 float nextOffset = stops[firstZeroOrGreaterIndex].offset;
-                
+
                 float interStopProportion = -prevOffset / (nextOffset - prevOffset);
                 // FIXME: when we interpolate gradients using premultiplied colors, this should do premultiplication.
                 Color blendedColor = blend(stops[firstZeroOrGreaterIndex - 1].color, stops[firstZeroOrGreaterIndex].color, interStopProportion);
-                
+
                 // Clamp the positions to 0 and set the color.
                 for (size_t i = 0; i < firstZeroOrGreaterIndex; ++i) {
                     stops[i].offset = 0;
@@ -274,16 +274,16 @@ public:
                 break;
             }
         }
-        
+
         if (lastOneOrLessIndex < numStops - 1) {
             if (lastOneOrLessIndex < numStops && stops[lastOneOrLessIndex].offset < 1) {
                 float prevOffset = stops[lastOneOrLessIndex].offset;
                 float nextOffset = stops[lastOneOrLessIndex + 1].offset;
-                
+
                 float interStopProportion = (1 - prevOffset) / (nextOffset - prevOffset);
                 // FIXME: when we interpolate gradients using premultiplied colors, this should do premultiplication.
                 Color blendedColor = blend(stops[lastOneOrLessIndex].color, stops[lastOneOrLessIndex + 1].color, interStopProportion);
-                
+
                 // Clamp the positions to 1 and set the color.
                 for (size_t i = lastOneOrLessIndex + 1; i < numStops; ++i) {
                     stops[i].offset = 1;
@@ -485,7 +485,7 @@ Gradient::ColorStopVector CSSGradientValue::computeStops(GradientAdapter& gradie
         // calculate colors
         for (size_t y = 0; y < 9; ++y) {
             float relativeOffset = (newStops[y].offset - offset1) / (offset2 - offset1);
-            float multiplier = std::pow(relativeOffset, std::log(.5f) / std::log(midpoint));
+            float multiplier = wtf_pow(relativeOffset, std::log(.5f) / std::log(midpoint));
             // FIXME: Why not premultiply here?
             newStops[y].color = blend(color1, color2, multiplier, false /* do not premultiply */);
         }
@@ -559,7 +559,7 @@ Gradient::ColorStopVector CSSGradientValue::computeStops(GradientAdapter& gradie
     // If the gradient goes outside the 0-1 range, normalize it by moving the endpoints, and adjusting the stops.
     if (stops.size() > 1 && (stops.first().offset < 0 || stops.last().offset > 1))
         gradientAdapter.normalizeStopsAndEndpointsOutsideRange(stops);
-    
+
     Gradient::ColorStopVector result;
     result.reserveInitialCapacity(stops.size());
     for (auto& stop : stops)
@@ -573,23 +573,23 @@ static float positionFromValue(const CSSPrimitiveValue* value, const CSSToLength
     int origin = 0;
     int sign = 1;
     int edgeDistance = isHorizontal ? size.width() : size.height();
-    
+
     // In this case the center of the gradient is given relative to an edge in the
     // form of: [ top | bottom | right | left ] [ <percentage> | <length> ].
     if (value->isPair()) {
         CSSValueID originID = value->pairValue()->first()->valueID();
         value = value->pairValue()->second();
-        
+
         if (originID == CSSValueRight || originID == CSSValueBottom) {
             // For right/bottom, the offset is relative to the far edge.
             origin = edgeDistance;
             sign = -1;
         }
     }
-    
+
     if (value->isNumber())
         return origin + sign * value->floatValue() * conversionData.zoom();
-    
+
     if (value->isPercentage())
         return origin + sign * value->floatValue() / 100.f * edgeDistance;
 
@@ -597,7 +597,7 @@ static float positionFromValue(const CSSPrimitiveValue* value, const CSSToLength
         Ref<CalculationValue> calculationValue { value->cssCalcValue()->createCalculationValue(conversionData) };
         return origin + sign * calculationValue->evaluate(edgeDistance);
     }
-    
+
     switch (value->valueID()) {
     case CSSValueTop:
         ASSERT(!isHorizontal);
@@ -769,7 +769,7 @@ String CSSLinearGradientValue::customCSSText() const
                 result.append(stop.m_position->cssText());
             }
         }
-        
+
     }
 
     result.append(')');
@@ -837,7 +837,7 @@ static void endPointsFromAngle(float angleDeg, const FloatSize& size, FloatPoint
     float endX = c / (slope - perpendicularSlope);
     float endY = perpendicularSlope * endX + c;
 
-    // We computed the end point, so set the second point, 
+    // We computed the end point, so set the second point,
     // taking into account the moved origin and the fact that we're in drawing space (+y = down).
     secondPoint.set(halfWidth + endX, halfHeight - endY);
     // Reflect around the center for the start point.
@@ -887,7 +887,7 @@ Ref<Gradient> CSSLinearGradientValue::createGradient(RenderElement& renderer, co
                 // Compute angle, and flip it back to "bearing angle" degrees.
                 float angle = 90 - rad2deg(atan2(rise, run));
                 endPointsFromAngle(angle, size, firstPoint, secondPoint, m_gradientType);
-            } else if (m_firstX || m_firstY) { 
+            } else if (m_firstX || m_firstY) {
                 secondPoint = computeEndPoint(m_firstX.get(), m_firstY.get(), conversionData, size);
                 if (m_firstX)
                     firstPoint.setX(size.width() - secondPoint.x());
@@ -1417,7 +1417,7 @@ String CSSConicGradientValue::customCSSText() const
             result.append(stop.m_position->cssText());
         }
     }
-    
+
     result.append(')');
     return result.toString();
 }
