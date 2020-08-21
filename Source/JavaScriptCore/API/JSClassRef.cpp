@@ -49,8 +49,10 @@ OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass*
 {
     ASSERT(version == 0 || version == 1000);
 
-    if (version == 0)
-    {
+    initializeThreading();
+
+    switch (version) {
+    case 0: {
         v0 = {
             definition->initialize,
             definition->finalize,
@@ -64,8 +66,42 @@ OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass*
             definition->hasInstance,
             definition->convertToType
         };
-    } else if (version == 1000)
-    {
+
+        if (const JSStaticValue* staticValue = definition->staticValues)
+        {
+            m_staticValues = std::make_unique<OpaqueJSClassStaticValuesTable>();
+            while (staticValue->name)
+            {
+                String valueName = String::fromUTF8(staticValue->name);
+                if (!valueName.isNull()) {
+                    m_staticValues->set(valueName.impl(),
+                        std::make_unique<StaticValueEntry>(staticValue->getProperty,
+                            staticValue->setProperty,
+                            staticValue->attributes, valueName));
+                }
+
+                ++staticValue;
+            }
+        }
+
+        if (const JSStaticFunction* staticFunction = definition->staticFunctions)
+        {
+            m_staticFunctions = std::make_unique<OpaqueJSClassStaticFunctionsTable>();
+            while (staticFunction->name)
+            {
+                String functionName = String::fromUTF8(staticFunction->name);
+                if (!functionName.isNull()) {
+                    m_staticFunctions->set(functionName.impl(),
+                        std::make_unique<StaticFunctionEntry>(
+                            staticFunction->callAsFunction, staticFunction->attributes));
+                }
+                ++staticFunction;
+            }
+        }
+
+        break;
+    }
+    case 1000: {
         v1000 = {
             definition->initializeEx,
             definition->finalizeEx,
@@ -80,58 +116,43 @@ OpaqueJSClass::OpaqueJSClass(const JSClassDefinition* definition, OpaqueJSClass*
             definition->convertToTypeEx,
             definition->privateData
         };
-    }
 
-    initializeThreading();
-
-    if (const JSStaticValue* staticValue = definition->staticValues)
-    {
-        m_staticValues = std::make_unique<OpaqueJSClassStaticValuesTable>();
-        while (staticValue->name)
+        if (const JSStaticValueEx* staticValue = definition->staticValuesEx)
         {
-            String valueName = String::fromUTF8(staticValue->name);
-            if (!valueName.isNull()) {
-                if (version == 0) {
+            m_staticValues = std::make_unique<OpaqueJSClassStaticValuesTable>();
+            while (staticValue->name)
+            {
+                String valueName = String::fromUTF8(staticValue->name);
+                if (!valueName.isNull()) {
                     m_staticValues->set(valueName.impl(),
-                        std::make_unique<StaticValueEntry>(staticValue->getProperty,
-                            staticValue->setProperty,
-                            staticValue->attributes, valueName));
-                }
-                else if (version == 1000)
-                {
-                    m_staticValues->set(valueName.impl(),
-                        std::make_unique<StaticValueEntry>(staticValue->getPropertyEx,
+                        std::make_unique<StaticValueEntry>(
+                            staticValue->getPropertyEx,
                             staticValue->setPropertyEx,
                             staticValue->attributes,
                             valueName));
                 }
+                ++staticValue;
             }
-
-            ++staticValue;
         }
-    }
 
-    if (const JSStaticFunction* staticFunction = definition->staticFunctions)
-    {
-        m_staticFunctions = std::make_unique<OpaqueJSClassStaticFunctionsTable>();
-        while (staticFunction->name)
+        if (const JSStaticFunctionEx* staticFunction = definition->staticFunctionsEx)
         {
-            String functionName = String::fromUTF8(staticFunction->name);
-            if (!functionName.isNull()) {
-                if(version == 0)
-                {
+            m_staticFunctions = std::make_unique<OpaqueJSClassStaticFunctionsTable>();
+            while (staticFunction->name)
+            {
+                String functionName = String::fromUTF8(staticFunction->name);
+                if (!functionName.isNull()) {
                     m_staticFunctions->set(functionName.impl(),
                         std::make_unique<StaticFunctionEntry>(
-                            staticFunction->callAsFunction, staticFunction->attributes));
-                } else if(version == 1000)
-                {
-                    m_staticFunctions->set(functionName.impl(), 
-                        std::make_unique<StaticFunctionEntry>(
-                            staticFunction->callAsFunctionEx, staticFunction->attributes));
+                            staticFunction->callAsFunctionEx,
+                            staticFunction->attributes));
                 }
+                ++staticFunction;
             }
-            ++staticFunction;
         }
+
+        break;
+    }
     }
 
     if (protoClass)
