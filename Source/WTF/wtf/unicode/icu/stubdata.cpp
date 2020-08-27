@@ -1,3 +1,5 @@
+// © 2016 and later: Unicode, Inc. and others.
+// License & terms of use: http://www.unicode.org/copyright.html
 /******************************************************************************
 *
 *   Copyright (C) 2001, International Business Machines
@@ -38,7 +40,7 @@ typedef struct {
                                    /*        pointerTOC to OffsetTOC.     */
 } ICU_Data_Header;
 
-U_EXPORT const ICU_Data_Header U_ICUDATA_ENTRY_POINT = {
+extern "C" U_EXPORT const ICU_Data_Header U_ICUDATA_ENTRY_POINT = {
     32,          /* headerSize */
     0xda,        /* magic1,  (see struct MappedData in udata.c)  */
     0x27,        /* magic2     */
