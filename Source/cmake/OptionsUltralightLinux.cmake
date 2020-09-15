@@ -94,9 +94,9 @@ set(WTF_LIBRARY_TYPE SHARED)
 
 link_directories("${WEBKIT_LIBRARIES_DIR}/lib")
 link_directories("${ULTRALIGHTCORE_DIR}/bin")
-set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/libicuuc.so
-                  ${WEBKIT_LIBRARIES_DIR}/lib/libicui18n.so
-                  ${WEBKIT_LIBRARIES_DIR}/lib/libicudata.so)
+set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/libicuuc.a
+                  ${WEBKIT_LIBRARIES_DIR}/lib/libicui18n.a
+                  ${WEBKIT_LIBRARIES_DIR}/lib/libicudata.a)
 
 set(USE_GLIB 1)
 set(USE_CURL 1)
