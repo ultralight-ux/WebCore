@@ -22,8 +22,8 @@ elseif (PORT MATCHES "UltralightWin")
     set(WEBCORE_DEPS_PRODUCTS "")
 endif ()
 
-set(WEBCORE_DEPS_REV "1.2")
-set(ULTRALIGHTCORE_REV "f1100921")
+set(WEBCORE_DEPS_REV "1.2b")
+set(ULTRALIGHTCORE_REV "b271c5d0")
 
 if(${USE_LOCAL_DEPS})
   message("Using local deps.")

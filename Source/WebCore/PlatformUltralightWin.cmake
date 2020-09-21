@@ -27,110 +27,101 @@ endif ()
 
 list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${DirectX_INCLUDE_DIRS}"
-    "${WEBKIT_LIBRARIES_DIR}/include"
-    "${WEBKIT_LIBRARIES_DIR}/include/SQLite"
-    "${WEBKIT_LIBRARIES_DIR}/include/zlib"
-	"${WEBKIT_LIBRARIES_DIR}/include/harfbuzz"
-	"${WEBKIT_LIBRARIES_DIR}/include/libjpeg"
-	"${WEBKIT_LIBRARIES_DIR}/include/libpng"
+    "${SQLITE_DIR}"
+    "${ULTRALIGHTCORE_DIR}/include"
+    "${WEBCORE_DIR}/platform/graphics/harfbuzz"
+    "${WEBCORE_DIR}/platform/graphics/ultralight"
     "${WEBCORE_DIR}/platform/ultralight"
-	"${WEBCORE_DIR}/platform/graphics/ultralight"
-	"${WEBCORE_DIR}/platform/graphics/harfbuzz"
-	
-	"${ULTRALIGHTCORE_DIR}/include"
-	
-	"${SQLITE_DIR}"
+    "${WEBKIT_LIBRARIES_DIR}/include"
+    "${WEBKIT_LIBRARIES_DIR}/include/freetype2"
+    "${WEBKIT_LIBRARIES_DIR}/include/harfbuzz"
 )
 
 list(APPEND WebCore_SOURCES
-    platform/win/WebCoreInstanceHandle.cpp
-    platform/win/SSLKeyGeneratorWin.cpp
-    platform/generic/KeyedEncoderGeneric.cpp
+    page/win/ResourceUsageThreadWin.cpp
+    platform/Cursor.cpp
     platform/generic/KeyedDecoderGeneric.cpp
+    platform/generic/KeyedEncoderGeneric.cpp
     platform/generic/ScrollAnimatorGeneric.cpp
-    platform/ScrollAnimationKinetic.cpp
-    platform/ScrollAnimationSmooth.cpp
+    platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
+    platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
+    platform/graphics/ultralight/BitmapImageUltralight.cpp
+    platform/graphics/ultralight/CanvasImage.cpp
+    platform/graphics/ultralight/CanvasImage.h
+    platform/graphics/ultralight/FloatRectUltralight.cpp
+    platform/graphics/ultralight/FontCacheUltralight.cpp
+    platform/graphics/ultralight/FontCustomPlatformData.cpp
+    platform/graphics/ultralight/FontCustomPlatformData.h
+    platform/graphics/ultralight/FontPlatformDataUltralight.cpp
+    platform/graphics/ultralight/FontRenderer.cpp
+    platform/graphics/ultralight/FontRenderer.h
+    platform/graphics/ultralight/FontUltralight.cpp
+    platform/graphics/ultralight/FreeTypeLib.cpp
+    platform/graphics/ultralight/GlyphPageUltralight.cpp
+    platform/graphics/ultralight/GradientUltralight.cpp
+    platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h
+    platform/graphics/ultralight/GraphicsContextUltralight.cpp
+    platform/graphics/ultralight/ImageBufferDataUltralight.h
+    platform/graphics/ultralight/ImageBufferUltralight.cpp
+    platform/graphics/ultralight/ImageDecoderUltralight.cpp
+    platform/graphics/ultralight/ImageUltralight.cpp
+    platform/graphics/ultralight/IntRectUltralight.cpp
+    platform/graphics/ultralight/NativeImageUltralight.cpp
+    platform/graphics/ultralight/PathUltralight.cpp
+    platform/graphics/ultralight/PatternUltralight.cpp
+    platform/graphics/ultralight/PlatformContextUltralight.cpp
+    platform/graphics/ultralight/PlatformContextUltralight.h
+    platform/graphics/ultralight/RefPtrFreeTypeFace.cpp
+    platform/graphics/ultralight/RefPtrFreeTypeFace.h
+    platform/graphics/ultralight/RefPtrUltralight.cpp
+    platform/graphics/ultralight/RefPtrUltralight.h
+    platform/graphics/ultralight/TransformationMatrixUltralight.cpp
+    platform/graphics/ultralight/UltralightStubs.cpp
+    platform/image-decoders/ultralight/ImageBackingStoreUltralight.cpp
+    platform/LocalizedStrings.cpp
     platform/network/ultralight/CurlSSLHandleUltralight.cpp
     platform/network/win/NetworkStateNotifierWin.cpp
-    page/win/ResourceUsageThreadWin.cpp
-
-    platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
-
+    platform/ScrollAnimationKinetic.cpp
+    platform/ScrollAnimationSmooth.cpp
+    platform/text/LocaleNone.cpp
     platform/ultralight/AXObjectCacheUltralight.cpp
     platform/ultralight/CryptoDigestUltralight.cpp
     platform/ultralight/CursorUltralight.cpp
-	platform/ultralight/DNSResolveQueueUltralight.cpp
-	platform/ultralight/EditorUltralight.cpp
+    platform/ultralight/DNSResolveQueueUltralight.cpp
+    platform/ultralight/DragControllerUltralight.cpp
+    platform/ultralight/DragDataUltralight.cpp
+    platform/ultralight/DragImageUltralight.cpp
+    platform/ultralight/EditorUltralight.cpp
     platform/ultralight/EventHandlerUltralight.cpp
-	platform/ultralight/EventLoopUltralight.cpp
-	platform/ultralight/FileSystemUltralight.cpp
-	platform/ultralight/IconUltralight.cpp
-	platform/ultralight/ImageUltralight.cpp
-	platform/ultralight/KeyEventUltralight.cpp
-	platform/ultralight/LoggingUltralight.cpp
-	platform/ultralight/MIMETypeRegistryUltralight.cpp
-	platform/ultralight/PasteboardUltralight.cpp
-	platform/ultralight/PlatformMouseEventUltralight.cpp
-	platform/ultralight/PlatformScreenUltralight.cpp
-	platform/ultralight/RenderThemeUltralight.cpp
-	platform/ultralight/ScrollbarThemeUltralight.cpp
-	platform/ultralight/SharedBufferUltralight.cpp
-	platform/ultralight/SoundUltralight.cpp
-	platform/ultralight/SSLKeyGeneratorUltralight.cpp
-	platform/ultralight/SynchronousLoaderClientUltralight.cpp
-	platform/ultralight/TextBreakIteratorInternalICUUltralight.cpp
-	platform/ultralight/WidgetUltralight.cpp
-	platform/ultralight/LocalizedStringsUltralight.cpp
-	platform/ultralight/HyphenationUltralight.cpp
-	platform/ultralight/PreserveSymbolsUltralight.cpp
-	platform/ultralight/FileURLLoader.h
-	platform/ultralight/FileURLLoader.cpp
-	platform/ultralight/DragImageUltralight.cpp
-	platform/ultralight/DragDataUltralight.cpp
-	platform/ultralight/DragControllerUltralight.cpp
-    platform/ultralight/UTFUltralight.cpp
+    platform/ultralight/EventLoopUltralight.cpp
+    platform/ultralight/FileSystemUltralight.cpp
+    platform/ultralight/FileURLLoader.cpp
+    platform/ultralight/FileURLLoader.h
+    platform/ultralight/HyphenationUltralight.cpp
+    platform/ultralight/IconUltralight.cpp
     platform/ultralight/ICUUtils.cpp
+    platform/ultralight/ImageUltralight.cpp
+    platform/ultralight/KeyEventUltralight.cpp
+    platform/ultralight/LocalizedStringsUltralight.cpp
+    platform/ultralight/LoggingUltralight.cpp
     platform/ultralight/MemoryUtils.cpp
+    platform/ultralight/MIMETypeRegistryUltralight.cpp
+    platform/ultralight/PasteboardUltralight.cpp
+    platform/ultralight/PlatformMouseEventUltralight.cpp
+    platform/ultralight/PlatformScreenUltralight.cpp
+    platform/ultralight/PreserveSymbolsUltralight.cpp
+    platform/ultralight/RenderThemeUltralight.cpp
     platform/ultralight/ResourceUsageOverlayUltralight.cpp
-    
-	platform/graphics/ultralight/GradientUltralight.cpp
-	platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h
-	platform/graphics/ultralight/GraphicsContextUltralight.cpp
-	platform/graphics/ultralight/ImageBufferDataUltralight.h
-	platform/graphics/ultralight/ImageBufferUltralight.cpp
-	platform/graphics/ultralight/ImageUltralight.cpp
-	platform/graphics/ultralight/IntRectUltralight.cpp
-	platform/graphics/ultralight/PathUltralight.cpp
-	platform/graphics/ultralight/PatternUltralight.cpp
-	platform/graphics/ultralight/PlatformContextUltralight.cpp
-	platform/graphics/ultralight/PlatformContextUltralight.h
-	platform/graphics/ultralight/RefPtrUltralight.cpp
-	platform/graphics/ultralight/RefPtrUltralight.h
-	platform/graphics/ultralight/TransformationMatrixUltralight.cpp
-	platform/graphics/ultralight/BitmapImageUltralight.cpp
-	platform/graphics/ultralight/FloatRectUltralight.cpp
-	platform/graphics/ultralight/FontCacheUltralight.cpp
-	platform/graphics/ultralight/FontCustomPlatformData.cpp
-	platform/graphics/ultralight/FontCustomPlatformData.h
-	platform/graphics/ultralight/FontPlatformDataUltralight.cpp
-	platform/graphics/ultralight/FontUltralight.cpp
-	platform/graphics/ultralight/FreeTypeLib.cpp
-	platform/graphics/ultralight/GlyphPageUltralight.cpp
-	platform/graphics/ultralight/ImageDecoderUltralight.cpp
-	platform/graphics/ultralight/UltralightStubs.cpp
-	platform/graphics/ultralight/NativeImageUltralight.cpp
-	platform/graphics/ultralight/FontRenderer.h
-	platform/graphics/ultralight/FontRenderer.cpp
-	platform/graphics/ultralight/CanvasImage.h
-	platform/graphics/ultralight/CanvasImage.cpp
-    platform/graphics/ultralight/RefPtrFreeTypeFace.cpp
-    platform/graphics/ultralight/RefPtrFreeTypeFace.h
-	
-	platform/image-decoders/ultralight/ImageBackingStoreUltralight.cpp
-	platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
-    platform/Cursor.cpp
-    platform/LocalizedStrings.cpp
-	platform/text/LocaleNone.cpp
+    platform/ultralight/ScrollbarThemeUltralight.cpp
+    platform/ultralight/SharedBufferUltralight.cpp
+    platform/ultralight/SoundUltralight.cpp
+    platform/ultralight/SSLKeyGeneratorUltralight.cpp
+    platform/ultralight/SynchronousLoaderClientUltralight.cpp
+    platform/ultralight/TextBreakIteratorInternalICUUltralight.cpp
+    platform/ultralight/UTFUltralight.cpp
+    platform/ultralight/WidgetUltralight.cpp
+    platform/win/SSLKeyGeneratorWin.cpp
+    platform/win/WebCoreInstanceHandle.cpp
 )
 
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
@@ -162,72 +153,55 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     websockets
     workers
     xml
-
     Modules/geolocation
     Modules/indexeddb
     Modules/websockets
-
     Modules/indexeddb/client
     Modules/indexeddb/legacy
     Modules/indexeddb/server
     Modules/indexeddb/shared
     Modules/notifications
     Modules/webdatabase
-
     bindings/js
-
     bridge/c
     bridge/jsc
-
     css/parser
-
     history/cf
-
     html/forms
     html/parser
     html/shadow
     html/track
-
     loader/appcache
     loader/archive
     loader/cache
     loader/icon
-
     loader/archive/cf
-
     page/animation
     page/csp
     page/scrolling
-
     platform/animation
     platform/audio
     platform/cf
     platform/graphics
     platform/mock
     platform/network
-	platform/network/curl
+    platform/network/curl
     platform/sql
     platform/text
-
     platform/graphics/filters
     platform/graphics/opengl
     platform/graphics/opentype
     platform/graphics/texmap
     platform/graphics/transforms
-
     platform/mediastream/libwebrtc
-
     platform/text/transcoder
-
     rendering/line
     rendering/shapes
     rendering/style
     rendering/svg
-
     svg/animation
     svg/graphics
     svg/properties
-
     svg/graphics/filters
 )
 
@@ -243,12 +217,12 @@ list(APPEND WebCore_LIBRARIES
     libcurl
     libpng16_static
     nghttp2_static
+    sqlite3
     ssl
     tls
     xml2
     xslt
     zlibstatic
-    sqlite3
 )
 
 if (UWP_PLATFORM)
@@ -262,14 +236,14 @@ if (NOT UWP_PLATFORM)
         comctl32
         crypt32
         iphlpapi
+        normaliz
         rpcrt4
         shlwapi
         usp10
         version
         winmm
-        ws2_32
         wldap32
-        normaliz
+        ws2_32
     )
 endif ()
 
@@ -311,9 +285,9 @@ set(WebCore_OUTPUT_NAME
 )
 
 if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRel)
-	add_compile_options(/GL)
-	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
-	set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
+    add_compile_options(/GL)
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
 endif ()
 
 if (UWP_PLATFORM)

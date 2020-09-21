@@ -41,15 +41,15 @@ using namespace SVGNames;
 static const HashSet<String, ASCIICaseInsensitiveHash>& supportedSVGFeatures()
 {
     static NeverDestroyed<HashSet<String, ASCIICaseInsensitiveHash>> features = [] {
-        static const char* const features10[] = {
 #if ENABLE(SVG_FONTS)
+        static const char* const features10[] = {
             "dom",
             "dom.svg",
             "dom.svg.static",
             "svg",
             "svg.static",
-#endif
         };
+#endif
         static const char* const features11[] = {
             "animation",
             "basegraphicsattribute",
@@ -97,8 +97,10 @@ static const HashSet<String, ASCIICaseInsensitiveHash>& supportedSVGFeatures()
 #endif
         };
         HashSet<String, ASCIICaseInsensitiveHash> set;
+#if ENABLE(SVG_FONTS)
         for (auto& feature : features10)
             set.add(makeString("org.w3c.", feature));
+#endif
         for (auto& feature : features11)
             set.add(makeString("http://www.w3.org/tr/svg11/feature#", feature));
         return set;

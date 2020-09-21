@@ -50,7 +50,7 @@ INSTALL(FILES "${WEBINSPECTORUI_DIR}/Localizations/en.lproj/localizedStrings.js"
               DESTINATION "inspector")
 INSTALL(FILES "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/inspector/InspectorBackendCommands.js"
               DESTINATION "inspector/Protocol")
-        
+
 if (PORT MATCHES "UltralightWin")
   if (${CMAKE_BUILD_TYPE} MATCHES Debug OR ${CMAKE_BUILD_TYPE} MATCHES RelWithDebInfo)
     INSTALL(FILES "${PROJECT_BINARY_DIR}/bin/WebCore.pdb" DESTINATION "bin")
@@ -65,27 +65,17 @@ endif ()
 
 set(WEBKITLIBRARIES_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries")
 
+INSTALL(FILES "${WEBKITLIBRARIES_DIR}/bin/icudt67l.dat" DESTINATION "bin/resources/")
+
 if (PORT MATCHES "UltralightLinux")
     set(PLATFORM "linux")
-    INSTALL(FILES "${WEBKITLIBRARIES_DIR}/lib/libicudata.so" 
-                  "${WEBKITLIBRARIES_DIR}/lib/libicui18n.so"
-                  "${WEBKITLIBRARIES_DIR}/lib/libicuuc.so" DESTINATION "bin")
 elseif (PORT MATCHES "UltralightMac")
     set(PLATFORM "mac")
-    INSTALL(FILES "${WEBKITLIBRARIES_DIR}/lib/libicudata.dylib" 
-                  "${WEBKITLIBRARIES_DIR}/lib/libicui18n.dylib"
-                  "${WEBKITLIBRARIES_DIR}/lib/libicuuc.dylib" DESTINATION "bin")
 elseif (PORT MATCHES "UltralightWin")
     if (UWP_PLATFORM)
         set(PLATFORM "win-uwp")
-        INSTALL(FILES "${WEBKITLIBRARIES_DIR}/bin/icudt63l.dat" 
-                      "${WEBKITLIBRARIES_DIR}/bin/icuin63.dll"
-                      "${WEBKITLIBRARIES_DIR}/bin/icuuc63.dll" DESTINATION "bin")
     else ()
         set(PLATFORM "win")
-        INSTALL(FILES "${WEBKITLIBRARIES_DIR}/bin/icudt63.dll" 
-                      "${WEBKITLIBRARIES_DIR}/bin/icuin63.dll"
-                      "${WEBKITLIBRARIES_DIR}/bin/icuuc63.dll" DESTINATION "bin")
     endif ()
 endif ()
 
