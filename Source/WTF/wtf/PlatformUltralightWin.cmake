@@ -1,31 +1,24 @@
 set(WTF_LIBRARY_TYPE STATIC)
 
 list(APPEND WTF_SOURCES
-    #PlatformUserPreferredLanguagesWin.cpp
-
-    win/ThreadSpecificWin.cpp
-    win/ThreadingWin.cpp
-    win/OSAllocatorWin.cpp
-    win/CPUTimeWin.cpp
-
-    win/MainThreadWin.cpp
-
-    win/MemoryFootprintWin.cpp
-    win/MemoryPressureHandlerWin.cpp
-
-    win/LanguageWin.cpp
-
-    win/FileSystemWin.cpp
-    win/PathWalker.cpp
-
-    win/DbgHelperWin.cpp
-
-    text/win/StringWin.cpp
-	
-    text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
-    
     generic/RunLoopGeneric.cpp
     generic/WorkQueueGeneric.cpp
+    text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
+    text/win/StringWin.cpp
+    win/CPUTimeWin.cpp
+    win/DbgHelperWin.cpp
+    win/FileSystemWin.cpp
+    win/LanguageWin.cpp
+    win/MainThreadWin.cpp
+    win/MemoryFootprintWin.cpp
+    win/MemoryPressureHandlerWin.cpp
+    win/OSAllocatorWin.cpp
+    win/PathWalker.cpp
+    win/ThreadingWin.cpp
+    win/ThreadSpecificWin.cpp
+
+    # Needed for loading ICU data at runtime instead of from shared lib
+    unicode/icu/stubdata.cpp
 )
 
 list(APPEND WTF_LIBRARIES
