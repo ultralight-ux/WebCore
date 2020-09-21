@@ -104,10 +104,11 @@ void ImageBackingStore::clearRect(const IntRect& rect)
         return;
 
     size_t rowBytes = rect.width() * sizeof(RGBA32);
+    size_t rowLen = m_bitmap->row_bytes() / m_bitmap->bpp();
     RGBA32* start = pixelAt(rect.x(), rect.y());
     for (int i = 0; i < rect.height(); ++i) {
         memset(start, 0, rowBytes);
-        start += m_size.width();
+        start += rowLen;
     }
 }
 
@@ -117,11 +118,12 @@ void ImageBackingStore::fillRect(const IntRect &rect, unsigned r, unsigned g, un
         return;
 
     RGBA32* start = pixelAt(rect.x(), rect.y());
+    size_t rowLen = m_bitmap->row_bytes() / m_bitmap->bpp();
     RGBA32 pixelValue = this->pixelValue(r, g, b, a);
     for (int i = 0; i < rect.height(); ++i) {
         for (int j = 0; j < rect.width(); ++j)
             start[j] = pixelValue;
-        start += m_size.width();
+        start += rowLen;
     }
 }
 
@@ -130,19 +132,19 @@ void ImageBackingStore::repeatFirstRow(const IntRect& rect)
     if (rect.isEmpty() || !inBounds(rect))
         return;
 
-    size_t rowBytes = rect.width() * sizeof(RGBA32);
-    RGBA32* src = pixelAt(rect.x(), rect.y());
-    RGBA32* dest = src + m_size.width();
+    size_t rowBytes = m_bitmap->row_bytes();
+    uint8_t* src = (uint8_t*)pixelAt(rect.x(), rect.y());
+    uint8_t* dest = src + rowBytes;
     for (int i = 1; i < rect.height(); ++i) {
         memcpy(dest, src, rowBytes);
-        dest += m_size.width();
+        dest += rowBytes;
     }
 }
 
 RGBA32* ImageBackingStore::pixelAt(int x, int y) const
 {
     ASSERT(inBounds(IntPoint(x, y)));
-    return static_cast<RGBA32*>(m_bitmap->raw_pixels()) + y * m_size.width() + x;
+    return reinterpret_cast<RGBA32*>((uint8_t*)m_bitmap->raw_pixels() + y * m_bitmap->row_bytes() + x * m_bitmap->bpp());
 }
 
 void ImageBackingStore::setPixel(RGBA32* dest, unsigned r, unsigned g, unsigned b, unsigned a)
