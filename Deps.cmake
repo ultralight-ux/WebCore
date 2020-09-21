@@ -9,7 +9,7 @@ get_filename_component(ULTRALIGHTCORE_DIR "${CMAKE_CURRENT_LIST_DIR}/deps/Ultral
 
 if (PORT MATCHES "UltralightLinux")
     set(PLATFORM "linux")
-    set(WEBCORE_DEPS_PRODUCTS "${WEBCORE_DEPS_DIR}/lib/libicuuc.a ${WEBCORE_DEPS_DIR}/lib/libicui18n.a ${WEBCORE_DEPS_DIR}/lib/libicudata.a")
+    set(WEBCORE_DEPS_PRODUCTS "${WEBCORE_DEPS_DIR}/lib/libicuuc.a ${WEBCORE_DEPS_DIR}/lib/libicui18n.a")
 elseif (PORT MATCHES "UltralightMac")
     set(PLATFORM "mac")
     set(WEBCORE_DEPS_PRODUCTS "")
