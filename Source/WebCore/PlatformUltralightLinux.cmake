@@ -199,25 +199,25 @@ include_directories(
 )
 
 list(APPEND WebCore_LIBRARIES
-    "${WEBKIT_LIBRARIES_DIR}/lib/libcrypto.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libcurl.a"
-    "${WEBKIT_LIBRARIES_DIR}/lib/libfreetype.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libbrotlidec.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libbrotlienc.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libbrotlicommon.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libharfbuzz-icu.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libharfbuzz.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libfreetype.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libjpeg.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libnghttp2_static.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libpng16.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libssl.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libtls.a"
+    "${WEBKIT_LIBRARIES_DIR}/lib/libcrypto.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libxml2.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libxslt.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libz.a"
-    brotlicommon
-    brotlidec
-    brotlienc
+    sqlite3
     gcrypt
     rt  # needed on Ubuntu for clock_gettime
-    sqlite3
 )
 
 message(STATUS "Freetype include ${FREETYPE_INCLUDE_DIRS}")
