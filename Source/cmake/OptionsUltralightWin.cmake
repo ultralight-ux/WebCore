@@ -92,6 +92,10 @@ if (MSVC)
         add_definitions(-DUWP_PLATFORM) 
     endif ()
 
+    if (WINDOWS_DESKTOP_PLATFORM)
+        add_definitions(-DWINDOWS_DESKTOP_PLATFORM)
+    endif ()
+
     # We do not use exceptions
     add_definitions(-D_HAS_EXCEPTIONS=0)
     add_compile_options(/EHa- /EHc- /EHs- /fp:except-)

@@ -39,10 +39,10 @@ if not exist %DIRNAME% mkdir %DIRNAME%
 cd %DIRNAME%
 set CC=cl.exe
 set CXX=cl.exe
-set "EXTRA_FLAGS=-DUWP_PLATFORM=0"
+set "EXTRA_FLAGS=-DUWP_PLATFORM=0 -DWINDOWS_DESKTOP_PLATFORM=1"
 if "%2"=="x64_uwp" (
   echo Using UWP Platform.
-  set "EXTRA_FLAGS=-DUWP_PLATFORM=1 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0"
+  set "EXTRA_FLAGS=-DUWP_PLATFORM=1 -DWINDOWS_DESKTOP_PLATFORM=0 -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0"
 )
 if "%3"=="local" (
   echo Using local deps.

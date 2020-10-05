@@ -25,7 +25,7 @@
 #ifndef WindowsExtras_h
 #define WindowsExtras_h
 
-#if OS(WINDOWS)
+#if OS(WINDOWS) && defined(WINDOWS_DESKTOP_PLATFORM)
 
 #include <windows.h>
 #include <objbase.h>

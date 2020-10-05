@@ -30,6 +30,10 @@
 
 #include <dbghelp.h>
 
+#if OS(WINDOWS) && !defined(WINDOWS_DESKTOP_PLATFORM) && !defined(UWP_PLATFORM)
+struct SYMBOL_INFO;
+#endif
+
 namespace WTF {
 
 namespace DbgHelper {

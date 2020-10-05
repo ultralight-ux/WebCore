@@ -33,7 +33,7 @@ namespace WTF {
 
 void MemoryPressureHandler::platformInitialize()
 {
-#if !defined(UWP_PLATFORM)
+#if defined(WINDOWS_DESKTOP_PLATFORM)
     m_lowMemoryHandle = CreateMemoryResourceNotification(LowMemoryResourceNotification);
 #endif
 }
@@ -44,7 +44,7 @@ void MemoryPressureHandler::windowsMeasurementTimerFired()
 
     BOOL memoryLow;
 
-#if !defined(UWP_PLATFORM)
+#if defined(WINDOWS_DESKTOP_PLATFORM)
     if (QueryMemoryResourceNotification(m_lowMemoryHandle.get(), &memoryLow) && memoryLow) {
         setUnderMemoryPressure(true);
         releaseMemory(Critical::Yes);

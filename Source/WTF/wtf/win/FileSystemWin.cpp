@@ -42,9 +42,6 @@
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/win/WCharStringExtras.h>
 #include <wtf/win/PathWalker.h>
-#if defined(UWP_PLATFORM)
-#include "pathcch.h"
-#endif
 
 namespace WTF {
 
@@ -224,12 +221,16 @@ Optional<FileMetadata> fileMetadataFollowingSymlinks(const String& path)
 
 bool createSymbolicLink(const String& targetPath, const String& symbolicLinkPath)
 {
+#if defined(WINDOWS_DESKTOP_PLATFORM)
     return !::CreateSymbolicLinkW(symbolicLinkPath.wideCharacters().data(), targetPath.wideCharacters().data(), 0);
+#else
+  return false;
+#endif
 }
 
 bool fileExists(const String& path)
 {
-#if defined(UWP_PLATFORM)
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
   auto handle = openFile(path, FileOpenMode::Read);
   if (!isHandleValid(handle))
     return false;
@@ -263,22 +264,32 @@ bool moveFile(const String& oldPath, const String& newPath)
 
 String pathByAppendingComponent(const String& path, const String& component)
 {
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
+    // Perform simple UTF-8 concatenation
+    if (path.isEmpty())
+        return component;
+
+    if (component.isEmpty())
+      return path;
+
+    if (path.endsWith('\\') || component.startsWith('\\'))
+        return path + component;
+    
+    return path + '\\' + component;
+#else
     Vector<UChar> buffer(MAX_PATH);
     if (path.length() + 1 > buffer.size())
         return String();
 
     StringView(path).getCharactersWithUpconvert(buffer.data());
     buffer[path.length()] = '\0';
-#if defined(UWP_PLATFORM)
-    if (PathCchAppend(wcharFrom(buffer.data()), MAX_PATH, component.wideCharacters().data()) != S_OK)
-      return String();
-#else
+
     if (!PathAppendW(wcharFrom(buffer.data()), component.wideCharacters().data()))
         return String();
-#endif
 
     buffer.shrink(wcslen(wcharFrom(buffer.data())));
     return String::adopt(WTFMove(buffer));
+#endif
 }
 
 String pathByAppendingComponents(StringView path, const Vector<StringView>& components)
@@ -306,7 +317,7 @@ CString fileSystemRepresentation(const String& path)
 
 #endif // !USE(CF)
 
-#if defined(UWP_PLATFORM)
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
 /**
  * Creates all directories down to the specified path using pure WinAPI calls (no Shell API).
  *
@@ -344,11 +355,11 @@ bool createDirectoryRecursively(const std::wstring &directory) {
 
   return true;
 }
-#endif // defined(UWP_PLATFORM)
+#endif // !defined(WINDOWS_DESKTOP_PLATFORM)
 
 bool makeAllDirectories(const String& path)
 {
-#if defined(UWP_PLATFORM)
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
     return createDirectoryRecursively(path.wideCharacters().data());
 #else
     String fullPath = path;
@@ -370,7 +381,7 @@ String homeDirectoryPath()
 
 String pathGetFileName(const String& path)
 {
-#if defined(UWP_PLATFORM)
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
     return path.substring(path.reverseFind('/') + 1);
 #else
     return String(::PathFindFileName(path.wideCharacters().data()));
@@ -409,7 +420,7 @@ static String bundleName()
 
 static String storageDirectory(DWORD pathIdentifier)
 {
-#if defined(UWP_PLATFORM)
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
     Vector<UChar> buffer(MAX_PATH);
     DWORD len = GetCurrentDirectoryW(MAX_PATH, wcharFrom(buffer.data()));
     if (!len)
@@ -436,7 +447,7 @@ static String storageDirectory(DWORD pathIdentifier)
         return String();
 
     return directory;
-#endif // defined(UWP_PLATFORM)
+#endif // !defined(WINDOWS_DESKTOP_PLATFORM)
 }
 
 static String cachedStorageDirectory(DWORD pathIdentifier)
@@ -653,7 +664,7 @@ String createTemporaryDirectory()
     });
 }
 
-#if defined(UWP_PLATFORM)
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
 class SearchHandleScope {
   HANDLE searchHandle;
  public:
@@ -724,11 +735,11 @@ bool recursiveDeleteDirectory(const std::wstring &path) {
   BOOL result = ::RemoveDirectory(path.c_str());
   return !!result;
 }
-#endif // defined(UWP_PLATFORM)
+#endif // !defined(WINDOWS_DESKTOP_PLATFORM)
 
 bool deleteNonEmptyDirectory(const String& directoryPath)
 {
-#if defined(UWP_PLATFORM)
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
     return recursiveDeleteDirectory(directoryPath.wideCharacters().data());
 #else
     SHFILEOPSTRUCT deleteOperation = {
@@ -742,7 +753,7 @@ bool deleteNonEmptyDirectory(const String& directoryPath)
         L""
     };
     return !SHFileOperation(&deleteOperation);
-#endif // defined(UWP_PLATFORM)
+#endif // !defined(WINDOWS_DESKTOP_PLATFORM)
 }
 
 MappedFileData::~MappedFileData()

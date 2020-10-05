@@ -35,6 +35,10 @@
 #include <wtf/StringPrintStream.h>
 #include <wtf/Threading.h>
 
+#if OS(WINDOWS) && !defined(WINDOWS_DESKTOP_PLATFORM) && !defined(UWP_PLATFORM)
+#define strdup _strdup
+#endif
+
 namespace JSC {
 
 void disassemble(const MacroAssemblerCodePtr<DisassemblyPtrTag>& codePtr, size_t size, const char* prefix, PrintStream& out)

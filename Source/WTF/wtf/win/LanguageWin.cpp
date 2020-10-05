@@ -39,6 +39,14 @@ static Lock platformLanguageMutex;
 
 static String localeInfo(LCTYPE localeType, const String& fallback)
 {
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
+    wchar_t localeNameBuf[LOCALE_NAME_MAX_LENGTH];
+    int localeChars = GetUserDefaultLocaleName(localeNameBuf, ARRAYSIZE(localeNameBuf));
+    if (!localeChars)
+        return fallback;
+    String localeName = String(localeNameBuf, localeChars);
+    return localeName;
+#else
     LANGID langID = GetUserDefaultUILanguage();
     int localeChars = GetLocaleInfo(langID, localeType, 0, 0);
     if (!localeChars)
@@ -53,6 +61,7 @@ static String localeInfo(LCTYPE localeType, const String& fallback)
 
     localeName.truncate(localeName.length() - 1);
     return localeName;
+#endif
 }
 
 static String platformLanguage()
