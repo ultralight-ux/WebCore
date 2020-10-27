@@ -33,6 +33,8 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 list(APPEND WebCore_SOURCES
     page/linux/ResourceUsageThreadLinux.cpp
     platform/Cursor.cpp
+    platform/generic/KeyedDecoderGeneric.cpp
+    platform/generic/KeyedEncoderGeneric.cpp
     platform/generic/ScrollAnimatorGeneric.cpp
     platform/graphics/harfbuzz/ComplexTextControllerHarfBuzz.cpp
     platform/graphics/harfbuzz/HarfBuzzFaceUltralight.cpp
