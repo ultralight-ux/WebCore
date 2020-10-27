@@ -54,13 +54,15 @@ ninja
 GOTO FINISH
 :SYNTAX
 echo.
-echo usage: make [ release ^| debug ^| vs ]  [ x64 ^| x64_uwp ] [ local ]
+echo usage: make [ release ^| full_release ^| debug ^| full_debug ^| vs ]  [ x64 ^| x64_uwp ] [ local ]
 echo.
 echo Build type parameter descriptions:
 echo.
-echo     release     Build minimum-size release via Ninja/VS2019
-echo     debug       Build release with debug symbols via Ninja/VS2019
-echo     vs          Generate VS2019 project files, does not perform a build.
+echo     release       Build optimized, minimum-size release via Ninja/VS2019
+echo     full_release  Build optimized, maximum-speed release via Ninja/VS2019
+echo     debug         Build optimized release with debug symbols via Ninja/VS2019
+echo     full_debug    Build non-optimized release with debug symbols via Ninja/VS2019
+echo     vs            Generate VS2019 project files, does not perform a build.
 echo.
 echo Configuration parameter descriptions:
 echo.

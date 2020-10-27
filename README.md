@@ -13,8 +13,7 @@ Building typically takes 20 minutes or less on most modern machines.
 | Link                   | URL                                 |
 | ---------------------- | ----------------------------------- |
 | __Main Website__       | <https://ultralig.ht>               |
-| __Support Forum__      | <https://forum.ultralig.ht>         |
-| __Join our Chat!__     | <https://chat.ultralig.ht>          |
+| __Chat on Discord!__     | <https://chat.ultralig.ht>          |
 
 ## Downloading pre-built binaries
 
@@ -83,10 +82,10 @@ make release x64_uwp
 
 #### Building Debug on Windows
 
-To build WebCore with Debug PDBs (equivalent to Release with Debug Info):
+To build non-optimized WebCore with Debug PDBs:
 
 ```
-make debug x64
+make full_debug x64
 ```
 
 #### Building on Windows with locally-built dependencies
