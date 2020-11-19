@@ -89,11 +89,19 @@ include(Deps.cmake)
 # -----------------------------------------------------------------------------
 # Default library types
 # -----------------------------------------------------------------------------
-set(JavaScriptCore_LIBRARY_TYPE SHARED)
-set(WebCore_LIBRARY_TYPE SHARED)
-set(WebKit_LIBRARY_TYPE SHARED)
-set(WebKit2_LIBRARY_TYPE SHARED)
-set(WebCoreTestSupport_LIBRARY_TYPE STATIC)
+if (${STATIC_BUILD})
+    set(JavaScriptCore_LIBRARY_TYPE STATIC)
+    set(WebCore_LIBRARY_TYPE STATIC)
+    set(WebKit_LIBRARY_TYPE STATIC)
+    set(WebKit2_LIBRARY_TYPE STATIC)
+    set(WebCoreTestSupport_LIBRARY_TYPE STATIC)
+else ()
+    set(JavaScriptCore_LIBRARY_TYPE SHARED)
+    set(WebCore_LIBRARY_TYPE SHARED)
+    set(WebKit_LIBRARY_TYPE SHARED)
+    set(WebKit2_LIBRARY_TYPE SHARED)
+    set(WebCoreTestSupport_LIBRARY_TYPE STATIC)
+endif ()
 
 # -----------------------------------------------------------------------------
 # Install JavaScript shell
