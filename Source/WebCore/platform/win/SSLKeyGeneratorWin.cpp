@@ -20,7 +20,7 @@
 #include "config.h"
 #include "SSLKeyGenerator.h"
 
-#if defined(UWP_PLATFORM)
+#if !defined(WINDOWS_DESKTOP_PLATFORM)
 #include "NotImplemented.h"
 #include <wtf/Forward.h>
 #include <wtf/URL.h>

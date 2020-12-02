@@ -31,7 +31,7 @@
 namespace PAL {
 
 void systemBeep() {
-#if !defined(UWP_PLATFORM)
+#if defined(WINDOWS_DESKTOP_PLATFORM)
   MessageBeep(static_cast<UINT>(-1));
 #endif
 }

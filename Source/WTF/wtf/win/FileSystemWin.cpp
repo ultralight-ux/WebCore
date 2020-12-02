@@ -603,12 +603,20 @@ bool hardLinkOrCopyFile(const String& source, const String& destination)
 
 String localUserSpecificStorageDirectory()
 {
+#if defined(WINDOWS_DESKTOP_PLATFORM) || defined(UWP_PLATFORM)
     return cachedStorageDirectory(CSIDL_LOCAL_APPDATA);
+#else
+    return String();
+#endif
 }
 
 String roamingUserSpecificStorageDirectory()
 {
+#if defined(WINDOWS_DESKTOP_PLATFORM) || defined(UWP_PLATFORM)
     return cachedStorageDirectory(CSIDL_APPDATA);
+#else
+    return String();
+#endif
 }
 
 Vector<String> listDirectory(const String& directory, const String& filter)

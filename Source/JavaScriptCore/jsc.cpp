@@ -2452,7 +2452,9 @@ int main(int argc, char** argv)
     _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
 #endif
 
+#if defined(WINDOWS_DESKTOP_PLATFORM)
     timeBeginPeriod(1);
+#endif
 #endif
 
 #if PLATFORM(GTK)

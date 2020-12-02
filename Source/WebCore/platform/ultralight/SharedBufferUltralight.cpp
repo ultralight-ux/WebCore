@@ -10,6 +10,7 @@ namespace WebCore {
 
   RefPtr<SharedBuffer> SharedBuffer::createFromReadingFile(const String& filePath)
   {
+#if defined(WINDOWS_DESKTOP_PLATFORM)
     std::ifstream file(filePath.ascii().data(), std::ios::binary | std::ios::ate);
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
@@ -19,6 +20,7 @@ namespace WebCore {
     {
       return SharedBuffer::create((unsigned char*)buffer.data(), buffer.size());
     }
+#endif
 
     return nullptr;
   }

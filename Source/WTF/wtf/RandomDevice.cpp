@@ -38,7 +38,11 @@
 
 #if OS(WINDOWS)
 #include <windows.h>
+#if defined(WINDOWS_DESKTOP_PLATFORM)
 #include <wincrypt.h> // windows.h must be included before wincrypt.h.
+#else
+#include <bcrypt.h>
+#endif
 #endif
 
 #if OS(DARWIN)
@@ -105,6 +109,7 @@ void RandomDevice::cryptographicallyRandomValues(unsigned char* buffer, size_t l
             amountRead += currentRead;
     }
 #elif OS(WINDOWS)
+#if defined(WINDOWS_DESKTOP_PLATFORM)
     // FIXME: We cannot ensure that Cryptographic Service Provider context and CryptGenRandom are safe across threads.
     // If it is safe, we can acquire context per RandomDevice.
     HCRYPTPROV hCryptProv = 0;
@@ -113,6 +118,10 @@ void RandomDevice::cryptographicallyRandomValues(unsigned char* buffer, size_t l
     if (!CryptGenRandom(hCryptProv, length, buffer))
         CRASH();
     CryptReleaseContext(hCryptProv, 0);
+#else
+  if (!BCRYPT_SUCCESS(BCryptGenRandom(NULL, buffer, length, BCRYPT_USE_SYSTEM_PREFERRED_RNG)))
+      CRASH();
+#endif
 #else
 #error "This configuration doesn't have a strong source of randomness."
 // WARNING: When adding new sources of OS randomness, the randomness must

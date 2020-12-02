@@ -241,6 +241,12 @@ if (NOT UWP_PLATFORM)
     )
 endif ()
 
+if (WINDOWS_DESKTOP_PLATFORM)
+    list(APPEND WebCore_LIBRARIES
+        bcrypt
+    )
+endif ()
+
 make_directory(${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/en.lproj)
 file(COPY
     "${WEBCORE_DIR}/en.lproj/Localizable.strings"
