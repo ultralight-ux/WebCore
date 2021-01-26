@@ -1024,7 +1024,7 @@ void GraphicsContext::adjustLineToPixelBoundaries(FloatPoint& p1, FloatPoint& p2
     }
 }
 
-#if !USE(CG) && !USE(DIRECT2D)
+#if !USE(CG) && !USE(DIRECT2D) && !USE(ULTRALIGHT)
 void GraphicsContext::platformApplyDeviceScaleFactor(float)
 {
 }

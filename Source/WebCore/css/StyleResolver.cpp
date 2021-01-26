@@ -1956,6 +1956,7 @@ void StyleResolver::setFontSize(FontCascadeDescription& fontDescription, float s
 {
     fontDescription.setSpecifiedSize(size);
     fontDescription.setComputedSize(Style::computedFontSizeFromSpecifiedSize(size, fontDescription.isAbsoluteSize(), useSVGZoomRules(), m_state.style(), document()));
+    fontDescription.setDeviceScale(document().deviceScaleFactor());
 }
 
 bool StyleResolver::colorFromPrimitiveValueIsDerivedFromElement(const CSSPrimitiveValue& value)

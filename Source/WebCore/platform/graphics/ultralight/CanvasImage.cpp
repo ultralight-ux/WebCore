@@ -37,7 +37,7 @@ ImageDrawResult CanvasImage::draw(GraphicsContext& context, const FloatRect& dst
     // Let's check if that uniform scale matches our device scale.
     // If so, we will snap to pixel coordinates
     float scale = mat.a();
-    float device_scale = ultralight::Platform::instance().config().device_scale;
+    float device_scale = (float)context.platformContext()->canvas()->DeviceScaleHint();
     if (fabsf(scale - device_scale) < 0.01f) {
       ultralight::Rect aabb = mat.Apply(dstRect);
       if (fabsf(aabb.width() - m_surface->width()) < 2.0f &&

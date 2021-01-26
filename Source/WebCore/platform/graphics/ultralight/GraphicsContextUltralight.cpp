@@ -507,6 +507,15 @@ void GraphicsContext::translate(float x, float y)
   platformContext()->canvas()->Transform(transform);
 }
 
+void GraphicsContext::platformApplyDeviceScaleFactor(float scale)
+{
+  if (paintingDisabled())
+    return;
+
+  ASSERT(hasPlatformContext());
+  platformContext()->canvas()->SetDeviceScaleHint(scale);
+}
+
 void GraphicsContext::setPlatformFillColor(const Color& color)
 {
   if (paintingDisabled())

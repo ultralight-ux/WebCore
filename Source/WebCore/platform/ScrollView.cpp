@@ -41,6 +41,9 @@
 #if USE(ULTRALIGHT)
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
+#include "Page.h"
+#include "FrameView.h"
+#include "Frame.h"
 #endif
 
 namespace WebCore {
@@ -477,7 +480,11 @@ void ScrollView::scrollTo(const ScrollPosition& newPosition)
 {
   ScrollPosition snapped_position = newPosition;
 #if USE(ULTRALIGHT)
-  float device_scale = (float)ultralight::Platform::instance().config().device_scale;
+  float device_scale = 1.0f;
+  if (auto frame_view = root())
+    if (auto page = frame_view->frame().page())
+      device_scale = page->deviceScaleFactor();
+
   snapped_position = SnapScrollPositionForScale(snapped_position, device_scale);
 #endif
 
@@ -520,7 +527,11 @@ void ScrollView::setScrollPosition(const ScrollPosition& scrollPosition)
 {
     ScrollPosition snapped_position = scrollPosition;
 #if USE(ULTRALIGHT)
-    float device_scale = (float)ultralight::Platform::instance().config().device_scale;
+    float device_scale = 1.0f;
+    if (auto frame_view = root())
+      if (auto page = frame_view->frame().page())
+        device_scale = page->deviceScaleFactor();
+
     snapped_position = SnapScrollPositionForScale(snapped_position, device_scale);
 #endif
 

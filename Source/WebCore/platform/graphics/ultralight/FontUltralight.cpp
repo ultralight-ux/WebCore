@@ -46,6 +46,9 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
   unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode smoothing)
 {
   WebCore::FontPlatformData& platform_font = const_cast<WebCore::FontPlatformData&>(font.platformData());
+  WebCore::PlatformContextUltralight* platformContext = context.platformContext();
+  PlatformCanvas canvas = platformContext->canvas();
+  platform_font.font()->set_device_scale_hint((float)canvas->DeviceScaleHint());
   const GlyphBufferGlyph* glyphs = glyphBuffer.glyphs(from);
   const GlyphBufferAdvance* advances = glyphBuffer.advances(from);
   FT_Face face = platform_font.face();
@@ -67,7 +70,7 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
     if (use_kerning && previous && glyph_index) {
       FT_Vector delta;
       FT_Get_Kerning(face, previous, glyph_index, FT_KERNING_DEFAULT, &delta);
-      pen_x += TwentySixDotSix2Float(delta.x) * ultraFont->font_scale();
+      pen_x += TwentySixDotSix2Float(delta.x);
     }
 
     glyphBuf.append({ glyph_index, pen_x });
@@ -78,9 +81,6 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
   }
 
   if (glyphBuf.size()) {
-    WebCore::PlatformContextUltralight* platformContext = context.platformContext();
-    PlatformCanvas canvas = platformContext->canvas();
-
     if (context.hasVisibleShadow()) {
       /**
       // TODO: Handle text shadows properly with offscreen blur filter
@@ -263,11 +263,9 @@ void Font::platformInit()
 
   FT_Select_Charmap(face, ft_encoding_unicode);
 
-  double scale = const_cast<FontPlatformData&>(m_platformData).font()->font_scale();
-
-  float ascent = TwentySixDotSix2Float(metrics.ascender) * scale;
-  float descent = TwentySixDotSix2Float(-metrics.descender) * scale;
-  float capHeight = TwentySixDotSix2Float(metrics.height) * scale;
+  float ascent = TwentySixDotSix2Float(metrics.ascender);
+  float descent = TwentySixDotSix2Float(-metrics.descender);
+  float capHeight = TwentySixDotSix2Float(metrics.height);
   float lineGap = capHeight - ascent - descent;
 
   m_fontMetrics.setAscent(ascent);
@@ -281,12 +279,12 @@ void Font::platformInit()
   FT_Error error;
   error = FT_Load_Char(face, (FT_ULong)'x', FT_LOAD_DEFAULT);
   assert(error == 0);
-  float xHeight = TwentySixDotSix2Float(face->glyph->metrics.height) * scale;
+  float xHeight = TwentySixDotSix2Float(face->glyph->metrics.height);
   m_fontMetrics.setXHeight(xHeight);
 
   error = FT_Load_Char(face, (FT_ULong)' ', FT_LOAD_DEFAULT);
   assert(error == 0);
-  m_spaceWidth = TwentySixDotSix2Float(face->glyph->metrics.horiAdvance) * scale;
+  m_spaceWidth = TwentySixDotSix2Float(face->glyph->metrics.horiAdvance);
 
   /*
   printf("From FaceMetrics\n");
@@ -341,9 +339,10 @@ RefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescripti
 Path Font::platformPathForGlyph(Glyph glyph) const
 {
   auto& platformData = const_cast<WebCore::FontPlatformData&>(m_platformData); 
-  auto platformPath = FontRenderer::GetPath(platformData.font(), platformData.face(), glyph, true);
-  
+
   Path result;
+  ultralight::RefPtr<ultralight::Path> platformPath;
+  platformData.font()->GetGlyphPath(glyph, platformPath);
   if (platformPath)
     result.ultralightPath()->Set(*platformPath);
 

@@ -71,6 +71,8 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ultralight/PatternUltralight.cpp
     platform/graphics/ultralight/PlatformContextUltralight.cpp
     platform/graphics/ultralight/PlatformContextUltralight.h
+    platform/graphics/ultralight/PlatformFontFreeType.cpp
+    platform/graphics/ultralight/PlatformFontFreeType.h
     platform/graphics/ultralight/RefPtrFreeTypeFace.cpp
     platform/graphics/ultralight/RefPtrFreeTypeFace.h
     platform/graphics/ultralight/RefPtrUltralight.cpp

@@ -40,33 +40,11 @@ RGBA32 ImageBackingStore::pixelValue(unsigned r, unsigned g, unsigned b, unsigne
     return 0;
 
   if (m_premultiplyAlpha && a < 255) {
-      //
-      // We convert sRGB post-gamma premultiplication to sRGB pre-gamma premultiplication
-      //
-      // PNGs with alpha are decoded in sRGB color-space (actually 2.2 gamma, which
-      // is a very close approximation of sRGB gamma) with alpha multiplied with
-      // RGB channels AFTER the gamma function.
-      //
-      // To ensure our rendering pipeline is gamma-correct, we do all blending in
-      // linear color-space with all alpha values pre-multiplied linearly. This
-      // means we need to convert from sRGB POST-gamma premultiplied-alpha encoding
-      // to sRGB PRE-gamma premultiplied-alpha encoding to use the sRGB conversion
-      // hardware in GPU.
-      //
-      // See: <http://www.realtimerendering.com/blog/a-png-puzzle/>
-      //
       m_buf = { (float)r, (float)g, (float)b, (float)a };
       m_buf /= 255.0f;
-      if (!ultralight::Platform::instance().config().use_gpu_renderer) {
-        m_buf.x *= m_buf.w;
-        m_buf.y *= m_buf.w;
-        m_buf.z *= m_buf.w;
-      }
-      else {
-        m_buf.x = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.x) * m_buf.w);
-        m_buf.y = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.y) * m_buf.w);
-        m_buf.z = ultralight::LinearToSRGB(ultralight::SRGBToLinear(m_buf.z) * m_buf.w);
-      }
+      m_buf.x *= m_buf.w;
+      m_buf.y *= m_buf.w;
+      m_buf.z *= m_buf.w;
       m_buf *= 255.0f;
       return makeRGBA((int)m_buf.x, (int)m_buf.y, (int)m_buf.z, (int)m_buf.w);
   }

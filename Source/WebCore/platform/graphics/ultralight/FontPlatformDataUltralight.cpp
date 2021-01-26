@@ -24,32 +24,23 @@ namespace WebCore {
 
 #define ENABLE_DISTANCE_FIELD_FONTS 0
 
-#if ENABLE_DISTANCE_FIELD_FONTS
-float RoundUpDistanceFieldFontSize(float size) {
-  // We round up to next highest multiple of 6
-  return std::ceil((size + 6.0f) / 6.0f) * 6.0f;
-}
-#endif
-
 FontPlatformData::FontPlatformData(ultralight::RefPtr<ultralight::FontFace> face, const FontDescription& description)
   : m_face(face) {
   
   m_fixedWidth = m_face->face()->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
   auto config = ultralight::Platform::instance().config();
 
-  m_size = (float)std::round(description.computedPixelSize() * config.device_scale);
+  m_size = description.computedPixelSize();
 
 #if ENABLE_DISTANCE_FIELD_FONTS
   m_distanceField = m_face->face_flags & FT_FACE_FLAG_SCALABLE;
-  if (isDistanceField())
-      m_size = RoundUpDistanceFieldFontSize(m_size);
 #else
   m_distanceField = false;
 #endif
 
   auto font_cache = ultralight::FontCache::instance();
-  double font_scale = 1.0 / config.device_scale;
-  m_font = font_cache->GetFont((uint64_t)hash(), isDistanceField(), m_size, font_scale);
+  m_font = font_cache->GetFont(&face, (uint64_t)hash(), m_size);
+  m_font->set_device_scale_hint(description.deviceScale());
 }
 
 FontPlatformData::FontPlatformData(const FontPlatformData& other) {
@@ -102,21 +93,11 @@ bool FontPlatformData::platformIsEqual(const FontPlatformData& platformFont) con
 
 double FontPlatformData::glyphWidth(Glyph glyph) {
   ultralight::RefPtr<ultralight::Font> ultraFont = font();
-  if (!ultraFont->HasGlyph(glyph)) {
-    FT_Face face = this->face();
-    FontRenderer::RenderGlyph(ultraFont, face, glyph);
-  }
-
   return ultraFont->GetGlyphAdvance(glyph);
 }
 
 FloatRect FontPlatformData::glyphExtents(Glyph glyph) {
   ultralight::RefPtr<ultralight::Font> ultraFont = font();
-  if (!ultraFont->HasGlyph(glyph)) {
-    FT_Face face = this->face();
-    FontRenderer::RenderGlyph(ultraFont, face, glyph);
-  }
-
   float width = ultraFont->GetGlyphWidth(glyph);
   float height = ultraFont->GetGlyphHeight(glyph);
   return FloatRect(0.0f, 0.0f, width, height);

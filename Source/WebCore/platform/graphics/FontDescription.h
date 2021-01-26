@@ -44,6 +44,7 @@ public:
 
     float computedSize() const { return m_computedSize; }
     unsigned computedPixelSize() const { return unsigned(m_computedSize + 0.5f); }
+    float deviceScale() const { return m_deviceScale; }
     Optional<FontSelectionValue> italic() const { return m_fontSelectionRequest.slope; }
     FontSelectionValue stretch() const { return m_fontSelectionRequest.width; }
     FontSelectionValue weight() const { return m_fontSelectionRequest.weight; }
@@ -98,6 +99,7 @@ public:
     bool shouldAllowDesignSystemUIFonts() const { return m_shouldAllowDesignSystemUIFonts; }
 
     void setComputedSize(float s) { m_computedSize = clampToFloat(s); }
+    void setDeviceScale(float s) { m_deviceScale = clampToFloat(s); }
     void setItalic(Optional<FontSelectionValue> italic) { m_fontSelectionRequest.slope = italic; }
     void setStretch(FontSelectionValue stretch) { m_fontSelectionRequest.width = stretch; }
     void setIsItalic(bool isItalic) { setItalic(isItalic ? Optional<FontSelectionValue> { italicValue() } : Optional<FontSelectionValue> { }); }
@@ -143,6 +145,7 @@ private:
 
     FontSelectionRequest m_fontSelectionRequest;
     float m_computedSize { 0 }; // Computed size adjusted for the minimum font size and the zoom factor.
+    float m_deviceScale { 1.0f }; // Device scale of the of the document
     unsigned m_orientation : 1; // FontOrientation - Whether the font is rendering on a horizontal line or a vertical line.
     unsigned m_nonCJKGlyphOrientation : 1; // NonCJKGlyphOrientation - Only used by vertical text. Determines the default orientation for non-ideograph glyphs.
     unsigned m_widthVariant : 2; // FontWidthVariant
@@ -174,6 +177,7 @@ private:
 inline bool FontDescription::operator==(const FontDescription& other) const
 {
     return m_computedSize == other.m_computedSize
+        && m_deviceScale == other.m_deviceScale
         && m_fontSelectionRequest == other.m_fontSelectionRequest
         && m_renderingMode == other.m_renderingMode
         && m_textRendering == other.m_textRendering

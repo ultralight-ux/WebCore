@@ -200,13 +200,8 @@ static AffineTransform& currentContentTransformation()
 
 float SVGRenderingContext::calculateScreenFontSizeScalingFactor(const RenderObject& renderer)
 {
-#if USE(ULTRALIGHT)
-  // We apply a fixed DPI scale in FontPlatformDataUltralight()
-  return 1.0;
-#else
     AffineTransform ctm = calculateTransformationToOutermostCoordinateSystem(renderer);
     return narrowPrecisionToFloat(sqrt((pow(ctm.xScale(), 2) + pow(ctm.yScale(), 2)) / 2));
-#endif
 }
 
 AffineTransform SVGRenderingContext::calculateTransformationToOutermostCoordinateSystem(const RenderObject& renderer)
@@ -236,7 +231,10 @@ AffineTransform SVGRenderingContext::calculateTransformationToOutermostCoordinat
         layer = layer->parent();
     }
 
+// Don't apply device scale in Ultralight port
+#if !USE(ULTRALIGHT)
     absoluteTransform.scale(deviceScaleFactor);
+#endif
     return absoluteTransform;
 }
 

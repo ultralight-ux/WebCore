@@ -3,6 +3,7 @@
 #include "Font.h"
 #include "NotImplemented.h"
 #include "FreeTypeLib.h"
+#include "PlatformFontFreeType.h"
 #include <wtf/text/CString.h>
 #include <Ultralight/platform/FontLoader.h>
 #include <Ultralight/platform/Platform.h>
@@ -213,8 +214,8 @@ Vector<String> FontCache::systemFontFamilies()
 void FontCache::platformInit()
 {
   GetFreeTypeLib();
+  ultralight::EnsurePlatformFontFactory();
 }
-
 
 Vector<FontSelectionCapabilities> FontCache::getFontSelectionCapabilitiesInFamily(const AtomString&, AllowUserInstalledFonts) {
   // TODO
