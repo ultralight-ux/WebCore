@@ -1,6 +1,6 @@
 #include "config.h"
 #if USE(ULTRALIGHT)
-#include "PlatformFontFreetype.h"
+#include "PlatformFontFreeType.h"
 #include <Ultralight/private/PlatformFont.h>
 #include "FontPlatformData.h"
 #include "FreeTypeLib.h"
