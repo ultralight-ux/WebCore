@@ -716,6 +716,16 @@ bool RenderLayerBacking::updateCompositedBounds()
 
         layerBounds.intersect(clippingBounds);
     }
+#if USE(ULTRALIGHT)
+    else {
+      // Sanity check: always clip to the size of the document
+      auto& view = renderer().view();
+      auto* rootLayer = view.layer();
+      LayoutRect clippingBounds;
+      clippingBounds = view.unscaledDocumentRect();
+      layerBounds.intersect(clippingBounds);
+    }
+#endif
 
     // If the backing provider has overflow:clip, we know all sharing layers are affected by the clip because they are containing-block descendants.
     if (!renderer().hasOverflowClip()) {
