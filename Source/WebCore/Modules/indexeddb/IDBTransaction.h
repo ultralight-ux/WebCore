@@ -65,13 +65,13 @@ class IDBConnectionProxy;
 class TransactionOperation;
 }
 
-class IDBTransaction final : public ThreadSafeRefCounted<IDBTransaction>, public EventTargetWithInlineData, public IDBActiveDOMObject {
+class WEBCORE_EXPORT IDBTransaction final : public ThreadSafeRefCounted<IDBTransaction>, public EventTargetWithInlineData, public IDBActiveDOMObject {
     WTF_MAKE_ISO_ALLOCATED(IDBTransaction);
 public:
-    WEBCORE_EXPORT static Ref<IDBTransaction> create(IDBDatabase&, const IDBTransactionInfo&);
-    WEBCORE_EXPORT static Ref<IDBTransaction> create(IDBDatabase&, const IDBTransactionInfo&, IDBOpenDBRequest&);
+    static Ref<IDBTransaction> create(IDBDatabase&, const IDBTransactionInfo&);
+    static Ref<IDBTransaction> create(IDBDatabase&, const IDBTransactionInfo&, IDBOpenDBRequest&);
 
-    WEBCORE_EXPORT ~IDBTransaction() final;
+    ~IDBTransaction() final;
 
     // IDBTransaction IDL
     Ref<DOMStringList> objectStoreNames() const;
@@ -154,7 +154,7 @@ public:
 
     void visitReferencedObjectStores(JSC::SlotVisitor&) const;
 
-    WEBCORE_EXPORT static std::atomic<unsigned> numberOfIDBTransactions;
+    static std::atomic<unsigned> numberOfIDBTransactions;
 
 private:
     IDBTransaction(IDBDatabase&, const IDBTransactionInfo&, IDBOpenDBRequest*);

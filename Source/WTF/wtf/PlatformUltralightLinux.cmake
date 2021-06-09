@@ -16,6 +16,9 @@ list(APPEND WTF_SOURCES
     unix/CPUTimeUnix.cpp
     unix/LanguageUnix.cpp
     unix/UniStdExtrasUnix.cpp
+
+    # Needed for loading ICU data at runtime instead of from shared lib
+    #unicode/icu/stubdata.cpp
 )
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")

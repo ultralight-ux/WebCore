@@ -220,7 +220,7 @@ list(APPEND WebCore_LIBRARIES
     "${WEBKIT_LIBRARIES_DIR}/lib/libxslt.a"
     "${WEBKIT_LIBRARIES_DIR}/lib/libz.a"
     sqlite3
-    gcrypt
+    # gcrypt
     rt  # needed on Ubuntu for clock_gettime
 )
 

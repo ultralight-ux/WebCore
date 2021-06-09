@@ -62,7 +62,10 @@ list(APPEND WTF_SOURCES
 
     text/cocoa/StringViewCocoa.mm
 	
-	text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
+    text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
+    
+    # Needed for loading ICU data at runtime instead of from shared lib
+    # unicode/icu/stubdata.cpp
 )
 
 file(COPY mac/MachExceptions.defs DESTINATION ${WTF_DERIVED_SOURCES_DIR})

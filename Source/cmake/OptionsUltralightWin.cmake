@@ -194,7 +194,7 @@ endif ()
 
 set(JavaScriptCore_LIBRARY_TYPE SHARED)
 set(WTF_LIBRARY_TYPE SHARED)
-set(ICU_LIBRARIES icuuc icuin)
+set(ICU_LIBRARIES icuuc icuin icudt)
 
 set(ENABLE_CHANNEL_MESSAGING ON)
 set(ENABLE_DRAG_SUPPORT ON)

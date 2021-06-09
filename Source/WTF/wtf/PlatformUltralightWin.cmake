@@ -18,7 +18,7 @@ list(APPEND WTF_SOURCES
     win/ThreadSpecificWin.cpp
 
     # Needed for loading ICU data at runtime instead of from shared lib
-    unicode/icu/stubdata.cpp
+    # unicode/icu/stubdata.cpp
 )
 
 list(APPEND WTF_LIBRARIES

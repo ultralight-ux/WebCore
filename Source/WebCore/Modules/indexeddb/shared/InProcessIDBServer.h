@@ -51,15 +51,15 @@ namespace IDBServer {
 class IDBServer;
 }
 
-class InProcessIDBServer final : public IDBClient::IDBConnectionToServerDelegate, public IDBServer::IDBConnectionToClientDelegate, public RefCounted<InProcessIDBServer>, public IDBServer::IDBBackingStoreTemporaryFileHandler {
+class WEBCORE_EXPORT InProcessIDBServer final : public IDBClient::IDBConnectionToServerDelegate, public IDBServer::IDBConnectionToClientDelegate, public RefCounted<InProcessIDBServer>, public IDBServer::IDBBackingStoreTemporaryFileHandler {
 public:
     using IDBClient::IDBConnectionToServerDelegate::weakPtrFactory;
     using WeakValueType = IDBClient::IDBConnectionToServerDelegate::WeakValueType;
 
-    WEBCORE_EXPORT static Ref<InProcessIDBServer> create(PAL::SessionID);
-    WEBCORE_EXPORT static Ref<InProcessIDBServer> create(PAL::SessionID, const String& databaseDirectoryPath);
+    static Ref<InProcessIDBServer> create(PAL::SessionID);
+    static Ref<InProcessIDBServer> create(PAL::SessionID, const String& databaseDirectoryPath);
 
-    WEBCORE_EXPORT IDBClient::IDBConnectionToServer& connectionToServer() const;
+    IDBClient::IDBConnectionToServer& connectionToServer() const;
     IDBServer::IDBConnectionToClient& connectionToClient() const;
     IDBServer::IDBServer& server() { return m_server.get(); }
 

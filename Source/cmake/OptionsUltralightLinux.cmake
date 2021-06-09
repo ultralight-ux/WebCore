@@ -91,9 +91,9 @@ set(WTF_LIBRARY_TYPE SHARED)
 
 link_directories("${WEBKIT_LIBRARIES_DIR}/lib")
 link_directories("${ULTRALIGHTCORE_DIR}/bin")
-set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/libicui18n.a
+set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/libicuin.a
                   ${WEBKIT_LIBRARIES_DIR}/lib/libicuuc.a
-                  ${WEBKIT_LIBRARIES_DIR}/lib/libicudata.a)
+                  ${WEBKIT_LIBRARIES_DIR}/lib/libicudt.a)
 
 set(ENABLE_CHANNEL_MESSAGING ON)
 set(ENABLE_DRAG_SUPPORT ON)

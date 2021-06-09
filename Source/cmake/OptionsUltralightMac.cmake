@@ -89,8 +89,8 @@ set(WTF_LIBRARY_TYPE SHARED)
 
 link_directories("${WEBKIT_LIBRARIES_DIR}/lib")
 set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/libicuuc.a
-                  ${WEBKIT_LIBRARIES_DIR}/lib/libicui18n.a
-                  ${WEBKIT_LIBRARIES_DIR}/lib/libicudata.a)
+                  ${WEBKIT_LIBRARIES_DIR}/lib/libicuin.a
+                  ${WEBKIT_LIBRARIES_DIR}/lib/libicudt.a)
 link_directories("${ULTRALIGHTCORE_DIR}/bin")
 set(CMAKE_MACOSX_RPATH 1)
 
