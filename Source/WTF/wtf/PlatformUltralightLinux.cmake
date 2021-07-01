@@ -1,10 +1,7 @@
 set(WTF_LIBRARY_TYPE STATIC)
 
 list(APPEND WTF_SOURCES
-    #PlatformUserPreferredLanguagesStub.cpp
-
     generic/MainThreadGeneric.cpp
-	generic/RunLoopGeneric.cpp
 	generic/WorkQueueGeneric.cpp
 
     posix/FileSystemPOSIX.cpp
@@ -16,9 +13,6 @@ list(APPEND WTF_SOURCES
     unix/CPUTimeUnix.cpp
     unix/LanguageUnix.cpp
     unix/UniStdExtrasUnix.cpp
-
-    # Needed for loading ICU data at runtime instead of from shared lib
-    #unicode/icu/stubdata.cpp
 )
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -38,11 +32,33 @@ else ()
     )
 endif ()
 
-
 list(APPEND WTF_LIBRARIES
     pthread
     ${ICU_LIBRARIES}
 )
+
+if (USE_GSTREAMER)
+    list(APPEND WTF_SOURCES
+        glib/GLibUtilities.cpp
+        glib/GRefPtr.cpp
+        glib/RunLoopGLib.cpp
+    )
+
+    list(APPEND WTF_INCLUDE_DIRECTORIES
+        ${GSTREAMER_DIR}/include/glib-2.0
+        ${GSTREAMER_DIR}/lib/glib-2.0/include
+    )
+    
+    list(APPEND WTF_LIBRARIES
+        glib-2.0
+        gobject-2.0
+        gio-2.0
+    )
+else ()
+    list(APPEND WTF_SOURCES
+        generic/RunLoopGeneric.cpp
+    )
+endif ()
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/wtf)
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf)

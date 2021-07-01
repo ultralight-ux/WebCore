@@ -1948,6 +1948,10 @@ add_dependencies(WebCorePrivateFrameworkHeaders WebCoreBindings)
 
 add_dependencies(WebCore UltralightCoreBin)
 
+if (USE_GSTREAMER)
+    add_dependencies(WebCore GStreamerBin)
+endif ()
+
 if (APPLE AND NOT PORT MATCHES "UltralightMac")
     set_target_properties(WebCore PROPERTIES LINK_FLAGS "-sub_library libobjc -umbrella WebKit -allowable_client WebCoreTestSupport -allowable_client WebKit2 -allowable_client WebKitLegacy")
 endif ()

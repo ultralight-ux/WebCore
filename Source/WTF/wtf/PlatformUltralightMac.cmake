@@ -31,11 +31,8 @@ list(APPEND WTF_PUBLIC_HEADERS
     text/cf/TextBreakIteratorCF.h
 )
 
-list(APPEND WTF_SOURCES
-    #PlatformUserPreferredLanguagesStub.cpp
-    
+list(APPEND WTF_SOURCES   
     generic/MainThreadGeneric.cpp
-	generic/RunLoopGeneric.cpp
 	generic/WorkQueueGeneric.cpp
 
     posix/FileSystemPOSIX.cpp
@@ -63,10 +60,30 @@ list(APPEND WTF_SOURCES
     text/cocoa/StringViewCocoa.mm
 	
     text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
-    
-    # Needed for loading ICU data at runtime instead of from shared lib
-    # unicode/icu/stubdata.cpp
 )
+
+if (USE_GSTREAMER)
+    list(APPEND WTF_SOURCES
+        glib/GLibUtilities.cpp
+        glib/GRefPtr.cpp
+        glib/RunLoopGLib.cpp
+    )
+
+    list(APPEND WTF_INCLUDE_DIRECTORIES
+        ${GSTREAMER_DIR}/include/glib-2.0
+        ${GSTREAMER_DIR}/lib/glib-2.0/include
+    )
+    
+    list(APPEND WTF_LIBRARIES
+        glib-2.0
+        gobject-2.0
+        gio-2.0
+    )
+else ()
+    list(APPEND WTF_SOURCES
+        generic/RunLoopGeneric.cpp
+    )
+endif ()
 
 file(COPY mac/MachExceptions.defs DESTINATION ${WTF_DERIVED_SOURCES_DIR})
 

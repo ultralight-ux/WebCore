@@ -585,6 +585,10 @@
 #define USE_TEXTURE_MAPPER_ULTRALIGHT 1
 #define USE_REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR 0
 
+#if ENABLE(VIDEO)
+#define USE_GLIB 1
+#endif
+
 #if OS(DARWIN)
 #define USE_CF 1
 #define USE_FOUNDATION 1
@@ -1366,7 +1370,10 @@
 #if USE(GLIB)
 /* Use GLib's event loop abstraction. Primarily GTK port uses it. */
 #define USE_GLIB_EVENT_LOOP 1
-#elif OS(WINDOWS) && !PLATFORM(ULTRALIGHT)
+#elif PLATFORM(ULTRALIGHT)
+/* Always use generic loop in Ultralight when not using GLIB. */
+#define USE_GENERIC_EVENT_LOOP 1
+#elif OS(WINDOWS)
 /* Use Windows message pump abstraction.
  * Even if the port is AppleWin, we use the Windows message pump system for the event loop,
  * so that USE(WINDOWS_EVENT_LOOP) && USE(CF) can be true.

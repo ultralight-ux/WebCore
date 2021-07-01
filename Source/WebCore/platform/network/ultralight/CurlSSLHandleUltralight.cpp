@@ -1,31 +1,47 @@
 #include "config.h"
 #include "CurlSSLHandle.h"
-#include <Ultralight/platform/Platform.h>
-#include <Ultralight/platform/Logger.h>
-#include <Ultralight/platform/Config.h>
-#include <Ultralight/private/util/Debug.h>
+#include "ResourceLoaderUltralight.h"
 #include "StringUltralight.h"
+#include <Ultralight/platform/Config.h>
+#include <Ultralight/platform/Logger.h>
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/private/util/Debug.h>
 #include <wtf/FileSystem.h>
 
 namespace WebCore {
 
 void CurlSSLHandle::platformInitialize()
 {
-  auto& platform = ultralight::Platform::instance();
-  auto config = platform.config();
-  WTF::String resource_path = ultralight::Convert(config.resource_path);
-  WTF::String path = FileSystem::pathByAppendingComponent(
-    ultralight::Convert(config.resource_path), "cacert.pem");
-  if (!FileSystem::fileExists(path)) {
-    WTF::String err_msg = "Error loading cacert.pem, the following file path does not exist: " + path + "\nMake sure that Config::resource_path is set to the directory that contains cacert.pem.";
-    UL_LOG_ERROR(ultralight::Convert(err_msg));
+    auto& platform = ultralight::Platform::instance();
+    auto config = platform.config();
+    ultralight::FileHandle handle = ResourceLoader::openFile("cacert.pem");
+    ultralight::FileSystem* fs = ultralight::Platform::instance().file_system();
+    int64_t fileSize = 0;
+    CertificateInfo::Certificate buffer;
+
+    if (handle == ultralight::invalidFileHandle)
+        goto FAIL_LOAD;
+
+    if (!fs)
+        goto FAIL_LOAD;
+
+    if (!fs->GetFileSize(handle, fileSize) || fileSize == 0)
+        goto FAIL_LOAD;
+
+    buffer.resize(fileSize);
+    if (fs->ReadFromFile(handle, (char*)buffer.data(), fileSize) != fileSize)
+        goto FAIL_LOAD;
+
+    setCACertData(std::move(buffer));
+
+    fs->CloseFile(handle);
     return;
-  }
 
-  WTF::String info_msg = "Using certificate chain found at: " + path + " (you can adjust this location in Config::resource_path)";
-  UL_LOG_INFO(ultralight::Convert(info_msg));
-
-  setCACertPath(WTFMove(path));
+FAIL_LOAD:
+    if (fs && handle != ultralight::invalidFileHandle)
+        fs->CloseFile(handle);
+    UL_LOG_ERROR("Failed to load cacert.pem (SSL certificate chain), the library will be unable to make SSL/HTTPS requests.")
+    return;
 }
 
 }

@@ -118,6 +118,7 @@ list(APPEND WebCore_SOURCES
     platform/ultralight/PlatformScreenUltralight.cpp
     platform/ultralight/PreserveSymbolsUltralight.cpp
     platform/ultralight/RenderThemeUltralight.cpp
+    platform/ultralight/ResourceLoaderUltralight.cpp
     platform/ultralight/ResourceUsageOverlayUltralight.cpp
     platform/ultralight/ScrollbarThemeUltralight.cpp
     platform/ultralight/SharedBufferUltralight.cpp

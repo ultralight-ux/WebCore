@@ -203,13 +203,9 @@ static inline float areaOfTriangleFormedByPoints(const FloatPoint& p1, const Flo
 
 void Path::addArcTo(const FloatPoint& p1, const FloatPoint& p2, float radius)
 {
-  // FIXME: Why do we return if the path is empty? Can't a path start with an arc?
-  if (isEmpty())
-    return;
-
   auto path = ensurePlatformPath()->path();
 
-  ultralight::Point cur_p = path->current_point();
+  ultralight::Point cur_p = path->current_point();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
   FloatPoint p0(cur_p.x, cur_p.y);
 
   // Draw only a straight line to p1 if any of the points are equal or the radius is zero

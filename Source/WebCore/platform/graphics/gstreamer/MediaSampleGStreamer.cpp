@@ -43,8 +43,8 @@ MediaSampleGStreamer::MediaSampleGStreamer(GRefPtr<GstSample>&& sample, const Fl
 
     auto createMediaTime =
         [](GstClockTime time) -> MediaTime {
-            return MediaTime(GST_TIME_AS_USECONDS(time), G_USEC_PER_SEC);
-        };
+        return MediaTime(GST_TIME_AS_USECONDS(time), G_USEC_PER_SEC);
+    };
 
     if (GST_BUFFER_PTS_IS_VALID(buffer))
         m_pts = createMediaTime(GST_BUFFER_PTS(buffer));
@@ -117,7 +117,10 @@ void MediaSampleGStreamer::offsetTimestampsBy(const MediaTime& timestampOffset)
 
 PlatformSample MediaSampleGStreamer::platformSample()
 {
-    PlatformSample sample = { PlatformSample::GStreamerSampleType, { .gstSample = m_sample.get() } };
+    PlatformSample sample;
+    sample.type = PlatformSample::GStreamerSampleType;
+    sample.sample.gstSample = m_sample.get();
+
     return sample;
 }
 

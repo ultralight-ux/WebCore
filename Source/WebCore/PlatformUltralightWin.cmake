@@ -6,6 +6,10 @@ include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
 include(platform/Curl.cmake)
 
+if (USE_GSTREAMER)
+    include(platform/GStreamer.cmake)
+endif ()
+
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_BINARY_DIR}/../include/private"
     "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
@@ -113,6 +117,7 @@ list(APPEND WebCore_SOURCES
     platform/ultralight/PlatformScreenUltralight.cpp
     platform/ultralight/PreserveSymbolsUltralight.cpp
     platform/ultralight/RenderThemeUltralight.cpp
+    platform/ultralight/ResourceLoaderUltralight.cpp
     platform/ultralight/ResourceUsageOverlayUltralight.cpp
     platform/ultralight/ScrollbarThemeUltralight.cpp
     platform/ultralight/SharedBufferUltralight.cpp
@@ -125,6 +130,13 @@ list(APPEND WebCore_SOURCES
     platform/win/SSLKeyGeneratorWin.cpp
     platform/win/WebCoreInstanceHandle.cpp
 )
+
+if (USE_GSTREAMER)
+    list(APPEND WebCore_SOURCES
+        platform/graphics/gstreamer/ImageGStreamerUltralight.cpp
+        platform/audio/ultralight/AudioBusUltralight.cpp
+    )
+endif ()
 
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
     ${WEBCORE_DIR}/css/themeWin.css
@@ -246,6 +258,12 @@ endif ()
 if (WINDOWS_DESKTOP_PLATFORM)
     list(APPEND WebCore_LIBRARIES
         bcrypt
+    )
+endif ()
+
+if (USE_GSTREAMER)
+    list(APPEND WebCore_LIBRARIES
+        gstreamer-full-1.0
     )
 endif ()
 

@@ -2700,7 +2700,7 @@ bool EventHandler::isInsideScrollbar(const IntPoint& windowPoint) const
     return false;
 }
 
-#if !USE(GLIB)
+#if !USE(GLIB) || USE(ULTRALIGHT)
 
 bool EventHandler::shouldSwapScrollDirection(const HitTestResult&, const PlatformWheelEvent&) const
 {

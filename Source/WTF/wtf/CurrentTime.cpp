@@ -257,7 +257,7 @@ WallTime WallTime::now()
 
 MonotonicTime MonotonicTime::now()
 {
-#if USE(GLIB)
+#if USE(GLIB) && !PLATFORM(ULTRALIGHT)
     return fromRawSeconds(static_cast<double>(g_get_monotonic_time() / 1000000.0));
 #elif OS(DARWIN)
     // Based on listing #2 from Apple QA 1398, but modified to be thread-safe.

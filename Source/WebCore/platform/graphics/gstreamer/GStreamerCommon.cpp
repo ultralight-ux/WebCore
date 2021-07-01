@@ -55,6 +55,11 @@
 #include "WebKitWebSourceGStreamer.h"
 #endif
 
+// Forward declaration of internal GST API.
+G_BEGIN_DECLS
+GST_API void gst_init_static_plugins(void);
+G_END_DECLS
+
 namespace WebCore {
 
 GstPad* webkitGstGhostPadFromStaticTemplate(GstStaticPadTemplate* staticPadTemplate, const gchar* name, GstPad* target)
@@ -242,6 +247,9 @@ bool initializeGStreamer(Optional<Vector<String>>&& options)
         isGStreamerInitialized = gst_init_check(&argc, &argv, &error.outPtr());
         ASSERT_WITH_MESSAGE(isGStreamerInitialized, "GStreamer initialization failed: %s", error ? error->message : "unknown error occurred");
         g_strfreev(argv);
+
+        if (isGStreamerInitialized)
+            gst_init_static_plugins();
 
         if (isFastMallocEnabled()) {
             const char* disableFastMalloc = getenv("WEBKIT_GST_DISABLE_FAST_MALLOC");

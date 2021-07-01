@@ -67,7 +67,7 @@ class ImageGStreamer : public RefCounted<ImageGStreamer> {
         ImageGStreamer(GstSample*);
         RefPtr<BitmapImage> m_image;
         FloatRect m_cropRect;
-#if USE(CAIRO)
+#if USE(CAIRO) || USE(ULTRALIGHT)
         GstVideoFrame m_videoFrame;
         bool m_frameMapped { false };
 #endif

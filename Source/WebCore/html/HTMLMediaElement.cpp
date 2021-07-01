@@ -6875,6 +6875,7 @@ void HTMLMediaElement::applyMediaFragmentURI()
 
 void HTMLMediaElement::updateSleepDisabling()
 {
+#if !USE(ULTRALIGHT)
     SleepType shouldDisableSleep = this->shouldDisableSleep();
     if (shouldDisableSleep == SleepType::None && m_sleepDisabler)
         m_sleepDisabler = nullptr;
@@ -6886,6 +6887,7 @@ void HTMLMediaElement::updateSleepDisabling()
 
     if (m_player)
         m_player->setShouldDisableSleep(shouldDisableSleep == SleepType::Display);
+#endif
 }
 
 #if ENABLE(MEDIA_STREAM)
@@ -7381,6 +7383,11 @@ void HTMLMediaElement::didAddUserAgentShadowRoot(ShadowRoot& root)
             return false;
 
         auto controllerValue = JSC::call(&exec, function, callType, callData, &globalObject, argList);
+        auto exception = scope.exception();
+        if (exception) {
+            auto eStr = exception->value().toWTFString(&exec);
+            size_t eStrLen = eStr.length();
+        }
         scope.clearException();
         auto* controllerObject = JSC::jsDynamicCast<JSC::JSObject*>(vm, controllerValue);
         if (!controllerObject)

@@ -53,6 +53,12 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/StringConcatenateNumbers.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/Config.h>
+#include "StringUltralight.h"
+#endif
+
 #if ENABLE(MEDIA_STREAM)
 #include "GStreamerMediaStreamSource.h"
 #endif
@@ -1300,6 +1306,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
         break;
     case GST_MESSAGE_ELEMENT:
         if (gst_is_missing_plugin_message(message)) {
+#if !USE(ULTRALIGHT)
             if (gst_install_plugins_supported()) {
                 auto missingPluginCallback = MediaPlayerRequestInstallMissingPluginsCallback::create([weakThis = makeWeakPtr(*this)](uint32_t result, MediaPlayerRequestInstallMissingPluginsCallback& missingPluginCallback) {
                     if (!weakThis) {
@@ -1321,6 +1328,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
                 GUniquePtr<char> description(gst_missing_plugin_message_get_description(message));
                 m_player->client().requestInstallMissingPlugins(String::fromUTF8(detail.get()), String::fromUTF8(description.get()), missingPluginCallback.get());
             }
+#endif
         }
 #if ENABLE(VIDEO_TRACK) && USE(GSTREAMER_MPEGTS)
         else if (GstMpegtsSection* section = gst_message_parse_mpegts_section(message)) {
@@ -1788,7 +1796,15 @@ void MediaPlayerPrivateGStreamer::uriDecodeBinElementAddedCallback(GstBin* bin, 
     GUniqueOutPtr<char> oldDownloadTemplate;
     g_object_get(element, "temp-template", &oldDownloadTemplate.outPtr(), nullptr);
 
+#if USE(ULTRALIGHT)
+    auto& config = ultralight::Platform::instance().config();
+    WTF::String cache_path = ultralight::Convert(ultralight::Platform::instance().config().cache_path);
+    WTF::String temp_path = WTF::FileSystemImpl::pathByAppendingComponent(cache_path, "WebKit-Media-XXXXXX");
+    
+    GUniquePtr<char> newDownloadTemplate(g_strdup(temp_path.utf8().data()));
+#else
     GUniquePtr<char> newDownloadTemplate(g_build_filename(G_DIR_SEPARATOR_S, "var", "tmp", "WebKit-Media-XXXXXX", nullptr));
+#endif
     g_object_set(element, "temp-template", newDownloadTemplate.get(), nullptr);
     GST_DEBUG_OBJECT(player->pipeline(), "Reconfigured file download template from '%s' to '%s'", oldDownloadTemplate.get(), newDownloadTemplate.get());
 
@@ -2372,6 +2388,13 @@ AudioSourceProvider* MediaPlayerPrivateGStreamer::audioSourceProvider()
 }
 #endif
 
+static void UpdateTextureMapperFlags(MediaPlayerPrivateGStreamer* player)
+{
+#if USE(GSTREAMER_GL)
+    player->updateTextureMapperFlags();
+#endif
+}
+
 void MediaPlayerPrivateGStreamer::createGSTPlayBin(const URL& url, const String& pipelineName)
 {
     const gchar* playbinName = "playbin";
@@ -2424,7 +2447,8 @@ void MediaPlayerPrivateGStreamer::createGSTPlayBin(const URL& url, const String&
         else if (g_str_has_prefix(elementName.get(), "imxvpudecoder"))
             player->m_videoDecoderPlatform = WebKitGstVideoDecoderPlatform::ImxVPU;
 
-        player->updateTextureMapperFlags();
+        UpdateTextureMapperFlags(player);
+
     }), this);
 
     g_signal_connect_swapped(m_pipeline.get(), "source-setup", G_CALLBACK(sourceSetupCallback), this);

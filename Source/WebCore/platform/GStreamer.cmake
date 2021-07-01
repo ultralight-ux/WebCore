@@ -122,9 +122,9 @@ if (ENABLE_VIDEO)
     endif ()
 
     if (ENABLE_MEDIA_STREAM OR ENABLE_WEB_RTC)
-        if (PC_GSTREAMER_VERSION VERSION_LESS "1.10")
-            message(FATAL_ERROR "GStreamer 1.10 is needed for ENABLE_MEDIA_STREAM or ENABLE_WEB_RTC")
-        else ()
+        #if (PC_GSTREAMER_VERSION VERSION_LESS "1.10")
+        #    message(FATAL_ERROR "GStreamer 1.10 is needed for ENABLE_MEDIA_STREAM or ENABLE_WEB_RTC")
+        #else ()
             list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
                 ${GSTREAMER_CODECPARSERS_INCLUDE_DIRS}
             )
@@ -132,7 +132,7 @@ if (ENABLE_VIDEO)
                 ${GSTREAMER_CODECPARSERS_LIBRARIES}
             )
         endif ()
-    endif ()
+    #endif ()
 endif ()
 
 if (ENABLE_WEB_AUDIO)

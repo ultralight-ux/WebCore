@@ -23,9 +23,137 @@
 #if USE(GSTREAMER)
 #include "ContentType.h"
 #include "GStreamerCommon.h"
-#include <fnmatch.h>
 #include <gst/pbutils/codec-utils.h>
 #include <wtf/PrintStream.h>
+
+////////////////////////////////////////////////////////////////////////////////
+//   Author:    Andy Rushton
+//   Copyright: (c) Southampton University 1999-2004
+//              (c) Andy Rushton           2004 onwards
+//   License:   BSD License, see ../docs/license.html
+//
+//   Simple wildcard matching function.
+//
+//   Code from STLPlus project: https://sourceforge.net/projects/stlplus/
+////////////////////////////////////////////////////////////////////////////////
+
+static bool match_set(const std::string& set, char match)
+{
+    std::string simple_set;
+    for (std::string::const_iterator i = set.begin(); i != set.end(); ++i) {
+        switch (*i) {
+        case '-': {
+            if (i == set.begin()) {
+                simple_set += *i;
+            } else if (i + 1 == set.end()) {
+                return false;
+            } else {
+                // found a set. The first character is already in the result, so first remove it (the set might be empty)
+                simple_set.erase(simple_set.end() - 1);
+                char last = *++i;
+                for (char ch = *(i - 2); ch <= last; ch++) {
+                    simple_set += ch;
+                }
+            }
+            break;
+        }
+        case '\\':
+            if (i + 1 == set.end()) {
+                return false;
+            }
+            simple_set += *++i;
+            break;
+        default:
+            simple_set += *i;
+            break;
+        }
+    }
+    std::string::size_type result = simple_set.find(match);
+    return result != std::string::npos;
+}
+
+static bool match_remainder(const std::string& wild, std::string::const_iterator wildi, const std::string& match, std::string::const_iterator matchi)
+{
+    while (wildi != wild.end() && matchi != match.end()) {
+        switch (*wildi) {
+        case '*': {
+            ++wildi;
+            ++matchi;
+            for (std::string::const_iterator i = matchi; i != match.end(); ++i) {
+                // deal with * at the end of the wildcard - there is no remainder then
+                if (wildi == wild.end()) {
+                    if (i == match.end() - 1)
+                        return true;
+                } else if (match_remainder(wild, wildi, match, i)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        case '[': {
+            // scan for the end of the set using a similar method for avoiding escaped characters
+            bool found = false;
+            std::string::const_iterator end = wildi + 1;
+            for (; !found && end != wild.end(); ++end) {
+                switch (*end) {
+                case ']': {
+                    // found the set, now match with its contents excluding the brackets
+                    if (!match_set(wild.substr(wildi - wild.begin() + 1, end - wildi - 1), *matchi))
+                        return false;
+                    found = true;
+                    break;
+                }
+                case '\\':
+                    if (end == wild.end() - 1)
+                        return false;
+                    ++end;
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (!found)
+                return false;
+            ++matchi;
+            wildi = end;
+            break;
+        }
+        case '?':
+            ++wildi;
+            ++matchi;
+            break;
+        case '\\':
+            if (wildi == wild.end() - 1)
+                return false;
+            ++wildi;
+            if (*wildi != *matchi)
+                return false;
+            ++wildi;
+            ++matchi;
+            break;
+        default:
+            if (*wildi != *matchi)
+                return false;
+            ++wildi;
+            ++matchi;
+            break;
+        }
+    }
+    bool result = wildi == wild.end() && matchi == match.end();
+    return result;
+}
+
+// wild = the wildcard expression
+// match = the string to test against that expression
+// e.g. wildcard("[a-f]*", "fred") returns true
+static bool wildcard(const std::string& wild, const std::string& match)
+{
+    return match_remainder(wild, wild.begin(), match, match.begin());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// End STLplus code
+////////////////////////////////////////////////////////////////////////////////
 
 namespace WebCore {
 
@@ -285,7 +413,7 @@ bool GStreamerRegistryScanner::isCodecSupported(String codec, bool shouldCheckFo
         supported = isAVC1CodecSupported(codec, shouldCheckForHardwareUse);
     else {
         for (const auto& item : m_codecMap) {
-            if (!fnmatch(item.key.string().utf8().data(), codec.utf8().data(), 0)) {
+            if (wildcard(item.key.string().utf8().data(), codec.utf8().data())) {
                 supported = shouldCheckForHardwareUse ? item.value : true;
                 if (supported)
                     break;

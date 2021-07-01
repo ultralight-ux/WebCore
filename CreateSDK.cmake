@@ -75,6 +75,15 @@ set(WEBKITLIBRARIES_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries")
 
 INSTALL(FILES "${WEBKITLIBRARIES_DIR}/bin/icudt67l.dat" DESTINATION "bin/resources/")
 
+if (USE_GSTREAMER)
+    set(MEDIACONTROLS_ASSETS
+      "${PROJECT_SOURCE_DIR}/Source/WebCore/Modules/mediacontrols/mediaControls.css"
+      "${PROJECT_SOURCE_DIR}/Source/WebCore/Modules/mediacontrols/mediaControls.js"
+      "${PROJECT_SOURCE_DIR}/Source/WebCore/Modules/mediacontrols/mediaControlsLocalizedStrings.js"
+    )
+    INSTALL(FILES ${MEDIACONTROLS_ASSETS} DESTINATION "bin/resources/")
+endif ()
+
 if (PORT MATCHES "UltralightLinux")
     set(PLATFORM "linux")
 elseif (PORT MATCHES "UltralightMac")

@@ -104,11 +104,12 @@ AppendPipeline::AppendPipeline(Ref<MediaSourceClientGStreamerMSE> mediaSourceCli
     , m_sourceBufferPrivate(sourceBufferPrivate.get())
     , m_playerPrivate(&playerPrivate)
     , m_id(0)
-    , m_wasBusAlreadyNotifiedOfAvailableSamples(false)
     , m_streamType(Unknown)
 {
     ASSERT(isMainThread());
     std::call_once(s_staticInitializationFlag, AppendPipeline::staticInitialization);
+
+    m_wasBusAlreadyNotifiedOfAvailableSamples.clear();
 
     GST_TRACE("Creating AppendPipeline (%p)", this);
 
@@ -164,11 +165,13 @@ AppendPipeline::AppendPipeline(Ref<MediaSourceClientGStreamerMSE> mediaSourceCli
         if (isMainThread()) {
             // When changing the pipeline state down to READY the demuxer is unlinked and this triggers a caps notification
             // because the appsink loses its previously negotiated caps. We are not interested in these unnegotiated caps.
+            /*
 #ifndef NDEBUG
             GRefPtr<GstPad> pad = adoptGRef(gst_element_get_static_pad(appendPipeline->m_appsink.get(), "sink"));
             GRefPtr<GstCaps> caps = adoptGRef(gst_pad_get_current_caps(pad.get()));
             ASSERT(!caps);
 #endif
+*/
             return;
         }
 

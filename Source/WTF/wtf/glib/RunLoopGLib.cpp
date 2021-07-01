@@ -123,6 +123,19 @@ void RunLoop::wakeUp()
     g_source_set_ready_time(m_source.get(), 0);
 }
 
+void RunLoop::iterate()
+{
+    RunLoop& runLoop = RunLoop::current();
+    GMainContext* mainContext = runLoop.m_mainContext.get();
+
+    // The innermost main loop should always be there.
+    ASSERT(!runLoop.m_mainLoops.isEmpty());
+
+    g_main_context_push_thread_default(mainContext);
+    g_main_context_iteration(mainContext, false);
+    g_main_context_pop_thread_default(mainContext);
+}
+
 class DispatchAfterContext {
     WTF_MAKE_FAST_ALLOCATED;
 public:
