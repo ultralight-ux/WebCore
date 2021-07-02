@@ -63,7 +63,7 @@ struct FileMetadata;
 namespace FileSystemImpl {
 
 // PlatformFileHandle
-#if USE(GLIB) && !OS(WINDOWS)
+#if USE(GLIB) && !USE(ULTRALIGHT)
 typedef GFileIOStream* PlatformFileHandle;
 const PlatformFileHandle invalidPlatformFileHandle = 0;
 #elif OS(WINDOWS)

@@ -91,7 +91,7 @@ private:
 
     void interpolateFrequencyComponents(const FFTFrame& frame1, const FFTFrame& frame2, double x);
 
-#if USE(ACCELERATE)
+#if USE(ACCELERATE) && !USE(ULTRALIGHT)
     DSPSplitComplex& dspSplitComplex() { return m_frame; }
     DSPSplitComplex dspSplitComplex() const { return m_frame; }
 

@@ -74,6 +74,7 @@ file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${WTF_DIR}/wtf/text/*.h ${DER
 file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${WTF_DIR}/wtf/text/icu/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf/text/icu/ 2>/dev/null\n")
 file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${WTF_DIR}/wtf/threads/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf/threads/ 2>/dev/null\n")
 file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${WTF_DIR}/wtf/unicode/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf/unicode/ 2>/dev/null\n")
+file(APPEND "${BUILD_TMP}/preBuild.sh" "rsync -aqW ${WTF_DIR}/wtf/glib/*.h ${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf/glib/ 2>/dev/null\n")
 
 # Copy bash scripts over and chmod to executable
 file (COPY "${BUILD_TMP}/preBuild.sh" DESTINATION "${DERIVED_SOURCES_DIR}/wtf" FILE_PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ)

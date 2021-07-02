@@ -30,7 +30,9 @@
 #include <glib.h>
 
 extern "C" void g_object_unref(gpointer);
+#ifndef g_object_ref_sink
 extern "C" gpointer g_object_ref_sink(gpointer);
+#endif
 
 namespace WTF {
 
