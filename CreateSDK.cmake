@@ -82,6 +82,52 @@ if (USE_GSTREAMER)
       "${PROJECT_SOURCE_DIR}/Source/WebCore/Modules/mediacontrols/mediaControlsLocalizedStrings.js"
     )
     INSTALL(FILES ${MEDIACONTROLS_ASSETS} DESTINATION "bin/resources/")
+
+    if (PORT MATCHES "UltralightLinux")
+      set(GSTREAMER_FILES
+        "${GSTREAMER_DIR}/lib/libgstreamer-full-1.0.so"
+        "${GSTREAMER_DIR}/lib/libgio-2.0.so"
+        "${GSTREAMER_DIR}/lib/libgio-2.0.so.0"
+        "${GSTREAMER_DIR}/lib/libgio-2.0.so.0.6800.3"
+        "${GSTREAMER_DIR}/lib/libglib-2.0.so"
+        "${GSTREAMER_DIR}/lib/libglib-2.0.so.0"
+        "${GSTREAMER_DIR}/lib/libglib-2.0.so.0.6800.3"
+        "${GSTREAMER_DIR}/lib/libgmodule-2.0.so"
+        "${GSTREAMER_DIR}/lib/libgmodule-2.0.so.0"
+        "${GSTREAMER_DIR}/lib/libgmodule-2.0.so.0.6800.3"
+        "${GSTREAMER_DIR}/lib/libgobject-2.0.so"
+        "${GSTREAMER_DIR}/lib/libgobject-2.0.so.0"
+        "${GSTREAMER_DIR}/lib/libgobject-2.0.so.0.6800.3"
+        "${GSTREAMER_DIR}/lib/libgthread-2.0.so"
+        "${GSTREAMER_DIR}/lib/libgthread-2.0.so.0"
+        "${GSTREAMER_DIR}/lib/libgthread-2.0.so.0.6800.3"
+      )
+    elseif (PORT MATCHES "UltralightMac")
+      set(GSTREAMER_FILES
+        "${GSTREAMER_DIR}/lib/libgstreamer-full-1.0.dylib"
+        "${GSTREAMER_DIR}/lib/libgio-2.0.dylib"
+        "${GSTREAMER_DIR}/lib/libgio-2.0.0.dylib"
+        "${GSTREAMER_DIR}/lib/libglib-2.0.dylib"
+        "${GSTREAMER_DIR}/lib/libglib-2.0.0.dylib"
+        "${GSTREAMER_DIR}/lib/libgmodule-2.0.dylib"
+        "${GSTREAMER_DIR}/lib/libgmodule-2.0.0.dylib"
+        "${GSTREAMER_DIR}/lib/libgobject-2.0.dylib"
+        "${GSTREAMER_DIR}/lib/libgobject-2.0.0.dylib"
+        "${GSTREAMER_DIR}/lib/libgthread-2.0.dylib"
+        "${GSTREAMER_DIR}/lib/libgthread-2.0.0.dylib"
+      )
+    elseif (PORT MATCHES "UltralightWin")
+      set(GSTREAMER_FILES
+        "${GSTREAMER_DIR}/bin/gstreamer-full-1.0.dll"
+        "${GSTREAMER_DIR}/bin/gio-2.0-0.dll"
+        "${GSTREAMER_DIR}/bin/glib-2.0-0.dll"
+        "${GSTREAMER_DIR}/bin/gmodule-2.0-0.dll"
+        "${GSTREAMER_DIR}/bin/gobject-2.0-0.dll"
+        "${GSTREAMER_DIR}/bin/gthread-2.0-0.dll"
+      )
+    endif ()
+
+    INSTALL(FILES ${GSTREAMER_FILES} DESTINATION "bin/")
 endif ()
 
 if (PORT MATCHES "UltralightLinux")
