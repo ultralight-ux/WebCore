@@ -5,8 +5,8 @@ WEBKIT_OPTION_END()
 
 include(UltralightDefinitions)
 
-set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/libicuuc.a
-                  ${WEBKIT_LIBRARIES_DIR}/lib/libicuin.a
+set(ICU_LIBRARIES ${WEBKIT_LIBRARIES_DIR}/lib/libicuin.a
+                  ${WEBKIT_LIBRARIES_DIR}/lib/libicuuc.a
                   ${WEBKIT_LIBRARIES_DIR}/lib/libicudt.a)
 
 set(USE_GLIB 1)
