@@ -24,7 +24,7 @@ elseif (PORT MATCHES "UltralightWin")
 endif ()
 
 set(WEBCORE_DEPS_REV "1.3")
-set(GSTREAMER_REV "v1")
+set(GSTREAMER_REV "v2")
 set(ULTRALIGHTCORE_REV "712536b6")
 
 if(${USE_LOCAL_DEPS})
