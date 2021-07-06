@@ -658,7 +658,12 @@ void MediaPlayerPrivateGStreamerBase::muteChangedCallback(MediaPlayerPrivateGStr
 
 void MediaPlayerPrivateGStreamerBase::acceleratedRenderingStateChanged()
 {
+#if USE(ULTRALIGHT)
+    // Forcing this to false on Ultralight platform so the repaint timer works correctly.
+    m_renderingCanBeAccelerated = false;
+#else
     m_renderingCanBeAccelerated = m_player && m_player->client().mediaPlayerAcceleratedCompositingEnabled();
+#endif
 }
 
 #if USE(TEXTURE_MAPPER_GL)
