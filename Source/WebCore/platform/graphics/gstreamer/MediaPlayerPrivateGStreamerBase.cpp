@@ -53,6 +53,10 @@
 #include "WebKitCommonEncryptionDecryptorGStreamer.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include "platform/graphics/ultralight/PlatformContextUltralight.h"
+#endif
+
 #if USE(GSTREAMER_GL)
 #if G_BYTE_ORDER == G_LITTLE_ENDIAN
 #define GST_GL_CAPS_FORMAT "{ BGRx, BGRA }"
@@ -894,7 +898,12 @@ void MediaPlayerPrivateGStreamerBase::paint(GraphicsContext& context, const Floa
     if (!gstImage)
         return;
 
+#if USE(ULTRALIGHT)
+    ultralight::Rect ulRect = { rect.x(), rect.y(), rect.maxX(), rect.maxY() };
+    context.platformContext()->canvas()->DrawVideoFrame(gstImage->videoFrame(), ulRect);
+#else
     context.drawImage(gstImage->image(), rect, gstImage->rect(), paintingOptions);
+#endif
 }
 
 #if USE(GSTREAMER_GL)

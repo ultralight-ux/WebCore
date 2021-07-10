@@ -33,45 +33,61 @@
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
+#include <Ultralight/private/VideoFrame.h>
+
 namespace WebCore {
 class IntSize;
 
 class ImageGStreamer : public RefCounted<ImageGStreamer> {
-    public:
-        static RefPtr<ImageGStreamer> createImage(GstSample* sample)
-        {
-            auto image = adoptRef(new ImageGStreamer(sample));
-            if (!image->m_image)
-                return nullptr;
-
-            return image;
-        }
-        ~ImageGStreamer();
-
-        BitmapImage& image()
-        {
-            ASSERT(m_image);
-            return *m_image.get();
-        }
-
-        void setCropRect(FloatRect rect) { m_cropRect = rect; }
-        FloatRect rect()
-        {
-            ASSERT(m_image);
-            if (!m_cropRect.isEmpty())
-                return FloatRect(m_cropRect);
-            return FloatRect(0, 0, m_image->size().width(), m_image->size().height());
-        }
-
-    private:
-        ImageGStreamer(GstSample*);
-        RefPtr<BitmapImage> m_image;
-        FloatRect m_cropRect;
-#if USE(CAIRO) || USE(ULTRALIGHT)
-        GstVideoFrame m_videoFrame;
-        bool m_frameMapped { false };
+public:
+    static RefPtr<ImageGStreamer> createImage(GstSample* sample)
+    {
+        auto image = adoptRef(new ImageGStreamer(sample));
+#if USE(ULTRALIGHT)
+        if (!image->m_videoFrame)
+            return nullptr;
+#else
+        if (!image->m_image)
+            return nullptr;
 #endif
-    };
+
+        return image;
+    }
+    ~ImageGStreamer();
+
+#if USE(ULTRALIGHT)
+    ultralight::RefPtr<ultralight::VideoFrame> videoFrame() { return m_videoFrame; }
+#else
+    BitmapImage& image()
+    {
+        ASSERT(m_image);
+        return *m_image.get();
+    }
+
+    void setCropRect(FloatRect rect) { m_cropRect = rect; }
+    FloatRect rect()
+    {
+        ASSERT(m_image);
+        if (!m_cropRect.isEmpty())
+            return FloatRect(m_cropRect);
+        return FloatRect(0, 0, m_image->size().width(), m_image->size().height());
+    }
+#endif
+
+private:
+    ImageGStreamer(GstSample*);
+#if USE(ULTRALIGHT)
+    ultralight::RefPtr<ultralight::VideoFrame> m_videoFrame;
+#else
+    RefPtr<BitmapImage> m_image;
+    FloatRect m_cropRect;
+#endif
+
+#if USE(CAIRO)
+    GstVideoFrame m_videoFrame;
+    bool m_frameMapped { false };
+#endif
+};
 }
 
 #endif // USE(GSTREAMER)
