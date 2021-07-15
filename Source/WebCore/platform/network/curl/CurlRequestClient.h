@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2021 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,6 +27,7 @@
 #pragma once
 
 #include <wtf/Ref.h>
+#include <wtf/lockfree/ReaderWriterQueue.h>
 
 namespace WebCore {
 
@@ -43,9 +45,10 @@ public:
 
     virtual void curlDidSendData(CurlRequest&, unsigned long long bytesSent, unsigned long long totalBytesToBeSent) = 0;
     virtual void curlDidReceiveResponse(CurlRequest&, CurlResponse&&) = 0;
-    virtual void curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&&) = 0;
     virtual void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) = 0;
     virtual void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) = 0;
+
+    virtual void curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue) = 0;
 };
 
 } // namespace WebCore

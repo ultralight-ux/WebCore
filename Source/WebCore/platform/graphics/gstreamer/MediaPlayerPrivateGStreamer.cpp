@@ -88,9 +88,52 @@
 #include "AudioSourceProviderGStreamer.h"
 #endif
 
+// Set the below line to '1' to enable debug logging.
+#if 0
 GST_DEBUG_CATEGORY_EXTERN(webkit_media_player_debug);
 #define GST_CAT_DEFAULT webkit_media_player_debug
 
+#define GST_CAT_LEVEL_LOG(cat, level, object, ...)                               \
+    G_STMT_START                                                                 \
+    {                                                                            \
+        if (level <= GST_LEVEL_INFO) {                                                              \
+            printf(__VA_ARGS__); printf("\n");                                   \
+        }                                                                        \
+    }                                                                            \
+    G_STMT_END
+
+#define GST_CAT_ERROR_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_ERROR, obj, __VA_ARGS__)
+#define GST_CAT_WARNING_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_WARNING, obj, __VA_ARGS__)
+#define GST_CAT_INFO_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_INFO, obj, __VA_ARGS__)
+#define GST_CAT_DEBUG_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_DEBUG, obj, __VA_ARGS__)
+#define GST_CAT_LOG_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_LOG, obj, __VA_ARGS__)
+#define GST_CAT_FIXME_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_FIXME, obj, __VA_ARGS__)
+#define GST_CAT_TRACE_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_TRACE, obj, __VA_ARGS__)
+
+#define GST_CAT_ERROR(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_ERROR, NULL, __VA_ARGS__)
+#define GST_CAT_WARNING(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_WARNING, NULL, __VA_ARGS__)
+#define GST_CAT_INFO(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_INFO, NULL, __VA_ARGS__)
+#define GST_CAT_DEBUG(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_DEBUG, NULL, __VA_ARGS__)
+#define GST_CAT_LOG(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_LOG, NULL, __VA_ARGS__)
+#define GST_CAT_FIXME(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_FIXME, NULL, __VA_ARGS__)
+#define GST_CAT_TRACE(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_TRACE, NULL, __VA_ARGS__)
+
+#define GST_ERROR_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_ERROR, obj, __VA_ARGS__)
+#define GST_WARNING_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_WARNING, obj, __VA_ARGS__)
+#define GST_INFO_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_INFO, obj, __VA_ARGS__)
+#define GST_DEBUG_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_DEBUG, obj, __VA_ARGS__)
+#define GST_LOG_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_LOG, obj, __VA_ARGS__)
+#define GST_FIXME_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_FIXME, obj, __VA_ARGS__)
+#define GST_TRACE_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_TRACE, obj, __VA_ARGS__)
+
+#define GST_ERROR(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_ERROR, NULL, __VA_ARGS__)
+#define GST_WARNING(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_WARNING, NULL, __VA_ARGS__)
+#define GST_INFO(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_INFO, NULL, __VA_ARGS__)
+#define GST_DEBUG(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_DEBUG, NULL, __VA_ARGS__)
+#define GST_LOG(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_LOG, NULL, __VA_ARGS__)
+#define GST_FIXME(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_FIXME, NULL, __VA_ARGS__)
+#define GST_TRACE(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_TRACE, NULL, __VA_ARGS__)
+#endif
 
 namespace WebCore {
 using namespace std;
@@ -1491,16 +1534,21 @@ void MediaPlayerPrivateGStreamer::updateMaxTimeLoaded(double percentage)
 
 void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, double percentage)
 {
-    GST_DEBUG_OBJECT(pipeline(), "[Buffering] mode: %s, status: %f%%", enumToString(GST_TYPE_BUFFERING_MODE, mode).data(), percentage);
+    if (mode != GST_BUFFERING_TIMESHIFT)
+        return;
+
+    //GST_INFO_OBJECT(pipeline(), "[Buffering] mode: %s, status: %f%%", enumToString(GST_TYPE_BUFFERING_MODE, mode).data(), percentage);
 
     m_downloadFinished = percentage == 100;
-    m_buffering = !m_downloadFinished;
+    if (percentage < 15.0) {
+        m_buffering = true;
+    }
+    m_bufferingPercentage = percentage;
 
     switch (mode) {
     case GST_BUFFERING_STREAM: {
         updateMaxTimeLoaded(percentage);
 
-        m_bufferingPercentage = percentage;
         if (m_downloadFinished)
             updateStates();
 
@@ -1511,14 +1559,19 @@ void MediaPlayerPrivateGStreamer::updateBufferingStatus(GstBufferingMode mode, d
 
         // Media is now fully loaded. It will play even if network connection is
         // cut. Buffering is done, remove the fill source from the main loop.
-        if (m_downloadFinished)
+        if (m_isEndReached)
             m_fillTimer.stop();
 
         updateStates();
         break;
     }
+    case GST_BUFFERING_TIMESHIFT: {
+        updateMaxTimeLoaded(percentage);
+        updateStates();
+        break;
+    }
     default:
-        GST_DEBUG_OBJECT(pipeline(), "Unhandled buffering mode: %s", enumToString(GST_TYPE_BUFFERING_MODE, mode).data());
+        GST_INFO_OBJECT(pipeline(), "Unhandled buffering mode: %s", enumToString(GST_TYPE_BUFFERING_MODE, mode).data());
         break;
     }
 }
@@ -1647,15 +1700,26 @@ void MediaPlayerPrivateGStreamer::purgeInvalidTextTracks(Vector<String> validTra
 
 void MediaPlayerPrivateGStreamer::fillTimerFired()
 {
+    //return;
     GRefPtr<GstQuery> query = adoptGRef(gst_query_new_buffering(GST_FORMAT_PERCENT));
     double fillStatus = 100.0;
-    GstBufferingMode mode = GST_BUFFERING_DOWNLOAD;
+    GstBufferingMode mode = GST_BUFFERING_TIMESHIFT;
 
-    if (gst_element_query(m_source.get(), query.get())) {
-        gst_query_parse_buffering_stats(query.get(), &mode, nullptr, nullptr, nullptr);
+    bool useMediaSource = isMediaSource();
+    GstElement* element = useMediaSource ? m_source.get() : m_pipeline.get();
+    if (gst_element_query(element, query.get())) {
+        int avg_in = 0;
+        int avg_out = 0;
+        gint64 buf_left = 0;
+        gst_query_parse_buffering_stats(query.get(), &mode, &avg_in, &avg_out, &buf_left);
 
         int percentage;
-        gst_query_parse_buffering_percent(query.get(), nullptr, &percentage);
+        gboolean buf_busy = false;
+        gst_query_parse_buffering_percent(query.get(), &buf_busy, &percentage);
+
+        //GST_INFO_OBJECT(pipeline(), "[Buffering] mode: %s, avg_in: %i, avg_out: %i, buf_left: %lli, busy: %i, percent: %i%%",
+        //    enumToString(GST_TYPE_BUFFERING_MODE, mode).data(), avg_in, avg_out, buf_left, buf_busy, percentage);
+
         fillStatus = percentage;
     } else if (m_httpResponseTotalSize) {
         GST_DEBUG_OBJECT(pipeline(), "[Buffering] Query failed, falling back to network read position estimation");
@@ -1975,7 +2039,7 @@ void MediaPlayerPrivateGStreamer::updateStates()
         case GST_STATE_PLAYING:
             if (m_buffering) {
                 if (m_bufferingPercentage == 100) {
-                    GST_DEBUG_OBJECT(pipeline(), "[Buffering] Complete.");
+                    GST_INFO_OBJECT(pipeline(), "[Buffering] Complete.");
                     m_buffering = false;
                     m_readyState = MediaPlayer::HaveEnoughData;
                     m_networkState = m_downloadFinished ? MediaPlayer::Idle : MediaPlayer::Loading;
@@ -2006,14 +2070,14 @@ void MediaPlayerPrivateGStreamer::updateStates()
             }
 
             if (didBuffering && !m_buffering && !m_paused && m_playbackRate) {
-                GST_DEBUG_OBJECT(pipeline(), "[Buffering] Restarting playback.");
+                GST_INFO_OBJECT(pipeline(), "[Buffering] Restarting playback.");
                 changePipelineState(GST_STATE_PLAYING);
             }
         } else if (m_currentState == GST_STATE_PLAYING) {
             m_paused = false;
 
             if ((m_buffering && !isLiveStream()) || !m_playbackRate) {
-                GST_DEBUG_OBJECT(pipeline(), "[Buffering] Pausing stream for buffering.");
+                GST_INFO_OBJECT(pipeline(), "[Buffering] Pausing stream for buffering.");
                 changePipelineState(GST_STATE_PAUSED);
             }
         } else
@@ -2037,15 +2101,15 @@ void MediaPlayerPrivateGStreamer::updateStates()
         break;
     }
     case GST_STATE_CHANGE_ASYNC:
-        GST_DEBUG_OBJECT(pipeline(), "Async: State: %s, pending: %s", gst_element_state_get_name(m_currentState), gst_element_state_get_name(pending));
+        GST_INFO_OBJECT(pipeline(), "Async: State: %s, pending: %s", gst_element_state_get_name(m_currentState), gst_element_state_get_name(pending));
         // Change in progress.
         break;
     case GST_STATE_CHANGE_FAILURE:
-        GST_DEBUG_OBJECT(pipeline(), "Failure: State: %s, pending: %s", gst_element_state_get_name(m_currentState), gst_element_state_get_name(pending));
+        GST_INFO_OBJECT(pipeline(), "Failure: State: %s, pending: %s", gst_element_state_get_name(m_currentState), gst_element_state_get_name(pending));
         // Change failed
         return;
     case GST_STATE_CHANGE_NO_PREROLL:
-        GST_DEBUG_OBJECT(pipeline(), "No preroll: State: %s, pending: %s", gst_element_state_get_name(m_currentState), gst_element_state_get_name(pending));
+        GST_INFO_OBJECT(pipeline(), "No preroll: State: %s, pending: %s", gst_element_state_get_name(m_currentState), gst_element_state_get_name(pending));
 
         // Live pipelines go in PAUSED without prerolling.
         m_isStreaming = true;
@@ -2065,7 +2129,7 @@ void MediaPlayerPrivateGStreamer::updateStates()
         m_networkState = MediaPlayer::Loading;
         break;
     default:
-        GST_DEBUG_OBJECT(pipeline(), "Else : %d", getStateResult);
+        GST_INFO_OBJECT(pipeline(), "Else : %d", getStateResult);
         break;
     }
 
@@ -2075,23 +2139,23 @@ void MediaPlayerPrivateGStreamer::updateStates()
         m_player->playbackStateChanged();
 
     if (m_networkState != oldNetworkState) {
-        GST_DEBUG_OBJECT(pipeline(), "Network State Changed from %s to %s", convertEnumerationToString(oldNetworkState).utf8().data(), convertEnumerationToString(m_networkState).utf8().data());
+        GST_INFO_OBJECT(pipeline(), "Network State Changed from %s to %s", convertEnumerationToString(oldNetworkState).utf8().data(), convertEnumerationToString(m_networkState).utf8().data());
         m_player->networkStateChanged();
     }
     if (m_readyState != oldReadyState) {
-        GST_DEBUG_OBJECT(pipeline(), "Ready State Changed from %s to %s", convertEnumerationToString(oldReadyState).utf8().data(), convertEnumerationToString(m_readyState).utf8().data());
+        GST_INFO_OBJECT(pipeline(), "Ready State Changed from %s to %s", convertEnumerationToString(oldReadyState).utf8().data(), convertEnumerationToString(m_readyState).utf8().data());
         m_player->readyStateChanged();
     }
 
     if (getStateResult == GST_STATE_CHANGE_SUCCESS && m_currentState >= GST_STATE_PAUSED) {
         updatePlaybackRate();
         if (m_seekIsPending) {
-            GST_DEBUG_OBJECT(pipeline(), "[Seek] committing pending seek to %s", toString(m_seekTime).utf8().data());
+            GST_INFO_OBJECT(pipeline(), "[Seek] committing pending seek to %s", toString(m_seekTime).utf8().data());
             m_seekIsPending = false;
             m_seeking = doSeek(m_seekTime, m_player->rate(), static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE));
             if (!m_seeking) {
                 m_cachedPosition = MediaTime::invalidTime();
-                GST_DEBUG_OBJECT(pipeline(), "[Seek] seeking to %s failed", toString(m_seekTime).utf8().data());
+                GST_INFO_OBJECT(pipeline(), "[Seek] seeking to %s failed", toString(m_seekTime).utf8().data());
             }
         }
     }
@@ -2217,6 +2281,8 @@ void MediaPlayerPrivateGStreamer::didEnd()
 {
     GST_INFO_OBJECT(pipeline(), "Playback ended");
 
+    updateStates();
+
     // Synchronize position and duration values to not confuse the
     // HTMLMediaElement. In some cases like reverse playback the
     // position is not always reported as 0 for instance.
@@ -2321,14 +2387,26 @@ void MediaPlayerPrivateGStreamer::updateDownloadBufferingFlag()
     }
 
     bool shouldDownload = !isLiveStream() && m_preload == MediaPlayer::Auto;
+
+#if USE(ULTRALIGHT)
+    // Disable on-disk buffering in Ultralight port
+    shouldDownload = false;
+#endif
+
     if (shouldDownload) {
         GST_INFO_OBJECT(pipeline(), "Enabling on-disk buffering");
-        g_object_set(m_pipeline.get(), "flags", flags | flagDownload, nullptr);
+        g_object_set(m_pipeline.get(), "flags", flags | flagDownload, nullptr);  
         m_fillTimer.startRepeating(200_ms);
     } else {
         GST_INFO_OBJECT(pipeline(), "Disabling on-disk buffering");
         g_object_set(m_pipeline.get(), "flags", flags & ~flagDownload, nullptr);
-        m_fillTimer.stop();
+
+        // Adjust these values to control buffering behavior / RAM limits.
+        g_object_set(m_pipeline.get(), "ring-buffer-max-size", (guint64)8388608, NULL);
+        g_object_set(m_pipeline.get(), "buffer-size", (guint64)8388608, NULL);
+        g_object_set(m_pipeline.get(), "buffer-duration", (guint64)4000000000, NULL);
+        //m_fillTimer.stop();
+        m_fillTimer.startRepeating(200_ms);
     }
 }
 
@@ -2435,6 +2513,10 @@ void MediaPlayerPrivateGStreamer::createGSTPlayBin(const URL& url, const String&
     g_signal_connect(bus.get(), "message", G_CALLBACK(busMessageCallback), this);
 
     g_object_set(m_pipeline.get(), "mute", m_player->muted(), nullptr);
+
+    g_object_set(m_pipeline.get(), "ring-buffer-max-size", (guint64)8388608, NULL);
+    g_object_set(m_pipeline.get(), "buffer-size", (guint64)8388608, NULL);
+    g_object_set(m_pipeline.get(), "buffer-duration", (guint64)4000000000, NULL);
 
     g_signal_connect(GST_BIN_CAST(m_pipeline.get()), "deep-element-added", G_CALLBACK(+[](GstBin*, GstBin* subBin, GstElement* element, MediaPlayerPrivateGStreamer* player) {
         GUniquePtr<char> binName(gst_element_get_name(GST_ELEMENT_CAST(subBin)));

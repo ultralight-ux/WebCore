@@ -56,6 +56,7 @@ void CurlRequest::invalidateClient()
 {
     ASSERT(isMainThread());
 
+    //auto locker = holdLock(m_clientMutex);
     m_client = nullptr;
     m_messageQueue = nullptr;
 }
@@ -373,6 +374,8 @@ size_t CurlRequest::didReceiveHeader(String&& header)
 
 size_t CurlRequest::didReceiveData(Ref<SharedBuffer>&& buffer)
 {
+    ASSERT(!isMainThread());
+
     if (isCompletedOrCancelled())
         return 0;
 
@@ -392,12 +395,18 @@ size_t CurlRequest::didReceiveData(Ref<SharedBuffer>&& buffer)
     writeDataToDownloadFileIfEnabled(buffer);
 
     if (receiveBytes) {
-        if (m_multipartHandle)
+        if (m_multipartHandle) {
+
             m_multipartHandle->didReceiveData(buffer);
-        else {
-            callClient([buffer = WTFMove(buffer)](CurlRequest& request, CurlRequestClient& client) mutable {
-                client.curlDidReceiveBuffer(request, WTFMove(buffer));
-            });
+        } else {
+            m_receiveBufferQueue.enqueue(std::move(buffer));
+            if (!m_pendingConsumeRequest) {
+                m_pendingConsumeRequest.store(true);
+                callClient([&](CurlRequest& request, CurlRequestClient& client) mutable {
+                    m_pendingConsumeRequest.store(false);
+                    client.curlConsumeReceiveQueue(request, m_receiveBufferQueue);
+                });
+            }
         }
     }
 
@@ -421,15 +430,22 @@ void CurlRequest::didReceiveHeaderFromMultipart(const Vector<String>& headers)
 
 void CurlRequest::didReceiveDataFromMultipart(Ref<SharedBuffer>&& buffer)
 {
+    ASSERT(!isMainThread());
+
     if (isCompletedOrCancelled())
         return;
 
     auto receiveBytes = buffer->size();
 
     if (receiveBytes) {
-        callClient([buffer = WTFMove(buffer)](CurlRequest& request, CurlRequestClient& client) mutable {
-            client.curlDidReceiveBuffer(request, WTFMove(buffer));
-        });
+        m_receiveBufferQueue.enqueue(std::move(buffer));
+        if (!m_pendingConsumeRequest) {
+            m_pendingConsumeRequest.store(true);
+            callClient([=](CurlRequest& request, CurlRequestClient& client) mutable {
+                m_pendingConsumeRequest.store(false);
+                client.curlConsumeReceiveQueue(request, m_receiveBufferQueue);
+            });
+        }
     }
 }
 

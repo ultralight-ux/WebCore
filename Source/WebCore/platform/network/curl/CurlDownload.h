@@ -2,6 +2,7 @@
  * Copyright (C) 2013 Apple Inc.  All rights reserved.
  * Copyright (C) 2017 Sony Interactive Entertainment Inc.
  * Copyright (C) 2017 NAVER Corp.
+ * Copyright (C) 2021 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +34,9 @@
 #include "CurlRequestClient.h"
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
+#include "SharedBuffer.h"
+#include <wtf/Ref.h>
+#include <wtf/Lock.h>
 
 namespace WebCore {
 
@@ -72,9 +76,10 @@ private:
     Ref<CurlRequest> createCurlRequest(ResourceRequest&);
     void curlDidSendData(CurlRequest&, unsigned long long, unsigned long long) override { }
     void curlDidReceiveResponse(CurlRequest&, CurlResponse&&) override;
-    void curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&&) override;
     void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) override;
     void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) override;
+
+    void curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue) override final;
 
     bool shouldRedirectAsGET(const ResourceRequest&, bool crossOrigin);
     void willSendRequest();

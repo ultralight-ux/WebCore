@@ -282,6 +282,10 @@ set(WTF_PUBLIC_HEADERS
     dtoa/strtod.h
     dtoa/utils.h
 
+    lockfree/AtomicOps.h
+    lockfree/ReaderWriterCircularBuffer.h
+    lockfree/ReaderWriterQueue.h
+
     persistence/PersistentCoder.h
     persistence/PersistentCoders.h
     persistence/PersistentDecoder.h

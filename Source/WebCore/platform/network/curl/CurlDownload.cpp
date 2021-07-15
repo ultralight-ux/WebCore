@@ -100,18 +100,6 @@ void CurlDownload::curlDidReceiveResponse(CurlRequest& request, CurlResponse&& r
     request.completeDidReceiveResponse();
 }
 
-
-void CurlDownload::curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&& buffer)
-{
-    ASSERT(isMainThread());
-
-    if (m_isCancelled)
-        return;
-
-    if (m_listener)
-        m_listener->didReceiveDataOfLength(buffer->size());
-}
-
 void CurlDownload::curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&)
 {
     ASSERT(isMainThread());
@@ -140,6 +128,22 @@ void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&, C
 
     if (m_listener)
         m_listener->didFail();
+}
+
+void CurlDownload::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
+{
+    ASSERT(isMainThread());
+
+    if (m_isCancelled)
+        return;
+
+    if (m_listener) {
+        RefPtr<SharedBuffer> buffer;
+        while (queue.try_dequeue(buffer)) {
+            if (buffer->size())
+                m_listener->didReceiveDataOfLength(buffer->size());
+        }
+    }
 }
 
 bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool crossOrigin)
@@ -189,7 +193,7 @@ void CurlDownload::willSendRequest()
 
     if (crossOrigin) {
         // If the network layer carries over authentication headers from the original request
-        // in a cross-origin redirect, we want to clear those headers here. 
+        // in a cross-origin redirect, we want to clear those headers here.
         newRequest.clearHTTPAuthorization();
         newRequest.clearHTTPOrigin();
     }

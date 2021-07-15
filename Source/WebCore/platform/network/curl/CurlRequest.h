@@ -36,6 +36,8 @@
 #include <wtf/MessageQueue.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/Lock.h>
+#include <wtf/lockfree/ReaderWriterQueue.h>
 
 namespace WebCore {
 
@@ -165,6 +167,7 @@ private:
 
 
     CurlRequestClient* m_client { };
+    Lock m_clientMutex;
     Lock m_statusMutex;
     bool m_cancelled { false };
     bool m_completed { false };
@@ -212,6 +215,9 @@ private:
     MonotonicTime m_requestStartTime { MonotonicTime::nan() };
     MonotonicTime m_performStartTime;
     size_t m_totalReceivedSize { 0 };
+
+    WTF::ReaderWriterQueue<RefPtr<SharedBuffer>> m_receiveBufferQueue;
+    std::atomic<bool> m_pendingConsumeRequest = false;
 };
 
 } // namespace WebCore

@@ -4,6 +4,7 @@
  * Copyright (C) 2017 Sony Interactive Entertainment Inc.
  * All rights reserved.
  * Copyright (C) 2017 NAVER Corp.
+ * Copyright (C) 2021 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -143,17 +144,6 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, Cu
     });
 }
 
-void CurlResourceHandleDelegate::curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&& buffer)
-{
-    ASSERT(isMainThread());
-
-    if (cancelledOrClientless())
-        return;
-
-    CurlCacheManager::singleton().didReceiveData(m_handle, buffer->data(), buffer->size());
-    client()->didReceiveBuffer(&m_handle, WTFMove(buffer), buffer->size());
-}
-
 void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&&)
 {
     ASSERT(isMainThread());
@@ -176,6 +166,24 @@ void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceErro
     client()->didFail(&m_handle, resourceError);
 }
 
+void CurlResourceHandleDelegate::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
+{
+    ASSERT(isMainThread());
+
+    if (cancelledOrClientless())
+        return;
+
+    Ref<SharedBuffer> buffer = SharedBuffer::create();
+    RefPtr<SharedBuffer> tempBuffer;
+    while (queue.try_dequeue(tempBuffer)) {
+        buffer->append(*tempBuffer);
+    }
+
+    if (buffer->size()) {
+        CurlCacheManager::singleton().didReceiveData(m_handle, buffer->data(), buffer->size());
+        client()->didReceiveBuffer(&m_handle, WTFMove(buffer), buffer->size());
+    }
+}
 
 } // namespace WebCore
 

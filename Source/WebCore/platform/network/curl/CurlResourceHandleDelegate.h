@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2004, 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2021 Ultralight, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +33,7 @@
 #include <wtf/FastMalloc.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/Ref.h>
+#include <wtf/Lock.h>
 
 namespace WebCore {
 
@@ -48,14 +50,15 @@ public:
 
     // CurlRequestClient methods
 
-    void ref() final;
-    void deref() final;
+    void ref() override final;
+    void deref() override final;
 
-    void curlDidSendData(CurlRequest&, unsigned long long bytesSent, unsigned long long totalBytesToBeSent) final;
-    void curlDidReceiveResponse(CurlRequest&, CurlResponse&&) final;
-    void curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&&) final;
-    void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) final;
-    void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) final;
+    void curlDidSendData(CurlRequest&, unsigned long long bytesSent, unsigned long long totalBytesToBeSent) override final;
+    void curlDidReceiveResponse(CurlRequest&, CurlResponse&&) override final;
+    void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) override final;
+    void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) override final;
+
+    void curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue) override final;
 
 private:
     ResourceHandle& m_handle;
