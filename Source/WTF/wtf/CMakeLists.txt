@@ -542,6 +542,10 @@ endif ()
 
 add_dependencies(WTF WebCoreDeps)
 
+if (USE_GSTREAMER)
+    add_dependencies(WTF GStreamerBin)
+endif ()
+
 
 file(COPY
     ../Scripts/generate-unified-source-bundles.rb

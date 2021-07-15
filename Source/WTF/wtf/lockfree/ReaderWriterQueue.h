@@ -58,11 +58,9 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define LOCKFREE_CACHE_LINE_SIZE 64
 #endif
 
-#define LOCKFREE_EXCEPTIONS_ENABLED 0
-
 #ifndef LOCKFREE_EXCEPTIONS_ENABLED
 #if (defined(_MSC_VER) && defined(_CPPUNWIND)) || (defined(__GNUC__) && defined(__EXCEPTIONS)) || (!defined(_MSC_VER) && !defined(__GNUC__))
-#define LOCKFREE_EXCEPTIONS_ENABLED
+//#define LOCKFREE_EXCEPTIONS_ENABLED
 #endif
 #endif
 
