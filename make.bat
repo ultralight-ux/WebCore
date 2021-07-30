@@ -95,6 +95,7 @@ set "FLAGS=%FLAGS% -DDEBUG_CRT=%DEBUG_CRT%"
 
 if %USE_LOCAL_DEPS%==1 (
   echo Using local dependencies.
+  set "DIRNAME=%DIRNAME%_local"
 ) else (
   echo Fetching dependencies from remote server.
 )
