@@ -87,34 +87,19 @@ if (USE_GSTREAMER)
       set(GSTREAMER_FILES
         "${GSTREAMER_DIR}/lib/libgstreamer-full-1.0.so"
         "${GSTREAMER_DIR}/lib/libgio-2.0.so"
-        "${GSTREAMER_DIR}/lib/libgio-2.0.so.0"
-        "${GSTREAMER_DIR}/lib/libgio-2.0.so.0.6800.3"
         "${GSTREAMER_DIR}/lib/libglib-2.0.so"
-        "${GSTREAMER_DIR}/lib/libglib-2.0.so.0"
-        "${GSTREAMER_DIR}/lib/libglib-2.0.so.0.6800.3"
         "${GSTREAMER_DIR}/lib/libgmodule-2.0.so"
-        "${GSTREAMER_DIR}/lib/libgmodule-2.0.so.0"
-        "${GSTREAMER_DIR}/lib/libgmodule-2.0.so.0.6800.3"
         "${GSTREAMER_DIR}/lib/libgobject-2.0.so"
-        "${GSTREAMER_DIR}/lib/libgobject-2.0.so.0"
-        "${GSTREAMER_DIR}/lib/libgobject-2.0.so.0.6800.3"
         "${GSTREAMER_DIR}/lib/libgthread-2.0.so"
-        "${GSTREAMER_DIR}/lib/libgthread-2.0.so.0"
-        "${GSTREAMER_DIR}/lib/libgthread-2.0.so.0.6800.3"
       )
     elseif (PORT MATCHES "UltralightMac")
       set(GSTREAMER_FILES
         "${GSTREAMER_DIR}/lib/libgstreamer-full-1.0.dylib"
         "${GSTREAMER_DIR}/lib/libgio-2.0.dylib"
-        "${GSTREAMER_DIR}/lib/libgio-2.0.0.dylib"
         "${GSTREAMER_DIR}/lib/libglib-2.0.dylib"
-        "${GSTREAMER_DIR}/lib/libglib-2.0.0.dylib"
         "${GSTREAMER_DIR}/lib/libgmodule-2.0.dylib"
-        "${GSTREAMER_DIR}/lib/libgmodule-2.0.0.dylib"
         "${GSTREAMER_DIR}/lib/libgobject-2.0.dylib"
-        "${GSTREAMER_DIR}/lib/libgobject-2.0.0.dylib"
         "${GSTREAMER_DIR}/lib/libgthread-2.0.dylib"
-        "${GSTREAMER_DIR}/lib/libgthread-2.0.0.dylib"
       )
     elseif (PORT MATCHES "UltralightWin")
       set(GSTREAMER_FILES
