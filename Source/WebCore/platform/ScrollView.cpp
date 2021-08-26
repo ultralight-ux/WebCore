@@ -41,6 +41,7 @@
 #if USE(ULTRALIGHT)
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 #include "Page.h"
 #include "FrameView.h"
 #include "Frame.h"
@@ -478,6 +479,10 @@ ScrollPosition SnapScrollPositionForScale(ScrollPosition position, float device_
 
 void ScrollView::scrollTo(const ScrollPosition& newPosition)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
   ScrollPosition snapped_position = newPosition;
 #if USE(ULTRALIGHT)
   float device_scale = 1.0f;
@@ -558,6 +563,10 @@ void ScrollView::setScrollPosition(const ScrollPosition& scrollPosition)
 
 bool ScrollView::scroll(ScrollDirection direction, ScrollGranularity granularity)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (platformWidget())
         return platformScroll(direction, granularity);
 
@@ -603,6 +612,10 @@ bool ScrollView::managesScrollbars() const
 
 void ScrollView::updateScrollbars(const ScrollPosition& desiredPosition)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     LOG_WITH_STREAM(Scrolling, stream << "ScrollView::updateScrollbars " << desiredPosition);
 
     if (m_inUpdateScrollbars || prohibitsScrolling() || platformWidget())
@@ -824,6 +837,10 @@ IntRect ScrollView::rectToCopyOnScroll() const
 
 void ScrollView::scrollContents(const IntSize& scrollDelta)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     HostWindow* window = hostWindow();
     if (!window)
         return;
@@ -1159,6 +1176,10 @@ void ScrollView::positionScrollbarLayers()
 
 void ScrollView::repaintContentRectangle(const IntRect& rect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     IntRect paintRect = rect;
     if (!paintsEntireContents())
         paintRect.intersect(visibleContentRect(LegacyIOSDocumentVisibleRect));
@@ -1233,6 +1254,10 @@ void ScrollView::invalidateScrollCornerRect(const IntRect& rect)
 
 void ScrollView::paintScrollbars(GraphicsContext& context, const IntRect& rect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (m_horizontalScrollbar && !layerForHorizontalScrollbar())
         paintScrollbar(context, *m_horizontalScrollbar.get(), rect);
     if (m_verticalScrollbar && !layerForVerticalScrollbar())
@@ -1255,6 +1280,10 @@ void ScrollView::paintPanScrollIcon(GraphicsContext& context)
 
 void ScrollView::paint(GraphicsContext& context, const IntRect& rect, SecurityOriginPaintPolicy securityOriginPaintPolicy)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (platformWidget()) {
         Widget::paint(context, rect);
         return;
@@ -1323,6 +1352,10 @@ void ScrollView::paint(GraphicsContext& context, const IntRect& rect, SecurityOr
 
 void ScrollView::calculateOverhangAreasForPainting(IntRect& horizontalOverhangRect, IntRect& verticalOverhangRect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     IntSize scrollbarSpace = scrollbarIntrusion();
 
     // FIXME: use maximumScrollOffset().
@@ -1376,6 +1409,10 @@ void ScrollView::updateOverhangAreas()
 
 void ScrollView::paintOverhangAreas(GraphicsContext& context, const IntRect& horizontalOverhangRect, const IntRect& verticalOverhangRect, const IntRect& dirtyRect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     ScrollbarTheme::theme().paintOverhangAreas(*this, context, horizontalOverhangRect, verticalOverhangRect, dirtyRect);
 }
 

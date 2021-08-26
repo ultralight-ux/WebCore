@@ -10,6 +10,7 @@
 //#include "HarfBuzzShaper.h"
 #include <Ultralight/Bitmap.h>
 #include <Ultralight/private/Canvas.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
 #include "FontRenderer.h"
@@ -45,6 +46,7 @@ bool FontCascade::canExpandAroundIdeographsInComplexText()
 void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const GlyphBuffer& glyphBuffer,
   unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode smoothing)
 {
+  ProfiledZone;
   WebCore::FontPlatformData& platform_font = const_cast<WebCore::FontPlatformData&>(font.platformData());
   WebCore::PlatformContextUltralight* platformContext = context.platformContext();
   PlatformCanvas canvas = platformContext->canvas();
@@ -184,6 +186,7 @@ static bool characterSequenceIsEmoji(SurrogatePairAwareTextIterator& iterator, U
 // From platform/graphics/cairo/FontCairoHarfbuzzNG.cpp
 const Font* FontCascade::fontForCombiningCharacterSequence(const UChar* originalCharacters, size_t originalLength) const
 {
+    ProfiledZone;
 	auto normalizedString = normalizedNFC(StringView{ originalCharacters, static_cast<unsigned>(originalLength) });
 
 	// Code below relies on normalizedNFC never narrowing a 16-bit input string into an 8-bit output string.
@@ -252,6 +255,7 @@ void Dump_SizeMetrics(const FT_Size_Metrics* metrics)
 
 void Font::platformInit()
 {
+  ProfiledZone;
   // TODO, handle complex fonts. We force the code path to simple here because Harfbuzz isn't
   // returning proper widths/shape for complex fonts (tested on Stripe).
   //FontCascade::setCodePath(FontCascade::Complex);
@@ -338,6 +342,7 @@ RefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescripti
 
 Path Font::platformPathForGlyph(Glyph glyph) const
 {
+  ProfiledZone;
   auto& platformData = const_cast<WebCore::FontPlatformData&>(m_platformData); 
 
   Path result;

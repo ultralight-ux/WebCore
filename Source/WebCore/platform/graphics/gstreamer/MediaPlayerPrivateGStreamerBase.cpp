@@ -55,6 +55,7 @@
 
 #if USE(ULTRALIGHT)
 #include "platform/graphics/ultralight/PlatformContextUltralight.h"
+#include <Ultralight/private/tracy/Tracy.hpp>
 #endif
 
 #if USE(GSTREAMER_GL)
@@ -880,6 +881,9 @@ void MediaPlayerPrivateGStreamerBase::setSize(const IntSize& size)
 
 void MediaPlayerPrivateGStreamerBase::paint(GraphicsContext& context, const FloatRect& rect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (context.paintingDisabled())
         return;
 

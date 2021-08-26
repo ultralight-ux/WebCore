@@ -71,6 +71,10 @@
 #include <wtf/Threading.h>
 #include <wtf/text/TextPosition.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 using namespace JSC;
 
@@ -108,6 +112,9 @@ ScriptController::~ScriptController()
 
 JSValue ScriptController::evaluateInWorld(const ScriptSourceCode& sourceCode, DOMWrapperWorld& world, ExceptionDetails* exceptionDetails)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     JSLockHolder lock(world.vm());
 
     const SourceCode& jsSourceCode = sourceCode.jsSourceCode();
@@ -210,6 +217,9 @@ JSC::JSValue ScriptController::linkAndEvaluateModuleScript(LoadableModuleScript&
 
 JSC::JSValue ScriptController::evaluateModule(const URL& sourceURL, JSModuleRecord& moduleRecord, DOMWrapperWorld& world)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     JSLockHolder lock(world.vm());
 
     const auto& jsSourceCode = moduleRecord.sourceCode();
@@ -549,6 +559,9 @@ void ScriptController::clearScriptObjects()
 
 JSValue ScriptController::executeScriptInWorld(DOMWrapperWorld& world, const String& script, bool forceUserGesture, ExceptionDetails* exceptionDetails)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     UserGestureIndicator gestureIndicator(forceUserGesture ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : WTF::nullopt);
     ScriptSourceCode sourceCode(script, URL(m_frame.document()->url()), TextPosition(), JSC::SourceProviderSourceType::Program, CachedScriptFetcher::create(m_frame.document()->charset()));
 

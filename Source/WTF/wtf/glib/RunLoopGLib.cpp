@@ -31,6 +31,10 @@
 #include <wtf/MainThread.h>
 #include <wtf/glib/RunLoopSourcePriority.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WTF {
 
 static GSourceFuncs runLoopSourceFunctions = {
@@ -125,6 +129,9 @@ void RunLoop::wakeUp()
 
 void RunLoop::iterate()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     RunLoop& runLoop = RunLoop::current();
     GMainContext* mainContext = runLoop.m_mainContext.get();
 

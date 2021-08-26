@@ -316,5 +316,5 @@ endif ()
 
 list(APPEND WebCore_LIBRARIES WTF${DEBUG_SUFFIX})
 list(APPEND WebCore_LIBRARIES JavaScriptCore${DEBUG_SUFFIX})
-list(APPEND WebCore_LIBRARIES UltralightCore)
+#list(APPEND WebCore_LIBRARIES UltralightCore)
 list(APPEND WebCoreTestSupport_LIBRARIES WTF${DEBUG_SUFFIX})

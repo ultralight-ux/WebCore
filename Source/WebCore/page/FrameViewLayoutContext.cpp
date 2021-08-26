@@ -47,6 +47,10 @@
 #include "LayoutTreeBuilder.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 #include <wtf/SetForScope.h>
 #include <wtf/SystemTracing.h>
 #include <wtf/text/TextStream.h>
@@ -151,6 +155,10 @@ FrameViewLayoutContext::~FrameViewLayoutContext()
 
 void FrameViewLayoutContext::layout()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     LOG_WITH_STREAM(Layout, stream << "FrameView " << &view() << " FrameViewLayoutContext::layout() with size " << view().layoutSize());
 
     RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(!frame().document()->inRenderTreeUpdate());
@@ -457,6 +465,10 @@ void FrameViewLayoutContext::scheduleSubtreeLayout(RenderElement& layoutRoot)
 
 void FrameViewLayoutContext::layoutTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
 #if !LOG_DISABLED
     if (!frame().document()->ownerElement())
         LOG(Layout, "FrameView %p layout timer fired at %.3fs", this, frame().document()->timeSinceDocumentCreation().value());
@@ -523,6 +535,10 @@ void FrameViewLayoutContext::applyTextSizingIfNeeded(RenderElement& layoutRoot)
 
 void FrameViewLayoutContext::updateStyleForLayout()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     Document& document = *frame().document();
 
     // FIXME: This shouldn't be necessary, but see rdar://problem/36670246.

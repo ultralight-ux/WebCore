@@ -11,6 +11,7 @@
 #include <Ultralight/platform/Logger.h>
 #include <Ultralight/private/util/Debug.h>
 #include <Ultralight/private/util/RefCountedImpl.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 #include <wtf/text/StringHasher.h>
 #include "StringUltralight.h"
 #include <map>
@@ -64,6 +65,7 @@ public:
   }
 
   RefPtr<FontFace> LookupFont(const String16& family, int weight, bool italic) {
+    ProfiledZone;
     unsigned int family_hash = StringHasher::hashMemory(family.data(), family.size() * sizeof(Char16));
     uintptr_t hashCodes[] = { family_hash, (uintptr_t)weight, italic };
     unsigned int request_hash = StringHasher::hashMemory<sizeof(hashCodes)>(hashCodes);
@@ -139,6 +141,7 @@ public:
   }
 
   void Recycle() {
+    ProfiledZone;
     for (auto i = font_db_.begin(); i != font_db_.end();) {
       // Evict the entry if we are the only ones holding the reference
       if (i->second && i->second->ref_count() <= 1) {
@@ -190,6 +193,7 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
   const Font* originalFontData, IsForPlatformFont, PreferColoredFont preferColoredFont, 
   const UChar* characters, unsigned length)
 {
+  ProfiledZone;
   auto& platform = ultralight::Platform::instance();
   auto font_loader = platform.font_loader();
   UL_CHECK(font_loader, "Error, NULL FontLoader encountered, did you forget to call Platform::set_font_loader()?");
@@ -256,6 +260,7 @@ Vector<FontTraitsMask> FontCache::getTraitsInFamily(const AtomicString&)
 std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDescription& fontDescription,
   const AtomString& family, const FontFeatureSettings*, const FontVariantSettings*, FontSelectionSpecifiedCapabilities)
 {
+  ProfiledZone;
   platformInit();
 
   int error = 0;

@@ -28,6 +28,7 @@
 #if USE(ULTRALIGHT)
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 #endif
 
 #if !USE(COORDINATED_GRAPHICS)
@@ -288,6 +289,10 @@ void GraphicsLayerTextureMapper::setContentsToSolidColor(const Color& color)
 
 void GraphicsLayerTextureMapper::setContentsToImage(Image* image)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (image) {
         // Make the decision about whether the image has changed.
         // This code makes the assumption that pointer equality on a NativeImagePtr is a valid way to tell if the image is changed.
@@ -351,6 +356,10 @@ void GraphicsLayerTextureMapper::setShowRepaintCounter(bool show)
 
 void GraphicsLayerTextureMapper::flushCompositingStateForThisLayerOnly()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     prepareBackingStoreIfNeeded();
     commitLayerChanges();
     m_layer.syncAnimations(MonotonicTime::now());
@@ -358,6 +367,10 @@ void GraphicsLayerTextureMapper::flushCompositingStateForThisLayerOnly()
 
 void GraphicsLayerTextureMapper::prepareBackingStoreIfNeeded()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (shouldHaveBackingStore()) {
         if (!m_backingStore) {
             m_backingStore = TextureMapperTiledBackingStore::create();
@@ -401,6 +414,10 @@ void GraphicsLayerTextureMapper::setDebugBorder(const Color& color, float width)
 
 void GraphicsLayerTextureMapper::commitLayerChanges()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (m_changeMask == NoChanges)
         return;
 
@@ -486,6 +503,10 @@ void GraphicsLayerTextureMapper::commitLayerChanges()
 
 void GraphicsLayerTextureMapper::flushCompositingState(const FloatRect& rect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (!m_layer.textureMapper())
         return;
 
@@ -501,6 +522,10 @@ void GraphicsLayerTextureMapper::flushCompositingState(const FloatRect& rect)
 
 void GraphicsLayerTextureMapper::updateBackingStoreIncludingSubLayers()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (!m_layer.textureMapper())
         return;
 
@@ -516,6 +541,10 @@ void GraphicsLayerTextureMapper::updateBackingStoreIncludingSubLayers()
 
 void GraphicsLayerTextureMapper::updateBackingStoreIfNeeded()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     TextureMapper* textureMapper = m_layer.textureMapper();
     if (!textureMapper)
         return;

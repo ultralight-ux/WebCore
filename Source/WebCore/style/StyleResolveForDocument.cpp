@@ -46,12 +46,19 @@
 #include "StyleFontSizeFunctions.h"
 #include "StyleResolver.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 namespace Style {
 
 RenderStyle resolveForDocument(const Document& document)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(document.hasLivingRenderTree());
 
     RenderView& renderView = *document.renderView();

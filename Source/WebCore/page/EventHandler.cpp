@@ -135,6 +135,10 @@
 #include "DOMTimerHoldingTank.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 using namespace HTMLNames;
@@ -631,6 +635,9 @@ void EventHandler::selectClosestContextualWordOrLinkFromMouseEvent(const MouseEv
 
 bool EventHandler::handleMousePressEventDoubleClick(const MouseEventWithHitTestResults& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (event.event().button() != LeftButton)
         return false;
 
@@ -649,6 +656,9 @@ bool EventHandler::handleMousePressEventDoubleClick(const MouseEventWithHitTestR
 
 bool EventHandler::handleMousePressEventTripleClick(const MouseEventWithHitTestResults& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (event.event().button() != LeftButton)
         return false;
     
@@ -674,6 +684,9 @@ static int textDistance(const Position& start, const Position& end)
 
 bool EventHandler::handleMousePressEventSingleClick(const MouseEventWithHitTestResults& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Frame> protectedFrame(m_frame);
 
     m_frame.document()->updateLayoutIgnorePendingStylesheets();
@@ -754,6 +767,9 @@ static inline bool canMouseDownStartSelect(Node* node)
 
 bool EventHandler::handleMousePressEvent(const MouseEventWithHitTestResults& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Frame> protectedFrame(m_frame);
 
 #if ENABLE(DRAG_SUPPORT)
@@ -873,6 +889,9 @@ bool EventHandler::shouldAllowMouseDownToStartDrag() const
 
 bool EventHandler::handleMouseDraggedEvent(const MouseEventWithHitTestResults& event, CheckDragHysteresis checkDragHysteresis)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!m_mousePressed)
         return false;
 
@@ -1048,6 +1067,9 @@ void EventHandler::lostMouseCapture()
 
 bool EventHandler::handleMouseUp(const MouseEventWithHitTestResults& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (eventLoopHandleMouseUp(event))
         return true;
     
@@ -1061,6 +1083,9 @@ bool EventHandler::handleMouseUp(const MouseEventWithHitTestResults& event)
 
 bool EventHandler::handleMouseReleaseEvent(const MouseEventWithHitTestResults& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (autoscrollInProgress())
         stopAutoscrollTimer();
 
@@ -1682,6 +1707,9 @@ static Scrollbar* scrollbarForMouseEvent(const MouseEventWithHitTestResults& mou
 
 bool EventHandler::handleMousePressEvent(const PlatformMouseEvent& platformMouseEvent)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Frame> protectedFrame(m_frame);
     RefPtr<FrameView> protector(m_frame.view());
 
@@ -1832,6 +1860,9 @@ bool EventHandler::handleMousePressEvent(const PlatformMouseEvent& platformMouse
 // This method only exists for platforms that don't know how to deliver 
 bool EventHandler::handleMouseDoubleClickEvent(const PlatformMouseEvent& platformMouseEvent)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Frame> protectedFrame(m_frame);
     RefPtr<FrameView> protector(m_frame.view());
 
@@ -1932,6 +1963,9 @@ bool EventHandler::passMouseMovedEventToScrollbars(const PlatformMouseEvent& eve
 
 bool EventHandler::handleMouseMoveEvent(const PlatformMouseEvent& platformMouseEvent, HitTestResult* hoveredNode, bool onlyUpdateScrollbars)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
 #if ENABLE(TOUCH_EVENTS)
     bool defaultPrevented = dispatchSyntheticTouchEventIfEnabled(platformMouseEvent);
     if (defaultPrevented)
@@ -2094,6 +2128,9 @@ static Node* targetNodeForClickEvent(Node* mousePressNode, Node* mouseReleaseNod
 
 bool EventHandler::handleMouseReleaseEvent(const PlatformMouseEvent& platformMouseEvent)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Frame> protectedFrame(m_frame);
     RefPtr<FrameView> protector(m_frame.view());
 
@@ -2181,6 +2218,9 @@ bool EventHandler::handleMouseReleaseEvent(const PlatformMouseEvent& platformMou
 #if ENABLE(MOUSE_FORCE_EVENTS)
 bool EventHandler::handleMouseForceEvent(const PlatformMouseEvent& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Frame> protectedFrame(m_frame);
     RefPtr<FrameView> protector(m_frame.view());
 
@@ -2809,6 +2849,9 @@ bool EventHandler::completeWidgetWheelEvent(const PlatformWheelEvent& event, con
 
 bool EventHandler::handleWheelEvent(const PlatformWheelEvent& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     auto* document = m_frame.document();
     if (!document)
         return false;
@@ -3690,6 +3733,9 @@ RefPtr<Element> EventHandler::draggedElement() const
 
 bool EventHandler::handleDrag(const MouseEventWithHitTestResults& event, CheckDragHysteresis checkDragHysteresis)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (event.event().button() != LeftButton || event.event().type() != PlatformEvent::MouseMoved) {
         // If we allowed the other side of the bridge to handle a drag
         // last time, then m_mousePressed might still be set. So we
@@ -3852,6 +3898,9 @@ bool EventHandler::mouseMovementExceedsThreshold(const FloatPoint& viewportLocat
 
 bool EventHandler::handleTextInputEvent(const String& text, Event* underlyingEvent, TextEventInputType inputType)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     LOG(Editing, "EventHandler %p handleTextInputEvent (text %s)", this, text.utf8().data());
 
     // Platforms should differentiate real commands like selectAll from text input in disguise (like insertNewline),
@@ -4093,6 +4142,9 @@ static HitTestResult hitTestResultInFrame(Frame* frame, const LayoutPoint& point
 
 bool EventHandler::handleTouchEvent(const PlatformTouchEvent& event)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Frame> protectedFrame(m_frame);
 
     // First build up the lists to use for the 'touches', 'targetTouches' and 'changedTouches' attributes

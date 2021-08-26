@@ -47,12 +47,14 @@ if (USE_GSTREAMER)
     list(APPEND WTF_INCLUDE_DIRECTORIES
         ${GSTREAMER_DIR}/include/glib-2.0
         ${GSTREAMER_DIR}/lib/glib-2.0/include
+        ${ULTRALIGHTCORE_DIR}/include
     )
     
     list(APPEND WTF_LIBRARIES
         glib-2.0
         gobject-2.0
         gio-2.0
+        UltralightCore
     )
 else ()
     list(APPEND WTF_SOURCES

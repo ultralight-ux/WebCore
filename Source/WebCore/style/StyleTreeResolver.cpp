@@ -54,6 +54,10 @@
 #include "StyleScope.h"
 #include "Text.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 namespace Style {
@@ -190,6 +194,9 @@ static DescendantsToResolve computeDescendantsToResolve(Change change, Validity 
 
 ElementUpdates TreeResolver::resolveElement(Element& element)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_didSeePendingStylesheet && !element.renderer() && !m_document.isIgnoringPendingStylesheets()) {
         m_document.setHasNodesWithMissingStyle();
         return { };
@@ -445,6 +452,9 @@ static std::unique_ptr<RenderStyle> createInheritedDisplayContentsStyleIfNeeded(
 
 void TreeResolver::resolveComposedTree()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(m_parentStack.size() == 1);
     ASSERT(m_scopeStack.size() == 1);
 
@@ -536,6 +546,9 @@ void TreeResolver::resolveComposedTree()
 
 std::unique_ptr<Update> TreeResolver::resolve()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     auto& renderView = *m_document.renderView();
 
     Element* documentElement = m_document.documentElement();

@@ -27,6 +27,10 @@
 #include "config.h"
 #include <wtf/RunLoop.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WTF {
 
 class RunLoop::TimerBase::ScheduledTask : public ThreadSafeRefCounted<ScheduledTask> {
@@ -186,6 +190,9 @@ void RunLoop::run()
 
 void RunLoop::iterate()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     RunLoop::current().runImpl(RunMode::Iterate);
 }
 

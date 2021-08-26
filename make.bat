@@ -47,6 +47,7 @@ if "%2"=="x64_uwp" (
 set STATIC_BUILD=0
 set STATIC_CRT=0
 set DEBUG_CRT=0
+set PROFILER=0
 set USE_LOCAL_DEPS=0
 set NO_JIT=0
 
@@ -60,6 +61,9 @@ if not "%3" == "" (
   )
   if "%3"=="debug_crt" ( 
     set DEBUG_CRT=1
+  )
+  if "%3"=="profiler" ( 
+    set PROFILER=1
   )
   if "%3"=="local" (
     set USE_LOCAL_DEPS=1
@@ -93,6 +97,12 @@ if %DEBUG_CRT%==1 (
 )
 set "FLAGS=%FLAGS% -DDEBUG_CRT=%DEBUG_CRT%"
 
+if %PROFILER%==1 (
+  echo Enabling Tracy Profiler
+  set "FLAGS=%FLAGS% -DENABLE_PROFILER=1"
+  set "DIRNAME=%DIRNAME%_profile"
+)
+
 if %USE_LOCAL_DEPS%==1 (
   echo Using local dependencies.
   set "DIRNAME=%DIRNAME%_local"
@@ -121,7 +131,7 @@ ninja
 GOTO FINISH
 :SYNTAX
 echo.
-echo usage: make [ release ^| full_release ^| debug ^| full_debug ^| vs ]  [ x64 ^| x64_uwp ] [ local ] [ static ] [ static_crt ]
+echo usage: make [ release ^| full_release ^| debug ^| full_debug ^| vs ]  [ x64 ^| x64_uwp ] [ local ] [ static ] [ static_crt ] [ profiler ]
 echo.
 echo Build type parameter descriptions:
 echo.
@@ -143,5 +153,6 @@ echo     static      Whether or not to build a static library. Disabled by defau
 echo     static_crt  Whether or not to use static runtime library (MT). Disabled by default (MD instead).
 echo     debug_crt   Whether or not to use the debug runtime library (MDd or MTd, based on static_crt). Disabled by default.
 echo     no_jit      Whether or not to build without JavaScriptCore JIT (creates smaller build). Disabled by default.
+echo     profiler    Whether or not to enable runtime profiling via Tracy.
 :FINISH
 cd ..

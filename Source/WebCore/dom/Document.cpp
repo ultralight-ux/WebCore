@@ -325,6 +325,10 @@
 #include "PointerCaptureController.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(Document);
@@ -1859,6 +1863,9 @@ bool Document::hasPendingFullStyleRebuild() const
 
 void Document::resolveStyle(ResolveStyleType type)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(!view() || !view()->isPainting());
 
     // NOTE: XSL code seems to be the only client stumbling in here without a RenderView.
@@ -2033,6 +2040,10 @@ static bool isSafeToUpdateStyleOrLayout(const Document& document)
 
 bool Document::updateStyleIfNeeded()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     RefPtr<FrameView> frameView = view();
     {
         ScriptDisallowedScope::InMainThread scriptDisallowedScope;
@@ -2059,6 +2070,10 @@ bool Document::updateStyleIfNeeded()
 
 void Document::updateLayout()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     ASSERT(isMainThread());
 
     RefPtr<FrameView> frameView = view();
@@ -8079,6 +8094,9 @@ bool Document::hitTest(const HitTestRequest& request, HitTestResult& result)
 
 bool Document::hitTest(const HitTestRequest& request, const HitTestLocation& location, HitTestResult& result)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Document> protectedThis(*this);
     updateLayout();
     if (!renderView())

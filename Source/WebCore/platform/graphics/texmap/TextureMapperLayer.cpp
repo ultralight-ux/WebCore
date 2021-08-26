@@ -25,6 +25,10 @@
 #include "Region.h"
 #include <wtf/MathExtras.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 class TextureMapperPaintOptions {
@@ -52,6 +56,10 @@ TextureMapperLayer::~TextureMapperLayer()
 
 void TextureMapperLayer::computeTransformsRecursive()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (m_state.size.isEmpty() && m_state.masksToBounds)
         return;
 
@@ -128,6 +136,10 @@ void TextureMapperLayer::computeTransformsRecursive()
 
 void TextureMapperLayer::paint()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     computeTransformsRecursive();
 
     ASSERT(m_textureMapper);
@@ -147,6 +159,10 @@ static Color blendWithOpacity(const Color& color, float opacity)
 
 void TextureMapperLayer::paintSelf(const TextureMapperPaintOptions& options)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (!m_state.visible || !m_state.contentsVisible)
         return;
 
@@ -204,6 +220,10 @@ void TextureMapperLayer::sortByZOrder(Vector<TextureMapperLayer* >& array)
 
 void TextureMapperLayer::paintSelfAndChildren(const TextureMapperPaintOptions& options)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     paintSelf(options);
 
     if (m_children.isEmpty())
@@ -259,6 +279,10 @@ bool TextureMapperLayer::isVisible() const
 
 void TextureMapperLayer::paintSelfAndChildrenWithReplica(const TextureMapperPaintOptions& options)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (m_state.replicaLayer) {
         TextureMapperPaintOptions replicaOptions(options);
         replicaOptions.transform
@@ -288,6 +312,10 @@ static void resolveOverlaps(Region& newRegion, Region& overlapRegion, Region& no
 
 void TextureMapperLayer::computeOverlapRegions(Region& overlapRegion, Region& nonOverlapRegion, ResolveSelfOverlapMode mode)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (!m_state.visible || !m_state.contentsVisible)
         return;
 
@@ -346,6 +374,10 @@ void TextureMapperLayer::computeOverlapRegions(Region& overlapRegion, Region& no
 
 void TextureMapperLayer::paintUsingOverlapRegions(const TextureMapperPaintOptions& options)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     Region overlapRegion;
     Region nonOverlapRegion;
     computeOverlapRegions(overlapRegion, nonOverlapRegion, ResolveSelfOverlapAlways);
@@ -406,6 +438,10 @@ void TextureMapperLayer::applyMask(const TextureMapperPaintOptions& options)
 
 RefPtr<BitmapTexture> TextureMapperLayer::paintIntoSurface(const TextureMapperPaintOptions& options, const IntSize& size)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     RefPtr<BitmapTexture> surface = options.textureMapper.acquireTextureFromPool(size, BitmapTexture::SupportsAlpha);
     TextureMapperPaintOptions paintOptions(options);
     paintOptions.surface = surface;
@@ -429,6 +465,10 @@ static void commitSurface(const TextureMapperPaintOptions& options, BitmapTextur
 
 void TextureMapperLayer::paintWithIntermediateSurface(const TextureMapperPaintOptions& options, const IntRect& rect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     RefPtr<BitmapTexture> replicaSurface;
     RefPtr<BitmapTexture> mainSurface;
     TextureMapperPaintOptions paintOptions(options);
@@ -460,6 +500,10 @@ void TextureMapperLayer::paintWithIntermediateSurface(const TextureMapperPaintOp
 
 void TextureMapperLayer::paintRecursive(const TextureMapperPaintOptions& options)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (!isVisible())
         return;
 
@@ -670,6 +714,10 @@ bool TextureMapperLayer::descendantsOrSelfHaveRunningAnimations() const
 
 bool TextureMapperLayer::applyAnimationsRecursively(MonotonicTime time)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     bool hasRunningAnimations = syncAnimations(time);
     for (auto* child : m_children)
         hasRunningAnimations |= child->applyAnimationsRecursively(time);
@@ -678,6 +726,10 @@ bool TextureMapperLayer::applyAnimationsRecursively(MonotonicTime time)
 
 bool TextureMapperLayer::syncAnimations(MonotonicTime time)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     TextureMapperAnimation::ApplicationResult applicationResults;
     m_animations.apply(applicationResults, time);
 

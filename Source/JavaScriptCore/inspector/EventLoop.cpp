@@ -26,7 +26,7 @@
 #include "config.h"
 #include "EventLoop.h"
 
-#if OS(WINDOWS)
+#if OS(WINDOWS) && defined(WINDOWS_DESKTOP_PLATFORM)
 #include <windows.h>
 #elif USE(GLIB)
 #include <glib.h>

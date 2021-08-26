@@ -26,6 +26,56 @@
 #include <gst/pbutils/codec-utils.h>
 #include <wtf/PrintStream.h>
 
+// Set the below line to '1' to enable debug logging.
+#if 1
+GST_DEBUG_CATEGORY_EXTERN(webkit_media_player_debug);
+#define GST_CAT_DEFAULT webkit_media_player_debug
+#undef GST_DISABLE_GST_DEBUG
+
+#define GST_CAT_LEVEL_LOG(cat, level, object, ...)                               \
+    G_STMT_START                                                                 \
+    {                                                                            \
+        if (true) {                                                              \
+            char dbgStr[512];                                                    \
+            sprintf_s(dbgStr, 512, __VA_ARGS__);                                 \
+            OutputDebugStringA(dbgStr); OutputDebugStringA("\n");                \
+        }                                                                        \
+    }                                                                            \
+    G_STMT_END
+
+#define GST_CAT_ERROR_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_ERROR, obj, __VA_ARGS__)
+#define GST_CAT_WARNING_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_WARNING, obj, __VA_ARGS__)
+#define GST_CAT_INFO_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_INFO, obj, __VA_ARGS__)
+#define GST_CAT_DEBUG_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_DEBUG, obj, __VA_ARGS__)
+#define GST_CAT_LOG_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_LOG, obj, __VA_ARGS__)
+#define GST_CAT_FIXME_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_FIXME, obj, __VA_ARGS__)
+#define GST_CAT_TRACE_OBJECT(cat, obj, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_TRACE, obj, __VA_ARGS__)
+
+#define GST_CAT_ERROR(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_ERROR, NULL, __VA_ARGS__)
+#define GST_CAT_WARNING(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_WARNING, NULL, __VA_ARGS__)
+#define GST_CAT_INFO(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_INFO, NULL, __VA_ARGS__)
+#define GST_CAT_DEBUG(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_DEBUG, NULL, __VA_ARGS__)
+#define GST_CAT_LOG(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_LOG, NULL, __VA_ARGS__)
+#define GST_CAT_FIXME(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_FIXME, NULL, __VA_ARGS__)
+#define GST_CAT_TRACE(cat, ...) GST_CAT_LEVEL_LOG(cat, GST_LEVEL_TRACE, NULL, __VA_ARGS__)
+
+#define GST_ERROR_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_ERROR, obj, __VA_ARGS__)
+#define GST_WARNING_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_WARNING, obj, __VA_ARGS__)
+#define GST_INFO_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_INFO, obj, __VA_ARGS__)
+#define GST_DEBUG_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_DEBUG, obj, __VA_ARGS__)
+#define GST_LOG_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_LOG, obj, __VA_ARGS__)
+#define GST_FIXME_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_FIXME, obj, __VA_ARGS__)
+#define GST_TRACE_OBJECT(obj, ...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_TRACE, obj, __VA_ARGS__)
+
+#define GST_ERROR(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_ERROR, NULL, __VA_ARGS__)
+#define GST_WARNING(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_WARNING, NULL, __VA_ARGS__)
+#define GST_INFO(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_INFO, NULL, __VA_ARGS__)
+#define GST_DEBUG(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_DEBUG, NULL, __VA_ARGS__)
+#define GST_LOG(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_LOG, NULL, __VA_ARGS__)
+#define GST_FIXME(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_FIXME, NULL, __VA_ARGS__)
+#define GST_TRACE(...) GST_CAT_LEVEL_LOG(GST_CAT_DEFAULT, GST_LEVEL_TRACE, NULL, __VA_ARGS__)
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////
 //   Author:    Andy Rushton
 //   Copyright: (c) Southampton University 1999-2004
@@ -229,7 +279,7 @@ GStreamerRegistryScanner::RegistryLookupResult GStreamerRegistryScanner::hasElem
         elementType = "Demuxer";
     else
         ASSERT_NOT_REACHED();
-    GST_LOG("%s lookup result for caps %" GST_PTR_FORMAT " : isSupported=%s, isUsingHardware=%s", elementType, caps.get(), boolForPrinting(isSupported), boolForPrinting(isUsingHardware));
+    GST_LOG("%s lookup result for caps %s : isSupported=%s, isUsingHardware=%s", elementType, capsString, boolForPrinting(isSupported), boolForPrinting(isUsingHardware));
 #endif
     return GStreamerRegistryScanner::RegistryLookupResult { isSupported, isUsingHardware };
 }
@@ -303,6 +353,7 @@ void GStreamerRegistryScanner::initialize()
             m_codecMap.add(AtomString("vp9"), vp9DecoderAvailable.isUsingHardware);
             m_codecMap.add(AtomString("x-vp9"), vp9DecoderAvailable.isUsingHardware);
             m_codecMap.add(AtomString("vp9.0"), vp9DecoderAvailable.isUsingHardware);
+            m_codecMap.add(AtomString("vp09*"), vp9DecoderAvailable.isUsingHardware);
         }
         if (opusSupported)
             m_mimeTypeSet.add(AtomString("audio/webm"));

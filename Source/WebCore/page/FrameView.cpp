@@ -128,6 +128,10 @@
 #include "LocalDefaultSystemAppearance.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 #define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(frame().page() && frame().page()->isAlwaysOnLoggingAllowed(), Layout, "%p - FrameView::" fmt, this, ##__VA_ARGS__)
 
 namespace WebCore {
@@ -441,6 +445,10 @@ bool FrameView::didFirstLayout() const
 
 void FrameView::invalidateRect(const IntRect& rect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (!parent()) {
         if (auto* page = frame().page())
             page->chrome().invalidateContentsAndRootView(rect);
@@ -820,6 +828,9 @@ void FrameView::willRecalcStyle()
 
 bool FrameView::updateCompositingLayersAfterStyleChange()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // If we expect to update compositing after an incipient layout, don't do so here.
     if (!renderView() || needsLayout() || layoutContext().isInLayout())
         return false;
@@ -828,6 +839,9 @@ bool FrameView::updateCompositingLayersAfterStyleChange()
 
 void FrameView::updateCompositingLayersAfterLayout()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     RenderView* renderView = this->renderView();
     if (!renderView)
         return;
@@ -1149,6 +1163,10 @@ bool FrameView::isEnclosedInCompositingLayer() const
 
 bool FrameView::flushCompositingStateIncludingSubframes()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     bool allFramesFlushed = flushCompositingStateForThisFrame(frame());
 
     for (Frame* child = frame().tree().firstRenderedChild(); child; child = child->tree().traverseNextRendered(m_frame.ptr())) {
@@ -2038,6 +2056,10 @@ OptionSet<StyleColor::Options> FrameView::styleColorOptions() const
 
 bool FrameView::scrollContentsFastPath(const IntSize& scrollDelta, const IntRect& rectToScroll, const IntRect& clipRect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     if (!m_viewportConstrainedObjects || m_viewportConstrainedObjects->isEmpty()) {
         frame().page()->chrome().scroll(scrollDelta, rectToScroll, clipRect);
         return true;
@@ -2101,6 +2123,10 @@ bool FrameView::scrollContentsFastPath(const IntSize& scrollDelta, const IntRect
 
 void FrameView::scrollContentsSlowPath(const IntRect& updateRect)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     repaintSlowRepaintObjects();
 
     if (!usesCompositedScrolling() && isEnclosedInCompositingLayer()) {
@@ -3307,6 +3333,10 @@ void FrameView::flushPostLayoutTasksQueue()
 
 void FrameView::performPostLayoutTasks()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     // FIXME: We should not run any JavaScript code in this function.
     LOG(Layout, "FrameView %p performPostLayoutTasks", this);
     updateHasReachedSignificantRenderedTextThreshold();
@@ -4133,6 +4163,10 @@ void FrameView::didPaintContents(GraphicsContext& context, const IntRect& dirtyR
 
 void FrameView::paintContents(GraphicsContext& context, const IntRect& dirtyRect, SecurityOriginPaintPolicy securityOriginPaintPolicy)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
 #ifndef NDEBUG
     bool fillWithWarningColor;
     if (frame().document()->printing())
@@ -4260,6 +4294,10 @@ void FrameView::paintOverhangAreas(GraphicsContext& context, const IntRect& hori
 
 void FrameView::updateLayoutAndStyleIfNeededRecursive()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     // Style updating, render tree creation, and layout needs to be done multiple times
     // for more than one reason. But one reason is that when an <object> element determines
     // what it needs to load a subframe, a second pass is needed. That requires update

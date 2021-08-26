@@ -2,6 +2,7 @@
 #if USE(ULTRALIGHT)
 #include "PlatformFontFreeType.h"
 #include <Ultralight/private/PlatformFont.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 #include "FontPlatformData.h"
 #include "FreeTypeLib.h"
 #include "ft2build.h"
@@ -77,6 +78,7 @@ public:
 
   virtual bool GetGlyphMetrics(uint32_t glyph_index, double& advance,
     double& width, double& height, double& bearing) override {
+    ProfiledZone;
     FT_Error error = FT_Load_Glyph(face(), glyph_index, FT_LOAD_DEFAULT);
     if (error)
       return false;
@@ -91,6 +93,7 @@ public:
 
   virtual bool RenderGlyph(uint32_t glyph_index, FontHinting hinting,
     RefPtr<Bitmap>& out_bitmap, Point& out_offset) override {
+    ProfiledZone;
     FT_Int32 load_flags = FT_LOAD_RENDER;
     if (hinting == ultralight::kFontHinting_Smooth)
       load_flags |= FT_LOAD_TARGET_LIGHT;
@@ -148,6 +151,7 @@ public:
   }
 
   virtual bool GetGlyphPath(uint32_t glyph_index, RefPtr<Path>& out_path) override {
+    ProfiledZone;
     FT_Error error;
     error = FT_Load_Glyph(face(), glyph_index, FT_LOAD_NO_HINTING);
     if (error)

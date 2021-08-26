@@ -54,6 +54,10 @@
 #include "ContentChangeObserver.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 RenderTreeUpdater::Parent::Parent(ContainerNode& root)
@@ -105,6 +109,9 @@ static ListHashSet<ContainerNode*> findRenderingRoots(const Style::Update& updat
 
 void RenderTreeUpdater::commit(std::unique_ptr<const Style::Update> styleUpdate)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(&m_document == &styleUpdate->document());
 
     if (!m_document.shouldCreateRenderers() || !m_document.renderView())
@@ -137,6 +144,9 @@ static bool shouldCreateRenderer(const Element& element, const RenderElement& pa
 
 void RenderTreeUpdater::updateRenderTree(ContainerNode& root)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
 #if PLATFORM(IOS_FAMILY)
     ContentChangeObserver::RenderTreeUpdateScope observingScope(m_document);
 #endif

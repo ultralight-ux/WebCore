@@ -35,6 +35,10 @@
 #include "ResourceResponse.h"
 #include "SharedBuffer.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 CurlDownload::~CurlDownload()
@@ -132,6 +136,9 @@ void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&, C
 
 void CurlDownload::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(isMainThread());
 
     if (m_isCancelled)

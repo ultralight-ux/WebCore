@@ -541,6 +541,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
 endif ()
 
 add_dependencies(WTF WebCoreDeps)
+add_dependencies(WTF UltralightCoreBin)
 
 if (USE_GSTREAMER)
     add_dependencies(WTF GStreamerBin)
