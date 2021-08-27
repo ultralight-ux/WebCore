@@ -259,6 +259,9 @@ void FrameViewLayoutContext::layout()
 
 void FrameViewLayoutContext::runOrScheduleAsynchronousTasks()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_asynchronousTasksTimer.isActive())
         return;
 
@@ -288,6 +291,9 @@ void FrameViewLayoutContext::runOrScheduleAsynchronousTasks()
 
 void FrameViewLayoutContext::runAsynchronousTasks()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     m_asynchronousTasksTimer.stop();
     if (m_inAsynchronousTasks)
         return;
@@ -559,6 +565,9 @@ void FrameViewLayoutContext::updateStyleForLayout()
 
 bool FrameViewLayoutContext::handleLayoutWithFrameFlatteningIfNeeded()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!view().isInChildFrameWithFrameFlattening())
         return false;
     

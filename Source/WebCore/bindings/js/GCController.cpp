@@ -38,6 +38,9 @@
 #include <wtf/FileSystem.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
 
 namespace WebCore {
 using namespace JSC;
@@ -86,11 +89,17 @@ void GCController::garbageCollectOnNextRunLoop()
 
 void GCController::gcTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     collect();
 }
 
 void GCController::garbageCollectNow()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     JSLockHolder lock(commonVM());
     if (!commonVM().heap.isCurrentThreadBusy()) {
         commonVM().heap.collectNow(Sync, CollectionScope::Full);
@@ -100,6 +109,9 @@ void GCController::garbageCollectNow()
 
 void GCController::garbageCollectNowIfNotDoneRecently()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
 #if USE(CF) || USE(GLIB)
     JSLockHolder lock(commonVM());
     if (!commonVM().heap.isCurrentThreadBusy())
@@ -111,6 +123,9 @@ void GCController::garbageCollectNowIfNotDoneRecently()
 
 void GCController::garbageCollectOnAlternateThreadForDebugging(bool waitUntilDone)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     auto thread = Thread::create("WebCore: GCController", &collect);
 
     if (waitUntilDone) {

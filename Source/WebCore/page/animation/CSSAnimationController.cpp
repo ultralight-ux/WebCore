@@ -48,6 +48,7 @@
 #if USE(ULTRALIGHT)
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 #endif
 
 namespace WebCore {
@@ -140,6 +141,9 @@ bool CSSAnimationControllerPrivate::clear(Element& element)
 
 Optional<Seconds> CSSAnimationControllerPrivate::updateAnimations(SetChanged callSetChanged/* = DoNotCallSetChanged*/)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     AnimationPrivateUpdateBlock updateBlock(*this);
     Optional<Seconds> timeToNextService;
     bool calledSetChanged = false;
@@ -270,6 +274,9 @@ void CSSAnimationControllerPrivate::addElementChangeToDispatch(Element& element)
 
 void CSSAnimationControllerPrivate::animationFrameCallbackFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Optional<Seconds> timeToNextService = updateAnimations(CallSetChanged);
 
     if (timeToNextService)
@@ -278,6 +285,9 @@ void CSSAnimationControllerPrivate::animationFrameCallbackFired()
 
 void CSSAnimationControllerPrivate::animationTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // We need to keep the frame alive, since it owns us.
     Ref<Frame> protector(m_frame);
 
@@ -625,6 +635,9 @@ void CSSAnimationController::cancelAnimations(Element& element)
 
 AnimationUpdate CSSAnimationController::updateAnimations(Element& element, const RenderStyle& newStyle, const RenderStyle* oldStyle)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     bool hasOrHadAnimations = (oldStyle && oldStyle->hasAnimationsOrTransitions()) || newStyle.hasAnimationsOrTransitions();
     if (!hasOrHadAnimations)
         return { };

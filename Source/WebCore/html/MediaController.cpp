@@ -37,6 +37,10 @@
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/AtomString.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(MediaController);
@@ -542,6 +546,9 @@ void MediaController::scheduleEvent(const AtomString& eventName)
 
 void MediaController::asyncEventTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Vector<Ref<Event>> pendingEvents;
 
     m_pendingEvents.swap(pendingEvents);

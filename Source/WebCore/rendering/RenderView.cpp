@@ -55,6 +55,9 @@
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/SetForScope.h>
 #include <wtf/StackStats.h>
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
 
 namespace WebCore {
 
@@ -109,6 +112,9 @@ void RenderView::unscheduleLazyRepaint(RenderBox& renderer)
 
 void RenderView::lazyRepaintTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     for (auto& renderer : m_renderersNeedingLazyRepaint) {
         renderer->repaint();
         renderer->setRenderBoxNeedsLazyRepaint(false);
@@ -148,6 +154,9 @@ bool RenderView::isChildAllowed(const RenderObject& child, const RenderStyle&) c
 
 void RenderView::layout()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     StackStats::LayoutCheckPoint layoutCheckPoint;
     if (!document().paginated())
         m_pageLogicalSize = { };
@@ -302,6 +311,9 @@ void RenderView::computeColumnCountAndWidth()
 
 void RenderView::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // If we ever require layout but receive a paint anyway, something has gone horribly wrong.
     ASSERT(!needsLayout());
     // RenderViews should never be called to paint with an offset not on device pixels.
@@ -436,6 +448,9 @@ bool RenderView::shouldRepaint(const LayoutRect& rect) const
 
 void RenderView::repaintRootContents()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (layer()->isComposited()) {
         layer()->setBackingNeedsRepaint(GraphicsLayer::DoNotClipToLayer);
         return;
@@ -449,6 +464,9 @@ void RenderView::repaintRootContents()
 
 void RenderView::repaintViewRectangle(const LayoutRect& repaintRect) const
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!shouldRepaint(repaintRect))
         return;
 
@@ -507,6 +525,9 @@ void RenderView::flushAccumulatedRepaintRegion() const
 
 void RenderView::repaintViewAndCompositedLayers()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     repaintRootContents();
 
     RenderLayerCompositor& compositor = this->compositor();
@@ -524,6 +545,9 @@ LayoutRect RenderView::visualOverflowRect() const
 
 Optional<LayoutRect> RenderView::computeVisibleRectInContainer(const LayoutRect& rect, const RenderLayerModelObject* container, VisibleRectContext context) const
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // If a container was specified, and was not nullptr or the RenderView,
     // then we should have found it by now.
     ASSERT_ARG(container, !container || container == this);
@@ -672,6 +696,9 @@ IntSize RenderView::viewportSizeForCSSViewportUnits() const
 
 void RenderView::updateHitTestResult(HitTestResult& result, const LayoutPoint& point)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (result.innerNode())
         return;
 

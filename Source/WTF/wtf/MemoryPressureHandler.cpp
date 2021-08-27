@@ -30,6 +30,10 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RAMSize.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 #define LOG_CHANNEL_PREFIX Log
 
 namespace WTF {
@@ -189,6 +193,9 @@ void MemoryPressureHandler::setMemoryUsagePolicyBasedOnFootprint(size_t footprin
 
 void MemoryPressureHandler::measurementTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     size_t footprint = memoryFootprint();
     RELEASE_LOG(MemoryPressure, "Current memory footprint: %zu MB", footprint / MB);
     if (footprint >= thresholdForMemoryKill()) {
@@ -255,6 +262,9 @@ void MemoryPressureHandler::endSimulatedMemoryPressure()
 
 void MemoryPressureHandler::releaseMemory(Critical critical, Synchronous synchronous)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!m_lowMemoryHandler)
         return;
 
@@ -273,6 +283,9 @@ void MemoryPressureHandler::setUnderMemoryPressure(bool underMemoryPressure)
 
 void MemoryPressureHandler::memoryPressureStatusChanged()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_memoryPressureStatusChangedCallback)
         m_memoryPressureStatusChangedCallback(isUnderMemoryPressure());
 }

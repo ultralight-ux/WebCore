@@ -80,6 +80,9 @@
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/MathExtras.h>
 #include <wtf/StackStats.h>
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
 
 namespace WebCore {
 
@@ -1016,6 +1019,9 @@ void RenderElement::paintAsInlineBlock(PaintInfo& paintInfo, const LayoutPoint& 
 
 void RenderElement::layout()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     StackStats::LayoutCheckPoint layoutCheckPoint;
     ASSERT(needsLayout());
     for (auto* child = firstChild(); child; child = child->nextSibling()) {

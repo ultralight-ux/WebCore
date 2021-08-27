@@ -37,6 +37,10 @@
 #include "WebCoreThread.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 // Fire timers for this length of time, and then quit to let the run loop process user input events.
@@ -100,6 +104,9 @@ void ThreadTimers::updateSharedTimer()
 
 void ThreadTimers::sharedTimerFiredInternal()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(isMainThread() || (!isWebThread() && !isUIThread()));
     // Do a re-entrancy check.
     if (m_firingTimers)

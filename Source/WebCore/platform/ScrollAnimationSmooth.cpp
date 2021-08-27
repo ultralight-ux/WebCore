@@ -35,6 +35,7 @@
 #if USE(ULTRALIGHT)
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 #endif
 
 namespace WebCore {
@@ -390,6 +391,9 @@ bool ScrollAnimationSmooth::animateScroll(PerAxisData& data, MonotonicTime curre
 
 void ScrollAnimationSmooth::animationTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     MonotonicTime currentTime = MonotonicTime::now();
     Seconds deltaToNextFrame = 1_s * ceil((currentTime - m_startTime).value() * frameRate) / frameRate - (currentTime - m_startTime);
     currentTime += deltaToNextFrame;

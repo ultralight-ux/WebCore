@@ -31,6 +31,10 @@
 #include "PendingScript.h"
 #include "ScriptElement.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 ScriptRunner::ScriptRunner(Document& document)
@@ -108,6 +112,9 @@ void ScriptRunner::notifyFinished(PendingScript& pendingScript)
 
 void ScriptRunner::timerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Ref<Document> protect(m_document);
 
     Vector<RefPtr<PendingScript>> scripts;

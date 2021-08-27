@@ -46,6 +46,10 @@
 #include "DOMTimerHoldingTank.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 static const Seconds maxIntervalForUserGestureForwarding { 1_s }; // One second matches Gecko.
@@ -284,6 +288,9 @@ void DOMTimer::scriptDidInteractWithPlugin(HTMLPlugInElement& pluginElement)
 
 void DOMTimer::fired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // Retain this - if the timer is cancelled while this function is on the stack (implicitly and always
     // for one-shot timers, or if removeById is called on itself from within an interval timer fire) then
     // wait unit the end of this function to delete DOMTimer.

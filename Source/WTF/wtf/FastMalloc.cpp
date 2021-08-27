@@ -45,6 +45,10 @@
 #include <malloc/malloc.h>
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WTF {
 
 #if !defined(NDEBUG)
@@ -78,6 +82,9 @@ void fastSetMaxSingleAllocationSize(size_t size)
 
 void* fastZeroedMalloc(size_t n) 
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     void* result = fastMalloc(n);
     memset(result, 0, n);
     return result;
@@ -85,6 +92,9 @@ void* fastZeroedMalloc(size_t n)
 
 char* fastStrDup(const char* src)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     size_t len = strlen(src) + 1;
     char* dup = static_cast<char*>(fastMalloc(len));
     memcpy(dup, src, len);
@@ -93,6 +103,9 @@ char* fastStrDup(const char* src)
 
 TryMallocReturnValue tryFastZeroedMalloc(size_t n) 
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     void* result;
     if (!tryFastMalloc(n).getValue(result))
         return 0;
@@ -130,6 +143,9 @@ size_t fastMallocGoodSize(size_t bytes)
 
 void* fastAlignedMalloc(size_t alignment, size_t size) 
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT_IS_WITHIN_LIMIT(size);
     void* p = _aligned_malloc(size, alignment);
     if (UNLIKELY(!p))
@@ -139,12 +155,18 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
 
 void* tryFastAlignedMalloc(size_t alignment, size_t size) 
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     FAIL_IF_EXCEEDS_LIMIT(size);
     return _aligned_malloc(size, alignment);
 }
 
 void fastAlignedFree(void* p) 
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     _aligned_free(p);
 }
 
@@ -177,12 +199,18 @@ void fastAlignedFree(void* p)
 
 TryMallocReturnValue tryFastMalloc(size_t n) 
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     FAIL_IF_EXCEEDS_LIMIT(n);
     return malloc(n);
 }
 
 void* fastMalloc(size_t n) 
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT_IS_WITHIN_LIMIT(n);
     void* result = malloc(n);
     if (!result)
@@ -193,12 +221,18 @@ void* fastMalloc(size_t n)
 
 TryMallocReturnValue tryFastCalloc(size_t n_elements, size_t element_size)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     FAIL_IF_EXCEEDS_LIMIT(n_elements * element_size);
     return calloc(n_elements, element_size);
 }
 
 void* fastCalloc(size_t n_elements, size_t element_size)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT_IS_WITHIN_LIMIT(n_elements * element_size);
     void* result = calloc(n_elements, element_size);
     if (!result)
@@ -209,11 +243,17 @@ void* fastCalloc(size_t n_elements, size_t element_size)
 
 void fastFree(void* p)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     free(p);
 }
 
 void* fastRealloc(void* p, size_t n)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT_IS_WITHIN_LIMIT(n);
     void* result = realloc(p, n);
     if (!result)
@@ -223,6 +263,9 @@ void* fastRealloc(void* p, size_t n)
 
 TryMallocReturnValue tryFastRealloc(void* p, size_t n)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     FAIL_IF_EXCEEDS_LIMIT(n);
     return realloc(p, n);
 }
@@ -250,11 +293,17 @@ size_t fastMallocSize(const void* p)
 
 void fastCommitAlignedMemory(void* ptr, size_t size)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     OSAllocator::commit(ptr, size, true, false);
 }
 
 void fastDecommitAlignedMemory(void* ptr, size_t size)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     OSAllocator::decommit(ptr, size);
 }
 

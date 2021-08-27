@@ -36,6 +36,10 @@
 #include "ScrollableArea.h"
 #include "ScrollbarTheme.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 static const Seconds overflowScrollbarsAnimationDuration { 1_s };
@@ -242,6 +246,9 @@ static inline double easeOutCubic(double t)
 
 void ScrollAnimatorGeneric::overlayScrollbarAnimationTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!m_horizontalOverlayScrollbar && !m_verticalOverlayScrollbar)
         return;
     if (m_overlayScrollbarsLocked)

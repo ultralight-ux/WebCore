@@ -43,6 +43,10 @@
 #include <algorithm>
 #include <wtf/Ref.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 AnimationBase::AnimationBase(const Animation& animation, Element& element, CompositeAnimation& compositeAnimation)
@@ -144,6 +148,9 @@ static const char* nameForStateInput(AnimationBase::AnimationStateInput input)
 
 void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!m_compositeAnimation)
         return;
 
@@ -465,6 +472,9 @@ void AnimationBase::updateStateMachine(AnimationStateInput input, double param)
 
 void AnimationBase::fireAnimationEventsIfNeeded()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!m_compositeAnimation)
         return;
 

@@ -40,6 +40,10 @@
 #include <wtf/glib/RunLoopSourcePriority.h>
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 #include <mutex>
 
 namespace JSC {
@@ -110,6 +114,9 @@ JSRunLoopTimer::Manager::PerVMData::~PerVMData()
 
 void JSRunLoopTimer::Manager::timerDidFire()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Vector<Ref<JSRunLoopTimer>> timersToFire;
 
     {

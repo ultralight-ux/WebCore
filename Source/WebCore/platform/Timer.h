@@ -40,6 +40,10 @@
 #include "WebCoreThread.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 class WEBCORE_EXPORT TimerBase {
@@ -123,6 +127,9 @@ public:
 private:
     void fired() override
     {
+#if USE(ULTRALIGHT)
+        ProfiledZone;
+#endif
         m_function();
     }
     
@@ -180,6 +187,9 @@ public:
 private:
     void fired() override
     {
+#if USE(ULTRALIGHT)
+        ProfiledZone;
+#endif
         if (m_shouldRestartWhenTimerFires) {
             m_shouldRestartWhenTimerFires = false;
             startOneShot(m_delay);

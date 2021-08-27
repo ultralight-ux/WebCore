@@ -46,6 +46,10 @@
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/Config.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 // Allow a little more than 60fps to make sure we can at least hit that frame rate.
 static const Seconds fullSpeedAnimationInterval { 15_ms };
 // Allow a little more than 30fps to make sure we can at least hit that frame rate.
@@ -193,6 +197,9 @@ void ScriptedAnimationController::cancelCallback(CallbackId id)
 
 void ScriptedAnimationController::serviceRequestAnimationFrameCallbacks(DOMHighResTimeStamp timestamp)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!m_callbacks.size() || m_suspendCount || !requestAnimationFrameEnabled())
         return;
 
@@ -257,6 +264,9 @@ Page* ScriptedAnimationController::page() const
 
 void ScriptedAnimationController::scheduleAnimation()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!requestAnimationFrameEnabled())
         return;
 
@@ -293,6 +303,9 @@ void ScriptedAnimationController::scheduleAnimation()
 
 void ScriptedAnimationController::animationTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     m_lastAnimationFrameTimestamp = m_document->domWindow()->nowTimestamp();
     serviceRequestAnimationFrameCallbacks(m_lastAnimationFrameTimestamp);
 }

@@ -1328,6 +1328,9 @@ void Document::setVisualUpdatesAllowed(bool visualUpdatesAllowed)
 
 void Document::visualUpdatesSuppressionTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(!m_visualUpdatesAllowed);
 
     // If the client is extending the visual update suppression period explicitly, the
@@ -5463,6 +5466,9 @@ void Document::applyPendingXSLTransformsNowIfScheduled()
 
 void Document::applyPendingXSLTransformsTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (parsing())
         return;
 
@@ -6131,6 +6137,9 @@ void Document::postTask(Task&& task)
 
 void Document::pendingTasksTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Vector<Task> pendingTasks = WTFMove(m_pendingTasks);
     for (auto& task : pendingTasks)
         task.performTask(*this);
@@ -6313,6 +6322,9 @@ void Document::decrementLoadEventDelayCount()
 
 void Document::loadEventDelayTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // FIXME: Should the call to FrameLoader::checkLoadComplete be moved inside Document::checkCompleted?
     // FIXME: Should this also call DocumentLoader::checkLoadComplete?
     // FIXME: Not obvious why checkCompleted needs to go first. The order these are called is
@@ -6999,6 +7011,9 @@ void Document::didAssociateFormControl(Element& element)
 
 void Document::didAssociateFormControlsTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     auto vector = copyToVector(m_associatedFormControls);
     m_associatedFormControls.clear();
     if (auto* page = this->page()) {
@@ -7507,6 +7522,9 @@ void Document::updateIntersectionObservations()
 
 void Document::notifyIntersectionObserversTimerFired()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     for (const auto& observer : m_intersectionObserversWithPendingNotifications) {
         if (observer)
             observer->notify();

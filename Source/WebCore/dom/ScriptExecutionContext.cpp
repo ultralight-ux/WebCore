@@ -66,6 +66,9 @@
 #include <wtf/MainThread.h>
 #include <wtf/Ref.h>
 #include <wtf/SetForScope.h>
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
 
 namespace WebCore {
 using namespace Inspector;
@@ -175,6 +178,9 @@ ScriptExecutionContext::~ScriptExecutionContext()
 
 void ScriptExecutionContext::processMessageWithMessagePortsSoon()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_willprocessMessageWithMessagePortsSoon)
         return;
 
@@ -186,6 +192,9 @@ void ScriptExecutionContext::processMessageWithMessagePortsSoon()
 
 void ScriptExecutionContext::dispatchMessagePortEvents()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     checkConsistency();
 
     Ref<ScriptExecutionContext> protectedThis(*this);
@@ -251,6 +260,9 @@ bool ScriptExecutionContext::canSuspendActiveDOMObjectsForDocumentSuspension(Vec
 
 void ScriptExecutionContext::forEachActiveDOMObject(const Function<ShouldContinue(ActiveDOMObject&)>& apply) const
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // It is not allowed to run arbitrary script or construct new ActiveDOMObjects while we are iterating over ActiveDOMObjects.
     // An ASSERT_WITH_SECURITY_IMPLICATION or RELEASE_ASSERT will fire if this happens, but it's important to code
     // canSuspendActiveDOMObjectsForDocumentSuspension() / suspend() / resume() / stop() functions so it will not happen!
@@ -377,6 +389,9 @@ bool ScriptExecutionContext::canIncludeErrorDetails(CachedScript* script, const 
 
 void ScriptExecutionContext::reportException(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, JSC::Exception* exception, RefPtr<ScriptCallStack>&& callStack, CachedScript* cachedScript)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_inDispatchErrorEvent) {
         if (!m_pendingExceptions)
             m_pendingExceptions = std::make_unique<Vector<std::unique_ptr<PendingException>>>();
@@ -427,6 +442,9 @@ void ScriptExecutionContext::addConsoleMessage(MessageSource source, MessageLeve
 
 bool ScriptExecutionContext::dispatchErrorEvent(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, JSC::Exception* exception, CachedScript* cachedScript)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     auto* target = errorEventTarget();
     if (!target)
         return false;

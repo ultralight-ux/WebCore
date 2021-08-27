@@ -1254,6 +1254,9 @@ void FrameView::adjustScrollbarsForLayout(bool isFirstLayout)
 
 void FrameView::willDoLayout(WeakPtr<RenderElement> layoutRoot)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     bool subtreeLayout = !is<RenderView>(*layoutRoot);
     if (subtreeLayout)
         return;
@@ -1284,6 +1287,9 @@ void FrameView::willDoLayout(WeakPtr<RenderElement> layoutRoot)
 
 void FrameView::didLayout(WeakPtr<RenderElement> layoutRoot)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     renderView()->releaseProtectedRenderWidgets();
     auto* layoutRootEnclosingLayer = layoutRoot->enclosingLayer();
     layoutRootEnclosingLayer->updateLayerPositionsAfterLayout(renderView()->layer(), updateLayerPositionFlags(layoutRootEnclosingLayer, !is<RenderView>(*layoutRoot), layoutContext().needsFullRepaint()));

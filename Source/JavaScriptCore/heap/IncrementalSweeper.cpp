@@ -32,6 +32,10 @@
 #include "MarkedBlock.h"
 #include "JSCInlines.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace JSC {
 
 static const Seconds sweepTimeSlice = 10_ms;
@@ -56,6 +60,9 @@ void IncrementalSweeper::doWork(VM& vm)
 
 void IncrementalSweeper::doSweep(VM& vm, MonotonicTime sweepBeginTime)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     while (sweepNextBlock(vm)) {
         Seconds elapsedTime = MonotonicTime::now() - sweepBeginTime;
         if (elapsedTime < sweepTimeSlice)
