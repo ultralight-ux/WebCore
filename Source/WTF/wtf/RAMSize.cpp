@@ -60,7 +60,8 @@ static size_t computeRAMSize()
     sysinfo(&si);
     return si.totalram * si.mem_unit;
 #else
-#error "Missing a platform specific way of determining the available RAM"
+    // Just make a best guess (1GB) if we can't detect.
+    return 1024 * MB;
 #endif // OS(LINUX)
 #else
     return bmalloc::api::availableMemory();
