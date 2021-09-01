@@ -305,10 +305,12 @@ set(WebCore_OUTPUT_NAME
 )
 
 if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRel)
-    add_compile_options(/GL)
+  if (MSVC)
+    list(APPEND WebCore_COMPILE_OPTIONS /GL)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
-endif ()
+  endif()
+endif()
 
 if (UWP_PLATFORM)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FI \"${WEBCORE_DIR}/UWPDefs.h\"")

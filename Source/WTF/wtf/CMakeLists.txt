@@ -487,6 +487,10 @@ set(WTF_LIBRARIES
 
 if (NOT USE_SYSTEM_MALLOC)
     list(APPEND WTF_LIBRARIES WebKit::bmalloc)
+else ()
+    if (USE_MIMALLOC)
+        list(APPEND WTF_LIBRARIES WebKit::mimalloc)
+    endif ()
 endif ()
 
 list(APPEND WTF_SOURCES
@@ -547,6 +551,9 @@ if (USE_GSTREAMER)
     add_dependencies(WTF GStreamerBin)
 endif ()
 
+if (NOT USE_SYSTEM_MALLOC AND USE_MIMALLOC)
+    add_dependencies(WTF mimalloc)
+endif ()
 
 file(COPY
     ../Scripts/generate-unified-source-bundles.rb

@@ -80,42 +80,10 @@ void fastSetMaxSingleAllocationSize(size_t size)
 
 #endif // !defined(NDEBUG)
 
-void* fastZeroedMalloc(size_t n) 
-{
-#if USE(ULTRALIGHT)
-    ProfiledZone;
-#endif
-    void* result = fastMalloc(n);
-    memset(result, 0, n);
-    return result;
-}
-
-char* fastStrDup(const char* src)
-{
-#if USE(ULTRALIGHT)
-    ProfiledZone;
-#endif
-    size_t len = strlen(src) + 1;
-    char* dup = static_cast<char*>(fastMalloc(len));
-    memcpy(dup, src, len);
-    return dup;
-}
-
-TryMallocReturnValue tryFastZeroedMalloc(size_t n) 
-{
-#if USE(ULTRALIGHT)
-    ProfiledZone;
-#endif
-    void* result;
-    if (!tryFastMalloc(n).getValue(result))
-        return 0;
-    memset(result, 0, n);
-    return result;
-}
 
 } // namespace WTF
 
-#if defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
+#if USE(SYSTEM_MALLOC) && !USE(MIMALLOC)
 
 #include <wtf/OSAllocator.h>
 
@@ -137,6 +105,39 @@ size_t fastMallocGoodSize(size_t bytes)
 #else
     return bytes;
 #endif
+}
+
+void* fastZeroedMalloc(size_t n)
+{
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+    void* result = fastMalloc(n);
+    memset(result, 0, n);
+    return result;
+}
+
+char* fastStrDup(const char* src)
+{
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+    size_t len = strlen(src) + 1;
+    char* dup = static_cast<char*>(fastMalloc(len));
+    memcpy(dup, src, len);
+    return dup;
+}
+
+TryMallocReturnValue tryFastZeroedMalloc(size_t n)
+{
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+    void* result;
+    if (!tryFastMalloc(n).getValue(result))
+        return 0;
+    memset(result, 0, n);
+    return result;
 }
 
 #if OS(WINDOWS)
@@ -311,6 +312,136 @@ void fastEnableMiniMode() { }
 
 } // namespace WTF
 
+#elif USE(SYSTEM_MALLOC) && USE(MIMALLOC)
+
+#include <mimalloc.h>
+#include <wtf/OSAllocator.h>
+
+namespace WTF {
+
+bool isFastMallocEnabled()
+{
+    return false;
+}
+
+WTF_PRIVATE_INLINE void* fastZeroedMalloc(size_t n)
+{
+    ASSERT_IS_WITHIN_LIMIT(n);
+    return mi_zalloc(n);
+}
+
+WTF_PRIVATE_INLINE char* fastStrDup(const char* src)
+{
+    size_t len = strlen(src) + 1;
+    char* dup = static_cast<char*>(fastMalloc(len));
+    memcpy(dup, src, len);
+    return dup;
+}
+
+WTF_PRIVATE_INLINE TryMallocReturnValue tryFastZeroedMalloc(size_t n)
+{
+    return fastZeroedMalloc(n);
+}
+
+WTF_PRIVATE_INLINE void* fastMalloc(size_t size)
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    return mi_malloc(size);
+}
+
+WTF_PRIVATE_INLINE void* fastCalloc(size_t numElements, size_t elementSize)
+{
+    ASSERT_IS_WITHIN_LIMIT(numElements * elementSize);
+    return mi_calloc(numElements, elementSize);
+}
+
+WTF_PRIVATE_INLINE void* fastRealloc(void* object, size_t size)
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    return mi_realloc(object, size);
+}
+
+WTF_PRIVATE_INLINE void fastFree(void* object)
+{
+    mi_free(object);
+}
+
+WTF_PRIVATE_INLINE size_t fastMallocSize(const void*)
+{
+    // FIXME: This is incorrect; best fix is probably to remove this function.
+    // Caller currently are all using this for assertion, not to actually check
+    // the size of the allocation, so maybe we can come up with something for that.
+    return 1;
+}
+
+WTF_PRIVATE_INLINE size_t fastMallocGoodSize(size_t size)
+{
+    return size;
+}
+
+WTF_PRIVATE_INLINE void* fastAlignedMalloc(size_t alignment, size_t size) 
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    return mi_aligned_alloc(alignment, size);
+}
+
+WTF_PRIVATE_INLINE void* tryFastAlignedMalloc(size_t alignment, size_t size) 
+{
+    FAIL_IF_EXCEEDS_LIMIT(size);
+    return mi_aligned_alloc(alignment, size);
+}
+
+WTF_PRIVATE_INLINE void fastAlignedFree(void* p) 
+{
+    mi_free(p);
+}
+
+WTF_PRIVATE_INLINE TryMallocReturnValue tryFastMalloc(size_t size)
+{
+    FAIL_IF_EXCEEDS_LIMIT(size);
+    return mi_malloc(size);
+}
+    
+WTF_PRIVATE_INLINE TryMallocReturnValue tryFastCalloc(size_t numElements, size_t elementSize)
+{
+    FAIL_IF_EXCEEDS_LIMIT(numElements * elementSize);
+    Checked<size_t, RecordOverflow> checkedSize = elementSize;
+    checkedSize *= numElements;
+    if (checkedSize.hasOverflowed())
+        return nullptr;
+    return mi_calloc(numElements, elementSize);
+}
+    
+WTF_PRIVATE_INLINE TryMallocReturnValue tryFastRealloc(void* object, size_t newSize)
+{
+    FAIL_IF_EXCEEDS_LIMIT(newSize);
+    return mi_realloc(object, newSize);
+}
+
+void releaseFastMallocFreeMemory() { }
+void releaseFastMallocFreeMemoryForThisThread() { }
+    
+FastMallocStatistics fastMallocStatistics()
+{
+    FastMallocStatistics statistics = { 0, 0, 0 };
+    return statistics;
+}
+
+void fastCommitAlignedMemory(void* ptr, size_t size)
+{
+    OSAllocator::commit(ptr, size, true, false);
+}
+
+void fastDecommitAlignedMemory(void* ptr, size_t size)
+{
+    OSAllocator::decommit(ptr, size);
+}
+
+void fastEnableMiniMode()
+{
+}
+
+} // namespace WTF
 #else // defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
 
 #include <bmalloc/bmalloc.h>

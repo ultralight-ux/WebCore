@@ -6,6 +6,7 @@ if (NOT WIN32)
     add_subdirectory(bmalloc)
 endif ()
 
+add_subdirectory(mimalloc)
 add_subdirectory(WTF)
 add_subdirectory(JavaScriptCore)
 add_subdirectory(SQLite)

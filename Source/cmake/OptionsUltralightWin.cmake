@@ -60,6 +60,8 @@ if (MSVC)
         
         set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF /DEBUG:FASTLINK")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF /DEBUG:FASTLINK")
+    elseif (${CMAKE_BUILD_TYPE} MATCHES Release)
+        add_compile_options(/O2 /Gy /Gw /cgthreads8)
     else ()
         add_compile_options(/O1 /Os /Gy /Gw /cgthreads8)
         

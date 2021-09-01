@@ -173,6 +173,9 @@ macro(_WEBKIT_TARGET _target_logical_name _target_cmake_name)
     if (${_target_logical_name}_PRIVATE_DEFINITIONS)
         target_compile_definitions(${_target_cmake_name} PRIVATE ${${_target_logical_name}_PRIVATE_DEFINITIONS})
     endif ()
+    if (${_target_logical_name}_COMPILE_OPTIONS)
+        target_compile_options(${_target_cmake_name} PRIVATE ${${_target_logical_name}_COMPILE_OPTIONS})
+    endif ()
 
     target_link_libraries(${_target_cmake_name} ${${_target_logical_name}_LIBRARIES})
 
