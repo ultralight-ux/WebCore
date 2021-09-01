@@ -27,7 +27,7 @@
 #include <wtf/PrintStream.h>
 
 // Set the below line to '1' to enable debug logging.
-#if 1
+#if 0
 GST_DEBUG_CATEGORY_EXTERN(webkit_media_player_debug);
 #define GST_CAT_DEFAULT webkit_media_player_debug
 #undef GST_DISABLE_GST_DEBUG
