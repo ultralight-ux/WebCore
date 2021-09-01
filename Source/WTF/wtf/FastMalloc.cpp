@@ -453,6 +453,30 @@ bool isFastMallocEnabled()
     return bmalloc::api::isEnabled();
 }
 
+void* fastZeroedMalloc(size_t n)
+{
+    void* result = fastMalloc(n);
+    memset(result, 0, n);
+    return result;
+}
+
+char* fastStrDup(const char* src)
+{
+    size_t len = strlen(src) + 1;
+    char* dup = static_cast<char*>(fastMalloc(len));
+    memcpy(dup, src, len);
+    return dup;
+}
+
+TryMallocReturnValue tryFastZeroedMalloc(size_t n)
+{
+    void* result;
+    if (!tryFastMalloc(n).getValue(result))
+        return 0;
+    memset(result, 0, n);
+    return result;
+}
+
 void* fastMalloc(size_t size)
 {
     ASSERT_IS_WITHIN_LIMIT(size);

@@ -1,6 +1,5 @@
 WEBKIT_OPTION_BEGIN()
 include(UltralightOptions)
-WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_SYSTEM_MALLOC PRIVATE OFF)
 WEBKIT_OPTION_END()
 
 include(UltralightDefinitions)
