@@ -55,7 +55,7 @@ pipeline {
                rem Build Release
                if not exist build mkdir build
                cd build
-               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=MinSizeRel -DUWP_PLATFORM=0 -DWINDOWS_DESKTOP_PLATFORM=1
+               cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DUWP_PLATFORM=0 -DWINDOWS_DESKTOP_PLATFORM=1
                ninja
                cd ..
             '''
