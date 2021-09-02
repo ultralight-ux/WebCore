@@ -147,6 +147,28 @@ void TextCodecICU::registerEncodingNames(EncodingNameRegistrar registrar)
     }
 }
 
+static const char* getICUCanonicalName(const char* name)
+{
+    UErrorCode error = U_ZERO_ERROR;
+    const char* canonicalName = NULL;
+    if ((canonicalName = ucnv_getCanonicalName(name, "MIME", &error)) != NULL) {
+        return canonicalName;
+    } else if ((canonicalName = ucnv_getCanonicalName(name, "IANA", &error)) != NULL) {
+        return canonicalName;
+    } else if ((canonicalName = ucnv_getCanonicalName(name, "", &error)) != NULL) {
+        return canonicalName;
+    } else if ((canonicalName = ucnv_getAlias(name, 0, &error)) != NULL) {
+        return canonicalName;
+    } else if (strstr(name, "x-") == name) {
+        error = U_ZERO_ERROR;
+        icu::LocalUConverterPointer cnv(ucnv_open(name + 2, &error));
+        if (U_SUCCESS(error)) {
+            return name + 2;
+        }
+    }
+    return NULL;
+}
+
 void TextCodecICU::registerCodecs(TextCodecRegistrar registrar)
 {
     for (auto& encodingName : encodingNames) {
@@ -197,9 +219,7 @@ void TextCodecICU::registerCodecs(TextCodecRegistrar registrar)
             continue;
         }
 
-        UErrorCode error = U_ZERO_ERROR;
-        const char* canonicalConverterName = ucnv_getCanonicalName(name, "IANA", &error);
-        ASSERT(U_SUCCESS(error));
+        const char* canonicalConverterName = getICUCanonicalName(name);
         registrar(name, [name, canonicalConverterName] {
             return std::make_unique<TextCodecICU>(name, canonicalConverterName);
         });
@@ -223,6 +243,8 @@ TextCodecICU::~TextCodecICU()
 void TextCodecICU::createICUConverter() const
 {
     ASSERT(!m_converter);
+    if (!m_canonicalConverterName)
+        return;
 
     m_needsGBKFallbacks = !strcmp(m_encodingName, "GBK");
 
