@@ -161,7 +161,7 @@ static const char* getICUCanonicalName(const char* name)
         return canonicalName;
     } else if (strstr(name, "x-") == name) {
         error = U_ZERO_ERROR;
-        icu::LocalUConverterPointer cnv(ucnv_open(name + 2, &error));
+        ICUConverterPtr cnv{ ucnv_open(name + 2, &error), ucnv_close };
         if (U_SUCCESS(error)) {
             return name + 2;
         }
