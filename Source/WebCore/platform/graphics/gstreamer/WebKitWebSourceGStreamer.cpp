@@ -785,7 +785,7 @@ static GstStateChangeReturn webKitWebSrcChangeState(GstElement* element, GstStat
 
 static bool urlHasSupportedProtocol(const URL& url)
 {
-    return url.isValid() && (url.protocolIsInHTTPFamily() || url.protocolIsBlob());
+    return url.isValid() && (url.protocolIsInHTTPFamily() || url.protocolIsBlob() || url.isLocalFile());
 }
 
 // uri handler interface
@@ -797,17 +797,19 @@ static GstURIType webKitWebSrcUriGetType(GType)
 
 const gchar* const* webKitWebSrcGetProtocols(GType)
 {
-    static const char* protocols[4];
+    static const char* protocols[5];
     if (webkitGstCheckVersion(1, 12, 0)) {
         protocols[0] = "http";
         protocols[1] = "https";
         protocols[2] = "blob";
+        protocols[3] = "file";
     } else {
         protocols[0] = "webkit+http";
         protocols[1] = "webkit+https";
         protocols[2] = "webkit+blob";
+        protocols[3] = "webkit+file";
     }
-    protocols[3] = nullptr;
+    protocols[4] = nullptr;
     return protocols;
 }
 

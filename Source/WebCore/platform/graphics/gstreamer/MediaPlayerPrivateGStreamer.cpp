@@ -277,7 +277,7 @@ static void convertToInternalProtocol(URL& url)
 {
     if (webkitGstCheckVersion(1, 12, 0))
         return;
-    if (url.protocolIsInHTTPFamily() || url.protocolIsBlob())
+    if (url.protocolIsInHTTPFamily() || url.protocolIsBlob() || url.isLocalFile())
         url.setProtocol("webkit+" + url.protocol());
 }
 
@@ -285,8 +285,8 @@ void MediaPlayerPrivateGStreamer::setPlaybinURL(const URL& url)
 {
     // Clean out everything after file:// url path.
     String cleanURLString(url.string());
-    if (url.isLocalFile())
-        cleanURLString = cleanURLString.substring(0, url.pathEnd());
+    //if (url.isLocalFile())
+    //    cleanURLString = cleanURLString.substring(0, url.pathEnd());
 
     m_url = URL(URL(), cleanURLString);
     convertToInternalProtocol(m_url);
