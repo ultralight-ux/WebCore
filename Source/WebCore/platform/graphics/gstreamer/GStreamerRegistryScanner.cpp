@@ -489,6 +489,9 @@ bool GStreamerRegistryScanner::areAllCodecsSupported(const Vector<String>& codec
 bool GStreamerRegistryScanner::isAVC1CodecSupported(const String& codec, bool shouldCheckForHardwareUse) const
 {
     auto components = codec.split('.');
+    if (components.size() < 2)
+        return false;
+
     long int spsAsInteger = strtol(components[1].utf8().data(), nullptr, 16);
     uint8_t sps[3];
     sps[0] = spsAsInteger >> 16;
@@ -498,6 +501,9 @@ bool GStreamerRegistryScanner::isAVC1CodecSupported(const String& codec, bool sh
     const char* profile = gst_codec_utils_h264_get_profile(sps, 3);
     const char* level = gst_codec_utils_h264_get_level(sps, 3);
     GST_DEBUG("Codec %s translates to H.264 profile %s and level %s", codec.utf8().data(), profile, level);
+
+    if (!profile || !level)
+        return false;
 
     auto checkH264Caps = [&](const char* capsString) {
         bool supported = false;
