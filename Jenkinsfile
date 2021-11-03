@@ -85,6 +85,8 @@ pipeline {
                # Build Release
                mkdir -p build
                cd build
+               export CC=/usr/bin/clang
+               export CXX=/usr/bin/clang++
                cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release
                ninja
                cd ..
