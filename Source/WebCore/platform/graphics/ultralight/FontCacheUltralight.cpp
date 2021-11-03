@@ -27,7 +27,7 @@ public:
 
   virtual WTF::RefPtr<FT_FaceRec_> face() const override { return face_; }
 
-  virtual Ref<FontFile> font_file() const { return font_file_; }
+  virtual RefPtr<FontFile> font_file() const { return font_file_; }
 
   virtual void update_access() override {
     last_access_ = std::chrono::steady_clock::now();
@@ -36,14 +36,14 @@ public:
   virtual std::chrono::steady_clock::time_point last_access() const { return last_access_; }
 
 protected:
-  FontFaceImpl(WTF::RefPtr<FT_FaceRec_> face, Ref<FontFile> font_file) : face_(face), font_file_(font_file) {
+  FontFaceImpl(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file) : face_(face), font_file_(font_file) {
     last_access_ = std::chrono::steady_clock::now();
   }
 
   ~FontFaceImpl() {}
 
   WTF::RefPtr<FT_FaceRec_> face_;
-  Ref<FontFile> font_file_;
+  RefPtr<FontFile> font_file_;
   std::chrono::steady_clock::time_point last_access_;
 
   friend class FontFace;
@@ -53,7 +53,7 @@ protected:
 FontFace::FontFace() {}
 FontFace::~FontFace() {}
 
-Ref<FontFace> FontFace::Create(WTF::RefPtr<FT_FaceRec_> face, Ref<FontFile> font_file) {
+RefPtr<FontFace> FontFace::Create(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file) {
   return AdoptRef(*new FontFaceImpl(face, font_file));
 }
 
@@ -64,9 +64,10 @@ public:
     return g_instance;
   }
 
-  RefPtr<FontFace> LookupFont(const String16& family, int weight, bool italic) {
+  RefPtr<FontFace> LookupFont(const String& family, int weight, bool italic) {
     ProfiledZone;
-    unsigned int family_hash = StringHasher::hashMemory(family.data(), family.size() * sizeof(Char16));
+    ultralight::String8 family8 = family.utf8();
+    unsigned int family_hash = StringHasher::hashMemory(family8.data(), family8.sizeBytes());
     uintptr_t hashCodes[] = { family_hash, (uintptr_t)weight, italic };
     unsigned int request_hash = StringHasher::hashMemory<sizeof(hashCodes)>(hashCodes);
 
@@ -111,11 +112,11 @@ public:
             return nullptr;
 
           assert(error == 0);
-          font_face = FontFace::Create(adoptRef(face), *file);
+          font_face = FontFace::Create(adoptRef(face), file);
         }
       }
       else {
-        ultralight::String16 font_file_path = file->filepath();
+        ultralight::String font_file_path = file->filepath();
         if (font_file_path.empty())
           return nullptr;
 
@@ -128,7 +129,7 @@ public:
           return nullptr;
 
         assert(error == 0);
-        font_face = FontFace::Create(adoptRef(face), *file);
+        font_face = FontFace::Create(adoptRef(face), file);
       }
     }
     

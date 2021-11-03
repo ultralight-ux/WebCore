@@ -89,13 +89,13 @@ namespace ultralight {
 
 class FontFace : public RefCounted {
 public:
-  static Ref<FontFace> Create(WTF::RefPtr<FT_FaceRec_> face, Ref<FontFile> font_file);
+  static RefPtr<FontFace> Create(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile> font_file);
 
   // Get the underling FreeType FT_Face object
   virtual WTF::RefPtr<FT_FaceRec_> face() const = 0;
 
   // Get the underlying font file
-  virtual Ref<FontFile> font_file() const = 0;
+  virtual RefPtr<FontFile> font_file() const = 0;
 
   // Mark as accessed (updates last_access to now)
   virtual void update_access() = 0;

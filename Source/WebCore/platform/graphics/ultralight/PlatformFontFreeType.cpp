@@ -95,11 +95,11 @@ public:
     RefPtr<Bitmap>& out_bitmap, Point& out_offset) override {
     ProfiledZone;
     FT_Int32 load_flags = FT_LOAD_RENDER;
-    if (hinting == ultralight::kFontHinting_Smooth)
+    if (hinting == ultralight::FontHinting::Smooth)
       load_flags |= FT_LOAD_TARGET_LIGHT;
-    else if (hinting == ultralight::kFontHinting_Normal)
+    else if (hinting == ultralight::FontHinting::Normal)
       load_flags |= FT_LOAD_TARGET_NORMAL;
-    else if (hinting == ultralight::kFontHinting_Monochrome)
+    else if (hinting == ultralight::FontHinting::Monochrome)
       load_flags |= FT_LOAD_TARGET_MONO;
 
     FT_Error error = FT_Load_Glyph(face(), glyph_index, load_flags);
@@ -127,7 +127,7 @@ public:
       }
 
       bitmap = ultralight::Bitmap::Create(bitmap_width, bitmap_height,
-        ultralight::kBitmapFormat_A8_UNORM, bitmap_width * bpp, converted_bitmap.buffer,
+        ultralight::BitmapFormat::A8_UNORM, bitmap_width * bpp, converted_bitmap.buffer,
         bitmap_width * bitmap_height * bpp);
       FT_Bitmap_Done(lib, &converted_bitmap);
 
@@ -141,7 +141,7 @@ public:
     else {
       assert(slot->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY);
       bitmap = ultralight::Bitmap::Create(bitmap_width, bitmap_height,
-        ultralight::kBitmapFormat_A8_UNORM, bitmap_width * bpp, slot->bitmap.buffer,
+        ultralight::BitmapFormat::A8_UNORM, bitmap_width * bpp, slot->bitmap.buffer,
         bitmap_width * bitmap_height * bpp);
     }
 

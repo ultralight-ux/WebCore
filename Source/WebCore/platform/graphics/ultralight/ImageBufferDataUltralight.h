@@ -12,6 +12,7 @@
 #endif
 
 #include "platform/graphics/ultralight/CanvasImage.h"
+#include <JavaScriptCore/Uint8ClampedArray.h>
 
 namespace WebCore {
 
@@ -30,6 +31,9 @@ namespace WebCore {
   public:
     ImageBufferData(const IntSize&, RenderingMode, bool isDeferred);
     virtual ~ImageBufferData();
+
+    RefPtr<Uint8ClampedArray> getData(AlphaPremultiplication, const IntRect&, const IntSize&) const;
+    void putData(const Uint8ClampedArray& source, AlphaPremultiplication sourceFormat, const IntSize& sourceSize, const IntRect& sourceRect, const IntPoint& destPoint, const IntSize&);
 
     RefPtr<CanvasImage> m_image;
     IntSize m_size;

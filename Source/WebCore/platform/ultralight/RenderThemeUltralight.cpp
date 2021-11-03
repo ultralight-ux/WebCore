@@ -271,7 +271,7 @@ public:
 
     static void drawJoinedLines(PlatformCanvas canvas, const Vector<ultralight::Point>& points, bool use_square_cap, float strokeWidth, Color color)
     {
-        ultralight::Ref<ultralight::Path> path = ultralight::Path::Create();
+        ultralight::RefPtr<ultralight::Path> path = ultralight::Path::Create();
         path->MoveTo(points[0]);
         for (unsigned i = 1; i < points.size(); ++i)
             path->LineTo(points[i]);

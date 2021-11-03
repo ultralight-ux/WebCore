@@ -230,12 +230,16 @@ void GraphicsContext::fillRect(const FloatRect& rect, const Color& color)
   ASSERT(hasPlatformContext());
 
   if (hasShadow()) {
+    ShadowBlur contextShadow(m_state);
+    contextShadow.drawRectShadow(*this, FloatRoundedRect(rect));
+    /*
     FloatSize shadowOffset;
     float shadowBlur;
     Color shadowColor;
     getShadow(shadowOffset, shadowBlur, shadowColor);
 
     platformContext()->DrawBoxShadow(FloatRoundedRect(rect), shadowOffset, shadowBlur, shadowColor, false, FloatRoundedRect(rect));
+    */
   }
 
   if (color.isVisible()) {
@@ -806,16 +810,17 @@ void GraphicsContext::platformFillRoundedRect(const FloatRoundedRect& rect, cons
 
   ASSERT(hasPlatformContext());
 
-  // TODO: Handle shadows.
-  // 
   if (hasShadow()) {
-
+      ShadowBlur contextShadow(m_state);
+      contextShadow.drawRectShadow(*this, rect);
+      /*
     FloatSize shadowOffset;
     float shadowBlur;
     Color shadowColor;
     getShadow(shadowOffset, shadowBlur, shadowColor);
 
     platformContext()->DrawBoxShadow(rect, shadowOffset, shadowBlur, shadowColor, false, rect);
+    */
   }
 
   if (color.isVisible()) {
@@ -837,38 +842,37 @@ void GraphicsContext::platformFillRoundedRect(const FloatRoundedRect& rect, cons
 
 void GraphicsContext::fillRectWithRoundedHole(const FloatRect& rect, const FloatRoundedRect& roundedHoleRect, const Color& color)
 {
-  if (paintingDisabled() || !color.isValid())
-    return;
+    if (paintingDisabled())
+        return;
 
-  // AFAIK, this is only called from RenderBoxModelObject::paintBoxShadow when
-  // it wants to draw an inset shadow.
+    if (m_impl) {
+        m_impl->fillRectWithRoundedHole(rect, roundedHoleRect, color);
+        return;
+    }
 
-  if (hasShadow()) {
+    Path path;
+    path.addRect(rect);
 
-    FloatSize shadowOffset;
-    float shadowBlur;
-    Color shadowColor;
-    getShadow(shadowOffset, shadowBlur, shadowColor);
+    if (!roundedHoleRect.radii().isZero())
+        path.addRoundedRect(roundedHoleRect);
+    else
+        path.addRect(roundedHoleRect.rect());
 
-    //platformContext()->DrawBoxShadow(rect, shadowOffset, shadowBlur, shadowColor, false, rect);
-  }
+    WindRule oldFillRule = fillRule();
+    Color oldFillColor = fillColor();
 
-  // TODO
-  //notImplemented();
+    setFillRule(WindRule::EvenOdd);
+    setFillColor(color);
 
-  return;
+    if (hasShadow()) {
+        ShadowBlur contextShadow(m_state);
+        contextShadow.drawInsetShadow(*this, rect, roundedHoleRect);
+    }
 
-  /*
-  if (this->mustUseShadowBlur())
-    platformContext()->shadowBlur().drawInsetShadow(*this, rect, roundedHoleRect);
+    fillPath(path);
 
-  Path path;
-  path.addRect(rect);
-  if (!roundedHoleRect.radii().isZero())
-    path.addRoundedRect(roundedHoleRect);
-  else
-    path.addRect(roundedHoleRect.rect());
-  */
+    setFillRule(oldFillRule);
+    setFillColor(oldFillColor);
 }
 
 void GraphicsContext::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator op, BlendMode blendMode)
@@ -920,7 +924,7 @@ void GraphicsContext::drawPattern(Image& image, const FloatRect& destRect, const
     ultralight::Rect src = tileRect;
     ultralight::Rect src_uv = canvas_image.canvas()->render_target().uv_coords;
     platformContext()->canvas()->DrawCanvasPattern(
-      *canvas_image.canvas(), src_uv, src, dest, combined);
+      canvas_image.canvas(), src_uv, src, dest, combined);
 
     platformContext()->restore();
   }

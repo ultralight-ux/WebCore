@@ -47,7 +47,7 @@ void load(const URL& url, LoadCompletionHandler&& completionHandler) {
   loadQueue().dispatch([loadTask = createLoadTask(url, WTFMove(completionHandler))]() mutable {
     auto fs = ultralight::Platform::instance().file_system();
     if (fs) {
-      ultralight::String16 path = ultralight::Convert(loadTask->urlString);
+      ultralight::String path = ultralight::Convert(loadTask->urlString);
       ultralight::FileHandle file = fs->OpenFile(path, false);
       if (file != ultralight::invalidFileHandle) {
         int64_t fileSize = 0;
@@ -55,10 +55,10 @@ void load(const URL& url, LoadCompletionHandler&& completionHandler) {
           char* buffer = new char[fileSize];
           if (fs->ReadFromFile(file, buffer, fileSize) > 0) {
             loadTask->result.data = SharedBuffer::create(buffer, fileSize);
-            ultralight::String16 mimeType = "application/unknown";
+            ultralight::String mimeType = "application/unknown";
             fs->GetFileMimeType(path, mimeType);
             loadTask->result.mimeType = ultralight::Convert(mimeType);
-            ultralight::String16 charset = "utf-8";
+            ultralight::String charset = "utf-8";
             loadTask->result.charset = ultralight::Convert(charset);
           }
         }

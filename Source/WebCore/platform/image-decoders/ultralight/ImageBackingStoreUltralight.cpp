@@ -29,7 +29,7 @@ NativeImagePtr ImageBackingStore::image(bool is_complete) const
     const_cast<ImageBackingStore*>(this)->m_nativeImage = std::make_shared<FramePair>(ultralight::Image::Create(), 0);
   }
 
-  m_nativeImage->first->SetFrame(0, 1, *m_bitmap, is_complete);
+  m_nativeImage->first->SetFrame(0, 1, m_bitmap, is_complete);
 
   return m_nativeImage;
 }
@@ -57,7 +57,7 @@ bool ImageBackingStore::setSize(const IntSize& size)
     if (size.isEmpty())
         return false;
 
-    m_bitmap = ultralight::Bitmap::Create(size.width(), size.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB);
+    m_bitmap = ultralight::Bitmap::Create(size.width(), size.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB);
     m_size = size;
     m_frameRect = IntRect(IntPoint(), m_size);
     clear();

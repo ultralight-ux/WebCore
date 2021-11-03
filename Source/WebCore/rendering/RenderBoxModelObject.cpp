@@ -2486,6 +2486,132 @@ static inline LayoutRect areaCastingShadowInHole(const LayoutRect& holeRect, int
     return unionRect(bounds, offsetBounds);
 }
 
+#if USE(ULTRALIGHT)
+void RenderBoxModelObject::paintBoxShadow(const PaintInfo& info, const LayoutRect& paintRect, const RenderStyle& style, ShadowStyle shadowStyle, bool includeLogicalLeftEdge, bool includeLogicalRightEdge)
+{
+    // FIXME: Deal with border-image.  Would be great to use border-image as a mask.
+    GraphicsContext& context = info.context();
+    if (context.paintingDisabled() || !style.boxShadow())
+        return;
+
+    RoundedRect border = (shadowStyle == Inset) ? style.getRoundedInnerBorderFor(paintRect, includeLogicalLeftEdge, includeLogicalRightEdge)
+                                                : style.getRoundedBorderFor(paintRect, includeLogicalLeftEdge, includeLogicalRightEdge);
+
+    bool hasBorderRadius = style.hasBorderRadius();
+    bool isHorizontal = style.isHorizontalWritingMode();
+    float deviceScaleFactor = document().deviceScaleFactor();
+
+    bool hasOpaqueBackground = style.visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor).isOpaque();
+    for (const ShadowData* shadow = style.boxShadow(); shadow; shadow = shadow->next()) {
+        if (shadow->style() != shadowStyle)
+            continue;
+
+        // FIXME: Add subpixel support for the shadow values. Soon after the shadow offset becomes fractional,
+        // all the early snappings here need to be pushed to the actual painting operations.
+        IntSize shadowOffset(shadow->x(), shadow->y());
+        int shadowRadius = shadow->radius();
+        int shadowPaintingExtent = shadow->paintingExtent();
+        int shadowSpread = shadow->spread();
+
+        if (shadowOffset.isZero() && !shadowRadius && !shadowSpread)
+            continue;
+
+        Color shadowColor = style.colorByApplyingColorFilter(shadow->color());
+
+        if (shadow->style() == Normal) {
+            RoundedRect fillRect = border;
+            fillRect.inflate(shadowSpread);
+            if (fillRect.isEmpty())
+                continue;
+
+            FloatRect pixelSnappedShadowRect = snapRectToDevicePixels(border.rect(), deviceScaleFactor);
+            pixelSnappedShadowRect.inflate(shadowPaintingExtent + shadowSpread);
+            pixelSnappedShadowRect.move(shadowOffset);
+
+            GraphicsContextStateSaver stateSaver(context);
+            context.clip(pixelSnappedShadowRect);
+
+            if (shadow->isWebkitBoxShadow())
+                context.setLegacyShadow(shadowOffset, shadowRadius, shadowColor);
+            else
+                context.setShadow(shadowOffset, shadowRadius, shadowColor);
+
+            FloatRoundedRect rectToClipOut = border.pixelSnappedRoundedRectForPainting(deviceScaleFactor);
+            FloatRoundedRect pixelSnappedFillRect = fillRect.pixelSnappedRoundedRectForPainting(deviceScaleFactor);
+            if (hasBorderRadius) {
+                // If the box is opaque, it is unnecessary to clip it out.
+                if (!hasOpaqueBackground && !rectToClipOut.isEmpty())
+                    context.clipOutRoundedRect(rectToClipOut);
+
+                RoundedRect influenceRect(LayoutRect(pixelSnappedShadowRect), border.radii());
+                influenceRect.expandRadii(2 * shadowPaintingExtent + shadowSpread);
+
+                if (allCornersClippedOut(influenceRect, info.rect))
+                    context.fillRect(pixelSnappedFillRect.rect(), Color::transparent);
+                else {
+                    pixelSnappedFillRect.expandRadii(shadowSpread);
+                    if (!pixelSnappedFillRect.isRenderable())
+                        pixelSnappedFillRect.adjustRadii();
+                    context.fillRoundedRect(pixelSnappedFillRect, Color::transparent);
+                }
+            } else {
+                // If the box is opaque, it is unnecessary to clip it out.
+                if (!hasOpaqueBackground && !rectToClipOut.isEmpty())
+                    context.clipOut(rectToClipOut.rect());
+                context.fillRect(pixelSnappedFillRect.rect(), Color::transparent);
+            }
+        } else {
+            // Inset shadow.
+            FloatRoundedRect pixelSnappedBorderRect = border.pixelSnappedRoundedRectForPainting(deviceScaleFactor);
+            FloatRect pixelSnappedHoleRect = pixelSnappedBorderRect.rect();
+            pixelSnappedHoleRect.inflate(-shadowSpread);
+
+            if (pixelSnappedHoleRect.isEmpty()) {
+                if (hasBorderRadius)
+                    context.fillRoundedRect(pixelSnappedBorderRect, shadowColor);
+                else
+                    context.fillRect(pixelSnappedBorderRect.rect(), shadowColor);
+                continue;
+            }
+
+            if (!includeLogicalLeftEdge) {
+                if (isHorizontal) {
+                    pixelSnappedHoleRect.move(-std::max(shadowOffset.width(), 0) - shadowPaintingExtent, 0);
+                    pixelSnappedHoleRect.setWidth(pixelSnappedHoleRect.width() + std::max(shadowOffset.width(), 0) + shadowPaintingExtent);
+                } else {
+                    pixelSnappedHoleRect.move(0, -std::max(shadowOffset.height(), 0) - shadowPaintingExtent);
+                    pixelSnappedHoleRect.setHeight(pixelSnappedHoleRect.height() + std::max(shadowOffset.height(), 0) + shadowPaintingExtent);
+                }
+            }
+            if (!includeLogicalRightEdge) {
+                if (isHorizontal)
+                    pixelSnappedHoleRect.setWidth(pixelSnappedHoleRect.width() - std::min(shadowOffset.width(), 0) + shadowPaintingExtent);
+                else
+                    pixelSnappedHoleRect.setHeight(pixelSnappedHoleRect.height() - std::min(shadowOffset.height(), 0) + shadowPaintingExtent);
+            }
+
+            Color fillColor(shadowColor.red(), shadowColor.green(), shadowColor.blue(), 255);
+
+            FloatRect pixelSnappedOuterRect = snapRectToDevicePixels(areaCastingShadowInHole(LayoutRect(pixelSnappedBorderRect.rect()), shadowPaintingExtent, shadowSpread, shadowOffset), deviceScaleFactor);
+            FloatRoundedRect pixelSnappedRoundedHole = FloatRoundedRect(pixelSnappedHoleRect, pixelSnappedBorderRect.radii());
+
+            GraphicsContextStateSaver stateSaver(context);
+            if (hasBorderRadius) {
+                context.clipRoundedRect(pixelSnappedBorderRect);
+                pixelSnappedRoundedHole.shrinkRadii(shadowSpread);
+            } else
+                context.clip(pixelSnappedBorderRect.rect());
+
+            if (shadow->isWebkitBoxShadow())
+                context.setLegacyShadow(shadowOffset, shadowRadius, shadowColor);
+            else
+                context.setShadow(shadowOffset, shadowRadius, shadowColor);
+
+            context.fillRectWithRoundedHole(pixelSnappedOuterRect, pixelSnappedRoundedHole, fillColor);
+        }
+    }
+}
+#else
 void RenderBoxModelObject::paintBoxShadow(const PaintInfo& info, const LayoutRect& paintRect, const RenderStyle& style, ShadowStyle shadowStyle, bool includeLogicalLeftEdge, bool includeLogicalRightEdge)
 {
     // FIXME: Deal with border-image.  Would be great to use border-image as a mask.
@@ -2715,6 +2841,7 @@ void RenderBoxModelObject::paintBoxShadow(const PaintInfo& info, const LayoutRec
     }
 #endif
 }
+#endif
 
 LayoutUnit RenderBoxModelObject::containingBlockLogicalWidthForContent() const
 {

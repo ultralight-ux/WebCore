@@ -36,7 +36,7 @@ void BitmapTextureUltralight::didReset() {
   }
     
   canvas_ = ultralight::Canvas::Create(canvas_size_.width(),
-      canvas_size_.height(), ultralight::kBitmapFormat_BGRA8_UNORM_SRGB, nullptr);
+      canvas_size_.height(), ultralight::BitmapFormat::BGRA8_UNORM_SRGB, nullptr);
 }
 
 void BitmapTextureUltralight::updateContents(Image* image,
@@ -46,7 +46,7 @@ void BitmapTextureUltralight::updateContents(Image* image,
 
     if (image->isCanvasImage()) {
       ultralight::RefPtr<ultralight::Canvas> imageCanvas = static_cast<CanvasImage*>(image)->canvas();
-      ultralight::Rect src_uv = imageCanvas->render_target().uv_coords;
+      ultralight::Rect src = { 0.0f, 0.0f, (float)imageCanvas->width(), (float)imageCanvas->height() };
       ultralight::Rect dest = { (float)targetRect.x(), (float)targetRect.y(),
         (float)targetRect.maxX(), (float)targetRect.maxY() };
       ultralight::Paint paint;
@@ -55,7 +55,7 @@ void BitmapTextureUltralight::updateContents(Image* image,
       // TODO: handle offset
 
       canvas_->set_blending_enabled(false);
-      canvas_->DrawCanvas(*imageCanvas, src_uv, dest, paint);
+      canvas_->DrawCanvas(imageCanvas, src, dest, paint);
       canvas_->set_blending_enabled(true);
 
       paint.color = UltralightColorRED;

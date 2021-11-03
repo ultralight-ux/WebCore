@@ -112,14 +112,14 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
       paint.color = UltralightRGBA(shadow_color.red(), shadow_color.green(), shadow_color.blue(), shadow_color.alpha());
 
       ultralight::Point shadow_offset = { shadow_size.width(), shadow_size.height() };
-      canvas->DrawGlyphs(*ultraFont, paint, pen_y, glyphBuf.data(), glyphBuf.size(), shadow_offset);
+      canvas->DrawGlyphs(ultraFont, paint, pen_y, glyphBuf.data(), glyphBuf.size(), shadow_offset);
     }
 
     ultralight::Paint paint;
     WebCore::Color color = context.fillColor();
     paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
 
-    canvas->DrawGlyphs(*ultraFont, paint, pen_y, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f));
+    canvas->DrawGlyphs(ultraFont, paint, pen_y, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f));
     glyphBuf.resize(0);
   }
 
@@ -349,7 +349,7 @@ Path Font::platformPathForGlyph(Glyph glyph) const
   ultralight::RefPtr<ultralight::Path> platformPath;
   platformData.font()->GetGlyphPath(glyph, platformPath);
   if (platformPath)
-    result.ultralightPath()->Set(*platformPath);
+    result.ultralightPath()->Set(platformPath);
 
   return result;
 }

@@ -52,9 +52,9 @@ ImageGStreamer::ImageGStreamer(GstSample* sample)
 #endif
 
     ultralight::RefPtr<ultralight::Bitmap> ul_bitmap = ultralight::Bitmap::Create(width, height,
-        ultralight::kBitmapFormat_BGRA8_UNORM_SRGB, stride, bufferData, stride * height, false);
+        ultralight::BitmapFormat::BGRA8_UNORM_SRGB, stride, bufferData, stride * height, false);
 
-    m_videoFrame = ultralight::VideoFrame::Create(*ul_bitmap, [=] {
+    m_videoFrame = ultralight::VideoFrame::Create(ul_bitmap, [=] {
         gst_video_frame_unmap(gstFrame);
         delete gstFrame;
     });

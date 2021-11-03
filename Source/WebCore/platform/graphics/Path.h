@@ -205,7 +205,7 @@ namespace WebCore {
 #endif
 
 #if USE(ULTRALIGHT)
-        WEBCORE_EXPORT ultralight::Ref<ultralight::Path> ultralightPath() const;
+        WEBCORE_EXPORT ultralight::RefPtr<ultralight::Path> ultralightPath() const;
 #endif
 
 #if USE(DIRECT2D)

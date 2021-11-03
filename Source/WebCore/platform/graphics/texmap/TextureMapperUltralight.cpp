@@ -37,14 +37,14 @@ void TextureMapperUltralight::drawTexture(const BitmapTexture& texture,
       return;
 
     auto srcCanvas = static_cast<const BitmapTextureUltralight&>(texture).canvas();
-    ultralight::Rect src_uv = srcCanvas->render_target().uv_coords;
+    ultralight::Rect src = { 0.0f, 0.0f, (float)srcCanvas->width(), (float)srcCanvas->height() };
     ultralight::Rect dest = { target.x(), target.y(), target.maxX(), target.maxY() };
     ultralight::Paint paint;
     paint.color = UltralightRGBA(255, 255, 255, (unsigned char)(opacity * 255.0f));
  
     current_surface_->Save();
     current_surface_->Transform(modelViewMatrix);
-    current_surface_->DrawCanvas(*srcCanvas, src_uv, dest, paint);
+    current_surface_->DrawCanvas(srcCanvas, src, dest, paint);
     current_surface_->Restore();
 
     //paint.color = UltralightColorGREEN;

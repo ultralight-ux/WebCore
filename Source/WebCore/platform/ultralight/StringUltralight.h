@@ -6,18 +6,18 @@
 
 namespace ultralight {
 
-inline WTF::String Convert(const ultralight::String16& str) {
-  return WTF::String(reinterpret_cast<const UChar*>(str.data()), str.length());
+inline WTF::String Convert(const ultralight::String& str) {
+    return WTF::String::fromUTF8(str.utf8().data(), str.utf8().length());
 }
 
-inline ultralight::String16 Convert(const WTF::String& str) {
+inline ultralight::String Convert(const WTF::String& str) {
   if (str.isEmpty())
-    return ultralight::String16();
+    return ultralight::String();
 
   if (str.is8Bit())
-    return ultralight::String16(reinterpret_cast<const char*>(str.characters8()), str.length());
+    return ultralight::String(reinterpret_cast<const char*>(str.characters8()), str.length());
 
-  return ultralight::String16(reinterpret_cast<const Char16*>(str.characters16()), str.length());
+  return ultralight::String(reinterpret_cast<const Char16*>(str.characters16()), str.length());
 }
 
 }  // namespace ultralight

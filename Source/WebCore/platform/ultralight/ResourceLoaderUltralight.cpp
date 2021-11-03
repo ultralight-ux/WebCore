@@ -11,24 +11,25 @@ namespace ResourceLoader {
     ultralight::FileHandle openFile(const String& filePath)
     {
         ultralight::FileSystem* fs = ultralight::Platform::instance().file_system();
-        ultralight::String16 filePath16 = "resources/" + ultralight::Convert(filePath);
+        auto config = ultralight::Platform::instance().config();
+        ultralight::String filePathStr = config.resource_path_prefix + ultralight::Convert(filePath);
 
         if (!fs) {
-            ultralight::String16 err_msg = "Could not load resource: " + filePath16 + ", no FileSystem instance set, make sure that you've called ultralight::Platform::instance().set_file_system().";
+            ultralight::String err_msg = "Could not load resource: " + filePathStr + ", no FileSystem instance set, make sure that you've called ultralight::Platform::instance().set_file_system().";
             UL_LOG_ERROR(err_msg);
             return ultralight::invalidFileHandle;
         }
 
-        if (!fs->FileExists(filePath16)) {
-            ultralight::String16 err_msg = "Could not load resource: " + filePath16 + ", FileSystem::FileExists() returned false.";
+        if (!fs->FileExists(filePathStr)) {
+            ultralight::String err_msg = "Could not load resource: " + filePathStr + ", FileSystem::FileExists() returned false.";
             UL_LOG_ERROR(err_msg);
             return ultralight::invalidFileHandle;
         }
 
-        ultralight::FileHandle handle = fs->OpenFile(filePath16, false);
+        ultralight::FileHandle handle = fs->OpenFile(filePathStr, false);
 
         if (handle == ultralight::invalidFileHandle) {
-            ultralight::String16 err_msg = "Could not load resource: " + filePath16 + ", FileSystem::OpenFile() returned an invalid file handle.";
+            ultralight::String err_msg = "Could not load resource: " + filePathStr + ", FileSystem::OpenFile() returned an invalid file handle.";
             UL_LOG_ERROR(err_msg);
             return ultralight::invalidFileHandle;
         }

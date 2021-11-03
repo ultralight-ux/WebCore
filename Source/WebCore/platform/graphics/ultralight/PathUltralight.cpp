@@ -25,10 +25,10 @@ public:
   UltralightPath() : m_path(ultralight::Path::Create()) {}
   ~UltralightPath() {}
 
-  ultralight::Ref<ultralight::Path> path() const { return m_path; }
+  ultralight::RefPtr<ultralight::Path> path() const { return m_path; }
 
 private:
-  ultralight::Ref<ultralight::Path> m_path;
+  ultralight::RefPtr<ultralight::Path> m_path;
   friend class Path;
 };
 
@@ -408,7 +408,7 @@ void Path::transform(const AffineTransform& trans)
   path->Transform(trans);
 }
 
-ultralight::Ref<ultralight::Path> Path::ultralightPath() const {
+ultralight::RefPtr<ultralight::Path> Path::ultralightPath() const {
   return ensurePlatformPath()->path();
 }
 
