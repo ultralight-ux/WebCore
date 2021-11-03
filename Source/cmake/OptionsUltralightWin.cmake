@@ -52,8 +52,8 @@ if (MSVC)
         # Create pdb files for debugging purposes
         add_compile_options(/GS /DNDEBUG)
         
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF /DEBUG:FASTLINK")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF /DEBUG:FASTLINK")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF")
     elseif (${CMAKE_BUILD_TYPE} MATCHES RelWithDebInfo)
         # Create pdb files for debugging purposes
         add_compile_options(/Zi /GS /DNDEBUG)
