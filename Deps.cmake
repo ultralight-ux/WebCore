@@ -25,7 +25,7 @@ endif ()
 
 set(WEBCORE_DEPS_REV "1.3b")
 set(GSTREAMER_REV "v5")
-set(ULTRALIGHTCORE_REV "3973c4a7")
+set(ULTRALIGHTCORE_REV "1d4bbe46")
 
 if(${USE_LOCAL_DEPS})
   message("Using local deps.")
