@@ -221,7 +221,7 @@ Optional<FileMetadata> fileMetadataFollowingSymlinks(const String& path)
 
 bool createSymbolicLink(const String& targetPath, const String& symbolicLinkPath)
 {
-#if defined(WINDOWS_DESKTOP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     return !::CreateSymbolicLinkW(symbolicLinkPath.wideCharacters().data(), targetPath.wideCharacters().data(), 0);
 #else
   return false;
@@ -230,7 +230,7 @@ bool createSymbolicLink(const String& targetPath, const String& symbolicLinkPath
 
 bool fileExists(const String& path)
 {
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
   auto handle = openFile(path, FileOpenMode::Read);
   if (!isHandleValid(handle))
     return false;
@@ -264,7 +264,7 @@ bool moveFile(const String& oldPath, const String& newPath)
 
 String pathByAppendingComponent(const String& path, const String& component)
 {
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     // Perform simple UTF-8 concatenation
     if (path.isEmpty())
         return component;
@@ -317,7 +317,7 @@ CString fileSystemRepresentation(const String& path)
 
 #endif // !USE(CF)
 
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 /**
  * Creates all directories down to the specified path using pure WinAPI calls (no Shell API).
  *
@@ -355,11 +355,11 @@ bool createDirectoryRecursively(const std::wstring &directory) {
 
   return true;
 }
-#endif // !defined(WINDOWS_DESKTOP_PLATFORM)
+#endif // !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
 bool makeAllDirectories(const String& path)
 {
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     return createDirectoryRecursively(path.wideCharacters().data());
 #else
     String fullPath = path;
@@ -381,7 +381,7 @@ String homeDirectoryPath()
 
 String pathGetFileName(const String& path)
 {
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     return path.substring(path.reverseFind('/') + 1);
 #else
     return String(::PathFindFileName(path.wideCharacters().data()));
@@ -420,7 +420,7 @@ static String bundleName()
 
 static String storageDirectory(DWORD pathIdentifier)
 {
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     Vector<UChar> buffer(MAX_PATH);
     DWORD len = GetCurrentDirectoryW(MAX_PATH, wcharFrom(buffer.data()));
     if (!len)
@@ -447,7 +447,7 @@ static String storageDirectory(DWORD pathIdentifier)
         return String();
 
     return directory;
-#endif // !defined(WINDOWS_DESKTOP_PLATFORM)
+#endif // !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 }
 
 static String cachedStorageDirectory(DWORD pathIdentifier)
@@ -603,7 +603,7 @@ bool hardLinkOrCopyFile(const String& source, const String& destination)
 
 String localUserSpecificStorageDirectory()
 {
-#if defined(WINDOWS_DESKTOP_PLATFORM) || defined(UWP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
     return cachedStorageDirectory(CSIDL_LOCAL_APPDATA);
 #else
     return String();
@@ -612,7 +612,7 @@ String localUserSpecificStorageDirectory()
 
 String roamingUserSpecificStorageDirectory()
 {
-#if defined(WINDOWS_DESKTOP_PLATFORM) || defined(UWP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
     return cachedStorageDirectory(CSIDL_APPDATA);
 #else
     return String();
@@ -672,7 +672,7 @@ String createTemporaryDirectory()
     });
 }
 
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 class SearchHandleScope {
   HANDLE searchHandle;
  public:
@@ -743,11 +743,11 @@ bool recursiveDeleteDirectory(const std::wstring &path) {
   BOOL result = ::RemoveDirectory(path.c_str());
   return !!result;
 }
-#endif // !defined(WINDOWS_DESKTOP_PLATFORM)
+#endif // !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
 bool deleteNonEmptyDirectory(const String& directoryPath)
 {
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     return recursiveDeleteDirectory(directoryPath.wideCharacters().data());
 #else
     SHFILEOPSTRUCT deleteOperation = {
@@ -761,7 +761,7 @@ bool deleteNonEmptyDirectory(const String& directoryPath)
         L""
     };
     return !SHFileOperation(&deleteOperation);
-#endif // !defined(WINDOWS_DESKTOP_PLATFORM)
+#endif // !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 }
 
 MappedFileData::~MappedFileData()

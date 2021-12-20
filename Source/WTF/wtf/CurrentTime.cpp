@@ -172,11 +172,11 @@ static inline double currentTime()
     double highResTime = highResUpTime();
 
     if (!syncedTime) {
-#if defined(WINDOWS_DESKTOP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
         timeBeginPeriod(1); // increase time resolution around low-res time getter
 #endif
         syncLowResUTCTime = lowResTime = lowResUTCTime();
-#if defined(WINDOWS_DESKTOP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
         timeEndPeriod(1); // restore time resolution
 #endif
         syncHighResUpTime = highResTime;

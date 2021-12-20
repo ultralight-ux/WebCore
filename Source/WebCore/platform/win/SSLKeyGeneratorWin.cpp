@@ -20,7 +20,7 @@
 #include "config.h"
 #include "SSLKeyGenerator.h"
 
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #include "NotImplemented.h"
 #include <wtf/Forward.h>
 #include <wtf/URL.h>
@@ -119,4 +119,4 @@ String signedPublicKeyAndChallengeString(unsigned index, const String& challenge
 
 } // namespace WebCore
 
-#endif // defined(UWP_PLATFORM)
+#endif // WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)

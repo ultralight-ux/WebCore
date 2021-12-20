@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.3.2)
-project(WebCore)
+cmake_minimum_required(VERSION 3.15.0)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 
-if (PLATFORM_TOOLCHAIN)
-    include(${PLATFORM_TOOLCHAIN})
-endif ()
+include(common)
+
+project(WebCore)
 
 # This should be removed once we require CMake 3.3.
 if (POLICY CMP0058)
@@ -69,19 +69,9 @@ endif ()
 # -----------------------------------------------------------------------------
 # Determine the operating system and port
 # -----------------------------------------------------------------------------
-if (UNIX)
-    if (APPLE)
-        set(WTF_OS_MAC_OS_X 1)
-		set(PORT UltralightMac)
-    else ()
-        set(WTF_OS_UNIX 1)
-		set(PORT UltralightLinux)
-    endif ()
-elseif (CMAKE_SYSTEM_NAME MATCHES "Windows")
-    set(WTF_OS_WINDOWS 1)
-	set(PORT UltralightWin)
-else ()
-    message(FATAL_ERROR "Unknown OS '${CMAKE_SYSTEM_NAME}'")
+# This should be set in platform toolchain.
+if (NOT PORT)
+    message(FATAL_ERROR "Unknown PORT '${PORT}'")
 endif ()
 
 set(WTF_PLATFORM_ULTRALIGHT 1)
@@ -93,7 +83,8 @@ include(Deps.cmake)
 # -----------------------------------------------------------------------------
 # Default library types
 # -----------------------------------------------------------------------------
-if (${STATIC_BUILD})
+
+if (UL_ENABLE_STATIC_BUILD)
     set(JavaScriptCore_LIBRARY_TYPE STATIC)
     set(WebCore_LIBRARY_TYPE STATIC)
     set(WebKit_LIBRARY_TYPE STATIC)

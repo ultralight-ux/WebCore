@@ -1,4 +1,7 @@
-#if (defined(WIN32) || defined(_WIN32)) && !defined(WINDOWS_DESKTOP_PLATFORM) && !defined(UWP_PLATFORM)
+#if (defined(WIN32) || defined(_WIN32))
+#include <winapifamily.h>
+
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
 ///
 /// Some non-desktop Win32 toolchains don't define these so we need to
@@ -29,4 +32,5 @@
 
 #define stricmp _stricmp
 
-#endif // #if (defined(WIN32) || defined(_WIN32)) && !defined(WINDOWS_DESKTOP_PLATFORM) && !defined(UWP_PLATFORM)
+#endif // #if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#endif // #if (defined(WIN32) || defined(_WIN32))

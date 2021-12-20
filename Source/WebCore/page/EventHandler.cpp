@@ -3026,7 +3026,7 @@ bool EventHandler::sendContextMenuEventForKey()
 
     static const int kContextMenuMargin = 1;
 
-#if OS(WINDOWS) && defined(WINDOWS_DESKTOP_PLATFORM)
+#if OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     int rightAligned = ::GetSystemMetrics(SM_MENUDROPALIGNMENT);
 #else
     int rightAligned = 0;

@@ -38,7 +38,7 @@
 
 #if OS(WINDOWS)
 #include <windows.h>
-#if defined(WINDOWS_DESKTOP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #include <wincrypt.h> // windows.h must be included before wincrypt.h.
 #else
 #include <bcrypt.h>
@@ -109,7 +109,7 @@ void RandomDevice::cryptographicallyRandomValues(unsigned char* buffer, size_t l
             amountRead += currentRead;
     }
 #elif OS(WINDOWS)
-#if defined(WINDOWS_DESKTOP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     // FIXME: We cannot ensure that Cryptographic Service Provider context and CryptGenRandom are safe across threads.
     // If it is safe, we can acquire context per RandomDevice.
     HCRYPTPROV hCryptProv = 0;

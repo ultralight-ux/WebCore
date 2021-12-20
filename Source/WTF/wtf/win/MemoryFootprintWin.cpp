@@ -37,7 +37,7 @@ namespace WTF {
 
 size_t memoryFootprint()
 {
-#if !defined(UWP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
     // We would like to calculate size of private working set.
     // https://msdn.microsoft.com/en-us/library/windows/desktop/ms684891(v=vs.85).aspx
     // > The working set of a program is a collection of those pages in its virtual address

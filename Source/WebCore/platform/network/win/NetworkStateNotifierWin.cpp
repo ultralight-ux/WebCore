@@ -26,7 +26,7 @@
 #include "config.h"
 #include "NetworkStateNotifier.h"
 
-#if defined(UWP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
 #include "NotImplemented.h"
 
 namespace WebCore {
@@ -112,4 +112,4 @@ void NetworkStateNotifier::startObserving()
 
 } // namespace WebCore
 
-#endif // defined(UWP_PLATFORM)
+#endif // WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)

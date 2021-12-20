@@ -5,8 +5,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 
-get_filename_component(WEBKIT_LIBRARIES_DIR "${CMAKE_SOURCE_DIR}/deps/WebKitLibraries" REALPATH)
-
 include_directories("${CMAKE_BINARY_DIR}/DerivedSources/ForwardingHeaders"
                     "${CMAKE_BINARY_DIR}/DerivedSources"
                     "${WEBKIT_LIBRARIES_DIR}/include")
@@ -33,16 +31,14 @@ set(USE_TEXTURE_MAPPER_ULTRALIGHT 1)
 set(USE_ULTRALIGHT 1)
 add_definitions(-DWTF_PLATFORM_ULTRALIGHT=1)
 
-if (NO_VIDEO)
-    set(USE_GSTREAMER 0)
-    SET_AND_EXPOSE_TO_BUILD(USE_GSTREAMER FALSE)
-else ()
+if (UL_ENABLE_VIDEO)
     set(USE_GSTREAMER 1)
     SET_AND_EXPOSE_TO_BUILD(USE_GSTREAMER TRUE)
 
     link_directories("${GSTREAMER_DIR}/lib")
     link_directories("${GSTREAMER_DIR}/bin")
-    set(GSTREAMER_INCLUDE_DIRS "${GSTREAMER_DIR}/include/gstreamer-1.0")
+    set(GSTREAMER_INCLUDE_DIRS "${GSTREAMER_DIR}/include"
+                               "${GSTREAMER_DIR}/include/gstreamer-1.0")
 
     if (ENABLE_WEB_AUDIO)
         SET_AND_EXPOSE_TO_BUILD(USE_WEBAUDIO_GSTREAMER TRUE)
@@ -54,9 +50,12 @@ else ()
         SET_AND_EXPOSE_TO_BUILD(USE_LIBWEBRTC FALSE)
         SET_AND_EXPOSE_TO_BUILD(WEBRTC_WEBKIT_BUILD FALSE)
     endif ()
+else ()
+    set(USE_GSTREAMER 0)
+    SET_AND_EXPOSE_TO_BUILD(USE_GSTREAMER FALSE)
 endif ()
 
-if (ENABLE_PROFILER)
+if (UL_ENABLE_PROFILER)
     add_definitions(-DTRACY_ENABLE)
     add_definitions(-DTRACY_MODULE_WEBCORE)
     add_definitions(-DTRACY_IMPORTS)

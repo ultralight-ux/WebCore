@@ -39,7 +39,7 @@ static Lock platformLanguageMutex;
 
 static String localeInfo(LCTYPE localeType, const String& fallback)
 {
-#if !defined(WINDOWS_DESKTOP_PLATFORM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     wchar_t localeNameBuf[LOCALE_NAME_MAX_LENGTH];
     int localeChars = GetUserDefaultLocaleName(localeNameBuf, ARRAYSIZE(localeNameBuf));
     if (!localeChars)

@@ -31,7 +31,7 @@
 namespace PAL {
 
 void systemBeep() {
-#if defined(WINDOWS_DESKTOP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
   MessageBeep(static_cast<UINT>(-1));
 #endif
 }

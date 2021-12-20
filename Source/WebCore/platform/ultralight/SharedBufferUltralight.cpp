@@ -10,7 +10,7 @@ namespace WebCore {
 
   RefPtr<SharedBuffer> SharedBuffer::createFromReadingFile(const String& filePath)
   {
-#if defined(WINDOWS_DESKTOP_PLATFORM)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     std::ifstream file(filePath.ascii().data(), std::ios::binary | std::ios::ate);
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);

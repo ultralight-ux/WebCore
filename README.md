@@ -13,7 +13,7 @@ Building typically takes 20 minutes or less on most modern machines.
 | Link                   | URL                                 |
 | ---------------------- | ----------------------------------- |
 | __Main Website__       | <https://ultralig.ht>               |
-| __Chat on Discord!__     | <https://chat.ultralig.ht>          |
+| __Chat on Discord!__   | <https://chat.ultralig.ht>          |
 
 ## Downloading pre-built binaries
 
@@ -40,7 +40,7 @@ Click any of the bucket links to get an XML file listing. Download a package by 
 3. Run the following from command line: 
 
 ```
-choco install cmake ninja strawberryperl python2 ruby1.9 gperf
+choco install cmake ninja activeperl python2 ruby1.9 gperf
 ```
 
 ### Setting up on macOS
@@ -72,20 +72,12 @@ To build WebCore for Windows / 64-bit:
 make release x64
 ```
 
-OR
-
-To build WebCore for Windows / 64-bit with the UWP toolchain:
-
-```
-make release x64_uwp
-```
-
 #### Building Debug on Windows
 
 To build non-optimized WebCore with Debug PDBs:
 
 ```
-make full_debug x64
+make debug x64
 ```
 
 #### Building on Windows with locally-built dependencies

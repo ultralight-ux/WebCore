@@ -25,7 +25,7 @@
 #ifndef WindowsExtras_h
 #define WindowsExtras_h
 
-#if OS(WINDOWS) && defined(WINDOWS_DESKTOP_PLATFORM)
+#if OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
 #include <windows.h>
 #include <objbase.h>

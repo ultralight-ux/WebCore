@@ -259,7 +259,7 @@ using WTF::tryFastZeroedMalloc;
 using WTF::fastAlignedMalloc;
 using WTF::fastAlignedFree;
 
-#if COMPILER(MSVC)
+#if COMPILER(MSVC) && !defined(ULTRALIGHT_STATIC_BUILD)
 #define WTF_PRIVATE_INLINE __forceinline
 #else
 #define WTF_PRIVATE_INLINE

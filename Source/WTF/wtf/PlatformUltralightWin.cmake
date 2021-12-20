@@ -23,6 +23,14 @@ list(APPEND WTF_LIBRARIES
    shlwapi
 )
 
+list(APPEND WTF_INCLUDE_DIRECTORIES
+    ${ULTRALIGHTCORE_DIR}/include
+)
+
+list(APPEND WTF_LIBRARIES
+    UltralightCore
+)
+
 if (USE_GSTREAMER)
     list(APPEND WTF_SOURCES
         glib/GLibUtilities.cpp
@@ -31,16 +39,15 @@ if (USE_GSTREAMER)
     )
 
     list(APPEND WTF_INCLUDE_DIRECTORIES
+        ${GSTREAMER_DIR}/include
         ${GSTREAMER_DIR}/include/glib-2.0
         ${GSTREAMER_DIR}/lib/glib-2.0/include
-        ${ULTRALIGHTCORE_DIR}/include
     )
     
     list(APPEND WTF_LIBRARIES
         glib-2.0
         gobject-2.0
         gio-2.0
-        UltralightCore
     )
 else ()
     list(APPEND WTF_SOURCES
@@ -50,7 +57,9 @@ endif ()
 
 if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRel)
   if (MSVC)
-    add_compile_options(/GL)
+    if (NOT UL_ENABLE_STATIC_BUILD)
+        add_compile_options(/GL)
+    endif()
   endif()
 endif()
 

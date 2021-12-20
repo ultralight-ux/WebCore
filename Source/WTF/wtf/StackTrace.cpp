@@ -114,7 +114,7 @@ void StackTrace::dump(PrintStream& out, const char* indentString) const
     char** symbols = backtrace_symbols(stack, m_size);
     if (!symbols)
         return;
-#elif OS(WINDOWS) && defined(WINDOWS_DESKTOP_PLATFORM)
+#elif OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     HANDLE hProc = GetCurrentProcess();
     uint8_t symbolData[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)] = { 0 };
     auto symbolInfo = reinterpret_cast<SYMBOL_INFO*>(symbolData);
@@ -136,7 +136,7 @@ void StackTrace::dump(PrintStream& out, const char* indentString) const
             mangledName = demangled->mangledName();
             cxaDemangled = demangled->demangledName();
         }
-#elif OS(WINDOWS) && defined(WINDOWS_DESKTOP_PLATFORM)
+#elif OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
         if (DbgHelper::SymFromAddress(hProc, reinterpret_cast<DWORD64>(stack[i]), 0, symbolInfo))
             mangledName = symbolInfo->Name;
 #endif

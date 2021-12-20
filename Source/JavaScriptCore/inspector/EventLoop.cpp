@@ -26,7 +26,7 @@
 #include "config.h"
 #include "EventLoop.h"
 
-#if OS(WINDOWS) && defined(WINDOWS_DESKTOP_PLATFORM)
+#if OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #include <windows.h>
 #elif USE(GLIB)
 #include <glib.h>
@@ -43,7 +43,7 @@ CFStringRef EventLoop::remoteInspectorRunLoopMode()
 
 void EventLoop::cycle()
 {
-#if OS(WINDOWS) && defined(WINDOWS_DESKTOP_PLATFORM)
+#if OS(WINDOWS) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     MSG msg;
     if (!GetMessage(&msg, 0, 0, 0)) {
         m_ended = true;

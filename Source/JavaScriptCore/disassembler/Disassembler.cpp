@@ -35,7 +35,7 @@
 #include <wtf/StringPrintStream.h>
 #include <wtf/Threading.h>
 
-#if OS(WINDOWS) && !defined(WINDOWS_DESKTOP_PLATFORM) && !defined(UWP_PLATFORM)
+#if OS(WINDOWS) && !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
 #define strdup _strdup
 #endif
 
