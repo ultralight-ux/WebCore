@@ -593,6 +593,13 @@
 #define USE_CF 1
 #define USE_FOUNDATION 1
 #endif
+
+#if !OS(WINDOWS)
+#ifndef WINAPI_FAMILY_PARTITION
+#define WINAPI_FAMILY_PARTITION(Partitions)     (Partitions)
+#endif
+#endif
+
 #endif
 
 /* USE(CG) and PLATFORM(CI) */
