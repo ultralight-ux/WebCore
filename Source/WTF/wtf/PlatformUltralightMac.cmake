@@ -117,6 +117,7 @@ find_library(CORE_FOUNDATION CoreFoundation)
 list(APPEND WTF_LIBRARIES
    ${FOUNDATION}
    ${CORE_FOUNDATION}
+   edit
 )
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/wtf)
