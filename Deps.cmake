@@ -19,9 +19,9 @@ elseif (PORT MATCHES "UltralightWin")
     set(WEBCORE_DEPS_PRODUCTS "")
 endif ()
 
-set(WEBCORE_DEPS_REV "b3918806")
-set(GSTREAMER_REV "12343064")
-set(ULTRALIGHTCORE_REV "1d4bbe46")
+set(WEBCORE_DEPS_REV "2d3284ae")
+set(GSTREAMER_REV "e906dcb8")
+set(ULTRALIGHTCORE_REV "b5687228")
 
 if (${ALLINONE_BUILD})
   message("Using local deps from all-in-one build.")

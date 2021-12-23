@@ -10,7 +10,7 @@ set(UL_D3D_DRIVER "d3d11"                                 CACHE STRING  "(Window
 set(UL_MSYS2_PATH "C:\\tools\\msys64\\msys2_shell.cmd"    CACHE PATH    "(Windows only) The path to the MSYS2 shell script.")
 set(UL_LLVM_PATH "C:\\Program Files\\LLVM"                CACHE PATH    "(Windows only) The path to your LLVM install.")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL"         CACHE STRING  "(Windows only) The MSVC runtime library to use.")
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13"                   CACHE STRING  "(macOS only) The minimum macOS deployment target.")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.14"                   CACHE STRING  "(macOS only) The minimum macOS deployment target.")
 
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 set_property(CACHE CMAKE_MSVC_RUNTIME_LIBRARY PROPERTY STRINGS "MultiThreaded" "MultiThreadedDLL" "MultiThreadedDebug" "MultiThreadedDebugDLL")

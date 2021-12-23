@@ -45,10 +45,11 @@ choco install cmake ninja activeperl python2 ruby1.9 gperf
 
 ### Setting up on macOS
 
-1. Install Xcode 9.4.1 (Older versions of Xcode can be found here: https://developer.apple.com/download/more/)
-2. Install Homebrew (https://brew.sh/)
-3. Homebrew may overwrite the command line tools, if so run: `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`
-3. Run the following from command line:
+1. Install Xcode Command Line Tools (or the full Xcode package).
+2. Download the macOS 10.14 Platform SDK from https://github.com/phracker/MacOSX-SDKs/releases and
+   extract it to `/Library/Developer/CommandLineTools/SDKs/MacOSX10.14.sdk`.
+3. Install Homebrew (https://brew.sh/)
+4. Run the following from the Terminal to setup the needed homebrew packages:
 
 ```
 brew install cmake ninja
