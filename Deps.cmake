@@ -19,7 +19,7 @@ elseif (PORT MATCHES "UltralightWin")
     set(WEBCORE_DEPS_PRODUCTS "")
 endif ()
 
-set(WEBCORE_DEPS_REV "2d3284ae")
+set(WEBCORE_DEPS_REV "71769127")
 set(GSTREAMER_REV "e906dcb8")
 set(ULTRALIGHTCORE_REV "b5687228")
 
