@@ -20,7 +20,7 @@ elseif (PORT MATCHES "UltralightWin")
 endif ()
 
 set(WEBCORE_DEPS_REV "71769127")
-set(GSTREAMER_REV "e906dcb8")
+set(GSTREAMER_REV "1067d68e")
 set(ULTRALIGHTCORE_REV "b5687228")
 
 if (${ALLINONE_BUILD})
