@@ -36,7 +36,7 @@
 #include <wtf/Seconds.h>
 #include <wtf/ThreadingPrimitives.h>
 
-#if USE(GLIB_EVENT_LOOP)
+#if USE(GLIB)
 #include <wtf/glib/GRefPtr.h>
 #endif
 
@@ -64,13 +64,20 @@ public:
     WTF_EXPORT_PRIVATE void runForDuration(Seconds duration);
 #endif
 
-#if USE(GLIB_EVENT_LOOP)
+#if USE(GLIB_EVENT_LOOP) || USE(GLIB)
     WTF_EXPORT_PRIVATE GMainContext* mainContext() const { return m_mainContext.get(); }
 #endif
 
 #if USE(GENERIC_EVENT_LOOP) || USE(WINDOWS_EVENT_LOOP) || USE(GLIB_EVENT_LOOP)
-    // Run the single iteration of the RunLoop. It consumes the pending tasks and expired timers, but it won't be blocked.
+    // Run a single iteration of the RunLoop. It consumes the pending tasks and expired timers, but it won't be blocked.
     WTF_EXPORT_PRIVATE static void iterate();
+#endif
+
+#if USE(GENERIC_EVENT_LOOP)
+    // Run a single iteration of the RunLoop. Consume the pending tasks and timers until a max
+    // duration is reached. This allows us to avoid large frame stalls when there is a large amount
+    // of work pending.
+    WTF_EXPORT_PRIVATE void iterateWithMaxDuration(Seconds duration);
 #endif
 
 #if USE(WINDOWS_EVENT_LOOP)
@@ -208,6 +215,12 @@ private:
     Vector<Status*> m_mainLoops;
     bool m_shutdown { false };
     bool m_pendingTasks { false };
+#if USE(GLIB)
+    GRefPtr<GMainContext> m_mainContext;
+    Vector<GRefPtr<GMainLoop>> m_mainLoopsGlib;
+    GRefPtr<GSource> m_source;
+    MonotonicTime m_lastGlibUpdateTime;
+#endif
 #endif
 };
 

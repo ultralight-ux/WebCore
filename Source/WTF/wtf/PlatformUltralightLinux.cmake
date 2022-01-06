@@ -49,7 +49,6 @@ if (USE_GSTREAMER)
     list(APPEND WTF_SOURCES
         glib/GLibUtilities.cpp
         glib/GRefPtr.cpp
-        glib/RunLoopGLib.cpp
     )
 
     list(APPEND WTF_INCLUDE_DIRECTORIES
@@ -63,11 +62,11 @@ if (USE_GSTREAMER)
         gobject-2.0
         gio-2.0
     )
-else ()
-    list(APPEND WTF_SOURCES
-        generic/RunLoopGeneric.cpp
-    )
 endif ()
+
+list(APPEND WTF_SOURCES
+    generic/RunLoopGeneric.cpp
+)
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/wtf)
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/wtf)

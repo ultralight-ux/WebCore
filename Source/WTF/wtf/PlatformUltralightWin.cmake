@@ -35,7 +35,6 @@ if (USE_GSTREAMER)
     list(APPEND WTF_SOURCES
         glib/GLibUtilities.cpp
         glib/GRefPtr.cpp
-        glib/RunLoopGLib.cpp
     )
 
     list(APPEND WTF_INCLUDE_DIRECTORIES
@@ -49,11 +48,11 @@ if (USE_GSTREAMER)
         gobject-2.0
         gio-2.0
     )
-else ()
-    list(APPEND WTF_SOURCES
-        generic/RunLoopGeneric.cpp
-    )
 endif ()
+
+list(APPEND WTF_SOURCES
+    generic/RunLoopGeneric.cpp
+)
 
 if (${CMAKE_BUILD_TYPE} MATCHES Release OR ${CMAKE_BUILD_TYPE} MATCHES MinSizeRel)
   if (MSVC)

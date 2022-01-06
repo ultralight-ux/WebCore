@@ -1374,11 +1374,11 @@
 #endif
 
 #if WTF_DEFAULT_EVENT_LOOP
-#if USE(GLIB)
+//#if USE(GLIB)
 /* Use GLib's event loop abstraction. Primarily GTK port uses it. */
-#define USE_GLIB_EVENT_LOOP 1
-#elif PLATFORM(ULTRALIGHT)
-/* Always use generic loop in Ultralight when not using GLIB. */
+//#define USE_GLIB_EVENT_LOOP 1
+#if PLATFORM(ULTRALIGHT)
+/* Always use generic loop in Ultralight. */
 #define USE_GENERIC_EVENT_LOOP 1
 #elif OS(WINDOWS)
 /* Use Windows message pump abstraction.
