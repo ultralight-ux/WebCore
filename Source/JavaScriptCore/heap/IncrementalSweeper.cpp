@@ -38,13 +38,15 @@
 
 namespace JSC {
 
-static const Seconds sweepTimeSlice = 10_ms;
-static const double sweepTimeTotal = .10;
-static const double sweepTimeMultiplier = 1.0 / sweepTimeTotal;
+static const Seconds sweepTimeSlice = 3_ms;
+static const Seconds sweepTimeInterval = 60_ms;
+//static const double sweepTimeTotal = .10;
+//static const double sweepTimeMultiplier = 1.0 / sweepTimeTotal;
 
 void IncrementalSweeper::scheduleTimer()
 {
-    setTimeUntilFire(sweepTimeSlice * sweepTimeMultiplier);
+    //setTimeUntilFire(sweepTimeSlice * sweepTimeMultiplier);
+    setTimeUntilFire(sweepTimeInterval);
 }
 
 IncrementalSweeper::IncrementalSweeper(Heap* heap)
