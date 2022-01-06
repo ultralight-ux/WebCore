@@ -192,7 +192,9 @@ public:
   PlatformFontFreeTypeFactory() {
   }
 
-  virtual ~PlatformFontFreeTypeFactory() {}
+  virtual ~PlatformFontFreeTypeFactory() {
+    set_platform_font_factory(nullptr);
+  }
 
   virtual PlatformFont* CreatePlatformFont(void* data) override {
     return new PlatformFontFreeType(static_cast<ultralight::RefPtr<ultralight::FontFace>*>(data));
