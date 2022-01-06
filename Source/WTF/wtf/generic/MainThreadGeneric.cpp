@@ -51,7 +51,7 @@ public:
     MainThreadDispatcher()
         : m_timer(RunLoop::main(), this, &MainThreadDispatcher::fired)
     {
-#if USE(GLIB)
+#if USE(GLIB_EVENT_LOOP)
         m_timer.setPriority(RunLoopSourcePriority::MainThreadDispatcherTimer);
 #endif
     }
