@@ -218,6 +218,9 @@ void ScriptedAnimationController::serviceRequestAnimationFrameCallbacks(DOMHighR
     Ref<Document> protectedDocument(*m_document);
 
     for (auto& callback : callbacks) {
+#if USE(ULTRALIGHT)
+        ZoneScopedN("WebCore::RequestAnimationFrameCallback fired");
+#endif
         if (callback->m_firedOrCancelled)
             continue;
         callback->m_firedOrCancelled = true;

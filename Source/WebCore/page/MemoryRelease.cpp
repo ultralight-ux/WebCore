@@ -56,10 +56,17 @@
 #include "ResourceUsageThread.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 static void releaseNoncriticalMemory(MaintainMemoryCache maintainMemoryCache)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     RenderTheme::singleton().purgeCaches();
 
     FontCache::singleton().purgeInactiveFontData();
@@ -78,6 +85,9 @@ static void releaseNoncriticalMemory(MaintainMemoryCache maintainMemoryCache)
 
 static void releaseCriticalMemory(Synchronous synchronous, MaintainPageCache maintainPageCache, MaintainMemoryCache maintainMemoryCache)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // Right now, the only reason we call release critical memory while not under memory pressure is if the process is about to be suspended.
     if (maintainPageCache == MaintainPageCache::No) {
         PruningReason pruningReason = MemoryPressureHandler::singleton().isUnderMemoryPressure() ? PruningReason::MemoryPressure : PruningReason::ProcessSuspended;
@@ -119,6 +129,9 @@ static void releaseCriticalMemory(Synchronous synchronous, MaintainPageCache mai
 
 void releaseMemory(Critical critical, Synchronous synchronous, MaintainPageCache maintainPageCache, MaintainMemoryCache maintainMemoryCache)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     TraceScope scope(MemoryPressureHandlerStart, MemoryPressureHandlerEnd, static_cast<uint64_t>(critical), static_cast<uint64_t>(synchronous));
 
     if (critical == Critical::Yes) {

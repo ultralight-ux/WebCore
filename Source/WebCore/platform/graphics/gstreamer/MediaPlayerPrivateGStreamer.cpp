@@ -216,7 +216,7 @@ MediaPlayerPrivateGStreamer::MediaPlayerPrivateGStreamer(MediaPlayer* player)
     , m_totalBytes(0)
     , m_preservesPitch(false)
 {
-#if USE(GLIB)
+#if USE(GLIB_EVENT_LOOP)
     m_readyTimerHandler.setPriority(G_PRIORITY_DEFAULT_IDLE);
 #endif
 }

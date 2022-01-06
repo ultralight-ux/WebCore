@@ -418,8 +418,16 @@ WTF_PRIVATE_INLINE TryMallocReturnValue tryFastRealloc(void* object, size_t newS
     return mi_realloc(object, newSize);
 }
 
-void releaseFastMallocFreeMemory() { }
-void releaseFastMallocFreeMemoryForThisThread() { }
+void releaseFastMallocFreeMemory() { 
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+    mi_collect(true);
+}
+
+void releaseFastMallocFreeMemoryForThisThread() {
+    releaseFastMallocFreeMemory();
+}
     
 FastMallocStatistics fastMallocStatistics()
 {

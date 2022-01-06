@@ -100,6 +100,10 @@
 #include "JSCGLibWrapperObject.h"
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace JSC {
 
 namespace {
@@ -394,6 +398,9 @@ void Heap::dumpHeapStatisticsAtVMDestruction()
 // Run all pending finalizers now because we won't get another chance.
 void Heap::lastChanceToFinalize()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     MonotonicTime before;
     if (Options::logGC()) {
         before = MonotonicTime::now();
@@ -727,6 +734,9 @@ void Heap::gatherScratchBufferRoots(ConservativeRoots& roots)
 
 void Heap::beginMarking()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     TimingScope timingScope(*this, "Heap::beginMarking");
     m_jitStubRoutines->clearMarks();
     m_objectSpace.beginMarking();
@@ -735,6 +745,9 @@ void Heap::beginMarking()
 
 void Heap::removeDeadCompilerWorklistEntries()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
 #if ENABLE(DFG_JIT)
     if (!VM::canUseJIT())
         return;
@@ -818,6 +831,9 @@ void Heap::updateObjectCounts()
 
 void Heap::endMarking()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     forEachSlotVisitor(
         [&] (SlotVisitor& visitor) {
             visitor.reset();
@@ -923,6 +939,9 @@ std::unique_ptr<TypeCountSet> Heap::objectTypeCounts()
 
 void Heap::deleteAllCodeBlocks(DeleteAllCodeEffort effort)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_collectionScope && effort == DeleteAllCodeIfNotCollecting)
         return;
 
@@ -968,6 +987,9 @@ void Heap::deleteAllCodeBlocks(DeleteAllCodeEffort effort)
 
 void Heap::deleteAllUnlinkedCodeBlocks(DeleteAllCodeEffort effort)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_collectionScope && effort == DeleteAllCodeIfNotCollecting)
         return;
 
@@ -986,6 +1008,9 @@ void Heap::deleteAllUnlinkedCodeBlocks(DeleteAllCodeEffort effort)
 
 void Heap::deleteUnmarkedCompiledCode()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     vm()->forEachScriptExecutableSpace([] (auto& space) { space.space.sweep(); });
     vm()->forEachCodeBlockSpace([] (auto& space) { space.space.sweep(); }); // Sweeping must occur before deleting stubs, otherwise the stubs might still think they're alive as they get deleted.
     m_jitStubRoutines->deleteUnmarkedJettisonedStubRoutines();
@@ -993,6 +1018,9 @@ void Heap::deleteUnmarkedCompiledCode()
 
 void Heap::addToRememberedSet(const JSCell* constCell)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     JSCell* cell = const_cast<JSCell*>(constCell);
     ASSERT(cell);
     ASSERT(!Options::useConcurrentJIT() || !isCompilationThread());
@@ -1048,6 +1076,9 @@ void Heap::addToRememberedSet(const JSCell* constCell)
 
 void Heap::sweepSynchronously()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     MonotonicTime before { };
     if (Options::logGC()) {
         dataLog("Full sweep: ", capacity() / 1024, "kb ");
@@ -1063,6 +1094,9 @@ void Heap::sweepSynchronously()
 
 void Heap::collect(Synchronousness synchronousness, GCRequest request)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     switch (synchronousness) {
     case Async:
         collectAsync(request);
@@ -1076,6 +1110,9 @@ void Heap::collect(Synchronousness synchronousness, GCRequest request)
 
 void Heap::collectNow(Synchronousness synchronousness, GCRequest request)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (validateDFGDoesGC)
         RELEASE_ASSERT(expectDoesGC());
 
@@ -1111,6 +1148,9 @@ void Heap::collectNow(Synchronousness synchronousness, GCRequest request)
 
 void Heap::collectAsync(GCRequest request)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (validateDFGDoesGC)
         RELEASE_ASSERT(expectDoesGC());
 
@@ -1135,6 +1175,9 @@ void Heap::collectAsync(GCRequest request)
 
 void Heap::collectSync(GCRequest request)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (validateDFGDoesGC)
         RELEASE_ASSERT(expectDoesGC());
 
@@ -1192,6 +1235,9 @@ void Heap::checkConn(GCConductor conn)
 
 auto Heap::runCurrentPhase(GCConductor conn, CurrentThreadState* currentThreadState) -> RunCurrentPhaseResult
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     checkConn(conn);
     m_currentThreadState = currentThreadState;
     m_currentThread = &Thread::current();
@@ -1255,6 +1301,9 @@ NEVER_INLINE bool Heap::runNotRunningPhase(GCConductor conn)
 
 NEVER_INLINE bool Heap::runBeginPhase(GCConductor conn)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     m_currentGCStartTime = MonotonicTime::now();
     
     {
@@ -1354,6 +1403,9 @@ NEVER_INLINE bool Heap::runBeginPhase(GCConductor conn)
 
 NEVER_INLINE bool Heap::runFixpointPhase(GCConductor conn)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     RELEASE_ASSERT(conn == GCConductor::Collector || m_currentThreadState);
     
     SlotVisitor& slotVisitor = *m_collectorSlotVisitor;
@@ -1443,6 +1495,9 @@ NEVER_INLINE bool Heap::runFixpointPhase(GCConductor conn)
 
 NEVER_INLINE bool Heap::runConcurrentPhase(GCConductor conn)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     SlotVisitor& slotVisitor = *m_collectorSlotVisitor;
 
     switch (conn) {
@@ -1473,6 +1528,9 @@ NEVER_INLINE bool Heap::runConcurrentPhase(GCConductor conn)
 
 NEVER_INLINE bool Heap::runReloopPhase(GCConductor conn)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (Options::logGC())
         dataLog("[GC<", RawPointer(this), ">: ", gcConductorShortName(conn), " ");
     
@@ -1486,6 +1544,9 @@ NEVER_INLINE bool Heap::runReloopPhase(GCConductor conn)
 
 NEVER_INLINE bool Heap::runEndPhase(GCConductor conn)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     m_scheduler->endCollection();
         
     {
@@ -1580,6 +1641,9 @@ bool Heap::changePhase(GCConductor conn, CollectorPhase nextPhase)
 
 NEVER_INLINE bool Heap::finishChangingPhase(GCConductor conn)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     checkConn(conn);
     
     if (m_nextPhase == m_currentPhase)
@@ -1627,6 +1691,9 @@ NEVER_INLINE bool Heap::finishChangingPhase(GCConductor conn)
 
 void Heap::stopThePeriphery(GCConductor conn)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_worldIsStopped) {
         dataLog("FATAL: world already stopped.\n");
         RELEASE_ASSERT_NOT_REACHED();
@@ -1666,6 +1733,9 @@ void Heap::stopThePeriphery(GCConductor conn)
 
 NEVER_INLINE void Heap::resumeThePeriphery()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // Calling resumeAllocating does the Right Thing depending on whether this is the end of a
     // collection cycle or this is just a concurrent phase within a collection cycle:
     // - At end of collection cycle: it's a no-op because prepareForAllocation already cleared the
@@ -1720,6 +1790,9 @@ NEVER_INLINE void Heap::resumeThePeriphery()
 
 bool Heap::stopTheMutator()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     for (;;) {
         unsigned oldState = m_worldState.load();
         if (oldState & stoppedBit) {
@@ -1760,6 +1833,9 @@ bool Heap::stopTheMutator()
 
 NEVER_INLINE void Heap::resumeTheMutator()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (false)
         dataLog("Resuming the mutator.\n");
     for (;;) {
@@ -1790,6 +1866,9 @@ NEVER_INLINE void Heap::resumeTheMutator()
 
 void Heap::stopIfNecessarySlow()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (validateDFGDoesGC)
         RELEASE_ASSERT(expectDoesGC());
 
@@ -1805,6 +1884,9 @@ void Heap::stopIfNecessarySlow()
 
 bool Heap::stopIfNecessarySlow(unsigned oldState)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (validateDFGDoesGC)
         RELEASE_ASSERT(expectDoesGC());
 
@@ -1829,6 +1911,9 @@ bool Heap::stopIfNecessarySlow(unsigned oldState)
 
 NEVER_INLINE void Heap::collectInMutatorThread()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     CollectingScope collectingScope(*this);
     for (;;) {
         RunCurrentPhaseResult result = runCurrentPhase(GCConductor::Mutator, nullptr);
@@ -1862,6 +1947,9 @@ NEVER_INLINE void Heap::collectInMutatorThread()
 template<typename Func>
 void Heap::waitForCollector(const Func& func)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     for (;;) {
         bool done;
         {
@@ -1898,6 +1986,9 @@ void Heap::waitForCollector(const Func& func)
 
 void Heap::acquireAccessSlow()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     for (;;) {
         unsigned oldState = m_worldState.load();
         RELEASE_ASSERT(!(oldState & hasAccessBit));
@@ -1926,6 +2017,9 @@ void Heap::acquireAccessSlow()
 
 void Heap::releaseAccessSlow()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     for (;;) {
         unsigned oldState = m_worldState.load();
         if (!(oldState & hasAccessBit)) {
@@ -2053,6 +2147,9 @@ void Heap::setNeedFinalize()
 
 void Heap::waitWhileNeedFinalize()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     for (;;) {
         unsigned oldState = m_worldState.load();
         if (!(oldState & needFinalizeBit)) {
@@ -2084,6 +2181,9 @@ void Heap::notifyThreadStopping(const AbstractLocker&)
 
 void Heap::finalize()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     MonotonicTime before;
     if (Options::logGC()) {
         before = MonotonicTime::now();
@@ -2116,6 +2216,9 @@ void Heap::finalize()
 
 Heap::Ticket Heap::requestCollection(GCRequest request)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     stopIfNecessary();
     
     ASSERT(vm()->currentThreadIsHoldingAPILock());
@@ -2141,6 +2244,9 @@ Heap::Ticket Heap::requestCollection(GCRequest request)
 
 void Heap::waitForCollection(Ticket ticket)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     waitForCollector(
         [&] (const AbstractLocker&) -> bool {
             return m_lastServedTicket >= ticket;
@@ -2149,6 +2255,9 @@ void Heap::waitForCollection(Ticket ticket)
 
 void Heap::sweepInFinalize()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     m_objectSpace.sweepLargeAllocations();
     vm()->eagerlySweptDestructibleObjectSpace.sweep();
 }
@@ -2168,6 +2277,9 @@ void Heap::suspendCompilerThreads()
 
 void Heap::willStartCollection()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (Options::logGC())
         dataLog("=> ");
     
@@ -2244,6 +2356,9 @@ void Heap::deleteSourceProviderCaches()
 
 void Heap::notifyIncrementalSweeper()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (m_collectionScope && m_collectionScope.value() == CollectionScope::Full) {
         if (!m_logicallyEmptyWeakBlocks.isEmpty())
             m_indexOfNextLogicallyEmptyWeakBlockToSweep = 0;
@@ -2442,6 +2557,9 @@ void Heap::FinalizerOwner::finalize(Handle<Unknown> handle, void* context)
 
 void Heap::collectNowFullIfNotDoneRecently(Synchronousness synchronousness)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!m_fullActivityCallback) {
         collectNow(synchronousness, CollectionScope::Full);
         return;
@@ -2596,6 +2714,9 @@ void Heap::reportExternalMemoryVisited(size_t size)
 
 void Heap::collectIfNecessaryOrDefer(GCDeferralContext* deferralContext)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(deferralContext || isDeferred() || !DisallowGC::isInEffectOnCurrentThread());
     if (validateDFGDoesGC)
         RELEASE_ASSERT(expectDoesGC());
@@ -2914,6 +3035,9 @@ void Heap::notifyIsSafeToCollect()
 
 void Heap::preventCollection()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!m_isSafeToCollect)
         return;
     

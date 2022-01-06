@@ -113,6 +113,10 @@
 #include <wtf/Vector.h>
 #include <wtf/text/AtomStringHash.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 using namespace HTMLNames;
@@ -344,6 +348,9 @@ void StyleResolver::setNewStateWithElement(const Element& element)
 
 ElementStyle StyleResolver::styleForElement(const Element& element, const RenderStyle* parentStyle, const RenderStyle* parentBoxStyle, RuleMatchingBehavior matchingBehavior, const SelectorFilter* selectorFilter)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     RELEASE_ASSERT(!m_isDeleted);
 
     m_state = State(element, parentStyle, m_overrideDocumentElementStyle, selectorFilter);
@@ -404,6 +411,9 @@ ElementStyle StyleResolver::styleForElement(const Element& element, const Render
 
 std::unique_ptr<RenderStyle> StyleResolver::styleForKeyframe(const RenderStyle* elementStyle, const StyleRuleKeyframe* keyframe, KeyframeValue& keyframeValue)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     RELEASE_ASSERT(!m_isDeleted);
 
     MatchResult result;

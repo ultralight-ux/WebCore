@@ -38,6 +38,10 @@
 #include <wtf/Language.h>
 #include <wtf/MainThread.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 CurlRequest::CurlRequest(const ResourceRequest&request, CurlRequestClient* client, ShouldSuspend shouldSuspend, EnableMultipart enableMultipart, CaptureNetworkLoadMetrics captureExtraMetrics, MessageQueue<Function<void()>>* messageQueue)
@@ -96,6 +100,9 @@ void CurlRequest::setUserPass(const String& user, const String& password)
 
 void CurlRequest::start()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // The pausing of transfer does not work with protocols, like file://.
     // Therefore, PAUSE can not be done in didReceiveData().
     // It means that the same logic as http:// can not be used.
@@ -127,6 +134,9 @@ void CurlRequest::startWithJobManager()
 
 void CurlRequest::cancel()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(isMainThread());
 
     {
@@ -299,6 +309,9 @@ size_t CurlRequest::willSendData(char* buffer, size_t blockSize, size_t numberOf
 
 size_t CurlRequest::didReceiveHeader(String&& header)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     static const auto emptyLineCRLF = "\r\n";
     static const auto emptyLineLF = "\n";
 
@@ -374,6 +387,9 @@ size_t CurlRequest::didReceiveHeader(String&& header)
 
 size_t CurlRequest::didReceiveData(Ref<SharedBuffer>&& buffer)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(!isMainThread());
 
     if (isCompletedOrCancelled())
@@ -415,6 +431,9 @@ size_t CurlRequest::didReceiveData(Ref<SharedBuffer>&& buffer)
 
 void CurlRequest::didReceiveHeaderFromMultipart(const Vector<String>& headers)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (isCompletedOrCancelled())
         return;
 
@@ -430,6 +449,9 @@ void CurlRequest::didReceiveHeaderFromMultipart(const Vector<String>& headers)
 
 void CurlRequest::didReceiveDataFromMultipart(Ref<SharedBuffer>&& buffer)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(!isMainThread());
 
     if (isCompletedOrCancelled())
@@ -451,6 +473,9 @@ void CurlRequest::didReceiveDataFromMultipart(Ref<SharedBuffer>&& buffer)
 
 void CurlRequest::didCompleteTransfer(CURLcode result)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (isCancelled()) {
         didCancelTransfer();
         return;
@@ -619,6 +644,9 @@ void CurlRequest::invokeDidReceiveResponseForFile(URL& url)
 
 void CurlRequest::invokeDidReceiveResponse(const CurlResponse& response, Action behaviorAfterInvoke)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(!m_didNotifyResponse || m_multipartHandle);
 
     m_didNotifyResponse = true;
@@ -632,6 +660,9 @@ void CurlRequest::invokeDidReceiveResponse(const CurlResponse& response, Action 
 
 void CurlRequest::completeDidReceiveResponse()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(isMainThread());
     ASSERT(m_didNotifyResponse);
     ASSERT(!m_didReturnFromNotify || m_multipartHandle);

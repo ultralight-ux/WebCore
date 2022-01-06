@@ -43,6 +43,10 @@
 #include "RenderLayer.h"
 #include "RenderLayerBacking.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 static const Seconds defaultAnimationInterval { 15_ms };
 static const Seconds throttledAnimationInterval { 30_ms };
 
@@ -120,6 +124,9 @@ static inline bool compareDeclarativeAnimationOwningElementPositionsInDocumentTr
 
 Vector<RefPtr<WebAnimation>> DocumentTimeline::getAnimations() const
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(m_document);
 
     Vector<RefPtr<WebAnimation>> cssTransitions;
@@ -348,6 +355,9 @@ void DocumentTimeline::updateAnimationsAndSendEvents(DOMHighResTimeStamp timesta
 
 void DocumentTimeline::internalUpdateAnimationsAndSendEvents()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     m_numberOfAnimationTimelineInvalidationsForTesting++;
 
     // https://drafts.csswg.org/web-animations/#update-animations-and-send-events
@@ -515,6 +525,9 @@ bool DocumentTimeline::isRunningAcceleratedAnimationOnRenderer(RenderElement& re
 
 std::unique_ptr<RenderStyle> DocumentTimeline::animatedStyleForRenderer(RenderElement& renderer)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     std::unique_ptr<RenderStyle> result;
 
     if (auto* element = renderer.element()) {
@@ -589,6 +602,9 @@ void DocumentTimeline::applyPendingAcceleratedAnimations()
 
 bool DocumentTimeline::resolveAnimationsForElement(Element& element, RenderStyle& targetStyle)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     bool hasNonAcceleratedAnimationProperty = false;
 
     for (const auto& animation : animationsForElement(element)) {

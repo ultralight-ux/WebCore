@@ -58,6 +58,10 @@
 #include <wtf/text/StringHash.h>
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 struct SameSizeAsBorderValue {
@@ -109,6 +113,9 @@ RenderStyle RenderStyle::clone(const RenderStyle& style)
 
 std::unique_ptr<RenderStyle> RenderStyle::clonePtr(const RenderStyle& style)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     return std::make_unique<RenderStyle>(style, Clone);
 }
 

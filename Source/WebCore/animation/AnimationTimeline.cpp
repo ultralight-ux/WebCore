@@ -44,6 +44,10 @@
 #include <wtf/text/TextStream.h>
 #include <wtf/text/WTFString.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 AnimationTimeline::AnimationTimeline()
@@ -165,6 +169,9 @@ void AnimationTimeline::removeDeclarativeAnimationFromListsForOwningElement(WebA
 
 Vector<RefPtr<WebAnimation>> AnimationTimeline::animationsForElement(Element& element, Ordering ordering) const
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     Vector<RefPtr<WebAnimation>> animations;
     if (m_elementToCSSTransitionsMap.contains(&element)) {
         const auto& cssTransitions = m_elementToCSSTransitionsMap.get(&element);
@@ -234,6 +241,9 @@ static bool shouldConsiderAnimation(Element& element, const Animation& animation
 
 void AnimationTimeline::updateCSSAnimationsForElement(Element& element, const RenderStyle* currentStyle, const RenderStyle& afterChangeStyle)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // In case this element is newly getting a "display: none" we need to cancel all of its animations and disregard new ones.
     if (currentStyle && currentStyle->hasAnimations() && currentStyle->display() != DisplayType::None && afterChangeStyle.display() == DisplayType::None) {
         if (m_elementToCSSAnimationByName.contains(&element)) {
@@ -342,6 +352,9 @@ AnimationTimeline::PropertyToTransitionMap& AnimationTimeline::ensureRunningTran
 
 void AnimationTimeline::updateCSSTransitionsForElement(Element& element, const RenderStyle& currentStyle, const RenderStyle& afterChangeStyle)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     // In case this element is newly getting a "display: none" we need to cancel all of its transitions and disregard new ones.
     if (currentStyle.hasTransitions() && currentStyle.display() != DisplayType::None && afterChangeStyle.display() == DisplayType::None) {
         if (m_elementToRunningCSSTransitionByCSSPropertyID.contains(&element)) {

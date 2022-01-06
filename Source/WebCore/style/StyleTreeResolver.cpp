@@ -125,6 +125,9 @@ void TreeResolver::popScope()
 
 std::unique_ptr<RenderStyle> TreeResolver::styleForElement(Element& element, const RenderStyle& inheritedStyle)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (element.hasCustomStyleResolveCallbacks()) {
         RenderStyle* shadowHostStyle = scope().shadowRoot ? m_update->elementStyle(*scope().shadowRoot->host()) : nullptr;
         if (auto customStyle = element.resolveCustomStyle(inheritedStyle, shadowHostStyle)) {
@@ -148,6 +151,9 @@ std::unique_ptr<RenderStyle> TreeResolver::styleForElement(Element& element, con
 
 static void resetStyleForNonRenderedDescendants(Element& current)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     for (auto& child : childrenOfType<Element>(current)) {
         if (child.needsStyleRecalc()) {
             child.resetComputedStyle();
@@ -256,6 +262,9 @@ ElementUpdates TreeResolver::resolveElement(Element& element)
 
 ElementUpdate TreeResolver::resolvePseudoStyle(Element& element, const ElementUpdate& elementUpdate, PseudoId pseudoId)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (elementUpdate.style->display() == DisplayType::None)
         return { };
     if (!elementUpdate.style->hasPseudoStyle(pseudoId))
@@ -294,6 +303,9 @@ const RenderStyle* TreeResolver::parentBoxStyle() const
 
 ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderStyle> newStyle, Element& element, Change parentChange)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     auto* oldStyle = element.renderOrDisplayContentsStyle();
 
     bool shouldRecompositeLayer = false;

@@ -28,11 +28,18 @@
 
 #include "RenderStyle.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 namespace Style {
 
 Change determineChange(const RenderStyle& s1, const RenderStyle& s2)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (s1.display() != s2.display())
         return Detach;
     if (s1.hasPseudoStyle(PseudoId::FirstLetter) != s2.hasPseudoStyle(PseudoId::FirstLetter))

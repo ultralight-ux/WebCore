@@ -120,6 +120,10 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(Element);
@@ -3113,6 +3117,9 @@ const RenderStyle* Element::existingComputedStyle() const
 
 const RenderStyle* Element::renderOrDisplayContentsStyle() const
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (auto* style = renderStyle())
         return style;
 
@@ -3127,6 +3134,9 @@ const RenderStyle* Element::renderOrDisplayContentsStyle() const
 
 const RenderStyle& Element::resolveComputedStyle()
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(isConnected());
     ASSERT(!existingComputedStyle());
 
@@ -3156,6 +3166,9 @@ const RenderStyle& Element::resolveComputedStyle()
 
 const RenderStyle& Element::resolvePseudoElementStyle(PseudoId pseudoElementSpecifier)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     ASSERT(!isPseudoElement());
 
     auto* parentStyle = existingComputedStyle();
@@ -3176,6 +3189,9 @@ const RenderStyle& Element::resolvePseudoElementStyle(PseudoId pseudoElementSpec
 
 const RenderStyle* Element::computedStyle(PseudoId pseudoElementSpecifier)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
     if (!isConnected())
         return nullptr;
 
