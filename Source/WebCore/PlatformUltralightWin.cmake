@@ -241,6 +241,7 @@ list(APPEND WebCore_LIBRARIES
 
 if (NOT UWP_PLATFORM)
     list(APPEND WebCore_LIBRARIES
+        bcrypt
         comctl32
         crypt32
         iphlpapi
@@ -252,12 +253,6 @@ if (NOT UWP_PLATFORM)
         winmm
         wldap32
         ws2_32
-    )
-endif ()
-
-if (WINDOWS_DESKTOP_PLATFORM)
-    list(APPEND WebCore_LIBRARIES
-        bcrypt
     )
 endif ()
 
