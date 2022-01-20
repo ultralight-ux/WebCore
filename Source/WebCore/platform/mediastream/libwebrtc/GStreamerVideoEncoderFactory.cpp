@@ -144,7 +144,7 @@ public:
 
         gst_bin_add_many(GST_BIN(m_pipeline.get()), m_src, videoconvert, m_capsFilter, encoder.leakRef(), m_sink, nullptr);
         if (!gst_element_link_many(m_src, videoconvert, m_capsFilter, m_encoder, m_sink, nullptr)) {
-            GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_VERBOSE, "webkit-webrtc-encoder.error");
+            //GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_VERBOSE, "webkit-webrtc-encoder.error");
 
             ASSERT_NOT_REACHED();
         }

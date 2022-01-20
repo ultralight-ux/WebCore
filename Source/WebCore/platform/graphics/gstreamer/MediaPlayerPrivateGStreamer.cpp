@@ -1253,7 +1253,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
         gst_message_parse_error(message, &err.outPtr(), &debug.outPtr());
         GST_ERROR("Error %d: %s (url=%s)", err->code, err->message, m_url.string().utf8().data());
 
-        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, "webkit-video.error");
+        //GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, "webkit-video.error");
 
         error = MediaPlayer::Empty;
         if (g_error_matches(err.get(), GST_STREAM_ERROR, GST_STREAM_ERROR_CODEC_NOT_FOUND)
@@ -1303,7 +1303,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
         gst_message_parse_state_changed(message, &currentState, &newState, nullptr);
         CString dotFileName = makeString(GST_OBJECT_NAME(m_pipeline.get()), '.',
             gst_element_state_get_name(currentState), '_', gst_element_state_get_name(newState)).utf8();
-        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, dotFileName.data());
+        //GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, dotFileName.data());
 
         break;
     }
@@ -1414,7 +1414,7 @@ void MediaPlayerPrivateGStreamer::handleMessage(GstMessage* message)
 
             GUniqueOutPtr<GstStructure> responseHeaders;
             if (gst_structure_get(structure, "response-headers", GST_TYPE_STRUCTURE, &responseHeaders.outPtr(), nullptr)) {
-                const char* contentLengthHeaderName = httpHeaderNameString(HTTPHeaderName::ContentLength).utf8().data();
+                const char* contentLengthHeaderName = "Content-Length";
                 uint64_t contentLength = 0;
                 if (!gst_structure_get_uint64(responseHeaders.get(), contentLengthHeaderName, &contentLength)) {
                     // souphttpsrc sets a string for Content-Length, so

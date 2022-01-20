@@ -344,7 +344,7 @@ void AppendPipeline::handleStateChangeMessage(GstMessage* message)
             sourceBufferType.data(), '-',
             gst_element_state_get_name(currentState), '_',
             gst_element_state_get_name(newState)).utf8();
-        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, dotFileName.data());
+        //GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, dotFileName.data());
     }
 }
 
@@ -573,7 +573,7 @@ void AppendPipeline::resetParserState()
         static unsigned i = 0;
         // This is here for debugging purposes. It does not make sense to have it as class member.
         WTF::String dotFileName = makeString("reset-pipeline-", ++i);
-        gst_debug_bin_to_dot_file(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, dotFileName.utf8().data());
+        //gst_debug_bin_to_dot_file(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, dotFileName.utf8().data());
     }
 #endif
 }
@@ -731,7 +731,7 @@ void AppendPipeline::connectDemuxerSrcPadToAppsinkFromStreamingThread(GstPad* de
 
         gst_element_sync_state_with_parent(m_appsink.get());
 
-        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, "webkit-after-link");
+        //GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, "webkit-after-link");
     }
 }
 
@@ -797,7 +797,7 @@ void AppendPipeline::disconnectDemuxerSrcPadFromAppsinkFromAnyThread(GstPad*)
     // Note: This function can be called either from the streaming thread (e.g. if a strange initialization segment with
     // incompatible tracks is appended and the srcpad disconnected) or -- more usually -- from the main thread, when
     // a state change is made to bring the demuxer down. (State change operations run in the main thread.)
-    GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, "pad-removed-before");
+    //GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, "pad-removed-before");
 
     GST_DEBUG("Disconnecting appsink");
 
@@ -807,7 +807,7 @@ void AppendPipeline::disconnectDemuxerSrcPadFromAppsinkFromAnyThread(GstPad*)
         m_parser = nullptr;
     }
 
-    GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, "pad-removed-after");
+    //GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(m_pipeline.get()), GST_DEBUG_GRAPH_SHOW_ALL, "pad-removed-after");
 }
 
 #if !LOG_DISABLED
