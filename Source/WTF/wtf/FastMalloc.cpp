@@ -91,6 +91,51 @@ void fastSetMaxSingleAllocationSize(size_t size)
 #include <malloc.h>
 #endif
 
+#if defined(TRACY_PROFILE_MEMORY)
+void operator delete(void* p) noexcept
+{
+    ProfileFree(p);
+    free(p);
+};
+
+void operator delete[](void* p) noexcept
+{
+    ProfileFree(p);
+    free(p);
+};
+
+void* operator new(std::size_t n) noexcept(false)
+{
+    auto p = malloc(n);
+    ProfileAlloc(p, n);
+    return p;
+}
+
+void* operator new[](std::size_t n) noexcept(false)
+{
+    auto p = malloc(n);
+    ProfileAlloc(p, n);
+    return p;
+}
+
+void* operator new(std::size_t n, const std::nothrow_t& tag) noexcept
+{
+    (void)(tag);
+    auto p = malloc(n);
+    ProfileAlloc(p, n);
+    return p;
+}
+
+void* operator new[](std::size_t n, const std::nothrow_t& tag) noexcept
+{
+    (void)(tag);
+    auto p = malloc(n);
+    ProfileAlloc(p, n);
+    return p;
+}
+
+#endif
+
 namespace WTF {
 
 bool isFastMallocEnabled()
@@ -151,6 +196,7 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
     void* p = _aligned_malloc(size, alignment);
     if (UNLIKELY(!p))
         CRASH();
+    ProfileAlloc(p, size);
     return p;
 }
 
@@ -160,7 +206,9 @@ void* tryFastAlignedMalloc(size_t alignment, size_t size)
     ProfiledZone;
 #endif
     FAIL_IF_EXCEEDS_LIMIT(size);
-    return _aligned_malloc(size, alignment);
+    auto p = _aligned_malloc(size, alignment);
+    ProfileAlloc(p, size);
+    return p;
 }
 
 void fastAlignedFree(void* p) 
@@ -168,6 +216,7 @@ void fastAlignedFree(void* p)
 #if USE(ULTRALIGHT)
     ProfiledZone;
 #endif
+    ProfileFree(p);
     _aligned_free(p);
 }
 
@@ -180,6 +229,7 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
     posix_memalign(&p, alignment, size);
     if (UNLIKELY(!p))
         CRASH();
+    ProfileAlloc(p, size);
     return p;
 }
 
@@ -188,11 +238,13 @@ void* tryFastAlignedMalloc(size_t alignment, size_t size)
     FAIL_IF_EXCEEDS_LIMIT(size);
     void* p = nullptr;
     posix_memalign(&p, alignment, size);
+    ProfileAlloc(p, size);
     return p;
 }
 
 void fastAlignedFree(void* p) 
 {
+    ProfileFree(p);
     free(p);
 }
 
@@ -204,7 +256,9 @@ TryMallocReturnValue tryFastMalloc(size_t n)
     ProfiledZone;
 #endif
     FAIL_IF_EXCEEDS_LIMIT(n);
-    return malloc(n);
+    auto p = malloc(n);
+    ProfileAlloc(p, n);
+    return p;
 }
 
 void* fastMalloc(size_t n) 
@@ -216,7 +270,7 @@ void* fastMalloc(size_t n)
     void* result = malloc(n);
     if (!result)
         CRASH();
-
+    ProfileAlloc(result, n);
     return result;
 }
 
@@ -226,7 +280,9 @@ TryMallocReturnValue tryFastCalloc(size_t n_elements, size_t element_size)
     ProfiledZone;
 #endif
     FAIL_IF_EXCEEDS_LIMIT(n_elements * element_size);
-    return calloc(n_elements, element_size);
+    auto p = calloc(n_elements, element_size);
+    ProfileAlloc(p, n_elements * element_size);
+    return p;
 }
 
 void* fastCalloc(size_t n_elements, size_t element_size)
@@ -238,7 +294,7 @@ void* fastCalloc(size_t n_elements, size_t element_size)
     void* result = calloc(n_elements, element_size);
     if (!result)
         CRASH();
-
+    ProfileAlloc(result, n_elements * element_size);
     return result;
 }
 
@@ -247,7 +303,33 @@ void fastFree(void* p)
 #if USE(ULTRALIGHT)
     ProfiledZone;
 #endif
+    ProfileFree(p);
     free(p);
+}
+
+void* traceRealloc(void* p, size_t n)
+{
+    void* result;
+
+    if (!p) {
+        result = malloc(n);
+        ProfileAlloc(result, n);
+        return result;
+    } else {
+        result = malloc(n);
+        ProfileAlloc(result, n);
+
+        if (!result) {
+            return nullptr;
+        }
+
+        memcpy(result, p, std::min(n, fastMallocSize(p)));
+
+        ProfileFree(p);
+        free(p);
+    }
+
+    return result;
 }
 
 void* fastRealloc(void* p, size_t n)
@@ -256,7 +338,11 @@ void* fastRealloc(void* p, size_t n)
     ProfiledZone;
 #endif
     ASSERT_IS_WITHIN_LIMIT(n);
+#if defined(TRACY_PROFILE_MEMORY)
+    void* result = traceRealloc(p, n);
+#else
     void* result = realloc(p, n);
+#endif
     if (!result)
         CRASH();
     return result;
@@ -268,7 +354,12 @@ TryMallocReturnValue tryFastRealloc(void* p, size_t n)
     ProfiledZone;
 #endif
     FAIL_IF_EXCEEDS_LIMIT(n);
-    return realloc(p, n);
+#if defined(TRACY_PROFILE_MEMORY)
+    void* result = traceRealloc(p, n);
+#else
+    void* result = realloc(p, n);
+#endif
+    return result;
 }
 
 void releaseFastMallocFreeMemory() { }
