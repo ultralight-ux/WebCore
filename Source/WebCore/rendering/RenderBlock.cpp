@@ -77,6 +77,7 @@
 #include <wtf/Optional.h>
 #include <wtf/SetForScope.h>
 #include <wtf/StackStats.h>
+#include <wtf/MemoryProfiler.h>
 
 namespace WebCore {
 
@@ -591,6 +592,7 @@ void RenderBlock::updateScrollInfoAfterLayout()
 
 void RenderBlock::layout()
 {
+    ProfiledMemoryZone(MemoryTag::WebCore);
     StackStats::LayoutCheckPoint layoutCheckPoint;
     OverflowEventDispatcher dispatcher(this);
 

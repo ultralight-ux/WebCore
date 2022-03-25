@@ -43,6 +43,7 @@
 #include "Parser.h"
 #include "ProgramExecutable.h"
 #include "ScriptProfilingScope.h"
+#include <wtf/MemoryProfiler.h>
 
 namespace JSC {
 
@@ -133,6 +134,7 @@ RefPtr<CachedBytecode> generateModuleBytecode(VM& vm, const SourceCode& source, 
 
 JSValue evaluate(ExecState* exec, const SourceCode& source, JSValue thisValue, NakedPtr<Exception>& returnedException)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     VM& vm = exec->vm();
     JSLockHolder lock(vm);
     auto scope = DECLARE_CATCH_SCOPE(vm);

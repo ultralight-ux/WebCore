@@ -72,11 +72,13 @@
 #include "VMInlines.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StringPrintStream.h>
+#include <wtf/MemoryProfiler.h>
 
 namespace JSC { namespace LLInt {
 
 #define LLINT_BEGIN_NO_SET_PC() \
     VM& vm = exec->vm();      \
+    ProfiledMemoryZone(MemoryTag::JavaScript); \
     NativeCallFrameTracer tracer(&vm, exec); \
     auto throwScope = DECLARE_THROW_SCOPE(vm)
 

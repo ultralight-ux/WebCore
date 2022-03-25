@@ -55,6 +55,7 @@
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/SetForScope.h>
 #include <wtf/StackStats.h>
+#include <wtf/MemoryProfiler.h>
 #if USE(ULTRALIGHT)
 #include <Ultralight/private/tracy/Tracy.hpp>
 #endif
@@ -156,6 +157,7 @@ void RenderView::layout()
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore);
 #endif
     StackStats::LayoutCheckPoint layoutCheckPoint;
     if (!document().paginated())

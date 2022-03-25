@@ -67,11 +67,13 @@
 #include "TypeProfilerLog.h"
 #include <wtf/StringPrintStream.h>
 #include <wtf/Variant.h>
+#include <wtf/MemoryProfiler.h>
 
 namespace JSC {
 
 #define BEGIN_NO_SET_PC() \
     VM& vm = exec->vm();      \
+    ProfiledMemoryZone(MemoryTag::JavaScript); \
     NativeCallFrameTracer tracer(&vm, exec); \
     auto throwScope = DECLARE_THROW_SCOPE(vm); \
     UNUSED_PARAM(throwScope)

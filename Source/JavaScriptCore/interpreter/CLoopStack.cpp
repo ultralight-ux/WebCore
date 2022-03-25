@@ -37,6 +37,8 @@
 #include "JSCInlines.h"
 #include "Options.h"
 #include <wtf/Lock.h>
+#include <Ultralight/private/util/MemoryTag.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 
 namespace JSC {
 
@@ -54,6 +56,7 @@ CLoopStack::CLoopStack(VM& vm)
     : m_vm(vm)
     , m_topCallFrame(vm.topCallFrame)
     , m_softReservedZoneSizeInRegisters(0)
+    , m_trackingAlloc(false)
 {
     size_t capacity = Options::maxPerThreadStackUsage();
     capacity = WTF::roundUpToMultipleOf(pageSize(), capacity);
@@ -76,6 +79,10 @@ CLoopStack::~CLoopStack()
     ptrdiff_t sizeToDecommit = reinterpret_cast<char*>(highAddress()) - reinterpret_cast<char*>(m_commitTop);
     m_reservation.decommit(reinterpret_cast<void*>(m_commitTop), sizeToDecommit);
     addToCommittedByteCount(-sizeToDecommit);
+
+    if (m_TrackingAlloc)
+        ProfileFree(reservationTop(), MemoryTagToString(MemoryTag::JavaScript));
+
     m_reservation.deallocate();
 }
 
@@ -142,6 +149,17 @@ void CLoopStack::addToCommittedByteCount(long byteCount)
     LockHolder locker(stackStatisticsMutex);
     ASSERT(static_cast<long>(committedBytesCount) + byteCount > -1);
     committedBytesCount += byteCount;
+
+    // Memory profiler doesn't support resizing allocations so we'll just spoof it by using a free/alloc.
+    if (m_TrackingAlloc) {
+        ProfileFree(reservationTop(), MemoryTagToString(MemoryTag::JavaScript));
+        m_TrackingAlloc = false;
+    }
+    
+    if (committedBytesCount > 0) {
+        ProfileAlloc(reservationTop(), committedBytesCount, MemoryTagToString(MemoryTag::JavaScript))
+        m_TrackingAlloc = true;
+    }
 }
 
 void CLoopStack::setSoftReservedZoneSize(size_t reservedZoneSize)

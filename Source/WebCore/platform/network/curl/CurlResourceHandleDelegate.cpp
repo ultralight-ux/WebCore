@@ -39,6 +39,7 @@
 #include "ResourceHandleInternal.h"
 
 #include <wtf/CompletionHandler.h>
+#include <wtf/MemoryProfiler.h>
 
 #if USE(CURL)
 
@@ -101,6 +102,7 @@ static void handleCookieHeaders(ResourceHandleInternal* d, const ResourceRequest
 
 void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, CurlResponse&& receivedResponse)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
     ASSERT(!d()->m_defersLoading);
 
@@ -146,6 +148,7 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, Cu
 
 void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&&)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
 
     if (cancelledOrClientless())
@@ -157,6 +160,7 @@ void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetric
 
 void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceError&& resourceError, CertificateInfo&&)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
 
     if (cancelledOrClientless())
@@ -168,6 +172,7 @@ void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceErro
 
 void CurlResourceHandleDelegate::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(isMainThread());
 
     if (cancelledOrClientless())

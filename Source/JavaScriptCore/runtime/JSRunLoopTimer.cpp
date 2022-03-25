@@ -34,6 +34,7 @@
 #include <wtf/MainThread.h>
 #include <wtf/NoTailCalls.h>
 #include <wtf/Threading.h>
+#include <wtf/MemoryProfiler.h>
 
 #if USE(GLIB_EVENT_LOOP)
 #include <glib.h>
@@ -116,6 +117,7 @@ void JSRunLoopTimer::Manager::timerDidFire()
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::JavaScript);
 #endif
     Vector<Ref<JSRunLoopTimer>> timersToFire;
 

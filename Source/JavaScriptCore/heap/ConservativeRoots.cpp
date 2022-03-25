@@ -37,6 +37,8 @@
 #include "MarkedBlockInlines.h"
 #include "Structure.h"
 #include <wtf/OSAllocator.h>
+#include <Ultralight/private/util/MemoryTag.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 
 namespace JSC {
 
@@ -50,17 +52,23 @@ ConservativeRoots::ConservativeRoots(Heap& heap)
 
 ConservativeRoots::~ConservativeRoots()
 {
-    if (m_roots != m_inlineRoots)
+    if (m_roots != m_inlineRoots) {
+        ProfileFree(m_roots, MemoryTagToString(MemoryTag::JavaScript));
         OSAllocator::decommitAndRelease(m_roots, m_capacity * sizeof(HeapCell*));
+    }
 }
 
 void ConservativeRoots::grow()
 {
     size_t newCapacity = m_capacity == inlineCapacity ? nonInlineCapacity : m_capacity * 2;
-    HeapCell** newRoots = static_cast<HeapCell**>(OSAllocator::reserveAndCommit(newCapacity * sizeof(HeapCell*)));
+    size_t newSize = newCapacity * sizeof(HeapCell*);
+    HeapCell** newRoots = static_cast<HeapCell**>(OSAllocator::reserveAndCommit(newSize));
+    ProfileAlloc(newRoots, newSize, MemoryTagToString(MemoryTag::JavaScript));
     memcpy(newRoots, m_roots, m_size * sizeof(HeapCell*));
-    if (m_roots != m_inlineRoots)
+    if (m_roots != m_inlineRoots) {
+        ProfileFree(m_roots, MemoryTagToString(MemoryTag::JavaScript));
         OSAllocator::decommitAndRelease(m_roots, m_capacity * sizeof(HeapCell*));
+    }
     m_capacity = newCapacity;
     m_roots = newRoots;
 }

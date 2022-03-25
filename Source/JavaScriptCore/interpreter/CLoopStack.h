@@ -101,6 +101,7 @@ namespace JSC {
         void* m_lastStackPointer;
         void* m_currentStackPointer;
         ptrdiff_t m_softReservedZoneSizeInRegisters;
+        bool m_trackingAlloc;
 
         friend class LLIntOffsetsExtractor;
     };

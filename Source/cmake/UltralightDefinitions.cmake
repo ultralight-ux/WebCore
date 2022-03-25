@@ -55,10 +55,11 @@ else ()
     SET_AND_EXPOSE_TO_BUILD(USE_GSTREAMER FALSE)
 endif ()
 
+add_definitions(-DULTRALIGHT_MODULE_WEBCORE)
+
 if (UL_PROFILE_PERFORMANCE OR UL_PROFILE_MEMORY)
     add_definitions(-DTRACY_ENABLE)
     add_definitions(-DTRACY_IMPORTS)
-    add_definitions(-DTRACY_MODULE_WEBCORE)
     add_definitions(-DTRACY_CALLSTACK_DEPTH=${UL_CALLSTACK_DEPTH})
 endif ()
 
@@ -68,4 +69,8 @@ endif ()
 
 if (UL_PROFILE_MEMORY)
     add_definitions(-DTRACY_PROFILE_MEMORY)
+endif ()
+
+if (UL_ENABLE_MEMORY_STATS)
+    add_definitions(-DULTRALIGHT_ENABLE_MEMORY_STATS)
 endif ()

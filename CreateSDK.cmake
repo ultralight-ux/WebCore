@@ -198,7 +198,11 @@ endif ()
 
 set(PKG_FILENAME "webcore-bin-${GIT_COMMIT_HASH}-${PLATFORM}-${ARCHITECTURE}.7z")
 
-if (NOT GIT_STATUS STREQUAL "")
+if (NOT UL_GENERATE_SDK)
+    add_custom_command(TARGET create_sdk POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "NOTE: No release archive created, SDK generation was disabled."
+    )
+elseif (NOT GIT_STATUS STREQUAL "")
     add_custom_command(TARGET create_sdk POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "NOTE: No release archive created, working directory has been modified."
     )

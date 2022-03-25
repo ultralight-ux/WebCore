@@ -27,6 +27,7 @@
 
 #include "config.h"
 #include "CurlRequestScheduler.h"
+#include <wtf/MemoryProfiler.h>
 
 #if USE(CURL)
 
@@ -142,6 +143,8 @@ void CurlRequestScheduler::executeTasks()
 void CurlRequestScheduler::workerThread()
 {
     ASSERT(!isMainThread());
+
+    ProfiledMemoryZone(MemoryTag::Network);
 
     m_curlMultiHandle = std::make_unique<CurlMultiHandle>();
     m_curlMultiHandle->setMaxConnects(m_maxConnects);

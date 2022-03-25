@@ -31,6 +31,7 @@
 #include "JSCInlines.h"
 #include "JSFunction.h"
 #include "ScriptProfilingScope.h"
+#include <wtf/MemoryProfiler.h>
 
 namespace JSC {
 
@@ -41,6 +42,7 @@ JSValue call(ExecState* exec, JSValue functionObject, const ArgList& args, const
 
 JSValue call(ExecState* exec, JSValue functionObject, JSValue thisValue, const ArgList& args, const char* errorMessage)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
@@ -54,6 +56,7 @@ JSValue call(ExecState* exec, JSValue functionObject, JSValue thisValue, const A
 
 JSValue call(ExecState* exec, JSValue functionObject, CallType callType, const CallData& callData, JSValue thisValue, const ArgList& args)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     VM& vm = exec->vm();
     ASSERT(callType == CallType::JS || callType == CallType::Host);
     return vm.interpreter->executeCall(exec, asObject(functionObject), callType, callData, thisValue, args);
@@ -61,6 +64,7 @@ JSValue call(ExecState* exec, JSValue functionObject, CallType callType, const C
 
 JSValue call(ExecState* exec, JSValue functionObject, CallType callType, const CallData& callData, JSValue thisValue, const ArgList& args, NakedPtr<Exception>& returnedException)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     VM& vm = exec->vm();
     auto scope = DECLARE_CATCH_SCOPE(vm);
     JSValue result = call(exec, functionObject, callType, callData, thisValue, args);

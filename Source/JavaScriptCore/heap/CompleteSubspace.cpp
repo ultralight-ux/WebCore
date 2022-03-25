@@ -34,6 +34,7 @@
 #include "MarkedBlockInlines.h"
 #include "PreventCollectionScope.h"
 #include "SubspaceInlines.h"
+#include <wtf/MemoryProfiler.h>
 
 namespace JSC {
 
@@ -114,6 +115,7 @@ Allocator CompleteSubspace::allocatorForSlow(size_t size)
 
 void* CompleteSubspace::allocateSlow(VM& vm, size_t size, GCDeferralContext* deferralContext, AllocationFailureMode failureMode)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     void* result = tryAllocateSlow(vm, size, deferralContext);
     if (failureMode == AllocationFailureMode::Assert)
         RELEASE_ASSERT(result);

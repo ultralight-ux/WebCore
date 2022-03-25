@@ -40,6 +40,7 @@
 #include "StackAlignment.h"
 #include "VM.h"
 #include <wtf/NeverDestroyed.h>
+#include <wtf/MemoryProfiler.h>
 
 namespace JSC {
 
@@ -146,12 +147,14 @@ MacroAssemblerCodeRef<JITThunkPtrTag> moduleProgramEntryThunk()
 
 EncodedJSValue vmEntryToJavaScript(void* executableAddress, VM* vm, ProtoCallFrame* protoCallFrame)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     JSValue result = CLoop::execute(llint_vm_entry_to_javascript, executableAddress, vm, protoCallFrame);
     return JSValue::encode(result);
 }
 
 EncodedJSValue vmEntryToNative(void* executableAddress, VM* vm, ProtoCallFrame* protoCallFrame)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     JSValue result = CLoop::execute(llint_vm_entry_to_native, executableAddress, vm, protoCallFrame);
     return JSValue::encode(result);
 }

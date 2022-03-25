@@ -68,6 +68,7 @@
 #include <wtf/SmallPtrSet.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/WTFString.h>
+#include <wtf/MemoryProfiler.h>
 
 namespace JSC {
 
@@ -197,6 +198,7 @@ FinallyContext::FinallyContext(BytecodeGenerator& generator, Label& finallyLabel
 
 ParserError BytecodeGenerator::generate()
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript_Bytecode);
     m_codeBlock->setThisRegister(m_thisRegister.virtualRegister());
 
     emitLogShadowChickenPrologueIfNecessary();

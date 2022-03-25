@@ -42,6 +42,7 @@
 #include "TypeProfiler.h"
 #include "VMInlines.h"
 #include <wtf/CommaPrinter.h>
+#include <wtf/MemoryProfiler.h>
 
 namespace JSC {
 
@@ -409,6 +410,7 @@ static void setupJIT(VM& vm, CodeBlock* codeBlock)
 Exception* ScriptExecutable::prepareForExecutionImpl(
     VM& vm, JSFunction* function, JSScope* scope, CodeSpecializationKind kind, CodeBlock*& resultCodeBlock)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript_Bytecode);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     DeferGCForAWhile deferGC(vm.heap);
 

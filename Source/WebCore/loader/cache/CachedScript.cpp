@@ -33,6 +33,7 @@
 #include "RuntimeApplicationChecks.h"
 #include "SharedBuffer.h"
 #include "TextResourceDecoder.h"
+#include <wtf/MemoryProfiler.h>
 
 namespace WebCore {
 
@@ -56,6 +57,8 @@ String CachedScript::encoding() const
 
 StringView CachedScript::script()
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
+
     if (!m_data)
         return { };
 
@@ -111,6 +114,7 @@ void CachedScript::destroyDecodedData()
 
 void CachedScript::setBodyDataFrom(const CachedResource& resource)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     ASSERT(resource.type() == type());
     auto& script = static_cast<const CachedScript&>(resource);
 

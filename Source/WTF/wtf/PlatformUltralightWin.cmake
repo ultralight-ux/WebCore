@@ -17,6 +17,13 @@ list(APPEND WTF_SOURCES
     win/ThreadSpecificWin.cpp
 )
 
+if (UL_PROFILE_MEMORY OR UL_ENABLE_MEMORY_STATS)
+    list(APPEND WTF_SOURCES
+        MemoryProfiler.cpp
+        MemoryProfiler_WinHeap.cpp
+    )
+endif ()
+
 list(APPEND WTF_LIBRARIES
    DbgHelp
    winmm

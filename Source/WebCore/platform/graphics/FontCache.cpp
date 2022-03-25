@@ -41,6 +41,7 @@
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/AtomStringHash.h>
 #include <wtf/text/StringHash.h>
+#include <wtf/MemoryProfiler.h>
 
 #if ENABLE(OPENTYPE_VERTICAL)
 #include "OpenTypeVerticalData.h"
@@ -322,6 +323,8 @@ const unsigned cTargetUnderMemoryPressureInactiveFontData = 30;
 
 RefPtr<Font> FontCache::fontForFamily(const FontDescription& fontDescription, const AtomString& family, const FontFeatureSettings* fontFaceFeatures, const FontVariantSettings* fontFaceVariantSettings, FontSelectionSpecifiedCapabilities fontFaceCapabilities, bool checkingAlternateName)
 {
+    ProfiledMemoryZone(MemoryTag::Font);
+    
     if (!m_purgeTimer.isActive())
         m_purgeTimer.startOneShot(0_s);
 
@@ -333,6 +336,7 @@ RefPtr<Font> FontCache::fontForFamily(const FontDescription& fontDescription, co
 
 Ref<Font> FontCache::fontForPlatformData(const FontPlatformData& platformData)
 {
+    ProfiledMemoryZone(MemoryTag::Font);
 #if PLATFORM(IOS_FAMILY)
     auto locker = holdLock(fontLock);
 #endif

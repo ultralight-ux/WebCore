@@ -7,11 +7,13 @@
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/private/util/Debug.h>
 #include <wtf/FileSystem.h>
+#include <wtf/MemoryProfiler.h>
 
 namespace WebCore {
 
 void CurlSSLHandle::platformInitialize()
 {
+    ProfiledMemoryZone(MemoryTag::Resource);
     auto& platform = ultralight::Platform::instance();
     auto config = platform.config();
     ultralight::FileHandle handle = ResourceLoader::openFile("cacert.pem");
