@@ -42,6 +42,9 @@ JSValue iteratorNext(ExecState* exec, IterationRecord iterationRecord, JSValue a
     JSValue iterator = iterationRecord.iterator;
     JSValue nextFunction = iterationRecord.nextMethod;
 
+    if (nextFunction.isEmpty())
+        return throwTypeError(exec, scope);
+
     CallData nextFunctionCallData;
     CallType nextFunctionCallType = getCallData(vm, nextFunction, nextFunctionCallData);
     if (nextFunctionCallType == CallType::None)
