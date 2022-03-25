@@ -5,10 +5,12 @@
 #include <wtf/URL.h>
 #include <wtf/MainThread.h>
 #include <wtf/WorkQueue.h>
+#include <wtf/MemoryProfiler.h>
 #include <Ultralight/platform/Platform.h>
 #include <Ultralight/platform/FileSystem.h>
 #include <Ultralight/private/util/Debug.h>
 #include "StringUltralight.h"
+#include <vector>
 
 namespace WebCore {
 namespace FileURLLoader {
@@ -45,6 +47,7 @@ static std::unique_ptr<LoadTask> createLoadTask(const URL& url, LoadCompletionHa
 
 void load(const URL& url, LoadCompletionHandler&& completionHandler) {
   loadQueue().dispatch([loadTask = createLoadTask(url, WTFMove(completionHandler))]() mutable {
+    ProfiledMemoryZone(MemoryTag::Resource);
     auto fs = ultralight::Platform::instance().file_system();
     if (fs) {
       ultralight::String path = ultralight::Convert(loadTask->urlString);
@@ -52,9 +55,9 @@ void load(const URL& url, LoadCompletionHandler&& completionHandler) {
       if (file != ultralight::invalidFileHandle) {
         int64_t fileSize = 0;
         if (fs->GetFileSize(file, fileSize) && fileSize > 0) {
-          char* buffer = new char[fileSize];
-          if (fs->ReadFromFile(file, buffer, fileSize) > 0) {
-            loadTask->result.data = SharedBuffer::create(buffer, fileSize);
+          std::vector<char> buffer(fileSize);
+          if (fs->ReadFromFile(file, (char*)buffer.data(), fileSize) > 0) {
+            loadTask->result.data = SharedBuffer::create((unsigned char*)buffer.data(), fileSize);
             ultralight::String mimeType = "application/unknown";
             fs->GetFileMimeType(path, mimeType);
             loadTask->result.mimeType = ultralight::Convert(mimeType);
