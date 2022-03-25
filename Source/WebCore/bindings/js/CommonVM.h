@@ -40,6 +40,9 @@ WEBCORE_EXPORT extern JSC::VM* g_commonVMOrNull;
 
 WEBCORE_EXPORT JSC::VM& commonVMSlow();
 
+// Destroys the VM singleton, if previously created.
+WEBCORE_EXPORT void resetCommonVM();
+
 inline JSC::VM* commonVMOrNull()
 {
     return g_commonVMOrNull;

@@ -43,7 +43,7 @@
 
 namespace WebCore {
 
-JSC::VM* g_commonVMOrNull;
+JSC::VM* g_commonVMOrNull = nullptr;
 
 JSC::VM& commonVMSlow()
 {
@@ -70,6 +70,13 @@ JSC::VM& commonVMSlow()
     JSVMClientData::initNormalWorld(&vm);
 
     return vm;
+}
+
+void destroyCommonVM() {
+    if (g_commonVMOrNull) {
+        delete g_commonVMOrNull;
+        g_commonVMOrNull = nullptr;
+    }
 }
 
 Frame* lexicalFrameFromCommonVM()

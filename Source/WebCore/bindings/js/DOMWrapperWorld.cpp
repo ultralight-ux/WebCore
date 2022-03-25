@@ -70,8 +70,9 @@ DOMWrapperWorld& normalWorld(JSC::VM& vm)
 DOMWrapperWorld& mainThreadNormalWorld()
 {
     ASSERT(isMainThread());
-    static DOMWrapperWorld& cachedNormalWorld = normalWorld(commonVM());
-    return cachedNormalWorld;
+    //static DOMWrapperWorld& cachedNormalWorld = normalWorld(commonVM());
+    //return cachedNormalWorld;
+    return normalWorld(commonVM());
 }
 
 } // namespace WebCore

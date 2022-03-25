@@ -858,7 +858,7 @@ public:
     JS_EXPORT_PRIVATE void deleteAllCode(DeleteAllCodeEffort);
     JS_EXPORT_PRIVATE void deleteAllLinkedCode(DeleteAllCodeEffort);
 
-    void shrinkFootprintWhenIdle();
+    JS_EXPORT_PRIVATE void shrinkFootprintWhenIdle();
 
     WatchpointSet* ensureWatchpointSetForImpureProperty(const Identifier&);
     void registerWatchpointForImpureProperty(const Identifier&, Watchpoint*);
