@@ -26,6 +26,9 @@
 #include "config.h"
 #include "IsoAlignedMemoryAllocator.h"
 #include "MarkedBlock.h"
+#include <wtf/OSAllocator.h>
+#include <Ultralight/private/util/MemoryTag.h>
+#include <Ultralight/private/tracy/Tracy.hpp>
 
 namespace JSC {
 
@@ -37,9 +40,12 @@ IsoAlignedMemoryAllocator::~IsoAlignedMemoryAllocator()
 {
     for (unsigned i = 0; i < m_blocks.size(); ++i) {
         void* block = m_blocks[i];
-        if (!m_committed[i])
-            WTF::fastCommitAlignedMemory(block, MarkedBlock::blockSize);
-        fastAlignedFree(block);
+        if (m_committed[i]) {
+            OSAllocator::decommitAndRelease(block, MarkedBlock::blockSize);
+            ProfileFree(block, MemoryTagToString(MemoryTag::JavaScript));
+        } else {
+            OSAllocator::releaseDecommitted(block, MarkedBlock::blockSize);
+        }
     }
 }
 
@@ -56,11 +62,15 @@ void* IsoAlignedMemoryAllocator::tryAllocateAlignedMemory(size_t alignment, size
     if (m_firstUncommitted < m_blocks.size()) {
         m_committed[m_firstUncommitted] = true;
         void* result = m_blocks[m_firstUncommitted];
-        WTF::fastCommitAlignedMemory(result, MarkedBlock::blockSize);
+        OSAllocator::commit(result, MarkedBlock::blockSize, true, false);
+        ProfileAlloc(result, MarkedBlock::blockSize, MemoryTagToString(MemoryTag::JavaScript));
         return result;
     }
     
-    void* result = tryFastAlignedMalloc(MarkedBlock::blockSize, MarkedBlock::blockSize);
+    void* result = OSAllocator::reserveAndCommit(MarkedBlock::blockSize, MarkedBlock::blockSize,
+        WTF::OSAllocator::Usage::FastMallocPages, true, false);
+    ProfileAlloc(result, MarkedBlock::blockSize, MemoryTagToString(MemoryTag::JavaScript));
+
     if (!result)
         return nullptr;
     unsigned index = m_blocks.size();
@@ -81,7 +91,8 @@ void IsoAlignedMemoryAllocator::freeAlignedMemory(void* basePtr)
     unsigned index = iter->value;
     m_committed[index] = false;
     m_firstUncommitted = std::min(index, m_firstUncommitted);
-    WTF::fastDecommitAlignedMemory(basePtr, MarkedBlock::blockSize);
+    OSAllocator::decommit(basePtr, MarkedBlock::blockSize);
+    ProfileFree(basePtr, MemoryTagToString(MemoryTag::JavaScript));
 }
 
 void IsoAlignedMemoryAllocator::dump(PrintStream& out) const
