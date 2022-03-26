@@ -26,6 +26,7 @@
 
 #include "config.h"
 #include <wtf/RunLoop.h>
+#include <wtf/Vector.h>
 
 #if USE(GLIB)
 #include <glib.h>
@@ -270,56 +271,52 @@ void RunLoop::iterateWithMaxDuration(Seconds duration)
     ASSERT(this == &RunLoop::current());
 
     MonotonicTime now = MonotonicTime::now();
-    MonotonicTime endTime = now + duration;
-    do {
-        bool didWork = false;
+    WTF::Deque<RefPtr<TimerBase::ScheduledTask>> tasks;
+    WTF::Deque<Function<void()>> functions;
 
-        // Get one task and one function:
-        RefPtr<TimerBase::ScheduledTask> nextTask;
-        Function<void()> nextFunction;
-        {
-            LockHolder loopLocker(m_loopLock);
-            if (!m_schedules.isEmpty()) {
-                RefPtr<TimerBase::ScheduledTask> earliestTask = m_schedules.first();
-                if (earliestTask->scheduledTimePoint() <= now) {
-                    std::pop_heap(m_schedules.begin(), m_schedules.end(), TimerBase::ScheduledTask::EarliestSchedule());
-                    m_schedules.removeLast();
-                    nextTask = earliestTask;
-                }
+    // Collect all pending tasks and functions.
+    {
+        LockHolder loopLocker(m_loopLock);
+        while (!m_schedules.isEmpty()) {
+            RefPtr<TimerBase::ScheduledTask> earliestTask = m_schedules.first();
+
+            // We only want tasks whose timers have expired.
+            if (earliestTask->scheduledTimePoint() <= now) {
+                std::pop_heap(m_schedules.begin(), m_schedules.end(), TimerBase::ScheduledTask::EarliestSchedule());
+                m_schedules.removeLast();
+                tasks.append(std::move(earliestTask));
+            } else {
+                break;
             }
-
-            auto locker = holdLock(m_functionQueueLock);
-            if (!m_functionQueue.isEmpty())
-                nextFunction = m_functionQueue.takeFirst();
         }
+ 
+        // Collect all functions in the function queue.
+        auto locker = holdLock(m_functionQueueLock);
+        while (!m_functionQueue.isEmpty())
+            functions.append(m_functionQueue.takeFirst());
+    }
     
-        // Fire the task
-        if (nextTask) {
-            MonotonicTime startTime = MonotonicTime::now();
-            if (nextTask->fired()) {
-                auto taskDuration = MonotonicTime::now() - startTime;
-                if (taskDuration > duration) {
-                    // We've exceeded our max time budget for this iteration!
-                    // Throttle the timer for this task (delay 3 frames) before we reschedule it.
-                    nextTask->updateReadyTimeWithThrottledFireInterval(duration * 3.0);
-                }
-                // Reschedule because the task is repeating.
-                schedule(*nextTask);
+    // Fire the tasks
+    while (!tasks.isEmpty()) {
+        auto nextTask = tasks.takeFirst();
+        MonotonicTime startTime = MonotonicTime::now();
+        if (nextTask->fired()) {
+            auto taskDuration = MonotonicTime::now() - startTime;
+            if (taskDuration > duration) {
+                // This task has exceeded our max duration!
+                // Throttle the timer for this task (delay 3 durations) before we reschedule it.
+                nextTask->updateReadyTimeWithThrottledFireInterval(duration * 3.0);
             }
-            didWork = true;
+            // Reschedule because the task is repeating.
+            schedule(*nextTask);
         }
+    }
 
-        // Fire the function
-        if (nextFunction) {
-            nextFunction();
-            didWork = true;
-        }
-
-        // Bail if we didn't do any work during this iteration.
-        if (!didWork)
-            break;
-
-    } while (MonotonicTime::now() < endTime);
+    // Fire the functions
+    while (!functions.isEmpty()) {
+        auto nextFunction = functions.takeFirst();
+        nextFunction();
+    }
 
 #if USE(GLIB)
     if (MonotonicTime::now() - m_lastGlibUpdateTime >= glibUpdateInterval) {
