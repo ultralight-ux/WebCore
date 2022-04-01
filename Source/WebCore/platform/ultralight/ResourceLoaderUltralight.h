@@ -6,7 +6,7 @@ namespace WebCore {
 
 namespace ResourceLoader {
 
-    WEBCORE_EXPORT ultralight::FileHandle openFile(const String& filePath);
+    WEBCORE_EXPORT ultralight::RefPtr<ultralight::Buffer> openFile(const String& filePath);
 
     WEBCORE_EXPORT String readFileToString(const String& filePath);
 

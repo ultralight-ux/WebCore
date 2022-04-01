@@ -16,32 +16,24 @@ void CurlSSLHandle::platformInitialize()
     ProfiledMemoryZone(MemoryTag::Resource);
     auto& platform = ultralight::Platform::instance();
     auto config = platform.config();
-    ultralight::FileHandle handle = ResourceLoader::openFile("cacert.pem");
-    ultralight::FileSystem* fs = ultralight::Platform::instance().file_system();
-    int64_t fileSize = 0;
+    ultralight::RefPtr<ultralight::Buffer> certData = ResourceLoader::openFile("cacert.pem");
+    size_t fileSize = 0;
     CertificateInfo::Certificate buffer;
 
-    if (handle == ultralight::invalidFileHandle)
+    if (!certData)
         goto FAIL_LOAD;
 
-    if (!fs)
+    fileSize = certData->size();
+    if (fileSize == 0)
         goto FAIL_LOAD;
 
-    if (!fs->GetFileSize(handle, fileSize) || fileSize == 0)
-        goto FAIL_LOAD;
-
-    buffer.resize(fileSize);
-    if (fs->ReadFromFile(handle, (char*)buffer.data(), fileSize) != fileSize)
-        goto FAIL_LOAD;
+    buffer.append(static_cast<char*>(certData->data()), fileSize);
 
     setCACertData(std::move(buffer));
 
-    fs->CloseFile(handle);
     return;
 
 FAIL_LOAD:
-    if (fs && handle != ultralight::invalidFileHandle)
-        fs->CloseFile(handle);
     UL_LOG_ERROR("Failed to load cacert.pem (SSL certificate chain), the library will be unable to make SSL/HTTPS requests.")
     return;
 }

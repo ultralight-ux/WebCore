@@ -57,6 +57,10 @@ OBJC_CLASS NSArray;
 OBJC_CLASS NSData;
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/Buffer.h>
+#endif
+
 namespace WebCore {
 
 class SharedBufferDataView;
@@ -94,6 +98,10 @@ public:
 
 #if USE(GSTREAMER)
     static Ref<SharedBuffer> create(GstMappedBuffer&);
+#endif
+
+#if USE(ULTRALIGHT)
+    static Ref<SharedBuffer> create(ultralight::RefPtr<ultralight::Buffer>);
 #endif
     // Calling data() causes all the data segments to be copied into one segment if they are not already.
     // Iterate the segments using begin() and end() instead.
@@ -136,6 +144,9 @@ public:
 #if USE(GSTREAMER)
         static Ref<DataSegment> create(RefPtr<GstMappedBuffer>&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
 #endif
+#if USE(ULTRALIGHT)
+        static Ref<DataSegment> create(ultralight::RefPtr<ultralight::Buffer>&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
+#endif
         static Ref<DataSegment> create(FileSystem::MappedFileData&& data) { return adoptRef(*new DataSegment(WTFMove(data))); }
 
     private:
@@ -157,6 +168,10 @@ public:
         DataSegment(RefPtr<GstMappedBuffer>&& data)
             : m_immutableData(WTFMove(data)) { }
 #endif
+#if USE(ULTRALIGHT)
+        DataSegment(ultralight::RefPtr<ultralight::Buffer>&& data)
+            : m_immutableData(WTFMove(data)) { }
+#endif
         DataSegment(FileSystem::MappedFileData&& data)
             : m_immutableData(WTFMove(data)) { }
 
@@ -172,6 +187,9 @@ public:
 #endif
 #if USE(GSTREAMER)
             RefPtr<GstMappedBuffer>,
+#endif
+#if USE(ULTRALIGHT)
+            ultralight::RefPtr<ultralight::Buffer>,
 #endif
             FileSystem::MappedFileData> m_immutableData;
         friend class SharedBuffer;
@@ -210,6 +228,9 @@ private:
 #endif
 #if USE(GSTREAMER)
     explicit SharedBuffer(GstMappedBuffer&);
+#endif
+#if USE(ULTRALIGHT)
+    explicit SharedBuffer(ultralight::RefPtr<ultralight::Buffer>);
 #endif
 
     void combineIntoOneSegment() const;

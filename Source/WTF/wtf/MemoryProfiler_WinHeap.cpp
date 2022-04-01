@@ -98,7 +98,8 @@ constexpr size_t TagStorageSize() { return sizeof(TagStorage); }
 
 static_assert(TagSize() == TagStorageSize(), "Tag Size doesn't match Tag Storage Size");
 
-inline void* ProfiledHeapAlloc(size_t size) {
+__declspec(noinline) void* ProfiledHeapAlloc(size_t size)
+{
   void* paddedAlloc = HeapAlloc(get_heap_handle(), 0, size + TagSize());
   void* alloc = paddedAlloc ? static_cast<uint8_t*>(paddedAlloc) + TagSize() : paddedAlloc;
 
@@ -111,7 +112,8 @@ inline void* ProfiledHeapAlloc(size_t size) {
   return alloc;
 }
 
-inline void ProfiledHeapFree(void* alloc) {
+__declspec(noinline) void ProfiledHeapFree(void* alloc)
+{
   void* paddedAlloc = static_cast<uint8_t*>(alloc) - TagSize();
   MemoryTag tag = static_cast<TagStorage*>(paddedAlloc)->val;
   size_t paddedSize = HeapSize(get_heap_handle(), 0, paddedAlloc);
@@ -120,50 +122,63 @@ inline void ProfiledHeapFree(void* alloc) {
   HeapFree(get_heap_handle(), 0, paddedAlloc);
 }
 
-inline void* ProfiledHeapReAlloc(void* alloc, size_t size) {
+__declspec(noinline) void* ProfiledHeapReAlloc(void* alloc, size_t size)
+{
   void* paddedAlloc = static_cast<uint8_t*>(alloc) - TagSize();
   MemoryTag oldTag = static_cast<TagStorage*>(paddedAlloc)->val;
   size_t oldPaddedSize = HeapSize(get_heap_handle(), 0, paddedAlloc);
   void* newPaddedAlloc = HeapReAlloc(get_heap_handle(), 0, paddedAlloc, size + TagSize());
-  void* newAlloc
-      = newPaddedAlloc ? static_cast<uint8_t*>(newPaddedAlloc) + TagSize() : newPaddedAlloc;
+
+  if (!newPaddedAlloc) {
+    // Realloc failed, return nullptr;
+    return nullptr;
+  }
+
+  void* newAlloc = static_cast<uint8_t*>(newPaddedAlloc) + TagSize();
 
   ProfileFree(alloc, MemoryTagToString(oldTag));
   UpdateMemoryStats(oldTag, (int64_t)(oldPaddedSize - TagSize()) * -1);
 
-  if (newPaddedAlloc) {
-    ProfileAlloc(newAlloc, size, MemoryTagToString(currentMemoryTag));
-    UpdateMemoryStats(currentMemoryTag, (int64_t)size);
+  size_t newPaddedSize = HeapSize(get_heap_handle(), 0, newPaddedAlloc);
 
-    static_cast<TagStorage*>(newPaddedAlloc)->val = currentMemoryTag;
-  }
+  ProfileAlloc(newAlloc, size, MemoryTagToString(currentMemoryTag));
+  UpdateMemoryStats(currentMemoryTag, (int64_t)(newPaddedSize - TagSize()));
+
+  static_cast<TagStorage*>(newPaddedAlloc)->val = currentMemoryTag;
 
   return newAlloc;
 }
 
-inline void* ProfiledHeapReAllocInPlace(void* alloc, size_t size) {
+__declspec(noinline) void* ProfiledHeapReAllocInPlace(void* alloc, size_t size)
+{
   void* paddedAlloc = static_cast<uint8_t*>(alloc) - TagSize();
   MemoryTag oldTag = static_cast<TagStorage*>(paddedAlloc)->val;
   size_t oldPaddedSize = HeapSize(get_heap_handle(), 0, paddedAlloc);
-  void* newPaddedAlloc
-      = HeapReAlloc(get_heap_handle(), HEAP_REALLOC_IN_PLACE_ONLY, paddedAlloc, size + TagSize());
-  void* newAlloc
-      = newPaddedAlloc ? static_cast<uint8_t*>(newPaddedAlloc) + TagSize() : newPaddedAlloc;
+  void* newPaddedAlloc = HeapReAlloc(get_heap_handle(), HEAP_REALLOC_IN_PLACE_ONLY, paddedAlloc,
+      size + TagSize());
 
-  if (newPaddedAlloc) {
-    ProfileFree(alloc, MemoryTagToString(oldTag));
-    UpdateMemoryStats(oldTag, (int64_t)(oldPaddedSize - TagSize()) * -1);
-
-    ProfileAlloc(newAlloc, size, MemoryTagToString(currentMemoryTag));
-    UpdateMemoryStats(currentMemoryTag, (int64_t)size);
-
-    static_cast<TagStorage*>(newPaddedAlloc)->val = currentMemoryTag;
+  if (!newPaddedAlloc) {
+    // Realloc failed, return nullptr;
+    return nullptr;
   }
+
+  void* newAlloc = static_cast<uint8_t*>(newPaddedAlloc) + TagSize();
+
+  ProfileFree(alloc, MemoryTagToString(oldTag));
+  UpdateMemoryStats(oldTag, (int64_t)(oldPaddedSize - TagSize()) * -1);
+
+  size_t newPaddedSize = HeapSize(get_heap_handle(), 0, newPaddedAlloc);
+
+  ProfileAlloc(newAlloc, size, MemoryTagToString(currentMemoryTag));
+  UpdateMemoryStats(currentMemoryTag, (int64_t)(newPaddedSize - TagSize()));
+
+  static_cast<TagStorage*>(newPaddedAlloc)->val = currentMemoryTag;
 
   return newAlloc;
 }
 
-void* WinHeapMalloc(size_t size) {
+__declspec(noinline) void* WinHeapMalloc(size_t size)
+{
   if (!size)
     return nullptr;
 
@@ -174,14 +189,16 @@ void* WinHeapMalloc(size_t size) {
   return nullptr;
 }
 
-void WinHeapFree(void* ptr) {
+__declspec(noinline) void WinHeapFree(void* ptr)
+{
   if (!ptr)
     return;
 
   ProfiledHeapFree(ptr);
 }
 
-void* WinHeapRealloc(void* ptr, size_t size) {
+__declspec(noinline) void* WinHeapRealloc(void* ptr, size_t size)
+{
   if (!ptr)
     return WinHeapMalloc(size);
 
@@ -266,7 +283,8 @@ void* UnalignAllocation(void* ptr) {
 
 } // namespace
 
-void* WinHeapAlignedMalloc(size_t size, size_t alignment) {
+__declspec(noinline) void* WinHeapAlignedMalloc(size_t size, size_t alignment)
+{
   UL_CHECK(IsPowerOfTwo(alignment));
 
   size_t adjusted = AdjustedSize(size, alignment);
@@ -280,7 +298,8 @@ void* WinHeapAlignedMalloc(size_t size, size_t alignment) {
   return AlignAllocation(ptr, alignment);
 }
 
-void* WinHeapAlignedRealloc(void* ptr, size_t size, size_t alignment) {
+__declspec(noinline) void* WinHeapAlignedRealloc(void* ptr, size_t size, size_t alignment)
+{
   UL_CHECK(IsPowerOfTwo(alignment));
 
   if (!ptr)
@@ -314,7 +333,8 @@ void* WinHeapAlignedRealloc(void* ptr, size_t size, size_t alignment) {
   return new_ptr;
 }
 
-void WinHeapAlignedFree(void* ptr) {
+__declspec(noinline) void WinHeapAlignedFree(void* ptr)
+{
   if (!ptr)
     return;
 

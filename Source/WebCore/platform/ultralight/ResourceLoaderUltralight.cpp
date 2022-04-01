@@ -8,7 +8,7 @@
 namespace WebCore {
 namespace ResourceLoader {
 
-    ultralight::FileHandle openFile(const String& filePath)
+    ultralight::RefPtr<ultralight::Buffer> openFile(const String& filePath)
     {
         ultralight::FileSystem* fs = ultralight::Platform::instance().file_system();
         auto config = ultralight::Platform::instance().config();
@@ -17,24 +17,24 @@ namespace ResourceLoader {
         if (!fs) {
             ultralight::String err_msg = "Could not load resource: " + filePathStr + ", no FileSystem instance set, make sure that you've called ultralight::Platform::instance().set_file_system().";
             UL_LOG_ERROR(err_msg);
-            return ultralight::invalidFileHandle;
+            return nullptr;
         }
 
         if (!fs->FileExists(filePathStr)) {
             ultralight::String err_msg = "Could not load resource: " + filePathStr + ", FileSystem::FileExists() returned false.";
             UL_LOG_ERROR(err_msg);
-            return ultralight::invalidFileHandle;
+            return nullptr;
         }
 
-        ultralight::FileHandle handle = fs->OpenFile(filePathStr, false);
+        ultralight::RefPtr<ultralight::Buffer> result = fs->OpenFile(filePathStr);
 
-        if (handle == ultralight::invalidFileHandle) {
-            ultralight::String err_msg = "Could not load resource: " + filePathStr + ", FileSystem::OpenFile() returned an invalid file handle.";
+        if (!result) {
+            ultralight::String err_msg = "Could not load resource: " + filePathStr + ", FileSystem::OpenFile() returned a nullptr.";
             UL_LOG_ERROR(err_msg);
-            return ultralight::invalidFileHandle;
+            return nullptr;
         }
 
-        return handle;
+        return result;
     }
 
     String readFileToString(const String& filePath)
@@ -43,28 +43,16 @@ namespace ResourceLoader {
         if (!fs)
             return String();
 
-        ultralight::FileHandle handle = openFile(filePath);
-        if (handle == ultralight::invalidFileHandle)
+        ultralight::RefPtr<ultralight::Buffer> fileData = openFile(filePath);
+        if (!fileData)
             return String();
 
-        int64_t fileSize = 0;
-        Vector<char> buffer;
+        size_t fileSize = fileData->size();
 
-        if (!fs->GetFileSize(handle, fileSize) || fileSize == 0)
-            goto FAIL_LOAD;
+        if (fileSize == 0)
+            return String();
 
-        buffer.resize(fileSize);
-        if (fs->ReadFromFile(handle, buffer.data(), fileSize) != fileSize)
-            goto FAIL_LOAD;
-
-        fs->CloseFile(handle);
-
-        return String(buffer.data(), static_cast<size_t>(fileSize));
-
-    FAIL_LOAD:
-        if (fs && handle != ultralight::invalidFileHandle)
-            fs->CloseFile(handle);
-        return String();
+        return String(static_cast<char*>(fileData->data()), fileSize);
     }
 
 } // namespace ResourceLoader

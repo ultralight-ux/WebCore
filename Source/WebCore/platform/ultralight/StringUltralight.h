@@ -1,4 +1,5 @@
 #pragma once
+#include <Ultralight/String.h>
 #include <Ultralight/String16.h>
 #include <wtf/text/WTFString.h>
 //#include <wtf/unicode/UTF8.h>

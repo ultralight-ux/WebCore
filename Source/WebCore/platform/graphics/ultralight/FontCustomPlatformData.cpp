@@ -59,7 +59,7 @@ std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(
   if (buffer.isEmpty())
     return nullptr;
 
-  ultralight::RefPtr<ultralight::Buffer> fontData = ultralight::Buffer::Create(buffer.data(), buffer.size());
+  ultralight::RefPtr<ultralight::Buffer> fontData = ultralight::Buffer::CreateFromCopy(buffer.data(), buffer.size());
 
   ultralight::RefPtr<ultralight::FontFile> fontFile = ultralight::FontFile::Create(fontData);
 

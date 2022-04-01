@@ -68,6 +68,19 @@ SharedBuffer::SharedBuffer(GstMappedBuffer& mappedBuffer)
 }
 #endif
 
+#if USE(ULTRALIGHT)
+Ref<SharedBuffer> SharedBuffer::create(ultralight::RefPtr<ultralight::Buffer> buffer)
+{
+    return adoptRef(*new SharedBuffer(buffer));
+}
+
+SharedBuffer::SharedBuffer(ultralight::RefPtr<ultralight::Buffer> buffer)
+    : m_size(buffer->size())
+{
+    m_segments.append({ 0, DataSegment::create(WTFMove(buffer)) });
+}
+#endif
+
 RefPtr<SharedBuffer> SharedBuffer::createWithContentsOfFile(const String& filePath)
 {
     bool mappingSuccess;
@@ -228,6 +241,9 @@ const char* SharedBuffer::DataSegment::data() const
 #if USE(GSTREAMER)
         [](const RefPtr<GstMappedBuffer>& data) { return reinterpret_cast<const char*>(data->data()); },
 #endif
+#if USE(ULTRALIGHT)
+        [](const ultralight::RefPtr<ultralight::Buffer>& data) { return reinterpret_cast<const char*>(data->data()); },
+#endif
         [](const FileSystem::MappedFileData& data) { return reinterpret_cast<const char*>(data.data()); }
     );
     return WTF::visit(visitor, m_immutableData);
@@ -303,6 +319,9 @@ size_t SharedBuffer::DataSegment::size() const
 #endif
 #if USE(GSTREAMER)
         [](const RefPtr<GstMappedBuffer>& data) { return data->size(); },
+#endif
+#if USE(ULTRALIGHT)
+        [](const ultralight::RefPtr<ultralight::Buffer>& data) { return data->size(); },
 #endif
         [](const FileSystem::MappedFileData& data) { return data.size(); }
     );
