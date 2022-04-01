@@ -93,6 +93,9 @@ bool SQLiteDatabase::open(const String& filename, OpenMode openMode)
 
     close();
 
+    if (filename.isEmpty())
+        return false;
+
     {
         std::lock_guard<Lock> lock(isDatabaseOpeningForbiddenMutex);
         if (isDatabaseOpeningForbidden) {
