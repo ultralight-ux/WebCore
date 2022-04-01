@@ -127,6 +127,8 @@ static void releaseCriticalMemory(Synchronous synchronous, MaintainPageCache mai
     }
 }
 
+#define LOG_MEMORY_USAGE 0
+
 void releaseMemory(Critical critical, Synchronous synchronous, MaintainPageCache maintainPageCache, MaintainMemoryCache maintainMemoryCache)
 {
 #if USE(ULTRALIGHT)
@@ -157,6 +159,26 @@ void releaseMemory(Critical critical, Synchronous synchronous, MaintainPageCache
     Page::forEachPage([&](Page& page) {
         InspectorInstrumentation::didHandleMemoryPressure(page, critical);
     });
+#endif
+
+#if LOG_MEMORY_USAGE
+    unsigned page_count = 0;
+    Page::forEachPage([&](Page& page) {
+        if (!page.isUtilityPage())
+            ++page_count;
+    });
+    
+    auto& vm = commonVM();
+    printf("-----\n");
+    printf("GC heap size: %zu\n", vm.heap.size());
+    printf("GC heap extra memory size: %zu\n", vm.heap.extraMemorySize());
+#if ENABLE(RESOURCE_USAGE)
+    printf("GC heap external memory: %zu\n", vm.heap.externalMemorySize());
+#endif
+    printf("Global object count: %zu\n", vm.heap.globalObjectCount());
+
+    printf("Page count: %u\n", page_count);
+    printf("Document count: %u\n", Document::allDocuments().size());
 #endif
 }
 
