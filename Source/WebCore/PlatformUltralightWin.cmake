@@ -103,6 +103,10 @@ list(APPEND WebCore_SOURCES
     platform/ultralight/FileSystemUltralight.cpp
     platform/ultralight/FileURLLoader.cpp
     platform/ultralight/FileURLLoader.h
+    platform/ultralight/GamepadProviderUltralight.cpp
+    platform/ultralight/GamepadProviderUltralight.h
+    platform/ultralight/GamepadUltralight.h
+    platform/ultralight/GamepadUltralight.cpp
     platform/ultralight/HyphenationUltralight.cpp
     platform/ultralight/IconUltralight.cpp
     platform/ultralight/ICUUtils.cpp
@@ -202,6 +206,7 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     platform/network/curl
     platform/sql
     platform/text
+    platform/ultralight
     platform/graphics/filters
     platform/graphics/opengl
     platform/graphics/opentype
