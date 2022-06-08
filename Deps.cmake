@@ -21,7 +21,7 @@ endif ()
 
 set(WEBCORE_DEPS_REV "00d24413")
 set(GSTREAMER_REV "288fedcc")
-set(ULTRALIGHTCORE_REV "3e5d8b96")
+set(ULTRALIGHTCORE_REV "f01ed448")
 
 if (${ALLINONE_BUILD})
   message("Using local deps from all-in-one build.")

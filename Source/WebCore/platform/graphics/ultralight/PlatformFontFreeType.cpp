@@ -76,10 +76,19 @@ public:
     FT_Request_Size(face(), &req);
   }
 
-  virtual bool GetGlyphMetrics(uint32_t glyph_index, double& advance,
-    double& width, double& height, double& bearing) override {
+  virtual bool GetGlyphMetrics(uint32_t glyph_index, FontHinting hinting,
+    double& advance, double& width, double& height, double& bearing) override {
     ProfiledZone;
-    FT_Error error = FT_Load_Glyph(face(), glyph_index, FT_LOAD_DEFAULT);
+    FT_Int32 load_flags = FT_LOAD_DEFAULT;
+    if (hinting == ultralight::FontHinting::Smooth)
+      load_flags |= FT_LOAD_TARGET_LIGHT;
+    else if (hinting == ultralight::FontHinting::Normal)
+      load_flags |= FT_LOAD_TARGET_NORMAL;
+    else if (hinting == ultralight::FontHinting::Monochrome)
+      load_flags |= FT_LOAD_TARGET_MONO;
+    else if (hinting == ultralight::FontHinting::None)
+      load_flags |= FT_LOAD_NO_HINTING;
+    FT_Error error = FT_Load_Glyph(face(), glyph_index, load_flags);
     if (error)
       return false;
 
@@ -92,7 +101,8 @@ public:
   }
 
   virtual bool RenderGlyph(uint32_t glyph_index, FontHinting hinting,
-    RefPtr<Bitmap>& out_bitmap, Point& out_offset) override {
+    RefPtr<Bitmap>& out_bitmap, Point& out_offset, float& out_lsb_delta,
+    float& out_rsb_delta) override {
     ProfiledZone;
     FT_Int32 load_flags = FT_LOAD_RENDER;
     if (hinting == ultralight::FontHinting::Smooth)
@@ -101,6 +111,8 @@ public:
       load_flags |= FT_LOAD_TARGET_NORMAL;
     else if (hinting == ultralight::FontHinting::Monochrome)
       load_flags |= FT_LOAD_TARGET_MONO;
+    else if (hinting == ultralight::FontHinting::None)
+      load_flags |= FT_LOAD_NO_HINTING;
 
     FT_Error error = FT_Load_Glyph(face(), glyph_index, load_flags);
     if (error)
@@ -147,6 +159,8 @@ public:
 
     out_bitmap = bitmap;
     out_offset = ultralight::Point((float)slot->bitmap_left, (float)slot->bitmap_top * -1.0f);
+    out_lsb_delta = static_cast<float>(slot->lsb_delta) / 64.0f;
+    out_rsb_delta = static_cast<float>(slot->rsb_delta) / 64.0f;
     return true;
   }
 

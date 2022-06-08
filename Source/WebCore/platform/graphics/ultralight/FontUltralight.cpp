@@ -15,6 +15,8 @@
 #include <Ultralight/platform/Config.h>
 #include "FontRenderer.h"
 #include <unicode/normlzr.h>
+#include <math.h>
+#include <memory>
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
@@ -58,9 +60,8 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
   FT_Bool use_kerning = FT_HAS_KERNING(face);
   FT_UInt glyph_index = 0;
   FT_UInt previous = 0;
-  float pen_x = point.x();
-  float pen_y = point.y();
-  //FT_Error error;
+  ultralight::Glyph glyph;
+  ultralight::Point origin(point.x(), point.y());
   ultralight::RefPtr<ultralight::Font> ultraFont = platform_font.font();
 
   Vector<ultralight::Glyph>& glyphBuf = platform_font.glyphBuffer();
@@ -68,41 +69,27 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
 
   for (unsigned i = 0; i < numGlyphs; i++) {
     glyph_index = glyphs[i];
+    glyph.index = glyph_index;
+    glyph.advance_x = advances[i].width();
 
     if (use_kerning && previous && glyph_index) {
       FT_Vector delta;
       FT_Get_Kerning(face, previous, glyph_index, FT_KERNING_DEFAULT, &delta);
-      pen_x += TwentySixDotSix2Float(delta.x);
+      glyph.kerning_x = TwentySixDotSix2Float(delta.x);
+    } else {
+      glyph.kerning_x = 0.0f;
     }
-
-    glyphBuf.append({ glyph_index, pen_x });
-
-    //pen_x += font.platformWidthForGlyph(glyph_index);
-    pen_x += advances[i].width();
+    
+    glyphBuf.append(glyph);
     previous = glyph_index;
   }
 
   if (glyphBuf.size()) {
     if (context.hasVisibleShadow()) {
-      /**
+
       // TODO: Handle text shadows properly with offscreen blur filter
-
-      WebCore::FloatSize shadow_size;
-      float shadow_blur;
-      WebCore::Color shadow_color;
-      context.getShadow(shadow_size, shadow_blur, shadow_color);
-
-      ultralight::Paint paint;
-      paint.color = UltralightRGBA(shadow_color.red(), shadow_color.green(), shadow_color.blue(), shadow_color.alpha());
-
-      ultralight::Point shadow_offset = { shadow_size.width(), shadow_size.height() };
-
-      // Draw SDF twice to multiply (lol such a hack)
-      canvas->DrawGlyphs(*ultraFont, paint, glyphBuf.data(), glyphBuf.size(), glyph_scale, shadow_blur > 0.0f, shadow_offset);
-      canvas->DrawGlyphs(*ultraFont, paint, glyphBuf.data(), glyphBuf.size(), glyph_scale, shadow_blur > 0.0f, shadow_offset);
-      */
-
       // We are just drawing text shadows ignoring blur right now.
+
       WebCore::FloatSize shadow_size;
       float shadow_blur;
       WebCore::Color shadow_color;
@@ -112,21 +99,16 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
       paint.color = UltralightRGBA(shadow_color.red(), shadow_color.green(), shadow_color.blue(), shadow_color.alpha());
 
       ultralight::Point shadow_offset = { shadow_size.width(), shadow_size.height() };
-      canvas->DrawGlyphs(ultraFont, paint, pen_y, glyphBuf.data(), glyphBuf.size(), shadow_offset);
+      canvas->DrawGlyphs(ultraFont, paint, origin, glyphBuf.data(), glyphBuf.size(), shadow_offset);
     }
 
     ultralight::Paint paint;
     WebCore::Color color = context.fillColor();
     paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
 
-    canvas->DrawGlyphs(ultraFont, paint, pen_y, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f));
+    canvas->DrawGlyphs(ultraFont, paint, origin, glyphBuf.data(), glyphBuf.size(), ultralight::Point(0.0f, 0.0f));
     glyphBuf.resize(0);
   }
-
-  //FloatRect rect(point.x(), point.y(), 10.0f * numGlyphs, 5.0f);
-  //context.fillRect(rect, Color::black);
-  // TODO
-  //notImplemented();
 }
 
 // From platform/graphics/cairo/FontCairoHarfbuzzNG.cpp
