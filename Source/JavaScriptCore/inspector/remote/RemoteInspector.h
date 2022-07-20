@@ -153,6 +153,7 @@ public:
 #if USE(INSPECTOR_SOCKET_SERVER)
     static void setConnectionIdentifier(PlatformSocketType);
     static void setServerPort(uint16_t);
+    static bool startServer(const char* address, uint16_t port);
 #endif
 
 private:

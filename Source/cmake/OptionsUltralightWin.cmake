@@ -32,6 +32,10 @@ if (MSVC)
     # Use CRT security features
     add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES=1)
     
+    # If <winsock2.h> is not included before <windows.h> redefinition errors occur
+    # unless _WINSOCKAPI_ is defined before <windows.h> is included
+    add_definitions(-D_WINSOCKAPI_=)
+    
     IF( NOT CMAKE_BUILD_TYPE )
        SET( CMAKE_BUILD_TYPE Release )
     ENDIF()

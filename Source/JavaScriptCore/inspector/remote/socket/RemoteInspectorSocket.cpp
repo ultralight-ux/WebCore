@@ -31,6 +31,7 @@
 #include "RemoteAutomationTarget.h"
 #include "RemoteConnectionToTarget.h"
 #include "RemoteInspectionTarget.h"
+#include "RemoteInspectorServer.h"
 #include <wtf/JSONValues.h>
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
@@ -95,7 +96,7 @@ void RemoteInspector::start()
 
     m_socketConnection = RemoteInspectorSocketEndpoint::create(this, "RemoteInspector");
 
-    if (s_connectionIdentifier) {
+    if (s_connectionIdentifier != INVALID_SOCKET_VALUE) {
         m_clientID = m_socketConnection->createClient(s_connectionIdentifier);
         s_connectionIdentifier = INVALID_SOCKET_VALUE;
     } else
@@ -298,6 +299,35 @@ void RemoteInspector::setConnectionIdentifier(PlatformSocketType connectionIdent
 void RemoteInspector::setServerPort(uint16_t port)
 {
     RemoteInspector::s_serverPort = port;
+}
+
+bool RemoteInspector::startServer(const char* address, uint16_t port)
+{
+    RemoteInspectorServer& inspectorServer = Inspector::RemoteInspectorServer::singleton();
+    if (inspectorServer.isRunning())
+        return true;
+
+    if (inspectorServer.start(address, port)) {
+        auto inspectorConnection = inspectorServer.connect();
+        if (inspectorConnection.hasValue())
+            setConnectionIdentifier(inspectorConnection.value());
+        else
+            return false;
+
+        auto inspectorPort = inspectorServer.listenForTargets();
+        if (inspectorPort.hasValue())
+            setServerPort(inspectorPort.value());
+        else
+            return false;
+
+        RemoteInspector::singleton().start();
+
+        printf("Remote Inspector Server started successfully.\n\tAddress: %s\n\tPort: %d\n", address, port);
+
+        return true;
+    }
+
+    return false;
 }
 
 } // namespace Inspector
