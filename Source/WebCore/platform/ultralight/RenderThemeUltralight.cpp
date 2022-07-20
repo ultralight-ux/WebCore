@@ -472,7 +472,7 @@ public:
             return;
 
         // Use the font size to determine the intrinsic width of the control.
-        style.setHeight(Length(static_cast<int>(ControlBaseHeight / ControlBaseFontSize * style.fontDescription().computedSize()), Fixed));
+        // style.setHeight(Length(static_cast<int>(ControlBaseHeight / ControlBaseFontSize * style.fontDescription().computedSize()), Fixed));
     }
 
     void adjustRoundBorderRadius(RenderStyle& style, RenderBox& box) const
