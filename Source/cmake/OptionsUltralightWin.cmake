@@ -45,14 +45,21 @@ if (MSVC)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /LARGEADDRESSAWARE")
     
     if (${CMAKE_BUILD_TYPE} MATCHES Debug)
-        # Create pdb files for debugging purposes
-        add_compile_options(/GS /DNDEBUG)
+        add_compile_options(/GS)
+
+        if (NOT UL_ENABLE_DEBUG_CHECKS)
+            add_compile_options(/DNDEBUG)
+        endif ()
         
         set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF")
     elseif (${CMAKE_BUILD_TYPE} MATCHES RelWithDebInfo)
         # Create pdb files for debugging purposes
-        add_compile_options(/Zi /GS /DNDEBUG)
+        add_compile_options(/Zi /GS)
+
+        if (NOT UL_ENABLE_DEBUG_CHECKS)
+            add_compile_options(/DNDEBUG)
+        endif ()
         
         set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF /DEBUG:FASTLINK")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG /OPT:NOREF /OPT:NOICF /DEBUG:FASTLINK")
