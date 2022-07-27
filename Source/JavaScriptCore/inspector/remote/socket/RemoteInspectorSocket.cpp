@@ -137,7 +137,7 @@ TargetListing RemoteInspector::listingForInspectionTarget(const RemoteInspection
     TargetListing targetListing = JSON::Object::create();
 
     targetListing->setString("name"_s, target.name());
-    targetListing->setString("url"_s, target.name());
+    targetListing->setString("url"_s, target.url());
     targetListing->setInteger("targetID"_s, target.targetIdentifier());
     targetListing->setBoolean("hasLocalDebugger"_s, target.hasLocalDebugger());
     if (target.type() == RemoteInspectionTarget::Type::Web)
