@@ -62,6 +62,12 @@ list(APPEND WTF_SOURCES
     text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
 )
 
+if (ENABLE_REMOTE_INSPECTOR)
+    list(APPEND WTF_SOURCES   
+        unix/UniStdExtrasUnix.cpp
+    )
+endif ()
+
 list(APPEND WTF_INCLUDE_DIRECTORIES
     ${ULTRALIGHTCORE_DIR}/include
 )

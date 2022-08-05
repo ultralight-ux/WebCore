@@ -31,12 +31,10 @@
 #include <wtf/Optional.h>
 #include <wtf/Vector.h>
 
-#if PLATFORM(PLAYSTATION)
-#include <poll.h>
-#endif
-
 #if OS(WINDOWS)
 #include <winsock2.h>
+#else
+#include <poll.h>
 #endif
 
 namespace Inspector {
