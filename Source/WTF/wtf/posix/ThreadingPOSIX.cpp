@@ -201,8 +201,25 @@ static void* wtfThreadEntryPoint(void* context)
     return nullptr;
 }
 
-bool Thread::establishHandle(NewThreadContext* context)
+bool Thread::establishHandle(const char* name, NewThreadContext* context, ThreadQOS qos)
 {
+    unsigned threadIdentifier = 0;
+#if USE(ULTRALIGHT)
+    ultralight::Platform& platform = ultralight::Platform::instance();
+    ultralight::ThreadManager* threadManager = platform.thread_manager();
+    if (threadManager) {
+        ultralight::CreateThreadResult result;
+        bool success = threadManager->CreateThread(name, (ultralight::ThreadQOS)qos,
+            reinterpret_cast<ultralight::ThreadEntryPoint>(&Thread::entryPoint), (void*)data, result);
+        if (success) {
+            threadIdentifier = (unsigned int)result.id;
+            pthread_t threadHandle = (pthread_t)result.handle;
+            establishPlatformSpecificHandle(threadHandle, threadIdentifier);
+            return true;
+        }
+    }
+#endif
+
     pthread_t threadHandle;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -215,7 +232,7 @@ bool Thread::establishHandle(NewThreadContext* context)
         LOG_ERROR("Failed to create pthread at entry point %p with context %p", wtfThreadEntryPoint, context);
         return false;
     }
-    establishPlatformSpecificHandle(threadHandle);
+    establishPlatformSpecificHandle(threadHandle, threadIdentifier);
     return true;
 }
 
@@ -289,7 +306,7 @@ Thread& Thread::initializeCurrentTLS()
 {
     // Not a WTF-created thread, Thread is not established yet.
     Ref<Thread> thread = adoptRef(*new Thread());
-    thread->establishPlatformSpecificHandle(pthread_self());
+    thread->establishPlatformSpecificHandle(pthread_self(), 0);
     thread->initializeInThread();
     initializeCurrentThreadEvenIfNonWTFCreated();
 
@@ -425,10 +442,11 @@ size_t Thread::getRegisters(PlatformRegisters& registers)
 #endif
 }
 
-void Thread::establishPlatformSpecificHandle(pthread_t handle)
+void Thread::establishPlatformSpecificHandle(pthread_t handle, ThreadIdentifier threadID)
 {
     auto locker = holdLock(m_mutex);
     m_handle = handle;
+    m_id = threadID;
 #if OS(DARWIN)
     m_platformThread = pthread_mach_thread_np(handle);
 #endif
