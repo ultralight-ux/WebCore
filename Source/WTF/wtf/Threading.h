@@ -77,6 +77,13 @@ enum class GCThreadType : uint8_t {
     Helper,
 };
 
+enum class ThreadQOS : uint8_t {
+    High,
+    Normal,
+    Low,
+    Background
+};
+
 class Thread : public ThreadSafeRefCounted<Thread> {
 public:
     friend class ThreadGroup;
@@ -86,7 +93,8 @@ public:
 
     // Returns nullptr if thread creation failed.
     // The thread name must be a literal since on some platforms it's passed in to the thread.
-    WTF_EXPORT_PRIVATE static Ref<Thread> create(const char* threadName, Function<void()>&&);
+    WTF_EXPORT_PRIVATE static Ref<Thread> create(const char* threadName, Function<void()>&&,
+        ThreadQOS qos = ThreadQOS::Normal);
 
     // Returns Thread object.
     static Thread& current();
@@ -101,9 +109,9 @@ public:
     // that the thread information is alive. While Thread::current() is not safe if it is called
     // from the destructor of the other TLS data, currentID() always returns meaningful thread ID.
     WTF_EXPORT_PRIVATE static ThreadIdentifier currentID();
+#endif
 
     ThreadIdentifier id() const { return m_id; }
-#endif
 
     WTF_EXPORT_PRIVATE void changePriority(int);
     WTF_EXPORT_PRIVATE int waitForCompletion();
@@ -210,13 +218,9 @@ protected:
     void initializeInThread();
 
     // Internal platform-specific Thread establishment implementation.
-    bool establishHandle(NewThreadContext*);
+    bool establishHandle(const char* name, NewThreadContext*, ThreadQOS qos);
 
-#if USE(PTHREADS)
-    void establishPlatformSpecificHandle(PlatformThreadHandle);
-#else
     void establishPlatformSpecificHandle(PlatformThreadHandle, ThreadIdentifier);
-#endif
 
 #if USE(PTHREADS) && !OS(DARWIN)
     static void signalHandlerSuspendResume(int, siginfo_t*, void* ucontext);
@@ -292,9 +296,8 @@ protected:
     StackBounds m_stack { StackBounds::emptyBounds() };
     Vector<std::weak_ptr<ThreadGroup>> m_threadGroups;
     PlatformThreadHandle m_handle;
-#if OS(WINDOWS)
     ThreadIdentifier m_id { 0 };
-#elif OS(DARWIN)
+#if OS(DARWIN)
     mach_port_t m_platformThread { MACH_PORT_NULL };
 #elif USE(PTHREADS)
     PlatformRegisters* m_platformRegisters { nullptr };

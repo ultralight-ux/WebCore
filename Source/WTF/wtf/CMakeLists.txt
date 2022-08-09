@@ -201,6 +201,7 @@ set(WTF_PUBLIC_HEADERS
     SentinelLinkedList.h
     SetForScope.h
     SharedTask.h
+    Shutdown.h
     SimpleStats.h
     SingleRootGraph.h
     SinglyLinkedList.h
@@ -397,6 +398,7 @@ set(WTF_SOURCES
     RefCountedLeakCounter.cpp
     RunLoop.cpp
     SHA1.cpp
+    Shutdown.cpp
     Seconds.cpp
     SixCharacterHash.cpp
     StackBounds.cpp

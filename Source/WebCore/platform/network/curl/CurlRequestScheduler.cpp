@@ -33,6 +33,10 @@
 
 #include "CurlRequestSchedulerClient.h"
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/Isolate.h>
+#endif
+
 namespace WebCore {
 
 CurlRequestScheduler::CurlRequestScheduler(long maxConnects, long maxTotalConnections, long maxHostConnections)
@@ -152,6 +156,10 @@ void CurlRequestScheduler::workerThread()
     m_curlMultiHandle->setMaxHostConnections(m_maxHostConnections);
 
     while (true) {
+#if USE(ULTRALIGHT)
+        if (!UltralightIsCurrentIsolateActive())
+            return;
+#endif
         {
             auto locker = holdLock(m_mutex);
             if (!m_runThread)

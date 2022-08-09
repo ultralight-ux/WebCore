@@ -25,28 +25,34 @@
 
 #include "config.h"
 #include "HeapHelperPool.h"
+#include <wtf/Shutdown.h>
 
 #include <mutex>
 #include "Options.h"
 
 namespace JSC {
 
+static ParallelHelperPool* g_helperPool = nullptr;
+
 ParallelHelperPool& heapHelperPool()
 {
-    static std::once_flag initializeHelperPoolOnceFlag;
-    static ParallelHelperPool* helperPool;
-    std::call_once(
-        initializeHelperPoolOnceFlag,
-        [] {
 #if OS(LINUX)
-            const char* threadName = "HeapHelper";
+    const char* threadName = "HeapHelper";
 #else
-            const char* threadName = "Heap Helper Thread";
+    const char* threadName = "Heap Helper Thread";
 #endif
-            helperPool = new ParallelHelperPool(threadName);
-            helperPool->ensureThreads(Options::numberOfGCMarkers() - 1);
+
+    if (!g_helperPool)
+    {
+        g_helperPool = new ParallelHelperPool(threadName);
+        g_helperPool->ensureThreads(Options::numberOfGCMarkers() - 1);
+        WTF::CallOnShutdown([]() mutable {
+            delete g_helperPool;
+            g_helperPool = nullptr;
         });
-    return *helperPool;
+    }
+
+    return *g_helperPool;
 }
 
 } // namespace JSC

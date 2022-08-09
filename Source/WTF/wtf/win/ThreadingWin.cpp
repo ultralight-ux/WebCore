@@ -96,6 +96,12 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/ThreadingPrimitives.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/ThreadManager.h>
+#include <Ultralight/private/Isolate.h>
+#endif
+
 namespace WTF {
 
 static Lock globalSuspendLock;
@@ -153,10 +159,28 @@ static unsigned __stdcall wtfThreadEntryPoint(void* data)
     return 0;
 }
 
-bool Thread::establishHandle(NewThreadContext* data)
+bool Thread::establishHandle(const char* name, NewThreadContext* data, ThreadQOS qos)
 {
     unsigned threadIdentifier = 0;
+#if USE(ULTRALIGHT)
+    HANDLE threadHandle = nullptr;
+    ultralight::Platform& platform = ultralight::Platform::instance();
+    ultralight::ThreadManager* threadManager = platform.thread_manager();
+    if (threadManager) {
+        ultralight::CreateThreadResult result;
+        bool success = threadManager->CreateThread(name, (ultralight::ThreadQOS)qos,
+            reinterpret_cast<ultralight::ThreadEntryPoint>(&Thread::entryPoint), (void*)data, result);
+        if (success && result.handle != 0) {
+            threadIdentifier = (unsigned int)result.id;
+            threadHandle = (HANDLE)result.handle;
+        }
+    }
+
+    if (!threadHandle)
+        threadHandle = reinterpret_cast<HANDLE>(_beginthreadex(0, 0, wtfThreadEntryPoint, data, 0, &threadIdentifier));
+#else
     HANDLE threadHandle = reinterpret_cast<HANDLE>(_beginthreadex(0, 0, wtfThreadEntryPoint, data, 0, &threadIdentifier));
+#endif
     if (!threadHandle) {
         LOG_ERROR("Failed to create thread at entry point %p with data %p: %ld", wtfThreadEntryPoint, data, errno);
         return false;

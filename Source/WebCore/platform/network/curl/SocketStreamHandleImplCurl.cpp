@@ -44,6 +44,10 @@
 #include <wtf/URL.h>
 #include <wtf/text/CString.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/Isolate.h>
+#endif
+
 namespace WebCore {
 
 SocketStreamHandleImpl::SocketStreamHandleImpl(const URL& url, SocketStreamHandleClient& client, const StorageSessionProvider* provider)
@@ -124,6 +128,11 @@ void SocketStreamHandleImpl::threadEntryPoint()
     });
 
     while (m_running) {
+#if USE(ULTRALIGHT)
+        if (!UltralightIsCurrentIsolateActive())
+            return;
+#endif
+
         executeTasks();
 
         auto result = socket.wait(20_ms, m_writeBuffer.get());

@@ -43,6 +43,12 @@
 #include <bmalloc/bmalloc.h>
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/platform/Platform.h>
+#include <Ultralight/platform/ThreadManager.h>
+#include <Ultralight/private/Isolate.h>
+#endif
+
 namespace WTF {
 
 struct Thread::NewThreadContext : public ThreadSafeRefCounted<NewThreadContext> {
@@ -148,7 +154,7 @@ void Thread::entryPoint(NewThreadContext* newThreadContext)
     function();
 }
 
-Ref<Thread> Thread::create(const char* name, Function<void()>&& entryPoint)
+Ref<Thread> Thread::create(const char* name, Function<void()>&& entryPoint, ThreadQOS qos)
 {
     WTF::initializeThreading();
     Ref<Thread> thread = adoptRef(*new Thread());
@@ -161,7 +167,7 @@ Ref<Thread> Thread::create(const char* name, Function<void()>&& entryPoint)
     context->ref();
     {
         MutexLocker locker(context->mutex);
-        bool success = thread->establishHandle(context.ptr());
+        bool success = thread->establishHandle(name, context.ptr(), qos);
         RELEASE_ASSERT(success);
         context->stage = NewThreadContext::Stage::EstablishedHandle;
 

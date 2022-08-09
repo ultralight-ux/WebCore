@@ -12,14 +12,24 @@
 #include <wtf/MemoryProfiler.h>
 #include <wtf/URL.h>
 #include <wtf/WorkQueue.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 namespace FileURLLoader {
 
+    static WTF::RefPtr<WorkQueue> g_loadQueue;
+
     static WorkQueue& loadQueue()
     {
-        static auto& queue = WorkQueue::create("org.ultralight.FileURLLoader").leakRef();
-        return queue;
+        if (!g_loadQueue)
+        {
+            g_loadQueue = WorkQueue::create("org.ultralight.FileURLLoader");
+            WTF::CallOnShutdown([]() mutable {
+                g_loadQueue = nullptr;
+            });
+        }
+        
+        return *g_loadQueue.get();
     }
 
     struct LoadTask {

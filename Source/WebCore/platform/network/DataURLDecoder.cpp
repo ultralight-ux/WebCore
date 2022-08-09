@@ -37,14 +37,23 @@
 #include <wtf/URL.h>
 #include <wtf/WorkQueue.h>
 #include <wtf/text/Base64.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 namespace DataURLDecoder {
 
+static WTF::RefPtr<WorkQueue> g_decodeQueue;
+
 static WorkQueue& decodeQueue()
 {
-    static auto& queue = WorkQueue::create("org.webkit.DataURLDecoder").leakRef();
-    return queue;
+    if (!g_decodeQueue) {
+        g_decodeQueue = WorkQueue::create("org.ultralight.DataURLDecoder");
+        WTF::CallOnShutdown([]() mutable {
+            g_decodeQueue = nullptr;
+        });
+    }
+
+    return *g_decodeQueue.get();
 }
 
 static Result parseMediaType(const String& mediaType)
