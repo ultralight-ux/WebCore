@@ -68,6 +68,10 @@ private:
 
     CrossThreadQueue<CrossThreadTask> m_taskQueue;
     CrossThreadQueue<CrossThreadTask> m_taskReplyQueue;
+
+    bool m_isRunning { true };
+    Condition m_isRunningCondition;
+    Lock m_isRunningLock;
 };
 
 } // namespace WTF

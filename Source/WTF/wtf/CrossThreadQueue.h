@@ -61,7 +61,7 @@ template<typename DataType>
 void CrossThreadQueue<DataType>::append(DataType&& message)
 {
     LockHolder lock(m_lock);
-    ASSERT(!m_killed);
+    //ASSERT(!m_killed);
     m_queue.append(WTFMove(message));
     m_condition.notifyOne();
 }

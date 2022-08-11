@@ -43,6 +43,16 @@ CrossThreadTaskHandler::CrossThreadTaskHandler(const char* threadName, Autodrain
 CrossThreadTaskHandler::~CrossThreadTaskHandler()
 {
     ASSERT(isMainThread());
+
+    m_taskQueue.kill();
+    // Post an empty task to ensure database thread exits m_taskQueue.waitForMessage() and checks kill status
+    m_taskQueue.append(CrossThreadTask([]() {}));
+
+    resume();
+
+    LockHolder locker(m_isRunningLock);
+    while (m_isRunning)
+        m_isRunningCondition.wait(m_isRunningLock);
 }
 
 void CrossThreadTaskHandler::postTask(CrossThreadTask&& task)
@@ -89,6 +99,10 @@ void CrossThreadTaskHandler::taskRunLoop()
             m_shouldSuspendCondition.wait(m_shouldSuspendLock);
         }
     }
+
+    LockHolder locker(m_isRunningLock);
+    m_isRunning = false;
+    m_isRunningCondition.notifyAll();
 }
 
 void CrossThreadTaskHandler::handleTaskRepliesOnMainThread()
