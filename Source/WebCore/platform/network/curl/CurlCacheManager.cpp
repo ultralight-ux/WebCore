@@ -39,6 +39,7 @@
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
+#include <wtf/Shutdown.h>
 
 #define IO_BUFFERSIZE 4096
 
@@ -46,8 +47,20 @@ namespace WebCore {
 
 CurlCacheManager& CurlCacheManager::singleton()
 {
-    static NeverDestroyed<CurlCacheManager> sharedInstance;
-    return sharedInstance;
+    static CurlCacheManager* sharedInstance = nullptr;
+
+    if (!sharedInstance)
+    {
+        sharedInstance = new CurlCacheManager();
+        WTF::CallOnShutdown([]() mutable {
+            if (sharedInstance) {
+                delete sharedInstance;
+                sharedInstance = nullptr;
+            }
+        });
+    }
+
+    return *sharedInstance;
 }
 
 CurlCacheManager::CurlCacheManager()

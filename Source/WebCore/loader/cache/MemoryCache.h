@@ -62,7 +62,6 @@ class SecurityOrigin;
 
 class MemoryCache {
     WTF_MAKE_NONCOPYABLE(MemoryCache); WTF_MAKE_FAST_ALLOCATED;
-    friend NeverDestroyed<MemoryCache>;
     friend class Internals;
 public:
     struct TypeStatistic {
@@ -173,7 +172,7 @@ private:
     typedef ListHashSet<CachedResource*> LRUList;
 
     MemoryCache();
-    ~MemoryCache(); // Not implemented to make sure nobody accidentally calls delete -- WebCore does not delete singletons.
+    ~MemoryCache();
 
     LRUList& lruListFor(CachedResource&);
 

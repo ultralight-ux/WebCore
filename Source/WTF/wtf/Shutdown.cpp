@@ -1,7 +1,7 @@
 // Copyright Ultralight, Inc. 2022. All rights reserved.
 #include "config.h"
 #include <wtf/Shutdown.h>
-#include <wtf/Vector.h>
+#include <wtf/Deque.h>
 #include <memory>
 
 namespace WTF {
@@ -15,7 +15,7 @@ struct ShutdownTask {
     WTF::Function<void()> m_func;
 };
 
-static WTF::Vector<std::unique_ptr<ShutdownTask>> shutdownTasks;
+static WTF::Deque<std::unique_ptr<ShutdownTask>> shutdownTasks;
 
 void CallOnShutdown(WTF::Function<void()>&& func)
 {
@@ -23,11 +23,11 @@ void CallOnShutdown(WTF::Function<void()>&& func)
 }
 
 void Shutdown() {
-    for (auto i = shutdownTasks.rbegin(); i != shutdownTasks.rend(); i++) {
-        (*i)->m_func();
+    while (!shutdownTasks.isEmpty())
+    {
+        auto lastTask = shutdownTasks.takeLast();
+        lastTask->m_func();
     }
-
-    shutdownTasks.clear();
 }
 
 }  // namespace WTF

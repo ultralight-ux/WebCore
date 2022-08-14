@@ -30,6 +30,7 @@
 
 #include <wtf/JSONValues.h>
 #include <wtf/MainThread.h>
+#include <wtf/Shutdown.h>
 
 namespace Inspector {
 
@@ -128,8 +129,20 @@ void RemoteInspectorServer::sendWebInspectorEvent(ConnectionID id, const String&
 
 RemoteInspectorServer& RemoteInspectorServer::singleton()
 {
-    static NeverDestroyed<RemoteInspectorServer> server;
-    return server;
+    static RemoteInspectorServer* sharedInstance = nullptr;
+
+    if (!sharedInstance)
+    {
+        sharedInstance = new RemoteInspectorServer();
+        WTF::CallOnShutdown([]() mutable {
+            if (sharedInstance) {
+                delete sharedInstance;
+                sharedInstance = nullptr;
+            }
+        });
+    }
+
+    return *sharedInstance;
 }
 
 bool RemoteInspectorServer::start(const char* address, uint16_t port)

@@ -38,6 +38,7 @@
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
+#include <wtf/Shutdown.h>
 
 #if OS(WINDOWS)
 #include "../../win/WebCoreBundleWin.h"
@@ -86,8 +87,20 @@ static const ASCIILiteral httpVersion2 { "h2"_s };
 
 CurlContext& CurlContext::singleton()
 {
-    static NeverDestroyed<CurlContext> sharedInstance;
-    return sharedInstance;
+    static CurlContext* sharedInstance = nullptr;
+
+    if (!sharedInstance)
+    {
+        sharedInstance = new CurlContext();
+        WTF::CallOnShutdown([]() mutable {
+            if (sharedInstance) {
+                delete sharedInstance;
+                sharedInstance = nullptr;
+            }
+        });
+    }
+
+    return *sharedInstance;
 }
 
 CurlContext::CurlContext()

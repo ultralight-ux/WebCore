@@ -13,6 +13,7 @@
 #include <Ultralight/private/util/RefCountedImpl.h>
 #include <Ultralight/private/tracy/Tracy.hpp>
 #include <wtf/text/StringHasher.h>
+#include <wtf/Shutdown.h>
 #include "StringUltralight.h"
 #include <map>
 
@@ -60,8 +61,18 @@ RefPtr<FontFace> FontFace::Create(WTF::RefPtr<FT_FaceRec_> face, RefPtr<FontFile
 class FontDatabase {
 public:
   static FontDatabase& instance() {
-    static FontDatabase g_instance;
-    return g_instance;
+    static FontDatabase* g_instance = nullptr;
+
+    if (!g_instance)
+    {
+        g_instance = new FontDatabase();
+        WTF::CallOnShutdown([]() mutable {
+            delete g_instance;
+            g_instance = nullptr;
+        });
+    }
+
+    return *g_instance;
   }
 
   RefPtr<FontFace> LookupFont(const String& family, int weight, bool italic) {

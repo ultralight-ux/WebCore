@@ -50,6 +50,7 @@
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Scope.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 using namespace JSC;
@@ -1200,7 +1201,17 @@ void UniqueIDBDatabase::putOrAddAfterQuotaCheck(uint64_t taskSize, const IDBRequ
 VM& UniqueIDBDatabase::databaseThreadVM()
 {
     ASSERT(!isMainThread());
-    static VM* vm = &VM::create().leakRef();
+    static VM* vm = nullptr;
+    
+    if (!vm) {
+        vm = &VM::create().leakRef();
+
+        WTF::CallOnShutdown([]() mutable {
+            delete vm;
+            vm = nullptr;
+        });
+    }
+
     return *vm;
 }
 

@@ -45,6 +45,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/SetForScope.h>
 #include <wtf/text/CString.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 
@@ -55,8 +56,18 @@ static const float cTargetPrunePercentage = .95f; // Percentage of capacity towa
 MemoryCache& MemoryCache::singleton()
 {
     ASSERT(WTF::isMainThread());
-    static NeverDestroyed<MemoryCache> memoryCache;
-    return memoryCache;
+    static MemoryCache* memoryCache = nullptr;
+
+    if (!memoryCache)
+    {
+        memoryCache = new MemoryCache();
+        WTF::CallOnShutdown([]() mutable {
+            delete memoryCache;
+            memoryCache = nullptr;
+        });
+    }
+
+    return *memoryCache;
 }
 
 MemoryCache::MemoryCache()
@@ -73,6 +84,11 @@ MemoryCache::MemoryCache()
             MemoryCache::singleton().dumpLRULists(true);
         });
     });
+}
+
+MemoryCache::~MemoryCache()
+{
+    evictResources();
 }
 
 auto MemoryCache::sessionResourceMap(PAL::SessionID sessionID) const -> CachedResourceMap*

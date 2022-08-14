@@ -40,6 +40,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/AtomStringHash.h>
 #include <wtf/text/StringBuilder.h>
+#include <wtf/Shutdown.h>
 
 #if PLATFORM(WIN)
 #include "UniscribeController.h"
@@ -189,8 +190,20 @@ static bool keysMatch(const FontCascadeCacheKey& a, const FontCascadeCacheKey& b
 
 static FontCascadeCache& fontCascadeCache()
 {
-    static NeverDestroyed<FontCascadeCache> cache;
-    return cache.get();
+    static FontCascadeCache* sharedInstance = nullptr;
+
+    if (!sharedInstance)
+    {
+        sharedInstance = new FontCascadeCache();
+        WTF::CallOnShutdown([]() mutable {
+            if (sharedInstance) {
+                delete sharedInstance;
+                sharedInstance = nullptr;
+            }
+        });
+    }
+
+    return *sharedInstance;
 }
 
 void invalidateFontCascadeCache()

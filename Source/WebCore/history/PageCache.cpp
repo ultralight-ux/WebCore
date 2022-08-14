@@ -54,6 +54,7 @@
 #include <wtf/SetForScope.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringConcatenate.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 
@@ -291,8 +292,20 @@ static bool canCachePage(Page& page)
 
 PageCache& PageCache::singleton()
 {
-    static NeverDestroyed<PageCache> globalPageCache;
-    return globalPageCache;
+    static PageCache* sharedInstance = nullptr;
+
+    if (!sharedInstance)
+    {
+        sharedInstance = new PageCache();
+        WTF::CallOnShutdown([]() mutable {
+            if (sharedInstance) {
+                delete sharedInstance;
+                sharedInstance = nullptr;
+            }
+        });
+    }
+
+    return *sharedInstance;
 }
 
 PageCache::PageCache()
@@ -303,6 +316,14 @@ PageCache::PageCache()
             PageCache::singleton().dump();
         });
     });
+}
+
+PageCache::~PageCache()
+{
+    while (pageCount()) {
+        auto item = m_items.takeFirst();
+        item->m_cachedPage = nullptr;
+    }
 }
 
 void PageCache::dump() const

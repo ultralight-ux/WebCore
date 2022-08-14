@@ -36,6 +36,7 @@
 #include <JavaScriptCore/VM.h>
 #include <wtf/MainThread.h>
 #include <wtf/text/AtomString.h>
+#include <wtf/Shutdown.h>
 
 #if PLATFORM(IOS_FAMILY)
 #include "WebCoreThreadInternal.h"
@@ -56,6 +57,10 @@ JSC::VM& commonVMSlow()
 
     g_commonVMOrNull = &vm;
 
+    WTF::CallOnShutdown([]() mutable {
+        resetCommonVM();
+    });
+
     vm.heap.acquireAccess(); // At any time, we may do things that affect the GC.
 
 #if PLATFORM(IOS_FAMILY)
@@ -72,7 +77,7 @@ JSC::VM& commonVMSlow()
     return vm;
 }
 
-void destroyCommonVM() {
+void resetCommonVM() {
     if (g_commonVMOrNull) {
         delete g_commonVMOrNull;
         g_commonVMOrNull = nullptr;

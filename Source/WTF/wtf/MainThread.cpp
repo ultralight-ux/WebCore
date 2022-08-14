@@ -39,6 +39,7 @@
 #include <wtf/StdLibExtras.h>
 #include <wtf/ThreadSpecific.h>
 #include <wtf/Threading.h>
+#include <wtf/Shutdown.h>
 
 namespace WTF {
 
@@ -47,8 +48,20 @@ static Lock mainThreadFunctionQueueMutex;
 
 static Deque<Function<void ()>>& functionQueue()
 {
-    static NeverDestroyed<Deque<Function<void ()>>> functionQueue;
-    return functionQueue;
+    static Deque<Function<void ()>>* functionQueue = nullptr;
+
+    if (!functionQueue)
+    {
+        functionQueue = new Deque<Function<void ()>>();
+        WTF::CallOnShutdown([]() mutable {
+            if (functionQueue) {
+                delete functionQueue;
+                functionQueue = nullptr;
+            }
+        });
+    }
+    
+    return *functionQueue;
 }
 
 // Share this initializeKey with initializeMainThread and initializeMainThreadToProcessMainThread.

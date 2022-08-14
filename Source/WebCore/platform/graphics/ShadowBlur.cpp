@@ -38,6 +38,7 @@
 #include <wtf/MathExtras.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 
@@ -68,6 +69,8 @@ public:
 #endif
     {
     }
+    
+    ~ScratchBuffer() {}
 
     ImageBuffer* getScratchBuffer(const IntSize& size)
     {
@@ -159,8 +162,20 @@ private:
 
 ScratchBuffer& ScratchBuffer::singleton()
 {
-    static NeverDestroyed<ScratchBuffer> scratchBuffer;
-    return scratchBuffer;
+    static ScratchBuffer* sharedInstance = nullptr;
+
+    if (!sharedInstance)
+    {
+        sharedInstance = new ScratchBuffer();
+        WTF::CallOnShutdown([]() mutable {
+            if (sharedInstance) {
+                delete sharedInstance;
+                sharedInstance = nullptr;
+            }
+        });
+    }
+
+    return *sharedInstance;
 }
 
 static float radiusToLegacyRadius(float radius)

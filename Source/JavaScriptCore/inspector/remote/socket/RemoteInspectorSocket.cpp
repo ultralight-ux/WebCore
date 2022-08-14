@@ -36,6 +36,7 @@
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
+#include <wtf/Shutdown.h>
 
 namespace Inspector {
 
@@ -44,8 +45,20 @@ uint16_t RemoteInspector::s_serverPort = 0;
 
 RemoteInspector& RemoteInspector::singleton()
 {
-    static NeverDestroyed<RemoteInspector> shared;
-    return shared;
+    static RemoteInspector* sharedInstance = nullptr;
+
+    if (!sharedInstance)
+    {
+        sharedInstance = new RemoteInspector();
+        WTF::CallOnShutdown([]() mutable {
+            if (sharedInstance) {
+                delete sharedInstance;
+                sharedInstance = nullptr;
+            }
+        });
+    }
+
+    return *sharedInstance;
 }
 
 RemoteInspector::RemoteInspector()

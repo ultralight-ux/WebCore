@@ -33,6 +33,7 @@
 #include <thread>
 #include <wtf/MainThread.h>
 #include <wtf/Vector.h>
+#include <wtf/Shutdown.h>
 
 namespace WebCore {
 
@@ -42,8 +43,20 @@ ResourceUsageThread::ResourceUsageThread()
 
 ResourceUsageThread& ResourceUsageThread::singleton()
 {
-    static NeverDestroyed<ResourceUsageThread> resourceUsageThread;
-    return resourceUsageThread;
+    static ResourceUsageThread* sharedInstance = nullptr;
+
+    if (!sharedInstance)
+    {
+        sharedInstance = new ResourceUsageThread();
+        WTF::CallOnShutdown([]() mutable {
+            if (sharedInstance) {
+                delete sharedInstance;
+                sharedInstance = nullptr;
+            }
+        });
+    }
+
+    return *sharedInstance;
 }
 
 void ResourceUsageThread::addObserver(void* key, ResourceUsageCollectionMode mode, std::function<void (const ResourceUsageData&)> function)
@@ -123,7 +136,7 @@ void ResourceUsageThread::createThreadIfNeeded()
     });
 }
 
-NO_RETURN void ResourceUsageThread::threadBody()
+void ResourceUsageThread::threadBody()
 {
     // Wait a bit after waking up for the first time.
     WTF::sleep(10_ms);

@@ -69,7 +69,7 @@ public:
 
 private:
     PageCache();
-    ~PageCache() = delete; // Make sure nobody accidentally calls delete -- WebCore does not delete singletons.
+    ~PageCache();
 
     static bool canCachePageContainingThisFrame(Frame&);
 
