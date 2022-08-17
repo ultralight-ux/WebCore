@@ -17,9 +17,12 @@ void DestroyFreeType() {
 FT_Library GetFreeTypeLib() {
   if (!g_freetype) {
     if(FT_Init_FreeType(&g_freetype) == 0) {
+      // Disabling this until we can ensure strict shutdown order.
+      /*
       WTF::CallOnShutdown([]() mutable {
         DestroyFreeType();
       });
+      */
     } else {
       g_freetype = nullptr;
       ASSERT_WITH_MESSAGE(g_freetype, "Unable to load FreeType.");

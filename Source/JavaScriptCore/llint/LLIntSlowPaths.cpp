@@ -74,13 +74,25 @@
 #include <wtf/StringPrintStream.h>
 #include <wtf/MemoryProfiler.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace JSC { namespace LLInt {
 
-#define LLINT_BEGIN_NO_SET_PC() \
-    VM& vm = exec->vm();      \
+#if USE(ULTRALIGHT)
+#define LLINT_BEGIN_NO_SET_PC()                \
+    VM& vm = exec->vm();                       \
+    ProfiledZone;                              \
     ProfiledMemoryZone(MemoryTag::JavaScript); \
-    NativeCallFrameTracer tracer(&vm, exec); \
+    NativeCallFrameTracer tracer(&vm, exec);   \
     auto throwScope = DECLARE_THROW_SCOPE(vm)
+#else
+#define LLINT_BEGIN_NO_SET_PC()                \
+    VM& vm = exec->vm();                       \
+    NativeCallFrameTracer tracer(&vm, exec);   \
+    auto throwScope = DECLARE_THROW_SCOPE(vm)
+#endif
 
 #ifndef NDEBUG
 #define LLINT_SET_PC_FOR_STUBS() do { \

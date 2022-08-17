@@ -15,6 +15,12 @@ list(APPEND WTF_SOURCES
     unix/UniStdExtrasUnix.cpp
 )
 
+if (UL_ENABLE_ALLOCATOR_OVERRIDE)
+    list(APPEND WTF_SOURCES
+        AllocatorOverride.cpp
+    )
+endif ()
+
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     list(APPEND WTF_PUBLIC_HEADERS
         linux/CurrentProcessMemoryStatus.h

@@ -2,6 +2,7 @@
 #include "config.h"
 #include <wtf/Shutdown.h>
 #include <wtf/Deque.h>
+#include <wtf/ThreadSpecific.h>
 #include <memory>
 
 namespace WTF {
@@ -28,6 +29,15 @@ void Shutdown() {
         auto lastTask = shutdownTasks.takeLast();
         lastTask->m_func();
     }
+
+#if OS(WINDOWS)
+    // Give threads a chance to exit
+    Sleep(100);
+
+    // Clear out the FLS values (to prevent destruction callbacks from being invoked)
+    // and return FLS keys to the process
+    flsKeyDestroyAll();
+#endif
 }
 
 }  // namespace WTF

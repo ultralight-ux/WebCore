@@ -150,9 +150,13 @@ inline void* threadSpecificGet(ThreadSpecificKey key)
 
 static constexpr ThreadSpecificKey InvalidThreadSpecificKey = FLS_OUT_OF_INDEXES;
 
+WTF_EXPORT_PRIVATE ThreadSpecificKey flsKeyCreate(void(THREAD_SPECIFIC_CALL* destructor)(void*));
+WTF_EXPORT_PRIVATE void flsKeyDestroy(ThreadSpecificKey key);
+WTF_EXPORT_PRIVATE void flsKeyDestroyAll();
+
 inline void threadSpecificKeyCreate(ThreadSpecificKey* key, void (THREAD_SPECIFIC_CALL *destructor)(void *))
 {
-    DWORD flsKey = FlsAlloc(destructor);
+    DWORD flsKey = flsKeyCreate(destructor);
     if (flsKey == FLS_OUT_OF_INDEXES)
         CRASH();
 
@@ -161,7 +165,7 @@ inline void threadSpecificKeyCreate(ThreadSpecificKey* key, void (THREAD_SPECIFI
 
 inline void threadSpecificKeyDelete(ThreadSpecificKey key)
 {
-    FlsFree(key);
+    flsKeyDestroy(key);
 }
 
 inline void threadSpecificSet(ThreadSpecificKey key, void* data)

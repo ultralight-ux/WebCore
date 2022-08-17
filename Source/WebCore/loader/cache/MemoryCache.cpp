@@ -61,10 +61,12 @@ MemoryCache& MemoryCache::singleton()
     if (!memoryCache)
     {
         memoryCache = new MemoryCache();
+        /*
         WTF::CallOnShutdown([]() mutable {
             delete memoryCache;
             memoryCache = nullptr;
         });
+        */
     }
 
     return *memoryCache;

@@ -104,7 +104,7 @@ private:
 #if USE(PTHREADS)
     pthread_key_t m_key { };
 #elif OS(WINDOWS)
-    int m_index;
+    ThreadSpecificKey m_key;
 #endif
 };
 
@@ -135,38 +135,25 @@ inline void ThreadSpecific<T, canBeGCThread>::setInTLS(Data* data)
 
 #elif OS(WINDOWS)
 
-// The maximum number of FLS keys that can be created. For simplification, we assume that:
-// 1) Once the instance of ThreadSpecific<> is created, it will not be destructed until the program dies.
-// 2) We do not need to hold many instances of ThreadSpecific<> data. This fixed number should be far enough.
-static constexpr int maxFlsKeySize = 128;
-
-WTF_EXPORT_PRIVATE long& flsKeyCount();
-WTF_EXPORT_PRIVATE DWORD* flsKeys();
-
 template<typename T, CanBeGCThread canBeGCThread>
 inline ThreadSpecific<T, canBeGCThread>::ThreadSpecific()
-    : m_index(-1)
+    : m_key(FLS_OUT_OF_INDEXES)
 {
-    DWORD flsKey = FlsAlloc(destroy);
-    if (flsKey == FLS_OUT_OF_INDEXES)
+    m_key = flsKeyCreate(destroy);
+    if (m_key == FLS_OUT_OF_INDEXES)
         CRASH();
-
-    m_index = InterlockedIncrement(&flsKeyCount()) - 1;
-    if (m_index >= maxFlsKeySize)
-        CRASH();
-    flsKeys()[m_index] = flsKey;
 }
 
 template<typename T, CanBeGCThread canBeGCThread>
 inline ThreadSpecific<T, canBeGCThread>::~ThreadSpecific()
 {
-    FlsFree(flsKeys()[m_index]);
+    flsKeyDestroy(m_key);
 }
 
 template<typename T, CanBeGCThread canBeGCThread>
 inline T* ThreadSpecific<T, canBeGCThread>::get()
 {
-    Data* data = static_cast<Data*>(FlsGetValue(flsKeys()[m_index]));
+    Data* data = static_cast<Data*>(FlsGetValue(m_key));
     if (data)
         return data->storagePointer();
     return nullptr;
@@ -175,7 +162,7 @@ inline T* ThreadSpecific<T, canBeGCThread>::get()
 template<typename T, CanBeGCThread canBeGCThread>
 inline void ThreadSpecific<T, canBeGCThread>::setInTLS(Data* data)
 {
-    FlsSetValue(flsKeys()[m_index], data);
+    FlsSetValue(m_key, data);
 }
 
 #else

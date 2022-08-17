@@ -24,6 +24,12 @@ if (UL_PROFILE_MEMORY OR UL_ENABLE_MEMORY_STATS)
     )
 endif ()
 
+if (UL_ENABLE_ALLOCATOR_OVERRIDE)
+    list(APPEND WTF_SOURCES
+        AllocatorOverride.cpp
+    )
+endif ()
+
 list(APPEND WTF_LIBRARIES
    DbgHelp
    winmm

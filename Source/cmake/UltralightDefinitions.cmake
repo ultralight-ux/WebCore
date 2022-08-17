@@ -74,3 +74,11 @@ endif ()
 if (UL_ENABLE_MEMORY_STATS)
     add_definitions(-DULTRALIGHT_ENABLE_MEMORY_STATS)
 endif ()
+
+if (UL_ENABLE_ALLOCATOR_OVERRIDE)
+    if (UL_PROFILE_MEMORY OR UL_ENABLE_MEMORY_STATS)
+        message(FATAL_ERROR "Allocator override cannot be used when memory profiling or memory stats is enabled.")
+    endif ()
+
+    add_definitions(-DULTRALIGHT_ENABLE_ALLOCATOR_OVERRIDE)
+endif ()

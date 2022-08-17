@@ -9,6 +9,7 @@ set(UL_ENABLE_MIMALLOC ON                                 CACHE BOOL    "Whether
 set(UL_ENABLE_TESTS ON                                    CACHE BOOL    "Whether or not to enable test applications.")
 set(UL_ENABLE_MEMORY_STATS OFF                            CACHE BOOL    "(Windows only) Whether or not to enable runtime memory stats gathering.")
 set(UL_ENABLE_DEBUG_CHECKS OFF                            CACHE BOOL    "Whether or not to enable debug assertions (disabled in all builds by default).")
+set(UL_ENABLE_ALLOCATOR_OVERRIDE OFF                      CACHE BOOL    "Whether or not to use the API hooks in Allocator.h for all heap allocations.")
 set(UL_PROFILE_PERFORMANCE OFF                            CACHE BOOL    "Whether or not to enable runtime performance profiling via Tracy.")
 set(UL_PROFILE_MEMORY OFF                                 CACHE BOOL    "(Windows only) Whether or not to enable runtime memory profiling via Tracy.")
 set(UL_CALLSTACK_DEPTH "8"                                CACHE STRING  "The max callstack depth to trace when profiling memory." )

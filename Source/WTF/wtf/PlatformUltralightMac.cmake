@@ -62,6 +62,12 @@ list(APPEND WTF_SOURCES
     text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
 )
 
+if (UL_ENABLE_ALLOCATOR_OVERRIDE)
+    list(APPEND WTF_SOURCES
+        AllocatorOverride.cpp
+    )
+endif ()
+
 list(APPEND WTF_INCLUDE_DIRECTORIES
     ${ULTRALIGHTCORE_DIR}/include
 )

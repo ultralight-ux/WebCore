@@ -39,6 +39,10 @@
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#endif
+
 namespace JSC {
 
 class FunctionMetadataNode;
@@ -1903,6 +1907,10 @@ template <typename LexerType>
 template <class ParsedNode>
 std::unique_ptr<ParsedNode> Parser<LexerType>::parse(ParserError& error, const Identifier& calleeName, SourceParseMode parseMode, ParsingContext parsingContext, Optional<int> functionConstructorParametersEndPosition)
 {
+#if USE(ULTRALIGHT)
+    ProfiledZone;
+#endif
+
     int errLine;
     String errMsg;
 

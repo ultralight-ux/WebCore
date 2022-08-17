@@ -21,11 +21,14 @@
 
 #include "config.h"
 #include <wtf/ThreadSpecific.h>
+#include <wtf/WordLock.h>
+#include <set>
 
 #if !USE(PTHREADS)
 
 namespace WTF {
 
+    /*
 long& flsKeyCount()
 {
     static long count;
@@ -36,6 +39,42 @@ DWORD* flsKeys()
 {
     static DWORD keys[maxFlsKeySize];
     return keys;
+}
+*/
+
+std::set<DWORD> g_flsKeyStorage;
+WordLock g_flsKeyStorageLock;
+
+ThreadSpecificKey flsKeyCreate(void(THREAD_SPECIFIC_CALL* destructor)(void*))
+{
+    ThreadSpecificKey result = FlsAlloc(destructor);
+    if (result != FLS_OUT_OF_INDEXES) {
+        g_flsKeyStorageLock.lock();
+        g_flsKeyStorage.insert(result);
+        g_flsKeyStorageLock.unlock();
+    }
+
+    return result;
+}
+
+void flsKeyDestroy(ThreadSpecificKey key)
+{
+    if (key != FLS_OUT_OF_INDEXES) {
+        g_flsKeyStorageLock.lock();
+        g_flsKeyStorage.erase(key);
+        g_flsKeyStorageLock.unlock();
+        FlsFree(key);
+    }
+}
+
+void flsKeyDestroyAll()
+{
+    g_flsKeyStorageLock.lock();
+    for (auto key : g_flsKeyStorage) {
+        FlsSetValue(key, 0);
+        FlsFree(key);
+    }
+    g_flsKeyStorageLock.unlock();
 }
 
 } // namespace WTF
