@@ -79,6 +79,7 @@ JSC::VM& commonVMSlow()
 
 void resetCommonVM() {
     if (g_commonVMOrNull) {
+        g_commonVMOrNull->apiLock().lock();
         delete g_commonVMOrNull;
         g_commonVMOrNull = nullptr;
     }
