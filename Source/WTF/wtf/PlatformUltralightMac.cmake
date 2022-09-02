@@ -62,9 +62,16 @@ list(APPEND WTF_SOURCES
     text/ultralight/TextBreakIteratorInternalICUUltralight.cpp
 )
 
+
 if (UL_ENABLE_ALLOCATOR_OVERRIDE)
     list(APPEND WTF_SOURCES
         AllocatorOverride.cpp
+    )
+endif ()
+
+if (ENABLE_REMOTE_INSPECTOR)
+    list(APPEND WTF_SOURCES   
+        unix/UniStdExtrasUnix.cpp
     )
 endif ()
 
