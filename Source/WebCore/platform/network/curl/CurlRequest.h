@@ -73,6 +73,8 @@ public:
     virtual ~CurlRequest() = default;
 
     void invalidateClient();
+    void setClient(CurlRequestClient* client) { m_client = client; }
+    void resumeTransfer() { setCallbackPaused(false); }
     WEBCORE_EXPORT void setAuthenticationScheme(ProtectionSpaceAuthenticationScheme);
     WEBCORE_EXPORT void setUserPass(const String&, const String&);
     bool isServerTrustEvaluationDisabled() { return m_shouldDisableServerTrustEvaluation; }

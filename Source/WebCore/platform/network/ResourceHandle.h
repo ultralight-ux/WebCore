@@ -177,6 +177,9 @@ public:
     void continueAfterDidReceiveResponse();
     void willSendRequest();
     void continueAfterWillSendRequest(ResourceRequest&&);
+
+    // Transfer ownership of the Curl Request
+    RefPtr<CurlRequest> acquireCurlRequest();
 #endif
 
     bool hasAuthenticationChallenge() const;

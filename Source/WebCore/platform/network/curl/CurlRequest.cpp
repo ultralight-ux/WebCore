@@ -26,6 +26,12 @@
 #include "config.h"
 #include "CurlRequest.h"
 
+#define LOG_CURL_REQUEST 0
+
+#if LOG_CURL_REQUEST
+#include <iostream>
+#endif
+
 #if USE(CURL)
 
 #include "CertificateInfo.h"
@@ -222,6 +228,18 @@ CURL* CurlRequest::setupTransfer()
     m_curlHandle->setUrl(m_request.url());
 
     m_curlHandle->appendRequestHeaders(httpHeaderFields);
+
+#if LOG_CURL_REQUEST
+    std::cout << std::endl << "-- Begin CURL Request --" << std::endl;
+    std::cout << "\tURL: " << m_request.url().string().latin1().data() << std::endl;
+    std::cout << "\tMethod: " << m_request.httpMethod().latin1().data() << std::endl;
+    std::cout << "\tHeaders: " << std::endl;
+    if (httpHeaderFields.size()) {
+        for (auto& entry : httpHeaderFields)
+            std::cout << "\t\t" << entry.key.latin1().data() << ": " << entry.value.latin1().data() << std::endl;
+    }
+    std::cout << "-- End CURL Request --" << std::endl << std::endl;
+#endif
 
     const auto& method = m_request.httpMethod();
     if (method == "GET")

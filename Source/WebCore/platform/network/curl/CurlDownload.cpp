@@ -34,6 +34,8 @@
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
 #include "SharedBuffer.h"
+#include "ResourceHandle.h"
+#include "ResourceHandleInternal.h"
 
 #if USE(ULTRALIGHT)
 #include <Ultralight/private/tracy/Tracy.hpp>
@@ -47,25 +49,38 @@ CurlDownload::~CurlDownload()
         m_curlRequest->invalidateClient();
 }
 
-void CurlDownload::init(CurlDownloadListener& listener, const URL& url)
+void CurlDownload::init(CurlDownloadListener& listener, uint32_t id, const URL& url)
 {
+    m_id = id;
     m_listener = &listener;
     m_request.setURL(url);
 }
 
-void CurlDownload::init(CurlDownloadListener& listener, ResourceHandle*, const ResourceRequest& request, const ResourceResponse&)
+void CurlDownload::init(CurlDownloadListener& listener, uint32_t id, ResourceHandle* handle, const ResourceRequest& request, const ResourceResponse& response)
 {
+    m_id = id;
     m_listener = &listener;
     m_request = request.isolatedCopy();
+
+    if (handle && !handle->cancelledOrClientless()) {
+        m_curlRequest = handle->acquireCurlRequest();
+        m_curlRequest->setClient(this);
+        if (m_listener)
+            m_listener->didReceiveResponse(m_id, response);
+        m_curlRequest->resumeTransfer();
+    }
 }
 
 void CurlDownload::start()
 {
     ASSERT(isMainThread());
 
-    m_curlRequest = createCurlRequest(m_request);
-    m_curlRequest->enableDownloadToFile();
-    m_curlRequest->start();
+    if (!m_curlRequest) {
+        m_curlRequest = createCurlRequest(m_request);
+        if (downloadsToFile())
+            m_curlRequest->enableDownloadToFile();
+        m_curlRequest->start();
+    }
 }
 
 bool CurlDownload::cancel()
@@ -99,7 +114,7 @@ void CurlDownload::curlDidReceiveResponse(CurlRequest& request, CurlResponse&& r
     }
 
     if (m_listener)
-        m_listener->didReceiveResponse(m_response);
+        m_listener->didReceiveResponse(m_id, m_response);
 
     request.completeDidReceiveResponse();
 }
@@ -111,13 +126,13 @@ void CurlDownload::curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&)
     if (m_isCancelled)
         return;
 
-    if (!m_destination.isEmpty()) {
+    if (downloadsToFile() && !m_destination.isEmpty()) {
         if (!request.getDownloadedFilePath().isEmpty())
             FileSystem::moveFile(request.getDownloadedFilePath(), m_destination);
     }
 
     if (m_listener)
-        m_listener->didFinish();
+        m_listener->didFinish(m_id);
 }
 
 void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&, CertificateInfo&&)
@@ -127,11 +142,11 @@ void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&, C
     if (m_isCancelled)
         return;
 
-    if (m_deletesFileUponFailure && !request.getDownloadedFilePath().isEmpty())
+    if (downloadsToFile() && m_deletesFileUponFailure && !request.getDownloadedFilePath().isEmpty())
         FileSystem::deleteFile(request.getDownloadedFilePath());
 
     if (m_listener)
-        m_listener->didFail();
+        m_listener->didFail(m_id);
 }
 
 void CurlDownload::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<RefPtr<SharedBuffer>>& queue)
@@ -147,8 +162,8 @@ void CurlDownload::curlConsumeReceiveQueue(CurlRequest&, WTF::ReaderWriterQueue<
     if (m_listener) {
         RefPtr<SharedBuffer> buffer;
         while (queue.try_dequeue(buffer)) {
-            if (buffer->size())
-                m_listener->didReceiveDataOfLength(buffer->size());
+            if (buffer->size() && !m_isCancelled)
+                m_listener->didReceiveData(m_id, WTFMove(buffer));
         }
     }
 }
@@ -181,7 +196,7 @@ void CurlDownload::willSendRequest()
 
     if (m_redirectCount++ > maxRedirects) {
         if (m_listener)
-            m_listener->didFail();
+            m_listener->didFail(m_id);
         return;
     }
 

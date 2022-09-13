@@ -25,6 +25,12 @@
 
 #include "config.h"
 
+#define LOG_CURL_RESPONSE 0
+
+#if LOG_CURL_RESPONSE
+#include <iostream>
+#endif
+
 #if USE(CURL)
 #include "ResourceResponse.h"
 
@@ -107,6 +113,19 @@ ResourceResponse::ResourceResponse(const CurlResponse& response)
     setMimeType(extractMIMETypeFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)).convertToASCIILowercase());
     setTextEncodingName(extractCharsetFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)));
     setSource(ResourceResponse::Source::Network);
+
+#if LOG_CURL_RESPONSE
+    std::cout << std::endl << "-- Begin CURL Response --" << std::endl;
+    std::cout << "\tURL: " << response.url.string().latin1().data() << std::endl;
+    std::cout << "\tContent Length: " << response.expectedContentLength << std::endl;
+    std::cout << "\tStatus Code: " << (response.statusCode ? response.statusCode : response.httpConnectCode) << std::endl;
+    std::cout << "\tHTTP Version: " << m_httpVersion.string().latin1().data() << std::endl; 
+    std::cout << "\tMime Type: " << m_mimeType.string().latin1().data() << std::endl; 
+    std::cout << "\tHeaders: " << std::endl;
+    for (const auto& header : response.headers)
+        std::cout << "\t\t" << header.latin1().data() << std::endl;
+    std::cout << "-- End CURL Response --" << std::endl << std::endl;
+#endif
 }
 
 void ResourceResponse::appendHTTPHeaderField(const String& header)

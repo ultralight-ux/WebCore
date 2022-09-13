@@ -530,6 +530,15 @@ void ResourceHandle::continueAfterWillSendRequest(ResourceRequest&& request)
     d->m_curlRequest->start();
 }
 
+RefPtr<CurlRequest> ResourceHandle::acquireCurlRequest()
+{
+    auto request = d->m_curlRequest;
+    d->m_cancelled = true;
+    d->m_curlRequest = nullptr;
+
+    return request;
+}
+
 void ResourceHandle::handleDataURL()
 {
     ASSERT(d->m_firstRequest.url().protocolIsData());

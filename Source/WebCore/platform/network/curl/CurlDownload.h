@@ -43,34 +43,38 @@ namespace WebCore {
 class CurlRequest;
 class ResourceHandle;
 
-class CurlDownloadListener {
+class WEBCORE_EXPORT CurlDownloadListener {
 public:
-    virtual void didReceiveResponse(const ResourceResponse&) { }
-    virtual void didReceiveDataOfLength(int) { }
-    virtual void didFinish() { }
-    virtual void didFail() { }
+    virtual void didReceiveResponse(uint32_t id, const ResourceResponse&) {}
+    virtual void didReceiveData(uint32_t id, RefPtr<SharedBuffer>&& buffer) {}
+    virtual void didFinish(uint32_t id) {}
+    virtual void didFail(uint32_t id) {}
 };
 
 class CurlDownload final : public ThreadSafeRefCounted<CurlDownload>, public CurlRequestClient {
 public:
-    CurlDownload() = default;
-    ~CurlDownload();
+    WEBCORE_EXPORT CurlDownload() = default;
+    WEBCORE_EXPORT ~CurlDownload();
 
-    void ref() override { ThreadSafeRefCounted<CurlDownload>::ref(); }
-    void deref() override { ThreadSafeRefCounted<CurlDownload>::deref(); }
+    void WEBCORE_EXPORT ref() override { ThreadSafeRefCounted<CurlDownload>::ref(); }
+    void WEBCORE_EXPORT deref() override { ThreadSafeRefCounted<CurlDownload>::deref(); }
 
-    void init(CurlDownloadListener&, const URL&);
-    void init(CurlDownloadListener&, ResourceHandle*, const ResourceRequest&, const ResourceResponse&);
+    void WEBCORE_EXPORT init(CurlDownloadListener&, uint32_t id, const URL&);
+    void WEBCORE_EXPORT init(CurlDownloadListener&, uint32_t id, ResourceHandle* handle, 
+                             const ResourceRequest& request, const ResourceResponse& response);
 
-    void setListener(CurlDownloadListener* listener) { m_listener = listener; }
+    void WEBCORE_EXPORT setListener(CurlDownloadListener* listener) { m_listener = listener; }
 
-    void start();
-    bool cancel();
+    void WEBCORE_EXPORT start();
+    bool WEBCORE_EXPORT cancel();
 
-    bool deletesFileUponFailure() const { return m_deletesFileUponFailure; }
-    void setDeletesFileUponFailure(bool deletesFileUponFailure) { m_deletesFileUponFailure = deletesFileUponFailure; }
+    bool WEBCORE_EXPORT downloadsToFile() const { return m_downloadsToFile; }
+    void WEBCORE_EXPORT setDownloadsToFile(bool downloadsToFile) { m_downloadsToFile = downloadsToFile; }
 
-    void setDestination(const String& destination) { m_destination = destination; }
+    bool WEBCORE_EXPORT deletesFileUponFailure() const { return m_deletesFileUponFailure; }
+    void WEBCORE_EXPORT setDeletesFileUponFailure(bool deletesFileUponFailure) { m_deletesFileUponFailure = deletesFileUponFailure; }
+
+    void WEBCORE_EXPORT setDestination(const String& destination) { m_destination = destination; }
 
 private:
     Ref<CurlRequest> createCurlRequest(ResourceRequest&);
@@ -87,9 +91,11 @@ private:
     CurlDownloadListener* m_listener { nullptr };
     bool m_isCancelled { false };
 
+    uint32_t m_id { 0 };
     ResourceRequest m_request;
     ResourceResponse m_response;
     bool m_deletesFileUponFailure { false };
+    bool m_downloadsToFile { false };
     String m_destination;
     unsigned m_redirectCount { 0 };
     RefPtr<CurlRequest> m_curlRequest;
