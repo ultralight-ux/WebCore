@@ -122,6 +122,8 @@ private:
         auto domain = topPrivatelyControlledDomain(host);
 #else
         auto domain = host;
+        if (domain.startsWith("www."))
+            domain = domain.substring(4);
 #endif
         if (host.isEmpty())
             domain = "nullOrigin"_s;
