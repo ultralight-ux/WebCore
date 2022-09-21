@@ -204,8 +204,15 @@ void GraphicsContext::strokePath(const Path& path)
     lineJoin = ultralight::kLineJoin_Miter;
   }
 
+  float* dashArray = nullptr;
+  size_t dashArraySize = platformContext()->lineDashSize();
+
+  if (dashArraySize)
+      dashArray = platformContext()->lineDashData();
+
   platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, strokeThickness(),
-    lineCap, lineJoin, platformContext()->miterLimit());
+    lineCap, lineJoin, platformContext()->miterLimit(), dashArray, dashArraySize,
+    platformContext()->lineDashOffset());
 
   // TODO, handle shadow state
 }
@@ -722,8 +729,7 @@ void GraphicsContext::setLineDash(const DashArray& dashes, float dashOffset)
   if (paintingDisabled())
     return;
 
-  // TODO
-  notImplemented();
+  platformContext()->setLineDash(dashes, dashOffset);
 }
 
 void GraphicsContext::setLineJoin(LineJoin lineJoin)

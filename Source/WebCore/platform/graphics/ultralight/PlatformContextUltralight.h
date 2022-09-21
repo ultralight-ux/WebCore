@@ -60,6 +60,11 @@ namespace WebCore {
     void setLineJoin(LineJoin lineJoin);
     LineJoin lineJoin() const;
 
+    void setLineDash(const DashArray& dashes, float dashOffset);
+    float* lineDashData() const;
+    size_t lineDashSize() const;
+    float lineDashOffset() const;
+
     void setMiterLimit(float miter);
     float miterLimit() const;
 
