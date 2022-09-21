@@ -574,6 +574,13 @@ void CurlHandle::setSslCipherList(const char* cipherList)
     curl_easy_setopt(m_handle, CURLOPT_SSL_CIPHER_LIST, cipherList);
 }
 
+#if USE(ULTRALIGHT)
+void CurlHandle::setPinnedPublicKey(const char* publicKey)
+{
+    curl_easy_setopt(m_handle, CURLOPT_PINNEDPUBLICKEY, publicKey);
+}
+#endif
+
 void CurlHandle::enableProxyIfExists()
 {
     auto& proxy = CurlContext::singleton().proxySettings();

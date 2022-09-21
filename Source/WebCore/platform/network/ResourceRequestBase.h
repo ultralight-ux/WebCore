@@ -187,6 +187,11 @@ public:
     WEBCORE_EXPORT void setSystemPreviewRect(const IntRect&);
 #endif
 
+#if USE(ULTRALIGHT)
+    WEBCORE_EXPORT const String& pinnedPublicKey() const { return m_publicKey; }
+    WEBCORE_EXPORT void setPinnedPublicKey(const String& publicKey) { m_publicKey = publicKey; }
+#endif
+
 #if !PLATFORM(COCOA)
     bool encodingRequiresPlatformData() const { return true; }
 #endif
@@ -250,6 +255,9 @@ protected:
 #if USE(SYSTEM_PREVIEW)
     bool m_isSystemPreview { false };
     IntRect m_systemPreviewRect;
+#endif
+#if USE(ULTRALIGHT)
+    String m_publicKey { emptyString() };
 #endif
 
 private:

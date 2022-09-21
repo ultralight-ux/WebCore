@@ -418,6 +418,15 @@ void ResourceLoader::willSendRequestInternal(ResourceRequest&& request, const Re
     }
 #endif
 
+#if USE(ULTRALIGHT)
+    if (!frameLoader()->client().onRequest(request)) {
+        RELEASE_LOG_IF_ALLOWED("willSendRequestinternal: resource load canceled because user blocked the request (frame = %p, frameLoader = %p, resourceID = %lu)", frame(), frameLoader(), identifier());
+        didFail(blockedByContentBlockerError());
+        completionHandler({});
+        return;
+    }
+#endif
+
     if (request.isNull()) {
         RELEASE_LOG_IF_ALLOWED("willSendRequestinternal: resource load canceled because of empty request (frame = %p, frameLoader = %p, resourceID = %lu)", frame(), frameLoader(), identifier());
         didFail(cannotShowURLError());

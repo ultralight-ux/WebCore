@@ -262,6 +262,10 @@ public:
     void setSslKeyPassword(const char*);
     void setSslCipherList(const char*);
 
+#if USE(ULTRALIGHT)
+    void setPinnedPublicKey(const char*);
+#endif
+
     void enableProxyIfExists();
 
     void setDnsCacheTimeout(Seconds);

@@ -270,6 +270,11 @@ CURL* CurlRequest::setupTransfer()
 
     m_curlHandle->setTimeout(timeoutInterval());
 
+#if USE(ULTRALIGHT)
+    if (!m_request.pinnedPublicKey().isEmpty())
+        m_curlHandle->setPinnedPublicKey(m_request.pinnedPublicKey().utf8().data());
+#endif
+
     if (m_shouldSuspend)
         setRequestPaused(true);
 

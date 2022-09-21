@@ -93,6 +93,10 @@ void ResourceRequestBase::setAsIsolatedCopy(const ResourceRequest& other)
     if (other.m_httpBody)
         setHTTPBody(other.m_httpBody->isolatedCopy());
     setAllowCookies(other.m_allowCookies);
+
+#if USE(ULTRALIGHT)
+    setPinnedPublicKey(other.m_publicKey);
+#endif
 }
 
 bool ResourceRequestBase::isEmpty() const

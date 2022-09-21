@@ -378,6 +378,10 @@ public:
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     virtual bool hasFrameSpecificStorageAccess() { return false; }
 #endif
+
+#if USE(ULTRALIGHT)
+    virtual bool onRequest(ResourceRequest& request) { return true; }
+#endif
 };
 
 } // namespace WebCore
