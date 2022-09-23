@@ -16,9 +16,10 @@ namespace WebCore {
       , m_imageInterpolationQuality(InterpolationDefault)
       , m_fillColor(Color::black)
       , m_strokeColor(Color::black)
-      , m_strokeThickness(1.0)
+      , m_strokeThickness(1.0f)
       , m_lineCap(LineCap::ButtCap)
       , m_lineJoin(LineJoin::MiterJoin)
+      , m_lineDashOffset(0.0f)
       , m_miterLimit(10.0f)
     {
     }
@@ -31,6 +32,8 @@ namespace WebCore {
       , m_strokeThickness(state.m_strokeThickness)
       , m_lineCap(state.m_lineCap)
       , m_lineJoin(state.m_lineJoin)
+      , m_lineDash(state.m_lineDash)
+      , m_lineDashOffset(state.m_lineDashOffset)
       , m_miterLimit(state.m_miterLimit)
     {
     }
@@ -42,6 +45,8 @@ namespace WebCore {
     float m_strokeThickness;
     LineCap m_lineCap;
     LineJoin m_lineJoin;
+    DashArray m_lineDash;
+    float m_lineDashOffset;
     float m_miterLimit;
   };
 
@@ -153,6 +158,23 @@ void PlatformContextUltralight::setLineJoin(LineJoin lineJoin) {
 
 LineJoin PlatformContextUltralight::lineJoin() const {
   return m_state->m_lineJoin;
+}
+
+void PlatformContextUltralight::setLineDash(const DashArray& dashes, float dashOffset) {
+  m_state->m_lineDash = dashes;
+  m_state->m_lineDashOffset = dashOffset;
+}
+
+float* PlatformContextUltralight::lineDashData() const {
+  return m_state->m_lineDash.data();
+}
+
+size_t PlatformContextUltralight::lineDashSize() const {
+  return m_state->m_lineDash.size();
+}
+
+float PlatformContextUltralight::lineDashOffset() const {
+  return m_state->m_lineDashOffset;
 }
 
 void PlatformContextUltralight::setMiterLimit(float miter) {
