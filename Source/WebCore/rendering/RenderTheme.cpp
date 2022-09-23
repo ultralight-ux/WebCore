@@ -108,8 +108,11 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
     if (!style.hasAppearance())
         return;
 
+    // Ultralight edit-- re-enabling box-shadows on native controls
+#if !USE(ULTRALIGHT)
     // Never support box-shadow on native controls.
     style.setBoxShadow(nullptr);
+#endif
     
 #if USE(NEW_THEME)
     switch (part) {
