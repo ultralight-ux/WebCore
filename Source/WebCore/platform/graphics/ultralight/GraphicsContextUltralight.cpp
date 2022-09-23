@@ -236,7 +236,7 @@ void GraphicsContext::fillRect(const FloatRect& rect, const Color& color)
 
   ASSERT(hasPlatformContext());
 
-  if (hasShadow()) {
+  if (hasVisibleShadow()) {
     ShadowBlur contextShadow(m_state);
     contextShadow.drawRectShadow(*this, FloatRoundedRect(rect));
     /*
@@ -816,7 +816,7 @@ void GraphicsContext::platformFillRoundedRect(const FloatRoundedRect& rect, cons
 
   ASSERT(hasPlatformContext());
 
-  if (hasShadow()) {
+  if (hasVisibleShadow()) {
       ShadowBlur contextShadow(m_state);
       contextShadow.drawRectShadow(*this, rect);
       /*
@@ -870,7 +870,7 @@ void GraphicsContext::fillRectWithRoundedHole(const FloatRect& rect, const Float
     setFillRule(WindRule::EvenOdd);
     setFillColor(color);
 
-    if (hasShadow()) {
+    if (hasVisibleShadow()) {
         ShadowBlur contextShadow(m_state);
         contextShadow.drawInsetShadow(*this, rect, roundedHoleRect);
     }
