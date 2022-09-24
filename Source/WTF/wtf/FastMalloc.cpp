@@ -149,8 +149,6 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
 #endif
     ASSERT_IS_WITHIN_LIMIT(size);
     void* p = _aligned_malloc(size, alignment);
-    if (UNLIKELY(!p))
-        CRASH();
     return p;
 }
 
@@ -214,9 +212,6 @@ void* fastMalloc(size_t n)
 #endif
     ASSERT_IS_WITHIN_LIMIT(n);
     void* result = malloc(n);
-    if (!result)
-        CRASH();
-
     return result;
 }
 
@@ -236,9 +231,6 @@ void* fastCalloc(size_t n_elements, size_t element_size)
 #endif
     ASSERT_IS_WITHIN_LIMIT(n_elements * element_size);
     void* result = calloc(n_elements, element_size);
-    if (!result)
-        CRASH();
-
     return result;
 }
 
@@ -257,8 +249,6 @@ void* fastRealloc(void* p, size_t n)
 #endif
     ASSERT_IS_WITHIN_LIMIT(n);
     void* result = realloc(p, n);
-    if (!result)
-        CRASH();
     return result;
 }
 
@@ -497,8 +487,6 @@ void* fastCalloc(size_t numElements, size_t elementSize)
     Checked<size_t> checkedSize = elementSize;
     checkedSize *= numElements;
     void* result = fastZeroedMalloc(checkedSize.unsafeGet());
-    if (!result)
-        CRASH();
     return result;
 }
 
