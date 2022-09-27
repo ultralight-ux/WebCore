@@ -94,6 +94,9 @@ const UChar* OpaqueJSString::characters()
         return nullptr;
 
     unsigned length = m_string.length();
+    if (!length)
+        return nullptr;
+        
     UChar* newCharacters = static_cast<UChar*>(fastMalloc(length * sizeof(UChar)));
     StringView(m_string).getCharactersWithUpconvert(newCharacters);
 
