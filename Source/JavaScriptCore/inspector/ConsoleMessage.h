@@ -81,6 +81,12 @@ public:
 
     void clear();
 
+#if PLATFORM(ULTRALIGHT)
+    RefPtr<ScriptArguments> arguments();
+    RefPtr<ScriptCallStack> callStack();
+    Vector<JSONLogValue>& logValues();
+#endif
+
 private:
     void autogenerateMetadata(JSC::ExecState* = nullptr);
 

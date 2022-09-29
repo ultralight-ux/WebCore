@@ -342,6 +342,14 @@ void ConsoleMessage::clear()
         m_arguments = nullptr;
 }
 
+#if PLATFORM(ULTRALIGHT)
+RefPtr<ScriptArguments> ConsoleMessage::arguments() { return m_arguments; }
+
+RefPtr<ScriptCallStack> ConsoleMessage::callStack() { return m_callStack; }
+
+Vector<JSONLogValue>& ConsoleMessage::logValues() { return m_jsonLogValues; }
+#endif
+
 JSC::ExecState* ConsoleMessage::scriptState() const
 {
     if (m_arguments)

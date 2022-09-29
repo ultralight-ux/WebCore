@@ -84,6 +84,10 @@ class EmptyChromeClient : public ChromeClient {
 
     void addMessageToConsole(MessageSource, MessageLevel, const String&, unsigned, unsigned, const String&) final { }
 
+#if PLATFORM(ULTRALIGHT)
+    void addMessageToConsoleDirect(Inspector::ConsoleMessage&) final { }
+#endif
+
     bool canRunBeforeUnloadConfirmPanel() final { return false; }
     bool runBeforeUnloadConfirmPanel(const String&, Frame&) final { return true; }
 

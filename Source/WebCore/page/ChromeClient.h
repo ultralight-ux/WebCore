@@ -69,6 +69,12 @@ class WAKResponder;
 
 OBJC_CLASS NSResponder;
 
+#if PLATFORM(ULTRALIGHT)
+namespace Inspector {
+class ConsoleMessage;
+}
+#endif
+
 namespace WebCore {
 
 class AccessibilityObject;
@@ -160,6 +166,10 @@ public:
     virtual void setResizable(bool) = 0;
 
     virtual void addMessageToConsole(MessageSource, MessageLevel, const String& message, unsigned lineNumber, unsigned columnNumber, const String& sourceID) = 0;
+
+#if PLATFORM(ULTRALIGHT)
+    virtual void addMessageToConsoleDirect(Inspector::ConsoleMessage&) = 0;
+#endif
 
     virtual bool canRunBeforeUnloadConfirmPanel() = 0;
     virtual bool runBeforeUnloadConfirmPanel(const String& message, Frame&) = 0;

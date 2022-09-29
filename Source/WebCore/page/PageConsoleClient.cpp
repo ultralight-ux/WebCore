@@ -105,6 +105,10 @@ void PageConsoleClient::unmute()
 
 void PageConsoleClient::addMessage(std::unique_ptr<Inspector::ConsoleMessage>&& consoleMessage)
 {
+#if PLATFORM(ULTRALIGHT)
+    m_page.chrome().client().addMessageToConsoleDirect(*consoleMessage.get());
+#endif
+
     if (consoleMessage->source() != MessageSource::CSS && consoleMessage->type() != MessageType::Image && !m_page.usesEphemeralSession()) {
         m_page.chrome().client().addMessageToConsole(consoleMessage->source(), consoleMessage->level(), consoleMessage->message(), consoleMessage->line(), consoleMessage->column(), consoleMessage->url());
 
@@ -157,6 +161,10 @@ void PageConsoleClient::messageWithTypeAndLevel(MessageType type, MessageLevel l
     String url = message->url();
     unsigned lineNumber = message->line();
     unsigned columnNumber = message->column();
+
+#if PLATFORM(ULTRALIGHT)
+    m_page.chrome().client().addMessageToConsoleDirect(*message.get());
+#endif
 
     InspectorInstrumentation::addMessageToConsole(m_page, WTFMove(message));
 
