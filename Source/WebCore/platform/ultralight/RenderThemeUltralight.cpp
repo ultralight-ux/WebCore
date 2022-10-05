@@ -716,6 +716,8 @@ public:
         if (!box)
             return;
 
+        style.setLineHeight(RenderStyle::initialLineHeight());
+
         adjustRoundBorderRadius(style, *box);
     }
 
@@ -725,6 +727,12 @@ public:
     }
 
     // Text fields
+    virtual void adjustTextFieldStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const override
+    {
+        // This is to match Chrome behavior
+        style.setLineHeight(RenderStyle::initialLineHeight());
+    }
+
     virtual bool paintTextField(const RenderObject&, const PaintInfo&, const FloatRect&) override { return true; }
     virtual bool paintTextFieldDecorations(const RenderObject& box, const PaintInfo& paintInfo, const FloatRect& rect) override
     {
