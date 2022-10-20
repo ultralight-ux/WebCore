@@ -91,6 +91,7 @@ CurlContext& CurlContext::singleton()
 
     if (!sharedInstance)
     {
+        ProfiledMemoryZone(MemoryTag::Network);
         sharedInstance = new CurlContext();
         WTF::CallOnShutdown([]() mutable {
             if (sharedInstance) {
@@ -217,6 +218,7 @@ Lock* CurlShareHandle::mutexFor(curl_lock_data data)
 
 CurlMultiHandle::CurlMultiHandle()
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     m_multiHandle = curl_multi_init();
 
     if (CurlContext::singleton().isHttp2Enabled())
@@ -281,6 +283,7 @@ CURLMsg* CurlMultiHandle::readInfo(int& messagesInQueue)
 
 CurlHandle::CurlHandle()
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     m_handle = curl_easy_init();
     curl_easy_setopt(m_handle, CURLOPT_ERRORBUFFER, m_errorBuffer);
 
@@ -912,6 +915,7 @@ void CurlHandle::enableStdErrIfUsed()
 CurlSocketHandle::CurlSocketHandle(const URL& url, Function<void(CURLcode)>&& errorHandler)
     : m_errorHandler(WTFMove(errorHandler))
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     // Libcurl is not responsible for the protocol handling. It just handles connection.
     // Only scheme, host and port is required.
     URL urlForConnection;
@@ -924,6 +928,7 @@ CurlSocketHandle::CurlSocketHandle(const URL& url, Function<void(CURLcode)>&& er
 
 bool CurlSocketHandle::connect()
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     CURLcode errorCode = perform();
     if (errorCode != CURLE_OK) {
         m_errorHandler(errorCode);
@@ -935,6 +940,7 @@ bool CurlSocketHandle::connect()
 
 size_t CurlSocketHandle::send(const uint8_t* buffer, size_t size)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     size_t totalBytesSent = 0;
 
     while (totalBytesSent < size) {
@@ -954,6 +960,7 @@ size_t CurlSocketHandle::send(const uint8_t* buffer, size_t size)
 
 Optional<size_t> CurlSocketHandle::receive(uint8_t* buffer, size_t bufferSize)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     size_t bytesRead = 0;
 
     CURLcode errorCode = curl_easy_recv(handle(), buffer, bufferSize, &bytesRead);

@@ -26,7 +26,7 @@ namespace WebCore {
 
 FontPlatformData::FontPlatformData(ultralight::RefPtr<ultralight::FontFace> face, const FontDescription& description)
   : m_face(face) {
-  
+  ProfiledMemoryZone(MemoryTag::Font);
   m_fixedWidth = m_face->face()->face_flags & FT_FACE_FLAG_FIXED_WIDTH;
   auto config = ultralight::Platform::instance().config();
 

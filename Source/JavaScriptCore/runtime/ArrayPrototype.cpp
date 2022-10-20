@@ -66,6 +66,7 @@ const ClassInfo ArrayPrototype::s_info = {"Array", &JSArray::s_info, nullptr, nu
 
 ArrayPrototype* ArrayPrototype::create(VM& vm, JSGlobalObject* globalObject, Structure* structure)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript_Array);
     ArrayPrototype* prototype = new (NotNull, allocateCell<ArrayPrototype>(vm.heap)) ArrayPrototype(vm, structure);
     prototype->finishCreation(vm, globalObject);
     return prototype;

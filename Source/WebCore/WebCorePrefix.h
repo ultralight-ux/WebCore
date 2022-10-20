@@ -193,6 +193,16 @@
 #import <wtf/text/WTFString.h>
 #endif
 
+#if USE(ULTRALIGHT)
+#include <Ultralight/private/tracy/Tracy.hpp>
+#include <wtf/MemoryProfiler.h>
+#else
+#define ProfileAlloc(ptr, size, name)
+#define ProfileFree(ptr, name)
+#define ProfiledZone
+#define ProfiledMemoryZone(tag)
+#endif
+
 #define new ("if you use new/delete make sure to include config.h at the top of the file"()) 
 #define delete ("if you use new/delete make sure to include config.h at the top of the file"()) 
 #endif

@@ -60,6 +60,7 @@ MemoryCache& MemoryCache::singleton()
 
     if (!memoryCache)
     {
+        ProfiledMemoryZone(MemoryTag::Cache);
         memoryCache = new MemoryCache();
         /*
         WTF::CallOnShutdown([]() mutable {
@@ -132,6 +133,8 @@ bool MemoryCache::add(CachedResource& resource)
     if (disabled())
         return false;
 
+    ProfiledMemoryZone(MemoryTag::Cache);
+
     ASSERT(WTF::isMainThread());
 
     auto key = std::make_pair(resource.url(), resource.cachePartition());
@@ -147,6 +150,7 @@ bool MemoryCache::add(CachedResource& resource)
 
 void MemoryCache::revalidationSucceeded(CachedResource& revalidatingResource, const ResourceResponse& response)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     ASSERT(response.source() == ResourceResponse::Source::MemoryCacheAfterValidation);
     ASSERT(revalidatingResource.resourceToRevalidate());
     CachedResource& resource = *revalidatingResource.resourceToRevalidate();
@@ -200,6 +204,7 @@ CachedResource* MemoryCache::resourceForRequest(const ResourceRequest& request, 
 
 CachedResource* MemoryCache::resourceForRequestImpl(const ResourceRequest& request, CachedResourceMap& resources)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     ASSERT(WTF::isMainThread());
     URL url = removeFragmentIdentifierIfNeeded(request.url());
 
@@ -230,6 +235,7 @@ static CachedImageClient& dummyCachedImageClient()
 
 bool MemoryCache::addImageToCache(NativeImagePtr&& image, const URL& url, const String& domainForCachePartition, const PAL::SessionID& sessionID, const CookieJar* cookieJar)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     ASSERT(image);
     removeImageFromCache(url, domainForCachePartition); // Remove cache entry if it already exists.
 
@@ -244,6 +250,7 @@ bool MemoryCache::addImageToCache(NativeImagePtr&& image, const URL& url, const 
 
 void MemoryCache::removeImageFromCache(const URL& url, const String& domainForCachePartition)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     auto* resources = sessionResourceMap(PAL::SessionID::defaultSessionID());
     if (!resources)
         return;
@@ -281,6 +288,7 @@ void MemoryCache::pruneLiveResources(bool shouldDestroyDecodedDataForAllLiveReso
 
 void MemoryCache::forEachResource(const WTF::Function<void(CachedResource&)>& function)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     for (auto& unprotectedLRUList : m_allResources) {
         for (auto& resource : copyToVector(*unprotectedLRUList))
             function(*resource);
@@ -289,6 +297,7 @@ void MemoryCache::forEachResource(const WTF::Function<void(CachedResource&)>& fu
 
 void MemoryCache::forEachSessionResource(PAL::SessionID sessionID, const WTF::Function<void (CachedResource&)>& function)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     auto it = m_sessionResources.find(sessionID);
     if (it == m_sessionResources.end())
         return;
@@ -525,6 +534,7 @@ void MemoryCache::insertInLRUList(CachedResource& resource)
 
 void MemoryCache::resourceAccessed(CachedResource& resource)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     ASSERT(resource.inCache());
     
     // Need to make sure to remove before we increase the access count, since

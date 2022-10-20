@@ -108,6 +108,7 @@ void CurlRequest::start()
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     // The pausing of transfer does not work with protocols, like file://.
     // Therefore, PAUSE can not be done in didReceiveData().
@@ -142,6 +143,7 @@ void CurlRequest::cancel()
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     ASSERT(isMainThread());
 
@@ -220,6 +222,7 @@ void CurlRequest::runOnWorkerThreadIfRequired(Function<void()>&& task)
 
 CURL* CurlRequest::setupTransfer()
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     auto httpHeaderFields = m_request.httpHeaderFields();
     appendAcceptLanguageHeader(httpHeaderFields);
 
@@ -334,6 +337,7 @@ size_t CurlRequest::didReceiveHeader(String&& header)
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     static const auto emptyLineCRLF = "\r\n";
     static const auto emptyLineLF = "\n";
@@ -412,6 +416,7 @@ size_t CurlRequest::didReceiveData(Ref<SharedBuffer>&& buffer)
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     ASSERT(!isMainThread());
 
@@ -456,6 +461,7 @@ void CurlRequest::didReceiveHeaderFromMultipart(const Vector<String>& headers)
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     if (isCompletedOrCancelled())
         return;
@@ -474,6 +480,7 @@ void CurlRequest::didReceiveDataFromMultipart(Ref<SharedBuffer>&& buffer)
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     ASSERT(!isMainThread());
 
@@ -498,6 +505,7 @@ void CurlRequest::didCompleteTransfer(CURLcode result)
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     if (isCancelled()) {
         didCancelTransfer();
@@ -669,6 +677,7 @@ void CurlRequest::invokeDidReceiveResponse(const CurlResponse& response, Action 
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     ASSERT(!m_didNotifyResponse || m_multipartHandle);
 
@@ -685,6 +694,7 @@ void CurlRequest::completeDidReceiveResponse()
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Network);
 #endif
     ASSERT(isMainThread());
     ASSERT(m_didNotifyResponse);

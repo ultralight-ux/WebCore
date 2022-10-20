@@ -98,6 +98,7 @@ RenderStyle& RenderStyle::defaultStyle()
 
 RenderStyle RenderStyle::create()
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
     return clone(defaultStyle());
 }
 
@@ -108,6 +109,7 @@ std::unique_ptr<RenderStyle> RenderStyle::createPtr()
 
 RenderStyle RenderStyle::clone(const RenderStyle& style)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
     return RenderStyle(style, Clone);
 }
 
@@ -115,6 +117,7 @@ std::unique_ptr<RenderStyle> RenderStyle::clonePtr(const RenderStyle& style)
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
 #endif
     return std::make_unique<RenderStyle>(style, Clone);
 }

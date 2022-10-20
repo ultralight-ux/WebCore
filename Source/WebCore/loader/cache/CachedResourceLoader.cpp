@@ -111,6 +111,7 @@ static inline ResourceErrorOr<CachedResourceHandle<T>> castCachedResourceTo(Reso
 
 static CachedResource* createResource(CachedResource::Type type, CachedResourceRequest&& request, const PAL::SessionID& sessionID, const CookieJar* cookieJar)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     switch (type) {
     case CachedResource::Type::ImageResource:
         return new CachedImage(WTFMove(request), sessionID, cookieJar);
@@ -191,12 +192,14 @@ CachedResourceLoader::~CachedResourceLoader()
 
 CachedResource* CachedResourceLoader::cachedResource(const String& resourceURL) const
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     ASSERT(!resourceURL.isNull());
     return cachedResource(MemoryCache::removeFragmentIdentifierIfNeeded(m_document->completeURL(resourceURL)));
 }
 
 CachedResource* CachedResourceLoader::cachedResource(const URL& url) const
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     ASSERT(!MemoryCache::shouldRemoveFragmentIdentifier(url));
     return m_documentResources.get(url).get();
 }
@@ -218,6 +221,7 @@ PAL::SessionID CachedResourceLoader::sessionID() const
 
 ResourceErrorOr<CachedResourceHandle<CachedImage>> CachedResourceLoader::requestImage(CachedResourceRequest&& request)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     if (Frame* frame = this->frame()) {
         if (frame->loader().pageDismissalEventBeingDispatched() != FrameLoader::PageDismissalType::None) {
             if (Document* document = frame->document())
@@ -235,6 +239,7 @@ ResourceErrorOr<CachedResourceHandle<CachedImage>> CachedResourceLoader::request
 
 ResourceErrorOr<CachedResourceHandle<CachedFont>> CachedResourceLoader::requestFont(CachedResourceRequest&& request, bool isSVG)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
 #if ENABLE(SVG_FONTS)
     if (isSVG)
         return castCachedResourceTo<CachedFont>(requestResource(CachedResource::Type::SVGFontResource, WTFMove(request)));
@@ -253,11 +258,13 @@ ResourceErrorOr<CachedResourceHandle<CachedTextTrack>> CachedResourceLoader::req
 
 ResourceErrorOr<CachedResourceHandle<CachedCSSStyleSheet>> CachedResourceLoader::requestCSSStyleSheet(CachedResourceRequest&& request)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     return castCachedResourceTo<CachedCSSStyleSheet>(requestResource(CachedResource::Type::CSSStyleSheet, WTFMove(request)));
 }
 
 CachedResourceHandle<CachedCSSStyleSheet> CachedResourceLoader::requestUserCSSStyleSheet(Page& page, CachedResourceRequest&& request)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     request.setDestinationIfNotSet(FetchOptions::Destination::Style);
 
     ASSERT(document());
@@ -835,6 +842,7 @@ bool CachedResourceLoader::shouldSendXTempTabletHeader(CachedResource::Type type
 
 ResourceErrorOr<CachedResourceHandle<CachedResource>> CachedResourceLoader::requestResource(CachedResource::Type type, CachedResourceRequest&& request, ForPreload forPreload, DeferOption defer)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     request.setDestinationIfNotSet(destinationForType(type));
 
     // Entry point to https://fetch.spec.whatwg.org/#main-fetch.
@@ -1048,6 +1056,7 @@ void CachedResourceLoader::stopUnusedPreloadsTimer()
 
 CachedResourceHandle<CachedResource> CachedResourceLoader::revalidateResource(CachedResourceRequest&& request, CachedResource& resource)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     ASSERT(resource.inCache());
     auto& memoryCache = MemoryCache::singleton();
     ASSERT(!memoryCache.disabled());
@@ -1072,6 +1081,7 @@ CachedResourceHandle<CachedResource> CachedResourceLoader::revalidateResource(Ca
 
 CachedResourceHandle<CachedResource> CachedResourceLoader::loadResource(CachedResource::Type type, CachedResourceRequest&& request, const CookieJar* cookieJar)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     auto& memoryCache = MemoryCache::singleton();
     ASSERT(!request.allowsCaching() || !memoryCache.resourceForRequest(request.resourceRequest(), sessionID())
         || request.resourceRequest().cachePolicy() == ResourceRequestCachePolicy::DoNotUseAnyCache || request.resourceRequest().cachePolicy() == ResourceRequestCachePolicy::ReloadIgnoringCacheData || request.resourceRequest().cachePolicy() == ResourceRequestCachePolicy::RefreshAnyCacheData);
@@ -1119,6 +1129,7 @@ static void logResourceRevalidationDecision(CachedResource::RevalidationDecision
 
 CachedResourceLoader::RevalidationPolicy CachedResourceLoader::determineRevalidationPolicy(CachedResource::Type type, CachedResourceRequest& cachedResourceRequest, CachedResource* existingResource, ForPreload forPreload, DeferOption defer) const
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     auto& request = cachedResourceRequest.resourceRequest();
 
     if (!existingResource)
@@ -1434,6 +1445,7 @@ void CachedResourceLoader::decrementRequestCount(const CachedResource& resource)
 
 ResourceErrorOr<CachedResourceHandle<CachedResource>> CachedResourceLoader::preload(CachedResource::Type type, CachedResourceRequest&& request)
 {
+    ProfiledMemoryZone(MemoryTag::Cache);
     if (request.charset().isEmpty() && (type == CachedResource::Type::Script || type == CachedResource::Type::CSSStyleSheet))
         request.setCharset(m_document->charset());
 

@@ -34,11 +34,13 @@ class XMLDocument : public Document {
 public:
     static Ref<XMLDocument> create(Frame* frame, const URL& url)
     {
+        ProfiledMemoryZone(MemoryTag::WebCore_DOM);
         return adoptRef(*new XMLDocument(frame, url));
     }
 
     static Ref<XMLDocument> createXHTML(Frame* frame, const URL& url)
     {
+        ProfiledMemoryZone(MemoryTag::WebCore_DOM);
         return adoptRef(*new XMLDocument(frame, url, XHTMLDocumentClass));
     }
 

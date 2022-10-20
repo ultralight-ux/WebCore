@@ -37,6 +37,7 @@ public:
 
     static ArrayConstructor* create(VM& vm, JSGlobalObject* globalObject, Structure* structure, ArrayPrototype* arrayPrototype, GetterSetter* speciesSymbol)
     {
+        ProfiledMemoryZone(MemoryTag::JavaScript_Array);
         ArrayConstructor* constructor = new (NotNull, allocateCell<ArrayConstructor>(vm.heap)) ArrayConstructor(vm, structure);
         constructor->finishCreation(vm, globalObject, arrayPrototype, speciesSymbol);
         return constructor;
@@ -46,6 +47,7 @@ public:
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
+        ProfiledMemoryZone(MemoryTag::JavaScript_Array);
         return Structure::create(vm, globalObject, prototype, TypeInfo(InternalFunctionType, StructureFlags), info());
     }
 

@@ -42,11 +42,13 @@ class ShadowRoot final : public DocumentFragment, public TreeScope {
 public:
     static Ref<ShadowRoot> create(Document& document, ShadowRootMode type)
     {
+        ProfiledMemoryZone(MemoryTag::WebCore_DOM);
         return adoptRef(*new ShadowRoot(document, type));
     }
 
     static Ref<ShadowRoot> create(Document& document, std::unique_ptr<SlotAssignment>&& assignment)
     {
+        ProfiledMemoryZone(MemoryTag::WebCore_DOM);
         return adoptRef(*new ShadowRoot(document, WTFMove(assignment)));
     }
 

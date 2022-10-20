@@ -111,6 +111,7 @@ int HTMLDocument::height()
 
 Ref<DocumentParser> HTMLDocument::createParser()
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     return HTMLDocumentParser::create(*this);
 }
 

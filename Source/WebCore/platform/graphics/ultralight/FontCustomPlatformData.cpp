@@ -52,6 +52,7 @@ bool FontCustomPlatformData::supportsFormat(const String& format)
 std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(
   SharedBuffer& buffer, const String&)
 {
+  ProfiledMemoryZone(MemoryTag::Font);
   FT_Library freetype = GetFreeTypeLib();
   if (!freetype)
     return nullptr;

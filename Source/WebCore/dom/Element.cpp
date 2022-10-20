@@ -185,6 +185,7 @@ static Attr* findAttrNodeInList(Vector<RefPtr<Attr>>& attrNodeList, const AtomSt
 
 Ref<Element> Element::create(const QualifiedName& tagName, Document& document)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     return adoptRef(*new Element(tagName, document, CreateElement));
 }
 

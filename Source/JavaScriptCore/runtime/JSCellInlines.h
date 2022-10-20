@@ -47,6 +47,11 @@
 #include "Symbol.h"
 #include <wtf/CompilationThread.h>
 
+#if USE(ULTRALIGHT) && defined(ULTRALIGHT_ENABLE_MEMORY_PROFILER)
+// Needed for std::enable_if and std::is_base_of
+#include <type_traits>
+#endif
+
 namespace JSC {
 
 inline JSCell::JSCell(CreatingEarlyCellTag)
@@ -164,12 +169,154 @@ inline Allocator allocatorForNonVirtualConcurrently(VM& vm, size_t allocationSiz
     return { };
 }
 
+#if USE(ULTRALIGHT) && defined(ULTRALIGHT_ENABLE_MEMORY_PROFILER)
+
+template <typename T, typename = void> struct TagForCellType {
+    TagForCellType(T* t) {}
+    MemoryTag tag() { return MemoryTag::JSC_Other; }
+};
+
+class JSObject;
+template <typename T> struct TagForCellType<T, typename std::enable_if<std::is_base_of<JSObject, T>::value>::type> {
+    TagForCellType(T* t) {}
+    MemoryTag tag() { return MemoryTag::JSC_Object; }
+};
+
+class CodeBlock;
+template <typename T> struct TagForCellType<T, typename std::enable_if<std::is_base_of<CodeBlock, T>::value>::type> {
+    TagForCellType(T* t) {}
+    MemoryTag tag() { return MemoryTag::JSC_CodeBlock; }
+};
+
+class UnlinkedCodeBlock;
+template <typename T> struct TagForCellType<T, typename std::enable_if<std::is_base_of<UnlinkedCodeBlock, T>::value>::type> {
+    TagForCellType(T* t) {}
+    MemoryTag tag() { return MemoryTag::JSC_UnlinkedCodeBlock; }
+};
+
+class ExecutableBase;
+template <typename T> struct TagForCellType<T, typename std::enable_if<std::is_base_of<ExecutableBase, T>::value>::type> {
+    TagForCellType(T* t) {}
+    MemoryTag tag() { return MemoryTag::JSC_Executable; }
+};
+
+#define TAG_TO_TYPE(TAG, TYPE)             \
+class TYPE;                                \
+template <> struct TagForCellType<TYPE> {  \
+    TagForCellType(TYPE* t) {}             \
+    MemoryTag tag() { return TAG; };       \
+};
+
+TAG_TO_TYPE(MemoryTag::JSC_String, JSString);
+TAG_TO_TYPE(MemoryTag::JSC_String, JSRopeString);
+TAG_TO_TYPE(MemoryTag::JSC_String, JSStringIterator);
+TAG_TO_TYPE(MemoryTag::JSC_String, StringObject);
+TAG_TO_TYPE(MemoryTag::JSC_String, StringPrototype);
+
+TAG_TO_TYPE(MemoryTag::JSC_Function, JSFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, JSAsyncGeneratorFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, JSBoundFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, JSAsyncFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, JSGeneratorFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, JSStrictFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, JSSloppyFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, JSArrowFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, WebAssemblyFunctionBase);
+TAG_TO_TYPE(MemoryTag::JSC_Function, WebAssemblyFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, WebAssemblyWrapperFunction);
+TAG_TO_TYPE(MemoryTag::JSC_Function, FunctionRareData);
+
+TAG_TO_TYPE(MemoryTag::JSC_ArrayBuffer, JSArrayBuffer);
+TAG_TO_TYPE(MemoryTag::JSC_ArrayBuffer, JSArrayBufferPrototype);
+TAG_TO_TYPE(MemoryTag::JSC_ArrayBuffer, JSArrayBufferView);
+
+TAG_TO_TYPE(MemoryTag::JSC_Array, JSArray);
+
+TAG_TO_TYPE(MemoryTag::JSC_Symbol, Symbol);
+TAG_TO_TYPE(MemoryTag::JSC_Symbol, SymbolObject);
+
+TAG_TO_TYPE(MemoryTag::JSC_BigInt, JSBigInt);
+TAG_TO_TYPE(MemoryTag::JSC_BigInt, BigIntPrototype);
+TAG_TO_TYPE(MemoryTag::JSC_BigInt, BigIntObject);
+
+TAG_TO_TYPE(MemoryTag::JSC_Exception, Exception);
+
+TAG_TO_TYPE(MemoryTag::JSC_SourceCode, JSSourceCode);
+
+TAG_TO_TYPE(MemoryTag::JSC_RegExp, RegExp);
+TAG_TO_TYPE(MemoryTag::JSC_RegExp, RegExpObject);
+TAG_TO_TYPE(MemoryTag::JSC_RegExp, RegExpPrototype);
+TAG_TO_TYPE(MemoryTag::JSC_RegExp, RegExpStringIteratorPrototype);
+
+TAG_TO_TYPE(MemoryTag::JSC_Number, NumberObject);
+TAG_TO_TYPE(MemoryTag::JSC_Number, NumberPrototype);
+
+TAG_TO_TYPE(MemoryTag::JSC_GlobalObject, JSGlobalObject);
+
+TAG_TO_TYPE(MemoryTag::JSC_APIValue, JSAPIValueWrapper);
+
+TAG_TO_TYPE(MemoryTag::JSC_GetterSetter, CustomGetterSetter);
+TAG_TO_TYPE(MemoryTag::JSC_GetterSetter, DOMAttributeGetterSetter);
+TAG_TO_TYPE(MemoryTag::JSC_GetterSetter, GetterSetter);
+TAG_TO_TYPE(MemoryTag::JSC_GetterSetter, JSCustomGetterSetterFunction);
+
+//TAG_TO_TYPE(MemoryTag::JSC_HashMap, HashMapBucket);
+
+TAG_TO_TYPE(MemoryTag::JSC_ImmutableButterfly, JSImmutableButterfly);
+
+//TAG_TO_TYPE(MemoryTag::JSC_Map, JSMap);
+//TAG_TO_TYPE(MemoryTag::JSC_Map, MapPrototype);
+//TAG_TO_TYPE(MemoryTag::JSC_Map, WeakMapPrototype);
+
+TAG_TO_TYPE(MemoryTag::JSC_MapIterator, JSMapIterator);
+TAG_TO_TYPE(MemoryTag::JSC_MapIterator, MapIteratorPrototype);
+
+TAG_TO_TYPE(MemoryTag::JSC_NativeFunction, JSNativeStdFunction);
+TAG_TO_TYPE(MemoryTag::JSC_NativeFunction, NativeStdFunctionCell);
+
+TAG_TO_TYPE(MemoryTag::JSC_Promise, JSPromise);
+TAG_TO_TYPE(MemoryTag::JSC_Promise, JSInternalPromise);
+TAG_TO_TYPE(MemoryTag::JSC_Promise, JSInternalPromiseConstructor);
+TAG_TO_TYPE(MemoryTag::JSC_Promise, JSInternalPromiseDeferred);
+TAG_TO_TYPE(MemoryTag::JSC_Promise, JSInternalPromisePrototype);
+TAG_TO_TYPE(MemoryTag::JSC_Promise, JSPromisePrototype);
+TAG_TO_TYPE(MemoryTag::JSC_Promise, JSPromiseDeferred);
+
+TAG_TO_TYPE(MemoryTag::JSC_PropertyMap, PropertyMapHashTable);
+
+TAG_TO_TYPE(MemoryTag::JSC_PropertyNameEnumerator, JSPropertyNameEnumerator);
+
+TAG_TO_TYPE(MemoryTag::JSC_ScopedArguments, ScopedArgumentsTable);
+
+TAG_TO_TYPE(MemoryTag::JSC_ScriptFetcher, JSScriptFetcher);
+TAG_TO_TYPE(MemoryTag::JSC_ScriptFetcher, JSScriptFetchParameters);
+
+//TAG_TO_TYPE(MemoryTag::JSC_Set, JSSet);
+//TAG_TO_TYPE(MemoryTag::JSC_Set, JSSetIterator);
+
+TAG_TO_TYPE(MemoryTag::JSC_SparseArray, SparseArrayValueMap);
+
+TAG_TO_TYPE(MemoryTag::JSC_Structure, Structure);
+TAG_TO_TYPE(MemoryTag::JSC_Structure, StructureChain);
+TAG_TO_TYPE(MemoryTag::JSC_Structure, StructureRareData);
+
+TAG_TO_TYPE(MemoryTag::JSC_SymbolTable, SymbolTable);
+
+TAG_TO_TYPE(MemoryTag::JSC_TemplateObject, JSTemplateObjectDescriptor);
+
+#endif
+
 template<typename T>
 ALWAYS_INLINE void* tryAllocateCellHelper(Heap& heap, size_t size, GCDeferralContext* deferralContext, AllocationFailureMode failureMode)
 {
     VM& vm = *heap.vm();
     ASSERT(deferralContext || !DisallowGC::isInEffectOnCurrentThread());
     ASSERT(size >= sizeof(T));
+#if USE(ULTRALIGHT) && defined(ULTRALIGHT_ENABLE_MEMORY_PROFILER)
+    T* cellTypePtr = nullptr;
+    TagForCellType<T> cellTag(cellTypePtr);
+    ProfiledMemoryZone(cellTag.tag());
+#endif
     JSCell* result = static_cast<JSCell*>(subspaceFor<T>(vm)->allocateNonVirtual(vm, size, deferralContext, failureMode));
     if (failureMode == AllocationFailureMode::ReturnNull && !result)
         return nullptr;

@@ -35,6 +35,7 @@
 #include <wtf/StdLibExtras.h>
 #include <wtf/ValueCheck.h>
 #include <wtf/VectorTraits.h>
+#include <wtf/MemoryProfiler.h>
 
 #if ASAN_ENABLED
 extern "C" void __sanitizer_annotate_contiguous_container(const void* begin, const void* end, const void* old_mid, const void* new_mid);
@@ -285,6 +286,7 @@ class VectorBufferBase {
 public:
     void allocateBuffer(size_t newCapacity)
     {
+        ProfiledMemoryZone(MemoryTag::WTF_Vector);
         ASSERT(newCapacity);
         if (newCapacity > std::numeric_limits<unsigned>::max() / sizeof(T))
             CRASH();
@@ -295,6 +297,7 @@ public:
 
     bool tryAllocateBuffer(size_t newCapacity)
     {
+        ProfiledMemoryZone(MemoryTag::WTF_Vector);
         ASSERT(newCapacity);
         if (newCapacity > std::numeric_limits<unsigned>::max() / sizeof(T))
             return false;
@@ -316,6 +319,7 @@ public:
 
     void reallocateBuffer(size_t newCapacity)
     {
+        ProfiledMemoryZone(MemoryTag::WTF_Vector);
         ASSERT(shouldReallocateBuffer(newCapacity));
         if (newCapacity > std::numeric_limits<size_t>::max() / sizeof(T))
             CRASH();
@@ -1560,6 +1564,7 @@ inline Vector<R> Vector<T, inlineCapacity, OverflowHandler, minCapacity>::map(Ma
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity>
 inline MallocPtr<T> Vector<T, inlineCapacity, OverflowHandler, minCapacity>::releaseBuffer()
 {
+    ProfiledMemoryZone(MemoryTag::WTF_Vector);
     // FIXME: Find a way to preserve annotations on the returned buffer.
     // ASan requires that all annotations are removed before deallocation,
     // and MallocPtr doesn't implement that.

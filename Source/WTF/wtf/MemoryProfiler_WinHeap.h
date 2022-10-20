@@ -4,7 +4,7 @@
 
 #pragma once
 
-#if (defined(TRACY_PROFILE_MEMORY) || defined(ULTRALIGHT_ENABLE_MEMORY_STATS)) && defined(_WIN32)
+#if defined(ULTRALIGHT_ENABLE_MEMORY_PROFILER) && defined(_WIN32)
 
 // Set to true if the link-time magic has successfully hooked into the CRT's
 // heap initialization.

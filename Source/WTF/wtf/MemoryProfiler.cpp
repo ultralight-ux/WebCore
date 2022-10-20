@@ -13,7 +13,7 @@
 #endif
 #include "MemoryProfiler.h"
 
-#if (defined(TRACY_PROFILE_MEMORY) || defined(ULTRALIGHT_ENABLE_MEMORY_STATS)) && defined(_WIN32)
+#if defined(ULTRALIGHT_ENABLE_MEMORY_PROFILER) && defined(_WIN32)
 
 #include "MemoryProfiler_WinHeap.h"
 #include <string.h>

@@ -410,7 +410,7 @@ static void setupJIT(VM& vm, CodeBlock* codeBlock)
 Exception* ScriptExecutable::prepareForExecutionImpl(
     VM& vm, JSFunction* function, JSScope* scope, CodeSpecializationKind kind, CodeBlock*& resultCodeBlock)
 {
-    ProfiledMemoryZone(MemoryTag::JavaScript_Bytecode);
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     DeferGCForAWhile deferGC(vm.heap);
 

@@ -12,7 +12,7 @@
 
 #if 0
 
-#if (defined(TRACY_PROFILE_MEMORY) || defined(ULTRALIGHT_ENABLE_MEMORY_STATS)) && defined(_WIN32)
+#if defined(ULTRALIGHT_ENABLE_MEMORY_PROFILER) && defined(_WIN32)
 
 // Preempt the default new/delete C++ symbols so they call the shim entry
 // points. This file is strongly inspired by tcmalloc's

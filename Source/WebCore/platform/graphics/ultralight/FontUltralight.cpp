@@ -325,6 +325,7 @@ RefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescripti
 Path Font::platformPathForGlyph(Glyph glyph) const
 {
   ProfiledZone;
+  ProfiledMemoryZone(MemoryTag::Font);
   auto& platformData = const_cast<WebCore::FontPlatformData&>(m_platformData); 
 
   Path result;

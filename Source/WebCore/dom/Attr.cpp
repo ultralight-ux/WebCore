@@ -55,11 +55,13 @@ Attr::Attr(Document& document, const QualifiedName& name, const AtomString& stan
 
 Ref<Attr> Attr::create(Element& element, const QualifiedName& name)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     return adoptRef(*new Attr(element, name));
 }
 
 Ref<Attr> Attr::create(Document& document, const QualifiedName& name, const AtomString& value)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     return adoptRef(*new Attr(document, name, value));
 }
 

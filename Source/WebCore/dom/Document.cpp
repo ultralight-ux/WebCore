@@ -571,6 +571,7 @@ Document::Document(Frame* frame, const URL& url, unsigned documentClasses, unsig
     , m_identifier(DocumentIdentifier::generate())
     , m_undoManager(UndoManager::create(*this))
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     auto addResult = allDocumentsMap().add(m_identifier, this);
     ASSERT_UNUSED(addResult, addResult.isNewEntry);
 
@@ -601,6 +602,7 @@ Document::Document(Frame* frame, const URL& url, unsigned documentClasses, unsig
 
 Ref<Document> Document::create(Document& contextDocument)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     auto document = adoptRef(*new Document(nullptr, URL()));
     document->setContextDocument(contextDocument);
     document->setSecurityOriginPolicy(contextDocument.securityOriginPolicy());
@@ -3893,6 +3895,7 @@ Ref<Node> Document::cloneNodeInternal(Document&, CloningOperation type)
 
 Ref<Document> Document::cloneDocumentWithoutChildren() const
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     if (isXMLDocument()) {
         if (isXHTMLDocument())
             return XMLDocument::createXHTML(nullptr, url());
@@ -3903,6 +3906,7 @@ Ref<Document> Document::cloneDocumentWithoutChildren() const
 
 void Document::cloneDataFromDocument(const Document& other)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     ASSERT(m_url == other.url());
     m_baseURL = other.baseURL();
     m_baseURLOverride = other.baseURLOverride();
@@ -6888,6 +6892,7 @@ Locale& Document::getCachedLocale(const AtomString& locale)
 
 Document& Document::ensureTemplateDocument()
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     if (const Document* document = templateDocument())
         return const_cast<Document&>(*document);
 

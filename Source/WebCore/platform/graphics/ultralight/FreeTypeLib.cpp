@@ -16,6 +16,7 @@ void DestroyFreeType() {
 
 FT_Library GetFreeTypeLib() {
   if (!g_freetype) {
+    ProfiledMemoryZone(MemoryTag::Font);
     if(FT_Init_FreeType(&g_freetype) == 0) {
       // Disabling this until we can ensure strict shutdown order.
       /*

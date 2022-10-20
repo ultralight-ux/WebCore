@@ -316,6 +316,7 @@ Vector<Ref<ProcessingInstruction>> Scope::collectXSLTransforms()
 
 void Scope::collectActiveStyleSheets(Vector<RefPtr<StyleSheet>>& sheets)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
     if (!m_document.settings().authorAndUserStylesEnabled())
         return;
 
@@ -383,6 +384,7 @@ void Scope::collectActiveStyleSheets(Vector<RefPtr<StyleSheet>>& sheets)
 
 Scope::StyleResolverUpdateType Scope::analyzeStyleSheetChange(const Vector<RefPtr<CSSStyleSheet>>& newStylesheets, bool& requiresFullStyleRecalc)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
     requiresFullStyleRecalc = true;
     
     unsigned newStylesheetCount = newStylesheets.size();
@@ -467,6 +469,7 @@ static void invalidateHostAndSlottedStyleIfNeeded(ShadowRoot& shadowRoot, StyleR
 
 void Scope::updateActiveStyleSheets(UpdateType updateType)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
     ASSERT(!m_pendingUpdate);
 
     if (!m_document.hasLivingRenderTree())
@@ -520,6 +523,7 @@ void Scope::updateActiveStyleSheets(UpdateType updateType)
 
 void Scope::updateStyleResolver(Vector<RefPtr<CSSStyleSheet>>& activeStyleSheets, StyleResolverUpdateType updateType)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
     if (updateType == Reconstruct) {
         clearResolver();
         return;

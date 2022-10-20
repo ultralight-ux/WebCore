@@ -127,6 +127,7 @@ std::unique_ptr<RenderStyle> TreeResolver::styleForElement(Element& element, con
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
 #endif
     if (element.hasCustomStyleResolveCallbacks()) {
         RenderStyle* shadowHostStyle = scope().shadowRoot ? m_update->elementStyle(*scope().shadowRoot->host()) : nullptr;
@@ -153,6 +154,7 @@ static void resetStyleForNonRenderedDescendants(Element& current)
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
 #endif
     for (auto& child : childrenOfType<Element>(current)) {
         if (child.needsStyleRecalc()) {
@@ -202,6 +204,7 @@ ElementUpdates TreeResolver::resolveElement(Element& element)
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
 #endif
     if (m_didSeePendingStylesheet && !element.renderer() && !m_document.isIgnoringPendingStylesheets()) {
         m_document.setHasNodesWithMissingStyle();
@@ -264,6 +267,7 @@ ElementUpdate TreeResolver::resolvePseudoStyle(Element& element, const ElementUp
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
 #endif
     if (elementUpdate.style->display() == DisplayType::None)
         return { };
@@ -305,6 +309,7 @@ ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderSt
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
 #endif
     auto* oldStyle = element.renderOrDisplayContentsStyle();
 
@@ -356,6 +361,7 @@ ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderSt
 
 void TreeResolver::pushParent(Element& element, const RenderStyle& style, Change change, DescendantsToResolve descendantsToResolve)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
     scope().selectorFilter.pushParent(&element);
 
     Parent parent(element, style, change, descendantsToResolve);
@@ -452,6 +458,7 @@ static bool hasLoadingStylesheet(const Style::Scope& styleScope, const Element& 
 
 static std::unique_ptr<RenderStyle> createInheritedDisplayContentsStyleIfNeeded(const RenderStyle& parentElementStyle, const RenderStyle* parentBoxStyle)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
     if (parentElementStyle.display() != DisplayType::Contents)
         return nullptr;
     if (parentBoxStyle && !parentBoxStyle->inheritedNotEqual(&parentElementStyle))
@@ -466,6 +473,7 @@ void TreeResolver::resolveComposedTree()
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
 #endif
     ASSERT(m_parentStack.size() == 1);
     ASSERT(m_scopeStack.size() == 1);
@@ -560,6 +568,7 @@ std::unique_ptr<Update> TreeResolver::resolve()
 {
 #if USE(ULTRALIGHT)
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::WebCore_CSS);
 #endif
     auto& renderView = *m_document.renderView();
 

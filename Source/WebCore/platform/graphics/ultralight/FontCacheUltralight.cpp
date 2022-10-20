@@ -77,6 +77,7 @@ public:
 
   RefPtr<FontFace> LookupFont(const String& family, int weight, bool italic) {
     ProfiledZone;
+    ProfiledMemoryZone(MemoryTag::Font);
     ultralight::String8 family8 = family.utf8();
     unsigned int family_hash = StringHasher::hashMemory(family8.data(), family8.sizeBytes());
     uintptr_t hashCodes[] = { family_hash, (uintptr_t)weight, italic };
@@ -206,6 +207,7 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
   const UChar* characters, unsigned length)
 {
   ProfiledZone;
+  ProfiledMemoryZone(MemoryTag::Font);
   auto& platform = ultralight::Platform::instance();
   auto font_loader = platform.font_loader();
   UL_CHECK(font_loader, "Error, NULL FontLoader encountered, did you forget to call Platform::set_font_loader()?");
@@ -229,6 +231,7 @@ Vector<String> FontCache::systemFontFamilies()
 
 void FontCache::platformInit()
 {
+  ProfiledMemoryZone(MemoryTag::Font);
   GetFreeTypeLib();
   ultralight::EnsurePlatformFontFactory();
 }
@@ -253,6 +256,7 @@ Ref<Font> FontCache::lastResortFallbackFontForEveryCharacter(const FontDescripti
 
 Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescription)
 {
+  ProfiledMemoryZone(MemoryTag::Font);
   auto& platform = ultralight::Platform::instance();
   auto font_loader = platform.font_loader();
   UL_CHECK(font_loader, "Error, NULL FontLoader encountered, did you forget to call Platform::set_font_loader()?");
@@ -273,6 +277,7 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
   const AtomString& family, const FontFeatureSettings*, const FontVariantSettings*, FontSelectionSpecifiedCapabilities)
 {
   ProfiledZone;
+  ProfiledMemoryZone(MemoryTag::Font);
   platformInit();
 
   int error = 0;

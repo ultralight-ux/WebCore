@@ -35,6 +35,7 @@
 #include <wtf/RandomNumber.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/ValueCheck.h>
+#include <wtf/MemoryProfiler.h>
 
 #define DUMP_HASHTABLE_STATS 0
 #define DUMP_HASHTABLE_STATS_PER_TABLE 0
@@ -1174,6 +1175,7 @@ namespace WTF {
     template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits>
     auto HashTable<Key, Value, Extractor, HashFunctions, Traits, KeyTraits>::allocateTable(unsigned size) -> ValueType*
     {
+        ProfiledMemoryZone(MemoryTag::WTF_HashTable);
         // would use a template member function with explicit specializations here, but
         // gcc doesn't appear to support that
         if (Traits::emptyValueIsZero)

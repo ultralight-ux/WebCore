@@ -45,11 +45,13 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(Text);
 
 Ref<Text> Text::create(Document& document, const String& data)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     return adoptRef(*new Text(document, data, CreateText));
 }
 
 Ref<Text> Text::createEditingText(Document& document, const String& data)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     return adoptRef(*new Text(document, data, CreateEditingText));
 }
 
@@ -118,6 +120,7 @@ String Text::wholeText() const
 
 RefPtr<Text> Text::replaceWholeText(const String& newText)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     // Remove all adjacent text nodes, and replace the contents of this one.
 
     // Protect startText and endText against mutation event handlers removing the last ref
@@ -163,6 +166,7 @@ Node::NodeType Text::nodeType() const
 
 Ref<Node> Text::cloneNodeInternal(Document& targetDocument, CloningOperation)
 {
+    ProfiledMemoryZone(MemoryTag::WebCore_DOM);
     return create(targetDocument, data());
 }
 

@@ -198,7 +198,7 @@ FinallyContext::FinallyContext(BytecodeGenerator& generator, Label& finallyLabel
 
 ParserError BytecodeGenerator::generate()
 {
-    ProfiledMemoryZone(MemoryTag::JavaScript_Bytecode);
+    ProfiledMemoryZone(MemoryTag::JavaScript);
     m_codeBlock->setThisRegister(m_thisRegister.virtualRegister());
 
     emitLogShadowChickenPrologueIfNecessary();

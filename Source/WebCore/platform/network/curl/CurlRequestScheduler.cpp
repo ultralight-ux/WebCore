@@ -131,6 +131,7 @@ void CurlRequestScheduler::stopThread()
 
 void CurlRequestScheduler::executeTasks()
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     ASSERT(!isMainThread());
 
     Vector<WTF::Function<void()>> taskQueue;
@@ -215,6 +216,7 @@ void CurlRequestScheduler::workerThread()
 
 void CurlRequestScheduler::startTransfer(CurlRequestSchedulerClient* client)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     client->retain();
 
     auto task = [this, client]() {
@@ -237,6 +239,7 @@ void CurlRequestScheduler::startTransfer(CurlRequestSchedulerClient* client)
 
 void CurlRequestScheduler::completeTransfer(CurlRequestSchedulerClient* client, CURLcode result)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     finalizeTransfer(client, [client, result]() {
         client->didCompleteTransfer(result);
     });
@@ -244,6 +247,7 @@ void CurlRequestScheduler::completeTransfer(CurlRequestSchedulerClient* client, 
 
 void CurlRequestScheduler::cancelTransfer(CurlRequestSchedulerClient* client)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     finalizeTransfer(client, [client]() {
         client->didCancelTransfer();
     });
@@ -251,6 +255,7 @@ void CurlRequestScheduler::cancelTransfer(CurlRequestSchedulerClient* client)
 
 void CurlRequestScheduler::finalizeTransfer(CurlRequestSchedulerClient* client, Function<void()> completionHandler)
 {
+    ProfiledMemoryZone(MemoryTag::Network);
     auto locker = holdLock(m_mutex);
 
     if (!m_activeJobs.contains(client))

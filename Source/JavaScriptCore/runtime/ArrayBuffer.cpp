@@ -98,6 +98,7 @@ void ArrayBufferContents::reset()
 
 void ArrayBufferContents::tryAllocate(unsigned numElements, unsigned elementByteSize, InitializationPolicy policy)
 {
+    ProfiledMemoryZone(MemoryTag::JavaScript_Array);
     // Do not allow 31-bit overflow of the total size.
     if (numElements) {
         unsigned totalSize = numElements * elementByteSize;

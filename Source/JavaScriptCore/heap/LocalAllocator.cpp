@@ -113,7 +113,6 @@ void LocalAllocator::stopAllocatingForGood()
 
 void* LocalAllocator::allocateSlowCase(GCDeferralContext* deferralContext, AllocationFailureMode failureMode)
 {
-    ProfiledMemoryZone(MemoryTag::JavaScript);
     SuperSamplerScope superSamplerScope(false);
     Heap& heap = *m_directory->m_heap;
     ASSERT(heap.vm()->currentThreadIsHoldingAPILock());
