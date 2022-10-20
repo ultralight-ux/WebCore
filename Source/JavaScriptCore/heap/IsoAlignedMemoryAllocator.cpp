@@ -24,7 +24,59 @@
  */
 
 #include "config.h"
-#if OS(WINDOWS)
+#if USE(ULTRALIGHT)
+
+#include "IsoAlignedMemoryAllocator.h"
+#include "MarkedBlock.h"
+#include <wtf/FastMalloc.h>
+
+namespace JSC {
+
+IsoAlignedMemoryAllocator::IsoAlignedMemoryAllocator()
+{
+}
+
+IsoAlignedMemoryAllocator::~IsoAlignedMemoryAllocator()
+{
+}
+
+void* IsoAlignedMemoryAllocator::tryAllocateAlignedMemory(size_t alignment, size_t size)
+{
+    // Since this is designed specially for IsoSubspace, we know that we will only be asked to
+    // allocate MarkedBlocks.
+    RELEASE_ASSERT(alignment == MarkedBlock::blockSize);
+    RELEASE_ASSERT(size == MarkedBlock::blockSize);
+    return tryFastAlignedMalloc(alignment, size);
+}
+
+void IsoAlignedMemoryAllocator::freeAlignedMemory(void* basePtr)
+{
+    fastAlignedFree(basePtr);
+}
+
+void IsoAlignedMemoryAllocator::dump(PrintStream& out) const
+{
+    out.print("Iso(", RawPointer(this), ")");
+}
+
+void* IsoAlignedMemoryAllocator::tryAllocateMemory(size_t)
+{
+    RELEASE_ASSERT_NOT_REACHED();
+}
+
+void IsoAlignedMemoryAllocator::freeMemory(void*)
+{
+    RELEASE_ASSERT_NOT_REACHED();
+}
+
+void* IsoAlignedMemoryAllocator::tryReallocateMemory(void*, size_t)
+{
+    RELEASE_ASSERT_NOT_REACHED();
+}
+
+} // namespace JSC
+
+#elif OS(WINDOWS)
 
 #include "IsoAlignedMemoryAllocator.h"
 #include "MarkedBlock.h"

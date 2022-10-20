@@ -47,11 +47,13 @@ public:
     void* tryReallocateMemory(void*, size_t) override;
 
 private:
+#if !USE(ULTRALIGHT)
     Vector<void*> m_blocks;
     HashMap<void*, unsigned> m_blockIndices;
     FastBitVector m_committed;
     unsigned m_firstUncommitted { 0 };
     Lock m_lock;
+#endif
 };
 
 } // namespace JSC
