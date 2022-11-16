@@ -2940,7 +2940,8 @@ void FrameLoader::addExtraFieldsToRequest(ResourceRequest& request, FrameLoadTyp
     if (!request.url().isEmpty() && !request.url().protocolIsInHTTPFamily())
         return;
 
-    if (!hasSpecificCachePolicy && request.cachePolicy() == ResourceRequestCachePolicy::ReloadIgnoringCacheData) {
+    //if (!hasSpecificCachePolicy && request.cachePolicy() == ResourceRequestCachePolicy::ReloadIgnoringCacheData) {
+    if (request.cachePolicy() == ResourceRequestCachePolicy::ReloadIgnoringCacheData) {
         if (loadType == FrameLoadType::Reload)
             request.setHTTPHeaderField(HTTPHeaderName::CacheControl, "max-age=0");
         else if (loadType == FrameLoadType::ReloadFromOrigin) {
