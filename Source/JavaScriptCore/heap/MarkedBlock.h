@@ -70,6 +70,8 @@ public:
     // Block size must be at least as large as the system page size.
 #if CPU(PPC64) || CPU(PPC64LE) || CPU(PPC) || CPU(UNKNOWN)
     static constexpr size_t blockSize = 64 * KB;
+#elif USE(ULTRALIGHT) && defined(ULTRALIGHT_MARKED_BLOCK_SIZE)
+    static constexpr size_t blockSize = ULTRALIGHT_MARKED_BLOCK_SIZE;
 #else
     static constexpr size_t blockSize = 16 * KB;
 #endif

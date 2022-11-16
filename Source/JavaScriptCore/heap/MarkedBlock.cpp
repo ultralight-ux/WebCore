@@ -52,9 +52,16 @@ MarkedBlock::Handle* MarkedBlock::tryCreate(Heap& heap, AlignedMemoryAllocator* 
     if (computeBalance) {
         balance++;
         if (!(balance % 10))
-            dataLog("MarkedBlock Balance: ", balance, "\n");
+            printf("[%u] ", (unsigned int)balance);
     }
-    void* blockSpace = alignedMemoryAllocator->tryAllocateAlignedMemory(blockSize, blockSize);
+
+    void* blockSpace = nullptr;
+
+    {
+        ProfiledMemoryZone(MemoryTag::JavaScript_MarkedBlock);
+        blockSpace = alignedMemoryAllocator->tryAllocateAlignedMemory(blockSize, blockSize);
+    }
+
     if (!blockSpace)
         return nullptr;
     if (scribbleFreeCells())
@@ -79,7 +86,7 @@ MarkedBlock::Handle::~Handle()
     if (computeBalance) {
         balance--;
         if (!(balance % 10))
-            dataLog("MarkedBlock Balance: ", balance, "\n");
+            printf("[%u] ", (unsigned int)balance);
     }
     removeFromDirectory();
     m_block->~MarkedBlock();

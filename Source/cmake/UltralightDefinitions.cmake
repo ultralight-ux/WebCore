@@ -57,6 +57,8 @@ endif ()
 
 add_definitions(-DULTRALIGHT_MODULE_WEBCORE)
 
+add_definitions(-DULTRALIGHT_MARKED_BLOCK_SIZE=${UL_MARKED_BLOCK_SIZE})
+
 if (UL_PROFILE_PERFORMANCE OR UL_PROFILE_MEMORY)
     add_definitions(-DTRACY_ENABLE)
     add_definitions(-DTRACY_IMPORTS)
