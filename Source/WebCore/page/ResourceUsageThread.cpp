@@ -53,7 +53,7 @@ ResourceUsageThread& ResourceUsageThread::singleton()
                 delete sharedInstance;
                 sharedInstance = nullptr;
             }
-        });
+        }, WTF::ShutdownPriority::Highest);
     }
 
     return *sharedInstance;

@@ -62,6 +62,7 @@
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
+#include <wtf/Shutdown.h>
 
 #if USE(WEB_THREAD)
 #include "WebCoreThreadRun.h"
@@ -185,8 +186,21 @@ ExceptionOr<Ref<WebSocket>> WebSocket::create(ScriptExecutionContext& context, c
 
 HashSet<WebSocket*>& WebSocket::allActiveWebSockets(const LockHolder&)
 {
-    static NeverDestroyed<HashSet<WebSocket*>> activeWebSockets;
-    return activeWebSockets;
+    static HashSet<WebSocket*>* g_instance = nullptr;
+
+    if (!g_instance) {
+        g_instance = new HashSet<WebSocket*>();
+
+        WTF::CallOnShutdown([]() mutable {
+            LockHolder lock(WebSocket::allActiveWebSocketsMutex());
+            // Stop all active WebSockets at Shutdown
+            for (WebSocket* webSocket : *g_instance) {
+                webSocket->stop();
+            }
+        }, WTF::ShutdownPriority::Highest);
+    }
+
+    return *g_instance;
 }
 
 Lock& WebSocket::allActiveWebSocketsMutex()

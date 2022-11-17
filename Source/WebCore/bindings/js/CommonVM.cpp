@@ -59,7 +59,7 @@ JSC::VM& commonVMSlow()
 
     WTF::CallOnShutdown([]() mutable {
         resetCommonVM();
-    });
+    }, WTF::ShutdownPriority::Highest);
 
     vm.heap.acquireAccess(); // At any time, we may do things that affect the GC.
 

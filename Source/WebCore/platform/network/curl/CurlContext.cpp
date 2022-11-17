@@ -98,7 +98,7 @@ CurlContext& CurlContext::singleton()
                 delete sharedInstance;
                 sharedInstance = nullptr;
             }
-        });
+        }, WTF::ShutdownPriority::Last);
     }
 
     return *sharedInstance;

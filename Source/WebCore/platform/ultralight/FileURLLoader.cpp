@@ -26,7 +26,7 @@ namespace FileURLLoader {
             g_loadQueue = WorkQueue::create("org.ultralight.FileURLLoader");
             WTF::CallOnShutdown([]() mutable {
                 g_loadQueue = nullptr;
-            });
+            }, WTF::ShutdownPriority::Highest);
         }
         
         return *g_loadQueue.get();

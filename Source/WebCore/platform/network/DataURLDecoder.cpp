@@ -50,7 +50,7 @@ static WorkQueue& decodeQueue()
         g_decodeQueue = WorkQueue::create("org.ultralight.DataURLDecoder");
         WTF::CallOnShutdown([]() mutable {
             g_decodeQueue = nullptr;
-        });
+        }, WTF::ShutdownPriority::Highest);
     }
 
     return *g_decodeQueue.get();
