@@ -221,6 +221,7 @@ WI.contentLoaded = function()
     window.addEventListener("resize", WI._windowResized);
     window.addEventListener("keydown", WI._windowKeyDown);
     window.addEventListener("keyup", WI._windowKeyUp);
+    window.addEventListener("mousedown", WI._mouseDown, true);
     window.addEventListener("mousemove", WI._mouseMoved, true);
     window.addEventListener("pagehide", WI._pageHidden);
     window.addEventListener("contextmenu", WI._contextMenuRequested);
@@ -1874,6 +1875,23 @@ WI._windowKeyDown = function(event)
 WI._windowKeyUp = function(event)
 {
     WI._updateModifierKeys(event);
+};
+
+WI._mouseDown = function(event)
+{
+    if (event.button === 2) { // right-click
+        const contextMenuEvent = new MouseEvent("contextmenu", {
+            view: window,
+            bubbles: true,
+            cancelable: true,
+            screenX: event.pageX,
+            screenY: event.pageY,
+            clientX: event.pageX,
+            clientY: event.pageY,
+            ...event
+        });
+        event.target.dispatchEvent(contextMenuEvent);
+    }
 };
 
 WI._mouseMoved = function(event)
