@@ -150,20 +150,20 @@ static inline void appendCharactersReplacingEntitiesInternal(StringBuilder& resu
         CharacterType character = text[i];
         uint8_t substitution = character < WTF_ARRAY_LENGTH(entityMap) ? entityMap[character] : static_cast<uint8_t>(EntitySubstitutionNullIndex);
         if (UNLIKELY(substitution != EntitySubstitutionNullIndex) && entitySubstitutionList[substitution].mask & entityMask) {
-            result.append(text + positionAfterLastEntity, i - positionAfterLastEntity);
-            result.append(entitySubstitutionList[substitution].characters, entitySubstitutionList[substitution].length);
+            result.appendSubstring(source, offset + positionAfterLastEntity, i - positionAfterLastEntity);
+            result.appendCharacters(entitySubstitutionList[substitution].characters, entitySubstitutionList[substitution].length);
             positionAfterLastEntity = i + 1;
         }
     }
-    result.append(text + positionAfterLastEntity, length - positionAfterLastEntity);
+    result.appendSubstring(source, offset + positionAfterLastEntity, length - positionAfterLastEntity);
 }
 
 void MarkupAccumulator::appendCharactersReplacingEntities(StringBuilder& result, const String& source, unsigned offset, unsigned length, EntityMask entityMask)
 {
-    if (!(offset + length))
-        return;
-
     ASSERT(offset + length <= source.length());
+
+    if (!length)
+        return;
 
     if (source.is8Bit())
         appendCharactersReplacingEntitiesInternal<LChar>(result, source, offset, length, entityMask);
@@ -235,16 +235,6 @@ String MarkupAccumulator::resolveURLIfNeeded(const Element& element, const Strin
     return urlString;
 }
 
-void MarkupAccumulator::appendString(const String& string)
-{
-    m_markup.append(string);
-}
-
-void MarkupAccumulator::appendStringView(StringView view)
-{
-    m_markup.append(view);
-}
-
 void MarkupAccumulator::startAppendingNode(const Node& node, Namespaces* namespaces)
 {
     if (is<Element>(node))
@@ -260,23 +250,12 @@ void MarkupAccumulator::appendEndTag(StringBuilder& result, const Element& eleme
 {
     if (shouldSelfClose(element, m_serializationSyntax) || (!element.hasChildNodes() && elementCannotHaveEndTag(element)))
         return;
-    result.append('<');
-    result.append('/');
-    result.append(element.nodeNamePreservingCase());
-    result.append('>');
+    result.append("</", element.nodeNamePreservingCase(), '>');
 }
 
-size_t MarkupAccumulator::totalLength(const Vector<String>& strings)
+StringBuilder MarkupAccumulator::takeMarkup()
 {
-    size_t length = 0;
-    for (auto& string : strings)
-        length += string.length();
-    return length;
-}
-
-void MarkupAccumulator::concatenateMarkup(StringBuilder& result)
-{
-    result.append(m_markup);
+    return std::exchange(m_markup, { });
 }
 
 void MarkupAccumulator::appendAttributeValue(StringBuilder& result, const String& attribute, bool isSerializingHTML)
@@ -293,7 +272,7 @@ void MarkupAccumulator::appendQuotedURLAttributeValue(StringBuilder& result, con
 {
     ASSERT(element.isURLAttribute(attribute));
     String resolvedURLString = resolveURLIfNeeded(element, attribute.value());
-    UChar quoteChar = '"';
+    char quoteChar = '"';
     if (WTF::protocolIsJavaScript(resolvedURLString)) {
         // minimal escaping for javascript urls
         if (resolvedURLString.contains('"')) {
@@ -302,9 +281,7 @@ void MarkupAccumulator::appendQuotedURLAttributeValue(StringBuilder& result, con
             else
                 quoteChar = '\'';
         }
-        result.append(quoteChar);
-        result.append(resolvedURLString);
-        result.append(quoteChar);
+        result.append(quoteChar, resolvedURLString, quoteChar);
         return;
     }
 
@@ -314,18 +291,16 @@ void MarkupAccumulator::appendQuotedURLAttributeValue(StringBuilder& result, con
     result.append(quoteChar);
 }
 
-bool MarkupAccumulator::shouldAddNamespaceElement(const Element& element)
+static bool shouldAddNamespaceElement(const Element& element)
 {
     // Don't add namespace attribute if it is already defined for this elem.
-    const AtomString& prefix = element.prefix();
+    auto& prefix = element.prefix();
     if (prefix.isEmpty())
         return !element.hasAttribute(xmlnsAtom());
-
-    static NeverDestroyed<String> xmlnsWithColon(MAKE_STATIC_STRING_IMPL("xmlns:"));
-    return !element.hasAttribute(xmlnsWithColon.get() + prefix);
+    return !element.hasAttribute("xmlns:" + prefix);
 }
 
-bool MarkupAccumulator::shouldAddNamespaceAttribute(const Attribute& attribute, Namespaces& namespaces)
+static bool shouldAddNamespaceAttribute(const Attribute& attribute, Namespaces& namespaces)
 {
     namespaces.checkConsistency();
 
@@ -351,42 +326,35 @@ void MarkupAccumulator::appendNamespace(StringBuilder& result, const AtomString&
     namespaces.checkConsistency();
     if (namespaceURI.isEmpty()) {
         // http://www.whatwg.org/specs/web-apps/current-work/multipage/the-xhtml-syntax.html#xml-fragment-serialization-algorithm
-        if (allowEmptyDefaultNS && namespaces.get(emptyAtom().impl())) {
-            result.append(' ');
-            result.append(xmlnsAtom().string());
-            result.appendLiteral("=\"\"");
-        }
+        if (allowEmptyDefaultNS && namespaces.get(emptyAtom().impl()))
+            result.append(' ', xmlnsAtom(), "=\"\"");
         return;
     }
 
-    // Use emptyAtom()s's impl() for both null and empty strings since the HashMap can't handle 0 as a key
-    AtomStringImpl* pre = prefix.isEmpty() ? emptyAtom().impl() : prefix.impl();
-    AtomStringImpl* foundNS = namespaces.get(pre);
-    if (foundNS != namespaceURI.impl()) {
-        namespaces.set(pre, namespaceURI.impl());
-        // Add namespace to prefix pair so we can do constraint checking later.
-        if (inXMLFragmentSerialization() && !prefix.isEmpty())
-            namespaces.set(namespaceURI.impl(), pre);
-        // Make sure xml prefix and namespace are always known to uphold the constraints listed at http://www.w3.org/TR/xml-names11/#xmlReserved.
-        if (namespaceURI.impl() == XMLNames::xmlNamespaceURI->impl())
+    // Use emptyAtom()s's impl() for null strings since this HashMap can't handle nullptr as a key
+    auto addResult = namespaces.add(prefix.isNull() ? emptyAtom().impl() : prefix.impl(), namespaceURI.impl());
+    if (!addResult.isNewEntry) {
+        if (addResult.iterator->value == namespaceURI.impl())
             return;
-        result.append(' ');
-        result.append(xmlnsAtom().string());
-        if (!prefix.isEmpty()) {
-            result.append(':');
-            result.append(prefix);
-        }
-
-        result.append('=');
-        result.append('"');
-        appendAttributeValue(result, namespaceURI, false);
-        result.append('"');
+        addResult.iterator->value = namespaceURI.impl();
     }
+
+    // Add namespace to prefix pair so we can do constraint checking later.
+    if (inXMLFragmentSerialization() && !prefix.isEmpty())
+        namespaces.set(namespaceURI.impl(), prefix.impl());
+
+    // Make sure xml prefix and namespace are always known to uphold the constraints listed at http://www.w3.org/TR/xml-names11/#xmlReserved.
+    if (namespaceURI == XMLNames::xmlNamespaceURI)
+        return;
+
+    result.append(' ', xmlnsAtom(), prefix.isEmpty() ? "" : ":", prefix, "=\"");
+    appendAttributeValue(result, namespaceURI, false);
+    result.append('"');
 }
 
 EntityMask MarkupAccumulator::entityMaskForText(const Text& text) const
 {
-    if (!text.document().isHTMLDocument())
+    if (!text.document().isHTMLDocument() || inXMLFragmentSerialization())
         return EntityMaskInPCDATA;
 
     const QualifiedName* parentName = nullptr;
@@ -400,76 +368,40 @@ EntityMask MarkupAccumulator::entityMaskForText(const Text& text) const
 
 void MarkupAccumulator::appendText(StringBuilder& result, const Text& text)
 {
-    const String& textData = text.data();
-    appendCharactersReplacingEntities(result, textData, 0, textData.length(), entityMaskForText(text));
+    appendCharactersReplacingEntities(result, text.data(), 0, text.length(), entityMaskForText(text));
 }
 
-static void appendComment(StringBuilder& result, const String& comment)
-{
-    // FIXME: Comment content is not escaped, but XMLSerializer (and possibly other callers) should raise an exception if it includes "-->".
-    result.appendLiteral("<!--");
-    result.append(comment);
-    result.appendLiteral("-->");
-}
-
-void MarkupAccumulator::appendXMLDeclaration(StringBuilder& result, const Document& document)
+static void appendXMLDeclaration(StringBuilder& result, const Document& document)
 {
     if (!document.hasXMLDeclaration())
         return;
 
-    result.appendLiteral("<?xml version=\"");
-    result.append(document.xmlVersion());
-    const String& encoding = document.xmlEncoding();
-    if (!encoding.isEmpty()) {
-        result.appendLiteral("\" encoding=\"");
-        result.append(encoding);
-    }
-    if (document.xmlStandaloneStatus() != Document::StandaloneStatus::Unspecified) {
-        result.appendLiteral("\" standalone=\"");
-        if (document.xmlStandalone())
-            result.appendLiteral("yes");
-        else
-            result.appendLiteral("no");
-    }
+    auto encoding = document.xmlEncoding();
+    bool isStandaloneSpecified = document.xmlStandaloneStatus() != Document::StandaloneStatus::Unspecified;
 
-    result.appendLiteral("\"?>");
+    result.append("<?xml version=\"",
+        document.xmlVersion(),
+        encoding.isEmpty() ? "" : "\" encoding=\"",
+        encoding,
+        isStandaloneSpecified ? (document.xmlStandalone() ? "\" standalone=\"yes" : "\" standalone=\"no") : "",
+        "\"?>");
 }
 
-void MarkupAccumulator::appendDocumentType(StringBuilder& result, const DocumentType& documentType)
+static void appendDocumentType(StringBuilder& result, const DocumentType& documentType)
 {
     if (documentType.name().isEmpty())
         return;
 
-    result.appendLiteral("<!DOCTYPE ");
-    result.append(documentType.name());
-    if (!documentType.publicId().isEmpty()) {
-        result.appendLiteral(" PUBLIC \"");
-        result.append(documentType.publicId());
-        result.append('"');
-        if (!documentType.systemId().isEmpty()) {
-            result.append(' ');
-            result.append('"');
-            result.append(documentType.systemId());
-            result.append('"');
-        }
-    } else if (!documentType.systemId().isEmpty()) {
-        result.appendLiteral(" SYSTEM \"");
-        result.append(documentType.systemId());
-        result.append('"');
-    }
-    result.append('>');
-}
-
-void MarkupAccumulator::appendProcessingInstruction(StringBuilder& result, const String& target, const String& data)
-{
-    // FIXME: PI data is not escaped, but XMLSerializer (and possibly other callers) this should raise an exception if it includes "?>".
-    result.append('<');
-    result.append('?');
-    result.append(target);
-    result.append(' ');
-    result.append(data);
-    result.append('?');
-    result.append('>');
+    result.append(
+        "<!DOCTYPE ",
+        documentType.name(),
+        documentType.publicId().isEmpty() ? "" : " PUBLIC \"",
+        documentType.publicId(),
+        documentType.publicId().isEmpty() ? "" : "\"",
+        documentType.systemId().isEmpty() ? "" : (documentType.publicId().isEmpty() ? " SYSTEM \"" : " \""),
+        documentType.systemId(),
+        documentType.systemId().isEmpty() ? ">" : "\">"
+    );
 }
 
 void MarkupAccumulator::appendStartTag(StringBuilder& result, const Element& element, Namespaces* namespaces)
@@ -514,13 +446,6 @@ void MarkupAccumulator::appendCloseTag(StringBuilder& result, const Element& ele
     result.append('>');
 }
 
-static inline bool attributeIsInSerializedNamespace(const Attribute& attribute)
-{
-    return attribute.namespaceURI() == XMLNames::xmlNamespaceURI
-        || attribute.namespaceURI() == XLinkNames::xlinkNamespaceURI
-        || attribute.namespaceURI() == XMLNSNames::xmlnsNamespaceURI;
-}
-
 void MarkupAccumulator::generateUniquePrefix(QualifiedName& prefixedName, const Namespaces& namespaces)
 {
     // http://www.w3.org/TR/DOM-Level-3-Core/namespaces-algorithms.html#normalizeDocumentAlgo
@@ -539,35 +464,61 @@ void MarkupAccumulator::generateUniquePrefix(QualifiedName& prefixedName, const 
     } while (true);
 }
 
+// https://html.spec.whatwg.org/#attribute's-serialised-name
+static String htmlAttributeSerialization(const Attribute& attribute)
+{
+    if (attribute.namespaceURI().isEmpty())
+        return attribute.name().localName();
+
+    QualifiedName prefixedName = attribute.name();
+    if (attribute.namespaceURI() == XMLNames::xmlNamespaceURI)
+        prefixedName.setPrefix(xmlAtom());
+    else if (attribute.namespaceURI() == XMLNSNames::xmlnsNamespaceURI) {
+        if (prefixedName.localName() == xmlnsAtom())
+            return xmlnsAtom();
+        prefixedName.setPrefix(xmlnsAtom());
+    } else if (attribute.namespaceURI() == XLinkNames::xlinkNamespaceURI)
+        prefixedName.setPrefix(AtomString("xlink", AtomString::ConstructFromLiteral));
+    return prefixedName.toString();
+}
+
+// https://w3c.github.io/DOM-Parsing/#dfn-xml-serialization-of-the-attributes
+QualifiedName MarkupAccumulator::xmlAttributeSerialization(const Attribute& attribute, Namespaces* namespaces)
+{
+    QualifiedName prefixedName = attribute.name();
+    if (!attribute.namespaceURI().isEmpty()) {
+        if (attribute.namespaceURI() == XMLNames::xmlNamespaceURI) {
+            // Always use xml as prefix if the namespace is the XML namespace.
+            prefixedName.setPrefix(xmlAtom());
+        } else {
+            AtomStringImpl* foundNS = namespaces && attribute.prefix().impl() ? namespaces->get(attribute.prefix().impl()) : nullptr;
+            bool prefixIsAlreadyMappedToOtherNS = foundNS && foundNS != attribute.namespaceURI().impl();
+            if (attribute.prefix().isEmpty() || !foundNS || prefixIsAlreadyMappedToOtherNS) {
+                if (AtomStringImpl* prefix = namespaces ? namespaces->get(attribute.namespaceURI().impl()) : nullptr)
+                    prefixedName.setPrefix(AtomString(prefix));
+                else {
+                    bool shouldBeDeclaredUsingAppendNamespace = !attribute.prefix().isEmpty() && !foundNS;
+                    if (!shouldBeDeclaredUsingAppendNamespace && attribute.localName() != xmlnsAtom() && namespaces)
+                        generateUniquePrefix(prefixedName, *namespaces);
+                }
+            }
+        }
+    }
+    return prefixedName;
+}
+
 void MarkupAccumulator::appendAttribute(StringBuilder& result, const Element& element, const Attribute& attribute, Namespaces* namespaces)
 {
     bool isSerializingHTML = element.document().isHTMLDocument() && !inXMLFragmentSerialization();
 
     result.append(' ');
 
-    QualifiedName prefixedName = attribute.name();
-    if (isSerializingHTML && !attributeIsInSerializedNamespace(attribute))
-        result.append(attribute.name().localName());
+    Optional<QualifiedName> effectiveXMLPrefixedName;
+    if (isSerializingHTML)
+        result.append(htmlAttributeSerialization(attribute));
     else {
-        if (!attribute.namespaceURI().isEmpty()) {
-            if (attribute.namespaceURI() == XMLNames::xmlNamespaceURI) {
-                // Always use xml as prefix if the namespace is the XML namespace.
-                prefixedName.setPrefix(xmlAtom());
-            } else {
-                AtomStringImpl* foundNS = namespaces && attribute.prefix().impl() ? namespaces->get(attribute.prefix().impl()) : 0;
-                bool prefixIsAlreadyMappedToOtherNS = foundNS && foundNS != attribute.namespaceURI().impl();
-                if (attribute.prefix().isEmpty() || !foundNS || prefixIsAlreadyMappedToOtherNS) {
-                    if (AtomStringImpl* prefix = namespaces ? namespaces->get(attribute.namespaceURI().impl()) : 0)
-                        prefixedName.setPrefix(AtomString(prefix));
-                    else {
-                        bool shouldBeDeclaredUsingAppendNamespace = !attribute.prefix().isEmpty() && !foundNS;
-                        if (!shouldBeDeclaredUsingAppendNamespace && attribute.localName() != xmlnsAtom() && namespaces)
-                            generateUniquePrefix(prefixedName, *namespaces);
-                    }
-                }
-            }
-        }
-        result.append(prefixedName.toString());
+        effectiveXMLPrefixedName = xmlAttributeSerialization(attribute, namespaces);
+        result.append(effectiveXMLPrefixedName->toString());
     }
 
     result.append('=');
@@ -581,15 +532,7 @@ void MarkupAccumulator::appendAttribute(StringBuilder& result, const Element& el
     }
 
     if (!isSerializingHTML && namespaces && shouldAddNamespaceAttribute(attribute, *namespaces))
-        appendNamespace(result, prefixedName.prefix(), prefixedName.namespaceURI(), *namespaces);
-}
-
-void MarkupAccumulator::appendCDATASection(StringBuilder& result, const String& section)
-{
-    // FIXME: CDATA content is not escaped, but XMLSerializer (and possibly other callers) should raise an exception if it includes "]]>".
-    result.appendLiteral("<![CDATA[");
-    result.append(section);
-    result.appendLiteral("]]>");
+        appendNamespace(result, effectiveXMLPrefixedName->prefix(), effectiveXMLPrefixedName->namespaceURI(), *namespaces);
 }
 
 void MarkupAccumulator::appendNonElementNode(StringBuilder& result, const Node& node, Namespaces* namespaces)
@@ -602,7 +545,8 @@ void MarkupAccumulator::appendNonElementNode(StringBuilder& result, const Node& 
         appendText(result, downcast<Text>(node));
         break;
     case Node::COMMENT_NODE:
-        appendComment(result, downcast<Comment>(node).data());
+        // FIXME: Comment content is not escaped, but that may be OK because XMLSerializer (and possibly other callers) should raise an exception if it includes "-->".
+        result.append("<!--", downcast<Comment>(node).data(), "-->");
         break;
     case Node::DOCUMENT_NODE:
         appendXMLDeclaration(result, downcast<Document>(node));
@@ -613,13 +557,15 @@ void MarkupAccumulator::appendNonElementNode(StringBuilder& result, const Node& 
         appendDocumentType(result, downcast<DocumentType>(node));
         break;
     case Node::PROCESSING_INSTRUCTION_NODE:
-        appendProcessingInstruction(result, downcast<ProcessingInstruction>(node).target(), downcast<ProcessingInstruction>(node).data());
+        // FIXME: PI data is not escaped, but XMLSerializer (and possibly other callers) this should raise an exception if it includes "?>".
+        result.append("<?", downcast<ProcessingInstruction>(node).target(), ' ', downcast<ProcessingInstruction>(node).data(), "?>");
         break;
     case Node::ELEMENT_NODE:
         ASSERT_NOT_REACHED();
         break;
     case Node::CDATA_SECTION_NODE:
-        appendCDATASection(result, downcast<CDATASection>(node).data());
+        // FIXME: CDATA content is not escaped, but XMLSerializer (and possibly other callers) should raise an exception if it includes "]]>".
+        result.append("<![CDATA[", downcast<CDATASection>(node).data(), "]]>");
         break;
     case Node::ATTRIBUTE_NODE:
         ASSERT_NOT_REACHED();

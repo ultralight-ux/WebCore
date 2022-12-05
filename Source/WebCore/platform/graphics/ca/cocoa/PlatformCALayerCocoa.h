@@ -33,11 +33,11 @@ namespace WebCore {
 
 class PlatformCALayerCocoa final : public PlatformCALayer {
 public:
-    static Ref<PlatformCALayer> create(LayerType, PlatformCALayerClient*);
+    static Ref<PlatformCALayerCocoa> create(LayerType, PlatformCALayerClient*);
     
     // This function passes the layer as a void* rather than a PlatformLayer because PlatformLayer
     // is defined differently for Obj C and C++. This allows callers from both languages.
-    static Ref<PlatformCALayer> create(void* platformLayer, PlatformCALayerClient*);
+    static Ref<PlatformCALayerCocoa> create(void* platformLayer, PlatformCALayerClient*);
 
     WEBCORE_EXPORT static LayerType layerTypeForPlatformLayer(PlatformLayer*);
 
@@ -168,7 +168,13 @@ public:
     GraphicsLayer::CustomAppearance customAppearance() const override { return m_customAppearance; }
     void updateCustomAppearance(GraphicsLayer::CustomAppearance) override;
 
-    void setEventRegion(const EventRegion&) override { }
+    const EventRegion* eventRegion() const override { return &m_eventRegion; }
+    void setEventRegion(const EventRegion&) override;
+
+#if ENABLE(SCROLLING_THREAD)
+    ScrollingNodeID scrollingNodeID() const override { return m_scrollingNodeID; }
+    void setScrollingNodeID(ScrollingNodeID nodeID) override { m_scrollingNodeID = nodeID; }
+#endif
 
     GraphicsLayer::EmbeddedViewID embeddedViewID() const override;
 
@@ -178,7 +184,7 @@ public:
 
     Ref<PlatformCALayer> createCompatibleLayer(PlatformCALayer::LayerType, PlatformCALayerClient*) const override;
 
-    void enumerateRectsBeingDrawn(CGContextRef, void (^block)(CGRect)) override;
+    void enumerateRectsBeingDrawn(GraphicsContext&, void (^block)(FloatRect)) override;
 
     unsigned backingStoreBytesPerPixel() const override;
 
@@ -200,6 +206,10 @@ private:
     std::unique_ptr<PlatformCALayerList> m_customSublayers;
     GraphicsLayer::CustomAppearance m_customAppearance { GraphicsLayer::CustomAppearance::None };
     std::unique_ptr<FloatRoundedRect> m_shapeRoundedRect;
+#if ENABLE(SCROLLING_THREAD)
+    ScrollingNodeID m_scrollingNodeID { 0 };
+#endif
+    EventRegion m_eventRegion;
     bool m_wantsDeepColorBackingStore { false };
     bool m_supportsSubpixelAntialiasedText { false };
     bool m_backingStoreAttached { true };

@@ -23,14 +23,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-[
-    Constructor(DOMString type, optional WebKitAnimationEventInit eventInitDict),
-] interface WebKitAnimationEvent : Event {
+interface WebKitAnimationEvent : Event {
+    constructor(DOMString type, optional WebKitAnimationEventInit eventInitDict);
+
     readonly attribute DOMString animationName;
     readonly attribute double elapsedTime;
+    readonly attribute DOMString pseudoElement;
 };
 
 dictionary WebKitAnimationEventInit : EventInit {
     DOMString animationName = "";
     double elapsedTime = 0;
+    DOMString pseudoElement = "";
 };

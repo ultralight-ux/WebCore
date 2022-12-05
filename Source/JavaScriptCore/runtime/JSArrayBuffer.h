@@ -33,13 +33,14 @@ namespace JSC {
 class JSArrayBuffer final : public JSNonFinalObject {
 public:
     using Base = JSNonFinalObject;
-    static const unsigned StructureFlags = Base::StructureFlags;
-    
-protected:
-    JSArrayBuffer(VM&, Structure*, RefPtr<ArrayBuffer>&&);
-    void finishCreation(VM&, JSGlobalObject*);
-    
-public:
+    static constexpr unsigned StructureFlags = Base::StructureFlags;
+
+    template<typename CellType, SubspaceAccess mode>
+    static IsoSubspace* subspaceFor(VM& vm)
+    {
+        return vm.arrayBufferSpace<mode>();
+    }
+
     // This function will register the new wrapper with the vm's TypedArrayController.
     JS_EXPORT_PRIVATE static JSArrayBuffer* create(VM&, Structure*, RefPtr<ArrayBuffer>&&);
 
@@ -55,10 +56,12 @@ public:
     // This is the default DOM unwrapping. It calls toUnsharedArrayBuffer().
     static ArrayBuffer* toWrapped(VM&, JSValue);
     
-protected:
+private:
+    JSArrayBuffer(VM&, Structure*, RefPtr<ArrayBuffer>&&);
+    void finishCreation(VM&, JSGlobalObject*);
+
     static size_t estimatedSize(JSCell*, VM&);
 
-private:
     ArrayBuffer* m_impl;
 };
 

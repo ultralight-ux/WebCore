@@ -192,6 +192,7 @@ public:
     virtual DFG::JITCode* dfg();
     virtual FTL::JITCode* ftl();
     virtual FTL::ForOSREntryJITCode* ftlForOSREntry();
+    virtual void shrinkToFit(const ConcurrentJSLocker&);
     
     virtual void validateReferences(const TrackedReferences&);
     
@@ -225,7 +226,7 @@ protected:
     JITCodeWithCodeRef(CodeRef<JSEntryPtrTag>, JITType, JITCode::ShareAttribute);
 
 public:
-    virtual ~JITCodeWithCodeRef();
+    ~JITCodeWithCodeRef() override;
 
     void* executableAddressAtOffset(size_t offset) override;
     void* dataAddressAtOffset(size_t offset) override;
@@ -237,12 +238,14 @@ protected:
     CodeRef<JSEntryPtrTag> m_ref;
 };
 
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(DirectJITCode);
 class DirectJITCode : public JITCodeWithCodeRef {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(DirectJITCode);
 public:
     DirectJITCode(JITType);
     DirectJITCode(CodeRef<JSEntryPtrTag>, CodePtr<JSEntryPtrTag> withArityCheck, JITType, JITCode::ShareAttribute = JITCode::ShareAttribute::NotShared);
     DirectJITCode(CodeRef<JSEntryPtrTag>, CodePtr<JSEntryPtrTag> withArityCheck, JITType, Intrinsic, JITCode::ShareAttribute = JITCode::ShareAttribute::NotShared); // For generated thunk.
-    virtual ~DirectJITCode();
+    ~DirectJITCode() override;
     
     CodePtr<JSEntryPtrTag> addressForCall(ArityCheckMode) override;
 
@@ -257,7 +260,7 @@ class NativeJITCode : public JITCodeWithCodeRef {
 public:
     NativeJITCode(JITType);
     NativeJITCode(CodeRef<JSEntryPtrTag>, JITType, Intrinsic, JITCode::ShareAttribute = JITCode::ShareAttribute::NotShared);
-    virtual ~NativeJITCode();
+    ~NativeJITCode() override;
 
     CodePtr<JSEntryPtrTag> addressForCall(ArityCheckMode) override;
 };
@@ -265,9 +268,9 @@ public:
 class NativeDOMJITCode final : public NativeJITCode {
 public:
     NativeDOMJITCode(CodeRef<JSEntryPtrTag>, JITType, Intrinsic, const DOMJIT::Signature*);
-    virtual ~NativeDOMJITCode() = default;
+    ~NativeDOMJITCode() final = default;
 
-    const DOMJIT::Signature* signature() const override { return m_signature; }
+    const DOMJIT::Signature* signature() const final { return m_signature; }
 
 private:
     const DOMJIT::Signature* m_signature;

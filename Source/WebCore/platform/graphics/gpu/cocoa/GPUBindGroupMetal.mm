@@ -28,6 +28,7 @@
 
 #if ENABLE(WEBGPU)
 
+#import "GPUBindGroupAllocator.h"
 #import "GPUBindGroupBinding.h"
 #import "GPUBindGroupDescriptor.h"
 #import "GPUBindGroupLayout.h"
@@ -39,16 +40,6 @@
 #import <wtf/Optional.h>
 
 namespace WebCore {
-
-static RetainPtr<MTLBuffer> tryCreateArgumentBuffer(MTLArgumentEncoder *encoder)
-{
-    RetainPtr<MTLBuffer> buffer;
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
-    buffer = adoptNS([encoder.device newBufferWithLength:encoder.encodedLength options:0]);
-    [encoder setArgumentBuffer:buffer.get() offset:0];
-    END_BLOCK_OBJC_EXCEPTIONS;
-    return buffer;
-}
     
 static Optional<GPUBufferBinding> tryGetResourceAsBufferBinding(const GPUBindingResource& resource, const char* const functionName)
 {
@@ -64,8 +55,12 @@ static Optional<GPUBufferBinding> tryGetResourceAsBufferBinding(const GPUBinding
         LOG(WebGPU, "%s: Invalid MTLBuffer in GPUBufferBinding!", functionName);
         return WTF::nullopt;
     }
+    if (!isInBounds<NSUInteger>(bufferBinding.size) || bufferBinding.size > bufferBinding.buffer->byteLength()) {
+        LOG(WebGPU, "%s: GPUBufferBinding size is too large!", functionName);
+        return WTF::nullopt;
+    }
     // MTLBuffer size (NSUInteger) is 32 bits on some platforms.
-    if (!WTF::isInBounds<NSUInteger>(bufferBinding.offset)) {
+    if (!isInBounds<NSUInteger>(bufferBinding.offset)) {
         LOG(WebGPU, "%s: Buffer offset is too large!", functionName);
         return WTF::nullopt;
     }
@@ -76,12 +71,12 @@ static void setBufferOnEncoder(MTLArgumentEncoder *argumentEncoder, const GPUBuf
 {
     ASSERT(argumentEncoder && bufferBinding.buffer->platformBuffer());
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     // Bounds check when converting GPUBufferBinding ensures that NSUInteger cast of uint64_t offset is safe.
     [argumentEncoder setBuffer:bufferBinding.buffer->platformBuffer() offset:static_cast<NSUInteger>(bufferBinding.offset) atIndex:name];
     void* lengthPointer = [argumentEncoder constantDataAtIndex:lengthName];
     memcpy(lengthPointer, &bufferBinding.size, sizeof(uint64_t));
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 }
     
 static MTLSamplerState *tryGetResourceAsMtlSampler(const GPUBindingResource& resource, const char* const functionName)
@@ -105,9 +100,9 @@ static void setSamplerOnEncoder(MTLArgumentEncoder *argumentEncoder, MTLSamplerS
 {
     ASSERT(argumentEncoder && sampler);
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     [argumentEncoder setSamplerState:sampler atIndex:index];
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
 static RefPtr<GPUTexture> tryGetResourceAsTexture(const GPUBindingResource& resource, const char* const functionName)
@@ -131,37 +126,25 @@ static void setTextureOnEncoder(MTLArgumentEncoder *argumentEncoder, MTLTexture 
 {
     ASSERT(argumentEncoder && texture);
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     [argumentEncoder setTexture:texture atIndex:index];
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 }
-    
-RefPtr<GPUBindGroup> GPUBindGroup::tryCreate(const GPUBindGroupDescriptor& descriptor)
+
+RefPtr<GPUBindGroup> GPUBindGroup::tryCreate(const GPUBindGroupDescriptor& descriptor, GPUBindGroupAllocator& allocator)
 {
     const char* const functionName = "GPUBindGroup::tryCreate()";
     
     MTLArgumentEncoder *vertexEncoder = descriptor.layout->vertexEncoder();
     MTLArgumentEncoder *fragmentEncoder = descriptor.layout->fragmentEncoder();
     MTLArgumentEncoder *computeEncoder = descriptor.layout->computeEncoder();
+
+    auto offsets = allocator.allocateAndSetEncoders(vertexEncoder, fragmentEncoder, computeEncoder);
+    if (!offsets)
+        return nullptr;
     
-    RetainPtr<MTLBuffer> vertexArgsBuffer;
-    if (vertexEncoder && !(vertexArgsBuffer = tryCreateArgumentBuffer(vertexEncoder))) {
-        LOG(WebGPU, "%s: Unable to create MTLBuffer for vertex argument buffer!", functionName);
-        return nullptr;
-    }
-    RetainPtr<MTLBuffer> fragmentArgsBuffer;
-    if (fragmentEncoder && !(fragmentArgsBuffer = tryCreateArgumentBuffer(fragmentEncoder))) {
-        LOG(WebGPU, "%s: Unable to create MTLBuffer for fragment argument buffer!", functionName);
-        return nullptr;
-    }
-    RetainPtr<MTLBuffer> computeArgsBuffer;
-    if (computeEncoder && !(computeArgsBuffer = tryCreateArgumentBuffer(computeEncoder))) {
-        LOG(WebGPU, "%s: Unable to create MTLBuffer for compute argument buffer!", functionName);
-        return nullptr;
-    }
-    
-    Vector<Ref<GPUBuffer>> boundBuffers;
-    Vector<Ref<GPUTexture>> boundTextures;
+    HashSet<Ref<GPUBuffer>> boundBuffers;
+    HashSet<Ref<GPUTexture>> boundTextures;
 
     // Set each resource on each MTLArgumentEncoder it should be visible on.
     const auto& layoutBindingsMap = descriptor.layout->bindingsMap();
@@ -173,12 +156,12 @@ RefPtr<GPUBindGroup> GPUBindGroup::tryCreate(const GPUBindGroupDescriptor& descr
             return nullptr;
         }
         auto layoutBinding = layoutIterator->value;
-        if (layoutBinding.externalBinding.visibility == GPUShaderStageBit::Flags::None)
+        if (layoutBinding.externalBinding.visibility == GPUShaderStage::Flags::None)
             continue;
 
-        bool isForVertex = layoutBinding.externalBinding.visibility & GPUShaderStageBit::Flags::Vertex;
-        bool isForFragment = layoutBinding.externalBinding.visibility & GPUShaderStageBit::Flags::Fragment;
-        bool isForCompute = layoutBinding.externalBinding.visibility & GPUShaderStageBit::Flags::Compute;
+        bool isForVertex = layoutBinding.externalBinding.visibility & GPUShaderStage::Flags::Vertex;
+        bool isForFragment = layoutBinding.externalBinding.visibility & GPUShaderStage::Flags::Fragment;
+        bool isForCompute = layoutBinding.externalBinding.visibility & GPUShaderStage::Flags::Compute;
 
         if (isForVertex && !vertexEncoder) {
             LOG(WebGPU, "%s: No vertex argument encoder found for binding %u!", functionName, index);
@@ -203,7 +186,7 @@ RefPtr<GPUBindGroup> GPUBindGroup::tryCreate(const GPUBindGroupDescriptor& descr
                 setBufferOnEncoder(fragmentEncoder, *bufferResource, layoutBinding.internalName, internalLengthName);
             if (isForCompute)
                 setBufferOnEncoder(computeEncoder, *bufferResource, layoutBinding.internalName, internalLengthName);
-            boundBuffers.append(bufferResource->buffer.copyRef());
+            boundBuffers.addVoid(WTFMove(bufferResource->buffer));
             return true;
         };
 
@@ -232,7 +215,7 @@ RefPtr<GPUBindGroup> GPUBindGroup::tryCreate(const GPUBindGroupDescriptor& descr
                 setTextureOnEncoder(fragmentEncoder, textureResource->platformTexture(), layoutBinding.internalName);
             if (isForCompute)
                 setTextureOnEncoder(computeEncoder, textureResource->platformTexture(), layoutBinding.internalName);
-            boundTextures.append(textureResource.releaseNonNull());
+            boundTextures.addVoid(textureResource.releaseNonNull());
             return true;
         }, [&](GPUBindGroupLayout::StorageBuffer& storageBuffer) -> bool {
             return handleBuffer(storageBuffer.internalLengthName);
@@ -243,18 +226,22 @@ RefPtr<GPUBindGroup> GPUBindGroup::tryCreate(const GPUBindGroupDescriptor& descr
             return nullptr;
     }
     
-    return adoptRef(new GPUBindGroup(WTFMove(vertexArgsBuffer), WTFMove(fragmentArgsBuffer), WTFMove(computeArgsBuffer), WTFMove(boundBuffers), WTFMove(boundTextures)));
+    return adoptRef(new GPUBindGroup(WTFMove(*offsets), allocator, WTFMove(boundBuffers), WTFMove(boundTextures)));
 }
     
-GPUBindGroup::GPUBindGroup(RetainPtr<MTLBuffer>&& vertexBuffer, RetainPtr<MTLBuffer>&& fragmentBuffer, RetainPtr<MTLBuffer>&& computeBuffer, Vector<Ref<GPUBuffer>>&& buffers, Vector<Ref<GPUTexture>>&& textures)
-    : m_vertexArgsBuffer(WTFMove(vertexBuffer))
-    , m_fragmentArgsBuffer(WTFMove(fragmentBuffer))
-    , m_computeArgsBuffer(WTFMove(computeBuffer))
+GPUBindGroup::GPUBindGroup(GPUBindGroupAllocator::ArgumentBufferOffsets&& offsets, GPUBindGroupAllocator& allocator, HashSet<Ref<GPUBuffer>>&& buffers, HashSet<Ref<GPUTexture>>&& textures)
+    : m_argumentBufferOffsets(WTFMove(offsets))
+    , m_allocator(makeRef(allocator))
     , m_boundBuffers(WTFMove(buffers))
     , m_boundTextures(WTFMove(textures))
 {
 }
+
+GPUBindGroup::~GPUBindGroup()
+{
+    m_allocator->tryReset();
+}
     
 } // namespace WebCore
 
-#endif // ENABLE(WEBPGU)
+#endif // ENABLE(WEBGPU)

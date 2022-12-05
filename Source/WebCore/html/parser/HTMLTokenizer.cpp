@@ -1401,7 +1401,7 @@ String HTMLTokenizer::bufferedCharacters() const
     characters.reserveCapacity(numberOfBufferedCharacters());
     characters.append('<');
     characters.append('/');
-    characters.append(m_temporaryBuffer.data(), m_temporaryBuffer.size());
+    characters.appendCharacters(m_temporaryBuffer.data(), m_temporaryBuffer.size());
     return characters.toString();
 }
 
@@ -1418,7 +1418,7 @@ void HTMLTokenizer::updateStateFor(const AtomString& tagName)
         || tagName == xmpTag
         || (tagName == noembedTag)
         || tagName == noframesTag
-        || (tagName == noscriptTag && m_options.scriptEnabled))
+        || (tagName == noscriptTag && m_options.scriptingFlag))
         m_state = RAWTEXTState;
 }
 

@@ -23,8 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "config.h"
-#include "MediaSourcePrivateAVFObjC.h"
+#import "config.h"
+#import "MediaSourcePrivateAVFObjC.h"
 
 #if ENABLE(MEDIA_SOURCE) && USE(AVFOUNDATION)
 
@@ -34,6 +34,7 @@
 #import "Logging.h"
 #import "MediaPlayerPrivateMediaSourceAVFObjC.h"
 #import "MediaSourcePrivateClient.h"
+#import "SourceBufferParserAVFObjC.h"
 #import "SourceBufferPrivateAVFObjC.h"
 #import <objc/runtime.h>
 #import <wtf/Algorithms.h>
@@ -82,10 +83,14 @@ MediaSourcePrivate::AddStatus MediaSourcePrivateAVFObjC::addSourceBuffer(const C
     MediaEngineSupportParameters parameters;
     parameters.isMediaSource = true;
     parameters.type = contentType;
-    if (MediaPlayerPrivateMediaSourceAVFObjC::supportsType(parameters) == MediaPlayer::IsNotSupported)
+    if (MediaPlayerPrivateMediaSourceAVFObjC::supportsType(parameters) == MediaPlayer::SupportsType::IsNotSupported)
         return NotSupported;
 
-    auto newSourceBuffer = SourceBufferPrivateAVFObjC::create(this);
+    auto parser = SourceBufferParser::create(contentType);
+    if (!parser)
+        return NotSupported;
+
+    auto newSourceBuffer = SourceBufferPrivateAVFObjC::create(this, parser.releaseNonNull());
 #if ENABLE(ENCRYPTED_MEDIA)
     newSourceBuffer->setCDMInstance(m_cdmInstance.get());
 #endif
@@ -131,7 +136,7 @@ void MediaSourcePrivateAVFObjC::durationChanged()
 void MediaSourcePrivateAVFObjC::markEndOfStream(EndOfStreamStatus status)
 {
     if (status == EosNoError)
-        m_player->setNetworkState(MediaPlayer::Loaded);
+        m_player->setNetworkState(MediaPlayer::NetworkState::Loaded);
     m_isEnded = true;
 }
 
@@ -324,6 +329,11 @@ WTFLogChannel& MediaSourcePrivateAVFObjC::logChannel() const
     return LogMediaSource;
 }
 #endif
+
+void MediaSourcePrivateAVFObjC::failedToCreateRenderer(RendererType type)
+{
+    m_client->failedToCreateRenderer(type);
+}
 
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2018 Apple Inc. All rights reserved.
+ *  Copyright (C) 2005-2019 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -46,6 +46,10 @@
 
 #ifndef NS_RELEASES_ARGUMENT
 #define NS_RELEASES_ARGUMENT
+#endif
+
+#ifndef __OBJC__
+typedef struct objc_object *id;
 #endif
 
 namespace WTF {
@@ -336,15 +340,13 @@ template<typename T> inline RetainPtr<typename RetainPtr<T>::HelperPtrType> reta
 }
 
 template <typename T> struct IsSmartPtr<RetainPtr<T>> {
-    static const bool value = true;
+    static constexpr bool value = true;
 };
 
 template<typename P> struct HashTraits<RetainPtr<P>> : SimpleClassHashTraits<RetainPtr<P>> {
 };
 
-template<typename P> struct DefaultHash<RetainPtr<P>> {
-    typedef PtrHash<RetainPtr<P>> Hash;
-};
+template<typename P> struct DefaultHash<RetainPtr<P>> : PtrHash<RetainPtr<P>> { };
 
 template <typename P>
 struct RetainPtrObjectHashTraits : SimpleClassHashTraits<RetainPtr<P>> {
@@ -366,7 +368,7 @@ struct RetainPtrObjectHash {
     {
         return CFEqual(a.get(), b.get());
     }
-    static const bool safeToCompareToEmptyOrDeleted = false;
+    static constexpr bool safeToCompareToEmptyOrDeleted = false;
 };
 
 inline bool safeCFEqual(CFTypeRef a, CFTypeRef b)

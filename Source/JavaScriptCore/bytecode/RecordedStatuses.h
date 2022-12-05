@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,8 @@
 #pragma once
 
 #include "CallLinkStatus.h"
-#include "GetByIdStatus.h"
+#include "DeleteByStatus.h"
+#include "GetByStatus.h"
 #include "InByIdStatus.h"
 #include "PutByIdStatus.h"
 
@@ -44,11 +45,13 @@ struct RecordedStatuses {
     RecordedStatuses(RecordedStatuses&& other);
     
     CallLinkStatus* addCallLinkStatus(const CodeOrigin&, const CallLinkStatus&);
-    GetByIdStatus* addGetByIdStatus(const CodeOrigin&, const GetByIdStatus&);
+    GetByStatus* addGetByStatus(const CodeOrigin&, const GetByStatus&);
     PutByIdStatus* addPutByIdStatus(const CodeOrigin&, const PutByIdStatus&);
     InByIdStatus* addInByIdStatus(const CodeOrigin&, const InByIdStatus&);
+    DeleteByStatus* addDeleteByStatus(const CodeOrigin&, const DeleteByStatus&);
     
-    void markIfCheap(SlotVisitor& slotVisitor);
+    void visitAggregate(SlotVisitor&);
+    void markIfCheap(SlotVisitor&);
     
     void finalizeWithoutDeleting(VM&);
     void finalize(VM&);
@@ -62,12 +65,14 @@ struct RecordedStatuses {
         func(gets);
         func(puts);
         func(ins);
+        func(deletes);
     }
     
     Vector<std::pair<CodeOrigin, std::unique_ptr<CallLinkStatus>>> calls;
-    Vector<std::pair<CodeOrigin, std::unique_ptr<GetByIdStatus>>> gets;
+    Vector<std::pair<CodeOrigin, std::unique_ptr<GetByStatus>>> gets;
     Vector<std::pair<CodeOrigin, std::unique_ptr<PutByIdStatus>>> puts;
     Vector<std::pair<CodeOrigin, std::unique_ptr<InByIdStatus>>> ins;
+    Vector<std::pair<CodeOrigin, std::unique_ptr<DeleteByStatus>>> deletes;
 };
 
 } // namespace JSC

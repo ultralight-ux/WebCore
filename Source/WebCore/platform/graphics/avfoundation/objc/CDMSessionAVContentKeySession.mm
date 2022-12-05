@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,10 +36,14 @@
 #import "WebCoreNSErrorExtras.h"
 #import <AVFoundation/AVError.h>
 #import <CoreMedia/CMBase.h>
+#import <JavaScriptCore/HeapInlines.h>
+#import <JavaScriptCore/JSCellInlines.h>
+#import <JavaScriptCore/JSGlobalObjectInlines.h>
 #import <JavaScriptCore/TypedArrayInlines.h>
 #import <objc/objc-runtime.h>
-#import <pal/spi/mac/AVFoundationSPI.h>
+#import <pal/spi/cocoa/AVFoundationSPI.h>
 #import <wtf/FileSystem.h>
+#import <wtf/cocoa/VectorCocoa.h>
 
 #import <pal/cocoa/AVFoundationSoftLink.h>
 
@@ -250,7 +254,7 @@ bool CDMSessionAVContentKeySession::update(Uint8Array* key, RefPtr<Uint8Array>& 
         // data.
         RefPtr<SourceBufferPrivateAVFObjC> protectedSourceBuffer;
         for (auto& sourceBuffer : m_sourceBuffers) {
-            if (sourceBuffer->protectedTrackID() != -1) {
+            if (sourceBuffer->protectedTrackID() != notFound) {
                 protectedSourceBuffer = sourceBuffer;
                 break;
             }
@@ -279,14 +283,9 @@ bool CDMSessionAVContentKeySession::update(Uint8Array* key, RefPtr<Uint8Array>& 
 
         RetainPtr<NSDictionary> options;
         if (!m_protocolVersions.isEmpty() && PAL::canLoad_AVFoundation_AVContentKeyRequestProtocolVersionsKey()) {
-            RetainPtr<NSMutableArray> protocolVersionsOption = adoptNS([[NSMutableArray alloc] init]);
-            for (auto& version : m_protocolVersions) {
-                if (!version)
-                    continue;
-                [protocolVersionsOption addObject:@(version)];
-            }
-
-            options = @{ AVContentKeyRequestProtocolVersionsKey: protocolVersionsOption.get() };
+            options = @{ AVContentKeyRequestProtocolVersionsKey: createNSArray(m_protocolVersions, [] (int version) -> NSNumber * {
+                return version ? @(version) : nil;
+            }).get() };
         }
 
         errorCode = MediaPlayer::NoError;

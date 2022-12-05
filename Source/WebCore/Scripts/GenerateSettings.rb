@@ -65,6 +65,7 @@ class Setting
   attr_accessor :name
   attr_accessor :type
   attr_accessor :initial
+  attr_accessor :excludeFromInternalSettings
   attr_accessor :conditional
   attr_accessor :onChange
   attr_accessor :getter
@@ -74,6 +75,7 @@ class Setting
     @name = name
     @type = opts["type"] || "bool"
     @initial = opts["initial"]
+    @excludeFromInternalSettings = opts["excludeFromInternalSettings"] || false
     @conditional = opts["conditional"]
     @onChange = opts["onChange"]
     @getter = opts["getter"]
@@ -120,7 +122,7 @@ class Setting
   end
 
   def setterFunctionName
-    if @name.start_with?("css", "xss", "ftp", "dom", "dns", "ice")
+    if @name.start_with?("css", "xss", "ftp", "dom", "dns", "ice", "hdr")
       "set" + @name[0..2].upcase + @name[3..@name.length]
     else
       "set" + @name[0].upcase + @name[1..@name.length]

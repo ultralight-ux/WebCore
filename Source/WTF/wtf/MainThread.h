@@ -50,12 +50,9 @@ WTF_EXPORT_PRIVATE void dispatchAsyncOnMainThreadWithWebThreadLockIfNeeded(void 
 WTF_EXPORT_PRIVATE void callOnWebThreadOrDispatchAsyncOnMainThread(void (^block)());
 #endif
 
-WTF_EXPORT_PRIVATE void setMainThreadCallbacksPaused(bool paused);
-
 WTF_EXPORT_PRIVATE bool isMainThread();
-WTF_EXPORT_PRIVATE bool isMainThreadIfInitialized();
 
-WTF_EXPORT_PRIVATE bool canAccessThreadLocalDataForThread(Thread&);
+WTF_EXPORT_PRIVATE bool canCurrentThreadAccessThreadLocalData(Thread&);
 
 WTF_EXPORT_PRIVATE bool isMainRunLoop();
 WTF_EXPORT_PRIVATE void callOnMainRunLoop(Function<void()>&&);
@@ -66,7 +63,6 @@ WTF_EXPORT_PRIVATE bool isWebThread();
 WTF_EXPORT_PRIVATE bool isUIThread();
 WTF_EXPORT_PRIVATE void initializeWebThread();
 WTF_EXPORT_PRIVATE void initializeApplicationUIThread();
-void initializeWebThreadPlatform();
 #else
 inline bool isWebThread() { return isMainThread(); }
 inline bool isUIThread() { return isMainThread(); }
@@ -76,18 +72,6 @@ WTF_EXPORT_PRIVATE bool isMainThreadOrGCThread();
 
 // NOTE: these functions are internal to the callOnMainThread implementation.
 void initializeMainThreadPlatform();
-void scheduleDispatchFunctionsOnMainThread();
-void dispatchFunctionsFromMainThread();
-
-#if OS(DARWIN) && !USE(GLIB)
-#if !USE(WEB_THREAD)
-// This version of initializeMainThread sets up the main thread as corresponding
-// to the process's main thread, and not necessarily the thread that calls this
-// function. It should only be used as a legacy aid for Mac WebKit.
-WTF_EXPORT_PRIVATE void initializeMainThreadToProcessMainThread();
-#endif // !USE(WEB_THREAD)
-void initializeMainThreadToProcessMainThreadPlatform();
-#endif
 
 } // namespace WTF
 
@@ -95,12 +79,11 @@ using WTF::callOnMainThread;
 using WTF::callOnMainThreadAndWait;
 using WTF::callOnMainRunLoop;
 using WTF::callOnMainRunLoopAndWait;
-using WTF::canAccessThreadLocalDataForThread;
+using WTF::canCurrentThreadAccessThreadLocalData;
 using WTF::isMainThread;
 using WTF::isMainThreadOrGCThread;
 using WTF::isUIThread;
 using WTF::isWebThread;
-using WTF::setMainThreadCallbacksPaused;
 #if PLATFORM(COCOA)
 using WTF::dispatchAsyncOnMainThreadWithWebThreadLockIfNeeded;
 using WTF::callOnWebThreadOrDispatchAsyncOnMainThread;

@@ -25,12 +25,15 @@
 #pragma once
 
 #include "Color.h"
-#include "DataRef.h"
 #include "Length.h"
+#include "RenderStyleConstants.h"
 #include "StyleCustomPropertyData.h"
 #include "TabSize.h"
 #include "TextDecorationThickness.h"
 #include "TextUnderlineOffset.h"
+#include "TouchAction.h"
+#include <wtf/DataRef.h>
+#include <wtf/OptionSet.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/AtomString.h>
 
@@ -53,7 +56,9 @@ class StyleImage;
 // This struct is for rarely used inherited CSS3, CSS2, and WebKit-specific properties.
 // By grouping them together, we save space, and only allocate this object when someone
 // actually uses one of these properties.
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleRareInheritedData);
 class StyleRareInheritedData : public RefCounted<StyleRareInheritedData> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleRareInheritedData);
 public:
     static Ref<StyleRareInheritedData> create() { return adoptRef(*new StyleRareInheritedData); }
     Ref<StyleRareInheritedData> copy() const;
@@ -118,11 +123,9 @@ public:
     unsigned textIndentLine : 1; // TextIndentLine
     unsigned textIndentType : 1; // TextIndentType
 #endif
-    unsigned lineBoxContain: 7; // LineBoxContain
+    unsigned lineBoxContain: 7; // OptionSet<LineBoxContain>
     // CSS Image Values Level 3
-#if ENABLE(CSS_IMAGE_ORIENTATION)
-    unsigned imageOrientation : 4; // ImageOrientationEnum
-#endif
+    unsigned imageOrientation : 1; // ImageOrientation
     unsigned imageRendering : 3; // ImageRendering
     unsigned lineSnap : 2; // LineSnap
     unsigned lineAlign : 1; // LineAlign
@@ -154,9 +157,8 @@ public:
     unsigned hasSetStrokeWidth : 1;
     unsigned hasSetStrokeColor : 1;
 
-#if ENABLE(POINTER_EVENTS)
-    unsigned effectiveTouchActions : 6; // OptionSet<TouchAction>
-#endif
+    OptionSet<TouchAction> effectiveTouchActions;
+    OptionSet<EventListenerRegionType> eventListenerRegionTypes;
 
     Length strokeWidth;
     Color strokeColor;

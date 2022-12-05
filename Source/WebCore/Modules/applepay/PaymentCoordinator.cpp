@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -196,7 +196,7 @@ void PaymentCoordinator::didAuthorizePayment(const Payment& payment)
         return;
     }
 
-    RELEASE_LOG_IF_ALLOWED("validateMerchant()");
+    RELEASE_LOG_IF_ALLOWED("didAuthorizePayment()");
     m_activeSession->didAuthorizePayment(payment);
 }
 
@@ -258,17 +258,17 @@ Optional<String> PaymentCoordinator::validatedPaymentNetwork(Document&, unsigned
 
 bool PaymentCoordinator::shouldEnableApplePayAPIs(Document& document) const
 {
-    if (m_client.supportsUnrestrictedApplePay()) {
-        RELEASE_LOG_IF_ALLOWED("shouldEnableApplePayAPIs() -> true (unrestricted client)");
+    if (m_client.supportsUnrestrictedApplePay())
         return true;
-    }
 
     bool shouldEnableAPIs = true;
     document.page()->userContentProvider().forEachUserScript([&](DOMWrapperWorld&, const UserScript&) {
         shouldEnableAPIs = false;
     });
 
-    RELEASE_LOG_IF_ALLOWED("shouldEnableApplePayAPIs() -> %d", shouldEnableAPIs);
+    if (!shouldEnableAPIs)
+        RELEASE_LOG_IF_ALLOWED("shouldEnableApplePayAPIs() -> false (user scripts)");
+
     return shouldEnableAPIs;
 }
 
@@ -284,20 +284,47 @@ bool PaymentCoordinator::setApplePayIsActiveIfAllowed(Document& document) const
         return false;
     }
 
-    RELEASE_LOG_IF_ALLOWED("setApplePayIsActiveIfAllowed() -> true (supportsUnrestrictedApplePay: %d)", supportsUnrestrictedApplePay);
     document.setApplePayIsActive();
     return true;
 }
 
-bool PaymentCoordinator::shouldAllowUserAgentScripts(Document& document) const
+Expected<void, ExceptionDetails> PaymentCoordinator::shouldAllowUserAgentScripts(Document& document) const
 {
     if (m_client.supportsUnrestrictedApplePay() || !document.isApplePayActive())
-        return true;
+        return { };
 
     ASSERT(!document.hasEvaluatedUserAgentScripts());
     ASSERT(!document.isRunningUserScripts());
     RELEASE_LOG_ERROR_IF_ALLOWED("shouldAllowUserAgentScripts() -> false (active session)");
-    return false;
+    return makeUnexpected(ExceptionDetails { m_client.userAgentScriptsBlockedErrorMessage() });
+}
+
+void PaymentCoordinator::getSetupFeatures(const ApplePaySetupConfiguration& configuration, const URL& url, CompletionHandler<void(Vector<Ref<ApplePaySetupFeature>>&&)>&& completionHandler)
+{
+    RELEASE_LOG_IF_ALLOWED("getSetupFeatures()");
+    m_client.getSetupFeatures(configuration, url, [this, weakThis = makeWeakPtr(*this), completionHandler = WTFMove(completionHandler)](Vector<Ref<ApplePaySetupFeature>>&& features) mutable {
+        if (!weakThis)
+            return;
+        RELEASE_LOG_IF_ALLOWED("getSetupFeatures() completed (features: %zu)", features.size());
+        completionHandler(WTFMove(features));
+    });
+}
+
+void PaymentCoordinator::beginApplePaySetup(const ApplePaySetupConfiguration& configuration, const URL& url, Vector<RefPtr<ApplePaySetupFeature>>&& features, CompletionHandler<void(bool)>&& completionHandler)
+{
+    RELEASE_LOG_IF_ALLOWED("beginApplePaySetup()");
+    m_client.beginApplePaySetup(configuration, url, WTFMove(features), [this, weakThis = makeWeakPtr(*this), completionHandler = WTFMove(completionHandler)](bool success) mutable {
+        if (!weakThis)
+            return;
+        RELEASE_LOG_IF_ALLOWED("beginApplePaySetup() completed (success: %d)", success);
+        completionHandler(success);
+    });
+}
+
+void PaymentCoordinator::endApplePaySetup()
+{
+    RELEASE_LOG_IF_ALLOWED("endApplePaySetup()");
+    m_client.endApplePaySetup();
 }
 
 } // namespace WebCore

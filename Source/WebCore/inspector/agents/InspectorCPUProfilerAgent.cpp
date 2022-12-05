@@ -39,14 +39,16 @@ using namespace Inspector;
 
 InspectorCPUProfilerAgent::InspectorCPUProfilerAgent(PageAgentContext& context)
     : InspectorAgentBase("CPUProfiler"_s, context)
-    , m_frontendDispatcher(std::make_unique<Inspector::CPUProfilerFrontendDispatcher>(context.frontendRouter))
+    , m_frontendDispatcher(makeUnique<Inspector::CPUProfilerFrontendDispatcher>(context.frontendRouter))
     , m_backendDispatcher(Inspector::CPUProfilerBackendDispatcher::create(context.backendDispatcher, this))
 {
 }
 
+InspectorCPUProfilerAgent::~InspectorCPUProfilerAgent() = default;
+
 void InspectorCPUProfilerAgent::didCreateFrontendAndBackend(FrontendRouter*, BackendDispatcher*)
 {
-    m_instrumentingAgents.setInspectorCPUProfilerAgent(this);
+    m_instrumentingAgents.setPersistentCPUProfilerAgent(this);
 }
 
 void InspectorCPUProfilerAgent::willDestroyFrontendAndBackend(DisconnectReason)
@@ -54,7 +56,7 @@ void InspectorCPUProfilerAgent::willDestroyFrontendAndBackend(DisconnectReason)
     ErrorString ignored;
     stopTracking(ignored);
 
-    m_instrumentingAgents.setInspectorCPUProfilerAgent(nullptr);
+    m_instrumentingAgents.setPersistentCPUProfilerAgent(nullptr);
 }
 
 void InspectorCPUProfilerAgent::startTracking(ErrorString&)
@@ -68,7 +70,7 @@ void InspectorCPUProfilerAgent::startTracking(ErrorString&)
 
     m_tracking = true;
 
-    m_frontendDispatcher->trackingStart(m_environment.executionStopwatch()->elapsedTime().seconds());
+    m_frontendDispatcher->trackingStart(m_environment.executionStopwatch().elapsedTime().seconds());
 }
 
 void InspectorCPUProfilerAgent::stopTracking(ErrorString&)
@@ -80,7 +82,7 @@ void InspectorCPUProfilerAgent::stopTracking(ErrorString&)
 
     m_tracking = false;
 
-    m_frontendDispatcher->trackingComplete(m_environment.executionStopwatch()->elapsedTime().seconds());
+    m_frontendDispatcher->trackingComplete(m_environment.executionStopwatch().elapsedTime().seconds());
 }
 
 static Ref<Protocol::CPUProfiler::ThreadInfo> buildThreadInfo(const ThreadCPUInfo& thread)
@@ -106,7 +108,7 @@ static Ref<Protocol::CPUProfiler::ThreadInfo> buildThreadInfo(const ThreadCPUInf
 void InspectorCPUProfilerAgent::collectSample(const ResourceUsageData& data)
 {
     auto event = Protocol::CPUProfiler::Event::create()
-        .setTimestamp(m_environment.executionStopwatch()->elapsedTimeSince(data.timestamp).seconds())
+        .setTimestamp(m_environment.executionStopwatch().elapsedTimeSince(data.timestamp).seconds())
         .setUsage(data.cpuExcludingDebuggerThreads)
         .release();
 

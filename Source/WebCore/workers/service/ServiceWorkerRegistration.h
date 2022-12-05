@@ -29,13 +29,13 @@
 
 #include "ActiveDOMObject.h"
 #include "EventTarget.h"
-#include "JSDOMPromiseDeferred.h"
 #include "SWClientConnection.h"
 #include "ServiceWorkerRegistrationData.h"
 #include "Timer.h"
 
 namespace WebCore {
 
+class DeferredPromise;
 class ScriptExecutionContext;
 class ServiceWorker;
 class ServiceWorkerContainer;
@@ -53,7 +53,7 @@ public:
     ServiceWorker* waiting();
     ServiceWorker* active();
 
-    ServiceWorker* getNewestWorker();
+    ServiceWorker* getNewestWorker() const;
 
     const String& scope() const;
 
@@ -68,31 +68,26 @@ public:
     void update(Ref<DeferredPromise>&&);
     void unregister(Ref<DeferredPromise>&&);
 
-    void scheduleSoftUpdate();
-
     using RefCounted::ref;
     using RefCounted::deref;
     
     const ServiceWorkerRegistrationData& data() const { return m_registrationData; }
 
     void updateStateFromServer(ServiceWorkerRegistrationState, RefPtr<ServiceWorker>&&);
-    void fireUpdateFoundEvent();
+    void queueTaskToFireUpdateFoundEvent();
 
 private:
     ServiceWorkerRegistration(ScriptExecutionContext&, Ref<ServiceWorkerContainer>&&, ServiceWorkerRegistrationData&&);
-    void updatePendingActivityForEventDispatch();
 
     EventTargetInterface eventTargetInterface() const final;
     ScriptExecutionContext* scriptExecutionContext() const final;
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
 
-    void softUpdate();
-
     // ActiveDOMObject.
     const char* activeDOMObjectName() const final;
-    bool canSuspendForDocumentSuspension() const final;
     void stop() final;
+    bool virtualHasPendingActivity() const final;
 
     ServiceWorkerRegistrationData m_registrationData;
     Ref<ServiceWorkerContainer> m_container;
@@ -100,10 +95,6 @@ private:
     RefPtr<ServiceWorker> m_installingWorker;
     RefPtr<ServiceWorker> m_waitingWorker;
     RefPtr<ServiceWorker> m_activeWorker;
-
-    bool m_isStopped { false };
-    RefPtr<PendingActivity<ServiceWorkerRegistration>> m_pendingActivityForEventDispatch;
-    Timer m_softUpdateTimer;
 };
 
 } // namespace WebCore

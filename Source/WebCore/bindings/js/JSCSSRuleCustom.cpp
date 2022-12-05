@@ -46,8 +46,6 @@
 #include "JSCSSSupportsRule.h"
 #include "JSNode.h"
 #include "JSStyleSheetCustom.h"
-#include "JSWebKitCSSViewportRule.h"
-#include "WebKitCSSViewportRule.h"
 
 
 namespace WebCore {
@@ -58,7 +56,7 @@ void JSCSSRule::visitAdditionalChildren(SlotVisitor& visitor)
     visitor.addOpaqueRoot(root(&wrapped()));
 }
 
-JSValue toJSNewlyCreated(ExecState*, JSDOMGlobalObject* globalObject, Ref<CSSRule>&& rule)
+JSValue toJSNewlyCreated(JSGlobalObject*, JSDOMGlobalObject* globalObject, Ref<CSSRule>&& rule)
 {
     switch (rule->type()) {
     case CSSRule::STYLE_RULE:
@@ -79,18 +77,14 @@ JSValue toJSNewlyCreated(ExecState*, JSDOMGlobalObject* globalObject, Ref<CSSRul
         return createWrapper<CSSKeyframesRule>(globalObject, WTFMove(rule));
     case CSSRule::SUPPORTS_RULE:
         return createWrapper<CSSSupportsRule>(globalObject, WTFMove(rule));
-#if ENABLE(CSS_DEVICE_ADAPTATION)
-    case CSSRule::WEBKIT_VIEWPORT_RULE:
-        return createWrapper<WebKitCSSViewportRule>(globalObject, WTFMove(rule));
-#endif
     default:
         return createWrapper<CSSRule>(globalObject, WTFMove(rule));
     }
 }
 
-JSValue toJS(ExecState* state, JSDOMGlobalObject* globalObject, CSSRule& object)
+JSValue toJS(JSGlobalObject* lexicalGlobalObject, JSDOMGlobalObject* globalObject, CSSRule& object)
 {
-    return wrap(state, globalObject, object);
+    return wrap(lexicalGlobalObject, globalObject, object);
 }
 
 } // namespace WebCore

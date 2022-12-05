@@ -20,68 +20,55 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
-
 #import "IOSurface.h"
-#import "IntSize.h"
 #import <QuartzCore/QuartzCore.h>
+#import <wtf/NakedPtr.h>
 
 namespace WebCore {
-class GraphicsLayer;
-class GraphicsContext3D;
+struct WebGLLayerBuffer {
+    std::unique_ptr<WebCore::IOSurface> surface; // The actual contents.
+    void* handle { nullptr }; // Client specific metadata handle (such as EGLSurface).
+};
 }
 
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 
-#if USE(OPENGL)
+// A layer class implementing front buffer management of a 3-buffering swap
+// chain of IOSurfaces.
+// The layer will own the IOSurfaces it uses for display.
+// The client may attach metadata to each IOSurface and will receive the metadata
+// back once the IOSurface has been displayed. However, the client may not neccessarily
+// be able to obtain the IOSurface itself for reuse.
+// Example use of the metadata is to use EGLSurface binding as the metadata. This way
+// when the WebGLLayer is done with the IOSurface display, the client can continue using
+// the existing binding obtained through the buffer recycle logic.
 @interface WebGLLayer : CALayer
-#elif USE(OPENGL_ES)
-@interface WebGLLayer : CAEAGLLayer
-#elif USE(ANGLE) && PLATFORM(MAC)
-@interface WebGLLayer : CALayer
-#elif USE(ANGLE) && PLATFORM(IOS_FAMILY)
-@interface WebGLLayer : CAEAGLLayer
-#else
-#error Unsupported platform
-#endif
-{
-    WebCore::GraphicsContext3D* _context;
-    float _devicePixelRatio;
-#if USE(OPENGL) || (USE(ANGLE) && PLATFORM(MAC))
-    std::unique_ptr<WebCore::IOSurface> _contentsBuffer;
-    std::unique_ptr<WebCore::IOSurface> _drawingBuffer;
-    std::unique_ptr<WebCore::IOSurface> _spareBuffer;
-    WebCore::IntSize _bufferSize;
-    BOOL _usingAlpha;
-#endif
-#if USE(ANGLE) && PLATFORM(MAC)
-    void* _eglDisplay;
-    void* _eglConfig;
-    void* _contentsPbuffer;
-    void* _drawingPbuffer;
-    void* _sparePbuffer;
-    void* _latchedPbuffer;
-#endif
-}
 
-@property (nonatomic) WebCore::GraphicsContext3D* context;
-
-- (id)initWithGraphicsContext3D:(WebCore::GraphicsContext3D*)context;
+- (id)initWithDevicePixelRatio:(float)devicePixelRatio contentsOpaque:(bool)contentsOpaque;
 
 - (CGImageRef)copyImageSnapshotWithColorSpace:(CGColorSpaceRef)colorSpace;
 
-#if USE(OPENGL) || (USE(ANGLE) && PLATFORM(MAC))
-- (void)allocateIOSurfaceBackingStoreWithSize:(WebCore::IntSize)size usingAlpha:(BOOL)usingAlpha;
-- (void)bindFramebufferToNextAvailableSurface;
-#endif
+// Returns the metadata handle of last unused contents buffer.
+// Client may recieve back also the ownership of the contents surface, in case it is available at the
+// time of the call.
+// Returns either:
+// - Empty buffer if no buffer has been submitted.
+// - Buffer with empty surface and non-empty metadata handle if the recycled buffer was available
+//   but the surface is still in use.
+// - Surface and handle.
+- (WebCore::WebGLLayerBuffer)recycleBuffer;
 
-#if (USE(ANGLE) && PLATFORM(MAC))
-- (void)setEGLDisplay:(void*)eglDisplay andConfig:(void*)eglConfig;
-- (void)dealloc;
-#endif
+// Prepares the layer for display with a contents buffer.
+// Client transfers the ownership of the IOSurface surface in the `buffer`.
+- (void)prepareForDisplayWithContents:(WebCore::WebGLLayerBuffer)buffer;
+
+// Detaches the client and returns the current contents buffer metadata handle.
+// The if multiple buffers have been submitted, recycleBuffer must have been called before calling
+// this.
+- (void*)detachClient;
 
 @end
 

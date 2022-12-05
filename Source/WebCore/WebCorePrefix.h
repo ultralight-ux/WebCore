@@ -41,14 +41,9 @@
 #endif
 #endif
 
-#if PLATFORM(WIN)
-#undef WEBCORE_EXPORT
-#define WEBCORE_EXPORT WTF_EXPORT_DECLARATION
-#undef WEBCORE_TESTSUPPORT_EXPORT
-#define WEBCORE_TESTSUPPORT_EXPORT WTF_EXPORT_DECLARATION
-#else
+#if !OS(WINDOWS)
 #include <pthread.h>
-#endif // PLATFORM(WIN)
+#endif // !OS(WINDOWS)
 
 #include <sys/types.h>
 #include <fcntl.h>
@@ -165,15 +160,15 @@
 #else
 #if USE(APPKIT)
 #import <Cocoa/Cocoa.h>
-#import <wtf/mac/AppKitCompatibilityDeclarations.h>
 #endif
 #endif // PLATFORM(IOS_FAMILY)
 #endif
 
 #ifdef __cplusplus
 
-#if !PLATFORM(WIN) && (!PLATFORM(MAC) || __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300)
+#if !PLATFORM(WIN)
 #import <wtf/FastMalloc.h>
+#import <wtf/HashMap.h>
 #import <wtf/Optional.h>
 #import <wtf/StdLibExtras.h>
 #import <wtf/text/AtomString.h>

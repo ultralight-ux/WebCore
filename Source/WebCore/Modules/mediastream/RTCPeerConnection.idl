@@ -73,11 +73,11 @@ typedef (object or DOMString) AlgorithmIdentifier;
 [
     ActiveDOMObject,
     Conditional=WEB_RTC,
-    ConstructorCallWith=ScriptExecutionContext,
     EnabledAtRuntime=PeerConnection,
     ExportMacro=WEBCORE_EXPORT,
-    JSBuiltinConstructor
 ] interface RTCPeerConnection : EventTarget {
+    [JSBuiltin, CallWith=Document] constructor();
+
     // JS built-in constructor handles the optional RTCConfiguration
     [PrivateIdentifier, CallWith=Document, MayThrowException] void initializeWith(RTCConfiguration configuration);
 
@@ -116,7 +116,7 @@ typedef (object or DOMString) AlgorithmIdentifier;
     attribute EventHandler oniceconnectionstatechange;
     attribute EventHandler onicegatheringstatechange;
     attribute EventHandler onconnectionstatechange;
-    // FIXME 169644: missing onfingerprintfailure and onicecandidateerror
+    attribute EventHandler onicecandidateerror;
 
     // Private API used to implement the overloaded operations above. Queued functions are called by runQueuedOperation().
     // See RTCPeerConnectionInternals.js.
@@ -128,7 +128,7 @@ typedef (object or DOMString) AlgorithmIdentifier;
 
 
     // 4.11 Certificate management
-    [CallWith=ExecState] static Promise<RTCCertificate> generateCertificate(AlgorithmIdentifier keygenAlgorithm);
+    [CallWith=GlobalObject] static Promise<RTCCertificate> generateCertificate(AlgorithmIdentifier keygenAlgorithm);
 
     // 5.1 RTCPeerConnection extensions
     // RTP Media API extensions
@@ -146,7 +146,7 @@ typedef (object or DOMString) AlgorithmIdentifier;
     // 6.1 Peer-to-peer data API
     // FIXME 169644: missing sctp
 
-    [CallWith=ScriptExecutionContext, MayThrowException] RTCDataChannel createDataChannel([TreatNullAs=EmptyString] USVString label, optional RTCDataChannelInit options);
+    [MayThrowException] RTCDataChannel createDataChannel([TreatNullAs=EmptyString] USVString label, optional RTCDataChannelInit options);
     attribute EventHandler ondatachannel;
 
 

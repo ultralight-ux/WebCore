@@ -71,7 +71,7 @@ public:
         }
     }
 
-    CallLinkInfo();
+    CallLinkInfo(CodeOrigin);
         
     ~CallLinkInfo();
     
@@ -134,7 +134,7 @@ public:
         return callModeFor(static_cast<CallType>(m_callType));
     }
 
-    bool isDirect()
+    bool isDirect() const
     {
         return isDirect(static_cast<CallType>(m_callType));
     }
@@ -154,13 +154,12 @@ public:
         return isVarargsCallType(static_cast<CallType>(m_callType));
     }
 
-    bool isLinked() { return m_stub || m_calleeOrCodeBlock; }
+    bool isLinked() const { return m_stub || m_calleeOrCodeBlock; }
     void unlink(VM&);
 
-    void setUpCall(CallType callType, CodeOrigin codeOrigin, GPRReg calleeGPR)
+    void setUpCall(CallType callType, GPRReg calleeGPR)
     {
         m_callType = callType;
-        m_codeOrigin = codeOrigin;
         m_calleeGPR = calleeGPR;
     }
 
@@ -201,8 +200,8 @@ public:
 
     void setLastSeenCallee(VM&, const JSCell* owner, JSObject* callee);
     void clearLastSeenCallee();
-    JSObject* lastSeenCallee();
-    bool haveLastSeenCallee();
+    JSObject* lastSeenCallee() const;
+    bool haveLastSeenCallee() const;
     
     void setExecutableDuringCompilation(ExecutableBase*);
     ExecutableBase* executable();
@@ -215,7 +214,7 @@ public:
 
     void clearStub();
 
-    PolymorphicCallStubRoutine* stub()
+    PolymorphicCallStubRoutine* stub() const
     {
         return m_stub.get();
     }
@@ -322,14 +321,25 @@ public:
         return m_slowPathCount;
     }
 
-    void setCodeOrigin(CodeOrigin codeOrigin)
-    {
-        m_codeOrigin = codeOrigin;
-    }
-
     CodeOrigin codeOrigin()
     {
         return m_codeOrigin;
+    }
+
+    template<typename Functor>
+    void forEachDependentCell(const Functor& functor) const
+    {
+        if (isLinked()) {
+            if (stub())
+                stub()->forEachDependentCell(functor);
+            else {
+                functor(m_calleeOrCodeBlock.get());
+                if (isDirect())
+                    functor(m_lastSeenCalleeOrExecutable.get());
+            }
+        }
+        if (!isDirect() && haveLastSeenCallee())
+            functor(lastSeenCallee());
     }
 
     void visitWeak(VM&);

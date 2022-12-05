@@ -29,7 +29,7 @@
 #include <wtf/RetainPtr.h>
 
 #if USE(CFURLCONNECTION)
-#include <pal/spi/cf/CFNetworkSPI.h>
+#include <pal/spi/win/CFNetworkSPIWin.h>
 #endif
 
 OBJC_CLASS NSURLResponse;
@@ -39,30 +39,30 @@ namespace WebCore {
 class ResourceResponse : public ResourceResponseBase {
 public:
     ResourceResponse()
-        : m_initLevel(AllFields)
     {
+        m_initLevel = AllFields;
     }
 
 #if USE(CFURLCONNECTION)
     ResourceResponse(CFURLResponseRef cfResponse)
-        : m_initLevel(Uninitialized)
-        , m_cfResponse(cfResponse)
+        : m_cfResponse(cfResponse)
     {
+        m_initLevel = Uninitialized;
         m_isNull = !cfResponse;
     }
 #else
     ResourceResponse(NSURLResponse *nsResponse)
-        : m_initLevel(Uninitialized)
-        , m_nsResponse(nsResponse)
+        : m_nsResponse(nsResponse)
     {
+        m_initLevel = Uninitialized;
         m_isNull = !nsResponse;
     }
 #endif
 
     ResourceResponse(const URL& url, const String& mimeType, long long expectedLength, const String& textEncodingName)
         : ResourceResponseBase(url, mimeType, expectedLength, textEncodingName)
-        , m_initLevel(AllFields)
     {
+        m_initLevel = AllFields;
     }
 
 #if PLATFORM(COCOA)
@@ -105,8 +105,6 @@ private:
 #endif
 
     static bool platformCompare(const ResourceResponse& a, const ResourceResponse& b);
-
-    unsigned m_initLevel : 3;
 
 #if USE(QUICK_LOOK)
     bool m_isQuickLook { false };

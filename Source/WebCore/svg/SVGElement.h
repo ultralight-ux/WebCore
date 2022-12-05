@@ -23,7 +23,6 @@
 #pragma once
 
 #include "SVGAnimatedPropertyImpl.h"
-#include "SVGLangSpace.h"
 #include "SVGLocatable.h"
 #include "SVGNames.h"
 #include "SVGParsingError.h"
@@ -47,7 +46,7 @@ class SVGUseElement;
 
 void mapAttributeToCSSProperty(HashMap<AtomStringImpl*, CSSPropertyID>* propertyNameToIdMap, const QualifiedName& attrName);
 
-class SVGElement : public StyledElement, public SVGLangSpace, public SVGPropertyOwner {
+class SVGElement : public StyledElement, public SVGPropertyOwner {
     WTF_MAKE_ISO_ALLOCATED(SVGElement);
 public:
     bool isOutermostSVGSVGElement() const;
@@ -56,7 +55,6 @@ public:
     SVGElement* viewportElement() const;
 
     String title() const override;
-    RefPtr<DeprecatedCSSOMValue> getPresentationAttribute(const String& name);
     virtual bool supportsMarkers() const { return false; }
     bool hasRelativeLengths() const { return !m_elementsWithRelativeLengths.isEmpty(); }
     virtual bool needsPendingResourceHandling() const { return true; }
@@ -76,10 +74,9 @@ public:
 
     virtual void svgAttributeChanged(const QualifiedName&);
 
-    void sendSVGLoadEventIfPossible(bool sendParentLoadEvents = false);
-    void sendSVGLoadEventIfPossibleAsynchronously();
-    void svgLoadEventTimerFired();
-    virtual Timer* svgLoadEventTimer();
+    void sendLoadEventIfPossible();
+    void loadEventTimerFired();
+    virtual Timer* loadEventTimer();
 
     virtual AffineTransform* supplementalTransform() { return nullptr; }
 
@@ -101,7 +98,7 @@ public:
 
     void setCorrespondingElement(SVGElement*);
 
-    Optional<ElementStyle> resolveCustomStyle(const RenderStyle& parentStyle, const RenderStyle* shadowHostStyle) override;
+    Optional<Style::ElementStyle> resolveCustomStyle(const RenderStyle& parentStyle, const RenderStyle* shadowHostStyle) override;
 
     static QualifiedName animatableAttributeForName(const AtomString&);
 #ifndef NDEBUG
@@ -116,10 +113,8 @@ public:
 
     bool addEventListener(const AtomString& eventType, Ref<EventListener>&&, const AddEventListenerOptions&) override;
     bool removeEventListener(const AtomString& eventType, EventListener&, const ListenerOptions&) override;
-    bool hasFocusEventListeners() const;
 
     bool hasTagName(const SVGQualifiedName& name) const { return hasLocalName(name.localName()); }
-    int tabIndex() const override;
 
     void callClearTarget() { clearTarget(); }
 
@@ -146,6 +141,8 @@ public:
     RefPtr<SVGAttributeAnimator> createAnimator(const QualifiedName&, AnimationMode, CalcMode, bool isAccumulated, bool isAdditive);
     void animatorWillBeDeleted(const QualifiedName&);
 
+    const RenderStyle* computedStyle(PseudoId = PseudoId::None) final;
+
     // These are needed for the RenderTree, animation and DOM.
     String className() const { return m_className->currentValue(); }
     SVGAnimatedString& classNameAnimated() { return m_className; }
@@ -153,9 +150,6 @@ public:
 protected:
     SVGElement(const QualifiedName&, Document&);
     virtual ~SVGElement();
-
-    bool isMouseFocusable() const override;
-    bool supportsFocus() const override { return false; }
 
     bool rendererIsNeeded(const RenderStyle&) override;
     void parseAttribute(const QualifiedName&, const AtomString&) override;
@@ -172,6 +166,7 @@ protected:
     bool isPresentationAttribute(const QualifiedName&) const override;
     void collectStyleForPresentationAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) override;
     InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) override;
+    void didFinishInsertingNode() override;
     void removedFromAncestor(RemovalType, ContainerNode&) override;
     void childrenChanged(const ChildChange&) override;
     virtual bool selfHasRelativeLengths() const { return false; }
@@ -181,12 +176,10 @@ protected:
     void willRecalcStyle(Style::Change) override;
 
 private:
-    const RenderStyle* computedStyle(PseudoId = PseudoId::None) final;
-
     virtual void clearTarget() { }
 
     void buildPendingResourcesIfNeeded();
-    void accessKeyAction(bool sendMouseEvents) override;
+    bool accessKeyAction(bool sendMouseEvents) override;
 
 #ifndef NDEBUG
     virtual bool filterOutAnimatableAttribute(const QualifiedName&) const;
@@ -227,7 +220,7 @@ struct SVGAttributeHashTranslator {
             QualifiedNameComponents components = { nullAtom().impl(), key.localName().impl(), key.namespaceURI().impl() };
             return hashComponents(components);
         }
-        return DefaultHash<QualifiedName>::Hash::hash(key);
+        return DefaultHash<QualifiedName>::hash(key);
     }
     static bool equal(const QualifiedName& a, const QualifiedName& b) { return a.matches(b); }
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,7 +46,8 @@ NodeIdentifier HeapSnapshotBuilder::getNextObjectIdentifier() { return nextAvail
 void HeapSnapshotBuilder::resetNextAvailableObjectIdentifier() { HeapSnapshotBuilder::nextAvailableObjectIdentifier = 1; }
 
 HeapSnapshotBuilder::HeapSnapshotBuilder(HeapProfiler& profiler, SnapshotType type)
-    : m_profiler(profiler)
+    : HeapAnalyzer()
+    , m_profiler(profiler)
     , m_snapshotType(type)
 {
 }
@@ -65,20 +66,25 @@ void HeapSnapshotBuilder::buildSnapshot()
 
     PreventCollectionScope preventCollectionScope(m_profiler.vm().heap);
 
-    m_snapshot = std::make_unique<HeapSnapshot>(m_profiler.mostRecentSnapshot());
+    m_snapshot = makeUnique<HeapSnapshot>(m_profiler.mostRecentSnapshot());
     {
-        m_profiler.setActiveSnapshotBuilder(this);
+        ASSERT(!m_profiler.activeHeapAnalyzer());
+        m_profiler.setActiveHeapAnalyzer(this);
         m_profiler.vm().heap.collectNow(Sync, CollectionScope::Full);
-        m_profiler.setActiveSnapshotBuilder(nullptr);
+        m_profiler.setActiveHeapAnalyzer(nullptr);
     }
-    m_snapshot->finalize();
 
+    {
+        auto locker = holdLock(m_buildingNodeMutex);
+        m_appendedCells.clear();
+        m_snapshot->finalize();
+    }
     m_profiler.appendSnapshot(WTFMove(m_snapshot));
 }
 
-void HeapSnapshotBuilder::appendNode(JSCell* cell)
+void HeapSnapshotBuilder::analyzeNode(JSCell* cell)
 {
-    ASSERT(m_profiler.activeSnapshotBuilder() == this);
+    ASSERT(m_profiler.activeHeapAnalyzer() == this);
 
     ASSERT(m_profiler.vm().heap.isMarked(cell));
 
@@ -86,20 +92,23 @@ void HeapSnapshotBuilder::appendNode(JSCell* cell)
     if (previousSnapshotHasNodeForCell(cell, identifier))
         return;
 
-    std::lock_guard<Lock> lock(m_buildingNodeMutex);
+    auto locker = holdLock(m_buildingNodeMutex);
+    auto addResult = m_appendedCells.add(cell);
+    if (!addResult.isNewEntry)
+        return;
     m_snapshot->appendNode(HeapSnapshotNode(cell, getNextObjectIdentifier()));
 }
 
-void HeapSnapshotBuilder::appendEdge(JSCell* from, JSCell* to, SlotVisitor::RootMarkReason rootMarkReason)
+void HeapSnapshotBuilder::analyzeEdge(JSCell* from, JSCell* to, SlotVisitor::RootMarkReason rootMarkReason)
 {
-    ASSERT(m_profiler.activeSnapshotBuilder() == this);
+    ASSERT(m_profiler.activeHeapAnalyzer() == this);
     ASSERT(to);
 
     // Avoid trivial edges.
     if (from == to)
         return;
 
-    std::lock_guard<Lock> lock(m_buildingEdgeMutex);
+    auto locker = holdLock(m_buildingEdgeMutex);
 
     if (m_snapshotType == SnapshotType::GCDebuggingSnapshot && !from) {
         if (rootMarkReason == SlotVisitor::RootMarkReason::None && m_snapshotType == SnapshotType::GCDebuggingSnapshot)
@@ -113,32 +122,32 @@ void HeapSnapshotBuilder::appendEdge(JSCell* from, JSCell* to, SlotVisitor::Root
     m_edges.append(HeapSnapshotEdge(from, to));
 }
 
-void HeapSnapshotBuilder::appendPropertyNameEdge(JSCell* from, JSCell* to, UniquedStringImpl* propertyName)
+void HeapSnapshotBuilder::analyzePropertyNameEdge(JSCell* from, JSCell* to, UniquedStringImpl* propertyName)
 {
-    ASSERT(m_profiler.activeSnapshotBuilder() == this);
+    ASSERT(m_profiler.activeHeapAnalyzer() == this);
     ASSERT(to);
 
-    std::lock_guard<Lock> lock(m_buildingEdgeMutex);
+    auto locker = holdLock(m_buildingEdgeMutex);
 
     m_edges.append(HeapSnapshotEdge(from, to, EdgeType::Property, propertyName));
 }
 
-void HeapSnapshotBuilder::appendVariableNameEdge(JSCell* from, JSCell* to, UniquedStringImpl* variableName)
+void HeapSnapshotBuilder::analyzeVariableNameEdge(JSCell* from, JSCell* to, UniquedStringImpl* variableName)
 {
-    ASSERT(m_profiler.activeSnapshotBuilder() == this);
+    ASSERT(m_profiler.activeHeapAnalyzer() == this);
     ASSERT(to);
 
-    std::lock_guard<Lock> lock(m_buildingEdgeMutex);
+    auto locker = holdLock(m_buildingEdgeMutex);
 
     m_edges.append(HeapSnapshotEdge(from, to, EdgeType::Variable, variableName));
 }
 
-void HeapSnapshotBuilder::appendIndexEdge(JSCell* from, JSCell* to, uint32_t index)
+void HeapSnapshotBuilder::analyzeIndexEdge(JSCell* from, JSCell* to, uint32_t index)
 {
-    ASSERT(m_profiler.activeSnapshotBuilder() == this);
+    ASSERT(m_profiler.activeHeapAnalyzer() == this);
     ASSERT(to);
 
-    std::lock_guard<Lock> lock(m_buildingEdgeMutex);
+    auto locker = holdLock(m_buildingEdgeMutex);
 
     m_edges.append(HeapSnapshotEdge(from, to, index));
 }
@@ -147,6 +156,8 @@ void HeapSnapshotBuilder::setOpaqueRootReachabilityReasonForCell(JSCell* cell, c
 {
     if (!reason || !*reason || m_snapshotType != SnapshotType::GCDebuggingSnapshot)
         return;
+
+    auto locker = holdLock(m_buildingEdgeMutex);
 
     m_rootData.ensure(cell, [] () -> RootData {
         return { };
@@ -398,9 +409,8 @@ String HeapSnapshotBuilder::json(Function<bool (const HeapSnapshotNode&)> allowN
             // "Object" in snapshots and not get the name of the prototype's parent.
             JSObject* object = asObject(node.cell);
             if (JSGlobalObject* globalObject = object->globalObject(vm)) {
-                ExecState* exec = globalObject->globalExec();
-                PropertySlot slot(object, PropertySlot::InternalMethodType::VMInquiry);
-                if (!object->getOwnPropertySlot(object, exec, vm.propertyNames->constructor, slot))
+                PropertySlot slot(object, PropertySlot::InternalMethodType::VMInquiry, &vm);
+                if (!object->getOwnPropertySlot(object, globalObject, vm.propertyNames->constructor, slot))
                     className = JSObject::calculatedClassName(object);
             }
         }
@@ -410,9 +420,9 @@ String HeapSnapshotBuilder::json(Function<bool (const HeapSnapshotNode&)> allowN
             nextClassNameIndex++;
         unsigned classNameIndex = result.iterator->value;
 
-        void* wrappedAddress = 0;
+        void* wrappedAddress = nullptr;
         unsigned labelIndex = 0;
-        if (!node.cell->isString()) {
+        if (!node.cell->isString() && !node.cell->isHeapBigInt()) {
             Structure* structure = node.cell->structure(vm);
             if (!structure || !structure->globalObject())
                 flags |= static_cast<unsigned>(NodeFlags::Internal);
@@ -461,9 +471,9 @@ String HeapSnapshotBuilder::json(Function<bool (const HeapSnapshotNode&)> allowN
             json.append(',');
             json.appendNumber(labelIndex);
             json.appendLiteral(",\"0x");
-            appendUnsignedAsHex(reinterpret_cast<uintptr_t>(node.cell), json, Lowercase);
+            json.append(hex(reinterpret_cast<uintptr_t>(node.cell), Lowercase));
             json.appendLiteral("\",\"0x");
-            appendUnsignedAsHex(reinterpret_cast<uintptr_t>(wrappedAddress), json, Lowercase);
+            json.append(hex(reinterpret_cast<uintptr_t>(wrappedAddress), Lowercase));
             json.append('"');
         }
     };

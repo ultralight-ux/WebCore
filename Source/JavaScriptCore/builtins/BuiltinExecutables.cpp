@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,7 @@
 #include "BuiltinExecutables.h"
 
 #include "BuiltinNames.h"
-#include "JSCInlines.h"
+#include "JSCJSValueInlines.h"
 #include "Parser.h"
 #include <wtf/NeverDestroyed.h>
 
@@ -36,7 +36,7 @@ namespace JSC {
 
 BuiltinExecutables::BuiltinExecutables(VM& vm)
     : m_vm(vm)
-    , m_combinedSourceProvider(StringSourceProvider::create(StringImpl::createFromLiteral(s_JSCCombinedCode, s_JSCCombinedCodeLength), { }, URL()))
+    , m_combinedSourceProvider(StringSourceProvider::create(StringImpl::createFromLiteral(s_JSCCombinedCode, s_JSCCombinedCodeLength), { }, String()))
 {
 }
 
@@ -44,6 +44,7 @@ SourceCode BuiltinExecutables::defaultConstructorSourceCode(ConstructorKind cons
 {
     switch (constructorKind) {
     case ConstructorKind::None:
+    case ConstructorKind::Naked:
         break;
     case ConstructorKind::Base: {
         static NeverDestroyed<const String> baseConstructorCode(MAKE_STATIC_STRING_IMPL("(function () { })"));
@@ -58,30 +59,26 @@ SourceCode BuiltinExecutables::defaultConstructorSourceCode(ConstructorKind cons
     return SourceCode();
 }
 
-UnlinkedFunctionExecutable* BuiltinExecutables::createDefaultConstructor(ConstructorKind constructorKind, const Identifier& name)
+UnlinkedFunctionExecutable* BuiltinExecutables::createDefaultConstructor(ConstructorKind constructorKind, const Identifier& name, NeedsClassFieldInitializer needsClassFieldInitializer)
 {
     switch (constructorKind) {
     case ConstructorKind::None:
+    case ConstructorKind::Naked:
         break;
     case ConstructorKind::Base:
     case ConstructorKind::Extends:
-        return createExecutable(m_vm, defaultConstructorSourceCode(constructorKind), name, constructorKind, ConstructAbility::CanConstruct);
+        return createExecutable(m_vm, defaultConstructorSourceCode(constructorKind), name, constructorKind, ConstructAbility::CanConstruct, needsClassFieldInitializer);
     }
     ASSERT_NOT_REACHED();
     return nullptr;
 }
 
-UnlinkedFunctionExecutable* BuiltinExecutables::createBuiltinExecutable(const SourceCode& code, const Identifier& name, ConstructAbility constructAbility)
+UnlinkedFunctionExecutable* BuiltinExecutables::createBuiltinExecutable(const SourceCode& code, const Identifier& name, ConstructorKind constructorKind, ConstructAbility constructAbility)
 {
-    return createExecutable(m_vm, code, name, ConstructorKind::None, constructAbility);
+    return createExecutable(m_vm, code, name, constructorKind, constructAbility, NeedsClassFieldInitializer::No);
 }
 
-UnlinkedFunctionExecutable* createBuiltinExecutable(VM& vm, const SourceCode& code, const Identifier& name, ConstructAbility constructAbility)
-{
-    return BuiltinExecutables::createExecutable(vm, code, name, ConstructorKind::None, constructAbility);
-}
-
-UnlinkedFunctionExecutable* BuiltinExecutables::createExecutable(VM& vm, const SourceCode& source, const Identifier& name, ConstructorKind constructorKind, ConstructAbility constructAbility)
+UnlinkedFunctionExecutable* BuiltinExecutables::createExecutable(VM& vm, const SourceCode& source, const Identifier& name, ConstructorKind constructorKind, ConstructAbility constructAbility, NeedsClassFieldInitializer needsClassFieldInitializer)
 {
     // FIXME: Can we just make MetaData computation be constexpr and have the compiler do this for us?
     // https://bugs.webkit.org/show_bug.cgi?id=193272
@@ -182,7 +179,7 @@ UnlinkedFunctionExecutable* BuiltinExecutables::createExecutable(VM& vm, const S
     positionBeforeLastNewline.lineStartOffset = source.startOffset() + positionBeforeLastNewlineLineStartOffset;
 
     SourceCode newSource = source.subExpression(source.startOffset() + parametersStart, source.startOffset() + (view.length() - closeBraceOffsetFromEnd), 0, parametersStart);
-    bool isBuiltinDefaultClassConstructor = constructorKind != ConstructorKind::None;
+    bool isBuiltinDefaultClassConstructor = constructorKind != ConstructorKind::None && constructorKind != ConstructorKind::Naked;
     UnlinkedFunctionKind kind = isBuiltinDefaultClassConstructor ? UnlinkedNormalFunction : UnlinkedBuiltinFunction;
 
     SourceParseMode parseMode = isAsyncFunction ? SourceParseMode::AsyncFunctionMode : SourceParseMode::NormalFunctionMode;
@@ -208,12 +205,12 @@ UnlinkedFunctionExecutable* BuiltinExecutables::createExecutable(VM& vm, const S
     metadata.overrideName(name);
     metadata.setEndPosition(positionBeforeLastNewline);
 
-    if (!ASSERT_DISABLED || Options::validateBytecode()) {
+    if (UNLIKELY(ASSERT_ENABLED || Options::validateBytecode())) {
         JSTextPosition positionBeforeLastNewlineFromParser;
         ParserError error;
         JSParserBuiltinMode builtinMode = isBuiltinDefaultClassConstructor ? JSParserBuiltinMode::NotBuiltin : JSParserBuiltinMode::Builtin;
         std::unique_ptr<ProgramNode> program = parse<ProgramNode>(
-            &vm, source, Identifier(), builtinMode,
+            vm, source, Identifier(), builtinMode,
             JSParserStrictMode::NotStrict, JSParserScriptMode::Classic, SourceParseMode::ProgramMode, SuperBinding::NotNeeded, error,
             &positionBeforeLastNewlineFromParser, constructorKind);
 
@@ -254,7 +251,7 @@ UnlinkedFunctionExecutable* BuiltinExecutables::createExecutable(VM& vm, const S
         }
     }
 
-    UnlinkedFunctionExecutable* functionExecutable = UnlinkedFunctionExecutable::create(&vm, source, &metadata, kind, constructAbility, JSParserScriptMode::Classic, WTF::nullopt, DerivedContextType::None, isBuiltinDefaultClassConstructor);
+    UnlinkedFunctionExecutable* functionExecutable = UnlinkedFunctionExecutable::create(vm, source, &metadata, kind, constructAbility, JSParserScriptMode::Classic, WTF::nullopt, DerivedContextType::None, needsClassFieldInitializer, isBuiltinDefaultClassConstructor);
     return functionExecutable;
 }
 
@@ -278,8 +275,8 @@ UnlinkedFunctionExecutable* BuiltinExecutables::name##Executable() \
     if (!m_unlinkedExecutables[index]) {\
         Identifier executableName = m_vm.propertyNames->builtinNames().functionName##PublicName();\
         if (overrideName)\
-            executableName = Identifier::fromString(&m_vm, overrideName);\
-        m_unlinkedExecutables[index] = createBuiltinExecutable(name##Source(), executableName, s_##name##ConstructAbility);\
+            executableName = Identifier::fromString(m_vm, overrideName);\
+        m_unlinkedExecutables[index] = createBuiltinExecutable(name##Source(), executableName, s_##name##ConstructorKind, s_##name##ConstructAbility);\
     }\
     return m_unlinkedExecutables[index];\
 }

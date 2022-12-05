@@ -25,13 +25,12 @@
 #include "config.h"
 #include "PointerCaptureController.h"
 
-#if ENABLE(POINTER_EVENTS)
-
 #include "Document.h"
 #include "Element.h"
 #include "EventHandler.h"
 #include "EventNames.h"
 #include "EventTarget.h"
+#include "HitTestResult.h"
 #include "Page.h"
 #include "PointerEvent.h"
 #include <wtf/CheckedArithmetic.h>
@@ -145,11 +144,12 @@ void PointerCaptureController::elementWasRemoved(Element& element)
             // When the pointer capture target override is no longer connected, the pending pointer capture target override and pointer capture target
             // override nodes SHOULD be cleared and also a PointerEvent named lostpointercapture corresponding to the captured pointer SHOULD be fired
             // at the document.
-            ASSERT(WTF::isInBounds<PointerID>(keyAndValue.key));
+            ASSERT(isInBounds<PointerID>(keyAndValue.key));
             auto pointerId = static_cast<PointerID>(keyAndValue.key);
             auto pointerType = capturingData.pointerType;
             releasePointerCapture(&element, pointerId);
-            element.document().enqueueDocumentEvent(PointerEvent::create(eventNames().lostpointercaptureEvent, pointerId, pointerType));
+            // FIXME: Spec doesn't specify which task source to use.
+            element.document().queueTaskToDispatchEvent(TaskSource::UserInteraction, PointerEvent::create(eventNames().lostpointercaptureEvent, pointerId, pointerType));
             return;
         }
     }
@@ -158,11 +158,10 @@ void PointerCaptureController::elementWasRemoved(Element& element)
 void PointerCaptureController::reset()
 {
     m_activePointerIdsToCapturingData.clear();
-#if !ENABLE(TOUCH_EVENTS)
+
     CapturingData capturingData;
     capturingData.pointerType = PointerEvent::mousePointerType();
     m_activePointerIdsToCapturingData.add(mousePointerID, capturingData);
-#endif
 }
 
 void PointerCaptureController::touchWithIdentifierWasRemoved(PointerID pointerId)
@@ -302,6 +301,13 @@ void PointerCaptureController::dispatchEventForTouchAtIndex(EventTarget& target,
 
 RefPtr<PointerEvent> PointerCaptureController::pointerEventForMouseEvent(const MouseEvent& mouseEvent)
 {
+    // If we already have known touches then we cannot dispatch a mouse event,
+    // for instance in the case of a long press to initiate a system drag.
+    for (auto& capturingData : m_activePointerIdsToCapturingData.values()) {
+        if (capturingData.pointerType != PointerEvent::mousePointerType())
+            return nullptr;
+    }
+
     const auto& type = mouseEvent.type();
     const auto& names = eventNames();
 
@@ -461,9 +467,12 @@ void PointerCaptureController::cancelPointer(PointerID pointerId, const IntPoint
     capturingData.previousTarget = nullptr;
 #endif
 
-    auto& target = capturingData.targetOverride;
-    if (!target)
-        target = m_page.mainFrame().eventHandler().hitTestResultAtPoint(documentPoint, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowChildFrameContent).innerNonSharedElement();
+    auto target = [&]() -> RefPtr<Element> {
+        if (capturingData.targetOverride)
+            return capturingData.targetOverride;
+        constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
+        return m_page.mainFrame().eventHandler().hitTestResultAtPoint(documentPoint, hitType).innerNonSharedElement();
+    }();
 
     if (!target)
         return;
@@ -497,8 +506,9 @@ void PointerCaptureController::processPendingPointerCapture(PointerID pointerId)
     // https://w3c.github.io/pointerevents/#process-pending-pointer-capture
     // 1. If the pointer capture target override for this pointer is set and is not equal to the pending pointer capture target override,
     // then fire a pointer event named lostpointercapture at the pointer capture target override node.
-    if (capturingData.targetOverride && capturingData.targetOverride->isConnected() && capturingData.targetOverride != pendingTargetOverride) {
-        capturingData.targetOverride->dispatchEvent(PointerEvent::createForPointerCapture(eventNames().lostpointercaptureEvent, pointerId, capturingData.isPrimary, capturingData.pointerType));
+    if (capturingData.targetOverride && capturingData.targetOverride != pendingTargetOverride) {
+        if (capturingData.targetOverride->isConnected())
+            capturingData.targetOverride->dispatchEvent(PointerEvent::createForPointerCapture(eventNames().lostpointercaptureEvent, pointerId, capturingData.isPrimary, capturingData.pointerType));
         if (capturingData.pointerType == PointerEvent::mousePointerType()) {
             if (auto* frame = capturingData.targetOverride->document().frame())
                 frame->eventHandler().pointerCaptureElementDidChange(nullptr);
@@ -523,5 +533,3 @@ void PointerCaptureController::processPendingPointerCapture(PointerID pointerId)
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(POINTER_EVENTS)

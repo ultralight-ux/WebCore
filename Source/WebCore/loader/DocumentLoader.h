@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2020 Apple Inc. All rights reserved.
  * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,7 @@
 
 #include "CachedRawResourceClient.h"
 #include "CachedResourceHandle.h"
+#include "ContentFilterClient.h"
 #include "ContentSecurityPolicyClient.h"
 #include "DeviceOrientationOrMotionPermissionState.h"
 #include "DocumentIdentifier.h"
@@ -56,10 +57,6 @@
 
 #if ENABLE(APPLICATION_MANIFEST)
 #include "ApplicationManifest.h"
-#endif
-
-#if HAVE(RUNLOOP_TIMER)
-#include <wtf/RunLoopTimer.h>
 #endif
 
 #if PLATFORM(COCOA)
@@ -137,18 +134,32 @@ enum class LegacyOverflowScrollingTouchPolicy : uint8_t {
     Enable,
 };
 
+enum class MouseEventPolicy : uint8_t {
+    Default,
+#if ENABLE(IOS_TOUCH_EVENTS)
+    SynthesizeTouchEvents,
+#endif
+};
+
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(DocumentLoader);
 class DocumentLoader
     : public RefCounted<DocumentLoader>
     , public FrameDestructionObserver
     , public ContentSecurityPolicyClient
+#if ENABLE(CONTENT_FILTERING)
+    , public ContentFilterClient
+#endif
     , private CachedRawResourceClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(DocumentLoader);
     friend class ContentFilter;
 public:
     static Ref<DocumentLoader> create(const ResourceRequest& request, const SubstituteData& data)
     {
         return adoptRef(*new DocumentLoader(request, data));
     }
+
+    WEBCORE_EXPORT static DocumentLoader* fromTemporaryDocumentIdentifier(DocumentIdentifier);
+
     WEBCORE_EXPORT virtual ~DocumentLoader();
 
     void attachToFrame(Frame&);
@@ -233,7 +244,7 @@ public:
 
     WEBCORE_EXPORT Vector<Ref<ArchiveResource>> subresources() const;
 
-#ifndef NDEBUG
+#if ASSERT_ENABLED
     bool isSubstituteLoadPending(ResourceLoader*) const;
 #endif
     void cancelPendingSubstituteLoad(ResourceLoader*);   
@@ -259,16 +270,14 @@ public:
     // item were created. This allows WebKit to link history items reflecting
     // redirects into a chain from start to finish.
     String clientRedirectSourceForHistory() const { return m_clientRedirectSourceForHistory; } // null if no client redirect occurred.
-    String clientRedirectDestinationForHistory() const { return urlForHistory(); }
+    String clientRedirectDestinationForHistory() const { return urlForHistory().string(); }
     void setClientRedirectSourceForHistory(const String& clientRedirectSourceForHistory) { m_clientRedirectSourceForHistory = clientRedirectSourceForHistory; }
     
-    String serverRedirectSourceForHistory() const { return (urlForHistory() == url() || url() == WTF::blankURL()) ? String() : urlForHistory().string(); } // null if no server redirect occurred.
-    String serverRedirectDestinationForHistory() const { return url(); }
+    String serverRedirectSourceForHistory() const { return (urlForHistory() == url() || url() == aboutBlankURL()) ? String() : urlForHistory().string(); } // null if no server redirect occurred.
+    String serverRedirectDestinationForHistory() const { return url().string(); }
 
     bool didCreateGlobalHistoryEntry() const { return m_didCreateGlobalHistoryEntry; }
     void setDidCreateGlobalHistoryEntry(bool didCreateGlobalHistoryEntry) { m_didCreateGlobalHistoryEntry = didCreateGlobalHistoryEntry; }
-
-    bool subresourceLoadersArePageCacheAcceptable() const { return m_subresourceLoadersArePageCacheAcceptable; }
 
     void setDefersLoading(bool);
     void setMainResourceDataBufferingPolicy(DataBufferingPolicy);
@@ -298,8 +307,8 @@ public:
     void setCustomUserAgent(const String& customUserAgent) { m_customUserAgent = customUserAgent; }
     const String& customUserAgent() const { return m_customUserAgent; }
 
-    void setCustomJavaScriptUserAgentAsSiteSpecificQuirks(const String& customUserAgent) { m_customJavaScriptUserAgentAsSiteSpecificQuirks = customUserAgent; }
-    const String& customJavaScriptUserAgentAsSiteSpecificQuirks() const { return m_customJavaScriptUserAgentAsSiteSpecificQuirks; }
+    void setCustomUserAgentAsSiteSpecificQuirks(const String& customUserAgent) { m_customUserAgentAsSiteSpecificQuirks = customUserAgent; }
+    const String& customUserAgentAsSiteSpecificQuirks() const { return m_customUserAgentAsSiteSpecificQuirks; }
 
     void setCustomNavigatorPlatform(const String& customNavigatorPlatform) { m_customNavigatorPlatform = customNavigatorPlatform; }
     const String& customNavigatorPlatform() const { return m_customNavigatorPlatform; }
@@ -321,6 +330,9 @@ public:
 
     LegacyOverflowScrollingTouchPolicy legacyOverflowScrollingTouchPolicy() const { return m_legacyOverflowScrollingTouchPolicy; }
     void setLegacyOverflowScrollingTouchPolicy(LegacyOverflowScrollingTouchPolicy policy) { m_legacyOverflowScrollingTouchPolicy = policy; }
+
+    WEBCORE_EXPORT MouseEventPolicy mouseEventPolicy() const;
+    void setMouseEventPolicy(MouseEventPolicy policy) { m_mouseEventPolicy = policy; }
 
     void addSubresourceLoader(ResourceLoader*);
     void removeSubresourceLoader(LoadCompletionType, ResourceLoader*);
@@ -351,7 +363,7 @@ public:
     URL documentURL() const;
 
 #if USE(QUICK_LOOK)
-    void setPreviewConverter(std::unique_ptr<PreviewConverter>&&);
+    void setPreviewConverter(RefPtr<PreviewConverter>&&);
     PreviewConverter* previewConverter() const;
 #endif
 
@@ -364,7 +376,9 @@ public:
     ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicyToPropagate() const;
 
 #if ENABLE(CONTENT_FILTERING)
-    ContentFilter* contentFilter() const;
+    ContentFilter* contentFilter() const { return m_contentFilter.get(); }
+    void ref() const final { RefCounted<DocumentLoader>::ref(); }
+    void deref() const final { RefCounted<DocumentLoader>::deref(); }
 #endif
 
     bool isAlwaysOnLoggingAllowed() const;
@@ -386,13 +400,22 @@ public:
     void setAllowsWebArchiveForMainFrame(bool allowsWebArchiveForMainFrame) { m_allowsWebArchiveForMainFrame = allowsWebArchiveForMainFrame; }
     bool allowsWebArchiveForMainFrame() const { return m_allowsWebArchiveForMainFrame; }
 
-    void setDownloadAttribute(const String& attribute) { m_downloadAttribute = attribute; }
-    const String& downloadAttribute() const { return m_downloadAttribute; }
+    void setAllowsDataURLsForMainFrame(bool allowsDataURLsForMainFrame) { m_allowsDataURLsForMainFrame = allowsDataURLsForMainFrame; }
+    bool allowsDataURLsForMainFrame() const { return m_allowsDataURLsForMainFrame; }
+
+    const AtomString& downloadAttribute() const { return m_triggeringAction.downloadAttribute(); }
 
     WEBCORE_EXPORT void applyPoliciesToSettings();
 
     void setAllowContentChangeObserverQuirk(bool allow) { m_allowContentChangeObserverQuirk = allow; }
     bool allowContentChangeObserverQuirk() const { return m_allowContentChangeObserverQuirk; }
+
+    void setIdempotentModeAutosizingOnlyHonorsPercentages(bool idempotentModeAutosizingOnlyHonorsPercentages) { m_idempotentModeAutosizingOnlyHonorsPercentages = idempotentModeAutosizingOnlyHonorsPercentages; }
+    bool idempotentModeAutosizingOnlyHonorsPercentages() const { return m_idempotentModeAutosizingOnlyHonorsPercentages; }
+
+#if ENABLE(SERVICE_WORKER)
+    WEBCORE_EXPORT bool setControllingServiceWorkerRegistration(ServiceWorkerRegistrationData&&);
+#endif
 
 protected:
     WEBCORE_EXPORT DocumentLoader(const ResourceRequest&, const SubstituteData&);
@@ -402,12 +425,16 @@ protected:
     bool m_deferMainResourceDataLoad { true };
 
 private:
+    class DataLoadToken : public CanMakeWeakPtr<DataLoadToken> {
+    public:
+        void clear() { weakPtrFactory().revokeAll(); }
+    };
+
     Document* document() const;
 
 #if ENABLE(SERVICE_WORKER)
     void matchRegistration(const URL&, CompletionHandler<void(Optional<ServiceWorkerRegistrationData>&&)>&&);
 #endif
-    void registerTemporaryServiceWorkerClient(const URL&);
     void unregisterTemporaryServiceWorkerClient();
 
     void loadMainResource(ResourceRequest&&);
@@ -433,9 +460,21 @@ private:
     WEBCORE_EXPORT void redirectReceived(CachedResource&, ResourceRequest&&, const ResourceResponse&, CompletionHandler<void(ResourceRequest&&)>&&) override;
     WEBCORE_EXPORT void responseReceived(CachedResource&, const ResourceResponse&, CompletionHandler<void()>&&) override;
     WEBCORE_EXPORT void dataReceived(CachedResource&, const char* data, int length) override;
-    WEBCORE_EXPORT void notifyFinished(CachedResource&) override;
+    WEBCORE_EXPORT void notifyFinished(CachedResource&, const NetworkLoadMetrics&) override;
+#if USE(QUICK_LOOK)
+    WEBCORE_EXPORT void previewResponseReceived(CachedResource&, const ResourceResponse&) override;
+#endif
 
     void responseReceived(const ResourceResponse&, CompletionHandler<void()>&&);
+
+#if ENABLE(CONTENT_FILTERING)
+    // ContentFilterClient
+    WEBCORE_EXPORT void dataReceivedThroughContentFilter(const char*, int) final;
+    WEBCORE_EXPORT ResourceError contentFilterDidBlock(ContentFilterUnblockHandler, String&& unblockRequestDeniedScript) final;
+    WEBCORE_EXPORT void cancelMainResourceLoadForContentFilter(const ResourceError&) final;
+    WEBCORE_EXPORT void handleProvisionalLoadFailureFromContentFilter(const URL& blockedPageURL, SubstituteData&) final;
+#endif
+
     void dataReceived(const char* data, int length);
 
     bool maybeLoadEmpty();
@@ -446,21 +485,12 @@ private:
     bool tryLoadingRequestFromApplicationCache();
     bool tryLoadingSubstituteData();
     bool tryLoadingRedirectRequestFromApplicationCache(const ResourceRequest&);
-#if ENABLE(SERVICE_WORKER)
-    void restartLoadingDueToServiceWorkerRegistrationChange(ResourceRequest&&, Optional<ServiceWorkerRegistrationData>&&);
-#endif
     void continueAfterContentPolicy(PolicyAction);
 
     void stopLoadingForPolicyChange();
     ResourceError interruptedForPolicyChangeError() const;
 
-#if HAVE(RUNLOOP_TIMER)
-    typedef RunLoopTimer<DocumentLoader> DocumentLoaderTimer;
-#else
-    typedef Timer DocumentLoaderTimer;
-#endif
     void handleSubstituteDataLoadNow();
-    void startDataLoadTimer();
 
     void deliverSubstituteResourcesAfterDelay();
     void substituteResourceDeliveryTimerFired();
@@ -482,6 +512,7 @@ private:
     WEBCORE_EXPORT void enqueueSecurityPolicyViolationEvent(SecurityPolicyViolationEvent::Init&&) final;
 
     bool disallowWebArchive() const;
+    bool disallowDataRequest() const;
 
     Ref<CachedResourceLoader> m_cachedResourceLoader;
 
@@ -538,7 +569,7 @@ private:
 
     // We retain all the received responses so we can play back the
     // WebResourceLoadDelegate messages if the item is loaded from the
-    // page cache.
+    // back/forward cache.
     Vector<ResourceResponse> m_responses;
     bool m_stopRecordingResponses { false };
     
@@ -564,7 +595,7 @@ private:
     MonotonicTime m_timeOfLastDataReceived;
     unsigned long m_identifierForLoadWithoutResourceLoader { 0 };
 
-    DocumentLoaderTimer m_dataLoadTimer;
+    DataLoadToken m_dataLoadToken;
     bool m_waitingForContentPolicy { false };
     bool m_waitingForNavigationPolicy { false };
 
@@ -578,7 +609,6 @@ private:
 
     Vector<CustomHeaderFields> m_customHeaderFields;
     
-    bool m_subresourceLoadersArePageCacheAcceptable { false };
     ShouldOpenExternalURLsPolicy m_shouldOpenExternalURLsPolicy { ShouldOpenExternalURLsPolicy::ShouldNotAllow };
 
     std::unique_ptr<ApplicationCacheHost> m_applicationCacheHost;
@@ -588,7 +618,7 @@ private:
 #endif
 
 #if USE(QUICK_LOOK)
-    std::unique_ptr<PreviewConverter> m_previewConverter;
+    RefPtr<PreviewConverter> m_previewConverter;
 #endif
 
 #if ENABLE(CONTENT_EXTENSIONS)
@@ -596,8 +626,9 @@ private:
     HashMap<String, Vector<std::pair<String, uint32_t>>> m_pendingContentExtensionDisplayNoneSelectors;
 #endif
     String m_customUserAgent;
-    String m_customJavaScriptUserAgentAsSiteSpecificQuirks;
+    String m_customUserAgentAsSiteSpecificQuirks;
     bool m_allowContentChangeObserverQuirk { false };
+    bool m_idempotentModeAutosizingOnlyHonorsPercentages { false };
     String m_customNavigatorPlatform;
     bool m_userContentExtensionsEnabled { true };
 #if ENABLE(DEVICE_ORIENTATION)
@@ -610,22 +641,19 @@ private:
     MediaSourcePolicy m_mediaSourcePolicy { MediaSourcePolicy::Default };
     SimulatedMouseEventsDispatchPolicy m_simulatedMouseEventsDispatchPolicy { SimulatedMouseEventsDispatchPolicy::Default };
     LegacyOverflowScrollingTouchPolicy m_legacyOverflowScrollingTouchPolicy { LegacyOverflowScrollingTouchPolicy::Default };
+    MouseEventPolicy m_mouseEventPolicy { MouseEventPolicy::Default };
 
 #if ENABLE(SERVICE_WORKER)
     Optional<ServiceWorkerRegistrationData> m_serviceWorkerRegistrationData;
-    struct TemporaryServiceWorkerClient {
-        DocumentIdentifier documentIdentifier;
-        PAL::SessionID sessionID;
-    };
-    Optional<TemporaryServiceWorkerClient> m_temporaryServiceWorkerClient;
+    Optional<DocumentIdentifier> m_temporaryServiceWorkerClient;
 #endif
 
-#ifndef NDEBUG
+#if ASSERT_ENABLED
     bool m_hasEverBeenAttached { false };
 #endif
 
     bool m_allowsWebArchiveForMainFrame { false };
-    String m_downloadAttribute;
+    bool m_allowsDataURLsForMainFrame { false };
 };
 
 inline void DocumentLoader::recordMemoryCacheLoadForFutureClientNotification(const ResourceRequest& request)
@@ -702,15 +730,6 @@ inline ApplicationCacheHost* DocumentLoader::applicationCacheHostUnlessBeingDest
     return m_applicationCacheHost.get();
 }
 
-#if ENABLE(CONTENT_FILTERING)
-
-inline ContentFilter* DocumentLoader::contentFilter() const
-{
-    return m_contentFilter.get();
-}
-
-#endif
-
 inline void DocumentLoader::didTellClientAboutLoad(const String& url)
 {
 #if !PLATFORM(COCOA)
@@ -722,4 +741,18 @@ inline void DocumentLoader::didTellClientAboutLoad(const String& url)
         m_resourcesClientKnowsAbout.add(url);
 }
 
-}
+} // namespace WebCore
+
+namespace WTF {
+
+template<> struct EnumTraits<WebCore::MouseEventPolicy> {
+    using values = EnumValues<
+        WebCore::MouseEventPolicy,
+        WebCore::MouseEventPolicy::Default
+#if ENABLE(IOS_TOUCH_EVENTS)
+        , WebCore::MouseEventPolicy::SynthesizeTouchEvents
+#endif
+    >;
+};
+
+} // namespace WTF

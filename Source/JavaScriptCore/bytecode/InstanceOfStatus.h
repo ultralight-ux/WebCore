@@ -36,7 +36,8 @@ class AccessCase;
 class CodeBlock;
 class StructureStubInfo;
 
-class InstanceOfStatus {
+class InstanceOfStatus final {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     enum State {
         // It's uncached so we have no information.
@@ -78,10 +79,10 @@ public:
         RELEASE_ASSERT_NOT_REACHED();
     }
     
-    static InstanceOfStatus computeFor(CodeBlock*, ICStatusMap&, unsigned bytecodeIndex);
+    static InstanceOfStatus computeFor(CodeBlock*, ICStatusMap&, BytecodeIndex);
     
 #if ENABLE(DFG_JIT)
-    static InstanceOfStatus computeForStubInfo(const ConcurrentJSLocker&, StructureStubInfo*);
+    static InstanceOfStatus computeForStubInfo(const ConcurrentJSLocker&, VM&, StructureStubInfo*);
 #endif
     
     State state() const { return m_state; }

@@ -75,17 +75,37 @@ static inline Element* parentOrPseudoHostElement(const RenderElement& renderer)
     return renderer.element() ? renderer.element()->parentElement() : nullptr;
 }
 
+static Element* previousSiblingOrParentElement(const Element& element)
+{
+    if (auto* previous = ElementTraversal::pseudoAwarePreviousSibling(element)) {
+        while (previous && !previous->renderer())
+            previous = ElementTraversal::pseudoAwarePreviousSibling(*previous);
+
+        if (previous)
+            return previous;
+    }
+
+    if (is<PseudoElement>(element)) {
+        auto* hostElement = downcast<PseudoElement>(element).hostElement();
+        ASSERT(hostElement);
+        if (hostElement->renderer())
+            return hostElement;
+        return previousSiblingOrParentElement(*hostElement);
+    }
+    
+    auto* parent = element.parentElement();
+    if (parent && !parent->renderer())
+        parent = previousSiblingOrParentElement(*parent);
+    return parent;
+}
+
 // This function processes the renderer tree in the order of the DOM tree
 // including pseudo elements as defined in CSS 2.1.
 static RenderElement* previousSiblingOrParent(const RenderElement& renderer)
 {
     ASSERT(renderer.element());
-    Element* previous = ElementTraversal::pseudoAwarePreviousSibling(*renderer.element());
-    while (previous && !previous->renderer())
-        previous = ElementTraversal::pseudoAwarePreviousSibling(*previous);
-    if (previous)
-        return previous->renderer();
-    previous = parentOrPseudoHostElement(renderer);
+
+    auto* previous = previousSiblingOrParentElement(*renderer.element());
     return previous ? previous->renderer() : nullptr;
 }
 
@@ -312,7 +332,7 @@ static CounterNode* makeCounterNode(RenderElement& renderer, const AtomString& i
     if (place.parent)
         place.parent->insertAfter(newNode, place.previousSibling.get(), identifier);
 
-    maps.add(&renderer, std::make_unique<CounterMap>()).iterator->value->add(identifier, newNode.copyRef());
+    maps.add(&renderer, makeUnique<CounterMap>()).iterator->value->add(identifier, newNode.copyRef());
     renderer.setHasCounterNodeMap(true);
 
     if (newNode->parent())
@@ -416,14 +436,12 @@ void RenderCounter::updateCounter()
 
 void RenderCounter::computePreferredLogicalWidths(float lead)
 {
-#ifndef NDEBUG
     // FIXME: We shouldn't be modifying the tree in computePreferredLogicalWidths.
     // Instead, we should properly hook the appropriate changes in the DOM and modify
     // the render tree then. When that's done, we also won't need to override
     // computePreferredLogicalWidths at all.
     // https://bugs.webkit.org/show_bug.cgi?id=104829
-    SetLayoutNeededForbiddenScope layoutForbiddenScope(this, false);
-#endif
+    SetLayoutNeededForbiddenScope layoutForbiddenScope(*this, false);
 
     setRenderedText(originalText());
 

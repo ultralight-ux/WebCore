@@ -44,6 +44,8 @@ ServiceWorkerAgent::ServiceWorkerAgent(WorkerAgentContext& context)
     ASSERT(context.workerGlobalScope.isContextThread());
 }
 
+ServiceWorkerAgent::~ServiceWorkerAgent() = default;
+
 void ServiceWorkerAgent::didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*)
 {
 }
@@ -57,7 +59,7 @@ void ServiceWorkerAgent::getInitializationInfo(ErrorString&, RefPtr<Inspector::P
     info = Inspector::Protocol::ServiceWorker::Configuration::create()
         .setTargetId(m_serviceWorkerGlobalScope.identifier())
         .setSecurityOrigin(m_serviceWorkerGlobalScope.securityOrigin()->toRawString())
-        .setUrl(m_serviceWorkerGlobalScope.thread().contextData().scriptURL)
+        .setUrl(m_serviceWorkerGlobalScope.thread().contextData().scriptURL.string())
         .setContent(m_serviceWorkerGlobalScope.thread().contextData().script)
         .release();
 }

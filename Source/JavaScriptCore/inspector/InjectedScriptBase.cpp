@@ -33,14 +33,11 @@
 #include "InjectedScriptBase.h"
 
 #include "DebuggerEvalEnabler.h"
-#include "JSCInlines.h"
 #include "JSGlobalObject.h"
 #include "JSLock.h"
 #include "JSNativeStdFunction.h"
-#include "NativeStdFunctionCell.h"
 #include "ScriptFunctionCall.h"
 #include <wtf/JSONValues.h>
-#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace Inspector {
 
@@ -62,7 +59,7 @@ InjectedScriptBase::~InjectedScriptBase()
 
 bool InjectedScriptBase::hasAccessToInspectedScriptState() const
 {
-    return m_environment && m_environment->canAccessInspectedScriptState(m_injectedScriptObject.scriptState());
+    return m_environment && m_environment->canAccessInspectedScriptState(m_injectedScriptObject.globalObject());
 }
 
 const Deprecated::ScriptObject& InjectedScriptBase::injectedScriptObject() const
@@ -70,11 +67,11 @@ const Deprecated::ScriptObject& InjectedScriptBase::injectedScriptObject() const
     return m_injectedScriptObject;
 }
 
-JSC::JSValue InjectedScriptBase::callFunctionWithEvalEnabled(Deprecated::ScriptFunctionCall& function, bool& hadException) const
+Expected<JSC::JSValue, NakedPtr<JSC::Exception>> InjectedScriptBase::callFunctionWithEvalEnabled(Deprecated::ScriptFunctionCall& function) const
 {
-    JSC::ExecState* scriptState = m_injectedScriptObject.scriptState();
-    JSC::DebuggerEvalEnabler evalEnabler(scriptState);
-    return function.call(hadException);
+    JSC::JSGlobalObject* globalObject = m_injectedScriptObject.globalObject();
+    JSC::DebuggerEvalEnabler evalEnabler(globalObject);
+    return function.call();
 }
 
 Ref<JSON::Value> InjectedScriptBase::makeCall(Deprecated::ScriptFunctionCall& function)
@@ -82,14 +79,21 @@ Ref<JSON::Value> InjectedScriptBase::makeCall(Deprecated::ScriptFunctionCall& fu
     if (hasNoValue() || !hasAccessToInspectedScriptState())
         return JSON::Value::null();
 
-    bool hadException = false;
-    auto resultJSValue = callFunctionWithEvalEnabled(function, hadException);
+    auto globalObject = m_injectedScriptObject.globalObject();
 
-    ASSERT(!hadException);
-    if (hadException)
-        return JSON::Value::create("Exception while making a call.");
+    auto result = callFunctionWithEvalEnabled(function);
+    if (!result) {
+        auto& error = result.error();
+        ASSERT(error);
 
-    RefPtr<JSON::Value> resultJSONValue = toInspectorValue(*m_injectedScriptObject.scriptState(), resultJSValue);
+        return JSON::Value::create(error->value().toWTFString(globalObject));
+    }
+
+    auto value = result.value();
+    if (!value)
+        return JSON::Value::null();
+
+    auto resultJSONValue = toInspectorValue(globalObject, value);
     if (!resultJSONValue)
         return JSON::Value::create(makeString("Object has too long reference chain (must not be longer than ", JSON::Value::maxDepth, ')'));
 
@@ -108,18 +112,17 @@ void InjectedScriptBase::makeAsyncCall(Deprecated::ScriptFunctionCall& function,
         return;
     }
 
-    auto* scriptState = m_injectedScriptObject.scriptState();
-    JSC::VM& vm = scriptState->vm();
+    auto* globalObject = m_injectedScriptObject.globalObject();
+    JSC::VM& vm = globalObject->vm();
 
-    JSC::JSNativeStdFunction* jsFunction;
-
+    JSC::JSNativeStdFunction* jsFunction = nullptr;
     {
         JSC::JSLockHolder locker(vm);
 
-        jsFunction = JSC::JSNativeStdFunction::create(vm, scriptState->lexicalGlobalObject(), 1, String(), [&, callback = WTFMove(callback)] (JSC::ExecState* exec) {
-            if (!exec)
+        jsFunction = JSC::JSNativeStdFunction::create(vm, globalObject, 1, String(), [&, callback = WTFMove(callback)] (JSC::JSGlobalObject* globalObject, JSC::CallFrame* callFrame) {
+            if (!callFrame)
                 checkAsyncCallResult(JSON::Value::create("Exception while making a call."), callback);
-            else if (auto resultJSONValue = toInspectorValue(*exec, exec->argument(0)))
+            else if (auto resultJSONValue = toInspectorValue(globalObject, callFrame->argument(0)))
                 checkAsyncCallResult(resultJSONValue, callback);
             else
                 checkAsyncCallResult(JSON::Value::create(makeString("Object has too long reference chain (must not be longer than ", JSON::Value::maxDepth, ')')), callback);
@@ -129,15 +132,14 @@ void InjectedScriptBase::makeAsyncCall(Deprecated::ScriptFunctionCall& function,
 
     function.appendArgument(JSC::JSValue(jsFunction));
 
-    bool hadException = false;
-    auto resultJSValue = callFunctionWithEvalEnabled(function, hadException);
-    ASSERT_UNUSED(resultJSValue, resultJSValue.isUndefined());
+    auto result = callFunctionWithEvalEnabled(function);
+    ASSERT_UNUSED(result, result.value().isUndefined());
 
-    ASSERT(!hadException);
-    if (hadException) {
+    ASSERT(result);
+    if (!result) {
         // Since `callback` is moved above, we can't call it if there's an exception while trying to
         // execute the `JSNativeStdFunction` inside InjectedScriptSource.js.
-        jsFunction->nativeStdFunctionCell()->function()(nullptr);
+        jsFunction->function()(globalObject, nullptr);
     }
 }
 

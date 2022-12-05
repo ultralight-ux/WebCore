@@ -23,12 +23,16 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "FileSizeFormatter.h"
+#import "config.h"
+#import "FileSizeFormatter.h"
 
 #import "NSFileSizeFormatterSPI.h"
+
+namespace PAL {
 
 String fileSizeDescription(uint64_t size)
 {
     return NSLocalizedFileSizeDescription(size, 0, 0);
 }
+
+} // namespace PAL

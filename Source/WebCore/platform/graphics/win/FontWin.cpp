@@ -33,9 +33,7 @@
 #include "LayoutRect.h"
 #include "Logging.h"
 #include "TextRun.h"
-#include "UniscribeController.h"
 #include <wtf/MathExtras.h>
-
 
 namespace WebCore {
 
@@ -47,70 +45,6 @@ bool FontCascade::canReturnFallbackFontsForComplexText()
 bool FontCascade::canExpandAroundIdeographsInComplexText()
 {
     return false;
-}
-
-void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, unsigned from, unsigned to) const
-{
-    UniscribeController it(this, run);
-    it.advance(from);
-    float beforeWidth = it.runWidthSoFar();
-    it.advance(to);
-    float afterWidth = it.runWidthSoFar();
-
-    if (run.rtl()) {
-        it.advance(run.length());
-        selectionRect.move(it.runWidthSoFar() - afterWidth, 0);
-    } else
-        selectionRect.move(beforeWidth, 0);
-    selectionRect.setWidth(afterWidth - beforeWidth);
-}
-
-float FontCascade::getGlyphsAndAdvancesForComplexText(const TextRun& run, unsigned from, unsigned to, GlyphBuffer& glyphBuffer, ForTextEmphasisOrNot forTextEmphasis) const
-{
-    if (forTextEmphasis) {
-        // FIXME: Add forTextEmphasis paremeter to UniscribeController and use it.
-        LOG_ERROR("Not implemented for text emphasis.");
-        return 0;
-    }
-
-    UniscribeController controller(this, run);
-    controller.advance(from);
-    float beforeWidth = controller.runWidthSoFar();
-    controller.advance(to, &glyphBuffer);
-
-    if (glyphBuffer.isEmpty())
-        return 0;
-
-    float afterWidth = controller.runWidthSoFar();
-
-    if (run.rtl()) {
-        controller.advance(run.length());
-        return controller.runWidthSoFar() - afterWidth;
-    }
-    return beforeWidth;
-}
-
-float FontCascade::floatWidthForComplexText(const TextRun& run, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
-{
-    UniscribeController controller(this, run, fallbackFonts);
-    controller.advance(run.length());
-    if (glyphOverflow) {
-        glyphOverflow->top = std::max<int>(glyphOverflow->top, ceilf(-controller.minGlyphBoundingBoxY()) - (glyphOverflow->computeBounds ? 0 : fontMetrics().ascent()));
-        glyphOverflow->bottom = std::max<int>(glyphOverflow->bottom, ceilf(controller.maxGlyphBoundingBoxY()) - (glyphOverflow->computeBounds ? 0  : fontMetrics().descent()));
-        glyphOverflow->left = std::max<int>(0, ceilf(-controller.minGlyphBoundingBoxX()));
-        glyphOverflow->right = std::max<int>(0, ceilf(controller.maxGlyphBoundingBoxX() - controller.runWidthSoFar()));
-    }
-    return controller.runWidthSoFar();
-}
-
-int FontCascade::offsetForPositionForComplexText(const TextRun& run, float xFloat, bool includePartialGlyphs) const
-{
-    // FIXME: This truncation is not a problem for HTML, but only affects SVG, which passes floating-point numbers
-    // to FontCascade::offsetForPosition(). Bug http://webkit.org/b/40673 tracks fixing this problem.
-    int x = static_cast<int>(xFloat);
-
-    UniscribeController controller(this, run);
-    return controller.offsetForPosition(x, includePartialGlyphs);
 }
 
 }

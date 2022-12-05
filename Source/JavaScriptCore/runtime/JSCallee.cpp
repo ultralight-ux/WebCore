@@ -26,10 +26,7 @@
 #include "config.h"
 #include "JSCallee.h"
 
-#include "GetterSetter.h"
 #include "JSCInlines.h"
-#include "JSGlobalObject.h"
-#include "StackVisitor.h"
 
 namespace JSC {
 
@@ -39,7 +36,6 @@ JSCallee::JSCallee(VM& vm, JSGlobalObject* globalObject, Structure* structure)
     : Base(vm, structure)
     , m_scope(vm, this, globalObject)
 {
-    RELEASE_ASSERT(!isLargeAllocation());
 }
 
 JSCallee::JSCallee(VM& vm, JSScope* scope, Structure* structure)

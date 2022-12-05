@@ -46,6 +46,12 @@ typedef CF_OPTIONS(uint32_t, CTFontTransformOptions) {
     kCTFontTransformApplyPositioning = (1 << 1)
 };
 
+typedef CF_OPTIONS(CFOptionFlags, CTFontShapeOptions) {
+    kCTFontShapeWithKerning = (1 << 0),
+    kCTFontShapeWithClusterComposition = (1 << 1),
+    kCTFontShapeRightToLeft = (1 << 2),
+};
+
 typedef CF_OPTIONS(uint32_t, CTFontDescriptorOptions) {
     kCTFontDescriptorOptionSystemUIFont = 1 << 1,
     kCTFontDescriptorOptionPreferAppleSystemFont = kCTFontOptionsPreferSystemFont
@@ -71,10 +77,6 @@ typedef CF_ENUM(uint8_t, CTCompositionLanguage)
     kCTCompositionLanguageTraditionalChinese,
 };
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED == 101400) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED == 120000)
-extern const CFStringRef kCTTypesetterOptionAllowUnboundedLayout;
-#endif
-
 #endif
 
 WTF_EXTERN_C_BEGIN
@@ -96,6 +98,10 @@ extern const CFStringRef kCTFontCSSFamilyMonospace;
 extern const CFStringRef kCTFontCSSFamilySystemUI;
 
 bool CTFontTransformGlyphs(CTFontRef, CGGlyph glyphs[], CGSize advances[], CFIndex count, CTFontTransformOptions);
+#if USE(CTFONTSHAPEGLYPHS)
+// CTFontShapeOptions isn't defined on Mojave.
+CGSize CTFontShapeGlyphs(CTFontRef, CGGlyph glyphs[], CGSize advances[], CGPoint origins[], CFIndex indexes[], const UniChar chars[], CFIndex count, CTFontShapeOptions, CFStringRef language, void (^handler)(CFRange, CGGlyph**, CGSize**, CGPoint**, CFIndex**));
+#endif
 
 CGSize CTRunGetInitialAdvance(CTRunRef);
 CTLineRef CTLineCreateWithUniCharProvider(CTUniCharProviderCallback, CTUniCharDisposeCallback, void* refCon);
@@ -104,6 +110,7 @@ CTTypesetterRef CTTypesetterCreateWithUniCharProviderAndOptions(CTUniCharProvide
 bool CTFontGetVerticalGlyphsForCharacters(CTFontRef, const UniChar characters[], CGGlyph glyphs[], CFIndex count);
 void CTFontGetUnsummedAdvancesForGlyphsAndStyle(CTFontRef, CTFontOrientation, CGFontRenderingStyle, const CGGlyph[], CGSize advances[], CFIndex count);
 CTFontDescriptorRef CTFontDescriptorCreateForCSSFamily(CFStringRef cssFamily, CFStringRef language);
+bool CTFontGetGlyphsForCharacterRange(CTFontRef, CGGlyph glyphs[], CFRange);
 
 CTFontDescriptorRef CTFontDescriptorCreateForUIType(CTFontUIFontType, CGFloat size, CFStringRef language);
 CTFontDescriptorRef CTFontDescriptorCreateWithTextStyle(CFStringRef style, CFStringRef size, CFStringRef language);
@@ -132,9 +139,7 @@ extern const CFStringRef kCTFrameMaximumNumberOfLinesAttributeName;
 bool CTFontDescriptorIsSystemUIFont(CTFontDescriptorRef);
 CTFontRef CTFontCreateForCSS(CFStringRef name, uint16_t weight, CTFontSymbolicTraits, CGFloat size);
 CTFontRef CTFontCreateForCharactersWithLanguage(CTFontRef currentFont, const UTF16Char *characters, CFIndex length, CFStringRef language, CFIndex *coveredLength);
-#if HAVE(CTFONTCREATEFORCHARACTERSWITHLANGUAGEANDOPTION)
 CTFontRef CTFontCreateForCharactersWithLanguageAndOption(CTFontRef currentFont, const UTF16Char *characters, CFIndex length, CFStringRef language, CTFontFallbackOption option, CFIndex *coveredLength);
-#endif
 CTFontRef CTFontCopyPhysicalFont(CTFontRef);
 
 extern const CFStringRef kCTUIFontTextStyleShortHeadline;
@@ -152,6 +157,9 @@ extern const CFStringRef kCTUIFontTextStyleCaption1;
 extern const CFStringRef kCTUIFontTextStyleCaption2;
 
 extern const CFStringRef kCTFontDescriptorTextStyleEmphasized;
+
+extern const CFStringRef kCTFontContentSizeCategoryL;
+extern const CFStringRef kCTFontContentSizeCategoryXXXL;
 
 extern const CGFloat kCTFontWeightUltraLight;
 extern const CGFloat kCTFontWeightThin;

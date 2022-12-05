@@ -120,7 +120,10 @@ static CFDictionaryRef animationPropertiesFromProperties(CFDictionaryRef propert
 
     if (auto animationProperties = (CFDictionaryRef)CFDictionaryGetValue(properties, kCGImagePropertyGIFDictionary))
         return animationProperties;
-
+#if HAVE(WEBP)
+    if (auto animationProperties = (CFDictionaryRef)CFDictionaryGetValue(properties, kCGImagePropertyWebPDictionary))
+        return animationProperties;
+#endif
     if (auto animationProperties = (CFDictionaryRef)CFDictionaryGetValue(properties, kCGImagePropertyPNGDictionary))
         return animationProperties;
 
@@ -156,7 +159,7 @@ static ImageOrientation orientationFromProperties(CFDictionaryRef imagePropertie
     ASSERT(imageProperties);
     CFNumberRef orientationProperty = (CFNumberRef)CFDictionaryGetValue(imageProperties, kCGImagePropertyOrientation);
     if (!orientationProperty)
-        return ImageOrientation();
+        return ImageOrientation::None;
     
     int exifValue;
     CFNumberGetValue(orientationProperty, kCFNumberIntType, &exifValue);
@@ -288,9 +291,19 @@ RepetitionCount ImageDecoderCG::repetitionCount() const
     CFNumberGetValue(num, kCFNumberIntType, &loopCount);
 
     // A property with value 0 means loop forever.
-    // For loopCount > 0, the specs is not clear about it. But it looks the meaning
+    if (!loopCount)
+        return RepetitionCountInfinite;
+
+#if HAVE(CGIMAGESOURCE_WITH_ACCURATE_LOOP_COUNT)
+    return loopCount;
+#else
+    if (!isGIFImageType(uti()))
+        return loopCount;
+
+    // For GIF and loopCount > 0, the specs is not clear about it. But it looks the meaning
     // is: play once + loop loopCount which is equivalent to play loopCount + 1.
-    return loopCount ? loopCount + 1 : RepetitionCountInfinite;
+    return loopCount + 1;
+#endif
 }
 
 Optional<IntPoint> ImageDecoderCG::hotSpot() const
@@ -350,7 +363,7 @@ ImageOrientation ImageDecoderCG::frameOrientationAtIndex(size_t index) const
 {
     RetainPtr<CFDictionaryRef> properties = adoptCF(CGImageSourceCopyPropertiesAtIndex(m_nativeDecoder.get(), index, imageSourceOptions().get()));
     if (!properties)
-        return ImageOrientation();
+        return ImageOrientation::None;
     
     return orientationFromProperties(properties.get());
 }

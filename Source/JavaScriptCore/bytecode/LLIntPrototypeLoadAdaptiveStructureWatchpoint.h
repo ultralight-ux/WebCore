@@ -26,6 +26,7 @@
 #pragma once
 
 #include "BytecodeStructs.h"
+#include "CodeBlock.h"
 #include "ObjectPropertyCondition.h"
 #include "PackedCellPtr.h"
 #include "Watchpoint.h"
@@ -38,7 +39,7 @@ public:
 
     void install(VM&);
 
-    static void clearLLIntGetByIdCache(OpGetById::Metadata&);
+    static void clearLLIntGetByIdCache(GetByIdModeMetadata&);
 
     const ObjectPropertyCondition& key() const { return m_key; }
 

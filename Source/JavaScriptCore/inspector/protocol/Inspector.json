@@ -1,6 +1,7 @@
 {
     "domain": "Inspector",
-    "availability": ["javascript", "web"],
+    "debuggableTypes": ["itml", "javascript", "page", "web-page"],
+    "targetTypes": ["itml", "javascript", "page"],
     "commands": [
         {
             "name": "enable",
@@ -32,6 +33,7 @@
         {
             "name": "activateExtraDomains",
             "description": "Fired when the backend has alternate domains that need to be activated.",
+            "condition": "defined(ENABLE_INSPECTOR_ALTERNATE_DISPATCHERS) && ENABLE_INSPECTOR_ALTERNATE_DISPATCHERS",
             "parameters": [
                 { "name": "domains", "type": "array", "items": { "type": "string" }, "description": "Domain names that need activation" }
             ]

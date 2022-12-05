@@ -32,7 +32,6 @@
 #include "HTMLNames.h"
 #include "MediaList.h"
 #include "MediaQueryParser.h"
-#include "RuntimeEnabledFeatures.h"
 #include "ScriptableDocumentParser.h"
 #include "ShadowRoot.h"
 #include "StyleScope.h"
@@ -121,9 +120,9 @@ void HTMLStyleElement::childrenChanged(const ChildChange& change)
     m_styleSheetOwner.childrenChanged(*this);
 }
 
-void HTMLStyleElement::dispatchPendingLoadEvents()
+void HTMLStyleElement::dispatchPendingLoadEvents(Page* page)
 {
-    styleLoadEventSender().dispatchPendingEvents();
+    styleLoadEventSender().dispatchPendingEvents(page);
 }
 
 void HTMLStyleElement::dispatchPendingEvent(StyleEventSender* eventSender)

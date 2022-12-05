@@ -36,6 +36,7 @@ namespace WebCore {
 
 class DOMTokenList;
 class HTMLLinkElement;
+class Page;
 struct MediaQueryParserContext;
 
 template<typename T> class EventSender;
@@ -48,7 +49,7 @@ public:
     virtual ~HTMLLinkElement();
 
     URL href() const;
-    const AtomString& rel() const;
+    WEBCORE_EXPORT const AtomString& rel() const;
 
     String target() const final;
 
@@ -70,13 +71,19 @@ public:
     WEBCORE_EXPORT String as() const;
 
     void dispatchPendingEvent(LinkEventSender*);
-    static void dispatchPendingLoadEvents();
+    static void dispatchPendingLoadEvents(Page*);
 
     WEBCORE_EXPORT DOMTokenList& relList();
 
 #if ENABLE(APPLICATION_MANIFEST)
     bool isApplicationManifest() const { return m_relAttribute.isApplicationManifest; }
 #endif
+
+    void allowPrefetchLoadAndErrorForTesting() { m_allowPrefetchLoadAndErrorForTesting = true; }
+
+    void setReferrerPolicyForBindings(const AtomString&);
+    String referrerPolicyForBindings() const;
+    ReferrerPolicy referrerPolicy() const;
 
 private:
     void parseAttribute(const QualifiedName&, const AtomString&) final;
@@ -116,7 +123,7 @@ private:
 
     void finishParsingChildren() final;
 
-    enum PendingSheetType { Unknown, ActiveSheet, InactiveSheet };
+    enum PendingSheetType : uint8_t { Unknown, ActiveSheet, InactiveSheet };
     void addPendingSheet(PendingSheetType);
 
     void removePendingSheet();
@@ -125,7 +132,7 @@ private:
     Style::Scope* m_styleScope { nullptr };
     CachedResourceHandle<CachedCSSStyleSheet> m_cachedSheet;
     RefPtr<CSSStyleSheet> m_sheet;
-    enum DisabledState {
+    enum DisabledState : uint8_t {
         Unset,
         EnabledViaScript,
         Disabled
@@ -133,19 +140,18 @@ private:
 
     String m_type;
     String m_media;
+    String m_integrityMetadataForPendingSheetRequest;
     std::unique_ptr<DOMTokenList> m_sizes;
+    std::unique_ptr<DOMTokenList> m_relList;
     DisabledState m_disabledState;
     LinkRelAttribute m_relAttribute;
-    bool m_loading;
-    bool m_createdByParser;
-    bool m_firedLoad;
-    bool m_loadedResource;
-    bool m_isHandlingBeforeLoad { false };
-
+    bool m_loading : 1;
+    bool m_createdByParser : 1;
+    bool m_firedLoad : 1;
+    bool m_loadedResource : 1;
+    bool m_isHandlingBeforeLoad : 1;
+    bool m_allowPrefetchLoadAndErrorForTesting : 1;
     PendingSheetType m_pendingSheetType;
-    String m_integrityMetadataForPendingSheetRequest;
-
-    std::unique_ptr<DOMTokenList> m_relList;
 };
 
 }

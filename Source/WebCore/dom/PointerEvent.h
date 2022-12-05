@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(POINTER_EVENTS)
-
 #include "EventNames.h"
 #include "MouseEvent.h"
 #include "Node.h"
@@ -40,6 +38,7 @@
 namespace WebCore {
 
 class PointerEvent final : public MouseEvent {
+    WTF_MAKE_ISO_ALLOCATED(PointerEvent);
 public:
     struct Init : MouseEventInit {
         PointerID pointerId { mousePointerID };
@@ -143,5 +142,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_EVENT(PointerEvent)
-
-#endif // ENABLE(POINTER_EVENTS)

@@ -24,7 +24,7 @@
 namespace WebCore {
 
 // FIMXE: Why can't named constructors be used with workers?
-template<typename JSClass> class JSDOMNamedConstructor : public JSDOMConstructorWithDocument {
+template<typename JSClass> class JSDOMNamedConstructor final : public JSDOMConstructorWithDocument {
 public:
     using Base = JSDOMConstructorWithDocument;
 
@@ -43,12 +43,12 @@ private:
     }
 
     void finishCreation(JSC::VM&, JSDOMGlobalObject&);
-    static JSC::ConstructType getConstructData(JSC::JSCell*, JSC::ConstructData&);
+    static JSC::CallData getConstructData(JSC::JSCell*);
 
     // Usually defined for each specialization class.
     void initializeProperties(JSC::VM&, JSDOMGlobalObject&) { }
     // Must be defined for each specialization class.
-    static JSC::EncodedJSValue JSC_HOST_CALL construct(JSC::ExecState*);
+    static JSC::EncodedJSValue JSC_HOST_CALL construct(JSC::JSGlobalObject*, JSC::CallFrame*);
 };
 
 template<typename JSClass> inline JSDOMNamedConstructor<JSClass>* JSDOMNamedConstructor<JSClass>::create(JSC::VM& vm, JSC::Structure* structure, JSDOMGlobalObject& globalObject)
@@ -70,10 +70,12 @@ template<typename JSClass> inline void JSDOMNamedConstructor<JSClass>::finishCre
     initializeProperties(vm, globalObject);
 }
 
-template<typename JSClass> inline JSC::ConstructType JSDOMNamedConstructor<JSClass>::getConstructData(JSC::JSCell*, JSC::ConstructData& constructData)
+template<typename JSClass> inline JSC::CallData JSDOMNamedConstructor<JSClass>::getConstructData(JSC::JSCell*)
 {
+    JSC::CallData constructData;
+    constructData.type = JSC::CallData::Type::Native;
     constructData.native.function = construct;
-    return JSC::ConstructType::Host;
+    return constructData;
 }
 
 } // namespace WebCore

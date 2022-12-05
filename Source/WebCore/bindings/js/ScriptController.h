@@ -23,10 +23,12 @@
 
 #include "FrameLoaderTypes.h"
 #include "JSWindowProxy.h"
+#include "SerializedScriptValue.h"
 #include "WindowProxy.h"
 #include <JavaScriptCore/JSBase.h>
 #include <JavaScriptCore/Strong.h>
 #include <wtf/Forward.h>
+#include <wtf/Optional.h>
 #include <wtf/RefPtr.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/TextPosition.h>
@@ -40,7 +42,7 @@ OBJC_CLASS WebScriptObject;
 struct NPObject;
 
 namespace JSC {
-class ExecState;
+class CallFrame;
 class JSGlobalObject;
 class JSInternalPromise;
 class JSModuleRecord;
@@ -62,13 +64,19 @@ class ModuleFetchParameters;
 class ScriptSourceCode;
 class SecurityOrigin;
 class Widget;
+
+enum class RunAsAsyncFunction : bool;
+
 struct ExceptionDetails;
+struct RunJavaScriptParameters;
 
 enum ReasonForCallingCanExecuteScripts {
     AboutToCreateEventListener,
     AboutToExecuteScript,
     NotAboutToExecuteScript
 };
+
+using ValueOrException = Expected<JSC::JSValue, ExceptionDetails>;
 
 class ScriptController : public CanMakeWeakPtr<ScriptController> {
     WTF_MAKE_FAST_ALLOCATED;
@@ -79,7 +87,8 @@ public:
     explicit ScriptController(Frame&);
     ~ScriptController();
 
-    WEBCORE_EXPORT static Ref<DOMWrapperWorld> createWorld();
+    enum class WorldType { User, Internal };
+    WEBCORE_EXPORT static Ref<DOMWrapperWorld> createWorld(const String& name, WorldType = WorldType::Internal);
 
     JSDOMWindow* globalObject(DOMWrapperWorld& world)
     {
@@ -88,22 +97,22 @@ public:
 
     static void getAllWorlds(Vector<Ref<DOMWrapperWorld>>&);
 
-    JSC::JSValue executeScript(const ScriptSourceCode&, ExceptionDetails* = nullptr);
-    WEBCORE_EXPORT JSC::JSValue executeScript(const String& script, bool forceUserGesture = false, ExceptionDetails* = nullptr);
-    JSC::JSValue executeScriptInWorld(DOMWrapperWorld&, const String& script, bool forceUserGesture = false, ExceptionDetails* = nullptr);
-    WEBCORE_EXPORT JSC::JSValue executeUserAgentScriptInWorld(DOMWrapperWorld&, const String& script, bool forceUserGesture, ExceptionDetails* = nullptr);
+    using ResolveFunction = CompletionHandler<void(ValueOrException)>;
 
-    bool shouldAllowUserAgentScripts(Document&) const;
+    WEBCORE_EXPORT JSC::JSValue executeScriptIgnoringException(const String& script, bool forceUserGesture = false);
+    WEBCORE_EXPORT JSC::JSValue executeScriptInWorldIgnoringException(DOMWrapperWorld&, const String& script, bool forceUserGesture = false);
+    WEBCORE_EXPORT JSC::JSValue executeUserAgentScriptInWorldIgnoringException(DOMWrapperWorld&, const String& script, bool forceUserGesture);
+    WEBCORE_EXPORT ValueOrException executeUserAgentScriptInWorld(DOMWrapperWorld&, const String& script, bool forceUserGesture);
+    WEBCORE_EXPORT void executeAsynchronousUserAgentScriptInWorld(DOMWrapperWorld&, RunJavaScriptParameters&&, ResolveFunction&&);
+    JSC::JSValue evaluateIgnoringException(const ScriptSourceCode&);
+    JSC::JSValue evaluateInWorldIgnoringException(const ScriptSourceCode&, DOMWrapperWorld&);
 
-    // Returns true if argument is a JavaScript URL.
-    bool executeIfJavaScriptURL(const URL&, ShouldReplaceDocumentIfJavaScriptURL shouldReplaceDocumentIfJavaScriptURL = ReplaceDocumentIfJavaScriptURL);
+    Expected<void, ExceptionDetails> shouldAllowUserAgentScripts(Document&) const;
 
-    // This function must be called from the main thread. It is safe to call it repeatedly.
-    // Darwin is an exception to this rule: it is OK to call this function from any thread, even reentrantly.
-    static void initializeThreading();
+    // This asserts that URL argument is a JavaScript URL.
+    void executeJavaScriptURL(const URL&, RefPtr<SecurityOrigin> = nullptr, ShouldReplaceDocumentIfJavaScriptURL = ReplaceDocumentIfJavaScriptURL);
 
-    JSC::JSValue evaluate(const ScriptSourceCode&, ExceptionDetails* = nullptr);
-    JSC::JSValue evaluateInWorld(const ScriptSourceCode&, DOMWrapperWorld&, ExceptionDetails* = nullptr);
+    static void initializeMainThread();
 
     void loadModuleScriptInWorld(LoadableModuleScript&, const String& moduleName, Ref<ModuleFetchParameters>&&, DOMWrapperWorld&);
     void loadModuleScript(LoadableModuleScript&, const String& moduleName, Ref<ModuleFetchParameters>&&);
@@ -129,7 +138,7 @@ public:
     void setPaused(bool b) { m_paused = b; }
     bool isPaused() const { return m_paused; }
 
-    const String* sourceURL() const { return m_sourceURL; } // 0 if we are not evaluating any script
+    const URL* sourceURL() const { return m_sourceURL; } // nullptr if we are not evaluating any script
 
     void updateDocument();
 
@@ -148,7 +157,7 @@ public:
 
     WEBCORE_EXPORT Ref<JSC::Bindings::RootObject> createRootObject(void* nativeHandle);
 
-    void collectIsolatedContexts(Vector<std::pair<JSC::ExecState*, SecurityOrigin*>>&);
+    void collectIsolatedContexts(Vector<std::pair<JSC::JSGlobalObject*, SecurityOrigin*>>&);
 
 #if PLATFORM(COCOA)
     WEBCORE_EXPORT WebScriptObject* windowScriptObject();
@@ -166,6 +175,11 @@ public:
     bool willReplaceWithResultOfExecutingJavascriptURL() const { return m_willReplaceWithResultOfExecutingJavascriptURL; }
 
 private:
+    ValueOrException executeUserAgentScriptInWorldInternal(DOMWrapperWorld&, RunJavaScriptParameters&&);
+    ValueOrException executeScriptInWorld(DOMWrapperWorld&, RunJavaScriptParameters&&);
+    ValueOrException evaluateInWorld(const ScriptSourceCode&, DOMWrapperWorld&);
+    ValueOrException callInWorld(RunJavaScriptParameters&&, DOMWrapperWorld&);
+    
     void setupModuleScriptHandlers(LoadableModuleScript&, JSC::JSInternalPromise&, DOMWrapperWorld&);
 
     void disconnectPlatformScriptObjects();
@@ -174,7 +188,7 @@ private:
     WEBCORE_EXPORT JSWindowProxy& jsWindowProxy(DOMWrapperWorld&);
 
     Frame& m_frame;
-    const String* m_sourceURL;
+    const URL* m_sourceURL { nullptr };
 
     bool m_paused;
     bool m_willReplaceWithResultOfExecutingJavascriptURL { false };

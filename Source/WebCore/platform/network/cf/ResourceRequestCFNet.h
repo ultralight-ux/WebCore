@@ -25,9 +25,15 @@
 
 #pragma once
 
+#include "HTTPHeaderMap.h"
 #include "ResourceLoadPriority.h"
 #include "ResourceRequestBase.h"
+
+#if USE(CFURLCONNECTION)
+#include <pal/spi/win/CFNetworkSPIWin.h>
+#elif PLATFORM(COCOA)
 #include <pal/spi/cf/CFNetworkSPI.h>
+#endif
 
 namespace WebCore {
 
@@ -40,17 +46,17 @@ CFURLRequestRef cfURLRequest(const ResourceRequest&);
 
 inline ResourceLoadPriority toResourceLoadPriority(CFURLRequestPriority priority)
 {
+    // FIXME: switch VeryLow back to 0 priority when CFNetwork fixes <rdar://problem/56621205>
     switch (priority) {
     case -1:
-    case 0:
         return ResourceLoadPriority::VeryLow;
-    case 1:
+    case 0:
         return ResourceLoadPriority::Low;
-    case 2:
+    case 1:
         return ResourceLoadPriority::Medium;
-    case 3:
+    case 2:
         return ResourceLoadPriority::High;
-    case 4:
+    case 3:
         return ResourceLoadPriority::VeryHigh;
     default:
         ASSERT_NOT_REACHED();
@@ -60,21 +66,32 @@ inline ResourceLoadPriority toResourceLoadPriority(CFURLRequestPriority priority
 
 inline CFURLRequestPriority toPlatformRequestPriority(ResourceLoadPriority priority)
 {
+    // FIXME: switch VeryLow back to 0 priority when CFNetwork fixes <rdar://problem/56621205>
     switch (priority) {
     case ResourceLoadPriority::VeryLow:
-        return 0;
+        return -1;
     case ResourceLoadPriority::Low:
-        return 1;
+        return 0;
     case ResourceLoadPriority::Medium:
-        return 2;
+        return 1;
     case ResourceLoadPriority::High:
-        return 3;
+        return 2;
     case ResourceLoadPriority::VeryHigh:
-        return 4;
+        return 3;
     }
 
     ASSERT_NOT_REACHED();
     return 0;
+}
+
+inline RetainPtr<CFStringRef> httpHeaderValueUsingSuitableEncoding(HTTPHeaderMap::const_iterator::KeyValue header)
+{
+    if (header.keyAsHTTPHeaderName && *header.keyAsHTTPHeaderName == HTTPHeaderName::LastEventID && !header.value.isAllASCII()) {
+        auto utf8Value = header.value.utf8();
+        // Constructing a string with the UTF-8 bytes but claiming that it’s Latin-1 is the way to get CFNetwork to put those UTF-8 bytes on the wire.
+        return adoptCF(CFStringCreateWithBytes(nullptr, reinterpret_cast<const UInt8*>(utf8Value.data()), utf8Value.length(), kCFStringEncodingISOLatin1, false));
+    }
+    return header.value.createCFString();
 }
 
 } // namespace WebCore

@@ -27,67 +27,64 @@
 #include "config.h"
 #include "IteratorOperations.h"
 
-#include "CatchScope.h"
-#include "Error.h"
 #include "JSCInlines.h"
 #include "ObjectConstructor.h"
 
 namespace JSC {
 
-JSValue iteratorNext(ExecState* exec, IterationRecord iterationRecord, JSValue argument)
+JSValue iteratorNext(JSGlobalObject* globalObject, IterationRecord iterationRecord, JSValue argument)
 {
-    VM& vm = exec->vm();
+    VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     JSValue iterator = iterationRecord.iterator;
     JSValue nextFunction = iterationRecord.nextMethod;
 
-    CallData nextFunctionCallData;
-    CallType nextFunctionCallType = getCallData(vm, nextFunction, nextFunctionCallData);
-    if (nextFunctionCallType == CallType::None)
-        return throwTypeError(exec, scope);
+    auto nextFunctionCallData = getCallData(vm, nextFunction);
+    if (nextFunctionCallData.type == CallData::Type::None)
+        return throwTypeError(globalObject, scope);
 
     MarkedArgumentBuffer nextFunctionArguments;
     if (!argument.isEmpty())
         nextFunctionArguments.append(argument);
     ASSERT(!nextFunctionArguments.hasOverflowed());
-    JSValue result = call(exec, nextFunction, nextFunctionCallType, nextFunctionCallData, iterator, nextFunctionArguments);
+    JSValue result = call(globalObject, nextFunction, nextFunctionCallData, iterator, nextFunctionArguments);
     RETURN_IF_EXCEPTION(scope, JSValue());
 
     if (!result.isObject())
-        return throwTypeError(exec, scope, "Iterator result interface is not an object."_s);
+        return throwTypeError(globalObject, scope, "Iterator result interface is not an object."_s);
 
     return result;
 }
 
-JSValue iteratorValue(ExecState* exec, JSValue iterResult)
+JSValue iteratorValue(JSGlobalObject* globalObject, JSValue iterResult)
 {
-    return iterResult.get(exec, exec->vm().propertyNames->value);
+    return iterResult.get(globalObject, globalObject->vm().propertyNames->value);
 }
 
-bool iteratorComplete(ExecState* exec, JSValue iterResult)
+bool iteratorComplete(JSGlobalObject* globalObject, JSValue iterResult)
 {
-    JSValue done = iterResult.get(exec, exec->vm().propertyNames->done);
-    return done.toBoolean(exec);
+    JSValue done = iterResult.get(globalObject, globalObject->vm().propertyNames->done);
+    return done.toBoolean(globalObject);
 }
 
-JSValue iteratorStep(ExecState* exec, IterationRecord iterationRecord)
+JSValue iteratorStep(JSGlobalObject* globalObject, IterationRecord iterationRecord)
 {
-    VM& vm = exec->vm();
+    VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSValue result = iteratorNext(exec, iterationRecord);
+    JSValue result = iteratorNext(globalObject, iterationRecord);
     RETURN_IF_EXCEPTION(scope, JSValue());
-    bool done = iteratorComplete(exec, result);
+    bool done = iteratorComplete(globalObject, result);
     RETURN_IF_EXCEPTION(scope, JSValue());
     if (done)
         return jsBoolean(false);
     return result;
 }
 
-void iteratorClose(ExecState* exec, IterationRecord iterationRecord)
+void iteratorClose(JSGlobalObject* globalObject, IterationRecord iterationRecord)
 {
-    VM& vm = exec->vm();
+    VM& vm = globalObject->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     auto catchScope = DECLARE_CATCH_SCOPE(vm);
 
@@ -96,44 +93,42 @@ void iteratorClose(ExecState* exec, IterationRecord iterationRecord)
         exception = catchScope.exception();
         catchScope.clearException();
     }
-    JSValue returnFunction = iterationRecord.iterator.get(exec, vm.propertyNames->returnKeyword);
-    RETURN_IF_EXCEPTION(throwScope, void());
 
-    if (returnFunction.isUndefined()) {
+    JSValue returnFunction = iterationRecord.iterator.get(globalObject, vm.propertyNames->returnKeyword);
+    if (UNLIKELY(throwScope.exception()) || returnFunction.isUndefinedOrNull()) {
         if (exception)
-            throwException(exec, throwScope, exception);
+            throwException(globalObject, throwScope, exception);
         return;
     }
 
-    CallData returnFunctionCallData;
-    CallType returnFunctionCallType = getCallData(vm, returnFunction, returnFunctionCallData);
-    if (returnFunctionCallType == CallType::None) {
+    auto returnFunctionCallData = getCallData(vm, returnFunction);
+    if (returnFunctionCallData.type == CallData::Type::None) {
         if (exception)
-            throwException(exec, throwScope, exception);
+            throwException(globalObject, throwScope, exception);
         else
-            throwTypeError(exec, throwScope);
+            throwTypeError(globalObject, throwScope);
         return;
     }
 
     MarkedArgumentBuffer returnFunctionArguments;
     ASSERT(!returnFunctionArguments.hasOverflowed());
-    JSValue innerResult = call(exec, returnFunction, returnFunctionCallType, returnFunctionCallData, iterationRecord.iterator, returnFunctionArguments);
+    JSValue innerResult = call(globalObject, returnFunction, returnFunctionCallData, iterationRecord.iterator, returnFunctionArguments);
 
     if (exception) {
-        throwException(exec, throwScope, exception);
+        throwException(globalObject, throwScope, exception);
         return;
     }
 
     RETURN_IF_EXCEPTION(throwScope, void());
 
     if (!innerResult.isObject()) {
-        throwTypeError(exec, throwScope, "Iterator result interface is not an object."_s);
+        throwTypeError(globalObject, throwScope, "Iterator result interface is not an object."_s);
         return;
     }
 }
 
-static const PropertyOffset valuePropertyOffset = 0;
-static const PropertyOffset donePropertyOffset = 1;
+static constexpr PropertyOffset valuePropertyOffset = 0;
+static constexpr PropertyOffset donePropertyOffset = 1;
 
 Structure* createIteratorResultObjectStructure(VM& vm, JSGlobalObject& globalObject)
 {
@@ -146,18 +141,18 @@ Structure* createIteratorResultObjectStructure(VM& vm, JSGlobalObject& globalObj
     return iteratorResultStructure;
 }
 
-JSObject* createIteratorResultObject(ExecState* exec, JSValue value, bool done)
+JSObject* createIteratorResultObject(JSGlobalObject* globalObject, JSValue value, bool done)
 {
-    VM& vm = exec->vm();
-    JSObject* resultObject = constructEmptyObject(exec, exec->lexicalGlobalObject()->iteratorResultObjectStructure());
+    VM& vm = globalObject->vm();
+    JSObject* resultObject = constructEmptyObject(vm, globalObject->iteratorResultObjectStructure());
     resultObject->putDirect(vm, valuePropertyOffset, value);
     resultObject->putDirect(vm, donePropertyOffset, jsBoolean(done));
     return resultObject;
 }
 
-bool hasIteratorMethod(ExecState& state, JSValue value)
+bool hasIteratorMethod(JSGlobalObject* globalObject, JSValue value)
 {
-    auto& vm = state.vm();
+    auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     if (!value.isObject())
@@ -165,78 +160,74 @@ bool hasIteratorMethod(ExecState& state, JSValue value)
 
     JSObject* object = asObject(value);
     CallData callData;
-    CallType callType;
-    JSValue applyMethod = object->getMethod(&state, callData, callType, vm.propertyNames->iteratorSymbol, "Symbol.iterator property should be callable"_s);
+    JSValue applyMethod = object->getMethod(globalObject, callData, vm.propertyNames->iteratorSymbol, "Symbol.iterator property should be callable"_s);
     RETURN_IF_EXCEPTION(scope, false);
 
     return !applyMethod.isUndefined();
 }
 
-JSValue iteratorMethod(ExecState& state, JSObject* object)
+JSValue iteratorMethod(JSGlobalObject* globalObject, JSObject* object)
 {
-    auto& vm = state.vm();
+    auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     CallData callData;
-    CallType callType;
-    JSValue method = object->getMethod(&state, callData, callType, vm.propertyNames->iteratorSymbol, "Symbol.iterator property should be callable"_s);
+    JSValue method = object->getMethod(globalObject, callData, vm.propertyNames->iteratorSymbol, "Symbol.iterator property should be callable"_s);
     RETURN_IF_EXCEPTION(scope, jsUndefined());
 
     return method;
 }
 
-IterationRecord iteratorForIterable(ExecState& state, JSObject* object, JSValue iteratorMethod)
+IterationRecord iteratorForIterable(JSGlobalObject* globalObject, JSObject* object, JSValue iteratorMethod)
 {
-    VM& vm = state.vm();
+    VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    CallData iteratorMethodCallData;
-    CallType iteratorMethodCallType = getCallData(vm, iteratorMethod, iteratorMethodCallData);
-    if (iteratorMethodCallType == CallType::None) {
-        throwTypeError(&state, scope);
+    auto iteratorMethodCallData = getCallData(vm, iteratorMethod);
+    if (iteratorMethodCallData.type == CallData::Type::None) {
+        throwTypeError(globalObject, scope);
         return { };
     }
 
     ArgList iteratorMethodArguments;
-    JSValue iterator = call(&state, iteratorMethod, iteratorMethodCallType, iteratorMethodCallData, object, iteratorMethodArguments);
+    JSValue iterator = call(globalObject, iteratorMethod, iteratorMethodCallData, object, iteratorMethodArguments);
     RETURN_IF_EXCEPTION(scope, { });
 
     if (!iterator.isObject()) {
-        throwTypeError(&state, scope);
+        throwTypeError(globalObject, scope);
         return { };
     }
 
-    JSValue nextMethod = iterator.getObject()->get(&state, vm.propertyNames->next);
+    JSValue nextMethod = iterator.getObject()->get(globalObject, vm.propertyNames->next);
     RETURN_IF_EXCEPTION(scope, { });
 
     return { iterator, nextMethod };
 }
 
-IterationRecord iteratorForIterable(ExecState* state, JSValue iterable)
+IterationRecord iteratorForIterable(JSGlobalObject* globalObject, JSValue iterable)
 {
-    VM& vm = state->vm();
+    VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     
-    JSValue iteratorFunction = iterable.get(state, vm.propertyNames->iteratorSymbol);
+    JSValue iteratorFunction = iterable.get(globalObject, vm.propertyNames->iteratorSymbol);
     RETURN_IF_EXCEPTION(scope, { });
     
-    CallData iteratorFunctionCallData;
-    CallType iteratorFunctionCallType = getCallData(vm, iteratorFunction, iteratorFunctionCallData);
-    if (iteratorFunctionCallType == CallType::None) {
-        throwTypeError(state, scope);
+    auto iteratorFunctionCallData = getCallData(vm, iteratorFunction);
+    if (iteratorFunctionCallData.type == CallData::Type::None) {
+        throwTypeError(globalObject, scope);
         return { };
     }
 
     ArgList iteratorFunctionArguments;
-    JSValue iterator = call(state, iteratorFunction, iteratorFunctionCallType, iteratorFunctionCallData, iterable, iteratorFunctionArguments);
+    JSValue iterator = call(globalObject, iteratorFunction, iteratorFunctionCallData, iterable, iteratorFunctionArguments);
     RETURN_IF_EXCEPTION(scope, { });
 
     if (!iterator.isObject()) {
-        throwTypeError(state, scope);
+        throwTypeError(globalObject, scope);
         return { };
     }
 
-    JSValue nextMethod = iterator.getObject()->get(state, vm.propertyNames->next);
+    JSValue nextMethod = iterator.getObject()->get(globalObject, vm.propertyNames->next);
     RETURN_IF_EXCEPTION(scope, { });
 
     return { iterator, nextMethod };

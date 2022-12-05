@@ -31,6 +31,7 @@
 #include "PlatformKeyboardEvent.h"
 
 #include "GtkUtilities.h"
+#include "GtkVersioning.h"
 #include "NotImplemented.h"
 #include "TextEncoding.h"
 #include "WindowsKeyboardCodes.h"
@@ -1321,75 +1322,16 @@ String PlatformKeyboardEvent::singleCharacterString(unsigned val)
     }
 }
 
-static PlatformEvent::Type eventTypeForGdkKeyEvent(GdkEventKey* event)
-{
-    return gdk_event_get_event_type(reinterpret_cast<GdkEvent*>(event)) == GDK_KEY_RELEASE ? PlatformEvent::KeyUp : PlatformEvent::KeyDown;
-}
-
-static OptionSet<PlatformEvent::Modifier> modifiersForGdkKeyEvent(GdkEventKey* event)
-{
-    GdkModifierType state;
-    gdk_event_get_state(reinterpret_cast<GdkEvent*>(event), &state);
-    guint keyval;
-    gdk_event_get_keyval(reinterpret_cast<GdkEvent*>(event), &keyval);
-
-    OptionSet<PlatformEvent::Modifier> modifiers;
-    if (state & GDK_SHIFT_MASK || keyval == GDK_KEY_3270_BackTab)
-        modifiers.add(PlatformEvent::Modifier::ShiftKey);
-    if (state & GDK_CONTROL_MASK)
-        modifiers.add(PlatformEvent::Modifier::ControlKey);
-    if (state & GDK_MOD1_MASK)
-        modifiers.add(PlatformEvent::Modifier::AltKey);
-    if (state & GDK_META_MASK)
-        modifiers.add(PlatformEvent::Modifier::MetaKey);
-    if (state & GDK_LOCK_MASK)
-        modifiers.add(PlatformEvent::Modifier::CapsLockKey);
-    return modifiers;
-}
-
-// Keep this in sync with the other platform event constructors
-PlatformKeyboardEvent::PlatformKeyboardEvent(GdkEventKey* event, const CompositionResults& compositionResults)
-    : PlatformEvent(eventTypeForGdkKeyEvent(event), modifiersForGdkKeyEvent(event), wallTimeForEvent(event))
-    , m_handledByInputMethod(false)
-    , m_autoRepeat(false)
-    , m_isSystemKey(false)
-    , m_gdkEventKey(event)
-    , m_compositionResults(compositionResults)
-{
-    guint keyval;
-    gdk_event_get_keyval(reinterpret_cast<GdkEvent*>(event), &keyval);
-    guint16 keycode;
-    gdk_event_get_keycode(reinterpret_cast<GdkEvent*>(event), &keycode);
-
-    m_text = compositionResults.simpleString.length() ? compositionResults.simpleString : singleCharacterString(keyval);
-    m_unmodifiedText = m_text;
-    m_key = keyValueForGdkKeyCode(keyval);
-    m_code = keyCodeForHardwareKeyCode(keycode);
-    m_keyIdentifier = keyIdentifierForGdkKeyCode(keyval);
-    m_windowsVirtualKeyCode = windowsKeyCodeForGdkKeyCode(keyval);
-    m_isKeypad = keyval >= GDK_KEY_KP_Space && keyval <= GDK_KEY_KP_9;
-
-    // To match the behavior of IE, we return VK_PROCESSKEY for keys that triggered composition results.
-    if (compositionResults.compositionUpdated())
-        m_windowsVirtualKeyCode = VK_PROCESSKEY;
-}
-
 void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCompatibilityMode)
 {
     // Can only change type from KeyDown to RawKeyDown or Char, as we lack information for other conversions.
     ASSERT(m_type == KeyDown);
     m_type = type;
 
-    if (backwardCompatibilityMode)
+    if (backwardCompatibilityMode || m_handledByInputMethod)
         return;
 
     if (type == PlatformEvent::RawKeyDown) {
-        m_text = String();
-        m_unmodifiedText = String();
-    } else if (type == PlatformEvent::Char && m_compositionResults.compositionUpdated()) {
-        // Having empty text, prevents this Char (which is a DOM keypress) event
-        // from going to the DOM. Keys that trigger composition events should not
-        // fire keypress.
         m_text = String();
         m_unmodifiedText = String();
     } else {
@@ -1400,13 +1342,21 @@ void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCom
 
 bool PlatformKeyboardEvent::currentCapsLockState()
 {
-    return gdk_keymap_get_caps_lock_state(gdk_keymap_get_default());
+#if USE(GTK4)
+    return gdk_device_get_caps_lock_state(gdk_seat_get_keyboard(gdk_display_get_default_seat(gdk_display_get_default())));
+#else
+    return gdk_keymap_get_caps_lock_state(gdk_keymap_get_for_display(gdk_display_get_default()));
+#endif
 }
 
 void PlatformKeyboardEvent::getCurrentModifierState(bool& shiftKey, bool& ctrlKey, bool& altKey, bool& metaKey)
 {
     GdkModifierType state;
+#if USE(GTK4)
+    state = static_cast<GdkModifierType>(0);
+#else
     gtk_get_current_event_state(&state);
+#endif
 
     shiftKey = state & GDK_SHIFT_MASK;
     ctrlKey = state & GDK_CONTROL_MASK;
@@ -1424,12 +1374,18 @@ bool PlatformKeyboardEvent::modifiersContainCapsLock(unsigned modifier)
     // the same here. This will also return true in Wayland if there's a caps lock key, so it's not worth it
     // checking the actual display here.
     static bool lockMaskIsCapsLock = false;
+#if !USE(GTK4)
     static bool initialized = false;
     if (!initialized) {
         GUniqueOutPtr<GdkKeymapKey> keys;
         int entriesCount;
-        lockMaskIsCapsLock = gdk_keymap_get_entries_for_keyval(gdk_keymap_get_default(), GDK_KEY_Caps_Lock, &keys.outPtr(), &entriesCount) && entriesCount;
+#if USE(GTK4)
+        lockMaskIsCapsLock = gdk_display_map_keyval(gdk_display_get_default(), GDK_KEY_Caps_Lock, &keys.outPtr(), &entriesCount) && entriesCount;
+#else
+        lockMaskIsCapsLock = gdk_keymap_get_entries_for_keyval(gdk_keymap_get_for_display(gdk_display_get_default()), GDK_KEY_Caps_Lock, &keys.outPtr(), &entriesCount) && entriesCount;
+#endif
     }
+#endif
     return lockMaskIsCapsLock;
 }
 

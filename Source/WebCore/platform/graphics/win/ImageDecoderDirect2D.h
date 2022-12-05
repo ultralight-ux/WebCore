@@ -32,7 +32,7 @@
 
 interface ID2D1RenderTarget;
 interface IWICBitmapDecoder;
-interface IWICImagingFactory;
+interface IWICImagingFactory2;
 
 namespace WebCore {
 
@@ -78,9 +78,9 @@ public:
 
     void setTargetContext(ID2D1RenderTarget*);
 
-    static IWICImagingFactory* systemImagingFactory();
+    static IWICImagingFactory2* systemImagingFactory();
 
-protected:
+private:
     bool m_isAllDataReceived { false };
     mutable IntSize m_size;
     COMPtr<IWICBitmapDecoder> m_nativeDecoder;

@@ -32,6 +32,7 @@
 #include "DFGInsertionSet.h"
 #include "DFGPhase.h"
 #include "DFGPhiChildren.h"
+#include "JSCJSValueInlines.h"
 
 namespace JSC { namespace DFG {
 
@@ -143,9 +144,9 @@ private:
                         return;
                     dataLogLn(description);
                     dataLog("   candidate: ");
-                    m_graph.dump(WTF::dataFile(), "", candidate);
+                    m_graph.dump(WTF::dataFile(), Prefix::noString, candidate);
                     dataLog("   reason: ");
-                    m_graph.dump(WTF::dataFile(), "", node);
+                    m_graph.dump(WTF::dataFile(), Prefix::noString, node);
                     dataLogLn();
                 };
 

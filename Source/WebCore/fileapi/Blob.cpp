@@ -32,9 +32,11 @@
 #include "Blob.h"
 
 #include "BlobBuilder.h"
+#include "BlobLoader.h"
 #include "BlobPart.h"
 #include "BlobURL.h"
 #include "File.h"
+#include "JSDOMPromiseDeferred.h"
 #include "ScriptExecutionContext.h"
 #include "SharedBuffer.h"
 #include "ThreadableBlobRegistry.h"
@@ -48,17 +50,17 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(Blob);
 
 class BlobURLRegistry final : public URLRegistry {
 public:
-    void registerURL(SecurityOrigin*, const URL&, URLRegistrable&) override;
-    void unregisterURL(const URL&) override;
+    void registerURL(ScriptExecutionContext&, const URL&, URLRegistrable&) final;
+    void unregisterURL(const URL&) final;
 
     static URLRegistry& registry();
 };
 
 
-void BlobURLRegistry::registerURL(SecurityOrigin* origin, const URL& publicURL, URLRegistrable& blob)
+void BlobURLRegistry::registerURL(ScriptExecutionContext& context, const URL& publicURL, URLRegistrable& blob)
 {
     ASSERT(&blob.registry() == this);
-    ThreadableBlobRegistry::registerBlobURL(origin, publicURL, static_cast<Blob&>(blob).url());
+    ThreadableBlobRegistry::registerBlobURL(context.securityOrigin(), publicURL, static_cast<Blob&>(blob).url());
 }
 
 void BlobURLRegistry::unregisterURL(const URL& url)
@@ -72,21 +74,25 @@ URLRegistry& BlobURLRegistry::registry()
     return instance;
 }
 
-Blob::Blob(UninitializedContructor)
+Blob::Blob(UninitializedContructor, ScriptExecutionContext* context, URL&& url, String&& type)
+    : ActiveDOMObject(context)
+    , m_internalURL(WTFMove(url))
+    , m_type(WTFMove(type))
 {
 }
 
-Blob::Blob()
-    : m_size(0)
+Blob::Blob(ScriptExecutionContext* context)
+    : ActiveDOMObject(context)
+    , m_size(0)
 {
     m_internalURL = BlobURL::createInternalURL();
     ThreadableBlobRegistry::registerBlobURL(m_internalURL, { },  { });
 }
 
-Blob::Blob(Vector<BlobPartVariant>&& blobPartVariants, const BlobPropertyBag& propertyBag)
-    : m_internalURL(BlobURL::createInternalURL())
+Blob::Blob(ScriptExecutionContext& context, Vector<BlobPartVariant>&& blobPartVariants, const BlobPropertyBag& propertyBag)
+    : ActiveDOMObject(&context)
+    , m_internalURL(BlobURL::createInternalURL())
     , m_type(normalizedContentType(propertyBag.type))
-    , m_size(-1)
 {
     BlobBuilder builder(propertyBag.endings);
     for (auto& blobPartVariant : blobPartVariants) {
@@ -100,8 +106,9 @@ Blob::Blob(Vector<BlobPartVariant>&& blobPartVariants, const BlobPropertyBag& pr
     ThreadableBlobRegistry::registerBlobURL(m_internalURL, builder.finalize(), m_type);
 }
 
-Blob::Blob(const SharedBuffer& buffer, const String& contentType)
-    : m_type(contentType)
+Blob::Blob(ScriptExecutionContext* context, const SharedBuffer& buffer, const String& contentType)
+    : ActiveDOMObject(context)
+    , m_type(contentType)
     , m_size(buffer.size())
 {
     Vector<uint8_t> data;
@@ -113,8 +120,9 @@ Blob::Blob(const SharedBuffer& buffer, const String& contentType)
     ThreadableBlobRegistry::registerBlobURL(m_internalURL, WTFMove(blobParts), contentType);
 }
 
-Blob::Blob(Vector<uint8_t>&& data, const String& contentType)
-    : m_type(contentType)
+Blob::Blob(ScriptExecutionContext* context, Vector<uint8_t>&& data, const String& contentType)
+    : ActiveDOMObject(context)
+    , m_type(contentType)
     , m_size(data.size())
 {
     Vector<BlobPart> blobParts;
@@ -123,16 +131,18 @@ Blob::Blob(Vector<uint8_t>&& data, const String& contentType)
     ThreadableBlobRegistry::registerBlobURL(m_internalURL, WTFMove(blobParts), contentType);
 }
 
-Blob::Blob(ReferencingExistingBlobConstructor, const Blob& blob)
-    : m_internalURL(BlobURL::createInternalURL())
+Blob::Blob(ReferencingExistingBlobConstructor, ScriptExecutionContext* context, const Blob& blob)
+    : ActiveDOMObject(context)
+    , m_internalURL(BlobURL::createInternalURL())
     , m_type(blob.type())
     , m_size(blob.size())
 {
     ThreadableBlobRegistry::registerBlobURL(m_internalURL, { BlobPart(blob.url()) } , m_type);
 }
 
-Blob::Blob(DeserializationContructor, const URL& srcURL, const String& type, long long size, const String& fileBackedPath)
-    : m_type(normalizedContentType(type))
+Blob::Blob(DeserializationContructor, ScriptExecutionContext* context, const URL& srcURL, const String& type, Optional<unsigned long long> size, const String& fileBackedPath)
+    : ActiveDOMObject(context)
+    , m_type(normalizedContentType(type))
     , m_size(size)
 {
     m_internalURL = BlobURL::createInternalURL();
@@ -142,9 +152,10 @@ Blob::Blob(DeserializationContructor, const URL& srcURL, const String& type, lon
         ThreadableBlobRegistry::registerBlobURLOptionallyFileBacked(m_internalURL, srcURL, fileBackedPath, m_type);
 }
 
-Blob::Blob(const URL& srcURL, long long start, long long end, const String& type)
-    : m_type(normalizedContentType(type))
-    , m_size(-1) // size is not necessarily equal to end - start.
+Blob::Blob(ScriptExecutionContext* context, const URL& srcURL, long long start, long long end, const String& type)
+    : ActiveDOMObject(context)
+    , m_type(normalizedContentType(type))
+    // m_size is not necessarily equal to end - start so we do not initialize it here.
 {
     m_internalURL = BlobURL::createInternalURL();
     ThreadableBlobRegistry::registerBlobURLForSlice(m_internalURL, srcURL, start, end);
@@ -152,19 +163,22 @@ Blob::Blob(const URL& srcURL, long long start, long long end, const String& type
 
 Blob::~Blob()
 {
+    while (!m_blobLoaders.isEmpty())
+        (*m_blobLoaders.begin())->cancel();
+
     ThreadableBlobRegistry::unregisterBlobURL(m_internalURL);
 }
 
 unsigned long long Blob::size() const
 {
-    if (m_size < 0) {
+    if (!m_size) {
         // FIXME: JavaScript cannot represent sizes as large as unsigned long long, we need to
         // come up with an exception to throw if file size is not representable.
         unsigned long long actualSize = ThreadableBlobRegistry::blobSize(m_internalURL);
-        m_size = WTF::isInBounds<long long>(actualSize) ? static_cast<long long>(actualSize) : 0;
+        m_size = isInBounds<long long>(actualSize) ? actualSize : 0;
     }
 
-    return static_cast<unsigned long long>(m_size);
+    return *m_size;
 }
 
 bool Blob::isValidContentType(const String& contentType)
@@ -185,7 +199,47 @@ String Blob::normalizedContentType(const String& contentType)
     return contentType.convertToASCIILowercase();
 }
 
-#if !ASSERT_DISABLED
+void Blob::loadBlob(ScriptExecutionContext& context, FileReaderLoader::ReadType readType, CompletionHandler<void(BlobLoader&)>&& completionHandler)
+{
+    auto blobLoader = makeUnique<BlobLoader>([this, pendingActivity = makePendingActivity(*this), completionHandler = WTFMove(completionHandler)](BlobLoader& blobLoader) mutable {
+        completionHandler(blobLoader);
+        m_blobLoaders.take(&blobLoader);
+    });
+
+    blobLoader->start(*this, &context, readType);
+
+    if (blobLoader->isLoading())
+        m_blobLoaders.add(WTFMove(blobLoader));
+}
+
+void Blob::text(ScriptExecutionContext& context, Ref<DeferredPromise>&& promise)
+{
+    loadBlob(context, FileReaderLoader::ReadAsText, [promise = WTFMove(promise)](BlobLoader& blobLoader) mutable {
+        if (auto optionalErrorCode = blobLoader.errorCode()) {
+            promise->reject(Exception { *optionalErrorCode });
+            return;
+        }
+        promise->resolve<IDLDOMString>(blobLoader.stringResult());
+    });
+}
+
+void Blob::arrayBuffer(ScriptExecutionContext& context, Ref<DeferredPromise>&& promise)
+{
+    loadBlob(context, FileReaderLoader::ReadAsArrayBuffer, [promise = WTFMove(promise)](BlobLoader& blobLoader) mutable {
+        if (auto optionalErrorCode = blobLoader.errorCode()) {
+            promise->reject(Exception { *optionalErrorCode });
+            return;
+        }
+        auto arrayBuffer = blobLoader.arrayBufferResult();
+        if (!arrayBuffer) {
+            promise->reject(Exception { InvalidStateError });
+            return;
+        }
+        promise->resolve<IDLArrayBuffer>(*arrayBuffer);
+    });
+}
+
+#if ASSERT_ENABLED
 bool Blob::isNormalizedContentType(const String& contentType)
 {
     // FIXME: Do we really want to treat the empty string and null string as valid content types?
@@ -212,11 +266,16 @@ bool Blob::isNormalizedContentType(const CString& contentType)
     }
     return true;
 }
-#endif
+#endif // ASSERT_ENABLED
 
 URLRegistry& Blob::registry() const
 {
     return BlobURLRegistry::registry();
+}
+
+const char* Blob::activeDOMObjectName() const
+{
+    return "Blob";
 }
 
 

@@ -35,10 +35,10 @@
 
 namespace WebCore {
 
-IDBDatabaseIdentifier::IDBDatabaseIdentifier(const String& databaseName, const PAL::SessionID& sessionID, SecurityOriginData&& openingOrigin, SecurityOriginData&& mainFrameOrigin)
+IDBDatabaseIdentifier::IDBDatabaseIdentifier(const String& databaseName, SecurityOriginData&& openingOrigin, SecurityOriginData&& mainFrameOrigin, bool isTransient)
     : m_databaseName(databaseName)
-    , m_sessionID(sessionID)
     , m_origin { WTFMove(openingOrigin), WTFMove(mainFrameOrigin) }
+    , m_isTransient(isTransient)
 {
     // The empty string is a valid database name, but a null string is not.
     ASSERT(!databaseName.isNull());
@@ -49,8 +49,8 @@ IDBDatabaseIdentifier IDBDatabaseIdentifier::isolatedCopy() const
     IDBDatabaseIdentifier identifier;
 
     identifier.m_databaseName = m_databaseName.isolatedCopy();
-    identifier.m_sessionID = m_sessionID.isolatedCopy();
     identifier.m_origin = m_origin.isolatedCopy();
+    identifier.m_isTransient = m_isTransient;
 
     return identifier;
 }
@@ -73,9 +73,9 @@ String IDBDatabaseIdentifier::databaseDirectoryRelativeToRoot(const SecurityOrig
 }
 
 #if !LOG_DISABLED
-String IDBDatabaseIdentifier::debugString() const
+String IDBDatabaseIdentifier::loggingString() const
 {
-    return makeString(m_databaseName, "@", m_origin.topOrigin.debugString(), ":", m_origin.clientOrigin.debugString());
+    return makeString(m_databaseName, "@", m_origin.topOrigin.debugString(), ":", m_origin.clientOrigin.debugString(), m_isTransient ? ", transient" : "");
 }
 #endif
 

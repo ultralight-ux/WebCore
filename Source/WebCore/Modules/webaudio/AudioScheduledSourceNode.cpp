@@ -37,6 +37,7 @@
 #include <algorithm>
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/MathExtras.h>
+#include <wtf/Scope.h>
 
 #if PLATFORM(IOS_FAMILY)
 #include "ScriptController.h"
@@ -48,10 +49,13 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(AudioScheduledSourceNode);
 
 const double AudioScheduledSourceNode::UnknownTime = -1;
 
-AudioScheduledSourceNode::AudioScheduledSourceNode(AudioContext& context, float sampleRate)
-    : AudioNode(context, sampleRate)
+AudioScheduledSourceNode::AudioScheduledSourceNode(BaseAudioContext& context)
+    : AudioNode(context)
+    , ActiveDOMObject(context.scriptExecutionContext())
     , m_endTime(UnknownTime)
 {
+    suspendIfNeeded();
+    m_pendingActivity = makePendingActivity(*this);
 }
 
 void AudioScheduledSourceNode::updateSchedulingInfo(size_t quantumFrameSize, AudioBus& outputBus, size_t& quantumFrameOffset, size_t& nonSilentFramesToProcess)
@@ -132,7 +136,7 @@ void AudioScheduledSourceNode::updateSchedulingInfo(size_t quantumFrameSize, Aud
     }
 }
 
-ExceptionOr<void> AudioScheduledSourceNode::start(double when)
+ExceptionOr<void> AudioScheduledSourceNode::startLater(double when)
 {
     ASSERT(isMainThread());
     ALWAYS_LOG(LOGIDENTIFIER, when);
@@ -141,8 +145,9 @@ ExceptionOr<void> AudioScheduledSourceNode::start(double when)
 
     if (m_playbackState != UNSCHEDULED_STATE)
         return Exception { InvalidStateError };
+
     if (!std::isfinite(when) || when < 0)
-        return Exception { InvalidStateError };
+        return Exception { RangeError, "when value should be positive"_s };
 
     m_startTime = when;
     m_playbackState = SCHEDULED_STATE;
@@ -150,60 +155,47 @@ ExceptionOr<void> AudioScheduledSourceNode::start(double when)
     return { };
 }
 
-ExceptionOr<void> AudioScheduledSourceNode::stop(double when)
+ExceptionOr<void> AudioScheduledSourceNode::stopLater(double when)
 {
     ASSERT(isMainThread());
     ALWAYS_LOG(LOGIDENTIFIER, when);
 
     if (m_playbackState == UNSCHEDULED_STATE || m_endTime != UnknownTime)
         return Exception { InvalidStateError };
+
     if (!std::isfinite(when) || when < 0)
-        return Exception { InvalidStateError };
+        return Exception { RangeError, "when value should be positive"_s };
 
     m_endTime = when;
 
     return { };
 }
 
+void AudioScheduledSourceNode::didBecomeMarkedForDeletion()
+{
+    ASSERT(context().isGraphOwner());
+    m_pendingActivity = nullptr;
+    ASSERT(!hasPendingActivity());
+}
+
 void AudioScheduledSourceNode::finish()
 {
-    if (m_playbackState != FINISHED_STATE) {
-        // Let the context dereference this AudioNode.
-        context().notifyNodeFinishedProcessing(this);
-        m_playbackState = FINISHED_STATE;
-        context().decrementActiveSourceCount();
-    }
-
-    if (!m_hasEndedListener)
-        return;
+    ASSERT(!hasFinished());
+    // Let the context dereference this AudioNode.
+    context().notifyNodeFinishedProcessing(this);
+    m_playbackState = FINISHED_STATE;
+    context().decrementActiveSourceCount();
 
     context().postTask([this, protectedThis = makeRef(*this)] {
+        auto release = makeScopeExit([&] () {
+            AudioContext::AutoLocker locker(context());
+            m_pendingActivity = nullptr;
+            ASSERT(!hasPendingActivity());
+        });
         if (context().isStopped())
             return;
         this->dispatchEvent(Event::create(eventNames().endedEvent, Event::CanBubble::No, Event::IsCancelable::No));
     });
-}
-
-bool AudioScheduledSourceNode::addEventListener(const AtomString& eventType, Ref<EventListener>&& listener, const AddEventListenerOptions& options)
-{
-    bool success = AudioNode::addEventListener(eventType, WTFMove(listener), options);
-    if (success && eventType == eventNames().endedEvent)
-        m_hasEndedListener = hasEventListeners(eventNames().endedEvent);
-    return success;
-}
-
-bool AudioScheduledSourceNode::removeEventListener(const AtomString& eventType, EventListener& listener, const ListenerOptions& options)
-{
-    bool success = AudioNode::removeEventListener(eventType, listener, options);
-    if (success && eventType == eventNames().endedEvent)
-        m_hasEndedListener = hasEventListeners(eventNames().endedEvent);
-    return success;
-}
-
-void AudioScheduledSourceNode::removeAllEventListeners()
-{
-    m_hasEndedListener = false;
-    AudioNode::removeAllEventListeners();
 }
 
 } // namespace WebCore

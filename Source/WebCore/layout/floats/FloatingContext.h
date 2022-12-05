@@ -28,17 +28,15 @@
 #if ENABLE(LAYOUT_FORMATTING_CONTEXT)
 
 #include "FloatingState.h"
-#include "LayoutUnits.h"
+#include "LayoutContainerBox.h"
 #include <wtf/IsoMalloc.h>
 
 namespace WebCore {
-
 namespace Layout {
 
 class FloatAvoider;
+class FormattingContext;
 class Box;
-class Container;
-class FloatingPair;
 class LayoutState;
 
 // FloatingContext is responsible for adjusting the position of a box in the current formatting context
@@ -46,12 +44,12 @@ class LayoutState;
 class FloatingContext {
     WTF_MAKE_ISO_ALLOCATED(FloatingContext);
 public:
-    FloatingContext(FloatingState&);
+    FloatingContext(const ContainerBox& floatingContextRoot, const FormattingContext&, FloatingState&);
 
     FloatingState& floatingState() const { return m_floatingState; }
 
-    Point positionForFloat(const Box&) const;
-    Optional<Point> positionForFormattingContextRoot(const Box&) const;
+    LayoutPoint positionForFloat(const Box&, const HorizontalConstraints&) const;
+    LayoutPoint positionForNonFloatingFloatAvoider(const Box&, const HorizontalConstraints&) const;
 
     struct ClearancePosition {
         Optional<Position> position;
@@ -59,12 +57,29 @@ public:
     };
     ClearancePosition verticalPositionWithClearance(const Box&) const;
 
+    bool isEmpty() const { return m_floatingState.floats().isEmpty(); }
+
+    struct Constraints {
+        Optional<PointInContextRoot> left;
+        Optional<PointInContextRoot> right;
+    };
+    Constraints constraints(LayoutUnit candidateTop, LayoutUnit candidateHeight) const;
+    void append(const Box&);
+
 private:
     LayoutState& layoutState() const { return m_floatingState.layoutState(); }
+    const FormattingContext& formattingContext() const { return m_formattingContext; }
+    const ContainerBox& root() const { return *m_root; }
 
-    void findPositionForFloatBox(FloatBox&) const;
     void findPositionForFormattingContextRoot(FloatAvoider&) const;
 
+    struct AbsoluteCoordinateValuesForFloatAvoider;
+    AbsoluteCoordinateValuesForFloatAvoider absoluteDisplayBoxCoordinates(const Box&) const;
+    LayoutPoint mapTopLeftToFloatingStateRoot(const Box&) const;
+    Point mapPointFromFormattingContextRootToFloatingStateRoot(Point) const;
+
+    WeakPtr<const ContainerBox> m_root;
+    const FormattingContext& m_formattingContext;
     FloatingState& m_floatingState;
 };
 

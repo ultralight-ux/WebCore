@@ -35,9 +35,9 @@
 ALLOW_UNUSED_PARAMETERS_BEGIN
 
 #include <webrtc/api/jsep.h>
-#include <webrtc/api/peerconnectioninterface.h>
-#include <webrtc/pc/peerconnectionfactory.h>
-#include <webrtc/pc/rtcstatscollector.h>
+#include <webrtc/api/peer_connection_interface.h>
+#include <webrtc/pc/peer_connection_factory.h>
+#include <webrtc/pc/rtc_stats_collector.h>
 
 ALLOW_UNUSED_PARAMETERS_END
 
@@ -88,6 +88,7 @@ public:
     std::unique_ptr<RTCDataChannelHandler> createDataChannel(const String&, const RTCDataChannelInit&);
     bool addIceCandidate(webrtc::IceCandidateInterface& candidate) { return m_backend->AddIceCandidate(&candidate); }
 
+    void close();
     void stop();
     bool isStopped() const { return !m_backend; }
 
@@ -113,15 +114,15 @@ public:
     void setSenderSourceFromTrack(LibWebRTCRtpSenderBackend&, MediaStreamTrack&);
     void collectTransceivers();
 
+    void suspend();
+    void resume();
+
 private:
     LibWebRTCMediaEndpoint(LibWebRTCPeerConnectionBackend&, LibWebRTCProvider&);
 
     // webrtc::PeerConnectionObserver API
     void OnSignalingChange(webrtc::PeerConnectionInterface::SignalingState) final;
-    void OnAddStream(rtc::scoped_refptr<webrtc::MediaStreamInterface>) final;
-    void OnRemoveStream(rtc::scoped_refptr<webrtc::MediaStreamInterface>) final;
     void OnDataChannel(rtc::scoped_refptr<webrtc::DataChannelInterface>) final;
-    void OnAddTrack(rtc::scoped_refptr<webrtc::RtpReceiverInterface>, const std::vector<rtc::scoped_refptr<webrtc::MediaStreamInterface>>&) final;
     void OnTrack(rtc::scoped_refptr<webrtc::RtpTransceiverInterface>) final;
     void OnRemoveTrack(rtc::scoped_refptr<webrtc::RtpReceiverInterface>) final;
 
@@ -137,9 +138,6 @@ private:
     void setLocalSessionDescriptionFailed(ExceptionCode, const char*);
     void setRemoteSessionDescriptionSucceeded();
     void setRemoteSessionDescriptionFailed(ExceptionCode, const char*);
-    void addRemoteStream(webrtc::MediaStreamInterface&);
-    void addRemoteTrack(rtc::scoped_refptr<webrtc::RtpReceiverInterface>&&, const std::vector<rtc::scoped_refptr<webrtc::MediaStreamInterface>>&);
-    void removeRemoteStream(webrtc::MediaStreamInterface&);
     void newTransceiver(rtc::scoped_refptr<webrtc::RtpTransceiverInterface>&&);
     void removeRemoteTrack(rtc::scoped_refptr<webrtc::RtpReceiverInterface>&&);
 
@@ -198,6 +196,7 @@ private:
 
     HashMap<String, rtc::scoped_refptr<webrtc::MediaStreamInterface>> m_localStreams;
 
+    std::unique_ptr<LibWebRTCProvider::SuspendableSocketFactory> m_rtcSocketFactory;
 #if !RELEASE_LOG_DISABLED
     int64_t m_statsFirstDeliveredTimestamp { 0 };
     Ref<const Logger> m_logger;

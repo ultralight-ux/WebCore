@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2007, 2008, 2009, 2016 Apple Inc. All rights reserved.
+ *  Copyright (C) 2007-2019 Apple Inc. All rights reserved.
  *  Copyright (C) 2009 Torch Mobile, Inc.
  *
  *  This library is free software; you can redistribute it and/or
@@ -42,11 +42,17 @@ class RegExp final : public JSCell {
     friend class CachedRegExp;
 
 public:
-    typedef JSCell Base;
-    static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
+    using Base = JSCell;
+    static constexpr unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
+    static constexpr bool needsDestruction = true;
+
+    template<typename CellType, SubspaceAccess mode>
+    static IsoSubspace* subspaceFor(VM& vm)
+    {
+        return &vm.regExpSpace;
+    }
 
     JS_EXPORT_PRIVATE static RegExp* create(VM&, const String& pattern, OptionSet<Yarr::Flags>);
-    static const bool needsDestruction = true;
     static void destroy(JSCell*);
     static size_t estimatedSize(JSCell*, VM&);
     JS_EXPORT_PRIVATE static void dumpToStream(const JSCell*, PrintStream&);
@@ -63,26 +69,27 @@ public:
 
     bool isValid() const { return !Yarr::hasError(m_constructionErrorCode); }
     const char* errorMessage() const { return Yarr::errorMessage(m_constructionErrorCode); }
-    JSObject* errorToThrow(ExecState* exec) { return Yarr::errorToThrow(exec, m_constructionErrorCode); }
+    JSObject* errorToThrow(JSGlobalObject* globalObject) { return Yarr::errorToThrow(globalObject, m_constructionErrorCode); }
     void reset()
     {
         m_state = NotCompiled;
         m_constructionErrorCode = Yarr::ErrorCode::NoError;
     }
 
-    JS_EXPORT_PRIVATE int match(VM&, const String&, unsigned startOffset, Vector<int>& ovector);
+    JS_EXPORT_PRIVATE int match(JSGlobalObject*, const String&, unsigned startOffset, Vector<int>& ovector);
 
     // Returns false if we couldn't run the regular expression for any reason.
     bool matchConcurrently(VM&, const String&, unsigned startOffset, int& position, Vector<int>& ovector);
     
-    JS_EXPORT_PRIVATE MatchResult match(VM&, const String&, unsigned startOffset);
+    JS_EXPORT_PRIVATE MatchResult match(JSGlobalObject*, const String&, unsigned startOffset);
 
     bool matchConcurrently(VM&, const String&, unsigned startOffset, MatchResult&);
 
     // Call these versions of the match functions if you're desperate for performance.
-    template<typename VectorType>
-    int matchInline(VM&, const String&, unsigned startOffset, VectorType& ovector);
-    MatchResult matchInline(VM&, const String&, unsigned startOffset);
+    template<typename VectorType, Yarr::MatchFrom thread = Yarr::MatchFrom::VMThread>
+    int matchInline(JSGlobalObject* nullOrGlobalObject, VM&, const String&, unsigned startOffset, VectorType& ovector);
+    template<Yarr::MatchFrom thread = Yarr::MatchFrom::VMThread>
+    MatchResult matchInline(JSGlobalObject* nullOrGlobalObject, VM&, const String&, unsigned startOffset);
     
     unsigned numSubpatterns() const { return m_numSubpatterns; }
 
@@ -132,12 +139,10 @@ public:
 
     RegExpKey key() { return RegExpKey(m_flags, m_patternString); }
 
-protected:
-    void finishCreation(VM&);
-
 private:
     friend class RegExpCache;
     RegExp(VM&, const String&, OptionSet<Yarr::Flags>);
+    void finishCreation(VM&);
 
     static RegExp* createWithoutCaching(VM&, const String&, OptionSet<Yarr::Flags>);
 
@@ -164,7 +169,7 @@ private:
     Yarr::YarrCodeBlock& ensureRegExpJITCode()
     {
         if (!m_regExpJITCode)
-            m_regExpJITCode = std::make_unique<Yarr::YarrCodeBlock>();
+            m_regExpJITCode = makeUnique<Yarr::YarrCodeBlock>();
         return *m_regExpJITCode.get();
     }
 #endif

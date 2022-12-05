@@ -25,14 +25,19 @@
 #include <wtf/glib/GRefPtr.h>
 
 typedef struct _WebKitVideoSink WebKitVideoSink;
-typedef struct _WebKitWebSrc WebKitWebSrc;
+struct WebKitWebSrc;
 
 #if USE(GSTREAMER_GL)
 typedef struct _GstGLDisplay GstGLDisplay;
 typedef struct _GstGLContext GstGLContext;
+typedef struct _GstEGLImage GstEGLImage;
 #endif
 
 namespace WTF {
+
+template<> GRefPtr<GstPlugin> adoptGRef(GstPlugin* ptr);
+template<> GstPlugin* refGPtr<GstPlugin>(GstPlugin* ptr);
+template<> void derefGPtr<GstPlugin>(GstPlugin* ptr);
 
 template<> GRefPtr<GstElement> adoptGRef(GstElement* ptr);
 template<> GstElement* refGPtr<GstElement>(GstElement* ptr);
@@ -127,6 +132,10 @@ template<> void derefGPtr<GstGLDisplay>(GstGLDisplay* ptr);
 template<> GRefPtr<GstGLContext> adoptGRef(GstGLContext* ptr);
 template<> GstGLContext* refGPtr<GstGLContext>(GstGLContext* ptr);
 template<> void derefGPtr<GstGLContext>(GstGLContext* ptr);
+
+template<> GRefPtr<GstEGLImage> adoptGRef(GstEGLImage* ptr);
+template<> GstEGLImage* refGPtr<GstEGLImage>(GstEGLImage* ptr);
+template<> void derefGPtr<GstEGLImage>(GstEGLImage* ptr);
 #endif
 
 } // namespace WTF

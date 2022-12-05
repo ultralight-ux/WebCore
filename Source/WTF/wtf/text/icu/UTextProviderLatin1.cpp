@@ -65,7 +65,7 @@ static UText* uTextLatin1Clone(UText* destination, const UText* source, UBool de
     ASSERT_UNUSED(deep, !deep);
 
     if (U_FAILURE(*status))
-        return 0;
+        return nullptr;
 
     UText* result = utext_setup(destination, sizeof(UChar) * UTextWithBufferInlineCapacity, status);
     if (U_FAILURE(*status))
@@ -173,7 +173,7 @@ static int32_t uTextLatin1Extract(UText* uText, int64_t start, int64_t limit, UC
     if (!length)
         return 0;
 
-    if (destCapacity > 0 && !dest) {
+    if (dest) {
         int32_t trimmedLength = static_cast<int32_t>(length);
         if (trimmedLength > destCapacity)
             trimmedLength = destCapacity;
@@ -182,7 +182,8 @@ static int32_t uTextLatin1Extract(UText* uText, int64_t start, int64_t limit, UC
     }
 
     if (length < destCapacity) {
-        dest[length] = 0;
+        if (dest)
+            dest[length] = 0;
         if (*status == U_STRING_NOT_TERMINATED_WARNING)
             *status = U_ZERO_ERROR;
     } else if (length == destCapacity)
@@ -376,15 +377,15 @@ static void uTextLatin1ContextAwareClose(UText* text)
 UText* openLatin1ContextAwareUTextProvider(UTextWithBuffer* utWithBuffer, const LChar* string, unsigned length, const UChar* priorContext, int priorContextLength, UErrorCode* status)
 {
     if (U_FAILURE(*status))
-        return 0;
+        return nullptr;
     if (!string || length > static_cast<unsigned>(std::numeric_limits<int32_t>::max())) {
         *status = U_ILLEGAL_ARGUMENT_ERROR;
-        return 0;
+        return nullptr;
     }
     UText* text = utext_setup(&utWithBuffer->text, sizeof(utWithBuffer->buffer), status);
     if (U_FAILURE(*status)) {
         ASSERT(!text);
-        return 0;
+        return nullptr;
     }
 
     initializeContextAwareUTextProvider(text, &textLatin1ContextAwareFuncs, string, length, priorContext, priorContextLength);

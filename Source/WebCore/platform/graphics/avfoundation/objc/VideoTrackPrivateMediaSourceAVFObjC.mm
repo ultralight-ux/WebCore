@@ -26,7 +26,7 @@
 #import "config.h"
 #import "VideoTrackPrivateMediaSourceAVFObjC.h"
 
-#if ENABLE(MEDIA_SOURCE) && ENABLE(VIDEO_TRACK)
+#if ENABLE(MEDIA_SOURCE)
 
 #import "AVTrackPrivateAVFObjCImpl.h"
 #import "SourceBufferPrivateAVFObjC.h"
@@ -34,11 +34,9 @@
 
 namespace WebCore {
 
-VideoTrackPrivateMediaSourceAVFObjC::VideoTrackPrivateMediaSourceAVFObjC(AVAssetTrack* track, SourceBufferPrivateAVFObjC* parent)
-    : m_impl(std::make_unique<AVTrackPrivateAVFObjCImpl>(track))
-    , m_parent(parent)
+VideoTrackPrivateMediaSourceAVFObjC::VideoTrackPrivateMediaSourceAVFObjC(AVAssetTrack* track)
+    : m_impl(makeUnique<AVTrackPrivateAVFObjCImpl>(track))
     , m_trackID(-1)
-    , m_selected(false)
 {
     resetPropertiesFromTrack();
 }
@@ -56,28 +54,13 @@ void VideoTrackPrivateMediaSourceAVFObjC::resetPropertiesFromTrack()
 
 void VideoTrackPrivateMediaSourceAVFObjC::setAssetTrack(AVAssetTrack *track)
 {
-    m_impl = std::make_unique<AVTrackPrivateAVFObjCImpl>(track);
+    m_impl = makeUnique<AVTrackPrivateAVFObjCImpl>(track);
     resetPropertiesFromTrack();
 }
 
 AVAssetTrack* VideoTrackPrivateMediaSourceAVFObjC::assetTrack() const
 {
     return m_impl->assetTrack();
-}
-
-
-bool VideoTrackPrivateMediaSourceAVFObjC::selected() const
-{
-    return m_selected;
-}
-
-void VideoTrackPrivateMediaSourceAVFObjC::setSelected(bool selected)
-{
-    if (m_selected == selected)
-        return;
-
-    m_selected = selected;
-    m_parent->trackDidChangeEnabled(this);
 }
 
 FloatSize VideoTrackPrivateMediaSourceAVFObjC::naturalSize() const

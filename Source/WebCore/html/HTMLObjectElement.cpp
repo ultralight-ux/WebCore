@@ -54,7 +54,6 @@
 
 #if PLATFORM(IOS_FAMILY)
 #include "RuntimeApplicationChecks.h"
-#include <wtf/spi/darwin/dyldSPI.h>
 #endif
 
 namespace WebCore {
@@ -77,13 +76,14 @@ Ref<HTMLObjectElement> HTMLObjectElement::create(const QualifiedName& tagName, D
     return result;
 }
 
-RenderWidget* HTMLObjectElement::renderWidgetLoadingPlugin() const
+HTMLObjectElement::~HTMLObjectElement()
 {
-    // Needs to load the plugin immediatedly because this function is called
-    // when JavaScript code accesses the plugin.
-    // FIXME: <rdar://16893708> Check if dispatching events here is safe.
-    document().updateLayoutIgnorePendingStylesheets(Document::RunPostLayoutTasks::Synchronously);
-    return renderWidget(); // This will return 0 if the renderer is not a RenderWidget.
+    clearForm();
+}
+
+int HTMLObjectElement::defaultTabIndex() const
+{
+    return 0;
 }
 
 bool HTMLObjectElement::isPresentationAttribute(const QualifiedName& name) const
@@ -206,7 +206,7 @@ void HTMLObjectElement::parametersForPlugin(Vector<String>& paramNames, Vector<S
     // if we know that resource points to a plug-in.
 
     if (url.isEmpty() && !urlParameter.isEmpty()) {
-        SubframeLoader& loader = document().frame()->loader().subframeLoader();
+        auto& loader = document().frame()->loader().subframeLoader();
         if (loader.resourceWillUsePlugin(urlParameter, serviceType))
             url = urlParameter;
     }
@@ -265,14 +265,13 @@ void HTMLObjectElement::updateWidget(CreatePlugins createPlugins)
     parametersForPlugin(paramNames, paramValues, url, serviceType);
 
     // Note: url is modified above by parametersForPlugin.
-    if (!allowedToLoadFrameURL(url)) {
+    if (!canLoadURL(url)) {
         setNeedsWidgetUpdate(false);
         return;
     }
 
-    // FIXME: It's sadness that we have this special case here.
-    //        See http://trac.webkit.org/changeset/25128 and
-    //        plugins/netscape-plugin-setwindow-size.html
+    // FIXME: It's unfortunate that we have this special case here.
+    // See http://trac.webkit.org/changeset/25128 and the plugins/netscape-plugin-setwindow-size.html test.
     if (createPlugins == CreatePlugins::No && wouldLoadAsPlugIn(url, serviceType))
         return;
 
@@ -283,7 +282,9 @@ void HTMLObjectElement::updateWidget(CreatePlugins createPlugins)
     if (!renderer()) // Do not load the plugin if beforeload removed this element or its renderer.
         return;
 
-    bool success = beforeLoadAllowedLoad && hasValidClassId() && allowedToLoadFrameURL(url);
+    // Dispatching a beforeLoad event could have executed code that changed the document.
+    // Make sure the URL is still safe to load.
+    bool success = beforeLoadAllowedLoad && hasValidClassId() && canLoadURL(url);
     if (success)
         success = requestObject(url, serviceType, paramNames, paramValues);
     if (!success && hasFallbackContent())
@@ -322,6 +323,11 @@ void HTMLObjectElement::childrenChanged(const ChildChange& change)
 bool HTMLObjectElement::isURLAttribute(const Attribute& attribute) const
 {
     return attribute.name() == dataAttr || attribute.name() == codebaseAttr || (attribute.name() == usemapAttr && attribute.value().string()[0] != '#') || HTMLPlugInImageElement::isURLAttribute(attribute);
+}
+
+bool HTMLObjectElement::isInteractiveContent() const
+{
+    return hasAttributeWithoutSynchronization(usemapAttr);
 }
 
 const AtomString& HTMLObjectElement::imageSourceURL() const

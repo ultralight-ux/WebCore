@@ -24,7 +24,11 @@ import os
 import re
 import sys
 import unittest
-from StringIO import StringIO
+
+if sys.version_info > (3, 0):
+    from io import StringIO
+else:
+    from StringIO import StringIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from webkit import messages
@@ -34,22 +38,22 @@ script_directory = os.path.dirname(os.path.realpath(__file__))
 
 reset_results = False
 
-with open(os.path.join(script_directory, 'test-messages.in')) as in_file:
+with open(os.path.join(script_directory, 'test.messages.in')) as in_file:
     _messages_file_contents = in_file.read()
 
-with open(os.path.join(script_directory, 'test-legacy-messages.in')) as in_file:
+with open(os.path.join(script_directory, 'test-legacy.messages.in')) as in_file:
     _legacy_messages_file_contents = in_file.read()
 
-with open(os.path.join(script_directory, 'test-superclass-messages.in')) as in_file:
+with open(os.path.join(script_directory, 'test-superclass.messages.in')) as in_file:
     _superclass_messages_file_contents = in_file.read()
 
-_expected_receiver_header_file_name = 'Messages-expected.h'
-_expected_legacy_receiver_header_file_name = 'LegacyMessages-expected.h'
-_expected_superclass_receiver_header_file_name = 'MessagesSuperclass-expected.h'
+_expected_receiver_header_file_name = '../testMessages.h'
+_expected_legacy_receiver_header_file_name = '../test-legacyMessages.h'
+_expected_superclass_receiver_header_file_name = '../test-superclassMessages.h'
 
-_expected_receiver_implementation_file_name = 'MessageReceiver-expected.cpp'
-_expected_legacy_receiver_implementation_file_name = 'LegacyMessageReceiver-expected.cpp'
-_expected_superclass_receiver_implementation_file_name = 'MessageReceiverSuperclass-expected.cpp'
+_expected_receiver_implementation_file_name = '../testMessageReceiver.cpp'
+_expected_legacy_receiver_implementation_file_name = '../test-legacyMessageReceiver.cpp'
+_expected_superclass_receiver_implementation_file_name = '../test-superclassMessageReceiver.cpp'
 
 _expected_results = {
     'name': 'WebPage',
@@ -202,6 +206,7 @@ _expected_results = {
             'name': 'DidCreateWebProcessConnection',
             'parameters': (
                 ('IPC::MachPort', 'connectionIdentifier'),
+                ('OptionSet<WebKit::SelectionFlags>', 'flags'),
             ),
             'conditions': ('PLATFORM(MAC)'),
         },
@@ -266,6 +271,16 @@ _expected_superclass_results = {
             'reply_parameters': (
                 ('bool', 'flag'),
                 ('uint64_t', 'value'),
+            ),
+            'conditions': ('ENABLE(TEST_FEATURE)'),
+        },
+        {
+            'name': 'TestAsyncMessageWithConnection',
+            'parameters': (
+                ('int', 'value'),
+            ),
+            'reply_parameters': (
+                ('bool', 'flag'),
             ),
             'conditions': ('ENABLE(TEST_FEATURE)'),
         },
@@ -365,11 +380,11 @@ class GeneratedFileContentsTest(unittest.TestCase):
             raise
 
     def assertHeaderEqual(self, input_messages_file_contents, expected_file_name):
-        actual_file_contents = messages.generate_messages_header(StringIO(input_messages_file_contents))
+        actual_file_contents = messages.generate_messages_header(parser.parse(StringIO(input_messages_file_contents)))
         self.assertGeneratedFileContentsEqual(actual_file_contents, expected_file_name)
 
     def assertImplementationEqual(self, input_messages_file_contents, expected_file_name):
-        actual_file_contents = messages.generate_message_handler(StringIO(input_messages_file_contents))
+        actual_file_contents = messages.generate_message_handler(parser.parse(StringIO(input_messages_file_contents)))
         self.assertGeneratedFileContentsEqual(actual_file_contents, expected_file_name)
 
 
@@ -396,11 +411,11 @@ class ReceiverImplementationTest(GeneratedFileContentsTest):
 class UnsupportedPrecompilerDirectiveTest(unittest.TestCase):
     def test_error_at_else(self):
         with self.assertRaisesRegexp(Exception, r"ERROR: '#else.*' is not supported in the \*\.in files"):
-            messages.generate_message_handler(StringIO("asd\n#else bla\nfoo"))
+            messages.generate_message_handler(parser.parse(StringIO("asd\n#else bla\nfoo")))
 
     def test_error_at_elif(self):
         with self.assertRaisesRegexp(Exception, r"ERROR: '#elif.*' is not supported in the \*\.in files"):
-            messages.generate_message_handler(StringIO("asd\n#elif bla\nfoo"))
+            messages.generate_message_handler(parser.parse(StringIO("asd\n#elif bla\nfoo")))
 
 
 def add_reset_results_to_unittest_help():

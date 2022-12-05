@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "AnimationFrameRate.h"
 #include "DisplayRefreshMonitorClient.h"
 #include <wtf/Seconds.h>
 
@@ -33,31 +34,29 @@ namespace WebCore {
 class Page;
 class Timer;
 
-class RenderingUpdateScheduler
-#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-    : public DisplayRefreshMonitorClient
-#endif
+class RenderingUpdateScheduler : public DisplayRefreshMonitorClient
 {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     static std::unique_ptr<RenderingUpdateScheduler> create(Page& page)
     {
-        return std::make_unique<RenderingUpdateScheduler>(page);
+        return makeUnique<RenderingUpdateScheduler>(page);
     }
 
     RenderingUpdateScheduler(Page&);
+    
+    void adjustRenderingUpdateFrequency();
     void scheduleTimedRenderingUpdate();
     void scheduleImmediateRenderingUpdate();
     void scheduleRenderingUpdate();
 
-private:
-#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-    RefPtr<DisplayRefreshMonitor> createDisplayRefreshMonitor(PlatformDisplayID) const final;
     void windowScreenDidChange(PlatformDisplayID);
+
+private:
+    void setPreferredFramesPerSecond(FramesPerSecond);
+    bool scheduleAnimation(FramesPerSecond);
+    RefPtr<DisplayRefreshMonitor> createDisplayRefreshMonitor(PlatformDisplayID) const final;
     void displayRefreshFired() final;
-#else
-    void displayRefreshFired();
-#endif
 
     bool isScheduled() const;
     void startTimer(Seconds);
@@ -66,6 +65,7 @@ private:
     Page& m_page;
     bool m_scheduled { false };
     std::unique_ptr<Timer> m_refreshTimer;
+    FramesPerSecond m_preferredFramesPerSecond { FullSpeedFramesPerSecond };
 };
 
 }

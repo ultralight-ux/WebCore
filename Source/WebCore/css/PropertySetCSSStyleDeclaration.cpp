@@ -252,7 +252,7 @@ ExceptionOr<void> PropertySetCSSStyleDeclaration::setProperty(const String& prop
 
         if (parentElement())
             document = &parentElement()->document();
-        else
+        else if (parentStyleSheet())
             document = parentStyleSheet()->ownerDocument();
 
         changed = m_propertySet->setCustomProperty(document, propertyName, value, important, cssParserContext());
@@ -300,9 +300,14 @@ RefPtr<CSSValue> PropertySetCSSStyleDeclaration::getPropertyCSSValueInternal(CSS
 String PropertySetCSSStyleDeclaration::getPropertyValueInternal(CSSPropertyID propertyID)
 {
     String value = m_propertySet->getPropertyValue(propertyID);
+    CSSPropertyID relatedPropertyID = getRelatedPropertyId(propertyID);
+    String relatedValue = m_propertySet->getPropertyValue(relatedPropertyID);
+        
     if (!value.isEmpty())
         return value;
-
+    if (!relatedValue.isEmpty())
+        return relatedValue;
+    
     return String();
 }
 
@@ -329,7 +334,7 @@ RefPtr<DeprecatedCSSOMValue> PropertySetCSSStyleDeclaration::wrapForDeprecatedCS
     // The map is here to maintain the object identity of the CSSValues over multiple invocations.
     // FIXME: It is likely that the identity is not important for web compatibility and this code should be removed.
     if (!m_cssomValueWrappers)
-        m_cssomValueWrappers = std::make_unique<HashMap<CSSValue*, WeakPtr<DeprecatedCSSOMValue>>>();
+        m_cssomValueWrappers = makeUnique<HashMap<CSSValue*, WeakPtr<DeprecatedCSSOMValue>>>();
     
     auto& clonedValue = m_cssomValueWrappers->add(internalValue, WeakPtr<DeprecatedCSSOMValue>()).iterator->value;
     if (clonedValue)
@@ -412,7 +417,11 @@ CSSParserContext StyleRuleCSSStyleDeclaration::cssParserContext() const
     if (!styleSheet)
         return PropertySetCSSStyleDeclaration::cssParserContext();
 
-    return styleSheet->parserContext();
+    auto context = styleSheet->parserContext();
+    if (m_parentRule)
+        context.enclosingRuleType = static_cast<StyleRuleType>(m_parentRule->type());
+    
+    return context;
 }
 
 void StyleRuleCSSStyleDeclaration::reattach(MutableStyleProperties& propertySet)

@@ -128,7 +128,7 @@ JSExportAs(testArgumentTypes,
 }
 - (void)callback:(JSValue *)function
 {
-    [function callWithArguments:[NSArray arrayWithObject:[NSNumber numberWithInt:42]]];
+    [function callWithArguments:@[@(42)]];
 }
 - (void)bogusCallback:(void(^)(int))function
 {
@@ -199,7 +199,7 @@ bool testXYZTested = false;
         return;
 
     JSValue *function = [m_onclickHandler value];
-    [function callWithArguments:[NSArray array]];
+    [function callWithArguments:@[]];
 }
 @end
 
@@ -1171,10 +1171,8 @@ static void testObjectiveCAPIMain()
         JSContext *context = [[JSContext alloc] init];
         context[@"handleTheDictionary"] = ^(NSDictionary *dict) {
             NSDictionary *expectedDict = @{
-                @"foo" : [NSNumber numberWithInt:1],
-                @"bar" : @{
-                    @"baz": [NSNumber numberWithInt:2]
-                }
+                @"foo": @(1),
+                @"bar": @{ @"baz": @(2) }
             };
             checkResult(@"recursively convert nested dictionaries", [dict isEqualToDictionary:expectedDict]);
         };
@@ -1340,7 +1338,7 @@ static void testObjectiveCAPIMain()
     }
 
     @autoreleasepool {
-        static const unsigned count = 100;
+        static constexpr unsigned count = 100;
         NSMutableArray *array = [NSMutableArray arrayWithCapacity:count];
         JSContext *context = [[JSContext alloc] init];
         @autoreleasepool {
@@ -2405,7 +2403,9 @@ static void testBytecodeCacheValidation()
         testInvalidCacheURL([NSURL URLWithString:@""], @"Cache path `` is not a local file");
         testInvalidCacheURL([NSURL URLWithString:@"file:///"], @"Cache path `/` already exists and is not a file");
         testInvalidCacheURL([NSURL URLWithString:@"file:///a/b/c/d/e"], @"Cache directory `/a/b/c/d` is not a directory or does not exist");
+#if USE(APPLE_INTERNAL_SDK)
         testInvalidCacheURL([NSURL URLWithString:@"file:///private/tmp/file.cache"], @"Cache directory `/private/tmp` is not a data vault");
+#endif
     }
 
 #if USE(APPLE_INTERNAL_SDK)

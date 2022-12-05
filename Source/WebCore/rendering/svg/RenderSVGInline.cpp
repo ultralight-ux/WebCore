@@ -41,7 +41,7 @@ RenderSVGInline::RenderSVGInline(SVGGraphicsElement& element, RenderStyle&& styl
 
 std::unique_ptr<InlineFlowBox> RenderSVGInline::createInlineFlowBox()
 {
-    auto box = std::make_unique<SVGInlineFlowBox>(*this);
+    auto box = makeUnique<SVGInlineFlowBox>(*this);
     box->setHasVirtualLogicalHeight();
     return box;
 }
@@ -80,9 +80,9 @@ Optional<FloatRect> RenderSVGInline::computeFloatVisibleRectInContainer(const Fl
     return SVGRenderSupport::computeFloatVisibleRectInContainer(*this, rect, container, context);
 }
 
-void RenderSVGInline::mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState& transformState, MapCoordinatesFlags, bool* wasFixed) const
+void RenderSVGInline::mapLocalToContainer(const RenderLayerModelObject* ancestorContainer, TransformState& transformState, MapCoordinatesFlags, bool* wasFixed) const
 {
-    SVGRenderSupport::mapLocalToContainer(*this, repaintContainer, transformState, wasFixed);
+    SVGRenderSupport::mapLocalToContainer(*this, ancestorContainer, transformState, wasFixed);
 }
 
 const RenderObject* RenderSVGInline::pushMappingToContainer(const RenderLayerModelObject* ancestorToStopAt, RenderGeometryMap& geometryMap) const

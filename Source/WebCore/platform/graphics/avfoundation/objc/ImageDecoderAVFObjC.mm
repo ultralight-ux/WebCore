@@ -349,14 +349,14 @@ bool ImageDecoderAVFObjC::supportsMediaType(MediaType type)
     return type == MediaType::Video && AVAssetMIMETypeCache::singleton().isAvailable();
 }
 
-bool ImageDecoderAVFObjC::supportsContentType(const ContentType& type)
+bool ImageDecoderAVFObjC::supportsContainerType(const String& type)
 {
-    return AVAssetMIMETypeCache::singleton().supportsContentType(type);
+    return AVAssetMIMETypeCache::singleton().supportsContainerType(type);
 }
 
 bool ImageDecoderAVFObjC::canDecodeType(const String& mimeType)
 {
-    return AVAssetMIMETypeCache::singleton().canDecodeType(mimeType);
+    return AVAssetMIMETypeCache::singleton().canDecodeType(mimeType) != MediaPlayerEnums::SupportsType::IsNotSupported;
 }
 
 AVAssetTrack *ImageDecoderAVFObjC::firstEnabledTrack()
@@ -412,7 +412,7 @@ void ImageDecoderAVFObjC::readTrackMetadata()
         || !m_imageRotationSession->transform()
         || m_imageRotationSession->transform().value() != finalTransform
         || m_imageRotationSession->size() != size)
-        m_imageRotationSession = std::make_unique<ImageRotationSessionVT>(WTFMove(finalTransform), size, kCVPixelFormatType_32BGRA, ImageRotationSessionVT::IsCGImageCompatible::Yes);
+        m_imageRotationSession = makeUnique<ImageRotationSessionVT>(WTFMove(finalTransform), size, kCVPixelFormatType_32BGRA, ImageRotationSessionVT::IsCGImageCompatible::Yes);
 
     m_size = expandedIntSize(m_imageRotationSession->rotatedSize());
 }
@@ -421,11 +421,11 @@ bool ImageDecoderAVFObjC::storeSampleBuffer(CMSampleBufferRef sampleBuffer)
 {
     auto pixelBuffer = m_decompressionSession->decodeSampleSync(sampleBuffer);
     if (!pixelBuffer) {
-        LOG(Images, "ImageDecoderAVFObjC::storeSampleBuffer(%p) - could not decode sampleBuffer", this);
+        RELEASE_LOG_ERROR(Images, "ImageDecoderAVFObjC::storeSampleBuffer(%p) - could not decode sampleBuffer", this);
         return false;
     }
 
-    auto presentationTime = PAL::toMediaTime(PAL::CMSampleBufferGetPresentationTimeStamp(sampleBuffer));
+    auto presentationTime = PAL::toMediaTime(PAL::CMSampleBufferGetOutputPresentationTimeStamp(sampleBuffer));
     auto iter = m_sampleData.presentationOrder().findSampleWithPresentationTime(presentationTime);
 
     if (m_imageRotationSession)
@@ -433,11 +433,15 @@ bool ImageDecoderAVFObjC::storeSampleBuffer(CMSampleBufferRef sampleBuffer)
 
     CGImageRef rawImage = nullptr;
     if (noErr != VTCreateCGImageFromCVPixelBuffer(pixelBuffer.get(), nullptr, &rawImage)) {
-        LOG(Images, "ImageDecoderAVFObjC::storeSampleBuffer(%p) - could not create CGImage from pixelBuffer", this);
+        RELEASE_LOG_ERROR(Images, "ImageDecoderAVFObjC::storeSampleBuffer(%p) - could not create CGImage from pixelBuffer", this);
         return false;
     }
 
-    ASSERT(iter != m_sampleData.presentationOrder().end());
+    if (iter == m_sampleData.presentationOrder().end()) {
+        RELEASE_LOG_ERROR(Images, "ImageDecoderAVFObjC::storeSampleBuffer(%p) - could not find sample buffer entry with specified presentation time", this);
+        return false;
+    }
+
     toSample(iter)->setImage(adoptCF(rawImage));
 
     return true;
@@ -512,7 +516,7 @@ String ImageDecoderAVFObjC::uti() const
 
 String ImageDecoderAVFObjC::filenameExtension() const
 {
-    return MIMETypeRegistry::getPreferredExtensionForMIMEType(m_mimeType);
+    return MIMETypeRegistry::preferredExtensionForMIMEType(m_mimeType);
 }
 
 IntSize ImageDecoderAVFObjC::frameSizeAtIndex(size_t, SubsamplingLevel) const
@@ -531,7 +535,7 @@ bool ImageDecoderAVFObjC::frameIsCompleteAtIndex(size_t index) const
 
 ImageOrientation ImageDecoderAVFObjC::frameOrientationAtIndex(size_t) const
 {
-    return ImageOrientation();
+    return ImageOrientation::None;
 }
 
 Seconds ImageDecoderAVFObjC::frameDurationAtIndex(size_t index) const

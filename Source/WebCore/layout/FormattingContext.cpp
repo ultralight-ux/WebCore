@@ -30,9 +30,13 @@
 
 #include "DisplayBox.h"
 #include "FormattingState.h"
+#include "InvalidationState.h"
 #include "LayoutBox.h"
-#include "LayoutContainer.h"
+#include "LayoutContainerBox.h"
+#include "LayoutContext.h"
 #include "LayoutDescendantIterator.h"
+#include "LayoutInitialContainingBlock.h"
+#include "LayoutReplacedBox.h"
 #include "LayoutState.h"
 #include "Logging.h"
 #include <wtf/IsoMallocInlines.h>
@@ -43,10 +47,11 @@ namespace Layout {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(FormattingContext);
 
-FormattingContext::FormattingContext(const Box& formattingContextRoot, FormattingState& formattingState)
+FormattingContext::FormattingContext(const ContainerBox& formattingContextRoot, FormattingState& formattingState)
     : m_root(makeWeakPtr(formattingContextRoot))
     , m_formattingState(formattingState)
 {
+    ASSERT(formattingContextRoot.hasChild());
 #ifndef NDEBUG
     layoutState().registerFormattingContext(*this);
 #endif
@@ -64,200 +69,236 @@ LayoutState& FormattingContext::layoutState() const
     return m_formattingState.layoutState();
 }
 
-void FormattingContext::computeOutOfFlowHorizontalGeometry(const Box& layoutBox) const
+void FormattingContext::computeOutOfFlowHorizontalGeometry(const Box& layoutBox, const ConstraintsForOutOfFlowContent& constraints)
 {
-    auto& layoutState = this->layoutState();
-    auto containingBlockWidth = layoutState.displayBoxForLayoutBox(*layoutBox.containingBlock()).paddingBoxWidth();
-
+    ASSERT(layoutBox.isOutOfFlowPositioned());
     auto compute = [&](Optional<LayoutUnit> usedWidth) {
-        auto usedValues = UsedHorizontalValues { containingBlockWidth, usedWidth, { } };
-        return Geometry::outOfFlowHorizontalGeometry(layoutState, layoutBox, usedValues);
+        return geometry().outOfFlowHorizontalGeometry(layoutBox, constraints.horizontal, constraints.vertical, { usedWidth, { } });
     };
 
+    auto containingBlockWidth = constraints.horizontal.logicalWidth;
     auto horizontalGeometry = compute({ });
-    if (auto maxWidth = Geometry::computedValueIfNotAuto(layoutBox.style().logicalMaxWidth(), containingBlockWidth)) {
+    if (auto maxWidth = geometry().computedMaxWidth(layoutBox, containingBlockWidth)) {
         auto maxHorizontalGeometry = compute(maxWidth);
-        if (horizontalGeometry.widthAndMargin.width > maxHorizontalGeometry.widthAndMargin.width)
+        if (horizontalGeometry.contentWidthAndMargin.contentWidth > maxHorizontalGeometry.contentWidthAndMargin.contentWidth)
             horizontalGeometry = maxHorizontalGeometry;
     }
 
-    if (auto minWidth = Geometry::computedValueIfNotAuto(layoutBox.style().logicalMinWidth(), containingBlockWidth)) {
+    if (auto minWidth = geometry().computedMinWidth(layoutBox, containingBlockWidth)) {
         auto minHorizontalGeometry = compute(minWidth);
-        if (horizontalGeometry.widthAndMargin.width < minHorizontalGeometry.widthAndMargin.width)
+        if (horizontalGeometry.contentWidthAndMargin.contentWidth < minHorizontalGeometry.contentWidthAndMargin.contentWidth)
             horizontalGeometry = minHorizontalGeometry;
     }
 
-    auto& displayBox = layoutState.displayBoxForLayoutBox(layoutBox);
-    displayBox.setLeft(horizontalGeometry.left + horizontalGeometry.widthAndMargin.usedMargin.start);
-    displayBox.setContentBoxWidth(horizontalGeometry.widthAndMargin.width);
-    displayBox.setHorizontalMargin(horizontalGeometry.widthAndMargin.usedMargin);
-    displayBox.setHorizontalComputedMargin(horizontalGeometry.widthAndMargin.computedMargin);
+    auto& displayBox = formattingState().displayBox(layoutBox);
+    displayBox.setLeft(horizontalGeometry.left + horizontalGeometry.contentWidthAndMargin.usedMargin.start);
+    displayBox.setContentBoxWidth(horizontalGeometry.contentWidthAndMargin.contentWidth);
+    auto& usedHorizontalMargin = horizontalGeometry.contentWidthAndMargin.usedMargin;
+    displayBox.setHorizontalMargin({ usedHorizontalMargin.start, usedHorizontalMargin.end });
 }
 
-void FormattingContext::computeOutOfFlowVerticalGeometry(const Box& layoutBox) const
+void FormattingContext::computeOutOfFlowVerticalGeometry(const Box& layoutBox, const ConstraintsForOutOfFlowContent& constraints)
 {
-    auto& layoutState = this->layoutState();
-
-    auto compute = [&](UsedVerticalValues usedValues) {
-        return Geometry::outOfFlowVerticalGeometry(layoutState, layoutBox, usedValues);
+    ASSERT(layoutBox.isOutOfFlowPositioned());
+    auto compute = [&](Optional<LayoutUnit> usedHeight) {
+        return geometry().outOfFlowVerticalGeometry(layoutBox, constraints.horizontal, constraints.vertical, { usedHeight });
     };
 
+    auto containingBlockHeight = *constraints.vertical.logicalHeight;
     auto verticalGeometry = compute({ });
-    if (auto maxHeight = Geometry::computedMaxHeight(layoutState, layoutBox)) {
-        auto maxVerticalGeometry = compute({ *maxHeight });
-        if (verticalGeometry.heightAndMargin.height > maxVerticalGeometry.heightAndMargin.height)
+    if (auto maxHeight = geometry().computedMaxHeight(layoutBox, containingBlockHeight)) {
+        auto maxVerticalGeometry = compute(maxHeight);
+        if (verticalGeometry.contentHeightAndMargin.contentHeight > maxVerticalGeometry.contentHeightAndMargin.contentHeight)
             verticalGeometry = maxVerticalGeometry;
     }
 
-    if (auto minHeight = Geometry::computedMinHeight(layoutState, layoutBox)) {
-        auto minVerticalGeometry = compute({ *minHeight });
-        if (verticalGeometry.heightAndMargin.height < minVerticalGeometry.heightAndMargin.height)
+    if (auto minHeight = geometry().computedMinHeight(layoutBox, containingBlockHeight)) {
+        auto minVerticalGeometry = compute(minHeight);
+        if (verticalGeometry.contentHeightAndMargin.contentHeight < minVerticalGeometry.contentHeightAndMargin.contentHeight)
             verticalGeometry = minVerticalGeometry;
     }
 
-    auto& displayBox = layoutState.displayBoxForLayoutBox(layoutBox);
-    auto nonCollapsedVerticalMargin = verticalGeometry.heightAndMargin.nonCollapsedMargin;
+    auto& displayBox = formattingState().displayBox(layoutBox);
+    auto nonCollapsedVerticalMargin = verticalGeometry.contentHeightAndMargin.nonCollapsedMargin;
     displayBox.setTop(verticalGeometry.top + nonCollapsedVerticalMargin.before);
-    displayBox.setContentBoxHeight(verticalGeometry.heightAndMargin.height);
-    // Margins of absolutely positioned boxes do not collapse
-    displayBox.setVerticalMargin({ nonCollapsedVerticalMargin, { } });
+    displayBox.setContentBoxHeight(verticalGeometry.contentHeightAndMargin.contentHeight);
+    // Margins of absolutely positioned boxes do not collapse.
+    displayBox.setVerticalMargin({ nonCollapsedVerticalMargin.before, nonCollapsedVerticalMargin.after });
 }
 
-void FormattingContext::computeBorderAndPadding(const Box& layoutBox, Optional<UsedHorizontalValues> usedValues) const
+void FormattingContext::computeBorderAndPadding(const Box& layoutBox, const HorizontalConstraints& horizontalConstraint)
 {
-    auto& layoutState = this->layoutState();
-    if (!usedValues)
-        usedValues = UsedHorizontalValues { layoutState.displayBoxForLayoutBox(*layoutBox.containingBlock()).contentBoxWidth() };
-    auto& displayBox = layoutState.displayBoxForLayoutBox(layoutBox);
-    displayBox.setBorder(Geometry::computedBorder(layoutBox));
-    displayBox.setPadding(Geometry::computedPadding(layoutBox, *usedValues));
+    auto& displayBox = formattingState().displayBox(layoutBox);
+    displayBox.setBorder(geometry().computedBorder(layoutBox));
+    displayBox.setPadding(geometry().computedPadding(layoutBox, horizontalConstraint.logicalWidth));
 }
 
-void FormattingContext::layoutOutOfFlowDescendants(const Box& layoutBox) const
+void FormattingContext::layoutOutOfFlowContent(InvalidationState& invalidationState, const ConstraintsForOutOfFlowContent& constraints)
 {
-    if (!is<Container>(layoutBox))
-        return;
+    LOG_WITH_STREAM(FormattingContextLayout, stream << "Start: layout out-of-flow content -> context: " << &layoutState() << " root: " << &root());
 
-    auto& container = downcast<Container>(layoutBox);
-    if (!container.hasChild())
-        return;
+    collectOutOfFlowDescendantsIfNeeded();
 
-    auto& layoutState = this->layoutState();
-    LOG_WITH_STREAM(FormattingContextLayout, stream << "Start: layout out-of-flow descendants -> context: " << &layoutState << " root: " << &root());
+    auto constraintsForLayoutBox = [&] (const auto& outOfFlowBox) {
+        auto& containingBlock = outOfFlowBox.containingBlock();
+        return &containingBlock == &root() ? constraints : geometry().constraintsForOutOfFlowContent(containingBlock);
+    };
 
-    for (auto& outOfFlowBox : container.outOfFlowDescendants()) {
-        auto& layoutBox = *outOfFlowBox;
+    for (auto& outOfFlowBox : formattingState().outOfFlowBoxes()) {
+        ASSERT(outOfFlowBox->establishesFormattingContext());
+        if (!invalidationState.needsLayout(*outOfFlowBox))
+            continue;
 
-        ASSERT(layoutBox.establishesFormattingContext());
+        auto containingBlockConstraints = constraintsForLayoutBox(*outOfFlowBox);
+        auto horizontalConstraintsForBorderAndPadding = HorizontalConstraints { containingBlockConstraints.horizontal.logicalLeft, containingBlockConstraints.borderAndPaddingConstraints };
+        computeBorderAndPadding(*outOfFlowBox, horizontalConstraintsForBorderAndPadding);
 
-        computeBorderAndPadding(layoutBox);
-        computeOutOfFlowHorizontalGeometry(layoutBox);
-
-        layoutState.createFormattingContext(layoutBox)->layout();
-
-        computeOutOfFlowVerticalGeometry(layoutBox);
-        layoutOutOfFlowDescendants(layoutBox);
+        computeOutOfFlowHorizontalGeometry(*outOfFlowBox, containingBlockConstraints);
+        auto outOfFlowBoxHasContent = is<ContainerBox>(*outOfFlowBox) && downcast<ContainerBox>(*outOfFlowBox).hasChild();
+        if (outOfFlowBoxHasContent) {
+            auto& containerBox = downcast<ContainerBox>(*outOfFlowBox);
+            auto formattingContext = LayoutContext::createFormattingContext(containerBox, layoutState());
+            if (containerBox.hasInFlowOrFloatingChild())
+                formattingContext->layoutInFlowContent(invalidationState, geometry().constraintsForInFlowContent(containerBox));
+            computeOutOfFlowVerticalGeometry(containerBox, containingBlockConstraints);
+            formattingContext->layoutOutOfFlowContent(invalidationState, geometry().constraintsForOutOfFlowContent(containerBox));
+        } else
+            computeOutOfFlowVerticalGeometry(*outOfFlowBox, containingBlockConstraints);
     }
-    LOG_WITH_STREAM(FormattingContextLayout, stream << "End: layout out-of-flow descendants -> context: " << &layoutState << " root: " << &root());
+    LOG_WITH_STREAM(FormattingContextLayout, stream << "End: layout out-of-flow content -> context: " << &layoutState() << " root: " << &root());
 }
 
-static LayoutUnit mapHorizontalPositionToAncestor(const LayoutState& layoutState, LayoutUnit horizontalPosition, const Container& containingBlock, const Container& ancestor)
+const Display::Box& FormattingContext::geometryForBox(const Box& layoutBox, Optional<EscapeReason> escapeReason) const
 {
-    // "horizontalPosition" is in the coordinate system of the "containingBlock". -> map from containingBlock to ancestor.
-    if (&containingBlock == &ancestor)
-        return horizontalPosition;
-    ASSERT(containingBlock.isContainingBlockDescendantOf(ancestor));
-    for (auto* container = &containingBlock; container && container != &ancestor; container = container->containingBlock())
-        horizontalPosition += layoutState.displayBoxForLayoutBox(*container).left();
-    return horizontalPosition;
+    UNUSED_PARAM(escapeReason);
+#if ASSERT_ENABLED
+    auto isOkToAccessDisplayBox = [&] {
+        if (!is<InitialContainingBlock>(layoutBox) && &layoutBox.formattingContextRoot() == &root()) {
+            // This is the non-escape case of accessing a box's geometry information within the same formatting context.
+            return true;
+        }
+
+        if (!escapeReason) {
+            // Any geometry access outside of the formatting context without a valid reason is considered an escape.
+            return false;
+        }
+
+        if (*escapeReason == EscapeReason::DocumentBoxStretchesToViewportQuirk) {
+            ASSERT(layoutState().inQuirksMode());
+            return is<InitialContainingBlock>(layoutBox);
+        }
+
+        if (*escapeReason == EscapeReason::BodyStretchesToViewportQuirk) {
+            ASSERT(layoutState().inQuirksMode());
+            return is<InitialContainingBlock>(layoutBox) || layoutBox.isDocumentBox();
+
+        }
+
+        if (*escapeReason == EscapeReason::StrokeOverflowNeedsViewportGeometry)
+            return is<InitialContainingBlock>(layoutBox);
+
+        if (*escapeReason == EscapeReason::NeedsGeometryFromEstablishedFormattingContext) {
+            // This is the case when a formatting root collects geometry information from the established
+            // formatting context to be able to determine width/height.
+            // e.g <div>text content</div>. The <div> is a formatting root of the IFC.
+            // In order to compute the height of the <div>, we need to look inside the IFC and gather geometry information.
+            return &layoutBox.formattingContextRoot().formattingContextRoot() == &root();
+        }
+
+        if (*escapeReason == EscapeReason::OutOfFlowBoxNeedsInFlowGeometry) {
+            // When computing the static position of an out-of-flow box, we need to gather sibling/parent geometry information
+            // as if the out-of-flow box was a simple inflow box.
+            // Now since the out-of-flow and the sibling/parent boxes could very well be in different containing block subtrees
+            // the formatting context they live in could also be very different.
+            return true;
+        }
+
+        if (*escapeReason == EscapeReason::FloatBoxNeedsToBeInAbsoluteCoordinates) {
+            // Float box top/left values are mapped relative to the FloatState's root. Inline formatting contexts(A) inherit floats from parent
+            // block formatting contexts(B). Floats in these inline formatting contexts(A) need to be mapped to the parent, block formatting context(B).
+            auto& formattingContextRoot = layoutBox.formattingContextRoot();
+            return &formattingContextRoot == &root() || &formattingContextRoot == &root().formattingContextRoot();
+        }
+
+        if (*escapeReason == EscapeReason::FindFixedHeightAncestorQuirk) {
+            ASSERT(layoutState().inQuirksMode());
+            // Find the first containing block with fixed height quirk. See Quirks::heightValueOfNearestContainingBlockWithFixedHeight.
+            // This is only to check if the targetFormattingRoot is an ancestor formatting root.
+            if (is<InitialContainingBlock>(layoutBox))
+                return true;
+            auto& targetFormattingRoot = layoutBox.formattingContextRoot();
+            auto* ancestorFormattingContextRoot = &root().formattingContextRoot();
+            while (true) {
+                if (&targetFormattingRoot == ancestorFormattingContextRoot)
+                    return true;
+                ancestorFormattingContextRoot = &ancestorFormattingContextRoot->formattingContextRoot();
+                if (is<InitialContainingBlock>(*ancestorFormattingContextRoot))
+                    return true;
+            }
+            return false;
+        }
+
+        if (*escapeReason == EscapeReason::TableNeedsAccessToTableWrapper) {
+            // Tables are wrapped in a 2 level formatting context structure. A <table> element initiates a block formatting context for its principal table box
+            // where the caption and the table content live. It also initiates a table wrapper box which establishes the table formatting context.
+            // In many cases the TFC needs access to the parent (generated) BFC.
+            return &layoutBox == &root().formattingContextRoot();
+        }
+
+        ASSERT_NOT_REACHED();
+        return false;
+    };
+#endif
+    ASSERT(isOkToAccessDisplayBox());
+    ASSERT(layoutState().hasDisplayBox(layoutBox));
+    return layoutState().displayBoxForLayoutBox(layoutBox);
 }
 
-// FIXME: turn these into templates.
-LayoutUnit FormattingContext::mapLeftToAncestor(const LayoutState& layoutState, const Box& layoutBox, const Container& ancestor)
+void FormattingContext::collectOutOfFlowDescendantsIfNeeded()
 {
-    ASSERT(layoutBox.containingBlock());
-    return mapHorizontalPositionToAncestor(layoutState, layoutState.displayBoxForLayoutBox(layoutBox).left(), *layoutBox.containingBlock(), ancestor);
-}
-
-LayoutUnit FormattingContext::mapRightToAncestor(const LayoutState& layoutState, const Box& layoutBox, const Container& ancestor)
-{
-    ASSERT(layoutBox.containingBlock());
-    return mapHorizontalPositionToAncestor(layoutState, layoutState.displayBoxForLayoutBox(layoutBox).right(), *layoutBox.containingBlock(), ancestor);
-}
-
-Display::Box FormattingContext::mapBoxToAncestor(const LayoutState& layoutState, const Box& layoutBox, const Container& ancestor)
-{
-    ASSERT(layoutBox.isContainingBlockDescendantOf(ancestor));
-    auto& displayBox = layoutState.displayBoxForLayoutBox(layoutBox);
-    auto topLeft = displayBox.topLeft();
-    for (auto* containingBlock = layoutBox.containingBlock(); containingBlock && containingBlock != &ancestor; containingBlock = containingBlock->containingBlock())
-        topLeft.moveBy(layoutState.displayBoxForLayoutBox(*containingBlock).topLeft());
-
-    auto mappedDisplayBox = Display::Box(displayBox);
-    mappedDisplayBox.setTopLeft(topLeft);
-    return mappedDisplayBox;
-}
-
-LayoutUnit FormattingContext::mapTopToAncestor(const LayoutState& layoutState, const Box& layoutBox, const Container& ancestor)
-{
-    ASSERT(layoutBox.isContainingBlockDescendantOf(ancestor));
-    auto top = layoutState.displayBoxForLayoutBox(layoutBox).top();
-    for (auto* container = layoutBox.containingBlock(); container && container != &ancestor; container = container->containingBlock())
-        top += layoutState.displayBoxForLayoutBox(*container).top();
-    return top;
-}
-
-Point FormattingContext::mapPointToAncestor(const LayoutState& layoutState, Point position, const Container& from, const Container& to)
-{
-    if (&from == &to)
-        return position;
-    ASSERT(from.isContainingBlockDescendantOf(to));
-    auto mappedPosition = position;
-    for (auto* container = &from; container && container != &to; container = container->containingBlock())
-        mappedPosition.moveBy(layoutState.displayBoxForLayoutBox(*container).topLeft());
-    return mappedPosition;
-}
-
-Point FormattingContext::mapPointToDescendent(const LayoutState& layoutState, Point point, const Container& from, const Container& to)
-{
-    // "point" is in the coordinate system of the "from" container.
-    if (&from == &to)
-        return point;
-    ASSERT(to.isContainingBlockDescendantOf(from));
-    for (auto* container = &to; container && container != &from; container = container->containingBlock())
-        point.moveBy(-layoutState.displayBoxForLayoutBox(*container).topLeft());
-    return point;
+    if (!formattingState().outOfFlowBoxes().isEmpty())
+        return;
+    auto& root = this->root();
+    if (!root.hasChild())
+        return;
+    if (!root.isPositioned() && !is<InitialContainingBlock>(root))
+        return;
+    // Collect the out-of-flow descendants at the formatting root level (as opposed to at the containing block level, though they might be the same).
+    // FIXME: Turn this into a register-self as boxes are being inserted.
+    for (auto& descendant : descendantsOfType<Box>(root)) {
+        if (!descendant.isOutOfFlowPositioned())
+            continue;
+        if (&descendant.formattingContextRoot() != &root)
+            continue;
+        formattingState().addOutOfFlowBox(descendant);
+    }
 }
 
 #ifndef NDEBUG
 void FormattingContext::validateGeometryConstraintsAfterLayout() const
 {
-    if (!is<Container>(root()))
-        return;
-    auto& formattingContextRoot = downcast<Container>(root());
-    auto& layoutState = this->layoutState();
+    auto& formattingContextRoot = root();
     // FIXME: add a descendantsOfType<> flavor that stops at nested formatting contexts
     for (auto& layoutBox : descendantsOfType<Box>(formattingContextRoot)) {
         if (&layoutBox.formattingContextRoot() != &formattingContextRoot)
             continue;
-        auto& containingBlockDisplayBox = layoutState.displayBoxForLayoutBox(*layoutBox.containingBlock());
-        auto& displayBox = layoutState.displayBoxForLayoutBox(layoutBox);
+        auto& containingBlockGeometry = geometryForBox(layoutBox.containingBlock());
+        auto& boxGeometry = geometryForBox(layoutBox);
 
         // 10.3.3 Block-level, non-replaced elements in normal flow
         // 10.3.7 Absolutely positioned, non-replaced elements
-        if ((layoutBox.isBlockLevelBox() || layoutBox.isOutOfFlowPositioned()) && !layoutBox.replaced()) {
+        if ((layoutBox.isBlockLevelBox() || layoutBox.isOutOfFlowPositioned()) && !layoutBox.isReplacedBox()) {
             // margin-left + border-left-width + padding-left + width + padding-right + border-right-width + margin-right = width of containing block
-            auto containingBlockWidth = containingBlockDisplayBox.contentBoxWidth();
-            ASSERT(displayBox.marginStart() + displayBox.borderLeft() + displayBox.paddingLeft().valueOr(0) + displayBox.contentBoxWidth()
-                + displayBox.paddingRight().valueOr(0) + displayBox.borderRight() + displayBox.marginEnd() == containingBlockWidth);
+            auto containingBlockWidth = containingBlockGeometry.contentBoxWidth();
+            ASSERT(boxGeometry.horizontalMarginBorderAndPadding() + boxGeometry.contentBoxWidth() == containingBlockWidth);
         }
 
         // 10.6.4 Absolutely positioned, non-replaced elements
-        if (layoutBox.isOutOfFlowPositioned() && !layoutBox.replaced()) {
+        if (layoutBox.isOutOfFlowPositioned() && !layoutBox.isReplacedBox()) {
             // top + margin-top + border-top-width + padding-top + height + padding-bottom + border-bottom-width + margin-bottom + bottom = height of containing block
-            auto containingBlockHeight = containingBlockDisplayBox.contentBoxHeight();
-            ASSERT(displayBox.top() + displayBox.marginBefore() + displayBox.borderTop() + displayBox.paddingTop().valueOr(0) + displayBox.contentBoxHeight()
-                + displayBox.paddingBottom().valueOr(0) + displayBox.borderBottom() + displayBox.marginAfter() == containingBlockHeight);
+            auto containingBlockHeight = containingBlockGeometry.contentBoxHeight();
+            ASSERT(boxGeometry.top() + boxGeometry.marginBefore() + boxGeometry.borderTop() + boxGeometry.paddingTop().valueOr(0) + boxGeometry.contentBoxHeight()
+                + boxGeometry.paddingBottom().valueOr(0) + boxGeometry.borderBottom() + boxGeometry.marginAfter() == containingBlockHeight);
         }
     }
 }

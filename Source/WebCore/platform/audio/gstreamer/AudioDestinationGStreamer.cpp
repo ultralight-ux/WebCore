@@ -62,7 +62,7 @@ std::unique_ptr<AudioDestination> AudioDestination::create(AudioIOCallback& call
     if (numberOfOutputChannels != 2)
         LOG(Media, "AudioDestination::create(%u, %u, %f) - unhandled output channels", numberOfInputChannels, numberOfOutputChannels, sampleRate);
 
-    return std::make_unique<AudioDestinationGStreamer>(callback, sampleRate);
+    return makeUnique<AudioDestinationGStreamer>(callback, sampleRate);
 }
 
 float AudioDestination::hardwareSampleRate()
@@ -134,6 +134,11 @@ AudioDestinationGStreamer::~AudioDestinationGStreamer()
 
     gst_element_set_state(m_pipeline, GST_STATE_NULL);
     gst_object_unref(m_pipeline);
+}
+
+unsigned AudioDestinationGStreamer::framesPerBuffer() const
+{
+    return framesToPull;
 }
 
 gboolean AudioDestinationGStreamer::handleMessage(GstMessage* message)

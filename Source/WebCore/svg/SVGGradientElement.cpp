@@ -40,7 +40,6 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(SVGGradientElement);
 
 SVGGradientElement::SVGGradientElement(const QualifiedName& tagName, Document& document)
     : SVGElement(tagName, document)
-    , SVGExternalResourcesRequired(this)
     , SVGURIReference(this)
 {
     static std::once_flag onceFlag;
@@ -74,7 +73,6 @@ void SVGGradientElement::parseAttribute(const QualifiedName& name, const AtomStr
 
     SVGElement::parseAttribute(name, value);
     SVGURIReference::parseAttribute(name, value);
-    SVGExternalResourcesRequired::parseAttribute(name, value);
 }
 
 void SVGGradientElement::svgAttributeChanged(const QualifiedName& attrName)
@@ -100,22 +98,15 @@ void SVGGradientElement::childrenChanged(const ChildChange& change)
         object->setNeedsLayout();
 }
 
-Vector<Gradient::ColorStop> SVGGradientElement::buildStops()
+Gradient::ColorStopVector SVGGradientElement::buildStops()
 {
-    Vector<Gradient::ColorStop> stops;
+    Gradient::ColorStopVector stops;
     float previousOffset = 0.0f;
-
     for (auto& stop : childrenOfType<SVGStopElement>(*this)) {
-        const Color& color = stop.stopColorIncludingOpacity();
-
-        // Figure out right monotonic offset.
-        float offset = stop.offset();
-        offset = std::min(std::max(previousOffset, offset), 1.0f);
-        previousOffset = offset;
-
-        stops.append(Gradient::ColorStop(offset, color));
+        auto monotonicallyIncreasingOffset = std::clamp(stop.offset(), previousOffset, 1.0f);
+        previousOffset = monotonicallyIncreasingOffset;
+        stops.append({ monotonicallyIncreasingOffset, stop.stopColorIncludingOpacity() });
     }
-
     return stops;
 }
 

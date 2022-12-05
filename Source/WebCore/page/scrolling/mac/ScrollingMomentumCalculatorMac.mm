@@ -23,12 +23,12 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "ScrollingMomentumCalculatorMac.h"
+#import "config.h"
+#import "ScrollingMomentumCalculatorMac.h"
 
 #if PLATFORM(MAC)
 
-#include <pal/spi/mac/NSScrollingMomentumCalculatorSPI.h>
+#import <pal/spi/mac/NSScrollingMomentumCalculatorSPI.h>
 
 namespace WebCore {
 
@@ -36,7 +36,7 @@ static bool gEnablePlatformMomentumScrollingPrediction = true;
 
 std::unique_ptr<ScrollingMomentumCalculator> ScrollingMomentumCalculator::create(const FloatSize& viewportSize, const FloatSize& contentSize, const FloatPoint& initialOffset, const FloatSize& initialDelta, const FloatSize& initialVelocity)
 {
-    return std::make_unique<ScrollingMomentumCalculatorMac>(viewportSize, contentSize, initialOffset, initialDelta, initialVelocity);
+    return makeUnique<ScrollingMomentumCalculatorMac>(viewportSize, contentSize, initialOffset, initialDelta, initialVelocity);
 }
 
 void ScrollingMomentumCalculator::setPlatformMomentumScrollingPredictionEnabled(bool enabled)

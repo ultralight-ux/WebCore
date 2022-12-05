@@ -23,21 +23,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-[
-    Constructor(DOMString type, optional AnimationEventInit animationEventInitDict),
-] interface AnimationEvent : Event {
+interface AnimationEvent : Event {
+    constructor(DOMString type, optional AnimationEventInit animationEventInitDict);
+
     readonly attribute DOMString animationName;
     readonly attribute double elapsedTime;
-
-    // FIXME: This is not supported yet.
-    // readonly attribute DOMString pseudoElement;
+    readonly attribute DOMString pseudoElement;
 };
 
 dictionary AnimationEventInit : EventInit {
     DOMString animationName = "";
     double elapsedTime = 0.0;
-
-    // FIXME: This is not supported yet.
-    // DOMString pseudoElement = "";
+    DOMString pseudoElement = "";
 };
 

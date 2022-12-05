@@ -213,7 +213,7 @@ template<class E>
 class bad_expected_access : public bad_expected_access<void> {
 public:
     explicit bad_expected_access(E val) : val(val) { }
-    virtual const char* what() const noexcept override { return std::exception::what(); }
+    const char* what() const noexcept override { return std::exception::what(); }
     E& error() & { return val; }
     const E& error() const& { return val; }
     E&& error() && { return std::move(val); }
@@ -417,6 +417,7 @@ using base_select = typename std::conditional<
 
 template<class T, class E>
 class expected : private __expected_detail::base_select<T, E> {
+    WTF_MAKE_FAST_ALLOCATED;
     typedef __expected_detail::base_select<T, E> base;
 
 public:

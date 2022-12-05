@@ -32,7 +32,9 @@
 #import "Document.h"
 #import "FontCascade.h"
 #import "Frame.h"
+#import "FrameView.h"
 #import "GraphicsContext.h"
+#import "HostWindow.h"
 #import "PlatformMouseEvent.h"
 #import "ScrollView.h"
 #import "WAKScrollView.h"
@@ -72,8 +74,12 @@ void Widget::setFocus(bool focused)
     UNUSED_PARAM(focused);
 }
 
-void Widget::setCursor(const Cursor&)
+void Widget::setCursor(const Cursor& cursor)
 {
+    FrameView* view = root();
+    if (!view)
+        return;
+    view->hostWindow()->setCursor(cursor);
 }
 
 void Widget::show()
@@ -83,9 +89,9 @@ void Widget::show()
 
     setSelfVisible(true);
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     [getOuterView() setHidden:NO];
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
 void Widget::hide()
@@ -95,9 +101,9 @@ void Widget::hide()
 
     setSelfVisible(false);
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     [getOuterView() setHidden:YES];
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
 IntRect Widget::frameRect() const
@@ -105,9 +111,9 @@ IntRect Widget::frameRect() const
     if (!platformWidget())
         return m_frame;
     
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     return enclosingIntRect([getOuterView() frame]);
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
     
     return m_frame;
 }
@@ -116,14 +122,14 @@ void Widget::setFrameRect(const IntRect &rect)
 {
     m_frame = rect;
     
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     NSView *v = getOuterView();
     NSRect f = rect;
     if (!NSEqualRects(f, [v frame])) {
         [v setFrame:f];
         [v setNeedsDisplay: NO];
     }
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
 NSView* Widget::getOuterView() const
@@ -140,7 +146,7 @@ NSView* Widget::getOuterView() const
     return view;
 }
 
-void Widget::paint(GraphicsContext& p, const IntRect& r, SecurityOriginPaintPolicy)
+void Widget::paint(GraphicsContext& p, const IntRect& r, SecurityOriginPaintPolicy, EventRegionContext*)
 {
     if (p.paintingDisabled())
         return;
@@ -154,9 +160,9 @@ void Widget::paint(GraphicsContext& p, const IntRect& r, SecurityOriginPaintPoli
     NSRect viewBounds = [view bounds];
     CGContextTranslateCTM(cgContext, viewFrame.origin.x - viewBounds.origin.x, viewFrame.origin.y - viewBounds.origin.y);
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     [view displayRectIgnoringOpacity:[view convertRect:r fromView:[view superview]] inContext:cgContext];
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     CGContextRestoreGState(cgContext);
 }
@@ -167,7 +173,7 @@ void Widget::setIsSelected(bool /*isSelected*/)
 
 void Widget::addToSuperview(NSView *view)
 {
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
 
     ASSERT(view);
     NSView *subview = getOuterView();
@@ -180,14 +186,14 @@ void Widget::addToSuperview(NSView *view)
     if ([subview superview] != view)
         [view addSubview:subview];
 
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
 void Widget::removeFromSuperview()
 {
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     safeRemoveFromSuperview(getOuterView());
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
 IntRect Widget::convertFromRootToContainingWindow(const Widget* rootWidget, const IntRect& rect)
@@ -195,13 +201,13 @@ IntRect Widget::convertFromRootToContainingWindow(const Widget* rootWidget, cons
     if (!rootWidget->platformWidget())
         return rect;
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     ASSERT([rootWidget->platformWidget() isKindOfClass:[NSScrollView class]]);
     WAKScrollView *view = static_cast<WAKScrollView *>(rootWidget->platformWidget());
     if (WAKView *documentView = [view documentView])
         return enclosingIntRect([documentView convertRect:rect toView:nil]);
     return enclosingIntRect([view convertRect:rect toView:nil]);
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     return rect;
 }
@@ -211,13 +217,13 @@ IntRect Widget::convertFromContainingWindowToRoot(const Widget* rootWidget, cons
     if (!rootWidget->platformWidget())
         return rect;
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     ASSERT([rootWidget->platformWidget() isKindOfClass:[NSScrollView class]]);
     WAKScrollView *view = static_cast<WAKScrollView *>(rootWidget->platformWidget());
     if (WAKView *documentView = [view documentView])
         return enclosingIntRect([documentView convertRect:rect fromView:nil]);
     return enclosingIntRect([view convertRect:rect fromView:nil]);
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     return rect;
 }
@@ -227,7 +233,7 @@ IntPoint Widget::convertFromRootToContainingWindow(const Widget* rootWidget, con
     if (!rootWidget->platformWidget())
         return point;
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     ASSERT([rootWidget->platformWidget() isKindOfClass:[NSScrollView class]]);
     WAKScrollView *view = static_cast<WAKScrollView *>(rootWidget->platformWidget());
     NSPoint convertedPoint;
@@ -236,7 +242,7 @@ IntPoint Widget::convertFromRootToContainingWindow(const Widget* rootWidget, con
     else
         convertedPoint = [view convertPoint:point toView:nil];
     return IntPoint(roundf(convertedPoint.x), roundf(convertedPoint.y));
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     return point;
 }
@@ -246,7 +252,7 @@ IntPoint Widget::convertFromContainingWindowToRoot(const Widget* rootWidget, con
     if (!rootWidget->platformWidget())
         return point;
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     ASSERT([rootWidget->platformWidget() isKindOfClass:[NSScrollView class]]);
     WAKScrollView *view = static_cast<WAKScrollView *>(rootWidget->platformWidget());
     NSPoint convertedPoint;
@@ -255,7 +261,7 @@ IntPoint Widget::convertFromContainingWindowToRoot(const Widget* rootWidget, con
     else
         convertedPoint = IntPoint([view convertPoint:point fromView:nil]);
     return IntPoint(roundf(convertedPoint.x), roundf(convertedPoint.y));
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     return point;
 }

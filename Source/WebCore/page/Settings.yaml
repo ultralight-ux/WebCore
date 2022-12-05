@@ -54,6 +54,10 @@ deviceHeight:
   type: int
   initial: 0
 
+disallowSyncXHRDuringPageDismissalEnabled:
+  type: bool
+  initial: true
+
 # Allow clients concerned with memory consumption to set a quota on session storage
 # since the memory used won't be released until the Page is destroyed.
 sessionStorageQuota:
@@ -103,6 +107,8 @@ allowSettingAnyXHRHeaderFromFileURLs:
   initial: false
 allowCrossOriginSubresourcesToAskForCredentials:
   initial: false
+allowTopNavigationToDataURLs:
+  initial: false
 needsStorageAccessFromFileURLsQuirk:
   initial: true
 needsFrameNameFallbackToIdQuirk:
@@ -118,6 +124,10 @@ shouldPrintBackgrounds:
 clipboardAccessPolicy:
   type: ClipboardAccessPolicy
   initial: ClipboardAccessPolicy::RequiresUserGesture
+asyncClipboardAPIEnabled:
+  initial: false
+shouldRestrictBaseURLSchemes:
+  initial: true
 
 textAreasAreResizable:
   initial: false
@@ -138,9 +148,11 @@ acceleratedCompositedAnimationsEnabled:
 showDebugBorders:
   initial: false
   onChange: setNeedsRecalcStyleInAllFrames
+  inspectorOverride: true
 showRepaintCounter:
   initial: false
   onChange: setNeedsRecalcStyleInAllFrames
+  inspectorOverride: true
 visibleDebugOverlayRegions:
   type: DebugOverlayRegions
   initial: 0
@@ -175,7 +187,7 @@ treatsAnyTextCSSLinkAsStylesheet:
   initial: false
 shrinksStandaloneImagesToFit:
   initial: true
-pageCacheSupportsPlugins:
+backForwardCacheSupportsPlugins:
   initial: false
 showsURLsInToolTips:
   initial: false
@@ -185,8 +197,6 @@ forceFTPDirectoryListings:
   initial: false
 developerExtrasEnabled:
   initial: false
-scriptMarkupEnabled:
-  initial: true
 needsSiteSpecificQuirks:
   initial: false
   inspectorOverride: true
@@ -237,8 +247,6 @@ webGLErrorsToConsoleEnabled:
   initial: true
 unhandledPromiseRejectionToConsoleEnabled:
   initial: true
-forceSoftwareWebGLRendering:
-  initial: false
 forceWebGLUsesLowPower:
   initial: false
 accelerated2dCanvasEnabled:
@@ -246,6 +254,10 @@ accelerated2dCanvasEnabled:
 loadDeferringEnabled:
   initial: true
 webAudioEnabled:
+  initial: false
+prefixedWebAudioEnabled:
+  initial: false
+modernUnprefixedWebAudioEnabled:
   initial: false
 paginateDuringLayoutEnabled:
   initial: false
@@ -293,6 +305,8 @@ inlineMediaPlaybackRequiresPlaysInlineAttribute:
   initial: defaultInlineMediaPlaybackRequiresPlaysInlineAttribute
 allowsPictureInPictureMediaPlayback:
   initial: defaultAllowsPictureInPictureMediaPlayback
+pictureInPictureAPIEnabled:
+  initial: true
 mediaControlsScaleWithPageZoom:
   initial: defaultMediaControlsScaleWithPageZoom
 invisibleAutoplayNotPermitted:
@@ -308,13 +322,19 @@ backspaceKeyNavigationEnabled:
   initial: true
 shouldDisplaySubtitles:
   initial: false
-  conditional: VIDEO_TRACK
+  conditional: VIDEO
 shouldDisplayCaptions:
   initial: false
-  conditional: VIDEO_TRACK
+  conditional: VIDEO
 shouldDisplayTextDescriptions:
   initial: false
-  conditional: VIDEO_TRACK
+  conditional: VIDEO
+genericCueAPIEnabled:
+  initial: false
+  conditional: VIDEO
+useGPUProcessForMedia:
+  initial: false
+  conditional: GPU_PROCESS
 scrollingCoordinatorEnabled:
   initial: false
 scrollingTreeIncludesFrames:
@@ -339,8 +359,13 @@ wantsBalancedSetDefersLoadingBehavior:
   initial: false
 requestAnimationFrameEnabled:
   initial: true
+requestIdleCallbackEnabled:
+  initial: false
 
 HTTPSUpgradeEnabled:
+  initial: false
+
+inProcessCookieCacheEnabled:
   initial: false
 
 thirdPartyIframeRedirectBlockingEnabled:
@@ -363,9 +388,6 @@ windowFocusRestricted:
   initial: true
 
 diagnosticLoggingEnabled:
-  initial: false
-
-delegatesPageScaling:
   initial: false
 
 plugInSnapshottingEnabled:
@@ -397,6 +419,10 @@ asyncOverflowScrollingEnabled:
   initial: false
   onChange: setNeedsRelayoutAllFrames
 
+coreImageAcceleratedFilterRenderEnabled:
+  initial: false
+  onChange: setNeedsRelayoutAllFrames
+
 legacyOverflowScrollingTouchEnabled:
   initial: true
   onChange: setNeedsRelayoutAllFrames
@@ -418,8 +444,8 @@ logsPageMessagesToSystemConsoleEnabled:
   initial: false
 
 backForwardCacheExpirationInterval:
-  type: double
-  initial: 1800
+  type: Seconds
+  initial: 30_min
 
 # Some apps could have a default video poster if it is not set.
 defaultVideoPosterURL:
@@ -453,6 +479,10 @@ textAutosizingUsesIdempotentMode:
   initial: false
   onChange: setNeedsRecalcStyleInAllFrames
   conditional: TEXT_AUTOSIZING
+idempotentModeAutosizingOnlyHonorsPercentages:
+  initial: false
+  conditional: TEXT_AUTOSIZING
+  # This is only set before the main frame load, so there's no need to specify setNeedsRecalcStyleInAllFrames.
 
 subpixelAntialiasedLayerTextEnabled:
   initial: false
@@ -489,6 +519,10 @@ allowsAirPlayForMediaPlayback:
   initial: true
   conditional: WIRELESS_PLAYBACK_TARGET
 
+remotePlaybackEnabled:
+  initial: true
+  conditional: WIRELESS_PLAYBACK_TARGET
+
 shouldConvertPositionStyleOnCopy:
   initial: false
 
@@ -519,7 +553,7 @@ useImageDocumentForSubframePDF:
   initial: false
 dataDetectorTypes:
   type: DataDetectorTypes
-  initial: DataDetectorTypeNone
+  initial: 
   conditional: DATA_DETECTION
 
 # Allow SourceBuffers to store up to 304MB each, enough for approximately five minutes
@@ -604,6 +638,9 @@ syntheticEditingCommandsEnabled:
 CSSOMViewScrollingAPIEnabled:
   initial: false
 
+CSSOMViewSmoothScrollingEnabled:
+  initial: false
+
 inputEventsEnabled:
   initial: true
 
@@ -621,6 +658,10 @@ forcedDisplayIsMonochromeAccessibilityValue:
 forcedPrefersReducedMotionAccessibilityValue:
   type: ForcedAccessibilityValue
   initial: defaultForcedPrefersReducedMotionAccessibilityValue
+forcedSupportsHighDynamicRangeValue:
+  type: ForcedAccessibilityValue
+  initial: defaultForcedSupportsHighDynamicRangeValue
+  onChange: setNeedsRecalcStyleInAllFrames
 
 largeImageAsyncDecodingEnabled:
   initial: true
@@ -658,6 +699,9 @@ allowMediaContentTypesRequiringHardwareSupportAsFallback:
 
 storageAccessAPIEnabled:
   initial: true
+
+storageAccessAPIPerPageScopeEnabled:
+  initial: false
 
 timeWithoutMouseMovementBeforeHidingControls:
   type: Seconds
@@ -707,14 +751,18 @@ scriptEnabled:
   initial: false
   getter: isScriptEnabled
   inspectorOverride: true
+parserScriptingFlagPolicy:
+  type: ParserScriptingFlagPolicy
+  initial: ParserScriptingFlagPolicy::OnlyIfScriptIsEnabled
 pluginsEnabled:
   initial: false
   getter: arePluginsEnabled
   onChange: pluginsEnabledChanged
 
-usesPageCache:
+usesBackForwardCache:
   initial: false
-  onChange: usesPageCacheChanged
+  onChange: usesBackForwardCacheChanged
+  excludeFromInternalSettings: true
 
 dnsPrefetchingEnabled:
   initial: false
@@ -747,10 +795,6 @@ shouldAllowUserInstalledFonts:
   initial: true
   onChange: setNeedsRecalcStyleInAllFrames
 
-shouldAllowDesignSystemUIFonts:
-  initial: false
-  onChange: setNeedsRecalcStyleInAllFrames
-
 resizeObserverEnabled:
   initial: false
   conditional: RESIZE_OBSERVER
@@ -761,6 +805,8 @@ mediaTypeOverride:
   initial: '"screen"'
   onChange: mediaTypeOverrideChanged
 
+animatedImageDebugCanvasDrawingEnabled:
+  initial: false
 
 fontRenderingMode:
   type: FontRenderingMode
@@ -817,6 +863,10 @@ mediaCapabilitiesExtensionsEnabled:
   type: bool
   initial: false
 
+hdrMediaCapabilitiesEnabled:
+  type: bool
+  initial: false
+
 clientCoordinatesRelativeToLayoutViewport:
   initial: false
   onChange: setNeedsRecalcStyleInAllFrames
@@ -824,8 +874,8 @@ clientCoordinatesRelativeToLayoutViewport:
 incompleteImageBorderEnabled:
   initial: false
 
-shouldDeferAsynchronousScriptsUntilAfterDocumentLoad:
-  initial: false
+shouldDeferAsynchronousScriptsUntilAfterDocumentLoadOrFirstPaint:
+  initial: true
 
 shouldIgnoreMetaViewport:
   initial: false
@@ -859,6 +909,75 @@ shouldDispatchSyntheticMouseOutAfterSyntheticClick:
 allowViewportShrinkToFitContent:
   initial: true
 
+webRTCEncryptionEnabled:
+  initial: true
+  inspectorOverride: true
+
+isThirdPartyCookieBlockingDisabled:
+  initial: false
+
+isFirstPartyWebsiteDataRemovalDisabled:
+  initial: false
+
+isFirstPartyWebsiteDataRemovalLiveOnTestingEnabled:
+  initial: false
+
+isFirstPartyWebsiteDataRemovalReproTestingEnabled:
+  initial: false
+
+isSameSiteStrictEnforcementEnabled:
+  initial: false
+
+isLoggedInAPIEnabled:
+  initial: false
+
+enterKeyHintEnabled:
+  initial: false
+
+legacyGetUserMediaEnabled:
+  initial: false
+  conditional: MEDIA_STREAM
+
+isInAppBrowserPrivacyEnabled:
+  initial: false
+
+NeedsInAppBrowserPrivacyQuirks:
+  initial: false
+
+isAccessibilityIsolatedTreeEnabled:
+  initial: false
+
+aspectRatioOfImgFromWidthAndHeightEnabled:
+  initial: false
+
+inputTypeColorEnabled:
+  initial: false
+  conditional: INPUT_TYPE_COLOR
+
+inputTypeDateEnabled:
+  initial: false
+  conditional: INPUT_TYPE_DATE
+
+inputTypeDateTimeLocalEnabled:
+  initial: false
+  conditional: INPUT_TYPE_DATETIMELOCAL
+
+inputTypeMonthEnabled:
+  initial: false
+  conditional: INPUT_TYPE_MONTH
+
+inputTypeTimeEnabled:
+  initial: false
+  conditional: INPUT_TYPE_TIME
+
+inputTypeWeekEnabled:
+  initial: false
+  conditional: INPUT_TYPE_WEEK
+
+dateTimeInputsEditableComponentsEnabled:
+  initial: false
+  conditional: DATE_AND_TIME_INPUT_TYPES
+
 # Deprecated
 
 iceCandidateFilteringEnabled:
@@ -876,3 +995,10 @@ mediaCaptureRequiresSecureConnection:
   initial: true
   conditional: MEDIA_STREAM
   inspectorOverride: true
+
+shouldUseServiceWorkerShortTimeout:
+  initial: false
+
+# Clients should use per-navigation "allowsContentJavaScript" policies instead
+scriptMarkupEnabled:
+    initial: true

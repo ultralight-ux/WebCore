@@ -35,15 +35,20 @@
 #include "FloatPoint.h"
 #include "LayoutSize.h"
 #include "PlatformWheelEvent.h"
+#include "ScrollAnimationSmooth.h"
 #include "ScrollableArea.h"
 #include <algorithm>
 
+#if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
+#include "ScrollController.h"
+#endif
+
 namespace WebCore {
 
-#if !ENABLE(SMOOTH_SCROLLING) && !PLATFORM(IOS_FAMILY) && !PLATFORM(MAC)
+#if !ENABLE(SMOOTH_SCROLLING) && !PLATFORM(IOS_FAMILY) && !PLATFORM(MAC) && !PLATFORM(WPE)
 std::unique_ptr<ScrollAnimator> ScrollAnimator::create(ScrollableArea& scrollableArea)
 {
-    return std::make_unique<ScrollAnimator>(scrollableArea);
+    return makeUnique<ScrollAnimator>(scrollableArea);
 }
 #endif
 
@@ -52,10 +57,20 @@ ScrollAnimator::ScrollAnimator(ScrollableArea& scrollableArea)
 #if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
     , m_scrollController(*this)
 #endif
+    , m_animationProgrammaticScroll(makeUnique<ScrollAnimationSmooth>(scrollableArea, m_currentPosition, [this](FloatPoint&& position) {
+        FloatSize delta = position - m_currentPosition;
+        m_currentPosition = WTFMove(position);
+        notifyPositionChanged(delta);
+    }))
 {
 }
 
-ScrollAnimator::~ScrollAnimator() = default;
+ScrollAnimator::~ScrollAnimator()
+{
+#if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
+    m_scrollController.stopAllTimers();
+#endif
+}
 
 bool ScrollAnimator::scroll(ScrollbarOrientation orientation, ScrollGranularity, float step, float multiplier)
 {
@@ -75,11 +90,19 @@ bool ScrollAnimator::scroll(ScrollbarOrientation orientation, ScrollGranularity,
     return true;
 }
 
+void ScrollAnimator::scrollToOffset(const FloatPoint& offset)
+{
+    m_animationProgrammaticScroll->setCurrentPosition(m_currentPosition);
+    auto newPosition = ScrollableArea::scrollPositionFromOffset(offset, toFloatSize(m_scrollableArea.scrollOrigin()));
+    m_animationProgrammaticScroll->scroll(newPosition);
+    m_scrollableArea.setScrollBehaviorStatus(ScrollBehaviorStatus::InNonNativeAnimation);
+}
+
 void ScrollAnimator::scrollToOffsetWithoutAnimation(const FloatPoint& offset, ScrollClamping)
 {
-    FloatPoint newPositon = ScrollableArea::scrollPositionFromOffset(offset, toFloatSize(m_scrollableArea.scrollOrigin()));
-    FloatSize delta = newPositon - currentPosition();
-    m_currentPosition = newPositon;
+    FloatPoint newPosition = ScrollableArea::scrollPositionFromOffset(offset, toFloatSize(m_scrollableArea.scrollOrigin()));
+    FloatSize delta = newPosition - currentPosition();
+    m_currentPosition = newPosition;
     notifyPositionChanged(delta);
     updateActiveScrollSnapIndexForOffset();
 }
@@ -106,7 +129,7 @@ unsigned ScrollAnimator::activeScrollSnapIndexForAxis(ScrollEventAxis axis) cons
 bool ScrollAnimator::handleWheelEvent(const PlatformWheelEvent& e)
 {
 #if ENABLE(CSS_SCROLL_SNAP) && PLATFORM(MAC)
-    if (!m_scrollController.processWheelEventForScrollSnap(e))
+    if (m_scrollController.processWheelEventForScrollSnap(e))
         return false;
 #endif
 #if PLATFORM(COCOA)
@@ -177,8 +200,8 @@ void ScrollAnimator::setCurrentPosition(const FloatPoint& position)
 void ScrollAnimator::updateActiveScrollSnapIndexForOffset()
 {
 #if ENABLE(CSS_SCROLL_SNAP)
-    // FIXME: Needs offset/position disambiguation.
-    m_scrollController.setActiveScrollSnapIndicesForOffset(m_currentPosition.x(), m_currentPosition.y());
+    auto scrollOffset = m_scrollableArea.scrollOffsetFromPosition(roundedIntPoint(currentPosition()));
+    m_scrollController.setActiveScrollSnapIndicesForOffset(scrollOffset);
     if (m_scrollController.activeScrollSnapIndexDidChange()) {
         m_scrollableArea.setCurrentHorizontalSnapPointIndex(m_scrollController.activeScrollSnapIndexForAxis(ScrollEventAxis::Horizontal));
         m_scrollableArea.setCurrentVerticalSnapPointIndex(m_scrollController.activeScrollSnapIndexForAxis(ScrollEventAxis::Vertical));
@@ -191,6 +214,10 @@ void ScrollAnimator::notifyPositionChanged(const FloatSize& delta)
     UNUSED_PARAM(delta);
     // FIXME: need to not map back and forth all the time.
     m_scrollableArea.setScrollOffsetFromAnimation(m_scrollableArea.scrollOffsetFromPosition(roundedIntPoint(currentPosition())));
+
+#if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
+    m_scrollController.scrollPositionChanged();
+#endif
 }
 
 #if ENABLE(CSS_SCROLL_SNAP)
@@ -201,7 +228,7 @@ void ScrollAnimator::updateScrollSnapState()
 
 FloatPoint ScrollAnimator::scrollOffset() const
 {
-    return m_currentPosition;
+    return m_scrollableArea.scrollOffsetFromPosition(roundedIntPoint(currentPosition()));
 }
 
 void ScrollAnimator::immediateScrollOnAxis(ScrollEventAxis axis, float delta)
@@ -227,22 +254,62 @@ FloatSize ScrollAnimator::viewportSize() const
 
 #endif
 
-#if (ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)) && PLATFORM(MAC)
-void ScrollAnimator::deferTestsForReason(WheelEventTestTrigger::ScrollableAreaIdentifier identifier, WheelEventTestTrigger::DeferTestTriggerReason reason) const
+#if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
+std::unique_ptr<ScrollControllerTimer> ScrollAnimator::createTimer(Function<void()>&& function)
 {
-    if (!m_wheelEventTestTrigger)
-        return;
-
-    m_wheelEventTestTrigger->deferTestsForReason(identifier, reason);
-}
-
-void ScrollAnimator::removeTestDeferralForReason(WheelEventTestTrigger::ScrollableAreaIdentifier identifier, WheelEventTestTrigger::DeferTestTriggerReason reason) const
-{
-    if (!m_wheelEventTestTrigger)
-        return;
-    
-    m_wheelEventTestTrigger->removeTestDeferralForReason(identifier, reason);
+    return WTF::makeUnique<ScrollControllerTimer>(RunLoop::current(), [function = WTFMove(function), weakScrollableArea = makeWeakPtr(m_scrollableArea)] {
+        if (!weakScrollableArea)
+            return;
+        function();
+    });
 }
 #endif
+
+#if (ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)) && PLATFORM(MAC)
+void ScrollAnimator::deferWheelEventTestCompletionForReason(WheelEventTestMonitor::ScrollableAreaIdentifier identifier, WheelEventTestMonitor::DeferReason reason) const
+{
+    if (!m_wheelEventTestMonitor)
+        return;
+
+    m_wheelEventTestMonitor->deferForReason(identifier, reason);
+}
+
+void ScrollAnimator::removeWheelEventTestCompletionDeferralForReason(WheelEventTestMonitor::ScrollableAreaIdentifier identifier, WheelEventTestMonitor::DeferReason reason) const
+{
+    if (!m_wheelEventTestMonitor)
+        return;
+    
+    m_wheelEventTestMonitor->removeDeferralForReason(identifier, reason);
+}
+#endif
+
+void ScrollAnimator::cancelAnimations()
+{
+#if !USE(REQUEST_ANIMATION_FRAME_TIMER)
+    m_animationProgrammaticScroll->stop();
+#endif
+}
+
+void ScrollAnimator::serviceScrollAnimations()
+{
+#if !USE(REQUEST_ANIMATION_FRAME_TIMER)
+    m_animationProgrammaticScroll->serviceAnimation();
+#endif
+}
+
+void ScrollAnimator::willEndLiveResize()
+{
+    m_animationProgrammaticScroll->updateVisibleLengths();
+}
+
+void ScrollAnimator::didAddVerticalScrollbar(Scrollbar*)
+{
+    m_animationProgrammaticScroll->updateVisibleLengths();
+}
+
+void ScrollAnimator::didAddHorizontalScrollbar(Scrollbar*)
+{
+    m_animationProgrammaticScroll->updateVisibleLengths();
+}
 
 } // namespace WebCore

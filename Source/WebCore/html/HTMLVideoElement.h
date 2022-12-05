@@ -28,14 +28,16 @@
 #if ENABLE(VIDEO)
 
 #include "HTMLMediaElement.h"
+#include "Supplementable.h"
 #include <memory>
 
 namespace WebCore {
 
 class HTMLImageLoader;
 class RenderVideo;
+class PictureInPictureObserver;
 
-class HTMLVideoElement final : public HTMLMediaElement {
+class HTMLVideoElement final : public HTMLMediaElement, public Supplementable<HTMLVideoElement> {
     WTF_MAKE_ISO_ALLOCATED(HTMLVideoElement);
 public:
     WEBCORE_EXPORT static Ref<HTMLVideoElement> create(Document&);
@@ -72,7 +74,7 @@ public:
 
     // Used by WebGL to do GPU-GPU textures copy if possible.
     // See more details at MediaPlayer::copyVideoTextureToPlatformTexture() defined in Source/WebCore/platform/graphics/MediaPlayer.h.
-    bool copyVideoTextureToPlatformTexture(GraphicsContext3D*, Platform3DObject texture, GC3Denum target, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type, bool premultiplyAlpha, bool flipY);
+    bool copyVideoTextureToPlatformTexture(GraphicsContextGLOpenGL*, PlatformGLObject texture, GCGLenum target, GCGLint level, GCGLenum internalFormat, GCGLenum format, GCGLenum type, bool premultiplyAlpha, bool flipY);
 
     bool shouldDisplayPosterImage() const { return displayMode() == Poster || displayMode() == PosterWaitingForVideo; }
 
@@ -80,12 +82,20 @@ public:
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 
 #if ENABLE(VIDEO_PRESENTATION_MODE)
-    enum class VideoPresentationMode { Fullscreen, PictureInPicture, Inline };
+    enum class VideoPresentationMode { Inline, Fullscreen, PictureInPicture};
     WEBCORE_EXPORT bool webkitSupportsPresentationMode(VideoPresentationMode) const;
     void webkitSetPresentationMode(VideoPresentationMode);
     VideoPresentationMode webkitPresentationMode() const;
     void setFullscreenMode(VideoFullscreenMode);
     void fullscreenModeChanged(VideoFullscreenMode) final;
+
+    WEBCORE_EXPORT void didBecomeFullscreenElement() final;
+    WEBCORE_EXPORT void didStopBeingFullscreenElement() final;
+    void setVideoFullscreenFrame(FloatRect) final;
+
+#if ENABLE(PICTURE_IN_PICTURE_API)
+    void setPictureInPictureObserver(PictureInPictureObserver*);
+#endif
 #endif
 
 #if PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE)
@@ -115,7 +125,7 @@ private:
     void didMoveToNewDocument(Document& oldDocument, Document& newDocument) final;
     void setDisplayMode(DisplayMode) final;
 
-    PlatformMediaSession::MediaType presentationType() const final { return PlatformMediaSession::Video; }
+    PlatformMediaSession::MediaType presentationType() const final { return PlatformMediaSession::MediaType::Video; }
 
     std::unique_ptr<HTMLImageLoader> m_imageLoader;
 
@@ -123,6 +133,16 @@ private:
 
     unsigned m_lastReportedVideoWidth { 0 };
     unsigned m_lastReportedVideoHeight { 0 };
+    bool m_isChangingPresentationMode { false };
+
+#if ENABLE(VIDEO_PRESENTATION_MODE)
+    bool m_isEnteringOrExitingPictureInPicture { false };
+    bool m_isWaitingForPictureInPictureWindowFrame { false };
+#endif
+
+#if ENABLE(PICTURE_IN_PICTURE_API)
+    PictureInPictureObserver* m_pictureInPictureObserver { nullptr };
+#endif
 };
 
 } // namespace WebCore

@@ -30,7 +30,7 @@
 #include "B3Bank.h"
 #include "B3Type.h"
 
-#if ASSERT_DISABLED
+#if !ASSERT_ENABLED
 IGNORE_RETURN_TYPE_WARNINGS_BEGIN
 #endif
 
@@ -43,24 +43,18 @@ enum Width : int8_t {
     Width64
 };
 
-inline Width pointerWidth()
+constexpr Width pointerWidth()
 {
     if (sizeof(void*) == 8)
         return Width64;
     return Width32;
 }
 
-// Don't use this unless the compiler forces you to.
-#if CPU(X86_64) || CPU(ARM64)
-#define POINTER_WIDTH Width64
-#else
-#define POINTER_WIDTH Width32
-#endif
-
 inline Width widthForType(Type type)
 {
-    switch (type) {
+    switch (type.kind()) {
     case Void:
+    case Tuple:
         ASSERT_NOT_REACHED();
         return Width8;
     case Int32:
@@ -142,7 +136,7 @@ void printInternal(PrintStream&, JSC::B3::Width);
 
 } // namespace WTF
 
-#if ASSERT_DISABLED
+#if !ASSERT_ENABLED
 IGNORE_RETURN_TYPE_WARNINGS_END
 #endif
 

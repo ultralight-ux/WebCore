@@ -29,8 +29,6 @@
 
 #if USE(SOUP)
 
-#include "NetworkStorageSession.h"
-#include "SoupNetworkSession.h"
 #include <libsoup/soup.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/Function.h>
@@ -78,21 +76,21 @@ static void proxyResolvedForHttpsUriCallback(GObject* source, GAsyncResult* resu
     didResolveProxy(G_PROXY_RESOLVER(source), result, &isUsingHttpsProxy, static_cast<bool*>(userData));
 }
 
-Function<NetworkStorageSession&()>& globalDefaultNetworkStorageSessionAccessor()
+Function<SoupSession*()>& globalDefaultSoupSessionAccessor()
 {
-    static NeverDestroyed<Function<NetworkStorageSession&()>> accessor;
+    static NeverDestroyed<Function<SoupSession*()>> accessor;
     return accessor.get();
 }
 
-void DNSResolveQueueSoup::setGlobalDefaultNetworkStorageSessionAccessor(Function<NetworkStorageSession&()>&& accessor)
+void DNSResolveQueueSoup::setGlobalDefaultSoupSessionAccessor(Function<SoupSession*()>&& accessor)
 {
-    globalDefaultNetworkStorageSessionAccessor() = WTFMove(accessor);
+    globalDefaultSoupSessionAccessor() = WTFMove(accessor);
 }
 
 void DNSResolveQueueSoup::updateIsUsingProxy()
 {
     GRefPtr<GProxyResolver> resolver;
-    g_object_get(globalDefaultNetworkStorageSessionAccessor()().soupNetworkSession().soupSession(), "proxy-resolver", &resolver.outPtr(), nullptr);
+    g_object_get(globalDefaultSoupSessionAccessor()(), "proxy-resolver", &resolver.outPtr(), nullptr);
     ASSERT(resolver);
 
     g_proxy_resolver_lookup_async(resolver.get(), "http://example.com/", nullptr, proxyResolvedForHttpUriCallback, &m_isUsingProxy);
@@ -145,9 +143,16 @@ static void resolvedWithObserverCallback(SoupAddress* address, guint status, voi
     Vector<WebCore::IPAddress> addresses;
     addresses.reserveInitialCapacity(1);
     int len;
-    auto* ipAddress = reinterpret_cast<const struct sockaddr_in*>(soup_address_get_sockaddr(address, &len));
-    for (unsigned i = 0; i < sizeof(*ipAddress) / len; i++)
-        addresses.uncheckedAppend(WebCore::IPAddress(ipAddress[i]));
+    // FIXME: Support multiple addresses, IPv6 and IPv4.
+    auto* ipAddress = soup_address_get_sockaddr(address, &len);
+    if (ipAddress) {
+        if (auto address = IPAddress::fromSockAddrIn6(reinterpret_cast<const struct sockaddr_in6&>(*ipAddress)))
+            addresses.uncheckedAppend(*address);
+    }
+    if (addresses.isEmpty()) {
+        completionHandler(makeUnexpected(WebCore::DNSError::CannotResolve));
+        return;
+    }
 
     completionHandler(addresses);
 }
@@ -175,7 +180,7 @@ void DNSResolveQueueSoup::platformResolve(const String& hostname)
 {
     ASSERT(isMainThread());
 
-    soup_session_prefetch_dns(globalDefaultNetworkStorageSessionAccessor()().soupNetworkSession().soupSession(), hostname.utf8().data(), nullptr, resolvedCallback, nullptr);
+    soup_session_prefetch_dns(globalDefaultSoupSessionAccessor()(), hostname.utf8().data(), nullptr, resolvedCallback, nullptr);
 }
 
 void DNSResolveQueueSoup::resolve(const String& hostname, uint64_t identifier, DNSCompletionHandler&& completionHandler)
@@ -184,11 +189,11 @@ void DNSResolveQueueSoup::resolve(const String& hostname, uint64_t identifier, D
 
     auto address = adoptGRef(soup_address_new(hostname.utf8().data(), 0));
     auto cancellable = adoptGRef(g_cancellable_new());
-    soup_address_resolve_async(address.get(), soup_session_get_async_context(WebCore::globalDefaultNetworkStorageSessionAccessor()().soupNetworkSession().soupSession()), cancellable.get(), resolvedWithObserverCallback, this);
+    soup_address_resolve_async(address.get(), soup_session_get_async_context(globalDefaultSoupSessionAccessor()()), cancellable.get(), resolvedWithObserverCallback, this);
 
     g_object_set_data(G_OBJECT(address.get()), "identifier", GUINT_TO_POINTER(identifier));
 
-    m_completionAndCancelHandlers.add(identifier, std::make_unique<DNSResolveQueueSoup::CompletionAndCancelHandlers>(WTFMove(completionHandler), WTFMove(cancellable)));
+    m_completionAndCancelHandlers.add(identifier, makeUniqueWithoutFastMallocCheck<DNSResolveQueueSoup::CompletionAndCancelHandlers>(WTFMove(completionHandler), WTFMove(cancellable)));
 }
 
 void DNSResolveQueueSoup::stopResolve(uint64_t identifier)

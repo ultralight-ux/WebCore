@@ -22,10 +22,10 @@
 #pragma once
 
 #include "FrameView.h"
+#include "HighlightData.h"
 #include "Region.h"
 #include "RenderBlockFlow.h"
 #include "RenderWidget.h"
-#include "SelectionRangeData.h"
 #include <memory>
 #include <wtf/HashSet.h>
 #include <wtf/ListHashSet.h>
@@ -68,7 +68,12 @@ public:
 
     FrameView& frameView() const { return m_frameView; }
 
-    LayoutRect visualOverflowRect() const override;
+    bool needsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly() const { return m_needsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly; };
+    void setNeedsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly(bool value = true) { m_needsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly = value; }
+
+    bool needsEventRegionUpdateForNonCompositedFrame() const { return m_needsEventRegionUpdateForNonCompositedFrame; }
+    void setNeedsEventRegionUpdateForNonCompositedFrame(bool value = true) { m_needsEventRegionUpdateForNonCompositedFrame = value; }
+
     Optional<LayoutRect> computeVisibleRectInContainer(const LayoutRect&, const RenderLayerModelObject* container, VisibleRectContext) const override;
     void repaintRootContents();
     void repaintViewRectangle(const LayoutRect&) const;
@@ -79,7 +84,7 @@ public:
     // Return the renderer whose background style is used to paint the root background.
     RenderElement* rendererForRootBackground() const;
 
-    SelectionRangeData& selection() { return m_selection; }
+    HighlightData& selection() { return m_selection; }
 
     bool printing() const;
 
@@ -136,8 +141,6 @@ public:
     // Renderer that paints the root background has background-images which all have background-attachment: fixed.
     bool rootBackgroundIsEntirelyFixed() const;
 
-    void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
-
     IntSize viewportSizeForCSSViewportUnits() const;
 
     bool hasQuotesNeedingUpdate() const { return m_hasQuotesNeedingUpdate; }
@@ -147,10 +150,14 @@ public:
     // requires walking the entire tree repeatedly and most pages don't actually use either
     // feature so we shouldn't take the performance hit when not needed. Long term we should
     // rewrite the counter code.
-    void addRenderCounter() { m_renderCounterCount++; }
-    void removeRenderCounter() { ASSERT(m_renderCounterCount > 0); m_renderCounterCount--; }
-    bool hasRenderCounters() { return m_renderCounterCount; }
-    
+    void addRenderCounter() { ++m_renderCounterCount; }
+    void removeRenderCounter() { ASSERT(m_renderCounterCount > 0); --m_renderCounterCount; }
+    bool hasRenderCounters() const { return m_renderCounterCount; }
+
+    void incrementRendersWithOutline() { ++m_renderersWithOutlineCount; }
+    void decrementRendersWithOutline() { ASSERT(m_renderersWithOutlineCount > 0); --m_renderersWithOutlineCount; }
+    bool hasRenderersWithOutline() const { return m_renderersWithOutlineCount; }
+
     ImageQualityController& imageQualityController();
 
     void setHasSoftwareFilters(bool hasSoftwareFilters) { m_hasSoftwareFilters = hasSoftwareFilters; }
@@ -181,6 +188,9 @@ public:
 
     void scheduleLazyRepaint(RenderBox&);
     void unscheduleLazyRepaint(RenderBox&);
+    
+    void layerChildrenChangedDuringStyleChange(RenderLayer&);
+    RenderLayer* takeStyleChangeLayerTreeMutationRoot();
 
     void protectRenderWidgetUntilLayoutIsDone(RenderWidget& widget) { m_protectedRenderWidgets.append(&widget); }
     void releaseProtectedRenderWidgets() { m_protectedRenderWidgets.clear(); }
@@ -191,13 +201,12 @@ public:
     const HashSet<const RenderBox*>& boxesWithScrollSnapPositions() { return m_boxesWithScrollSnapPositions; }
 #endif
 
-protected:
+private:
     void mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState&, MapCoordinatesFlags, bool* wasFixed) const override;
     const RenderObject* pushMappingToContainer(const RenderLayerModelObject* ancestorToStopAt, RenderGeometryMap&) const override;
     void mapAbsoluteToLocalPoint(MapCoordinatesFlags, TransformState&) const override;
     bool requiresColumns(int desiredColumnCount) const override;
 
-private:
     void computeColumnCountAndWidth() override;
 
     bool shouldRepaint(const LayoutRect&) const;
@@ -207,14 +216,17 @@ private:
 
     bool isScrollableOrRubberbandableBox() const override;
 
-private:
+    Node* nodeForHitTest() const override;
+
     FrameView& m_frameView;
 
     // Include this RenderView.
     uint64_t m_rendererCount { 1 };
 
     mutable std::unique_ptr<Region> m_accumulatedRepaintRegion;
-    SelectionRangeData m_selection;
+    HighlightData m_selection;
+
+    WeakPtr<RenderLayer> m_styleChangeLayerMutationRoot;
 
     // FIXME: Only used by embedded WebViews inside AppKit NSViews.  Find a way to remove.
     struct LegacyPrinting {
@@ -242,10 +254,13 @@ private:
     bool m_hasQuotesNeedingUpdate { false };
 
     unsigned m_renderCounterCount { 0 };
+    unsigned m_renderersWithOutlineCount { 0 };
 
     bool m_hasSoftwareFilters { false };
     bool m_usesFirstLineRules { false };
     bool m_usesFirstLetterRules { false };
+    bool m_needsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly { false };
+    bool m_needsEventRegionUpdateForNonCompositedFrame { false };
 
     HashMap<RenderElement*, Vector<CachedImage*>> m_renderersWithPausedImageAnimation;
     HashSet<RenderElement*> m_visibleInViewportRenderers;

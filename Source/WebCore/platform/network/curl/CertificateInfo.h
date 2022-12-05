@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "CertificateInfoBase.h"
+#include "CertificateSummary.h"
 #include "NotImplemented.h"
 #include <wtf/Vector.h>
 #include <wtf/persistence/PersistentCoders.h>
@@ -34,7 +34,7 @@
 
 namespace WebCore {
 
-class CertificateInfo : public CertificateInfoBase {
+class CertificateInfo {
 public:
     using Certificate = Vector<uint8_t>;
     using CertificateChain = Vector<Certificate>;
@@ -45,11 +45,12 @@ public:
     WEBCORE_EXPORT CertificateInfo isolatedCopy() const;
 
     int verificationError() const { return m_verificationError; }
+    WEBCORE_EXPORT String verificationErrorDescription() const;
     const Vector<Certificate>& certificateChain() const { return m_certificateChain; }
 
     bool containsNonRootSHA1SignedCertificate() const { notImplemented(); return false; }
 
-    Optional<SummaryInfo> summaryInfo() const { notImplemented(); return WTF::nullopt; }
+    Optional<CertificateSummary> summary() const;
 
     bool isEmpty() const { return m_certificateChain.isEmpty(); }
 
@@ -71,15 +72,39 @@ namespace WTF {
 namespace Persistence {
 
 template<> struct Coder<WebCore::CertificateInfo> {
-    static void encode(Encoder&, const WebCore::CertificateInfo&)
+    static void encode(Encoder& encoder, const WebCore::CertificateInfo& certificateInfo)
     {
-        notImplemented();
+        auto& certificateChain = certificateInfo.certificateChain();
+
+        encoder << certificateInfo.verificationError();
+        encoder << certificateChain.size();
+        for (auto& certificate : certificateChain)
+            encoder << certificate;
     }
 
-    static bool decode(Decoder&, WebCore::CertificateInfo&)
+    static Optional<WebCore::CertificateInfo> decode(Decoder& decoder)
     {
-        notImplemented();
-        return false;
+        Optional<int> verificationError;
+        decoder >> verificationError;
+        if (!verificationError)
+            return WTF::nullopt;
+
+        Optional<size_t> numOfCerts;
+        decoder >> numOfCerts;
+        if (!numOfCerts)
+            return WTF::nullopt;
+
+        WebCore::CertificateInfo::CertificateChain certificateChain;
+        for (size_t i = 0; i < numOfCerts.value(); i++) {
+            Optional<WebCore::CertificateInfo::Certificate> certificate;
+            decoder >> certificate;
+            if (!certificate)
+                return WTF::nullopt;
+
+            certificateChain.append(WTFMove(certificate.value()));
+        }
+
+        return WebCore::CertificateInfo(verificationError.value(), WTFMove(certificateChain));
     }
 };
 

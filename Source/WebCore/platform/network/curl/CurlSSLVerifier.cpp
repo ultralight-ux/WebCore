@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 University of Szeged
- * Copyright (C) 2017 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2020 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,11 +30,9 @@
 #if USE(CURL)
 #include "CurlContext.h"
 #include "CurlSSLHandle.h"
-#include <openssl/ssl.h>
 
 namespace WebCore {
 
-static Vector<CertificateInfo::Certificate> pemDataFromCtx(X509StoreCTX*);
 static CurlSSLVerifier::SSLCertificateFlags convertToSSLCertificateFlags(unsigned);
 
 CurlSSLVerifier::CurlSSLVerifier(void* sslCtx)
@@ -59,17 +57,22 @@ CurlSSLVerifier::CurlSSLVerifier(void* sslCtx)
     const auto& curvesList = sslHandle.getCurvesList();
     if (!curvesList.isEmpty())
         SSL_CTX_set1_curves_list(ctx, curvesList.utf8().data());
+
+#if ENABLE(TLS_DEBUG)
+    SSL_CTX_set_info_callback(ctx, infoCallback);
+#endif
 }
 
-void CurlSSLVerifier::collectInfo(X509StoreCTX* ctx)
+void CurlSSLVerifier::collectInfo(X509_STORE_CTX* ctx)
 {
-    m_certificateInfo = CertificateInfo { X509_STORE_CTX_get_error(ctx), pemDataFromCtx(ctx) };
+    if (auto certificateInfo = OpenSSL::createCertificateInfo(ctx))
+        m_certificateInfo = WTFMove(*certificateInfo);
 
     if (auto error = m_certificateInfo.verificationError())
         m_sslErrors = static_cast<int>(convertToSSLCertificateFlags(error));
 }
 
-int CurlSSLVerifier::verifyCallback(int preverified, X509StoreCTX* ctx)
+int CurlSSLVerifier::verifyCallback(int preverified, X509_STORE_CTX* ctx)
 {
     auto ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
     auto sslCtx = SSL_get_SSL_CTX(ssl);
@@ -80,74 +83,61 @@ int CurlSSLVerifier::verifyCallback(int preverified, X509StoreCTX* ctx)
     return preverified;
 }
 
-class StackOfX509 {
-public:
-    explicit StackOfX509(X509StoreCTX* ctx)
-        : m_certs { X509_STORE_CTX_get1_chain(ctx) }
-    {
-    }
+#if ENABLE(TLS_DEBUG)
 
-    ~StackOfX509()
-    {
-        if (m_certs)
-            sk_X509_pop_free(m_certs, X509_free);
-    }
-
-    unsigned count() { return sk_X509_num(m_certs); }
-    X509* item(unsigned i) { return sk_X509_value(m_certs, i); }
-
-private:
-    STACK_OF(X509)* m_certs { nullptr };
-};
-
-class BIOHolder {
-public:
-    BIOHolder()
-        : m_bio { BIO_new(BIO_s_mem()) }
-    {
-    }
-
-    ~BIOHolder()
-    {
-        if (m_bio)
-            BIO_free(m_bio);
-    }
-
-    bool write(X509* data) { return PEM_write_bio_X509(m_bio, data); }
-    CertificateInfo::Certificate asCertificate()
-    {
-        uint8_t* data;
-        long length = BIO_get_mem_data(m_bio, &data);
-        if (length < 0)
-            return CertificateInfo::Certificate();
-
-        auto cert = CertificateInfo::makeCertificate(data, length);
-        return cert;
-    }
-
-private:
-    BIO* m_bio { nullptr };
-};
-
-static Vector<CertificateInfo::Certificate> pemDataFromCtx(X509StoreCTX* ctx)
+void CurlSSLVerifier::infoCallback(const SSL* ssl, int where, int)
 {
-    Vector<CertificateInfo::Certificate> result;
-    StackOfX509 certs { ctx };
-    for (int i = 0; i < certs.count(); i++) {
-        BIOHolder bio;
+    auto sslCtx = SSL_get_SSL_CTX(ssl);
+    auto verifier = static_cast<CurlSSLVerifier*>(SSL_CTX_get_app_data(sslCtx));
 
-        if (!bio.write(certs.item(i)))
-            return Vector<CertificateInfo::Certificate> { };
-
-        auto certificate = bio.asCertificate();
-        if (certificate.isEmpty())
-            return Vector<CertificateInfo::Certificate> { };
-
-        result.append(WTFMove(certificate));
-    }
-
-    return result;
+    if (where & SSL_CB_HANDSHAKE_DONE)
+        verifier->logTLSKey(ssl);
 }
+
+void CurlSSLVerifier::logTLSKey(const SSL* ssl)
+{
+    // See https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Key_Log_Format
+
+    if (!CurlContext::singleton().shouldLogTLSKey())
+        return;
+
+    auto* session = SSL_get_session(ssl);
+    if (!session)
+        return;
+
+    auto& version = session->ssl_version;
+    if (version != TLS1_VERSION && version != TLS1_1_VERSION && version != TLS1_2_VERSION)
+        return;
+
+    auto requiredSize = SSL_get_client_random(ssl, nullptr, 0);
+    Vector<uint8_t> clientRandom(requiredSize);
+    if (SSL_get_client_random(ssl, clientRandom.data(), clientRandom.size()) != clientRandom.size())
+        return;
+
+    requiredSize = SSL_SESSION_get_master_key(session, nullptr, 0);
+    Vector<uint8_t> masterKey(requiredSize);
+    if (SSL_SESSION_get_master_key(session, masterKey.data(), masterKey.size()) != masterKey.size())
+        return;
+
+    auto fp = fopen(CurlContext::singleton().tlsKeyLogFilePath().utf8().data(), "a");
+    if (!fp)
+        return;
+
+    fprintf(fp, "CLIENT_RANDOM ");
+
+    for (size_t i = 0; i < clientRandom.size(); i++)
+        fprintf(fp, "%02X", clientRandom[i]);
+
+    fprintf(fp, " ");
+
+    for (size_t i = 0; i < masterKey.size(); i++)
+        fprintf(fp, "%02X", masterKey[i]);
+
+    fprintf(fp, "\n");
+    fclose(fp);
+}
+
+#endif
 
 static CurlSSLVerifier::SSLCertificateFlags convertToSSLCertificateFlags(unsigned sslError)
 {

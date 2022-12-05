@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,7 +27,6 @@
 #include <wtf/RAMSize.h>
 
 #include <mutex>
-#include <wtf/StdLibExtras.h>
 
 #if OS(WINDOWS)
 #include <windows.h>
@@ -42,7 +41,7 @@
 namespace WTF {
 
 #if OS(WINDOWS)
-static const size_t ramSizeGuess = 512 * MB;
+static constexpr size_t ramSizeGuess = 512 * MB;
 #endif
 
 static size_t computeRAMSize()
@@ -54,14 +53,14 @@ static size_t computeRAMSize()
     if (!result)
         return ramSizeGuess;
     return status.ullTotalPhys;
-#elif defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
-#if OS(LINUX)
+#elif USE(SYSTEM_MALLOC)
+#if OS(LINUX) || OS(FREEBSD)
     struct sysinfo si;
     sysinfo(&si);
     return si.totalram * si.mem_unit;
 #else
 #error "Missing a platform specific way of determining the available RAM"
-#endif // OS(LINUX)
+#endif // OS(LINUX) || OS(FREEBSD)
 #else
     return bmalloc::api::availableMemory();
 #endif

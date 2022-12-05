@@ -54,11 +54,11 @@ RefPtr<GPUCommandBuffer> GPUCommandBuffer::tryCreate(const GPUDevice& device)
 
     RetainPtr<MTLCommandBuffer> buffer;
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
 
     buffer = [mtlQueue commandBuffer];
 
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     if (!buffer) {
         LOG(WebGPU, "GPUCommandBuffer::create(): Unable to create MTLCommandBuffer!");
@@ -87,15 +87,15 @@ void GPUCommandBuffer::endBlitEncoding()
 {
     if (!m_blitEncoder)
         return;
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_blitEncoder endEncoding];
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
     m_blitEncoder = nullptr;
 }
 
 void GPUCommandBuffer::copyBufferToBuffer(Ref<GPUBuffer>&& src, uint64_t srcOffset, Ref<GPUBuffer>&& dst, uint64_t dstOffset, uint64_t size)
 {
-    if (isEncodingPass() || !src->isTransferSource() || !dst->isTransferDestination()) {
+    if (isEncodingPass() || !src->isCopySource() || !dst->isCopyDestination()) {
         LOG(WebGPU, "GPUCommandBuffer::copyBufferToBuffer(): Invalid operation!");
         return;
     }
@@ -116,7 +116,7 @@ void GPUCommandBuffer::copyBufferToBuffer(Ref<GPUBuffer>&& src, uint64_t srcOffs
         return;
     }
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
 
     // These casts are safe due to earlier checkedSum() checks.
     [blitEncoder()
@@ -126,7 +126,7 @@ void GPUCommandBuffer::copyBufferToBuffer(Ref<GPUBuffer>&& src, uint64_t srcOffs
         destinationOffset:static_cast<NSUInteger>(dstOffset)
         size:static_cast<NSUInteger>(size)];
 
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     useBuffer(WTFMove(src));
     useBuffer(WTFMove(dst));
@@ -134,8 +134,8 @@ void GPUCommandBuffer::copyBufferToBuffer(Ref<GPUBuffer>&& src, uint64_t srcOffs
 
 void GPUCommandBuffer::copyBufferToTexture(GPUBufferCopyView&& srcBuffer, GPUTextureCopyView&& dstTexture, const GPUExtent3D& size)
 {
-    if (isEncodingPass() || !srcBuffer.buffer->isTransferSource() || !dstTexture.texture->isTransferDestination()) {
-        LOG(WebGPU, "GPUComandBuffer::copyBufferToTexture(): Invalid operation!");
+    if (isEncodingPass() || !srcBuffer.buffer->isCopySource() || !dstTexture.texture->isCopyDestination()) {
+        LOG(WebGPU, "GPUCommandBuffer::copyBufferToTexture(): Invalid operation!");
         return;
     }
 
@@ -158,7 +158,7 @@ void GPUCommandBuffer::copyBufferToTexture(GPUBufferCopyView&& srcBuffer, GPUTex
 
     // GPUTextureCopyView::texture: The value must not be a framebufferOnly texture and must not have a PVRTC pixel format.
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
 
     [blitEncoder()
         copyFromBuffer:srcBuffer.buffer->platformBuffer()
@@ -171,7 +171,7 @@ void GPUCommandBuffer::copyBufferToTexture(GPUBufferCopyView&& srcBuffer, GPUTex
         destinationLevel:dstTexture.mipLevel
         destinationOrigin:MTLOriginMake(dstTexture.origin.x, dstTexture.origin.y, dstTexture.origin.z)];
 
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     useBuffer(WTFMove(srcBuffer.buffer));
     useTexture(WTFMove(dstTexture.texture));
@@ -179,7 +179,7 @@ void GPUCommandBuffer::copyBufferToTexture(GPUBufferCopyView&& srcBuffer, GPUTex
 
 void GPUCommandBuffer::copyTextureToBuffer(GPUTextureCopyView&& srcTexture, GPUBufferCopyView&& dstBuffer, const GPUExtent3D& size)
 {
-    if (isEncodingPass() || !srcTexture.texture->isTransferSource() || !dstBuffer.buffer->isTransferDestination()) {
+    if (isEncodingPass() || !srcTexture.texture->isCopySource() || !dstBuffer.buffer->isCopyDestination()) {
         LOG(WebGPU, "GPUCommandBuffer::copyTextureToBuffer(): Invalid operation!");
         return;
     }
@@ -192,7 +192,7 @@ void GPUCommandBuffer::copyTextureToBuffer(GPUTextureCopyView&& srcTexture, GPUB
 
     // FIXME: Add Metal validation?
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
 
     [blitEncoder()
         copyFromTexture:srcTexture.texture->platformTexture()
@@ -205,7 +205,7 @@ void GPUCommandBuffer::copyTextureToBuffer(GPUTextureCopyView&& srcTexture, GPUB
         destinationBytesPerRow:dstBuffer.rowPitch
         destinationBytesPerImage:dstBuffer.imageHeight];
 
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     useTexture(WTFMove(srcTexture.texture));
     useBuffer(WTFMove(dstBuffer.buffer));
@@ -213,14 +213,14 @@ void GPUCommandBuffer::copyTextureToBuffer(GPUTextureCopyView&& srcTexture, GPUB
 
 void GPUCommandBuffer::copyTextureToTexture(GPUTextureCopyView&& src, GPUTextureCopyView&& dst, const GPUExtent3D& size)
 {
-    if (isEncodingPass() || !src.texture->isTransferSource() || !dst.texture->isTransferDestination()) {
+    if (isEncodingPass() || !src.texture->isCopySource() || !dst.texture->isCopyDestination()) {
         LOG(WebGPU, "GPUCommandBuffer::copyTextureToTexture(): Invalid operation!");
         return;
     }
 
     // FIXME: Add Metal validation?
 
-    BEGIN_BLOCK_OBJC_EXCEPTIONS;
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
 
     [blitEncoder()
         copyFromTexture:src.texture->platformTexture()
@@ -229,11 +229,11 @@ void GPUCommandBuffer::copyTextureToTexture(GPUTextureCopyView&& src, GPUTexture
         sourceOrigin:MTLOriginMake(src.origin.x, src.origin.y, src.origin.z)
         sourceSize:MTLSizeMake(size.width, size.height, size.depth)
         toTexture:dst.texture->platformTexture()
-        destinationSlice:src.arrayLayer
-        destinationLevel:src.mipLevel
+        destinationSlice:dst.arrayLayer
+        destinationLevel:dst.mipLevel
         destinationOrigin:MTLOriginMake(dst.origin.x, dst.origin.y, dst.origin.z)];
 
-    END_BLOCK_OBJC_EXCEPTIONS;
+    END_BLOCK_OBJC_EXCEPTIONS
 
     useTexture(WTFMove(src.texture));
     useTexture(WTFMove(dst.texture));

@@ -36,9 +36,10 @@
 namespace WebCore {
 namespace DisplayList {
 
-Recorder::Recorder(GraphicsContext& context, DisplayList& displayList, const GraphicsContextState& state, const FloatRect& initialClip, const AffineTransform& baseCTM)
+Recorder::Recorder(GraphicsContext& context, DisplayList& displayList, const GraphicsContextState& state, const FloatRect& initialClip, const AffineTransform& baseCTM, Observer* observer)
     : GraphicsContextImpl(context, initialClip, baseCTM)
     , m_displayList(displayList)
+    , m_observer(observer)
 {
     LOG_WITH_STREAM(DisplayLists, stream << "\nRecording with clip " << initialClip);
     m_stateStack.append(ContextState(state, baseCTM, initialClip));
@@ -50,8 +51,16 @@ Recorder::~Recorder()
     LOG(DisplayLists, "Recorded display list:\n%s", m_displayList.description().data());
 }
 
+void Recorder::putImageData(WebCore::AlphaPremultiplication inputFormat, const WebCore::ImageData& imageData, const WebCore::IntRect& srcRect, const WebCore::IntPoint& destPoint, WebCore::AlphaPremultiplication destFormat)
+{
+    appendItem(WebCore::DisplayList::PutImageData::create(inputFormat, imageData, srcRect, destPoint, destFormat));
+}
+
 void Recorder::willAppendItem(const Item& item)
 {
+    if (m_observer)
+        m_observer->willAppendItem(item);
+
     if (item.isDrawingItem()
 #if USE(CG)
         || item.type() == ItemType::ApplyStrokePattern || item.type() == ItemType::ApplyStrokePattern
@@ -62,7 +71,7 @@ void Recorder::willAppendItem(const Item& item)
         if (changesFromLastState) {
             LOG_WITH_STREAM(DisplayLists, stream << "pre-drawing, saving state " << GraphicsContextStateChange(stateChanges.m_state, changesFromLastState));
             m_displayList.append(SetState::create(stateChanges.m_state, changesFromLastState));
-            stateChanges.m_changeFlags = 0;
+            stateChanges.m_changeFlags = { };
             currentState().lastDrawingState = stateChanges.m_state;
         }
         currentState().wasUsedForDrawing = true;
@@ -126,24 +135,24 @@ ImageDrawResult Recorder::drawTiledImage(Image& image, const FloatRect& destinat
     return ImageDrawResult::DidRecord;
 }
 
-#if USE(CG) || USE(CAIRO)
-void Recorder::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
+#if USE(CG) || USE(CAIRO) || USE(DIRECT2D)
+void Recorder::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
-    DrawingItem& newItem = downcast<DrawingItem>(appendItem(DrawNativeImage::create(image, imageSize, destRect, srcRect, op, blendMode, orientation)));
+    DrawingItem& newItem = downcast<DrawingItem>(appendItem(DrawNativeImage::create(image, imageSize, destRect, srcRect, options)));
     updateItemExtent(newItem);
 }
 #endif
 
-void Recorder::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator op, BlendMode blendMode)
+void Recorder::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
-    DrawingItem& newItem = downcast<DrawingItem>(appendItem(DrawPattern::create(image, destRect, tileRect, patternTransform, phase, spacing, op, blendMode)));
+    DrawingItem& newItem = downcast<DrawingItem>(appendItem(DrawPattern::create(image, destRect, tileRect, patternTransform, phase, spacing, options)));
     updateItemExtent(newItem);
 }
 
 void Recorder::save()
 {
     appendItem(Save::create());
-    m_stateStack.append(m_stateStack.last().cloneForSave(m_displayList.itemCount() - 1));
+    m_stateStack.append(m_stateStack.last().cloneForSave());
 }
 
 void Recorder::restore()
@@ -152,24 +161,12 @@ void Recorder::restore()
         return;
 
     bool stateUsedForDrawing = currentState().wasUsedForDrawing;
-    size_t saveIndex = currentState().saveItemIndex;
 
     m_stateStack.removeLast();
     // Have to avoid eliding nested Save/Restore when a descendant state contains drawing items.
     currentState().wasUsedForDrawing |= stateUsedForDrawing;
 
-    if (!stateUsedForDrawing && saveIndex) {
-        // This Save/Restore didn't contain any drawing items. Roll back to just before the last save.
-        m_displayList.removeItemsFromIndex(saveIndex);
-        return;
-    }
-
     appendItem(Restore::create());
-
-    if (saveIndex) {
-        Save& saveItem = downcast<Save>(m_displayList.itemAt(saveIndex));
-        saveItem.setRestoreIndex(m_displayList.itemCount() - 1);
-    }
 }
 
 void Recorder::translate(float x, float y)
@@ -196,15 +193,16 @@ void Recorder::concatCTM(const AffineTransform& transform)
     appendItem(ConcatenateCTM::create(transform));
 }
 
-void Recorder::setCTM(const AffineTransform&)
+void Recorder::setCTM(const AffineTransform& transform)
 {
-    WTFLogAlways("GraphicsContext::setCTM() is not compatible with DisplayList::Recorder.");
+    currentState().setCTM(transform);
+    appendItem(SetCTM::create(transform));
 }
 
 AffineTransform Recorder::getCTM(GraphicsContext::IncludeDeviceScale)
 {
-    WTFLogAlways("GraphicsContext::getCTM() is not yet compatible with DisplayList::Recorder.");
-    return { };
+    // FIXME: Respect the given value of IncludeDeviceScale.
+    return currentState().ctm;
 }
 
 void Recorder::beginTransparencyLayer(float opacity)
@@ -406,6 +404,8 @@ void Recorder::updateItemExtent(DrawingItem& item) const
 {
     if (Optional<FloatRect> rect = item.localBounds(graphicsContext()))
         item.setExtent(extentFromLocalBounds(rect.value()));
+    else if (Optional<FloatRect> rect = item.globalBounds())
+        item.setExtent(rect.value());
 }
 
 // FIXME: share with ShadowData
@@ -481,6 +481,18 @@ void Recorder::ContextState::scale(const FloatSize& size)
 {
     ctm.scale(size);
     clipBounds.scale(1 / size.width(), 1 / size.height());
+}
+
+void Recorder::ContextState::setCTM(const AffineTransform& matrix)
+{
+    Optional<AffineTransform> inverseTransformForClipBounds;
+    if (auto originalCTMInverse = ctm.inverse())
+        inverseTransformForClipBounds = originalCTMInverse->multiply(matrix).inverse();
+
+    ctm = matrix;
+
+    if (inverseTransformForClipBounds)
+        clipBounds = inverseTransformForClipBounds->mapRect(clipBounds);
 }
 
 void Recorder::ContextState::concatCTM(const AffineTransform& matrix)

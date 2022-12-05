@@ -26,8 +26,6 @@
 #import "config.h"
 #import "WebCoreDecompressionSession.h"
 
-#if USE(VIDEOTOOLBOX)
-
 #import "Logging.h"
 #import "PixelBufferConformerCV.h"
 #import <CoreMedia/CMBufferQueue.h>
@@ -124,12 +122,8 @@ void WebCoreDecompressionSession::enqueueSample(CMSampleBufferRef sampleBuffer, 
         m_decompressionQueue = adoptOSObject(dispatch_queue_create("SourceBufferPrivateAVFObjC Decompression Queue", DISPATCH_QUEUE_SERIAL));
 
     // CMBufferCallbacks contains 64-bit pointers that aren't 8-byte aligned. To suppress the linker
-    // warning about this, we prepend 4 bytes of padding when building for macOS.
-#if PLATFORM(MAC)
+    // warning about this, we prepend 4 bytes of padding when building.
     const size_t padSize = 4;
-#else
-    const size_t padSize = 0;
-#endif
 
     if (!m_producerQueue) {
         CMBufferQueueRef outQueue { nullptr };
@@ -220,12 +214,12 @@ void WebCoreDecompressionSession::ensureDecompressionSessionForSample(CMSampleBu
 
     if (!m_decompressionSession) {
         CMVideoFormatDescriptionRef videoFormatDescription = CMSampleBufferGetFormatDescription(sample);
-        auto videoDecoderSpecification = @{ (__bridge NSString *)kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: @YES };
+        auto videoDecoderSpecification = @{ (__bridge NSString *)kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: @( m_hardwareDecoderEnabled ) };
 
         NSDictionary *attributes;
-        if (m_mode == OpenGL) {
-            attributes = nil;
-        } else {
+        if (m_mode == OpenGL)
+            attributes = @{ (__bridge NSString*)kCVPixelBufferIOSurfacePropertiesKey: @{ /* empty dictionary */ } };
+        else {
             ASSERT(m_mode == RGB);
             attributes = @{ (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
         }
@@ -478,7 +472,9 @@ RetainPtr<CVPixelBufferRef> WebCoreDecompressionSession::imageForTime(const Medi
     bool allowLater = flags == WebCoreDecompressionSession::AllowLater;
 
     MediaTime startTime = PAL::toMediaTime(CMBufferQueueGetFirstPresentationTimeStamp(m_producerQueue.get()));
+#if !LOG_DISABLED
     MediaTime endTime = PAL::toMediaTime(CMBufferQueueGetEndPresentationTimeStamp(m_producerQueue.get()));
+#endif
     if (!allowLater && time < startTime) {
         LOG(Media, "WebCoreDecompressionSession::imageForTime(%p) - time(%s) too early for queue(%s -> %s)", this, toString(time).utf8().data(), toString(startTime).utf8().data(), toString(endTime).utf8().data());
         return nullptr;
@@ -623,5 +619,3 @@ void WebCoreDecompressionSession::updateQosWithDecodeTimeStatistics(double ratio
 }
 
 }
-
-#endif

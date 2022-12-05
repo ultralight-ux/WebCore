@@ -34,10 +34,11 @@ namespace JSC {
 class VM;
 
 class RandomizingFuzzerAgent final : public FuzzerAgent {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     RandomizingFuzzerAgent(VM&);
 
-    SpeculatedType getPrediction(CodeBlock*, const CodeOrigin&, SpeculatedType) override;
+    SpeculatedType getPrediction(CodeBlock*, const CodeOrigin&, SpeculatedType) final;
 
 private:
     WeakRandom m_random;

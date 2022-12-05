@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
 
 #include "AudioTrack.h"
 #include "Event.h"
@@ -35,6 +35,7 @@
 namespace WebCore {
 
 class TrackEvent final : public Event {
+    WTF_MAKE_ISO_ALLOCATED(TrackEvent);
 public:
     virtual ~TrackEvent();
 
@@ -67,4 +68,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(VIDEO_TRACK)
+#endif // ENABLE(VIDEO)

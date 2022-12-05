@@ -84,7 +84,7 @@ void FontCascadeFonts::GlyphPageCacheEntry::setGlyphDataForCharacter(UChar32 cha
 {
     ASSERT(!glyphDataForCharacter(character).glyph);
     if (!m_mixedFont) {
-        m_mixedFont = std::make_unique<MixedFontGlyphPage>(m_singleFont.get());
+        m_mixedFont = makeUnique<MixedFontGlyphPage>(m_singleFont.get());
         m_singleFont = nullptr;
     }
     m_mixedFont->setGlyphDataForCharacter(character, glyphData);
@@ -95,6 +95,8 @@ void FontCascadeFonts::GlyphPageCacheEntry::setSingleFontPage(RefPtr<GlyphPage>&
     ASSERT(isNull());
     m_singleFont = page;
 }
+
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(FontCascadeFonts);
 
 FontCascadeFonts::FontCascadeFonts(RefPtr<FontSelector>&& fontSelector)
     : m_cachedPrimaryFont(nullptr)
@@ -348,10 +350,6 @@ GlyphData FontCascadeFonts::glyphDataForSystemFallback(UChar32 character, const 
     auto systemFallbackFont = font->systemFallbackFontForCharacter(character, description, m_isForPlatformFont ? IsForPlatformFont::Yes : IsForPlatformFont::No);
     if (!systemFallbackFont)
         return GlyphData();
-
-#if HAVE(DISALLOWABLE_USER_INSTALLED_FONTS)
-    ASSERT(!systemFallbackFont->isUserInstalledFont() || description.shouldAllowUserInstalledFonts() == AllowUserInstalledFonts::Yes);
-#endif
 
     if (systemFallbackShouldBeInvisible)
         systemFallbackFont = const_cast<Font*>(&systemFallbackFont->invisibleFont());

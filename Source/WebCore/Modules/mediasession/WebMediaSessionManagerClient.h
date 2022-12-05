@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,8 @@
 
 #include "MediaPlaybackTarget.h"
 #include "MediaProducer.h"
+#include "PlatformView.h"
+#include "PlaybackTargetClientContextIdentifier.h"
 #include <wtf/Ref.h>
 
 namespace WebCore {
@@ -37,9 +39,12 @@ class WebMediaSessionManagerClient {
 public:
     virtual ~WebMediaSessionManagerClient() = default;
 
-    virtual void setPlaybackTarget(uint64_t, Ref<MediaPlaybackTarget>&&) = 0;
-    virtual void externalOutputDeviceAvailableDidChange(uint64_t, bool) = 0;
-    virtual void setShouldPlayToPlaybackTarget(uint64_t, bool) = 0;
+    virtual void setPlaybackTarget(PlaybackTargetClientContextIdentifier, Ref<MediaPlaybackTarget>&&) = 0;
+    virtual void externalOutputDeviceAvailableDidChange(PlaybackTargetClientContextIdentifier, bool) = 0;
+    virtual void setShouldPlayToPlaybackTarget(PlaybackTargetClientContextIdentifier, bool) = 0;
+    virtual void playbackTargetPickerWasDismissed(PlaybackTargetClientContextIdentifier) = 0;
+    virtual bool alwaysOnLoggingAllowed() { return false; }
+    virtual PlatformView* platformView() const = 0;
 };
 
 } // namespace WebCore

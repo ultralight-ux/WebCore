@@ -85,14 +85,23 @@ static bool globalAutomaticInspectionState()
 
 RemoteInspector& RemoteInspector::singleton()
 {
-    static NeverDestroyed<RemoteInspector> shared;
+    static LazyNeverDestroyed<RemoteInspector> shared;
+    static dispatch_once_t onceConstructKey;
+    dispatch_once(&onceConstructKey, ^{
+        shared.construct();
+    });
 
+#if PLATFORM(COCOA)
+    if (needMachSandboxExtension)
+        return shared;
+#endif
+    
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         if (canAccessWebInspectorMachPort()) {
             dispatch_block_t initialize = ^{
                 WTF::initializeMainThread();
-                JSC::initializeThreading();
+                JSC::initialize();
                 if (RemoteInspector::startEnabled)
                     shared.get().start();
             };
@@ -137,7 +146,7 @@ void RemoteInspector::updateAutomaticInspectionCandidate(RemoteInspectionTarget*
         // To make this work we will need to change m_automaticInspectionCandidateTargetIdentifier to be a per-thread value.
         // Multiple attempts on the same thread should not be possible because our nested run loop is in a special RWI mode.
         if (m_automaticInspectionPaused) {
-            LOG_ERROR("Skipping Automatic Inspection Candidate with pageId(%u) because we are already paused waiting for pageId(%u)", targetIdentifier, m_automaticInspectionCandidateTargetIdentifier);
+            WTFLogAlways("Skipping Automatic Inspection Candidate with pageId(%u) because we are already paused waiting for pageId(%u)", targetIdentifier, m_automaticInspectionCandidateTargetIdentifier);
             pushListingsSoon();
             return;
         }
@@ -152,15 +161,11 @@ void RemoteInspector::updateAutomaticInspectionCandidate(RemoteInspectionTarget*
         }
 
         // In case debuggers fail to respond, or we cannot connect to webinspectord, automatically continue after a short period of time.
-#if PLATFORM(WATCHOS)
-        int64_t debuggerTimeoutDelay = 5;
-#else
-        int64_t debuggerTimeoutDelay = 1;
-#endif
+        int64_t debuggerTimeoutDelay = 10;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, debuggerTimeoutDelay * NSEC_PER_SEC), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             LockHolder lock(m_mutex);
             if (m_automaticInspectionCandidateTargetIdentifier == targetIdentifier) {
-                LOG_ERROR("Skipping Automatic Inspection Candidate with pageId(%u) because we failed to receive a response in time.", m_automaticInspectionCandidateTargetIdentifier);
+                WTFLogAlways("Skipping Automatic Inspection Candidate with pageId(%u) because we failed to receive a response in time.", m_automaticInspectionCandidateTargetIdentifier);
                 m_automaticInspectionPaused = false;
             }
         });
@@ -239,7 +244,7 @@ void RemoteInspector::stopInternal(StopSource source)
 
     m_pushScheduled = false;
 
-    for (auto targetConnection : m_targetConnectionMap.values())
+    for (const auto& targetConnection : m_targetConnectionMap.values())
         targetConnection->close();
     m_targetConnectionMap.clear();
 
@@ -347,7 +352,7 @@ void RemoteInspector::xpcConnectionFailed(RemoteInspectorXPCConnection* relayCon
 
     m_pushScheduled = false;
 
-    for (auto targetConnection : m_targetConnectionMap.values())
+    for (const auto& targetConnection : m_targetConnectionMap.values())
         targetConnection->close();
     m_targetConnectionMap.clear();
 
@@ -378,19 +383,28 @@ RetainPtr<NSDictionary> RemoteInspector::listingForInspectionTarget(const Remote
     [listing setObject:@(target.targetIdentifier()) forKey:WIRTargetIdentifierKey];
 
     switch (target.type()) {
+    case RemoteInspectionTarget::Type::ITML:
+        [listing setObject:target.name() forKey:WIRTitleKey];
+        [listing setObject:WIRTypeITML forKey:WIRTypeKey];
+        break;
     case RemoteInspectionTarget::Type::JavaScript:
         [listing setObject:target.name() forKey:WIRTitleKey];
         [listing setObject:WIRTypeJavaScript forKey:WIRTypeKey];
+        break;
+    case RemoteInspectionTarget::Type::Page:
+        [listing setObject:target.url() forKey:WIRURLKey];
+        [listing setObject:target.name() forKey:WIRTitleKey];
+        [listing setObject:WIRTypePage forKey:WIRTypeKey];
         break;
     case RemoteInspectionTarget::Type::ServiceWorker:
         [listing setObject:target.url() forKey:WIRURLKey];
         [listing setObject:target.name() forKey:WIRTitleKey];
         [listing setObject:WIRTypeServiceWorker forKey:WIRTypeKey];
         break;
-    case RemoteInspectionTarget::Type::Web:
+    case RemoteInspectionTarget::Type::WebPage:
         [listing setObject:target.url() forKey:WIRURLKey];
         [listing setObject:target.name() forKey:WIRTitleKey];
-        [listing setObject:WIRTypeWeb forKey:WIRTypeKey];
+        [listing setObject:WIRTypeWebPage forKey:WIRTypeKey];
         break;
     default:
         ASSERT_NOT_REACHED();
@@ -437,7 +451,7 @@ void RemoteInspector::pushListingsNow()
     m_pushScheduled = false;
 
     RetainPtr<NSMutableDictionary> listings = adoptNS([[NSMutableDictionary alloc] init]);
-    for (RetainPtr<NSDictionary> listing : m_targetListingMap.values()) {
+    for (const auto& listing : m_targetListingMap.values()) {
         NSString *targetIdentifierString = [[listing.get() objectForKey:WIRTargetIdentifierKey] stringValue];
         [listings setObject:listing.get() forKey:targetIdentifierString];
     }

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Yusuke Suzuki <utatane.tea@gmail.com>
- * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,10 +28,13 @@
 
 #include "CallFrameClosure.h"
 #include "Exception.h"
+#include "FunctionCodeBlock.h"
+#include "FunctionExecutable.h"
 #include "Instruction.h"
 #include "Interpreter.h"
 #include "JSCPtrTag.h"
 #include "LLIntData.h"
+#include "ProtoCallFrameInlines.h"
 #include "UnlinkedCodeBlock.h"
 #include <wtf/UnalignedAccess.h>
 
@@ -46,7 +49,7 @@ inline OpcodeID Interpreter::getOpcodeID(Opcode opcode)
 {
 #if ENABLE(COMPUTED_GOTO_OPCODES)
     ASSERT(isOpcode(opcode));
-#if USE(LLINT_EMBEDDED_OPCODE_ID)
+#if ENABLE(LLINT_EMBEDDED_OPCODE_ID)
     // The OpcodeID is embedded in the int32_t word preceding the location of
     // the LLInt code for the opcode (see the EMBED_OPCODE_ID_IF_NEEDED macro
     // in LowLevelInterpreter.cpp).
@@ -57,7 +60,7 @@ inline OpcodeID Interpreter::getOpcodeID(Opcode opcode)
     return opcodeID;
 #else
     return opcodeIDTable().get(opcode);
-#endif // USE(LLINT_EMBEDDED_OPCODE_ID)
+#endif // ENABLE(LLINT_EMBEDDED_OPCODE_ID)
     
 #else // not ENABLE(COMPUTED_GOTO_OPCODES)
     return opcode;
@@ -74,12 +77,23 @@ ALWAYS_INLINE JSValue Interpreter::execute(CallFrameClosure& closure)
 
     StackStats::CheckPoint stackCheckPoint;
 
-    VMTraps::Mask mask(VMTraps::NeedTermination, VMTraps::NeedWatchdogCheck);
-    if (UNLIKELY(vm.needTrapHandling(mask))) {
-        vm.handleTraps(closure.oldCallFrame, mask);
+    constexpr auto trapsMask = VMTraps::interruptingTraps();
+    if (UNLIKELY(vm.needTrapHandling(trapsMask))) {
+        vm.handleTraps(closure.protoCallFrame->globalObject, closure.oldCallFrame, trapsMask);
         RETURN_IF_EXCEPTION(throwScope, throwScope.exception());
     }
 
+    // Reload CodeBlock since GC can replace CodeBlock owned by Executable.
+    CodeBlock* codeBlock;
+    Exception* error = closure.functionExecutable->prepareForExecution<FunctionExecutable>(vm, closure.function, closure.scope, CodeForCall, codeBlock);
+    EXCEPTION_ASSERT(throwScope.exception() == error);
+    if (UNLIKELY(error))
+        return checkedReturn(error);
+    codeBlock->m_shouldAlwaysBeInlined = false;
+    {
+        DisallowGC disallowGC; // Ensure no GC happens. GC can replace CodeBlock in Executable.
+        closure.protoCallFrame->setCodeBlock(codeBlock);
+    }
     // Execute the code:
     throwScope.release();
     JSValue result = closure.functionExecutable->generatedJITCodeForCall()->execute(&vm, closure.protoCallFrame);

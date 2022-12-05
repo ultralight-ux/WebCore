@@ -37,7 +37,7 @@
 
 ALLOW_UNUSED_PARAMETERS_BEGIN
 
-#include <webrtc/api/mediastreaminterface.h>
+#include <webrtc/api/media_stream_interface.h>
 
 ALLOW_UNUSED_PARAMETERS_END
 
@@ -55,6 +55,7 @@ class RealtimeOutgoingAudioSource
     : public ThreadSafeRefCounted<RealtimeOutgoingAudioSource, WTF::DestructionThread::Main>
     , public webrtc::AudioSourceInterface
     , private MediaStreamTrackPrivate::Observer
+    , private RealtimeMediaSource::AudioSampleObserver
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
@@ -64,17 +65,14 @@ public:
 
     ~RealtimeOutgoingAudioSource();
 
+    void start() { observeSource(); }
     void stop() { unobserveSource(); }
 
-    bool setSource(Ref<MediaStreamTrackPrivate>&&);
+    void setSource(Ref<MediaStreamTrackPrivate>&&);
     MediaStreamTrackPrivate& source() const { return m_audioSource.get(); }
 
 protected:
     explicit RealtimeOutgoingAudioSource(Ref<MediaStreamTrackPrivate>&&);
-
-    void unobserveSource();
-
-    virtual void pullAudioData() { }
 
     bool isSilenced() const { return m_muted || !m_enabled; }
 
@@ -82,8 +80,8 @@ protected:
 
 #if !RELEASE_LOG_DISABLED
     // LoggerHelper API
-    const Logger& logger() const final { return m_logger.get(); }
-    const void* logIdentifier() const final { return m_logIdentifier; }
+    const Logger& logger() const final { return m_audioSource->logger(); }
+    const void* logIdentifier() const final { return m_audioSource->logIdentifier(); }
     const char* logClassName() const final { return "RealtimeOutgoingAudioSource"; }
     WTFLogChannel& logChannel() const final;
 #endif
@@ -107,19 +105,19 @@ private:
     void UnregisterObserver(webrtc::ObserverInterface*) final { }
 
     void observeSource();
+    void unobserveSource();
 
     void sourceMutedChanged();
     void sourceEnabledChanged();
-    virtual void audioSamplesAvailable(const MediaTime&, const PlatformAudioData&, const AudioStreamDescription&, size_t) { };
 
     virtual bool isReachingBufferedAudioDataHighLimit() { return false; };
     virtual bool isReachingBufferedAudioDataLowLimit() { return false; };
     virtual bool hasBufferedEnoughData() { return false; };
+    virtual void sourceUpdated() { }
 
     // MediaStreamTrackPrivate::Observer API
     void trackMutedChanged(MediaStreamTrackPrivate&) final { sourceMutedChanged(); }
     void trackEnabledChanged(MediaStreamTrackPrivate&) final { sourceEnabledChanged(); }
-    void audioSamplesAvailable(MediaStreamTrackPrivate&, const MediaTime& mediaTime, const PlatformAudioData& data, const AudioStreamDescription& description, size_t sampleCount) { audioSamplesAvailable(mediaTime, data, description, sampleCount); }
     void trackEnded(MediaStreamTrackPrivate&) final { }
     void trackSettingsChanged(MediaStreamTrackPrivate&) final { }
 
@@ -133,8 +131,6 @@ private:
     HashSet<webrtc::AudioTrackSinkInterface*> m_sinks;
 
 #if !RELEASE_LOG_DISABLED
-    mutable Ref<const Logger> m_logger;
-    const void* m_logIdentifier;
     size_t m_chunksSent { 0 };
 #endif
 };

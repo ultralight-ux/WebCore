@@ -72,7 +72,8 @@ public:
     void setContainingFragment(RenderFragmentContainer&);
     void clearContainingFragment();
 
-    LayoutUnit selectionTop() const;
+    enum class ForHitTesting : bool { No, Yes };
+    LayoutUnit selectionTop(ForHitTesting = ForHitTesting::No) const;
     LayoutUnit selectionBottom() const;
     LayoutUnit selectionHeight() const { return std::max<LayoutUnit>(0, selectionBottom() - selectionTop()); }
 
@@ -126,7 +127,7 @@ public:
     using InlineBox::hasSelectedChildren;
     using InlineBox::setHasSelectedChildren;
 
-    RenderObject::SelectionState selectionState() final;
+    RenderObject::HighlightState selectionState() final;
     InlineBox* firstSelectedBox();
     InlineBox* lastSelectedBox();
 
@@ -145,7 +146,7 @@ public:
         if (m_floats)
             m_floats->append(makeWeakPtr(floatingBox));
         else
-            m_floats = std::make_unique<CleanLineFloatList>(1, makeWeakPtr(floatingBox));
+            m_floats = makeUnique<CleanLineFloatList>(1, makeWeakPtr(floatingBox));
     }
 
     void removeFloat(RenderBox& floatingBox)

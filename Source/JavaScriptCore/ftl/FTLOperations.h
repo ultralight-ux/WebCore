@@ -36,13 +36,14 @@ class LazySlowPath;
 
 extern "C" {
 
-JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
-    ExecState*, ExitTimeObjectMaterialization*, EncodedJSValue*) WTF_INTERNAL;
+JSCell* JIT_OPERATION operationMaterializeObjectInOSR(JSGlobalObject*, ExitTimeObjectMaterialization*, EncodedJSValue*) WTF_INTERNAL;
 
-void JIT_OPERATION operationPopulateObjectInOSR(
-    ExecState*, ExitTimeObjectMaterialization*, EncodedJSValue*, EncodedJSValue*) WTF_INTERNAL;
+void JIT_OPERATION operationPopulateObjectInOSR(JSGlobalObject*, ExitTimeObjectMaterialization*, EncodedJSValue*, EncodedJSValue*) WTF_INTERNAL;
 
-void* JIT_OPERATION compileFTLLazySlowPath(ExecState*, unsigned) WTF_INTERNAL;
+void* JIT_OPERATION operationCompileFTLLazySlowPath(CallFrame*, unsigned) WTF_INTERNAL;
+
+int32_t JIT_OPERATION operationSwitchStringAndGetBranchOffset(JSGlobalObject*, size_t tableIndex, JSString*) WTF_INTERNAL;
+int32_t JIT_OPERATION operationTypeOfObjectAsTypeofType(JSGlobalObject*, JSCell*) WTF_INTERNAL;
 
 } // extern "C"
 

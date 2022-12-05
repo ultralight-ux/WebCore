@@ -33,13 +33,13 @@
 
 namespace JSC { namespace B3 {
 
-class PatchpointValue : public StackmapValue {
+class PatchpointValue final : public StackmapValue {
 public:
     typedef StackmapValue Base;
     
     static bool accepts(Kind kind) { return kind == Patchpoint; }
 
-    ~PatchpointValue();
+    ~PatchpointValue() final;
 
     // The effects of the patchpoint. This defaults to Effects::forCall(), but you can set it to anything.
     //
@@ -52,8 +52,9 @@ public:
 
     // The input representation (i.e. constraint) of the return value. This defaults to WarmAny if the
     // type is Void and it defaults to SomeRegister otherwise. It's illegal to mess with this if the type
-    // is Void. Otherwise you can set this to any input constraint.
-    ValueRep resultConstraint;
+    // is Void. Otherwise you can set this to any input constraint. If the type of the patchpoint is a tuple
+    // the constrants must be set explicitly.
+    Vector<ValueRep, 1> resultConstraints;
 
     // The number of scratch registers that this patchpoint gets. The scratch register is guaranteed
     // to be different from any input register and the destination register. It's also guaranteed not
@@ -63,10 +64,9 @@ public:
 
     B3_SPECIALIZE_VALUE_FOR_FINAL_SIZE_VARARGS_CHILDREN
 
-protected:
-    void dumpMeta(CommaPrinter&, PrintStream&) const override;
-
 private:
+    void dumpMeta(CommaPrinter&, PrintStream&) const final;
+
     friend class Procedure;
     friend class Value;
 

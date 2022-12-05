@@ -34,7 +34,17 @@
 typedef struct _GdkEventScroll GdkEventScroll;
 #endif
 
+namespace WTF {
+class TextStream;
+}
+
 namespace WebCore {
+
+enum class WheelEventProcessingSteps : uint8_t {
+    ScrollingThread                 = 1 << 0,
+    MainThreadForScrolling          = 1 << 1,
+    MainThreadForDOMEventDispatch   = 1 << 2,
+};
 
 // The ScrollByPixelWheelEvent is a fine-grained event that specifies the precise number of pixels to scroll.
 // It is sent directly by touch pads on macOS, or synthesized when platforms generate line-by-line scrolling events.
@@ -48,7 +58,7 @@ enum PlatformWheelEventGranularity : uint8_t {
     ScrollByPixelWheelEvent,
 };
 
-#if ENABLE(ASYNC_SCROLLING)
+#if ENABLE(KINETIC_SCROLLING)
 
 enum PlatformWheelEventPhase : uint8_t {
     PlatformWheelEventPhaseNone = 0,
@@ -59,6 +69,8 @@ enum PlatformWheelEventPhase : uint8_t {
     PlatformWheelEventPhaseCancelled = 1 << 4,
     PlatformWheelEventPhaseMayBegin = 1 << 5,
 };
+
+WTF::TextStream& operator<<(WTF::TextStream&, PlatformWheelEventPhase);
 
 #endif
 
@@ -146,9 +158,13 @@ public:
     bool useLatchedEventElement() const { return false; }
 #endif
 
-#if ENABLE(ASYNC_SCROLLING)
+#if ENABLE(KINETIC_SCROLLING)
     PlatformWheelEventPhase phase() const { return m_phase; }
     PlatformWheelEventPhase momentumPhase() const { return m_momentumPhase; }
+
+    bool isGestureBegin() const;
+    bool isGestureCancel() const;
+
     bool isEndOfNonMomentumScroll() const;
     bool isTransitioningToMomentumScroll() const;
     FloatPoint swipeVelocity() const;
@@ -156,7 +172,6 @@ public:
 
 #if PLATFORM(WIN)
     PlatformWheelEvent(HWND, WPARAM, LPARAM, bool isMouseHWheel);
-    PlatformWheelEvent(HWND, const FloatSize& delta, const FloatPoint& location);
 #endif
 
 protected:
@@ -172,7 +187,7 @@ protected:
     // Scrolling velocity in pixels per second.
     FloatSize m_scrollingVelocity;
 
-#if ENABLE(ASYNC_SCROLLING)
+#if ENABLE(KINETIC_SCROLLING)
     PlatformWheelEventPhase m_phase { PlatformWheelEventPhaseNone };
     PlatformWheelEventPhase m_momentumPhase { PlatformWheelEventPhaseNone };
 #endif
@@ -197,6 +212,7 @@ inline bool PlatformWheelEvent::useLatchedEventElement() const
 
 inline bool PlatformWheelEvent::shouldConsiderLatching() const
 {
+    // FIXME: This should disallow latching if the delta is zero.
     return m_phase == PlatformWheelEventPhaseBegan || m_phase == PlatformWheelEventPhaseMayBegin;
 }
 
@@ -208,6 +224,21 @@ inline bool PlatformWheelEvent::shouldResetLatching() const
 inline bool PlatformWheelEvent::isEndOfMomentumScroll() const
 {
     return m_phase == PlatformWheelEventPhaseNone && m_momentumPhase == PlatformWheelEventPhaseEnded;
+}
+
+#endif // ENABLE(ASYNC_SCROLLING)
+
+#if ENABLE(KINETIC_SCROLLING)
+
+inline bool PlatformWheelEvent::isGestureBegin() const
+{
+    return m_phase == PlatformWheelEventPhaseMayBegin
+        || m_phase == PlatformWheelEventPhaseBegan;
+}
+
+inline bool PlatformWheelEvent::isGestureCancel() const
+{
+    return m_phase == PlatformWheelEventPhaseCancelled;
 }
 
 inline bool PlatformWheelEvent::isEndOfNonMomentumScroll() const
@@ -226,6 +257,9 @@ inline FloatPoint PlatformWheelEvent::swipeVelocity() const
     return isTransitioningToMomentumScroll() ? FloatPoint(m_wheelTicksX, m_wheelTicksY) : FloatPoint();
 }
 
-#endif // ENABLE(ASYNC_SCROLLING)
+#endif // ENABLE(KINETIC_SCROLLING)
+
+WTF::TextStream& operator<<(WTF::TextStream&, const PlatformWheelEvent&);
+WTF::TextStream& operator<<(WTF::TextStream&, WheelEventProcessingSteps);
 
 } // namespace WebCore

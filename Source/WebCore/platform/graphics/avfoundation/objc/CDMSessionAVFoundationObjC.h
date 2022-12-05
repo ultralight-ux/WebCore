@@ -39,7 +39,8 @@ namespace WebCore {
 
 class MediaPlayerPrivateAVFoundationObjC;
 
-class CDMSessionAVFoundationObjC : public LegacyCDMSession, public CanMakeWeakPtr<CDMSessionAVFoundationObjC> {
+class CDMSessionAVFoundationObjC final : public LegacyCDMSession, public CanMakeWeakPtr<CDMSessionAVFoundationObjC> {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     CDMSessionAVFoundationObjC(MediaPlayerPrivateAVFoundationObjC* parent, LegacyCDMSessionClient*);
     virtual ~CDMSessionAVFoundationObjC();
@@ -53,7 +54,7 @@ public:
 
     void playerDidReceiveError(NSError *);
 
-protected:
+private:
     WeakPtr<MediaPlayerPrivateAVFoundationObjC> m_parent;
     LegacyCDMSessionClient* m_client;
     String m_sessionId;

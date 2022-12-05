@@ -67,7 +67,7 @@ class InspectorController final : public Inspector::InspectorEnvironment {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     InspectorController(Page&, InspectorClient*);
-    virtual ~InspectorController();
+    ~InspectorController() override;
 
     void inspectedPageDestroyed();
 
@@ -90,6 +90,7 @@ public:
     WEBCORE_EXPORT void disconnectAllFrontends();
 
     void inspect(Node*);
+    WEBCORE_EXPORT bool shouldShowOverlay() const;
     WEBCORE_EXPORT void drawHighlight(GraphicsContext&) const;
     WEBCORE_EXPORT void getHighlight(Highlight&, InspectorOverlay::CoordinateSystem) const;
     void hideHighlight();
@@ -101,7 +102,7 @@ public:
     WEBCORE_EXPORT void didComposite(Frame&);
 
     bool isUnderTest() const { return m_isUnderTest; }
-    WEBCORE_EXPORT void setIsUnderTest(bool);
+    void setIsUnderTest(bool isUnderTest) { m_isUnderTest = isUnderTest; }
     WEBCORE_EXPORT void evaluateForTestInFrontend(const String& script);
 
     InspectorClient* inspectorClient() const { return m_inspectorClient; }
@@ -113,11 +114,11 @@ public:
 
     // InspectorEnvironment
     bool developerExtrasEnabled() const override;
-    bool canAccessInspectedScriptState(JSC::ExecState*) const override;
+    bool canAccessInspectedScriptState(JSC::JSGlobalObject*) const override;
     Inspector::InspectorFunctionCallHandler functionCallHandler() const override;
     Inspector::InspectorEvaluateHandler evaluateHandler() const override;
     void frontendInitialized() override;
-    Ref<WTF::Stopwatch> executionStopwatch() override;
+    WTF::Stopwatch& executionStopwatch() const final;
     PageScriptDebugServer& scriptDebugServer() override;
     JSC::VM& vm() override;
 
@@ -142,8 +143,8 @@ private:
 
     // Lazy, but also on-demand agents.
     Inspector::InspectorAgent* m_inspectorAgent { nullptr };
-    InspectorDOMAgent* m_inspectorDOMAgent { nullptr };
-    InspectorPageAgent* m_inspectorPageAgent { nullptr };
+    InspectorDOMAgent* m_domAgent { nullptr };
+    InspectorPageAgent* m_pageAgent { nullptr };
 
     bool m_isUnderTest { false };
     bool m_isAutomaticInspection { false };

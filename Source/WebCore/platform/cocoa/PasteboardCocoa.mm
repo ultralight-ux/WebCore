@@ -23,19 +23,19 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "Pasteboard.h"
+#import "config.h"
+#import "Pasteboard.h"
 
-#include "LegacyNSPasteboardTypes.h"
-#include "PasteboardStrategy.h"
-#include "PlatformStrategies.h"
-#include "SharedBuffer.h"
-#include <ImageIO/ImageIO.h>
-#include <wtf/ListHashSet.h>
-#include <wtf/text/StringHash.h>
+#import "LegacyNSPasteboardTypes.h"
+#import "PasteboardStrategy.h"
+#import "PlatformStrategies.h"
+#import "SharedBuffer.h"
+#import <ImageIO/ImageIO.h>
+#import <wtf/ListHashSet.h>
+#import <wtf/text/StringHash.h>
 
 #if PLATFORM(IOS_FAMILY)
-#include <MobileCoreServices/MobileCoreServices.h>
+#import <MobileCoreServices/MobileCoreServices.h>
 #endif
 
 namespace WebCore {
@@ -50,11 +50,6 @@ static NSBitmapImageFileType bitmapPNGFileType()
 // Making this non-inline so that WebKit 2's decoding doesn't have to include SharedBuffer.h.
 PasteboardWebContent::PasteboardWebContent() = default;
 PasteboardWebContent::~PasteboardWebContent() = default;
-
-const char* PasteboardCustomData::cocoaType()
-{
-    return "com.apple.WebKit.custom-pasteboard-data";
-}
 
 enum class ImageType {
     Invalid = 0,
@@ -73,7 +68,7 @@ static ImageType cocoaTypeToImageType(const String& cocoaType)
     if (cocoaType == String(kUTTypeTIFF))
         return ImageType::TIFF;
 #if PLATFORM(MAC)
-    if (cocoaType == "Apple PNG pasteboard type") // NSPNGPboardType
+    if (cocoaType == String(legacyPNGPasteboardType())) // NSPNGPboardType
         return ImageType::PNG;
 #endif
     if (cocoaType == String(kUTTypePNG))
@@ -148,8 +143,11 @@ Pasteboard::FileContentState Pasteboard::fileContentState()
         // If the item can't be treated as an attachment, it's very likely that the content being dropped is just
         // an inline piece of text, with no files in the pasteboard (and therefore, no risk of leaking file paths
         // to web content). In cases such as these, we should not suppress DataTransfer access.
-        auto items = platformStrategies()->pasteboardStrategy()->allPasteboardItemInfo(m_pasteboardName);
-        mayContainFilePaths = items.size() != 1 || notFound != items.findMatching([] (auto& item) {
+        auto items = allPasteboardItemInfo();
+        if (!items)
+            return FileContentState::NoFileOrImageData;
+
+        mayContainFilePaths = items->size() != 1 || notFound != items->findMatching([] (auto& item) {
             return item.canBeTreatedAsAttachmentOrFile() || item.isNonTextType || item.containsFileURLAndFileUploadContent;
         });
     }
@@ -161,14 +159,14 @@ Pasteboard::FileContentState Pasteboard::fileContentState()
         if (cocoaTypes.findMatching([](const String& cocoaType) { return shouldTreatCocoaTypeAsFile(cocoaType); }) == notFound)
             return FileContentState::NoFileOrImageData;
 
-        bool containsURL = notFound != cocoaTypes.findMatching([] (auto& cocoaType) {
+        auto indexOfURL = cocoaTypes.findMatching([](auto& cocoaType) {
 #if PLATFORM(MAC)
             if (cocoaType == String(legacyURLPasteboardType()))
                 return true;
 #endif
             return cocoaType == String(kUTTypeURL);
         });
-        mayContainFilePaths = containsURL && !Pasteboard::canExposeURLToDOMWhenPasteboardContainsFiles(readString("text/uri-list"_s));
+        mayContainFilePaths = indexOfURL != notFound && !platformStrategies()->pasteboardStrategy()->containsStringSafeForDOMToReadForType(cocoaTypes[indexOfURL], m_pasteboardName);
     }
 
     // Enforce changeCount ourselves for security. We check after reading instead of before to be
@@ -217,33 +215,44 @@ static Ref<SharedBuffer> convertTIFFToPNG(SharedBuffer& tiffBuffer)
 }
 #endif
 
-void Pasteboard::read(PasteboardFileReader& reader)
+void Pasteboard::read(PasteboardFileReader& reader, Optional<size_t> itemIndex)
 {
-    auto filenames = readFilePaths();
-    if (!filenames.isEmpty()) {
-        for (auto& filename : filenames)
-            reader.readFilename(filename);
+    if (!itemIndex) {
+        auto filenames = readFilePaths();
+        if (!filenames.isEmpty()) {
+            for (auto& filename : filenames)
+                reader.readFilename(filename);
+            return;
+        }
+    }
+
+    auto readBufferAtIndex = [&](const PasteboardItemInfo& info, size_t itemIndex) {
+        for (auto cocoaType : info.platformTypesByFidelity) {
+            auto imageType = cocoaTypeToImageType(cocoaType);
+            auto* mimeType = imageTypeToMIMEType(imageType);
+            if (!mimeType || !reader.shouldReadBuffer(mimeType))
+                continue;
+            auto buffer = readBuffer(itemIndex, cocoaType);
+#if PLATFORM(MAC)
+            if (buffer && imageType == ImageType::TIFF)
+                buffer = convertTIFFToPNG(buffer.releaseNonNull());
+#endif
+            if (buffer) {
+                reader.readBuffer(imageTypeToFakeFilename(imageType), mimeType, buffer.releaseNonNull());
+                break;
+            }
+        }
+    };
+
+    if (itemIndex) {
+        if (auto info = pasteboardItemInfo(*itemIndex))
+            readBufferAtIndex(*info, *itemIndex);
         return;
     }
 
-    auto cocoaTypes = readTypesWithSecurityCheck();
-    HashSet<const char*> existingMIMEs;
-    for (auto& cocoaType : cocoaTypes) {
-        auto imageType = cocoaTypeToImageType(cocoaType);
-        const char* mimeType = imageTypeToMIMEType(imageType);
-        if (!mimeType)
-            continue;
-        if (existingMIMEs.contains(mimeType))
-            continue;
-        auto buffer = readBufferForTypeWithSecurityCheck(cocoaType);
-#if PLATFORM(MAC)
-        if (buffer && imageType == ImageType::TIFF)
-            buffer = convertTIFFToPNG(buffer.releaseNonNull());
-#endif
-        if (!buffer)
-            continue;
-        existingMIMEs.add(mimeType);
-        reader.readBuffer(imageTypeToFakeFilename(imageType), mimeType, buffer.releaseNonNull());
+    if (auto allInfo = allPasteboardItemInfo()) {
+        for (size_t itemIndex = 0; itemIndex < allInfo->size(); ++itemIndex)
+            readBufferAtIndex(allInfo->at(itemIndex), itemIndex);
     }
 }
 
@@ -260,12 +269,12 @@ String Pasteboard::readString(const String& type)
 
 String Pasteboard::readStringInCustomData(const String& type)
 {
-    return readCustomData().sameOriginCustomData.get(type);
+    return readCustomData().readStringInCustomData(type);
 }
 
 String Pasteboard::readOrigin()
 {
-    return readCustomData().origin;
+    return readCustomData().origin();
 }
 
 const PasteboardCustomData& Pasteboard::readCustomData()
@@ -280,12 +289,12 @@ const PasteboardCustomData& Pasteboard::readCustomData()
     return *m_customDataCache; 
 }
 
-void Pasteboard::writeCustomData(const PasteboardCustomData& data)
+void Pasteboard::writeCustomData(const Vector<PasteboardCustomData>& data)
 {
-    m_changeCount = platformStrategies()->pasteboardStrategy()->writeCustomData(data, m_pasteboardName);
+    m_changeCount = platformStrategies()->pasteboardStrategy()->writeCustomData(data, name());
 }
 
-long Pasteboard::changeCount() const
+int64_t Pasteboard::changeCount() const
 {
     return platformStrategies()->pasteboardStrategy()->changeCount(m_pasteboardName);
 }

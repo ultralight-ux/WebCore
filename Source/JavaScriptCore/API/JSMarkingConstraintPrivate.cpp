@@ -27,7 +27,6 @@
 #include "JSMarkingConstraintPrivate.h"
 
 #include "APICast.h"
-#include "JSCInlines.h"
 #include "SimpleMarkingConstraint.h"
 
 using namespace JSC;
@@ -71,7 +70,7 @@ void JSContextGroupAddMarkingConstraint(JSContextGroupRef group, JSMarkingConstr
     // else gets marked.
     ConstraintVolatility volatility = ConstraintVolatility::GreyedByMarking;
     
-    auto constraint = std::make_unique<SimpleMarkingConstraint>(
+    auto constraint = makeUnique<SimpleMarkingConstraint>(
         toCString("Amc", constraintIndex, "(", RawPointer(bitwise_cast<void*>(constraintCallback)), ")"),
         toCString("API Marking Constraint #", constraintIndex, " (", RawPointer(bitwise_cast<void*>(constraintCallback)), ", ", RawPointer(userData), ")"),
         [constraintCallback, userData]

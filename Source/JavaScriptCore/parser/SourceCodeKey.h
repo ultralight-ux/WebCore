@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2019 Apple Inc. All Rights Reserved.
  * Copyright (C) 2015 Yusuke Suzuki <utatane.tea@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -106,7 +106,7 @@ public:
     // providers cache their strings to make this efficient.
     StringView string() const { return m_sourceCode.view(); }
 
-    StringView host() const { return m_sourceCode.provider().url().host(); }
+    StringView host() const { return m_sourceCode.provider().sourceOrigin().url().host(); }
 
     bool operator==(const SourceCodeKey& other) const
     {
@@ -127,11 +127,11 @@ public:
     struct Hash {
         static unsigned hash(const SourceCodeKey& key) { return key.hash(); }
         static bool equal(const SourceCodeKey& a, const SourceCodeKey& b) { return a == b; }
-        static const bool safeToCompareToEmptyOrDeleted = false;
+        static constexpr bool safeToCompareToEmptyOrDeleted = false;
     };
 
     struct HashTraits : SimpleClassHashTraits<SourceCodeKey> {
-        static const bool hasIsEmptyValueFunction = true;
+        static constexpr bool hasIsEmptyValueFunction = true;
         static bool isEmptyValue(const SourceCodeKey& key) { return key.isNull(); }
     };
 

@@ -42,8 +42,9 @@ class InspectorWorkerAgent final : public InspectorAgentBase, public Inspector::
     WTF_MAKE_FAST_ALLOCATED;
 public:
     InspectorWorkerAgent(PageAgentContext&);
-    virtual ~InspectorWorkerAgent() = default;
+    ~InspectorWorkerAgent() override;
 
+    // InspectorAgentBase
     void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
     void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
 
@@ -53,19 +54,19 @@ public:
     void initialized(ErrorString&, const String& workerId) override;
     void sendMessageToWorker(ErrorString&, const String& workerId, const String& message) override;
 
-    // PageChannel
-    void sendMessageFromWorkerToFrontend(WorkerInspectorProxy*, const String& message) override;
+    // WorkerInspectorProxy::PageChannel
+    void sendMessageFromWorkerToFrontend(WorkerInspectorProxy&, const String& message) override;
 
     // InspectorInstrumentation
     bool shouldWaitForDebuggerOnStart() const;
-    void workerStarted(WorkerInspectorProxy*, const URL&);
-    void workerTerminated(WorkerInspectorProxy*);
+    void workerStarted(WorkerInspectorProxy&);
+    void workerTerminated(WorkerInspectorProxy&);
 
 private:
     void connectToAllWorkerInspectorProxiesForPage();
     void disconnectFromAllWorkerInspectorProxies();
-    void connectToWorkerInspectorProxy(WorkerInspectorProxy*);
-    void disconnectFromWorkerInspectorProxy(WorkerInspectorProxy*);
+    void connectToWorkerInspectorProxy(WorkerInspectorProxy&);
+    void disconnectFromWorkerInspectorProxy(WorkerInspectorProxy&);
 
     std::unique_ptr<Inspector::WorkerFrontendDispatcher> m_frontendDispatcher;
     RefPtr<Inspector::WorkerBackendDispatcher> m_backendDispatcher;

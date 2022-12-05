@@ -35,7 +35,6 @@
 #include "MediaList.h"
 #include "StyleProperties.h"
 #include "StyleRuleImport.h"
-#include "WebKitCSSViewportRule.h"
 
 namespace WebCore {
 
@@ -44,6 +43,9 @@ struct SameSizeAsStyleRuleBase : public WTF::RefCountedBase {
 };
 
 COMPILE_ASSERT(sizeof(StyleRuleBase) == sizeof(SameSizeAsStyleRuleBase), StyleRuleBase_should_stay_small);
+
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleRuleBase);
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleRule);
 
 Ref<CSSRule> StyleRuleBase::createCSSOMWrapper(CSSStyleSheet* parentSheet) const
 {
@@ -58,42 +60,37 @@ Ref<CSSRule> StyleRuleBase::createCSSOMWrapper(CSSRule* parentRule) const
 void StyleRuleBase::destroy()
 {
     switch (type()) {
-    case Style:
+    case StyleRuleType::Style:
         delete downcast<StyleRule>(this);
         return;
-    case Page:
+    case StyleRuleType::Page:
         delete downcast<StyleRulePage>(this);
         return;
-    case FontFace:
+    case StyleRuleType::FontFace:
         delete downcast<StyleRuleFontFace>(this);
         return;
-    case Media:
+    case StyleRuleType::Media:
         delete downcast<StyleRuleMedia>(this);
         return;
-    case Supports:
+    case StyleRuleType::Supports:
         delete downcast<StyleRuleSupports>(this);
         return;
-    case Import:
+    case StyleRuleType::Import:
         delete downcast<StyleRuleImport>(this);
         return;
-    case Keyframes:
+    case StyleRuleType::Keyframes:
         delete downcast<StyleRuleKeyframes>(this);
         return;
-#if ENABLE(CSS_DEVICE_ADAPTATION)
-    case Viewport:
-        delete downcast<StyleRuleViewport>(this);
-        return;
-#endif
-    case Namespace:
+    case StyleRuleType::Namespace:
         delete downcast<StyleRuleNamespace>(this);
         return;
-    case Keyframe:
+    case StyleRuleType::Keyframe:
         delete downcast<StyleRuleKeyframe>(this);
         return;
-    case Charset:
+    case StyleRuleType::Charset:
         delete downcast<StyleRuleCharset>(this);
         return;
-    case Unknown:
+    case StyleRuleType::Unknown:
         ASSERT_NOT_REACHED();
         return;
     }
@@ -103,29 +100,25 @@ void StyleRuleBase::destroy()
 Ref<StyleRuleBase> StyleRuleBase::copy() const
 {
     switch (type()) {
-    case Style:
+    case StyleRuleType::Style:
         return downcast<StyleRule>(*this).copy();
-    case Page:
+    case StyleRuleType::Page:
         return downcast<StyleRulePage>(*this).copy();
-    case FontFace:
+    case StyleRuleType::FontFace:
         return downcast<StyleRuleFontFace>(*this).copy();
-    case Media:
+    case StyleRuleType::Media:
         return downcast<StyleRuleMedia>(*this).copy();
-    case Supports:
+    case StyleRuleType::Supports:
         return downcast<StyleRuleSupports>(*this).copy();
-    case Keyframes:
+    case StyleRuleType::Keyframes:
         return downcast<StyleRuleKeyframes>(*this).copy();
-#if ENABLE(CSS_DEVICE_ADAPTATION)
-    case Viewport:
-        return downcast<StyleRuleViewport>(*this).copy();
-#endif
-    case Import:
-    case Namespace:
+    case StyleRuleType::Import:
+    case StyleRuleType::Namespace:
         // FIXME: Copy import and namespace rules.
         break;
-    case Unknown:
-    case Charset:
-    case Keyframe:
+    case StyleRuleType::Unknown:
+    case StyleRuleType::Charset:
+    case StyleRuleType::Keyframe:
         break;
     }
     CRASH();
@@ -136,38 +129,33 @@ Ref<CSSRule> StyleRuleBase::createCSSOMWrapper(CSSStyleSheet* parentSheet, CSSRu
     RefPtr<CSSRule> rule;
     StyleRuleBase& self = const_cast<StyleRuleBase&>(*this);
     switch (type()) {
-    case Style:
+    case StyleRuleType::Style:
         rule = CSSStyleRule::create(downcast<StyleRule>(self), parentSheet);
         break;
-    case Page:
+    case StyleRuleType::Page:
         rule = CSSPageRule::create(downcast<StyleRulePage>(self), parentSheet);
         break;
-    case FontFace:
+    case StyleRuleType::FontFace:
         rule = CSSFontFaceRule::create(downcast<StyleRuleFontFace>(self), parentSheet);
         break;
-    case Media:
+    case StyleRuleType::Media:
         rule = CSSMediaRule::create(downcast<StyleRuleMedia>(self), parentSheet);
         break;
-    case Supports:
+    case StyleRuleType::Supports:
         rule = CSSSupportsRule::create(downcast<StyleRuleSupports>(self), parentSheet);
         break;
-    case Import:
+    case StyleRuleType::Import:
         rule = CSSImportRule::create(downcast<StyleRuleImport>(self), parentSheet);
         break;
-    case Keyframes:
+    case StyleRuleType::Keyframes:
         rule = CSSKeyframesRule::create(downcast<StyleRuleKeyframes>(self), parentSheet);
         break;
-#if ENABLE(CSS_DEVICE_ADAPTATION)
-    case Viewport:
-        rule = WebKitCSSViewportRule::create(downcast<StyleRuleViewport>(self), parentSheet);
-        break;
-#endif
-    case Namespace:
+    case StyleRuleType::Namespace:
         rule = CSSNamespaceRule::create(downcast<StyleRuleNamespace>(self), parentSheet);
         break;
-    case Unknown:
-    case Charset:
-    case Keyframe:
+    case StyleRuleType::Unknown:
+    case StyleRuleType::Charset:
+    case StyleRuleType::Keyframe:
         ASSERT_NOT_REACHED();
         break;
     }
@@ -184,7 +172,7 @@ unsigned StyleRule::averageSizeInBytes()
 }
 
 StyleRule::StyleRule(Ref<StylePropertiesBase>&& properties, bool hasDocumentSecurityOrigin, CSSSelectorList&& selectors)
-    : StyleRuleBase(Style, hasDocumentSecurityOrigin)
+    : StyleRuleBase(StyleRuleType::Style, hasDocumentSecurityOrigin)
     , m_properties(WTFMove(properties))
     , m_selectorList(WTFMove(selectors))
 {
@@ -250,7 +238,7 @@ Vector<RefPtr<StyleRule>> StyleRule::splitIntoMultipleRulesWithMaximumSelectorCo
 }
 
 StyleRulePage::StyleRulePage(Ref<StyleProperties>&& properties, CSSSelectorList&& selectors)
-    : StyleRuleBase(Page)
+    : StyleRuleBase(StyleRuleType::Page)
     , m_properties(WTFMove(properties))
     , m_selectorList(WTFMove(selectors))
 {
@@ -273,7 +261,7 @@ MutableStyleProperties& StyleRulePage::mutableProperties()
 }
 
 StyleRuleFontFace::StyleRuleFontFace(Ref<StyleProperties>&& properties)
-    : StyleRuleBase(FontFace)
+    : StyleRuleBase(StyleRuleType::FontFace)
     , m_properties(WTFMove(properties))
 {
 }
@@ -311,13 +299,13 @@ void DeferredStyleGroupRuleList::parseDeferredKeyframes(StyleRuleKeyframes& keyf
     m_parser->parseKeyframeList(m_tokens, keyframesRule);
 }
     
-StyleRuleGroup::StyleRuleGroup(Type type, Vector<RefPtr<StyleRuleBase>>& adoptRule)
+StyleRuleGroup::StyleRuleGroup(StyleRuleType type, Vector<RefPtr<StyleRuleBase>>& adoptRule)
     : StyleRuleBase(type)
 {
     m_childRules.swap(adoptRule);
 }
 
-StyleRuleGroup::StyleRuleGroup(Type type, std::unique_ptr<DeferredStyleGroupRuleList>&& deferredRules)
+StyleRuleGroup::StyleRuleGroup(StyleRuleType type, std::unique_ptr<DeferredStyleGroupRuleList>&& deferredRules)
     : StyleRuleBase(type)
     , m_deferredRules(WTFMove(deferredRules))
 {
@@ -359,13 +347,13 @@ void StyleRuleGroup::parseDeferredRulesIfNeeded() const
 }
     
 StyleRuleMedia::StyleRuleMedia(Ref<MediaQuerySet>&& media, Vector<RefPtr<StyleRuleBase>>& adoptRules)
-    : StyleRuleGroup(Media, adoptRules)
+    : StyleRuleGroup(StyleRuleType::Media, adoptRules)
     , m_mediaQueries(WTFMove(media))
 {
 }
 
 StyleRuleMedia::StyleRuleMedia(Ref<MediaQuerySet>&& media, std::unique_ptr<DeferredStyleGroupRuleList>&& deferredRules)
-    : StyleRuleGroup(Media, WTFMove(deferredRules))
+    : StyleRuleGroup(StyleRuleType::Media, WTFMove(deferredRules))
     , m_mediaQueries(WTFMove(media))
 {
 }
@@ -379,14 +367,14 @@ StyleRuleMedia::StyleRuleMedia(const StyleRuleMedia& o)
 
 
 StyleRuleSupports::StyleRuleSupports(const String& conditionText, bool conditionIsSupported, Vector<RefPtr<StyleRuleBase>>& adoptRules)
-    : StyleRuleGroup(Supports, adoptRules)
+    : StyleRuleGroup(StyleRuleType::Supports, adoptRules)
     , m_conditionText(conditionText)
     , m_conditionIsSupported(conditionIsSupported)
 {
 }
 
-StyleRuleSupports::StyleRuleSupports(const String& conditionText, bool conditionIsSupported,  std::unique_ptr<DeferredStyleGroupRuleList>&& deferredRules)
-    : StyleRuleGroup(Supports, WTFMove(deferredRules))
+StyleRuleSupports::StyleRuleSupports(const String& conditionText, bool conditionIsSupported, std::unique_ptr<DeferredStyleGroupRuleList>&& deferredRules)
+    : StyleRuleGroup(StyleRuleType::Supports, WTFMove(deferredRules))
     , m_conditionText(conditionText)
     , m_conditionIsSupported(conditionIsSupported)
 {
@@ -399,31 +387,8 @@ StyleRuleSupports::StyleRuleSupports(const StyleRuleSupports& o)
 {
 }
 
-#if ENABLE(CSS_DEVICE_ADAPTATION)
-StyleRuleViewport::StyleRuleViewport(Ref<StyleProperties>&& properties)
-    : StyleRuleBase(Viewport)
-    , m_properties(WTFMove(properties))
-{
-}
-
-StyleRuleViewport::StyleRuleViewport(const StyleRuleViewport& o)
-    : StyleRuleBase(o)
-    , m_properties(o.m_properties->mutableCopy())
-{
-}
-
-StyleRuleViewport::~StyleRuleViewport() = default;
-
-MutableStyleProperties& StyleRuleViewport::mutableProperties()
-{
-    if (!m_properties->isMutable())
-        m_properties = m_properties->mutableCopy();
-    return static_cast<MutableStyleProperties&>(m_properties.get());
-}
-#endif // ENABLE(CSS_DEVICE_ADAPTATION)
-
 StyleRuleCharset::StyleRuleCharset()
-    : StyleRuleBase(Charset)
+    : StyleRuleBase(StyleRuleType::Charset)
 {
 }
 
@@ -435,7 +400,7 @@ StyleRuleCharset::StyleRuleCharset(const StyleRuleCharset& o)
 StyleRuleCharset::~StyleRuleCharset() = default;
 
 StyleRuleNamespace::StyleRuleNamespace(AtomString prefix, AtomString uri)
-    : StyleRuleBase(Namespace)
+    : StyleRuleBase(StyleRuleType::Namespace)
     , m_prefix(prefix)
     , m_uri(uri)
 {

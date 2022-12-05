@@ -62,6 +62,7 @@ class HTMLImageElement;
 class HTMLVideoElement;
 class ImageBitmap;
 class ImageData;
+class OffscreenCanvas;
 class Path2D;
 class RenderStyle;
 class RenderObject;
@@ -69,13 +70,17 @@ class TextMetrics;
 
 struct DOMMatrix2DInit;
 
-#if ENABLE(VIDEO) && ENABLE(CSS_TYPED_OM)
-using CanvasImageSource = Variant<RefPtr<HTMLImageElement>, RefPtr<HTMLVideoElement>, RefPtr<HTMLCanvasElement>, RefPtr<ImageBitmap>, RefPtr<TypedOMCSSImageValue>>;
-#elif ENABLE(VIDEO)
-using CanvasImageSource = Variant<RefPtr<HTMLImageElement>, RefPtr<HTMLVideoElement>, RefPtr<HTMLCanvasElement>, RefPtr<ImageBitmap>>;
-#else
-using CanvasImageSource = Variant<RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>, RefPtr<ImageBitmap>>;
+using CanvasImageSource = Variant<RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>, RefPtr<ImageBitmap>
+#if ENABLE(CSS_TYPED_OM)
+    , RefPtr<TypedOMCSSImageValue>
 #endif
+#if ENABLE(OFFSCREEN_CANVAS)
+    , RefPtr<OffscreenCanvas>
+#endif
+#if ENABLE(VIDEO)
+    , RefPtr<HTMLVideoElement>
+#endif
+    >;
 
 class CanvasRenderingContext2DBase : public CanvasRenderingContext, public CanvasPath {
     WTF_MAKE_ISO_ALLOCATED(CanvasRenderingContext2DBase);
@@ -179,11 +184,11 @@ public:
 
     void drawImageFromRect(HTMLImageElement&, float sx = 0, float sy = 0, float sw = 0, float sh = 0, float dx = 0, float dy = 0, float dw = 0, float dh = 0, const String& compositeOperation = emptyString());
 
-    using Style = Variant<String, RefPtr<CanvasGradient>, RefPtr<CanvasPattern>>;
-    Style strokeStyle() const;
-    void setStrokeStyle(Style&&);
-    Style fillStyle() const;
-    void setFillStyle(Style&&);
+    using StyleVariant = Variant<String, RefPtr<CanvasGradient>, RefPtr<CanvasPattern>>;
+    StyleVariant strokeStyle() const;
+    void setStrokeStyle(StyleVariant&&);
+    StyleVariant fillStyle() const;
+    void setFillStyle(StyleVariant&&);
 
     ExceptionOr<Ref<CanvasGradient>> createLinearGradient(float x0, float y0, float x1, float y1);
     ExceptionOr<Ref<CanvasGradient>> createRadialGradient(float x0, float y0, float r0, float x1, float y1, float r1);
@@ -213,12 +218,6 @@ public:
 
     bool usesDisplayListDrawing() const { return m_usesDisplayListDrawing; };
     void setUsesDisplayListDrawing(bool flag) { m_usesDisplayListDrawing = flag; };
-
-    bool tracksDisplayListReplay() const { return m_tracksDisplayListReplay; }
-    void setTracksDisplayListReplay(bool);
-
-    String displayListAsText(DisplayList::AsTextFlags) const;
-    String replayDisplayListAsText(DisplayList::AsTextFlags) const;
 
     using Direction = CanvasDirection;
 
@@ -333,8 +332,8 @@ protected:
 
     ExceptionOr<void> drawImage(HTMLImageElement&, const FloatRect& srcRect, const FloatRect& dstRect);
     ExceptionOr<void> drawImage(HTMLImageElement&, const FloatRect& srcRect, const FloatRect& dstRect, const CompositeOperator&, const BlendMode&);
-    ExceptionOr<void> drawImage(HTMLCanvasElement&, const FloatRect& srcRect, const FloatRect& dstRect);
-    ExceptionOr<void> drawImage(Document&, CachedImage*, const RenderObject*, const FloatRect& imageRect, const FloatRect& srcRect, const FloatRect& dstRect, const CompositeOperator&, const BlendMode&);
+    ExceptionOr<void> drawImage(CanvasBase&, const FloatRect& srcRect, const FloatRect& dstRect);
+    ExceptionOr<void> drawImage(Document&, CachedImage*, const RenderObject*, const FloatRect& imageRect, const FloatRect& srcRect, const FloatRect& dstRect, const CompositeOperator&, const BlendMode&, ImageOrientation = ImageOrientation::FromImage);
 #if ENABLE(VIDEO)
     ExceptionOr<void> drawImage(HTMLVideoElement&, const FloatRect& srcRect, const FloatRect& dstRect);
 #endif
@@ -366,9 +365,6 @@ protected:
 
     template<class T> void fullCanvasCompositedDrawImage(T&, const FloatRect&, const FloatRect&, CompositeOperator);
 
-    ExceptionOr<RefPtr<ImageData>> getImageData(ImageBuffer::CoordinateSystem, float sx, float sy, float sw, float sh) const;
-    void putImageData(ImageData&, ImageBuffer::CoordinateSystem, float dx, float dy, float dirtyX, float dirtyY, float dirtyWidth, float dirtyHeight);
-
     bool isAccelerated() const override;
 
     bool hasInvertibleTransform() const override { return state().hasInvertibleTransform; }
@@ -382,8 +378,7 @@ protected:
     unsigned m_unrealizedSaveCount { 0 };
     bool m_usesCSSCompatibilityParseMode;
     bool m_usesDisplayListDrawing { false };
-    bool m_tracksDisplayListReplay { false };
-    mutable std::unique_ptr<struct DisplayListDrawingContext> m_recordingContext;
+    mutable std::unique_ptr<DisplayList::DrawingContext> m_recordingContext;
 };
 
 } // namespace WebCore

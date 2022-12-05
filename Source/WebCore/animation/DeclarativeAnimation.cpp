@@ -34,9 +34,10 @@
 #include "Element.h"
 #include "EventNames.h"
 #include "KeyframeEffect.h"
+#include "Logging.h"
 #include "PseudoElement.h"
-#include "TransitionEvent.h"
 #include <wtf/IsoMallocInlines.h>
+#include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
@@ -44,8 +45,7 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(DeclarativeAnimation);
 
 DeclarativeAnimation::DeclarativeAnimation(Element& owningElement, const Animation& backingAnimation)
     : WebAnimation(owningElement.document())
-    , m_eventQueue(owningElement)
-    , m_owningElement(&owningElement)
+    , m_owningElement(makeWeakPtr(owningElement))
     , m_backingAnimation(const_cast<Animation&>(backingAnimation))
 {
 }
@@ -54,8 +54,15 @@ DeclarativeAnimation::~DeclarativeAnimation()
 {
 }
 
+Element* DeclarativeAnimation::owningElement() const
+{
+    return m_owningElement.get();
+}
+
 void DeclarativeAnimation::tick()
 {
+    LOG_WITH_STREAM(Animations, stream << "DeclarativeAnimation::tick for element " << m_owningElement);
+
     bool wasRelevant = isRelevant();
     
     WebAnimation::tick();
@@ -65,10 +72,19 @@ void DeclarativeAnimation::tick()
     // canceled using the Web Animations API and it should be disassociated from its owner element.
     // From this point on, this animation is like any other animation and should not appear in the
     // maps containing running CSS Transitions and CSS Animations for a given element.
-    if (wasRelevant && playState() == WebAnimation::PlayState::Idle) {
+    if (wasRelevant && playState() == WebAnimation::PlayState::Idle)
         disassociateFromOwningElement();
-        m_eventQueue.close();
-    }
+}
+
+bool DeclarativeAnimation::canHaveGlobalPosition()
+{
+    // https://drafts.csswg.org/css-animations-2/#animation-composite-order
+    // https://drafts.csswg.org/css-transitions-2/#animation-composite-order
+    // CSS Animations and CSS Transitions generated using the markup defined in this specification are not added
+    // to the global animation list when they are created. Instead, these animations are appended to the global
+    // animation list at the first moment when they transition out of the idle play state after being disassociated
+    // from their owning element.
+    return !m_owningElement && playState() != WebAnimation::PlayState::Idle;
 }
 
 void DeclarativeAnimation::disassociateFromOwningElement()
@@ -79,17 +95,6 @@ void DeclarativeAnimation::disassociateFromOwningElement()
     if (auto* animationTimeline = timeline())
         animationTimeline->removeDeclarativeAnimationFromListsForOwningElement(*this, *m_owningElement);
     m_owningElement = nullptr;
-}
-
-bool DeclarativeAnimation::needsTick() const
-{
-    return WebAnimation::needsTick() || m_eventQueue.hasPendingEvents();
-}
-
-void DeclarativeAnimation::remove()
-{
-    m_eventQueue.close();
-    WebAnimation::remove();
 }
 
 void DeclarativeAnimation::setBackingAnimation(const Animation& backingAnimation)
@@ -107,7 +112,12 @@ void DeclarativeAnimation::initialize(const RenderStyle* oldStyle, const RenderS
 
     ASSERT(m_owningElement);
 
-    setEffect(KeyframeEffect::create(*m_owningElement));
+    if (is<PseudoElement>(m_owningElement.get())) {
+        auto& pseudoOwningElement = downcast<PseudoElement>(*m_owningElement);
+        ASSERT(pseudoOwningElement.hostElement());
+        setEffect(KeyframeEffect::create(*pseudoOwningElement.hostElement(), pseudoOwningElement.pseudoId()));
+    } else
+        setEffect(KeyframeEffect::create(*m_owningElement, m_owningElement->pseudoId()));
     setTimeline(&m_owningElement->document().timeline());
     downcast<KeyframeEffect>(effect())->computeDeclarativeAnimationBlendingKeyframes(oldStyle, newStyle);
     syncPropertiesWithBackingAnimation();
@@ -123,16 +133,16 @@ void DeclarativeAnimation::syncPropertiesWithBackingAnimation()
 {
 }
 
-Optional<double> DeclarativeAnimation::startTime() const
+Optional<double> DeclarativeAnimation::bindingsStartTime() const
 {
     flushPendingStyleChanges();
-    return WebAnimation::startTime();
+    return WebAnimation::bindingsStartTime();
 }
 
-void DeclarativeAnimation::setStartTime(Optional<double> startTime)
+void DeclarativeAnimation::setBindingsStartTime(Optional<double> startTime)
 {
     flushPendingStyleChanges();
-    return WebAnimation::setStartTime(startTime);
+    return WebAnimation::setBindingsStartTime(startTime);
 }
 
 Optional<double> DeclarativeAnimation::bindingsCurrentTime() const
@@ -151,6 +161,12 @@ WebAnimation::PlayState DeclarativeAnimation::bindingsPlayState() const
 {
     flushPendingStyleChanges();
     return WebAnimation::bindingsPlayState();
+}
+
+WebAnimation::ReplaceState DeclarativeAnimation::bindingsReplaceState() const
+{
+    flushPendingStyleChanges();
+    return WebAnimation::bindingsReplaceState();
 }
 
 bool DeclarativeAnimation::bindingsPending() const
@@ -201,7 +217,7 @@ void DeclarativeAnimation::setTimeline(RefPtr<AnimationTimeline>&& newTimeline)
     WebAnimation::setTimeline(WTFMove(newTimeline));
 }
 
-void DeclarativeAnimation::cancel()
+void DeclarativeAnimation::cancel(Silently silently)
 {
     auto cancelationTime = 0_s;
     if (auto* animationEffect = effect()) {
@@ -209,7 +225,7 @@ void DeclarativeAnimation::cancel()
             cancelationTime = *activeTime;
     }
 
-    WebAnimation::cancel();
+    WebAnimation::cancel(silently);
 
     invalidateDOMEvents(cancelationTime);
 }
@@ -332,30 +348,15 @@ void DeclarativeAnimation::invalidateDOMEvents(Seconds elapsedTime)
 
 void DeclarativeAnimation::enqueueDOMEvent(const AtomString& eventType, Seconds elapsedTime)
 {
-    ASSERT(m_owningElement);
+    if (!m_owningElement)
+        return;
+
     auto time = secondsToWebAnimationsAPITime(elapsedTime) / 1000;
-    if (is<CSSAnimation>(this))
-        m_eventQueue.enqueueEvent(AnimationEvent::create(eventType, downcast<CSSAnimation>(this)->animationName(), time));
-    else if (is<CSSTransition>(this))
-        m_eventQueue.enqueueEvent(TransitionEvent::create(eventType, downcast<CSSTransition>(this)->transitionProperty(), time, PseudoElement::pseudoElementNameForEvents(m_owningElement->pseudoId())));
-}
-
-void DeclarativeAnimation::stop()
-{
-    m_eventQueue.close();
-    WebAnimation::stop();
-}
-
-void DeclarativeAnimation::suspend(ReasonForSuspension reason)
-{
-    m_eventQueue.suspend();
-    WebAnimation::suspend(reason);
-}
-
-void DeclarativeAnimation::resume()
-{
-    m_eventQueue.resume();
-    WebAnimation::resume();
+    const auto& pseudoId = PseudoElement::pseudoElementNameForEvents(m_owningElement->pseudoId());
+    auto timelineTime = timeline() ? timeline()->currentTime() : WTF::nullopt;
+    auto event = createEvent(eventType, time, pseudoId, timelineTime);
+    event->setTarget(m_owningElement.get());
+    enqueueAnimationEvent(WTFMove(event));
 }
 
 } // namespace WebCore

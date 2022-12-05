@@ -38,11 +38,11 @@ class AccessibilityARIAGridRow final : public AccessibilityTableRow {
 public:
     static Ref<AccessibilityARIAGridRow> create(RenderObject*);
     virtual ~AccessibilityARIAGridRow();
-    
-    void disclosedRows(AccessibilityChildrenVector&);
-    AccessibilityObject* disclosedByRow() const;
-    
-    AccessibilityObject* headerObject() override;
+
+    AccessibilityChildrenVector disclosedRows() override;
+    AXCoreObject* disclosedByRow() const override;
+
+    AXCoreObject* headerObject() override;
     
 private:
     explicit AccessibilityARIAGridRow(RenderObject*);

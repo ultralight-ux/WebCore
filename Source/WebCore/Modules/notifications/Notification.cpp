@@ -41,6 +41,7 @@
 #include "NotificationClient.h"
 #include "NotificationController.h"
 #include "NotificationPermissionCallback.h"
+#include "WindowEventLoop.h"
 #include "WindowFocusAllowedIndicator.h"
 #include <wtf/IsoMallocInlines.h>
 
@@ -52,6 +53,7 @@ Ref<Notification> Notification::create(Document& context, const String& title, c
 {
     auto notification = adoptRef(*new Notification(context, title, options));
     notification->suspendIfNeeded();
+    notification->showSoon();
     return notification;
 }
 
@@ -63,18 +65,23 @@ Notification::Notification(Document& document, const String& title, const Option
     , m_body(options.body)
     , m_tag(options.tag)
     , m_state(Idle)
-    , m_taskTimer(std::make_unique<Timer>([this] () { show(); }))
 {
     if (!options.icon.isEmpty()) {
         auto iconURL = document.completeURL(options.icon);
         if (iconURL.isValid())
             m_icon = iconURL;
     }
-
-    m_taskTimer->startOneShot(0_s);
 }
 
-Notification::~Notification()  = default;
+Notification::~Notification() = default;
+
+
+void Notification::showSoon()
+{
+    queueTaskKeepingObjectAlive(*this, TaskSource::UserInteraction, [this] {
+        show();
+    });
+}
 
 void Notification::show()
 {
@@ -82,7 +89,7 @@ void Notification::show()
     if (m_state != Idle)
         return;
 
-    auto* page = downcast<Document>(*scriptExecutionContext()).page();
+    auto* page = document()->page();
     if (!page)
         return;
 
@@ -92,10 +99,8 @@ void Notification::show()
         dispatchErrorEvent();
         return;
     }
-    if (client.show(this)) {
+    if (client.show(this))
         m_state = Showing;
-        setPendingActivity(*this);
-    }
 }
 
 void Notification::close()
@@ -104,8 +109,7 @@ void Notification::close()
     case Idle:
         break;
     case Showing: {
-        auto* page = downcast<Document>(*scriptExecutionContext()).page();
-        if (page)
+        if (auto* page = document()->page())
             NotificationController::from(page)->client().cancel(this);
         break;
     }
@@ -114,24 +118,27 @@ void Notification::close()
     }
 }
 
+Document* Notification::document() const
+{
+    return downcast<Document>(scriptExecutionContext());
+}
+
 const char* Notification::activeDOMObjectName() const
 {
     return "Notification";
-}
-
-bool Notification::canSuspendForDocumentSuspension() const
-{
-    // We can suspend if the Notification is not shown yet or after it is closed.
-    return m_state == Idle || m_state == Closed;
 }
 
 void Notification::stop()
 {
     ActiveDOMObject::stop();
 
-    auto* page = downcast<Document>(*scriptExecutionContext()).page();
-    if (page)
+    if (auto* page = document()->page())
         NotificationController::from(page)->client().notificationObjectDestroyed(this);
+}
+
+void Notification::suspend(ReasonForSuspension)
+{
+    close();
 }
 
 void Notification::finalize()
@@ -139,29 +146,30 @@ void Notification::finalize()
     if (m_state == Closed)
         return;
     m_state = Closed;
-    unsetPendingActivity(*this);
 }
 
 void Notification::dispatchShowEvent()
 {
-    dispatchEvent(Event::create(eventNames().showEvent, Event::CanBubble::No, Event::IsCancelable::No));
+    queueTaskToDispatchEvent(*this, TaskSource::UserInteraction, Event::create(eventNames().showEvent, Event::CanBubble::No, Event::IsCancelable::No));
 }
 
 void Notification::dispatchClickEvent()
 {
-    WindowFocusAllowedIndicator windowFocusAllowed;
-    dispatchEvent(Event::create(eventNames().clickEvent, Event::CanBubble::No, Event::IsCancelable::No));
+    queueTaskKeepingObjectAlive(*this, TaskSource::UserInteraction, [this] {
+        WindowFocusAllowedIndicator windowFocusAllowed;
+        dispatchEvent(Event::create(eventNames().clickEvent, Event::CanBubble::No, Event::IsCancelable::No));
+    });
 }
 
 void Notification::dispatchCloseEvent()
 {
-    dispatchEvent(Event::create(eventNames().closeEvent, Event::CanBubble::No, Event::IsCancelable::No));
+    queueTaskToDispatchEvent(*this, TaskSource::UserInteraction, Event::create(eventNames().closeEvent, Event::CanBubble::No, Event::IsCancelable::No));
     finalize();
 }
 
 void Notification::dispatchErrorEvent()
 {
-    dispatchEvent(Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
+    queueTaskToDispatchEvent(*this, TaskSource::UserInteraction, Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
 }
 
 auto Notification::permission(Document& document) -> Permission
@@ -169,6 +177,9 @@ auto Notification::permission(Document& document) -> Permission
     auto* page = document.page();
     if (!page)
         return Permission::Default;
+
+    if (!document.isSecureContext())
+        return Permission::Denied;
 
     return NotificationController::from(document.page())->client().checkPermission(&document);
 }
@@ -179,7 +190,32 @@ void Notification::requestPermission(Document& document, RefPtr<NotificationPerm
     if (!page)
         return;
 
+    if (!document.isSecureContext()) {
+        if (callback) {
+            document.eventLoop().queueTask(TaskSource::DOMManipulation, [callback = WTFMove(callback)]() mutable {
+                callback->handleEvent(Permission::Denied);
+            });
+        }
+        return;
+    }
+
     NotificationController::from(page)->client().requestPermission(&document, WTFMove(callback));
+}
+
+void Notification::eventListenersDidChange()
+{
+    m_hasRelevantEventListener = hasEventListeners(eventNames().clickEvent)
+        || hasEventListeners(eventNames().closeEvent)
+        || hasEventListeners(eventNames().errorEvent)
+        || hasEventListeners(eventNames().showEvent);
+}
+
+// A Notification object must not be garbage collected while the list of notifications contains its corresponding
+// notification and it has an event listener whose type is click, show, close, or error.
+// See https://notifications.spec.whatwg.org/#garbage-collection
+bool Notification::virtualHasPendingActivity() const
+{
+    return m_state == Showing && m_hasRelevantEventListener;
 }
 
 } // namespace WebCore

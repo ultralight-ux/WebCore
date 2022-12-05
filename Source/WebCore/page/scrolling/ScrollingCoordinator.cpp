@@ -38,7 +38,6 @@
 #include "Region.h"
 #include "RenderLayerCompositor.h"
 #include "RenderView.h"
-#include "RuntimeEnabledFeatures.h"
 #include "ScrollAnimator.h"
 #include "Settings.h"
 #include <wtf/MainThread.h>
@@ -76,7 +75,7 @@ bool ScrollingCoordinator::coordinatesScrollingForFrameView(const FrameView& fra
     ASSERT(m_page);
 
     if (!frameView.frame().isMainFrame() && !m_page->settings().scrollingTreeIncludesFrames()
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || USE(NICOSIA)
         && !m_page->settings().asyncFrameScrollingEnabled()
 #endif
     )
@@ -112,7 +111,7 @@ EventTrackingRegions ScrollingCoordinator::absoluteEventTrackingRegionsForFrame(
     ASSERT(frame.isMainFrame());
     auto* document = frame.document();
     if (!document)
-        return EventTrackingRegions();
+        return { };
     return document->eventTrackingRegions();
 #else
     auto* frameView = frame.view();
@@ -189,7 +188,7 @@ EventTrackingRegions ScrollingCoordinator::absoluteEventTrackingRegions() const
     return absoluteEventTrackingRegionsForFrame(m_page->mainFrame());
 }
 
-void ScrollingCoordinator::frameViewHasSlowRepaintObjectsDidChange(FrameView& frameView)
+void ScrollingCoordinator::slowRepaintObjectsDidChange(FrameView& frameView)
 {
     ASSERT(isMainThread());
     ASSERT(m_page);
@@ -295,32 +294,16 @@ void ScrollingCoordinator::frameViewRootLayerDidChange(FrameView& frameView)
     updateSynchronousScrollingReasons(frameView);
 }
 
-#if PLATFORM(COCOA)
-void ScrollingCoordinator::handleWheelEventPhase(PlatformWheelEventPhase phase)
-{
-    ASSERT(isMainThread());
-
-    if (!m_page)
-        return;
-
-    auto* frameView = m_page->mainFrame().view();
-    if (!frameView)
-        return;
-
-    frameView->scrollAnimator().handleWheelEventPhase(phase);
-}
-#endif
-
 bool ScrollingCoordinator::hasVisibleSlowRepaintViewportConstrainedObjects(const FrameView& frameView) const
 {
-    const FrameView::ViewportConstrainedObjectSet* viewportConstrainedObjects = frameView.viewportConstrainedObjects();
+    auto* viewportConstrainedObjects = frameView.viewportConstrainedObjects();
     if (!viewportConstrainedObjects)
         return false;
 
     for (auto& viewportConstrainedObject : *viewportConstrainedObjects) {
-        if (!is<RenderBoxModelObject>(*viewportConstrainedObject) || !viewportConstrainedObject->hasLayer())
+        if (!is<RenderBoxModelObject>(viewportConstrainedObject) || !viewportConstrainedObject.hasLayer())
             return true;
-        auto& layer = *downcast<RenderBoxModelObject>(*viewportConstrainedObject).layer();
+        auto& layer = *downcast<RenderBoxModelObject>(viewportConstrainedObject).layer();
         // Any explicit reason that a fixed position element is not composited shouldn't cause slow scrolling.
         if (!layer.isComposited() && layer.viewportConstrainedNotCompositedReason() == RenderLayer::NoNotCompositedReason)
             return true;
@@ -328,18 +311,21 @@ bool ScrollingCoordinator::hasVisibleSlowRepaintViewportConstrainedObjects(const
     return false;
 }
 
-SynchronousScrollingReasons ScrollingCoordinator::synchronousScrollingReasons(const FrameView& frameView) const
+OptionSet<SynchronousScrollingReason> ScrollingCoordinator::synchronousScrollingReasonsForFrameView(const FrameView& frameView) const
 {
-    SynchronousScrollingReasons synchronousScrollingReasons = (SynchronousScrollingReasons)0;
+    OptionSet<SynchronousScrollingReason> synchronousScrollingReasons;
 
     if (m_forceSynchronousScrollLayerPositionUpdates)
-        synchronousScrollingReasons |= ForcedOnMainThread;
+        synchronousScrollingReasons.add(SynchronousScrollingReason::ForcedOnMainThread);
+
     if (frameView.hasSlowRepaintObjects())
-        synchronousScrollingReasons |= HasSlowRepaintObjects;
+        synchronousScrollingReasons.add(SynchronousScrollingReason::HasSlowRepaintObjects);
+
     if (hasVisibleSlowRepaintViewportConstrainedObjects(frameView))
-        synchronousScrollingReasons |= HasNonLayerViewportConstrainedObjects;
+        synchronousScrollingReasons.add(SynchronousScrollingReason::HasNonLayerViewportConstrainedObjects);
+
     if (frameView.frame().mainFrame().document() && frameView.frame().document()->isImageDocument())
-        synchronousScrollingReasons |= IsImageDocument;
+        synchronousScrollingReasons.add(SynchronousScrollingReason::IsImageDocument);
 
     return synchronousScrollingReasons;
 }
@@ -347,7 +333,7 @@ SynchronousScrollingReasons ScrollingCoordinator::synchronousScrollingReasons(co
 void ScrollingCoordinator::updateSynchronousScrollingReasons(FrameView& frameView)
 {
     ASSERT(coordinatesScrollingForFrameView(frameView));
-    setSynchronousScrollingReasons(frameView, synchronousScrollingReasons(frameView));
+    setSynchronousScrollingReasons(frameView.scrollingNodeID(), synchronousScrollingReasonsForFrameView(frameView));
 }
 
 void ScrollingCoordinator::updateSynchronousScrollingReasonsForAllFrames()
@@ -372,7 +358,7 @@ void ScrollingCoordinator::setForceSynchronousScrollLayerPositionUpdates(bool fo
 bool ScrollingCoordinator::shouldUpdateScrollLayerPositionSynchronously(const FrameView& frameView) const
 {
     if (&frameView == m_page->mainFrame().view())
-        return synchronousScrollingReasons(frameView);
+        return !synchronousScrollingReasonsForFrameView(frameView).isEmpty();
     
     return true;
 }
@@ -385,23 +371,35 @@ ScrollingNodeID ScrollingCoordinator::uniqueScrollingNodeID()
 
 String ScrollingCoordinator::scrollingStateTreeAsText(ScrollingStateTreeAsTextBehavior) const
 {
-    return String();
+    return emptyString();
 }
 
-String ScrollingCoordinator::synchronousScrollingReasonsAsText(SynchronousScrollingReasons reasons)
+String ScrollingCoordinator::scrollingTreeAsText(ScrollingStateTreeAsTextBehavior) const
+{
+    return emptyString();
+}
+
+String ScrollingCoordinator::synchronousScrollingReasonsAsText(OptionSet<SynchronousScrollingReason> reasons)
 {
     StringBuilder stringBuilder;
 
-    if (reasons & ScrollingCoordinator::ForcedOnMainThread)
+    if (reasons & SynchronousScrollingReason::ForcedOnMainThread)
         stringBuilder.appendLiteral("Forced on main thread, ");
-    if (reasons & ScrollingCoordinator::HasSlowRepaintObjects)
+
+    if (reasons & SynchronousScrollingReason::HasSlowRepaintObjects)
         stringBuilder.appendLiteral("Has slow repaint objects, ");
-    if (reasons & ScrollingCoordinator::HasViewportConstrainedObjectsWithoutSupportingFixedLayers)
+
+    if (reasons & SynchronousScrollingReason::HasViewportConstrainedObjectsWithoutSupportingFixedLayers)
         stringBuilder.appendLiteral("Has viewport constrained objects without supporting fixed layers, ");
-    if (reasons & ScrollingCoordinator::HasNonLayerViewportConstrainedObjects)
+
+    if (reasons & SynchronousScrollingReason::HasNonLayerViewportConstrainedObjects)
         stringBuilder.appendLiteral("Has non-layer viewport-constrained objects, ");
-    if (reasons & ScrollingCoordinator::IsImageDocument)
+
+    if (reasons & SynchronousScrollingReason::IsImageDocument)
         stringBuilder.appendLiteral("Is image document, ");
+
+    if (reasons & SynchronousScrollingReason::DescendantScrollersHaveSynchronousScrolling)
+        stringBuilder.appendLiteral("Has slow repaint descendant scrollers, ");
 
     if (stringBuilder.length())
         stringBuilder.resize(stringBuilder.length() - 2);
@@ -411,7 +409,7 @@ String ScrollingCoordinator::synchronousScrollingReasonsAsText(SynchronousScroll
 String ScrollingCoordinator::synchronousScrollingReasonsAsText() const
 {
     if (auto* frameView = m_page->mainFrame().view())
-        return synchronousScrollingReasonsAsText(synchronousScrollingReasons(*frameView));
+        return synchronousScrollingReasonsAsText(synchronousScrollingReasonsForFrameView(*frameView));
 
     return String();
 }
@@ -495,15 +493,6 @@ TextStream& operator<<(TextStream& ts, ViewportRectStability stability)
     case ViewportRectStability::ChangingObscuredInsetsInteractively:
         ts << "changing obscured insets interactively";
         break;
-    }
-    return ts;
-}
-
-TextStream& operator<<(TextStream& ts, ScrollType scrollType)
-{
-    switch (scrollType) {
-    case ScrollType::User: ts << "user"; break;
-    case ScrollType::Programmatic: ts << "programmatic"; break;
     }
     return ts;
 }

@@ -23,24 +23,24 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
-
-#import "DeviceMotionClientIOS.h"
-#import "DeviceOrientationClientIOS.h"
-#import <CoreLocation/CoreLocation.h>
-#import <wtf/HashCountedSet.h>
-
 #if PLATFORM(IOS_FAMILY) && ENABLE(DEVICE_ORIENTATION)
 
-#import <CoreMotion/CoreMotion.h>
+#import <CoreLocation/CoreLocation.h>
+#import <wtf/WeakHashSet.h>
 
-const float kMotionUpdateInterval = 1.0f / 60.0f;
+constexpr float kMotionUpdateInterval = 1.0f / 60.0f;
+@class CMMotionManager;
 
-@interface WebCoreMotionManager : NSObject {
+namespace WebCore {
+class DeviceMotionClientIOS;
+class MotionManagerClient;
+}
+
+WEBCORE_EXPORT @interface WebCoreMotionManager : NSObject {
     CMMotionManager* m_motionManager;
     CLLocationManager* m_locationManager;
-    HashSet<WebCore::DeviceMotionClientIOS*> m_deviceMotionClients;
-    HashSet<WebCore::DeviceOrientationClientIOS*> m_deviceOrientationClients;
+    WeakHashSet<WebCore::MotionManagerClient> m_deviceMotionClients;
+    WeakHashSet<WebCore::MotionManagerClient> m_deviceOrientationClients;
     NSTimer* m_updateTimer;
     BOOL m_gyroAvailable;
     BOOL m_headingAvailable;
@@ -48,10 +48,10 @@ const float kMotionUpdateInterval = 1.0f / 60.0f;
 }
 
 + (WebCoreMotionManager *)sharedManager;
-- (void)addMotionClient:(WebCore::DeviceMotionClientIOS *)client;
-- (void)removeMotionClient:(WebCore::DeviceMotionClientIOS *)client;
-- (void)addOrientationClient:(WebCore::DeviceOrientationClientIOS *)client;
-- (void)removeOrientationClient:(WebCore::DeviceOrientationClientIOS *)client;
+- (void)addMotionClient:(WebCore::MotionManagerClient *)client;
+- (void)removeMotionClient:(WebCore::MotionManagerClient *)client;
+- (void)addOrientationClient:(WebCore::MotionManagerClient *)client;
+- (void)removeOrientationClient:(WebCore::MotionManagerClient *)client;
 - (BOOL)gyroAvailable;
 - (BOOL)headingAvailable;
 @end

@@ -38,18 +38,18 @@ public:
     void setMultiline(bool multiline) { m_multiline = multiline; }
     bool multiline() const { return m_multiline; }
 
-    void setInput(ExecState*, JSGlobalObject* owner, JSString*);
+    void setInput(JSGlobalObject*, JSString*);
     JSString* input() { return m_cachedResult.input(); }
 
     void visitAggregate(SlotVisitor&);
 
-    JSValue getBackref(ExecState*, JSGlobalObject* owner, unsigned);
-    JSValue getLastParen(ExecState*, JSGlobalObject* owner);
-    JSValue getLeftContext(ExecState*, JSGlobalObject* owner);
-    JSValue getRightContext(ExecState*, JSGlobalObject* owner);
+    JSValue getBackref(JSGlobalObject*, unsigned);
+    JSValue getLastParen(JSGlobalObject*);
+    JSValue getLeftContext(JSGlobalObject*);
+    JSValue getRightContext(JSGlobalObject*);
 
-    MatchResult performMatch(VM&, JSGlobalObject*, RegExp*, JSString*, const String&, int startOffset, int** ovector);
-    MatchResult performMatch(VM&, JSGlobalObject*, RegExp*, JSString*, const String&, int startOffset);
+    MatchResult performMatch(JSGlobalObject*, RegExp*, JSString*, const String&, int startOffset, int** ovector);
+    MatchResult performMatch(JSGlobalObject*, RegExp*, JSString*, const String&, int startOffset);
     void recordMatch(VM&, JSGlobalObject*, RegExp*, JSString*, const MatchResult&);
 
     static ptrdiff_t offsetOfCachedResult() { return OBJECT_OFFSETOF(RegExpGlobalData, m_cachedResult); }

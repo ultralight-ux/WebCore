@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,40 +25,35 @@
 
 #include "config.h"
 #include "LLIntExceptions.h"
-#include "CallFrame.h"
-#include "CodeBlock.h"
-#include "Instruction.h"
+
 #include "LLIntCommon.h"
 #include "LLIntData.h"
-#include "LowLevelInterpreter.h"
-#include "JSCInlines.h"
 
 #if LLINT_TRACING
+#include "CatchScope.h"
 #include "Exception.h"
 #endif
 
 namespace JSC { namespace LLInt {
 
-Instruction* returnToThrow(ExecState* exec)
+Instruction* returnToThrow(VM& vm)
 {
-    UNUSED_PARAM(exec);
+    UNUSED_PARAM(vm);
 #if LLINT_TRACING
     if (UNLIKELY(Options::traceLLIntSlowPath())) {
-        VM* vm = &exec->vm();
-        auto scope = DECLARE_CATCH_SCOPE(*vm);
+        auto scope = DECLARE_CATCH_SCOPE(vm);
         dataLog("Throwing exception ", JSValue(scope.exception()), " (returnToThrow).\n");
     }
 #endif
     return LLInt::exceptionInstructions();
 }
 
-void* callToThrow(ExecState* exec)
+void* callToThrow(VM& vm)
 {
-    UNUSED_PARAM(exec);
+    UNUSED_PARAM(vm);
 #if LLINT_TRACING
     if (UNLIKELY(Options::traceLLIntSlowPath())) {
-        VM* vm = &exec->vm();
-        auto scope = DECLARE_CATCH_SCOPE(*vm);
+        auto scope = DECLARE_CATCH_SCOPE(vm);
         dataLog("Throwing exception ", JSValue(scope.exception()), " (callToThrow).\n");
     }
 #endif

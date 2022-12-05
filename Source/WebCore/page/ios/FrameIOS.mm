@@ -27,8 +27,8 @@
 
 #if PLATFORM(IOS_FAMILY)
 
-#import "CSSAnimationController.h"
 #import "CommonVM.h"
+#import "ComposedTreeIterator.h"
 #import "DOMWindow.h"
 #import "Document.h"
 #import "DocumentMarkerController.h"
@@ -54,6 +54,7 @@
 #import "PageTransitionEvent.h"
 #import "PlatformScreen.h"
 #import "PropertySetCSSStyleDeclaration.h"
+#import "Range.h"
 #import "RenderLayer.h"
 #import "RenderLayerCompositor.h"
 #import "RenderTextControl.h"
@@ -67,6 +68,7 @@
 #import "WAKWindow.h"
 #import <JavaScriptCore/JSLock.h>
 #import <wtf/BlockObjCExceptions.h>
+#import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/text/TextStream.h>
 
 using namespace WebCore::HTMLNames;
@@ -115,19 +117,18 @@ NSArray *Frame::wordsInCurrentParagraph() const
 
     VisiblePosition position(page()->selection().start(), page()->selection().affinity());
     VisiblePosition end(position);
+
     if (!isStartOfParagraph(end)) {
         VisiblePosition previous = end.previous();
         UChar c(previous.characterAfter());
+        // FIXME: Should use something from ICU or ASCIICType that is not subject to POSIX current language rather than iswpunct.
         if (!iswpunct(c) && !isSpaceOrNewline(c) && c != noBreakSpace)
             end = startOfWord(end);
     }
     VisiblePosition start(startOfParagraph(end));
 
-    RefPtr<Range> searchRange(rangeOfContents(*document()));
-    setStart(searchRange.get(), start);
-    setEnd(searchRange.get(), end);
-
-    if (searchRange->collapsed())
+    auto searchRange = makeSimpleRange(start, end);
+    if (!searchRange || searchRange->collapsed())
         return nil;
 
     NSMutableArray *words = [NSMutableArray array];
@@ -177,12 +178,13 @@ CGRect Frame::renderRectForPoint(CGPoint point, bool* isReplaced, float* fontSiz
     if (!m_doc || !m_doc->renderBox())
         return CGRectZero;
 
-    // FIXME: why this layer check?
+    // FIXME: Why this layer check?
     RenderLayer* layer = m_doc->renderBox()->layer();
     if (!layer)
         return CGRectZero;
 
-    HitTestResult result = eventHandler().hitTestResultAtPoint(IntPoint(roundf(point.x), roundf(point.y)), HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowChildFrameContent);
+    constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
+    auto result = eventHandler().hitTestResultAtPoint(IntPoint(roundf(point.x), roundf(point.y)), hitType);
 
     Node* node = result.innerNode();
     if (!node)
@@ -226,7 +228,8 @@ CGRect Frame::renderRectForPoint(CGPoint point, bool* isReplaced, float* fontSiz
 void Frame::betterApproximateNode(const IntPoint& testPoint, const NodeQualifier& nodeQualifierFunction, Node*& best, Node* failedNode, IntPoint& bestPoint, IntRect& bestRect, const IntRect& testRect)
 {
     IntRect candidateRect;
-    Node* candidate = nodeQualifierFunction(eventHandler().hitTestResultAtPoint(testPoint, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowVisibleChildFrameContentOnly), failedNode, &candidateRect);
+    constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowVisibleChildFrameContentOnly };
+    auto* candidate = nodeQualifierFunction(eventHandler().hitTestResultAtPoint(testPoint, hitType), failedNode, &candidateRect);
 
     // Bail if we have no candidate, or the candidate is already equal to our current best node,
     // or our candidate is the avoidedNode and there is a current best node.
@@ -261,17 +264,13 @@ bool Frame::hitTestResultAtViewportLocation(const FloatPoint& viewportLocation, 
         return false;
 
     center = view->windowToContents(roundedIntPoint(viewportLocation));
-    HitTestRequest::HitTestRequestType hitType = HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowVisibleChildFrameContentOnly;
+    constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowVisibleChildFrameContentOnly };
     hitTestResult = eventHandler().hitTestResultAtPoint(center, hitType);
     return true;
 }
 
 Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation, const NodeQualifier& nodeQualifierFunction, ShouldApproximate shouldApproximate, ShouldFindRootEditableElement shouldFindRootEditableElement)
 {
-#if !USE(UIKIT_EDITING)
-    UNUSED_PARAM(shouldFindRootEditableElement);
-#endif
-
     adjustedViewportLocation = viewportLocation;
 
     IntPoint testCenter;
@@ -285,7 +284,6 @@ Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation
     // the qualifier function, which typically checks if the node responds to a particular event type.
     Node* approximateNode = nodeQualifierFunction(candidateInfo, 0, 0);
 
-#if USE(UIKIT_EDITING)
     if (shouldFindRootEditableElement == ShouldFindRootEditableElement::Yes && approximateNode && approximateNode->isContentEditable()) {
         // If we are in editable content, we look for the root editable element.
         approximateNode = approximateNode->rootEditableElement();
@@ -293,8 +291,6 @@ Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation
         if (approximateNode)
             shouldApproximate = ShouldApproximate::No;
     }
-#endif
-
 
     float scale = page() ? page()->pageScaleFactor() : 1;
     float ppiFactor = screenPPIFactor();
@@ -315,7 +311,8 @@ Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation
             IntSize testOffset(testOffsets[n] * searchRadius, testOffsets[n + 1] * searchRadius);
             IntPoint testPoint = testCenter + testOffset;
 
-            HitTestResult candidateInfo = eventHandler().hitTestResultAtPoint(testPoint, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowChildFrameContent);
+            constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
+            auto candidateInfo = eventHandler().hitTestResultAtPoint(testPoint, hitType);
             Node* candidateNode = nodeQualifierFunction(candidateInfo, 0, 0);
             if (candidateNode && candidateNode->isDescendantOf(originalApproximateNode)) {
                 approximateNode = candidateNode;
@@ -370,13 +367,11 @@ Node* Frame::qualifyingNodeAtViewportLocation(const FloatPoint& viewportLocation
     if (approximateNode) {
         IntPoint p = m_view->contentsToWindow(bestPoint);
         adjustedViewportLocation = p;
-#if USE(UIKIT_EDITING)
         if (shouldFindRootEditableElement == ShouldFindRootEditableElement::Yes && approximateNode->isContentEditable()) {
             // When in editable content, look for the root editable node again,
             // since this could be the node found with the approximation.
             approximateNode = approximateNode->rootEditableElement();
         }
-#endif
     }
 
     return approximateNode;
@@ -390,6 +385,32 @@ Node* Frame::deepestNodeAtLocation(const FloatPoint& viewportLocation)
         return nullptr;
 
     return hitTestResult.innerNode();
+}
+
+static bool nodeIsMouseFocusable(Node& node)
+{
+    if (!is<Element>(node))
+        return false;
+
+    auto& element = downcast<Element>(node);
+    if (element.isMouseFocusable())
+        return true;
+
+    if (auto shadowRoot = makeRefPtr(element.shadowRoot())) {
+        if (shadowRoot->delegatesFocus()) {
+            for (auto& node : composedTreeDescendants(element)) {
+                if (is<Element>(node) && downcast<Element>(node).isMouseFocusable())
+                    return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool nodeWillRespondToMouseEvents(Node& node)
+{
+    return node.willRespondToMouseClickEvents() || node.willRespondToMouseMoveEvents() || nodeIsMouseFocusable(node);
 }
 
 Node* Frame::approximateNodeAtViewportLocationLegacy(const FloatPoint& viewportLocation, FloatPoint& adjustedViewportLocation)
@@ -410,11 +431,9 @@ Node* Frame::approximateNodeAtViewportLocationLegacy(const FloatPoint& viewportL
         for (; node && node != terminationNode; node = node->parentInComposedTree()) {
             // We only accept pointer nodes before reaching the body tag.
             if (node->hasTagName(HTMLNames::bodyTag)) {
-#if USE(UIKIT_EDITING)
                 // Make sure we cover the case of an empty editable body.
                 if (!pointerCursorNode && node->isContentEditable())
                     pointerCursorNode = node;
-#endif
                 bodyHasBeenReached = true;
                 pointerCursorStillValid = false;
             }
@@ -431,7 +450,7 @@ Node* Frame::approximateNodeAtViewportLocationLegacy(const FloatPoint& viewportL
                 pointerCursorStillValid = false;
             }
 
-            if (node->willRespondToMouseClickEvents() || node->willRespondToMouseMoveEvents() || (is<Element>(*node) && downcast<Element>(*node).isMouseFocusable())) {
+            if (nodeWillRespondToMouseEvents(*node)) {
                 // If we're at the body or higher, use the pointer cursor node (which may be null).
                 if (bodyHasBeenReached)
                     node = pointerCursorNode;
@@ -466,7 +485,7 @@ static inline NodeQualifier ancestorRespondingToClickEventsNodeQualifier(Securit
             return nullptr;
 
         for (; node && node != terminationNode; node = node->parentInComposedTree()) {
-            if (node->willRespondToMouseClickEvents() || node->willRespondToMouseMoveEvents() || (is<Element>(*node) && downcast<Element>(*node).isMouseFocusable())) {
+            if (nodeWillRespondToMouseEvents(*node)) {
                 // If we are interested about the frame, use it.
                 if (nodeBounds) {
                     // This is a check to see whether this node is an area element. The only way this can happen is if this is the first check.
@@ -704,20 +723,19 @@ NSArray *Frame::interpretationsForCurrentRoot() const
         return nil;
 
     auto* root = selection().selection().selectionType() == VisibleSelection::NoSelection ? document()->bodyOrFrameset() : selection().selection().rootEditableElement();
-    unsigned rootChildCount = root->countChildNodes();
-    auto rangeOfRootContents = Range::create(*document(), createLegacyEditingPosition(root, 0), createLegacyEditingPosition(root, rootChildCount));
+    auto rangeOfRootContents = makeRangeSelectingNodeContents(*root);
 
     auto markersInRoot = document()->markers().markersInRange(rangeOfRootContents, DocumentMarker::DictationPhraseWithAlternatives);
 
     // There are no phrases with alternatives, so there is just one interpretation.
     if (markersInRoot.isEmpty())
-        return [NSArray arrayWithObject:plainText(rangeOfRootContents.ptr())];
+        return @[plainText(rangeOfRootContents)];
 
     // The number of interpretations will be i1 * i2 * ... * iN, where iX is the number of interpretations for the Xth phrase with alternatives.
     size_t interpretationsCount = 1;
 
     for (auto* marker : markersInRoot)
-        interpretationsCount *= marker->alternatives().size() + 1;
+        interpretationsCount *= WTF::get<Vector<String>>(marker->data()).size() + 1;
 
     Vector<Vector<UChar>> interpretations;
     interpretations.grow(interpretationsCount);
@@ -726,53 +744,48 @@ NSArray *Frame::interpretationsForCurrentRoot() const
 
     unsigned combinationsSoFar = 1;
 
-    Node* pastLastNode = rangeOfRootContents->pastLastNode();
-    for (Node* node = rangeOfRootContents->firstNode(); node != pastLastNode; node = NodeTraversal::next(*node)) {
-        ASSERT(node);
-        for (auto* marker : document()->markers().markersFor(*node, DocumentMarker::DictationPhraseWithAlternatives)) {
-            // First, add text that precede the marker.
-            if (precedingTextStartPosition != createLegacyEditingPosition(node, marker->startOffset())) {
-                auto precedingTextRange = Range::create(*document(), precedingTextStartPosition, createLegacyEditingPosition(node, marker->startOffset()));
-                String precedingText = plainText(precedingTextRange.ptr());
+    for (auto& node : intersectingNodes(rangeOfRootContents)) {
+        for (auto* marker : document()->markers().markersFor(node, DocumentMarker::DictationPhraseWithAlternatives)) {
+            auto& alternatives = WTF::get<Vector<String>>(marker->data());
+
+            auto rangeForMarker = makeSimpleRange(node, *marker);
+
+            if (auto precedingTextRange = makeSimpleRange(precedingTextStartPosition, rangeForMarker.start)) {
+                String precedingText = plainText(*precedingTextRange);
                 if (!precedingText.isEmpty()) {
                     for (auto& interpretation : interpretations)
                         append(interpretation, precedingText);
                 }
             }
 
-            auto rangeForMarker = Range::create(*document(), createLegacyEditingPosition(node, marker->startOffset()), createLegacyEditingPosition(node, marker->endOffset()));
-            String visibleTextForMarker = plainText(rangeForMarker.ptr());
-            size_t interpretationsCountForCurrentMarker = marker->alternatives().size() + 1;
+            String visibleTextForMarker = plainText(rangeForMarker);
+            size_t interpretationsCountForCurrentMarker = alternatives.size() + 1;
             for (size_t i = 0; i < interpretationsCount; ++i) {
-                // Determine text for the ith interpretation. It will either be the visible text, or one of its
-                // alternatives stored in the marker.
-
                 size_t indexOfInterpretationForCurrentMarker = (i / combinationsSoFar) % interpretationsCountForCurrentMarker;
                 if (!indexOfInterpretationForCurrentMarker)
                     append(interpretations[i], visibleTextForMarker);
                 else
-                    append(interpretations[i], marker->alternatives().at(i % marker->alternatives().size()));
+                    append(interpretations[i], alternatives[i % alternatives.size()]);
             }
 
             combinationsSoFar *= interpretationsCountForCurrentMarker;
 
-            precedingTextStartPosition = createLegacyEditingPosition(node, marker->endOffset());
+            precedingTextStartPosition = createLegacyEditingPosition(rangeForMarker.end);
         }
     }
 
     // Finally, add any text after the last marker.
-    auto afterLastMarkerRange = Range::create(*document(), precedingTextStartPosition, createLegacyEditingPosition(root, rootChildCount));
-    String textAfterLastMarker = plainText(afterLastMarkerRange.ptr());
-    if (!textAfterLastMarker.isEmpty()) {
-        for (auto& interpretation : interpretations)
-            append(interpretation, textAfterLastMarker);
+    if (auto range = makeSimpleRange(precedingTextStartPosition, rangeOfRootContents.end)) {
+        String textAfterLastMarker = plainText(*range);
+        if (!textAfterLastMarker.isEmpty()) {
+            for (auto& interpretation : interpretations)
+                append(interpretation, textAfterLastMarker);
+        }
     }
 
-    NSMutableArray *result = [NSMutableArray array];
-    for (auto& interpretation : interpretations)
-        [result addObject:adoptNS([[NSString alloc] initWithCharacters:interpretation.data() length:interpretation.size()]).get()];
-
-    return result;
+    return createNSArray(interpretations, [] (auto& interpretation) {
+        return adoptNS([[NSString alloc] initWithCharacters:reinterpret_cast<const unichar*>(interpretation.data()) length:interpretation.size()]);
+    }).autorelease();
 }
 
 void Frame::viewportOffsetChanged(ViewportOffsetChangeType changeType)

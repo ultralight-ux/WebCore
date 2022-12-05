@@ -46,11 +46,11 @@ enum ObjSize { "small", "much-much-larger" };
 enum TestConfidence { "high", "kinda-low" };
 
 [
-    ConstructorCallWith=Document,
-    Constructor(TestCallbackInterface testCallback, TestCallbackFunction testCallbackFunction),
     InterfaceName=TestObject,
     Exposed=(Window,Worker)
 ] interface TestObj {
+    [CallWith=Document] constructor(TestCallbackInterface testCallback, TestCallbackFunction testCallbackFunction);
+
     // Attributes
     readonly attribute long            readOnlyLongAttr;
     readonly attribute DOMString       readOnlyStringAttr;
@@ -83,6 +83,7 @@ enum TestConfidence { "high", "kinda-low" };
     attribute record<ByteString, long> usvstringLongRecordAttr;
     attribute record<DOMString, TestObj> stringObjRecordAttr;
     attribute record<DOMString, TestObj?> stringNullableObjRecordAttr;
+    attribute record<DOMString, VoidCallback> stringVoidCallbackRecordAttr;
     attribute TestDictionary dictionaryAttr;
     attribute TestDictionary? nullableDictionaryAttr;
     attribute (DOMString or [Clamp] long) annotatedTypeInUnionAttr;
@@ -91,7 +92,6 @@ enum TestConfidence { "high", "kinda-low" };
     attribute TestEnumTypeWithAlternateImplementationName implementationEnumAttr;
 
     [SecureContext, ContextAllowsMediaDevices] readonly attribute MediaDevices mediaDevices;
-    [SecureContext, ContextHasServiceWorkerScheme] readonly attribute ServiceWorker serviceWorkers;
 
     // WK_ucfirst, WK_lcfirst exceptional cases.
     attribute TestObj                  XMLObjAttr;
@@ -195,10 +195,10 @@ enum TestConfidence { "high", "kinda-low" };
     [ImplementedAs=onfoo] attribute EventHandler onwebkitfoo;
 
     // 'CallWith' extended attribute
-    [CallWith=ExecState] void withExecStateVoid();
-    [CallWith=ExecState] TestObj withExecStateObj();
-    [CallWith=ExecState, MayThrowException] void withExecStateVoidException();
-    [CallWith=ExecState, MayThrowException] TestObj withExecStateObjException();
+    [CallWith=GlobalObject] void withExecStateVoid();
+    [CallWith=GlobalObject] TestObj withExecStateObj();
+    [CallWith=GlobalObject, MayThrowException] void withExecStateVoidException();
+    [CallWith=GlobalObject, MayThrowException] TestObj withExecStateObjException();
     [CallWith=ScriptExecutionContext] void withScriptExecutionContext();
     [CallWith=ScriptExecutionContext&ExecState] void withScriptExecutionContextAndExecState();
     [CallWith=ScriptExecutionContext&ExecState, MayThrowException] TestObj withScriptExecutionContextAndExecStateObjException();
@@ -207,8 +207,8 @@ enum TestConfidence { "high", "kinda-low" };
     [CallWith=IncumbentDocument] void withCallerDocumentArgument();
     [CallWith=IncumbentWindow] void withCallerWindowArgument();
 
-    [CallWith=ExecState] attribute long withExecStateAttribute;
-    [CallWith=ExecState, SetterCallWith=ActiveWindow&FirstWindow] attribute long withCallWithAndSetterCallWithAttribute;
+    [CallWith=GlobalObject] attribute long withExecStateAttribute;
+    [CallWith=GlobalObject, SetterCallWith=ActiveWindow&FirstWindow] attribute long withCallWithAndSetterCallWithAttribute;
     [CallWith=ScriptExecutionContext] attribute TestObj withScriptExecutionContextAttribute;
     [CallWith=ScriptExecutionContext&ExecState] attribute TestObj withScriptExecutionContextAndExecStateAttribute;
     [CallWith=  ScriptExecutionContext  &  ExecState  ] attribute TestObj withScriptExecutionContextAndExecStateWithSpacesAttribute;
@@ -448,6 +448,11 @@ enum TestConfidence { "high", "kinda-low" };
 
     [ConditionallyReadWrite=CONDITION] attribute Node conditionallyReadWriteAttribute;
     [Conditional=CONDITION2, ConditionallyReadWrite=CONDITION] attribute Node conditionalAndConditionallyReadWriteAttribute;
+
+    [RuntimeConditionallyReadWrite=TestFeature] attribute Node runtimeConditionallyReadWriteAttribute;
+    [RuntimeConditionallyReadWrite=TestFeature, Unforgeable] attribute Node runtimeConditionallyReadWriteAttributeUnforgeable;
+    [RuntimeConditionallyReadWrite=TestFeature, PrivateIdentifier, Unforgeable] attribute Node runtimeConditionallyReadWriteAttributeUnforgeablePrivate;
+    [RuntimeConditionallyReadWrite=TestFeature] attribute Promise<double> runtimeConditionallyReadWriteAttributePromise;
 
     [Exposed=Window] attribute long conditionallyExposedToWindowAttribute;
     [Exposed=Worker] attribute long conditionallyExposedToWorkerAttribute;

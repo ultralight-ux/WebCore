@@ -158,7 +158,7 @@ bool selectionBelongsToObject(AccessibilityObject* coreObject, VisibleSelection&
     if (selection.isNone())
         return false;
 
-    RefPtr<Range> range = selection.toNormalizedRange();
+    auto range = selection.toNormalizedRange();
     if (!range)
         return false;
 
@@ -168,15 +168,15 @@ bool selectionBelongsToObject(AccessibilityObject* coreObject, VisibleSelection&
     // node is actually inside the region, at least partially.
     auto& node = *coreObject->node();
     auto* lastDescendant = node.lastDescendant();
-    unsigned lastOffset = lastOffsetInNode(lastDescendant);
-    auto intersectsResult = range->intersectsNode(node);
+    unsigned lastOffset = lastDescendant->length();
+    auto intersectsResult = createLiveRange(*range)->intersectsNode(node);
     return !intersectsResult.hasException()
         && intersectsResult.releaseReturnValue()
-        && (&range->endContainer() != &node || range->endOffset())
-        && (&range->startContainer() != lastDescendant || range->startOffset() != lastOffset);
+        && (range->end.container.ptr() != &node || range->end.offset)
+        && (range->start.container.ptr() != lastDescendant || range->start.offset != lastOffset);
 }
 
-AccessibilityObject* objectFocusedAndCaretOffsetUnignored(AccessibilityObject* referenceObject, int& offset)
+AXCoreObject* objectFocusedAndCaretOffsetUnignored(AXCoreObject* referenceObject, int& offset)
 {
     // Indication that something bogus has transpired.
     offset = -1;
@@ -198,7 +198,7 @@ AccessibilityObject* objectFocusedAndCaretOffsetUnignored(AccessibilityObject* r
         return nullptr;
 
     // Look for the actual (not ignoring accessibility) selected object.
-    AccessibilityObject* firstUnignoredParent = focusedObject;
+    AXCoreObject* firstUnignoredParent = focusedObject;
     if (firstUnignoredParent->accessibilityIsIgnored())
         firstUnignoredParent = firstUnignoredParent->parentObjectUnignored();
     if (!firstUnignoredParent)
@@ -224,7 +224,7 @@ AccessibilityObject* objectFocusedAndCaretOffsetUnignored(AccessibilityObject* r
         // because we want it to be relative to the object of
         // reference, not just to the focused object (which could have
         // previous siblings which should be taken into account too).
-        AccessibilityObject* axFirstChild = referenceObject->firstChild();
+        AXCoreObject* axFirstChild = referenceObject->firstChild();
         if (axFirstChild)
             startNode = axFirstChild->node();
     }
@@ -246,11 +246,11 @@ AccessibilityObject* objectFocusedAndCaretOffsetUnignored(AccessibilityObject* r
     if (startPosition == endPosition)
         offset = 0;
     else if (!isStartOfLine(endPosition)) {
-        RefPtr<Range> range = makeRange(startPosition, endPosition.previous());
-        offset = TextIterator::rangeLength(range.get(), true) + 1;
+        auto range = makeSimpleRange(startPosition, endPosition.previous());
+        offset = (range ? characterCount(*range, TextIteratorEmitsCharactersBetweenAllVisiblePositions) : 0) + 1;
     } else {
-        RefPtr<Range> range = makeRange(startPosition, endPosition);
-        offset = TextIterator::rangeLength(range.get(), true);
+        auto range = makeSimpleRange(startPosition, endPosition);
+        offset = range ? characterCount(*range, TextIteratorEmitsCharactersBetweenAllVisiblePositions) : 0;
     }
 
     return firstUnignoredParent;

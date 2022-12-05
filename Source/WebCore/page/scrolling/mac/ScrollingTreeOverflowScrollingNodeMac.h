@@ -45,14 +45,18 @@ protected:
     void commitStateBeforeChildren(const ScrollingStateNode&) override;
     void commitStateAfterChildren(const ScrollingStateNode&) override;
     
-    FloatPoint adjustedScrollPosition(const FloatPoint&, ScrollPositionClamp) const override;
+    FloatPoint adjustedScrollPosition(const FloatPoint&, ScrollClamping) const override;
+
+    void currentScrollPositionChanged(ScrollingLayerPositionAction) final;
 
     void repositionScrollingLayers() override;
     void repositionRelatedLayers() override;
 
-    ScrollingEventResult handleWheelEvent(const PlatformWheelEvent&) override;
+    WheelEventHandlingResult handleWheelEvent(const PlatformWheelEvent&) override;
 
 private:
+    void willBeDestroyed() final;
+
     ScrollingTreeScrollingNodeDelegateMac m_delegate;
 };
 

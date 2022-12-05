@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,25 +55,30 @@ class LLIntOffsetsExtractor;
 // whether the user has done anything that requires a separate backing
 // buffer or the DOM-specified neutering capabilities.
 enum TypedArrayMode : uint32_t {
+    // Legend:
+    // B: JSArrayBufferView::m_butterfly pointer
+    // V: JSArrayBufferView::m_vector pointer
+    // M: JSArrayBufferView::m_mode
+
     // Small and fast typed array. B is unused, V points to a vector
-    // allocated in copied space, and M = FastTypedArray. V's liveness is
-    // determined entirely by the view's liveness.
+    // allocated in the primitive Gigacage, and M = FastTypedArray. V's
+    // liveness is determined entirely by the view's liveness.
     FastTypedArray,
-    
+
     // A large typed array that still attempts not to waste too much
-    // memory. B is initialized to point to a slot that could hold a
-    // buffer pointer, V points to a vector allocated using fastCalloc(),
-    // and M = OversizeTypedArray. V's liveness is determined entirely by
-    // the view's liveness, and the view will add a finalizer to delete V.
+    // memory. B is unused, V points to a vector allocated using
+    // Gigacage::tryMalloc(), and M = OversizeTypedArray. V's liveness is
+    // determined entirely by the view's liveness, and the view will add a
+    // finalizer to delete V.
     OversizeTypedArray,
-    
+
     // A typed array that was used in some crazy way. B's IndexingHeader
     // is hijacked to contain a reference to the native array buffer. The
     // native typed array view points back to the JS view. V points to a
     // vector allocated using who-knows-what, and M = WastefulTypedArray.
     // The view does not own the vector.
     WastefulTypedArray,
-    
+
     // A data view. B is unused, V points to a vector allocated using who-
     // knows-what, and M = DataViewMode. The view does not own the vector.
     // There is an extra field (in JSDataView) that points to the
@@ -95,13 +100,26 @@ inline bool hasArrayBuffer(TypedArrayMode mode)
 
 class JSArrayBufferView : public JSNonFinalObject {
 public:
-    typedef JSNonFinalObject Base;
-    static const unsigned fastSizeLimit = 1000;
+    using Base = JSNonFinalObject;
+
+    template<typename, SubspaceAccess>
+    static void subspaceFor(VM&)
+    {
+        RELEASE_ASSERT_NOT_REACHED();
+    }
+
+    static constexpr unsigned fastSizeLimit = 1000;
     using VectorPtr = CagedBarrierPtr<Gigacage::Primitive, void, tagCagedPtr>;
+
+    static void* nullVectorPtr()
+    {
+        VectorPtr null { };
+        return null.rawBits();
+    }
     
     static size_t sizeOf(uint32_t length, uint32_t elementSize)
     {
-        return (length * elementSize + sizeof(EncodedJSValue) - 1)
+        return (static_cast<size_t>(length) * elementSize + sizeof(EncodedJSValue) - 1)
             & ~(sizeof(EncodedJSValue) - 1);
     }
 
@@ -152,7 +170,7 @@ protected:
     JS_EXPORT_PRIVATE JSArrayBufferView(VM&, ConstructionContext&);
     JS_EXPORT_PRIVATE void finishCreation(VM&);
     
-    static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    static bool put(JSCell*, JSGlobalObject*, PropertyName, JSValue, PutPropertySlot&);
 
     static void visitChildren(JSCell*, SlotVisitor&);
     
@@ -162,9 +180,9 @@ public:
     
     bool isShared();
     JS_EXPORT_PRIVATE ArrayBuffer* unsharedBuffer();
-    ArrayBuffer* possiblySharedBuffer();
-    JSArrayBuffer* unsharedJSBuffer(ExecState* exec);
-    JSArrayBuffer* possiblySharedJSBuffer(ExecState* exec);
+    inline ArrayBuffer* possiblySharedBuffer();
+    JSArrayBuffer* unsharedJSBuffer(JSGlobalObject* globalObject);
+    JSArrayBuffer* possiblySharedJSBuffer(JSGlobalObject* globalObject);
     RefPtr<ArrayBufferView> unsharedImpl();
     JS_EXPORT_PRIVATE RefPtr<ArrayBufferView> possiblySharedImpl();
     bool isNeutered() { return hasArrayBuffer() && !hasVector(); }
@@ -173,7 +191,9 @@ public:
     bool hasVector() const { return !!m_vector; }
     void* vector() const { return m_vector.getMayBeNull(length()); }
     
-    unsigned byteOffset();
+    inline unsigned byteOffset();
+    inline Optional<unsigned> byteOffsetConcurrently();
+
     unsigned length() const { return m_length; }
 
     DECLARE_EXPORT_INFO;
@@ -185,6 +205,10 @@ public:
     static RefPtr<ArrayBufferView> toWrapped(VM&, JSValue);
 
 private:
+    enum Requester { Mutator, ConcurrentThread };
+    template<Requester, typename ResultType> ResultType byteOffsetImpl();
+    template<Requester> ArrayBuffer* possiblySharedBufferImpl();
+
     JS_EXPORT_PRIVATE ArrayBuffer* slowDownAndWasteMemory();
     static void finalize(JSCell*);
 
@@ -192,8 +216,6 @@ protected:
     friend class LLIntOffsetsExtractor;
 
     ArrayBuffer* existingBufferInButterfly();
-
-    static String toStringName(const JSObject*, ExecState*);
 
     VectorPtr m_vector;
     uint32_t m_length;

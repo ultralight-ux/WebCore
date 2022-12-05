@@ -57,6 +57,10 @@ namespace WebCore {
 
 CachedImage::CachedImage(CachedResourceRequest&& request, const PAL::SessionID& sessionID, const CookieJar* cookieJar)
     : CachedResource(WTFMove(request), Type::ImageResource, sessionID, cookieJar)
+    , m_updateImageDataCount(0)
+    , m_isManuallyCached(false)
+    , m_shouldPaintBrokenImage(true)
+    , m_forceUpdateImageDataEnabledForTesting(false)
 {
     setStatus(Unknown);
 }
@@ -64,13 +68,20 @@ CachedImage::CachedImage(CachedResourceRequest&& request, const PAL::SessionID& 
 CachedImage::CachedImage(Image* image, const PAL::SessionID& sessionID, const CookieJar* cookieJar)
     : CachedResource(URL(), Type::ImageResource, sessionID, cookieJar)
     , m_image(image)
+    , m_updateImageDataCount(0)
+    , m_isManuallyCached(false)
+    , m_shouldPaintBrokenImage(true)
+    , m_forceUpdateImageDataEnabledForTesting(false)
 {
 }
 
 CachedImage::CachedImage(const URL& url, Image* image, const PAL::SessionID& sessionID, const CookieJar* cookieJar, const String& domainForCachePartition)
     : CachedResource(url, Type::ImageResource, sessionID, cookieJar)
     , m_image(image)
+    , m_updateImageDataCount(0)
     , m_isManuallyCached(true)
+    , m_shouldPaintBrokenImage(true)
+    , m_forceUpdateImageDataEnabledForTesting(false)
 {
     m_resourceRequest.setDomainForCachePartition(domainForCachePartition);
 
@@ -105,7 +116,7 @@ void CachedImage::setBodyDataFrom(const CachedResource& resource)
         m_imageObserver->cachedImages().add(this);
 
     if (m_image && is<SVGImage>(*m_image))
-        m_svgImageCache = std::make_unique<SVGImageCache>(&downcast<SVGImage>(*m_image));
+        m_svgImageCache = makeUnique<SVGImageCache>(&downcast<SVGImage>(*m_image));
 }
 
 void CachedImage::didAddClient(CachedResourceClient& client)
@@ -257,6 +268,11 @@ Image* CachedImage::imageForRenderer(const RenderObject* renderer)
     return m_image.get();
 }
 
+bool CachedImage::hasSVGImage() const
+{
+    return m_image && m_image->isSVGImage();
+}
+
 void CachedImage::setContainerContextForClient(const CachedImageClient& client, const LayoutSize& containerSize, float containerZoom, const URL& imageURL)
 {
     if (containerSize.isEmpty())
@@ -280,27 +296,35 @@ FloatSize CachedImage::imageSizeForRenderer(const RenderElement* renderer, SizeT
     if (!m_image)
         return { };
 
-    if (is<BitmapImage>(*m_image) && renderer && renderer->shouldRespectImageOrientation() == RespectImageOrientation)
-        return downcast<BitmapImage>(*m_image).sizeRespectingOrientation();
-
     if (is<SVGImage>(*m_image) && sizeType == UsedSize)
         return m_svgImageCache->imageSizeForRenderer(renderer);
 
-    return m_image->size();
+    return m_image->size(renderer ? renderer->imageOrientation() : ImageOrientation(ImageOrientation::FromImage));
 }
 
-LayoutSize CachedImage::imageSizeForRenderer(const RenderElement* renderer, float multiplier, SizeType sizeType) const
+
+LayoutSize CachedImage::unclampedImageSizeForRenderer(const RenderElement* renderer, float multiplier, SizeType sizeType) const
 {
     LayoutSize imageSize = LayoutSize(imageSizeForRenderer(renderer, sizeType));
     if (imageSize.isEmpty() || multiplier == 1.0f)
         return imageSize;
 
-    // Don't let images that have a width/height >= 1 shrink below 1 when zoomed.
     float widthScale = m_image->hasRelativeWidth() ? 1.0f : multiplier;
     float heightScale = m_image->hasRelativeHeight() ? 1.0f : multiplier;
-    LayoutSize minimumSize(imageSize.width() > 0 ? 1 : 0, imageSize.height() > 0 ? 1 : 0);
     imageSize.scale(widthScale, heightScale);
+    return imageSize;    
+}
+
+LayoutSize CachedImage::imageSizeForRenderer(const RenderElement* renderer, float multiplier, SizeType sizeType) const
+{
+    auto imageSize = unclampedImageSizeForRenderer(renderer, multiplier, sizeType);
+    if (imageSize.isEmpty() || multiplier == 1.0f)
+        return imageSize;
+
+    // Don't let images that have a width/height >= 1 shrink below 1 when zoomed.
+    LayoutSize minimumSize(imageSize.width() > 0 ? 1 : 0, imageSize.height() > 0 ? 1 : 0);
     imageSize.clampToMinimumSize(minimumSize);
+
     ASSERT(multiplier != 1.0f || (imageSize.width().fraction() == 0.0f && imageSize.height().fraction() == 0.0f));
     return imageSize;
 }
@@ -357,7 +381,7 @@ inline void CachedImage::createImage()
 
     if (m_image) {
         if (is<SVGImage>(*m_image))
-            m_svgImageCache = std::make_unique<SVGImageCache>(&downcast<SVGImage>(*m_image));
+            m_svgImageCache = makeUnique<SVGImageCache>(&downcast<SVGImage>(*m_image));
 
         // Send queued container size requests.
         if (m_image->usesContainerSize()) {
@@ -413,6 +437,12 @@ void CachedImage::CachedImageObserver::changedInRect(const Image& image, const I
 {
     for (auto cachedImage : m_cachedImages)
         cachedImage->changedInRect(image, rect);
+}
+
+void CachedImage::CachedImageObserver::scheduleTimedRenderingUpdate(const Image& image)
+{
+    for (auto cachedImage : m_cachedImages)
+        cachedImage->scheduleTimedRenderingUpdate(image);
 }
 
 inline void CachedImage::clearImage()
@@ -485,7 +515,7 @@ void CachedImage::updateBufferInternal(SharedBuffer& data)
 bool CachedImage::shouldDeferUpdateImageData() const
 {
     static const double updateImageDataBackoffIntervals[] = { 0, 1, 3, 6, 15 };
-    unsigned interval = std::min<unsigned>(m_updateImageDataCount, 4);
+    unsigned interval = m_updateImageDataCount;
 
     // The first time through, the chunk time will be 0 and the image will get an update.
     return (MonotonicTime::now() - m_lastUpdateImageDataTime).seconds() < updateImageDataBackoffIntervals[interval];
@@ -507,8 +537,9 @@ RefPtr<SharedBuffer> CachedImage::convertedDataIfNeeded(SharedBuffer* data) cons
 void CachedImage::didUpdateImageData()
 {
     m_lastUpdateImageDataTime = MonotonicTime::now();
-    ASSERT(m_updateImageDataCount < std::numeric_limits<unsigned>::max());
-    ++m_updateImageDataCount;
+    unsigned previous = m_updateImageDataCount;
+    if (previous != maxUpdateImageDataCount)
+        m_updateImageDataCount += 1;
 }
 
 EncodedDataStatus CachedImage::updateImageData(bool allDataReceived)
@@ -534,7 +565,7 @@ void CachedImage::updateData(const char* data, unsigned length)
     CachedResource::updateData(data, length);
 }
 
-void CachedImage::finishLoading(SharedBuffer* data)
+void CachedImage::finishLoading(SharedBuffer* data, const NetworkLoadMetrics& metrics)
 {
     m_data = convertedDataIfNeeded(data);
     if (m_data) {
@@ -553,7 +584,7 @@ void CachedImage::finishLoading(SharedBuffer* data)
     }
 
     notifyObservers();
-    CachedResource::finishLoading(data);
+    CachedResource::finishLoading(data, metrics);
 }
 
 void CachedImage::didReplaceSharedBufferContents()
@@ -662,6 +693,16 @@ void CachedImage::changedInRect(const Image& image, const IntRect* rect)
     if (&image != m_image)
         return;
     notifyObservers(rect);
+}
+
+void CachedImage::scheduleTimedRenderingUpdate(const Image& image)
+{
+    if (&image != m_image)
+        return;
+
+    CachedResourceClientWalker<CachedImageClient> walker(m_clients);
+    while (auto* client = walker.next())
+        client->scheduleTimedRenderingUpdate();
 }
 
 bool CachedImage::currentFrameKnownToBeOpaque(const RenderElement* renderer)

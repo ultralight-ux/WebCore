@@ -46,7 +46,7 @@ namespace WebCore {
 ImplicitAnimation::ImplicitAnimation(const Animation& transition, CSSPropertyID animatingProperty, Element& element, CompositeAnimation& compositeAnimation, const RenderStyle& fromStyle)
     : AnimationBase(transition, element, compositeAnimation)
     , m_fromStyle(RenderStyle::clonePtr(fromStyle))
-    , m_transitionProperty(transition.property())
+    , m_transitionProperty(transition.property().id)
     , m_animatingProperty(animatingProperty)
 {
 #if PLATFORM(IOS_FAMILY)
@@ -212,7 +212,7 @@ bool ImplicitAnimation::sendTransitionEvent(const AtomString& eventType, double 
             // Dispatch the event
             auto element = makeRefPtr(this->element());
 
-            ASSERT(!element || element->document().pageCacheState() == Document::NotInPageCache);
+            ASSERT(!element || element->document().backForwardCacheState() == Document::NotInBackForwardCache);
             if (!element)
                 return false;
 
@@ -360,7 +360,11 @@ Optional<Seconds> ImplicitAnimation::timeToNextService()
 {
     Optional<Seconds> t = AnimationBase::timeToNextService();
     if (!t || t.value() != 0_s || preActive())
+#if COMPILER(MSVC) && _MSC_VER >= 1920
+        return WTFMove(t);
+#else
         return t;
+#endif
 
     // A return value of 0 means we need service. But if this is an accelerated animation we 
     // only need service at the end of the transition.

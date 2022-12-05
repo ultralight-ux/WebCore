@@ -30,6 +30,7 @@
 
 #include "AudioBus.h"
 #include "AudioUtilities.h"
+#include "FFTFrame.h"
 #include "VectorMath.h"
 #include <JavaScriptCore/Float32Array.h>
 #include <JavaScriptCore/Uint8Array.h>
@@ -59,7 +60,7 @@ RealtimeAnalyser::RealtimeAnalyser()
     , m_minDecibels(DefaultMinDecibels)
     , m_maxDecibels(DefaultMaxDecibels)
 {
-    m_analysisFrame = std::make_unique<FFTFrame>(DefaultFFTSize);
+    m_analysisFrame = makeUnique<FFTFrame>(DefaultFFTSize);
 }
 
 RealtimeAnalyser::~RealtimeAnalyser() = default;
@@ -83,7 +84,7 @@ bool RealtimeAnalyser::setFftSize(size_t size)
         return false;
 
     if (m_fftSize != size) {
-        m_analysisFrame = std::make_unique<FFTFrame>(size);
+        m_analysisFrame = makeUnique<FFTFrame>(size);
         // m_magnitudeBuffer has size = fftSize / 2 because it contains floats reduced from complex values in m_analysisFrame.
         m_magnitudeBuffer.allocate(size / 2);
         m_fftSize = size;
@@ -199,24 +200,21 @@ void RealtimeAnalyser::doFFTAnalysis()
     }
 }
 
-void RealtimeAnalyser::getFloatFrequencyData(Float32Array* destinationArray)
+void RealtimeAnalyser::getFloatFrequencyData(Float32Array& destinationArray)
 {
     ASSERT(isMainThread());
-
-    if (!destinationArray)
-        return;
         
     doFFTAnalysis();
     
     // Convert from linear magnitude to floating-point decibels.
     const double minDecibels = m_minDecibels;
     unsigned sourceLength = magnitudeBuffer().size();
-    size_t len = std::min(sourceLength, destinationArray->length());
-    if (len > 0) {
+    size_t length = std::min(sourceLength, destinationArray.length());
+    if (length > 0) {
         const float* source = magnitudeBuffer().data();
-        float* destination = destinationArray->data();
+        float* destination = destinationArray.data();
         
-        for (unsigned i = 0; i < len; ++i) {
+        for (size_t i = 0; i < length; ++i) {
             float linearValue = source[i];
             double dbMag = !linearValue ? minDecibels : AudioUtilities::linearToDecibels(linearValue);
             destination[i] = static_cast<float>(dbMag);
@@ -224,26 +222,23 @@ void RealtimeAnalyser::getFloatFrequencyData(Float32Array* destinationArray)
     }
 }
 
-void RealtimeAnalyser::getByteFrequencyData(Uint8Array* destinationArray)
+void RealtimeAnalyser::getByteFrequencyData(Uint8Array& destinationArray)
 {
     ASSERT(isMainThread());
-
-    if (!destinationArray)
-        return;
         
     doFFTAnalysis();
     
     // Convert from linear magnitude to unsigned-byte decibels.
     unsigned sourceLength = magnitudeBuffer().size();
-    size_t len = std::min(sourceLength, destinationArray->length());
-    if (len > 0) {
+    size_t length = std::min(sourceLength, destinationArray.length());
+    if (length > 0) {
         const double rangeScaleFactor = m_maxDecibels == m_minDecibels ? 1 : 1 / (m_maxDecibels - m_minDecibels);
         const double minDecibels = m_minDecibels;
 
         const float* source = magnitudeBuffer().data();
-        unsigned char* destination = destinationArray->data();        
+        unsigned char* destination = destinationArray.data();
         
-        for (unsigned i = 0; i < len; ++i) {
+        for (size_t i = 0; i < length; ++i) {
             float linearValue = source[i];
             double dbMag = !linearValue ? minDecibels : AudioUtilities::linearToDecibels(linearValue);
             
@@ -261,27 +256,48 @@ void RealtimeAnalyser::getByteFrequencyData(Uint8Array* destinationArray)
     }
 }
 
-void RealtimeAnalyser::getByteTimeDomainData(Uint8Array* destinationArray)
+void RealtimeAnalyser::getFloatTimeDomainData(Float32Array& destinationArray)
+{
+    ASSERT(isMainThread());
+    
+    unsigned fftSize = this->fftSize();
+    size_t length = std::min(fftSize, destinationArray.length());
+    if (length > 0) {
+        bool isInputBufferGood = m_inputBuffer.size() == InputBufferSize && m_inputBuffer.size() > fftSize;
+        ASSERT(isInputBufferGood);
+        if (!isInputBufferGood)
+            return;
+        
+        float* inputBuffer = m_inputBuffer.data();
+        float* destination = destinationArray.data();
+        
+        unsigned writeIndex = m_writeIndex;
+        
+        for (size_t i = 0; i < length; ++i) {
+            // Buffer access is protected due to modulo operation.
+            destination[i] = inputBuffer[(i + writeIndex - fftSize + InputBufferSize) % InputBufferSize];
+        }
+    }
+}
+
+void RealtimeAnalyser::getByteTimeDomainData(Uint8Array& destinationArray)
 {
     ASSERT(isMainThread());
 
-    if (!destinationArray)
-        return;
-        
     unsigned fftSize = this->fftSize();
-    size_t len = std::min(fftSize, destinationArray->length());
-    if (len > 0) {
+    size_t length = std::min(fftSize, destinationArray.length());
+    if (length > 0) {
         bool isInputBufferGood = m_inputBuffer.size() == InputBufferSize && m_inputBuffer.size() > fftSize;
         ASSERT(isInputBufferGood);
         if (!isInputBufferGood)
             return;
 
         float* inputBuffer = m_inputBuffer.data();        
-        unsigned char* destination = destinationArray->data();
+        unsigned char* destination = destinationArray.data();
         
         unsigned writeIndex = m_writeIndex;
 
-        for (unsigned i = 0; i < len; ++i) {
+        for (size_t i = 0; i < length; ++i) {
             // Buffer access is protected due to modulo operation.
             float value = inputBuffer[(i + writeIndex - fftSize + InputBufferSize) % InputBufferSize];
 

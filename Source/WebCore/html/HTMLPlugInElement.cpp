@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Stefan Schimanski (1Stein@gmx.de)
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2019 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -44,7 +44,6 @@
 #include "RenderSnapshottedPlugIn.h"
 #include "RenderView.h"
 #include "RenderWidget.h"
-#include "RuntimeEnabledFeatures.h"
 #include "ScriptController.h"
 #include "Settings.h"
 #include "ShadowRoot.h"
@@ -156,6 +155,18 @@ Widget* HTMLPlugInElement::pluginWidget(PluginLoadingPolicy loadPolicy) const
         return nullptr;
 
     return renderWidget->widget();
+}
+
+RenderWidget* HTMLPlugInElement::renderWidgetLoadingPlugin() const
+{
+    RefPtr<FrameView> view = document().view();
+    if (!view || (!view->inUpdateEmbeddedObjects() && !view->layoutContext().isInLayout() && !view->isPainting())) {
+        // Needs to load the plugin immediatedly because this function is called
+        // when JavaScript code accesses the plugin.
+        // FIXME: <rdar://16893708> Check if dispatching events here is safe.
+        document().updateLayoutIgnorePendingStylesheets(Document::RunPostLayoutTasks::Synchronously);
+    }
+    return renderWidget(); // This will return nullptr if the renderer is not a RenderWidget.
 }
 
 bool HTMLPlugInElement::isPresentationAttribute(const QualifiedName& name) const
@@ -346,10 +357,10 @@ static ReplacementPlugin* pluginReplacementForType(const URL& url, const String&
         return nullptr;
 
     String extension;
-    String lastPathComponent = url.lastPathComponent();
+    auto lastPathComponent = url.lastPathComponent();
     size_t dotOffset = lastPathComponent.reverseFind('.');
     if (dotOffset != notFound)
-        extension = lastPathComponent.substring(dotOffset + 1);
+        extension = lastPathComponent.substring(dotOffset + 1).toString();
 
     String type = mimeType;
     if (type.isEmpty() && url.protocolIsData())
@@ -365,7 +376,7 @@ static ReplacementPlugin* pluginReplacementForType(const URL& url, const String&
     if (type.isEmpty()) {
         if (extension.isEmpty())
             return nullptr;
-        type = MIMETypeRegistry::getMediaMIMETypeForExtension(extension);
+        type = MIMETypeRegistry::mediaMIMETypeForExtension(extension);
     }
 
     if (type.isEmpty())
@@ -379,14 +390,14 @@ static ReplacementPlugin* pluginReplacementForType(const URL& url, const String&
     return nullptr;
 }
 
-bool HTMLPlugInElement::requestObject(const String& url, const String& mimeType, const Vector<String>& paramNames, const Vector<String>& paramValues)
+bool HTMLPlugInElement::requestObject(const String& relativeURL, const String& mimeType, const Vector<String>& paramNames, const Vector<String>& paramValues)
 {
     if (m_pluginReplacement)
         return true;
 
     URL completedURL;
-    if (!url.isEmpty())
-        completedURL = document().completeURL(url);
+    if (!relativeURL.isEmpty())
+        completedURL = document().completeURL(relativeURL);
 
     ReplacementPlugin* replacement = pluginReplacementForType(completedURL, mimeType);
     if (!replacement || !replacement->isEnabledBySettings(document().settings()))
@@ -468,35 +479,41 @@ bool HTMLPlugInElement::isReplacementObscured()
     auto height = viewRect.height();
     // Hit test the center and near the corners of the replacement text to ensure
     // it is visible and is not masked by other elements.
-    HitTestRequest request(HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::IgnoreClipping | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowChildFrameContent);
+    constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::IgnoreClipping, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
     HitTestResult result;
-    HitTestLocation location = LayoutPoint(x + width / 2, y + height / 2);
+    HitTestLocation location { LayoutPoint { viewRect.center() } };
     ASSERT(!renderView->needsLayout());
     ASSERT(!renderView->document().needsStyleRecalc());
-    bool hit = topDocument->hitTest(request, location, result);
+    bool hit = topDocument->hitTest(hitType, location, result);
     if (!hit || result.innerNode() != &pluginRenderer.frameOwnerElement())
         return true;
 
     location = LayoutPoint(x, y);
-    hit = topDocument->hitTest(request, location, result);
+    hit = topDocument->hitTest(hitType, location, result);
     if (!hit || result.innerNode() != &pluginRenderer.frameOwnerElement())
         return true;
 
     location = LayoutPoint(x + width, y);
-    hit = topDocument->hitTest(request, location, result);
+    hit = topDocument->hitTest(hitType, location, result);
     if (!hit || result.innerNode() != &pluginRenderer.frameOwnerElement())
         return true;
 
     location = LayoutPoint(x + width, y + height);
-    hit = topDocument->hitTest(request, location, result);
+    hit = topDocument->hitTest(hitType, location, result);
     if (!hit || result.innerNode() != &pluginRenderer.frameOwnerElement())
         return true;
 
     location = LayoutPoint(x, y + height);
-    hit = topDocument->hitTest(request, location, result);
+    hit = topDocument->hitTest(hitType, location, result);
     if (!hit || result.innerNode() != &pluginRenderer.frameOwnerElement())
         return true;
     return false;
+}
+
+bool HTMLPlugInElement::canLoadScriptURL(const URL&) const
+{
+    // FIXME: Probably want to at least check canAddSubframe.
+    return true;
 }
 
 }

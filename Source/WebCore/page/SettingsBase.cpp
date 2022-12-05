@@ -27,6 +27,7 @@
 #include "SettingsBase.h"
 
 #include "AudioSession.h"
+#include "BackForwardCache.h"
 #include "BackForwardController.h"
 #include "CachedResourceLoader.h"
 #include "CookieStorage.h"
@@ -40,7 +41,6 @@
 #include "FrameView.h"
 #include "HistoryItem.h"
 #include "Page.h"
-#include "PageCache.h"
 #include "RenderWidget.h"
 #include "RuntimeApplicationChecks.h"
 #include "Settings.h"
@@ -61,15 +61,9 @@ static void invalidateAfterGenericFamilyChange(Page* page)
         page->setNeedsRecalcStyleInAllFrames();
 }
 
-// This amount of time must have elapsed before we will even consider scheduling a layout without a delay.
-// FIXME: For faster machines this value can really be lowered to 200. 250 is adequate, but a little high
-// for dual G5s. :)
-static const Seconds layoutScheduleThreshold = 250_ms;
-
 SettingsBase::SettingsBase(Page* page)
     : m_page(nullptr)
-    , m_fontGenericFamilies(std::make_unique<FontGenericFamilies>())
-    , m_layoutInterval(layoutScheduleThreshold)
+    , m_fontGenericFamilies(makeUnique<FontGenericFamilies>())
     , m_minimumDOMTimerInterval(DOMTimer::defaultMinimumInterval())
     , m_setImageLoadingSettingsTimer(*this, &SettingsBase::imageLoadingSettingsTimerFired)
 {
@@ -234,13 +228,6 @@ void SettingsBase::setMinimumDOMTimerInterval(Seconds interval)
     }
 }
 
-void SettingsBase::setLayoutInterval(Seconds layoutInterval)
-{
-    // FIXME: It seems weird that this function may disregard the specified layout interval.
-    // We should either expose layoutScheduleThreshold or better communicate this invariant.
-    m_layoutInterval = std::max(layoutInterval, layoutScheduleThreshold);
-}
-
 void SettingsBase::setMediaContentTypesRequiringHardwareSupport(const String& contentTypes)
 {
     m_mediaContentTypesRequiringHardwareSupport.shrink(0);
@@ -362,13 +349,13 @@ void SettingsBase::userStyleSheetLocationChanged()
         m_page->userStyleSheetLocationChanged();
 }
 
-void SettingsBase::usesPageCacheChanged()
+void SettingsBase::usesBackForwardCacheChanged()
 {
     if (!m_page)
         return;
 
-    if (!m_page->settings().usesPageCache())
-        PageCache::singleton().pruneToSizeNow(0, PruningReason::None);
+    if (!m_page->settings().usesBackForwardCache())
+        BackForwardCache::singleton().pruneToSizeNow(0, PruningReason::None);
 }
 
 void SettingsBase::dnsPrefetchingEnabledChanged()

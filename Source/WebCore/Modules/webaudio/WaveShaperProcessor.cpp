@@ -46,13 +46,13 @@ WaveShaperProcessor::~WaveShaperProcessor()
 
 std::unique_ptr<AudioDSPKernel> WaveShaperProcessor::createKernel()
 {
-    return std::make_unique<WaveShaperDSPKernel>(this);
+    return makeUnique<WaveShaperDSPKernel>(this);
 }
 
 void WaveShaperProcessor::setCurve(Float32Array* curve)
 {
     // This synchronizes with process().
-    std::lock_guard<Lock> lock(m_processMutex);
+    auto locker = holdLock(m_processMutex);
 
     m_curve = curve;
 }
@@ -60,7 +60,7 @@ void WaveShaperProcessor::setCurve(Float32Array* curve)
 void WaveShaperProcessor::setOversample(OverSampleType oversample)
 {
     // This synchronizes with process().
-    std::lock_guard<Lock> lock(m_processMutex);
+    auto locker = holdLock(m_processMutex);
 
     m_oversample = oversample;
 

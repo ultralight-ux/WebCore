@@ -73,7 +73,7 @@ void SpeechSynthesis::voicesDidChange()
 PlatformSpeechSynthesizer& SpeechSynthesis::ensurePlatformSpeechSynthesizer()
 {
     if (!m_platformSpeechSynthesizer)
-        m_platformSpeechSynthesizer = std::make_unique<PlatformSpeechSynthesizer>(this);
+        m_platformSpeechSynthesizer = makeUnique<PlatformSpeechSynthesizer>(this);
     return *m_platformSpeechSynthesizer;
 }
 
@@ -149,9 +149,13 @@ void SpeechSynthesis::cancel()
     // Hold on to the current utterance so the platform synthesizer can have a chance to clean up.
     RefPtr<SpeechSynthesisUtterance> current = m_currentSpeechUtterance;
     m_utteranceQueue.clear();
-    if (m_speechSynthesisClient)
+    if (m_speechSynthesisClient) {
         m_speechSynthesisClient->cancel();
-    else if (m_platformSpeechSynthesizer) {
+        // If we wait for cancel to callback speakingErrorOccurred, then m_currentSpeechUtterance will be null
+        // and the event won't be processed. Instead we process the error immediately.
+        speakingErrorOccurred();
+        m_currentSpeechUtterance = nullptr;
+    } else if (m_platformSpeechSynthesizer) {
         m_platformSpeechSynthesizer->cancel();
         // The platform should have called back immediately and cleared the current utterance.
         ASSERT(!m_currentSpeechUtterance);

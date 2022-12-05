@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2020 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,7 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define ASSERT_DISABLED 0
+#define ASSERT_ENABLED 1
 #include "config.h"
 
 #if USE(CF)
@@ -33,7 +33,6 @@
 #endif
 
 #include "JSBasePrivate.h"
-#include "JSContextRefPrivate.h"
 #include "JSHeapFinalizerPrivate.h"
 #include "JSMarkingConstraintPrivate.h"
 #include "JSObjectRefPrivate.h"
@@ -77,6 +76,7 @@
 void testObjectiveCAPI(const char*);
 #endif
 
+void configureJSCForTesting(void);
 int testCAPIViaCpp(const char* filter);
 
 bool assertTrue(bool value, const char* message);
@@ -1387,9 +1387,12 @@ int main(int argc, char* argv[])
     SetErrorMode(0);
 #endif
 
+    configureJSCForTesting();
+
 #if !OS(WINDOWS)
     char resolvedPath[PATH_MAX];
-    realpath(argv[0], resolvedPath); 
+    if (!realpath(argv[0], resolvedPath))
+        fprintf(stdout, "Could not get the absolute pathname for: %s\n", argv[0]);
     char* newCWD = dirname(resolvedPath);
     if (chdir(newCWD))
         fprintf(stdout, "Could not chdir to: %s\n", newCWD);
@@ -2098,7 +2101,6 @@ int main(int argc, char* argv[])
         JSGlobalContextRelease(context);
     }
     failed |= testTypedArrayCAPI();
-    failed |= testExecutionTimeLimit();
     failed |= testFunctionOverrides();
     failed |= testGlobalContextWithFinalizer();
     failed |= testPingPongStackOverflow();
@@ -2153,6 +2155,14 @@ int main(int argc, char* argv[])
     globalObjectPrivatePropertyTest();
 
     failed = finalizeMultithreadedMultiVMExecutionTest() || failed;
+
+    // Don't run this till after the MultithreadedMultiVMExecutionTest has finished.
+    // This is because testExecutionTimeLimit() modifies JIT options at runtime
+    // as part of its testing. This can wreak havoc on the rest of the system that
+    // expects the options to be frozen. Ideally, we'll find a way for testExecutionTimeLimit()
+    // to do its work without changing JIT options, but that is not easy to do.
+    // For now, we'll just run it here at the end as a workaround.
+    failed |= testExecutionTimeLimit();
 
     if (failed) {
         printf("FAIL: Some tests failed.\n");

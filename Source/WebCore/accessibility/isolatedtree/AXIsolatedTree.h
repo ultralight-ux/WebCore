@@ -27,66 +27,104 @@
 
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
 
-#include "AXIsolatedTreeNode.h"
+#include "AccessibilityObjectInterface.h"
 #include "PageIdentifier.h"
 #include <wtf/HashMap.h>
 #include <wtf/RefPtr.h>
 #include <wtf/ThreadSafeRefCounted.h>
 
+namespace WTF {
+class TextStream;
+}
+
 namespace WebCore {
 
+class AXIsolatedObject;
+class AXObjectCache;
 class Page;
 
-class AXIsolatedTree : public ThreadSafeRefCounted<AXIsolatedTree>, public CanMakeWeakPtr<AXIsolatedTree> {
-    WTF_MAKE_NONCOPYABLE(AXIsolatedTree); WTF_MAKE_FAST_ALLOCATED;
+typedef unsigned AXIsolatedTreeID;
 
+class AXIsolatedTree : public ThreadSafeRefCounted<AXIsolatedTree> {
+    WTF_MAKE_NONCOPYABLE(AXIsolatedTree); WTF_MAKE_FAST_ALLOCATED;
+    friend WTF::TextStream& operator<<(WTF::TextStream&, AXIsolatedTree&);
 public:
     static Ref<AXIsolatedTree> create();
     virtual ~AXIsolatedTree();
 
     static Ref<AXIsolatedTree> createTreeForPageID(PageIdentifier);
-    WEBCORE_EXPORT static Ref<AXIsolatedTree> initializePageTreeForID(PageIdentifier, AXObjectCache&);
-    WEBCORE_EXPORT static RefPtr<AXIsolatedTree> treeForPageID(PageIdentifier);
-    WEBCORE_EXPORT static RefPtr<AXIsolatedTree> treeForID(AXIsolatedTreeID);
+    static void removeTreeForPageID(PageIdentifier);
 
-    WEBCORE_EXPORT RefPtr<AXIsolatedTreeNode> rootNode();
-    WEBCORE_EXPORT RefPtr<AXIsolatedTreeNode> focusedUIElement();
-    RefPtr<AXIsolatedTreeNode> nodeForID(AXID) const;
-    static RefPtr<AXIsolatedTreeNode> nodeInTreeForID(AXIsolatedTreeID, AXID);
+    static RefPtr<AXIsolatedTree> treeForPageID(PageIdentifier);
+    static RefPtr<AXIsolatedTree> treeForID(AXIsolatedTreeID);
+    AXObjectCache* axObjectCache() const { return m_axObjectCache; }
+    void setAXObjectCache(AXObjectCache* axObjectCache) { m_axObjectCache = axObjectCache; }
 
-    // Call on main thread
-    void appendNodeChanges(Vector<Ref<AXIsolatedTreeNode>>&);
+    RefPtr<AXIsolatedObject> rootNode();
+    RefPtr<AXIsolatedObject> focusedNode();
+    RefPtr<AXIsolatedObject> nodeForID(AXID) const;
+    Vector<RefPtr<AXCoreObject>> objectsForIDs(Vector<AXID>) const;
+
+    struct NodeChange {
+        Ref<AXIsolatedObject> m_isolatedObject;
+        RetainPtr<AccessibilityObjectWrapper> m_wrapper;
+        NodeChange(AXIsolatedObject&, AccessibilityObjectWrapper*);
+        NodeChange(const NodeChange&);
+    };
+
+    void generateSubtree(AXCoreObject&, AXCoreObject*, bool attachWrapper);
+    void updateNode(AXCoreObject&);
+    void updateSubtree(AXCoreObject&);
+    void updateChildren(AXCoreObject&);
+
+    // Removes the given node leaving all descendants alone.
     void removeNode(AXID);
+    // Removes the given node and all its descendants.
+    void removeSubtree(AXID);
 
-    void setRootNodeID(AXID);
+    // Both setRootNodeID and setFocusedNodeID are called during the generation
+    // of the IsolatedTree.
+    // Focused node updates in AXObjectCache use setFocusNodeID.
+    void setRootNode(AXIsolatedObject*);
     void setFocusedNodeID(AXID);
-    
-    // Call on AX thread
-    WEBCORE_EXPORT void applyPendingChanges();
 
-    WEBCORE_EXPORT void setInitialRequestInProgress(bool);
-    AXIsolatedTreeID treeIdentifier() const { return m_treeID; }
+    // Called on AX thread from WebAccessibilityObjectWrapper methods.
+    // During layout tests, it is called on the main thread.
+    void applyPendingChanges();
+
+    AXIsolatedTreeID treeID() const { return m_treeID; }
 
 private:
     AXIsolatedTree();
+    void clear();
 
     static HashMap<AXIsolatedTreeID, Ref<AXIsolatedTree>>& treeIDCache();
     static HashMap<PageIdentifier, Ref<AXIsolatedTree>>& treePageCache();
 
-    // Only access on AX thread requesting data.
-    HashMap<AXID, Ref<AXIsolatedTreeNode>> m_readerThreadNodeMap;
-
-    // Written to by main thread under lock, accessed and applied by AX thread.
-    Vector<Ref<AXIsolatedTreeNode>> m_pendingAppends;
-    Vector<AXID> m_pendingRemovals;
-    AXID m_pendingFocusedNodeID;
-    AXID m_pendingRootNodeID;
-    Lock m_changeLogLock;
+    // Call on main thread
+    Ref<AXIsolatedObject> createSubtree(AXCoreObject&, AXID parentID, bool attachWrapper, Vector<NodeChange>&);
+    // Queues all pending additions to the tree as the result of a subtree generation.
+    void appendNodeChanges(Vector<NodeChange>&&);
+    // Called on main thread to update both m_nodeMap and m_pendingChildrenUpdates.
+    void updateChildrenIDs(AXID parentID, Vector<AXID>&& childrenIDs);
 
     AXIsolatedTreeID m_treeID;
-    AXID m_rootNodeID { InvalidAXID };
+    AXObjectCache* m_axObjectCache { nullptr };
+
+    // Only accessed on main thread.
+    HashMap<AXID, Vector<AXID>> m_nodeMap;
+    // Only accessed on AX thread requesting data.
+    HashMap<AXID, Ref<AXIsolatedObject>> m_readerThreadNodeMap;
+
+    // Written to by main thread under lock, accessed and applied by AX thread.
+    RefPtr<AXIsolatedObject> m_rootNode;
+    Vector<NodeChange> m_pendingAppends; // Nodes to be added to the tree and platform-wrapped.
+    Vector<AXID> m_pendingNodeRemovals; // Nodes to be removed from the tree.
+    Vector<AXID> m_pendingSubtreeRemovals; // Nodes whose subtrees are to be removed from the tree.
+    Vector<std::pair<AXID, Vector<AXID>>> m_pendingChildrenUpdates;
+    AXID m_pendingFocusedNodeID { InvalidAXID };
     AXID m_focusedNodeID { InvalidAXID };
-    bool m_initialRequestInProgress;
+    Lock m_changeLogLock;
 };
 
 } // namespace WebCore

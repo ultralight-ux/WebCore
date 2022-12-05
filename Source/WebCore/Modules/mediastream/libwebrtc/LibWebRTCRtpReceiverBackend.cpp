@@ -26,6 +26,8 @@
 #include "LibWebRTCRtpReceiverBackend.h"
 
 #include "LibWebRTCUtils.h"
+#include "RealtimeIncomingAudioSource.h"
+#include "RealtimeIncomingVideoSource.h"
 
 #if ENABLE(WEB_RTC) && USE(LIBWEBRTC)
 
@@ -39,6 +41,7 @@ RTCRtpParameters LibWebRTCRtpReceiverBackend::getParameters()
 static inline void fillRTCRtpContributingSource(RTCRtpContributingSource& source, const webrtc::RtpSource& rtcSource)
 {
     source.timestamp = rtcSource.timestamp_ms();
+    source.rtpTimestamp = rtcSource.rtp_timestamp();
     source.source = rtcSource.source_id();
     if (rtcSource.audio_level())
         source.audioLevel = (*rtcSource.audio_level() == 127) ? 0 : pow(10, -*rtcSource.audio_level() / 20);
@@ -77,6 +80,25 @@ Vector<RTCRtpSynchronizationSource> LibWebRTCRtpReceiverBackend::getSynchronizat
     }
     return sources;
 }
+
+Ref<RealtimeMediaSource> LibWebRTCRtpReceiverBackend::createSource()
+{
+    auto rtcTrack = m_rtcReceiver->track();
+    switch (m_rtcReceiver->media_type()) {
+    case cricket::MEDIA_TYPE_DATA:
+        break;
+    case cricket::MEDIA_TYPE_AUDIO: {
+        rtc::scoped_refptr<webrtc::AudioTrackInterface> audioTrack = static_cast<webrtc::AudioTrackInterface*>(rtcTrack.get());
+        return RealtimeIncomingAudioSource::create(WTFMove(audioTrack), fromStdString(rtcTrack->id()));
+    }
+    case cricket::MEDIA_TYPE_VIDEO: {
+        rtc::scoped_refptr<webrtc::VideoTrackInterface> videoTrack = static_cast<webrtc::VideoTrackInterface*>(rtcTrack.get());
+        return RealtimeIncomingVideoSource::create(WTFMove(videoTrack), fromStdString(rtcTrack->id()));
+    }
+    }
+    RELEASE_ASSERT_NOT_REACHED();
+}
+
 
 } // namespace WebCore
 

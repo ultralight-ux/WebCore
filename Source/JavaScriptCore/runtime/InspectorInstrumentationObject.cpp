@@ -27,12 +27,11 @@
 #include "InspectorInstrumentationObject.h"
 
 #include "JSCInlines.h"
-#include "Lookup.h"
 #include <wtf/DataLog.h>
 
 namespace JSC {
 
-EncodedJSValue JSC_HOST_CALL inspectorInstrumentationObjectLog(ExecState*);
+EncodedJSValue JSC_HOST_CALL inspectorInstrumentationObjectLog(JSGlobalObject*, CallFrame*);
 
 }
 
@@ -81,12 +80,12 @@ void InspectorInstrumentationObject::disable(VM& vm)
 
 // ------------------------------ Functions --------------------------------
 
-EncodedJSValue JSC_HOST_CALL inspectorInstrumentationObjectLog(ExecState* exec)
+EncodedJSValue JSC_HOST_CALL inspectorInstrumentationObjectLog(JSGlobalObject* globalObject, CallFrame* callFrame)
 {
-    VM& vm = exec->vm();
+    VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    JSValue target = exec->argument(0);
-    String value = target.toWTFString(exec);
+    JSValue target = callFrame->argument(0);
+    String value = target.toWTFString(globalObject);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
     dataLog(value, "\n");
     return JSValue::encode(jsUndefined());

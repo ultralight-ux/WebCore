@@ -26,11 +26,11 @@
 #include "config.h"
 #include "JITCode.h"
 
-#include "JSCInlines.h"
-#include "ProtoCallFrame.h"
 #include <wtf/PrintStream.h>
 
 namespace JSC {
+
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(DirectJITCode);
 
 JITCode::JITCode(JITType jitType, ShareAttribute shareAttribute)
     : m_jitType(jitType)
@@ -70,25 +70,29 @@ void JITCode::validateReferences(const TrackedReferences&)
 DFG::CommonData* JITCode::dfgCommon()
 {
     RELEASE_ASSERT_NOT_REACHED();
-    return 0;
+    return nullptr;
 }
 
 DFG::JITCode* JITCode::dfg()
 {
     RELEASE_ASSERT_NOT_REACHED();
-    return 0;
+    return nullptr;
 }
 
 FTL::JITCode* JITCode::ftl()
 {
     RELEASE_ASSERT_NOT_REACHED();
-    return 0;
+    return nullptr;
 }
 
 FTL::ForOSREntryJITCode* JITCode::ftlForOSREntry()
 {
     RELEASE_ASSERT_NOT_REACHED();
-    return 0;
+    return nullptr;
+}
+
+void JITCode::shrinkToFit(const ConcurrentJSLocker&)
+{
 }
 
 JITCodeWithCodeRef::JITCodeWithCodeRef(JITType jitType)

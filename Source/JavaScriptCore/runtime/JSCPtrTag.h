@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,10 +35,15 @@ using PtrTag = WTF::PtrTag;
     v(B3CCallPtrTag) \
     v(B3CompilationPtrTag) \
     v(BytecodePtrTag) \
-    v(CopyFunctionPtrTag) \
+    v(DOMJITFunctionPtrTag) \
     v(DisassemblyPtrTag) \
     v(ExceptionHandlerPtrTag) \
     v(ExecutableMemoryPtrTag) \
+    v(JITProbePtrTag) \
+    v(JITProbeTrampolinePtrTag) \
+    v(JITProbeExecutorPtrTag) \
+    v(JITProbePCPtrTag) \
+    v(JITProbeStackInitializationFunctionPtrTag) \
     v(JITThunkPtrTag) \
     v(JITStubRoutinePtrTag) \
     v(JSEntryPtrTag) \
@@ -67,9 +72,9 @@ FOR_EACH_JSC_PTRTAG(WTF_DECLARE_PTRTAG)
 #pragma warning(pop)
 #endif
 
+#if CPU(ARM64E) && ENABLE(PTRTAG_DEBUGGING)
 void initializePtrTagLookup();
-
-#if !CPU(ARM64E)
+#else
 inline void initializePtrTagLookup() { }
 #endif
 
