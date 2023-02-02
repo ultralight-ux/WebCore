@@ -26,9 +26,11 @@
 #include "config.h"
 #include "UserGestureIndicator.h"
 
+#include "DOMWindow.h"
 #include "Document.h"
 #include "Frame.h"
 #include "ResourceLoadObserver.h"
+#include "SecurityOrigin.h"
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Optional.h>
@@ -42,10 +44,54 @@ static RefPtr<UserGestureToken>& currentToken()
     return token;
 }
 
+UserGestureToken::UserGestureToken(ProcessingUserGestureState state, UserGestureType gestureType, Document* document)
+    : m_state(state)
+    , m_gestureType(gestureType)
+{
+    if (!document || !processingUserGesture())
+        return;
+
+    // User gesture is valid for the document that received the user gesture, all of its ancestors
+    // as well as all same-origin documents on the page.
+    m_documentsImpactedByUserGesture.add(*document);
+
+    auto* documentFrame = document->frame();
+    if (!documentFrame)
+        return;
+
+    for (auto* ancestorFrame = documentFrame->tree().parent(); ancestorFrame; ancestorFrame = ancestorFrame->tree().parent()) {
+        if (auto* ancestorDocument = ancestorFrame->document())
+            m_documentsImpactedByUserGesture.add(ancestorDocument);
+    }
+
+    auto& documentOrigin = document->securityOrigin();
+    for (auto* frame = &documentFrame->tree().top(); frame; frame = frame->tree().traverseNext()) {
+        auto* frameDocument = frame->document();
+        if (frameDocument && documentOrigin.canAccess(frameDocument->securityOrigin()))
+            m_documentsImpactedByUserGesture.add(*frameDocument);
+    }
+}
+
 UserGestureToken::~UserGestureToken()
 {
     for (auto& observer : m_destructionObservers)
         observer(*this);
+}
+
+static Seconds maxIntervalForUserGestureForwardingForFetch { 10 };
+const Seconds& UserGestureToken::maximumIntervalForUserGestureForwardingForFetch()
+{
+    return maxIntervalForUserGestureForwardingForFetch;
+}
+
+void UserGestureToken::setMaximumIntervalForUserGestureForwardingForFetchForTesting(Seconds value)
+{
+    maxIntervalForUserGestureForwardingForFetch = WTFMove(value);
+}
+
+bool UserGestureToken::isValidForDocument(Document& document) const
+{
+    return m_documentsImpactedByUserGesture.contains(document);
 }
 
 UserGestureIndicator::UserGestureIndicator(Optional<ProcessingUserGestureState> state, Document* document, UserGestureType gestureType, ProcessInteractionStyle processInteractionStyle)
@@ -54,10 +100,10 @@ UserGestureIndicator::UserGestureIndicator(Optional<ProcessingUserGestureState> 
     ASSERT(isMainThread());
 
     if (state)
-        currentToken() = UserGestureToken::create(state.value(), gestureType);
+        currentToken() = UserGestureToken::create(state.value(), gestureType, document);
 
-    if (document && currentToken()->processingUserGesture()) {
-        document->updateLastHandledUserGestureTimestamp(MonotonicTime::now());
+    if (document && currentToken()->processingUserGesture() && state) {
+        document->updateLastHandledUserGestureTimestamp(currentToken()->startTime());
         if (processInteractionStyle == ProcessInteractionStyle::Immediate)
             ResourceLoadObserver::shared().logUserInteractionWithReducedTimeResolution(document->topDocument());
         document->topDocument().setUserDidInteractWithPage(true);
@@ -67,10 +113,13 @@ UserGestureIndicator::UserGestureIndicator(Optional<ProcessingUserGestureState> 
                     frame->setHasHadUserInteraction();
             }
         }
+
+        if (auto* window = document->domWindow())
+            window->notifyActivated(currentToken()->startTime());
     }
 }
 
-UserGestureIndicator::UserGestureIndicator(RefPtr<UserGestureToken> token, UserGestureToken::GestureScope scope)
+UserGestureIndicator::UserGestureIndicator(RefPtr<UserGestureToken> token, UserGestureToken::GestureScope scope, UserGestureToken::IsPropagatedFromFetch isPropagatedFromFetch)
 {
     // Silently ignore UserGestureIndicators on non main threads.
     if (!isMainThread())
@@ -81,6 +130,7 @@ UserGestureIndicator::UserGestureIndicator(RefPtr<UserGestureToken> token, UserG
 
     if (token) {
         token->setScope(scope);
+        token->setIsPropagatedFromFetch(isPropagatedFromFetch);
         currentToken() = token;
     }
 }
@@ -93,6 +143,7 @@ UserGestureIndicator::~UserGestureIndicator()
     if (auto token = currentToken()) {
         token->resetDOMPasteAccess();
         token->resetScope();
+        token->resetIsPropagatedFromFetch();
     }
 
     currentToken() = m_previousToken;
@@ -106,12 +157,15 @@ RefPtr<UserGestureToken> UserGestureIndicator::currentUserGesture()
     return currentToken();
 }
 
-bool UserGestureIndicator::processingUserGesture()
+bool UserGestureIndicator::processingUserGesture(Document* document)
 {
     if (!isMainThread())
         return false;
 
-    return currentToken() ? currentToken()->processingUserGesture() : false;
+    if (!currentToken() || !currentToken()->processingUserGesture())
+        return false;
+
+    return !document || currentToken()->isValidForDocument(*document);
 }
 
 bool UserGestureIndicator::processingUserGestureForMedia()

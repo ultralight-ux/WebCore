@@ -27,8 +27,7 @@
 #include "PutByIdVariant.h"
 
 #include "CallLinkStatus.h"
-#include "JSCInlines.h"
-#include <wtf/ListDump.h>
+#include "HeapInlines.h"
 
 namespace JSC {
 
@@ -46,7 +45,7 @@ PutByIdVariant& PutByIdVariant::operator=(const PutByIdVariant& other)
     m_conditionSet = other.m_conditionSet;
     m_offset = other.m_offset;
     if (other.m_callLinkStatus)
-        m_callLinkStatus = std::make_unique<CallLinkStatus>(*other.m_callLinkStatus);
+        m_callLinkStatus = makeUnique<CallLinkStatus>(*other.m_callLinkStatus);
     else
         m_callLinkStatus = nullptr;
     return *this;
@@ -285,7 +284,7 @@ bool PutByIdVariant::finalize(VM& vm)
 
 void PutByIdVariant::dump(PrintStream& out) const
 {
-    dumpInContext(out, 0);
+    dumpInContext(out, nullptr);
 }
 
 void PutByIdVariant::dumpInContext(PrintStream& out, DumpContext* context) const

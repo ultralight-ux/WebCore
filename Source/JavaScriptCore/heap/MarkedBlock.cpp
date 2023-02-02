@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,13 +27,9 @@
 #include "MarkedBlock.h"
 
 #include "AlignedMemoryAllocator.h"
-#include "BlockDirectoryInlines.h"
 #include "FreeListInlines.h"
-#include "JSCast.h"
-#include "JSDestructibleObject.h"
-#include "JSCInlines.h"
+#include "JSCJSValueInlines.h"
 #include "MarkedBlockInlines.h"
-#include "SuperSampler.h"
 #include "SweepingScope.h"
 #include <wtf/CommaPrinter.h>
 
@@ -42,10 +38,11 @@ namespace MarkedBlockInternal {
 static constexpr bool verbose = false;
 }
 
-const size_t MarkedBlock::blockSize;
-
-static const bool computeBalance = false;
+static constexpr bool computeBalance = false;
 static size_t balance;
+
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(MarkedBlock);
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(MarkedBlockHandle);
 
 MarkedBlock::Handle* MarkedBlock::tryCreate(Heap& heap, AlignedMemoryAllocator* alignedMemoryAllocator)
 {
@@ -71,11 +68,9 @@ MarkedBlock::Handle* MarkedBlock::tryCreate(Heap& heap, AlignedMemoryAllocator* 
 
 MarkedBlock::Handle::Handle(Heap& heap, AlignedMemoryAllocator* alignedMemoryAllocator, void* blockSpace)
     : m_alignedMemoryAllocator(alignedMemoryAllocator)
-    , m_weakSet(heap.vm(), CellContainer())
+    , m_weakSet(heap.vm())
 {
-    m_block = new (NotNull, blockSpace) MarkedBlock(*heap.vm(), *this);
-    
-    m_weakSet.setContainer(*m_block);
+    m_block = new (NotNull, blockSpace) MarkedBlock(heap.vm(), *this);
     
     heap.didAllocateBlock(blockSize);
 }
@@ -124,12 +119,6 @@ void MarkedBlock::Handle::unsweepWithNoNewlyAllocated()
     m_isFreeListed = false;
 }
 
-void MarkedBlock::Handle::setIsFreeListed()
-{
-    m_directory->setIsEmpty(NoLockingNecessary, this, false);
-    m_isFreeListed = true;
-}
-
 void MarkedBlock::Handle::stopAllocating(const FreeList& freeList)
 {
     auto locker = holdLock(blockFooter().m_lock);
@@ -158,7 +147,7 @@ void MarkedBlock::Handle::stopAllocating(const FreeList& freeList)
     blockFooter().m_newlyAllocatedVersion = heap()->objectSpace().newlyAllocatedVersion();
 
     forEachCell(
-        [&] (HeapCell* cell, HeapCell::Kind) -> IterationStatus {
+        [&] (size_t, HeapCell* cell, HeapCell::Kind) -> IterationStatus {
             block().setNewlyAllocated(cell);
             return IterationStatus::Continue;
         });
@@ -214,7 +203,7 @@ void MarkedBlock::Handle::resumeAllocating(FreeList& freeList)
 
 void MarkedBlock::aboutToMarkSlow(HeapVersion markingVersion)
 {
-    ASSERT(vm()->heap.objectSpace().isMarking());
+    ASSERT(vm().heap.objectSpace().isMarking());
     auto locker = holdLock(footer().m_lock);
     
     if (!areMarksStale(markingVersion))
@@ -279,16 +268,16 @@ void MarkedBlock::resetMarks()
     footer().m_markingVersion = MarkedSpace::nullVersion;
 }
 
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
 void MarkedBlock::assertMarksNotStale()
 {
-    ASSERT(footer().m_markingVersion == vm()->heap.objectSpace().markingVersion());
+    ASSERT(footer().m_markingVersion == vm().heap.objectSpace().markingVersion());
 }
-#endif // !ASSERT_DISABLED
+#endif // ASSERT_ENABLED
 
 bool MarkedBlock::areMarksStale()
 {
-    return areMarksStale(vm()->heap.objectSpace().markingVersion());
+    return areMarksStale(vm().heap.objectSpace().markingVersion());
 }
 
 bool MarkedBlock::Handle::areMarksStale()
@@ -298,7 +287,7 @@ bool MarkedBlock::Handle::areMarksStale()
 
 bool MarkedBlock::isMarked(const void* p)
 {
-    return isMarked(vm()->heap.objectSpace().markingVersion(), p);
+    return isMarked(vm().heap.objectSpace().markingVersion(), p);
 }
 
 void MarkedBlock::Handle::didConsumeFreeList()
@@ -335,9 +324,9 @@ void MarkedBlock::Handle::removeFromDirectory()
     m_directory->removeBlock(this);
 }
 
-void MarkedBlock::Handle::didAddToDirectory(BlockDirectory* directory, size_t index)
+void MarkedBlock::Handle::didAddToDirectory(BlockDirectory* directory, unsigned index)
 {
-    ASSERT(m_index == std::numeric_limits<size_t>::max());
+    ASSERT(m_index == std::numeric_limits<unsigned>::max());
     ASSERT(!m_directory);
     
     RELEASE_ASSERT(directory->subspace()->alignedMemoryAllocator() == m_alignedMemoryAllocator);
@@ -367,29 +356,29 @@ void MarkedBlock::Handle::didAddToDirectory(BlockDirectory* directory, size_t in
 
 void MarkedBlock::Handle::didRemoveFromDirectory()
 {
-    ASSERT(m_index != std::numeric_limits<size_t>::max());
+    ASSERT(m_index != std::numeric_limits<unsigned>::max());
     ASSERT(m_directory);
     
-    m_index = std::numeric_limits<size_t>::max();
+    m_index = std::numeric_limits<unsigned>::max();
     m_directory = nullptr;
     blockFooter().m_subspace = nullptr;
 }
 
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
 void MarkedBlock::assertValidCell(VM& vm, HeapCell* cell) const
 {
-    RELEASE_ASSERT(&vm == this->vm());
+    RELEASE_ASSERT(&vm == &this->vm());
     RELEASE_ASSERT(const_cast<MarkedBlock*>(this)->handle().cellAlign(cell) == cell);
 }
-#endif
+#endif // ASSERT_ENABLED
 
 void MarkedBlock::Handle::dumpState(PrintStream& out)
 {
     CommaPrinter comma;
     directory()->forEachBitVectorWithName(
         holdLock(directory()->bitvectorLock()),
-        [&] (FastBitVector& bitvector, const char* name) {
-            out.print(comma, name, ":", bitvector[index()] ? "YES" : "no");
+        [&](auto vectorRef, const char* name) {
+            out.print(comma, name, ":", vectorRef[index()] ? "YES" : "no");
         });
 }
 

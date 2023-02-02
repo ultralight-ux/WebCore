@@ -26,17 +26,17 @@
 #include "config.h"
 #include "DirectEvalCodeCache.h"
 
-#include "JSCInlines.h"
+#include "JSCellInlines.h"
 
 namespace JSC {
 
-void DirectEvalCodeCache::setSlow(ExecState* exec, JSCell* owner, const String& evalSource, CallSiteIndex callSiteIndex, DirectEvalExecutable* evalExecutable)
+void DirectEvalCodeCache::setSlow(JSGlobalObject* globalObject, JSCell* owner, const String& evalSource, CallSiteIndex callSiteIndex, DirectEvalExecutable* evalExecutable)
 {
     if (!evalExecutable->allowDirectEvalCache())
         return;
 
     LockHolder locker(m_lock);
-    m_cacheMap.set(CacheKey(evalSource, callSiteIndex), WriteBarrier<DirectEvalExecutable>(exec->vm(), owner, evalExecutable));
+    m_cacheMap.set(CacheKey(evalSource, callSiteIndex), WriteBarrier<DirectEvalExecutable>(globalObject->vm(), owner, evalExecutable));
 }
 
 void DirectEvalCodeCache::clear()

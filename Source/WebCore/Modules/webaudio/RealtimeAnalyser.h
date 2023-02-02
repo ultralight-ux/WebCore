@@ -25,7 +25,6 @@
 #pragma once
 
 #include "AudioArray.h"
-#include "FFTFrame.h"
 #include <JavaScriptCore/Float32Array.h>
 #include <JavaScriptCore/Uint8Array.h>
 #include <memory>
@@ -35,6 +34,7 @@
 namespace WebCore {
 
 class AudioBus;
+class FFTFrame;
 
 class RealtimeAnalyser {
     WTF_MAKE_NONCOPYABLE(RealtimeAnalyser);
@@ -59,9 +59,10 @@ public:
     void setSmoothingTimeConstant(double k) { m_smoothingTimeConstant = k; }
     double smoothingTimeConstant() const { return m_smoothingTimeConstant; }
 
-    void getFloatFrequencyData(JSC::Float32Array*);
-    void getByteFrequencyData(JSC::Uint8Array*);
-    void getByteTimeDomainData(JSC::Uint8Array*);
+    void getFloatFrequencyData(JSC::Float32Array&);
+    void getByteFrequencyData(JSC::Uint8Array&);
+    void getFloatTimeDomainData(JSC::Float32Array&);
+    void getByteTimeDomainData(JSC::Uint8Array&);
 
     // The audio thread writes input data here.
     void writeInput(AudioBus*, size_t framesToProcess);

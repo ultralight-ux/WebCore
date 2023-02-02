@@ -44,13 +44,13 @@
 
 namespace WTF {
 
-enum class MemoryUsagePolicy {
+enum class MemoryUsagePolicy : uint8_t {
     Unrestricted, // Allocate as much as you want
     Conservative, // Maybe you don't cache every single thing
     Strict, // Time to start pinching pennies for real
 };
 
-enum class WebsamProcessState {
+enum class WebsamProcessState : uint8_t {
     Active,
     Inactive,
 };
@@ -61,7 +61,8 @@ enum class Synchronous { No, Yes };
 typedef WTF::Function<void(Critical, Synchronous)> LowMemoryHandler;
 
 class MemoryPressureHandler {
-    friend class WTF::NeverDestroyed<MemoryPressureHandler>;
+    WTF_MAKE_FAST_ALLOCATED;
+    friend class WTF::LazyNeverDestroyed<MemoryPressureHandler>;
 public:
     WTF_EXPORT_PRIVATE static MemoryPressureHandler& singleton();
 
@@ -69,7 +70,7 @@ public:
 
     WTF_EXPORT_PRIVATE void setShouldUsePeriodicMemoryMonitor(bool);
 
-#if OS(LINUX)
+#if OS(LINUX) || OS(FREEBSD)
     WTF_EXPORT_PRIVATE void triggerMemoryPressureEvent(bool isCritical);
 #endif
 
@@ -99,6 +100,7 @@ public:
 #endif
 
     class ReliefLogger {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         explicit ReliefLogger(const char *log)
             : m_logString(log)
@@ -126,6 +128,7 @@ public:
 
     private:
         struct MemoryUsage {
+            WTF_MAKE_STRUCT_FAST_ALLOCATED;
             MemoryUsage() = default;
             MemoryUsage(size_t resident, size_t physical)
                 : resident(resident)
@@ -177,23 +180,23 @@ private:
     void doesExceedInactiveLimitWhileActive();
     void doesNotExceedInactiveLimitWhileActive();
 
-    WebsamProcessState m_processState { WebsamProcessState::Inactive };
-
     unsigned m_pageCount { 0 };
 
-    LowMemoryHandler m_lowMemoryHandler;
-
-    std::atomic<bool> m_underMemoryPressure;
+    std::atomic<bool> m_underMemoryPressure { false };
     bool m_installed { false };
     bool m_isSimulatingMemoryPressure { false };
     bool m_shouldLogMemoryMemoryPressureEvents { true };
     bool m_hasInvokedDidExceedInactiveLimitWhileActiveCallback { false };
 
-    std::unique_ptr<RunLoop::Timer<MemoryPressureHandler>> m_measurementTimer;
+    WebsamProcessState m_processState { WebsamProcessState::Inactive };
+    
     MemoryUsagePolicy m_memoryUsagePolicy { MemoryUsagePolicy::Unrestricted };
+
+    std::unique_ptr<RunLoop::Timer<MemoryPressureHandler>> m_measurementTimer;
     WTF::Function<void()> m_memoryKillCallback;
     WTF::Function<void(bool)> m_memoryPressureStatusChangedCallback;
     WTF::Function<void()> m_didExceedInactiveLimitWhileActiveCallback;
+    LowMemoryHandler m_lowMemoryHandler;
 
 #if OS(WINDOWS)
     void windowsMeasurementTimerFired();
@@ -201,7 +204,7 @@ private:
     Win32Handle m_lowMemoryHandle;
 #endif
 
-#if OS(LINUX)
+#if OS(LINUX) || OS(FREEBSD)
     RunLoop::Timer<MemoryPressureHandler> m_holdOffTimer;
     void holdOffTimerFired();
 #endif

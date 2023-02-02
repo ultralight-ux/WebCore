@@ -102,7 +102,7 @@ void CurlRequestScheduler::startThreadIfNeeded()
 
         auto locker = holdLock(m_mutex);
         m_runThread = false;
-    });
+    }, ThreadType::Network);
 }
 
 void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
@@ -151,7 +151,7 @@ void CurlRequestScheduler::workerThread()
 
     ProfiledMemoryZone(MemoryTag::Network);
 
-    m_curlMultiHandle = std::make_unique<CurlMultiHandle>();
+    m_curlMultiHandle = makeUnique<CurlMultiHandle>();
     m_curlMultiHandle->setMaxConnects(m_maxConnects);
     m_curlMultiHandle->setMaxTotalConnections(m_maxTotalConnections);
     m_curlMultiHandle->setMaxHostConnections(m_maxHostConnections);

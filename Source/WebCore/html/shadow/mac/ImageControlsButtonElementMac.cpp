@@ -35,7 +35,6 @@
 #include "FrameSelection.h"
 #include "HTMLDivElement.h"
 #include "Page.h"
-#include "Range.h"
 #include "RenderBlockFlow.h"
 #include "RenderStyle.h"
 #include "RenderTheme.h"
@@ -94,14 +93,16 @@ RefPtr<ImageControlsButtonElementMac> ImageControlsButtonElementMac::tryCreate(D
     if (!document.page())
         return nullptr;
 
+    static MainThreadNeverDestroyed<const AtomString> xWebkitImageControlsButtonName("x-webkit-image-controls-button", AtomString::ConstructFromLiteral);
+
     auto button = adoptRef(*new ImageControlsButtonElementMac(document));
-    button->setAttributeWithoutSynchronization(HTMLNames::classAttr, AtomString("x-webkit-image-controls-button", AtomString::ConstructFromLiteral));
+    button->setAttributeWithoutSynchronization(HTMLNames::classAttr, xWebkitImageControlsButtonName);
 
     IntSize positionOffset = RenderTheme::singleton().imageControlsButtonPositionOffset();
-    button->setInlineStyleProperty(CSSPropertyTop, positionOffset.height(), CSSPrimitiveValue::CSS_PX);
+    button->setInlineStyleProperty(CSSPropertyTop, positionOffset.height(), CSSUnitType::CSS_PX);
 
     // FIXME: Why is right: 0px off the right edge of the parent?
-    button->setInlineStyleProperty(CSSPropertyRight, positionOffset.width(), CSSPrimitiveValue::CSS_PX);
+    button->setInlineStyleProperty(CSSPropertyRight, positionOffset.width(), CSSUnitType::CSS_PX);
 
     return WTFMove(button);
 }

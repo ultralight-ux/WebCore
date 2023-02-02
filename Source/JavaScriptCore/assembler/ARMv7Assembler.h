@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2019 Apple Inc. All rights reserved.
  * Copyright (C) 2010 University of Szeged
  *
  * Redistribution and use in source and binary forms, with or without
@@ -80,13 +80,13 @@ namespace RegisterNames {
 
     inline FPSingleRegisterID asSingle(FPDoubleRegisterID reg)
     {
-        ASSERT(reg < d16);
+        ASSERT(reg <= d15);
         return (FPSingleRegisterID)(reg << 1);
     }
 
     inline FPSingleRegisterID asSingleUpper(FPDoubleRegisterID reg)
     {
-        ASSERT(reg < d16);
+        ASSERT(reg <= d15);
         return (FPSingleRegisterID)((reg << 1) + 1);
     }
 
@@ -103,9 +103,9 @@ class ARMThumbImmediate {
     friend class ARMv7Assembler;
 
     typedef uint8_t ThumbImmediateType;
-    static const ThumbImmediateType TypeInvalid = 0;
-    static const ThumbImmediateType TypeEncoded = 1;
-    static const ThumbImmediateType TypeUInt16 = 2;
+    static constexpr ThumbImmediateType TypeInvalid = 0;
+    static constexpr ThumbImmediateType TypeEncoded = 1;
+    static constexpr ThumbImmediateType TypeUInt16 = 2;
 
     typedef union {
         int16_t asInt;
@@ -595,6 +595,8 @@ private:
         OP_VSQRT_T1     = 0xEEB0,
         OP_VCVTSD_T1    = 0xEEB0,
         OP_VCVTDS_T1    = 0xEEB0,
+        OP_VAND_T1      = 0xEF00,
+        OP_VORR_T1      = 0xEF20,
         OP_B_T3a        = 0xF000,
         OP_B_T4a        = 0xF000,
         OP_AND_imm_T1   = 0xF000,
@@ -653,6 +655,8 @@ private:
     } OpcodeID1;
 
     typedef enum {
+        OP_VAND_T1b      = 0x0010,
+        OP_VORR_T1b      = 0x0010,
         OP_VADD_T2b      = 0x0A00,
         OP_VDIVb         = 0x0A00,
         OP_FLDSb         = 0x0A00,
@@ -1029,9 +1033,13 @@ public:
         ASSERT(rn != ARMRegisters::pc); // LDR (literal)
         ASSERT(imm.isUInt12());
 
-        if (!((rt | rn) & 8) && imm.isUInt7())
+        if (!((rt | rn) & 8) && imm.isUInt7() && !(imm.getUInt7() % 4)) {
+            // We can only use Encoding T1 when imm is a multiple of 4.
+            // For details see A8.8.63 on ARM Architecture Reference
+            // Manual ARMv7-A and ARMv7-R edition available on
+            // https://static.docs.arm.com/ddi0406/cd/DDI0406C_d_armv7ar_arm.pdf
             m_formatter.oneWordOp5Imm5Reg3Reg3(OP_LDR_imm_T1, imm.getUInt7() >> 2, rn, rt);
-        else if ((rn == ARMRegisters::sp) && !(rt & 8) && imm.isUInt10())
+        } else if ((rn == ARMRegisters::sp) && !(rt & 8) && imm.isUInt10())
             m_formatter.oneWordOp5Reg3Imm8(OP_LDR_imm_T2, rt, static_cast<uint8_t>(imm.getUInt10() >> 2));
         else
             m_formatter.twoWordOp12Reg4Reg4Imm12(OP_LDR_imm_T3, rn, rt, imm.getUInt12());
@@ -1819,6 +1827,16 @@ public:
     }
 #endif
 
+    void vand(FPDoubleRegisterID rd, FPDoubleRegisterID rn, FPDoubleRegisterID rm)
+    {
+        m_formatter.vfpOp(OP_VAND_T1, OP_VAND_T1b, true, rn, rd, rm);
+    }
+
+    void vorr(FPDoubleRegisterID rd, FPDoubleRegisterID rn, FPDoubleRegisterID rm)
+    {
+        m_formatter.vfpOp(OP_VORR_T1, OP_VORR_T1b, true, rn, rd, rm);
+    }
+
     void vadd(FPDoubleRegisterID rd, FPDoubleRegisterID rn, FPDoubleRegisterID rm)
     {
         m_formatter.vfpOp(OP_VADD_T2, OP_VADD_T2b, true, rn, rd, rm);
@@ -1969,8 +1987,10 @@ public:
         return OP_NOP_T2a | (OP_NOP_T2b << 16);
     }
 
-    template <typename CopyFunction>
-    static void fillNops(void* base, size_t size, CopyFunction copy)
+    using CopyFunction = void*(&)(void*, const void*, size_t);
+
+    template <CopyFunction copy>
+    ALWAYS_INLINE static void fillNops(void* base, size_t size)
     {
         RELEASE_ASSERT(!(size % sizeof(int16_t)));
 
@@ -2123,32 +2143,31 @@ public:
         return m_jumpsToLink;
     }
 
-    typedef void* (*CopyFunction)(void*, const void*, size_t);
-
-    static void ALWAYS_INLINE link(LinkRecord& record, uint8_t* from, const uint8_t* fromInstruction8, uint8_t* to, CopyFunction copy)
+    template<CopyFunction copy>
+    static void ALWAYS_INLINE link(LinkRecord& record, uint8_t* from, const uint8_t* fromInstruction8, uint8_t* to)
     {
         const uint16_t* fromInstruction = reinterpret_cast_ptr<const uint16_t*>(fromInstruction8);
         switch (record.linkType()) {
         case LinkJumpT1:
-            linkJumpT1(record.condition(), reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to, copy);
+            linkJumpT1<copy>(record.condition(), reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to);
             break;
         case LinkJumpT2:
-            linkJumpT2(reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to, copy);
+            linkJumpT2<copy>(reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to);
             break;
         case LinkJumpT3:
-            linkJumpT3(record.condition(), reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to, copy);
+            linkJumpT3<copy>(record.condition(), reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to);
             break;
         case LinkJumpT4:
-            linkJumpT4(reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to, copy);
+            linkJumpT4<copy>(reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to);
             break;
         case LinkConditionalJumpT4:
-            linkConditionalJumpT4(record.condition(), reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to, copy);
+            linkConditionalJumpT4<copy>(record.condition(), reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to);
             break;
         case LinkConditionalBX:
-            linkConditionalBX(record.condition(), reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to, copy);
+            linkConditionalBX<copy>(record.condition(), reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to);
             break;
         case LinkBX:
-            linkBX(reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to, copy);
+            linkBX<copy>(reinterpret_cast_ptr<uint16_t*>(from), fromInstruction, to);
             break;
         default:
             RELEASE_ASSERT_NOT_REACHED();
@@ -2375,7 +2394,7 @@ public:
 
     static void cacheFlush(void* code, size_t size)
     {
-#if OS(IOS_FAMILY)
+#if OS(DARWIN)
         sys_cache_control(kCacheFunctionPrepareForExecution, code, size);
 #elif OS(LINUX)
         size_t page = pageSize();
@@ -2598,8 +2617,9 @@ private:
         intptr_t relative = reinterpret_cast<intptr_t>(target) - (reinterpret_cast<intptr_t>(instruction));
         return ((relative << 7) >> 7) == relative;
     }
-    
-    static void linkJumpT1(Condition cond, uint16_t* writeTarget, const uint16_t* instruction, void* target, CopyFunction copy = performJITMemcpy)
+
+    template<CopyFunction copy = performJITMemcpy>
+    static void linkJumpT1(Condition cond, uint16_t* writeTarget, const uint16_t* instruction, void* target)
     {
         // FIMXE: this should be up in the MacroAssembler layer. :-(        
         ASSERT(!(reinterpret_cast<intptr_t>(instruction) & 1));
@@ -2617,8 +2637,9 @@ private:
         uint16_t newInstruction = OP_B_T1 | ((cond & 0xf) << 8) | ((relative & 0x1fe) >> 1);
         copy(writeTarget - 1, &newInstruction, sizeof(uint16_t));
     }
-    
-    static void linkJumpT2(uint16_t* writeTarget, const uint16_t* instruction, void* target, CopyFunction copy = performJITMemcpy)
+
+    template<CopyFunction copy = performJITMemcpy>
+    static void linkJumpT2(uint16_t* writeTarget, const uint16_t* instruction, void* target)
     {
         // FIMXE: this should be up in the MacroAssembler layer. :-(        
         ASSERT(!(reinterpret_cast<intptr_t>(instruction) & 1));
@@ -2637,7 +2658,8 @@ private:
         copy(writeTarget - 1, &newInstruction, sizeof(uint16_t));
     }
     
-    static void linkJumpT3(Condition cond, uint16_t* writeTarget, const uint16_t* instruction, void* target, CopyFunction copy = performJITMemcpy)
+    template<CopyFunction copy = performJITMemcpy>
+    static void linkJumpT3(Condition cond, uint16_t* writeTarget, const uint16_t* instruction, void* target)
     {
         // FIMXE: this should be up in the MacroAssembler layer. :-(
         ASSERT(!(reinterpret_cast<intptr_t>(instruction) & 1));
@@ -2654,7 +2676,8 @@ private:
         copy(writeTarget - 2, instructions, 2 * sizeof(uint16_t));
     }
     
-    static void linkJumpT4(uint16_t* writeTarget, const uint16_t* instruction, void* target, CopyFunction copy = performJITMemcpy)
+    template<CopyFunction copy = performJITMemcpy>
+    static void linkJumpT4(uint16_t* writeTarget, const uint16_t* instruction, void* target)
     {
         // FIMXE: this should be up in the MacroAssembler layer. :-(        
         ASSERT(!(reinterpret_cast<intptr_t>(instruction) & 1));
@@ -2673,8 +2696,9 @@ private:
         instructions[1] = OP_B_T4b | ((relative & 0x800000) >> 10) | ((relative & 0x400000) >> 11) | ((relative & 0xffe) >> 1);
         copy(writeTarget - 2, instructions, 2 * sizeof(uint16_t));
     }
-    
-    static void linkConditionalJumpT4(Condition cond, uint16_t* writeTarget, const uint16_t* instruction, void* target, CopyFunction copy = performJITMemcpy)
+
+    template<CopyFunction copy = performJITMemcpy>
+    static void linkConditionalJumpT4(Condition cond, uint16_t* writeTarget, const uint16_t* instruction, void* target)
     {
         // FIMXE: this should be up in the MacroAssembler layer. :-(        
         ASSERT(!(reinterpret_cast<intptr_t>(instruction) & 1));
@@ -2682,10 +2706,11 @@ private:
         
         uint16_t newInstruction = ifThenElse(cond) | OP_IT;
         copy(writeTarget - 3, &newInstruction, sizeof(uint16_t));
-        linkJumpT4(writeTarget, instruction, target, copy);
+        linkJumpT4<copy>(writeTarget, instruction, target);
     }
-    
-    static void linkBX(uint16_t* writeTarget, const uint16_t* instruction, void* target, CopyFunction copy = performJITMemcpy)
+
+    template<CopyFunction copy = performJITMemcpy>
+    static void linkBX(uint16_t* writeTarget, const uint16_t* instruction, void* target)
     {
         // FIMXE: this should be up in the MacroAssembler layer. :-(
         ASSERT_UNUSED(instruction, !(reinterpret_cast<intptr_t>(instruction) & 1));
@@ -2704,8 +2729,9 @@ private:
 
         copy(writeTarget - 5, instructions, 5 * sizeof(uint16_t));
     }
-    
-    static void linkConditionalBX(Condition cond, uint16_t* writeTarget, const uint16_t* instruction, void* target, CopyFunction copy = performJITMemcpy)
+
+    template<CopyFunction copy = performJITMemcpy>
+    static void linkConditionalBX(Condition cond, uint16_t* writeTarget, const uint16_t* instruction, void* target)
     {
         // FIMXE: this should be up in the MacroAssembler layer. :-(        
         ASSERT(!(reinterpret_cast<intptr_t>(instruction) & 1));

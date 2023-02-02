@@ -105,9 +105,12 @@ public:
     ExceptionOr<void> setIncompleteImageBorderEnabled(bool);
     ExceptionOr<void> setShouldDispatchSyntheticMouseEventsWhenModifyingSelection(bool);
     ExceptionOr<void> setShouldDispatchSyntheticMouseOutAfterSyntheticClick(bool);
+    ExceptionOr<void> setAnimatedImageDebugCanvasDrawingEnabled(bool);
 
     using FrameFlatteningValue = FrameFlattening;
     ExceptionOr<void> setFrameFlattening(FrameFlatteningValue);
+
+    ExceptionOr<void> setEditableRegionEnabled(bool);
     
     static void setAllowsAnySSLCertificate(bool);
 
@@ -121,17 +124,22 @@ public:
     void setForcedDisplayIsMonochromeAccessibilityValue(ForcedAccessibilityValue);
     ForcedAccessibilityValue forcedPrefersReducedMotionAccessibilityValue() const;
     void setForcedPrefersReducedMotionAccessibilityValue(ForcedAccessibilityValue);
+    ForcedAccessibilityValue forcedSupportsHighDynamicRangeValue() const;
+    void setForcedSupportsHighDynamicRangeValue(ForcedAccessibilityValue);
 
     // RuntimeEnabledFeatures.
     static void setIndexedDBWorkersEnabled(bool);
     static void setWebGL2Enabled(bool);
     static void setWebGPUEnabled(bool);
-    static void setWebVREnabled(bool);
+    static void setPictureInPictureAPIEnabled(bool);
     static void setScreenCaptureEnabled(bool);
+    static void setFetchAPIKeepAliveEnabled(bool);
 
     static bool webAnimationsCSSIntegrationEnabled();
 
     void setShouldDeactivateAudioSession(bool);
+    
+    void setStorageAccessAPIPerPageScopeEnabled(bool);
 
 private:
     explicit InternalSettings(Page*);
@@ -170,7 +178,7 @@ private:
         bool m_imagesEnabled;
         bool m_preferMIMETypeForImages;
         Seconds m_minimumDOMTimerInterval;
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
         bool m_shouldDisplaySubtitles;
         bool m_shouldDisplayCaptions;
         bool m_shouldDisplayTextDescriptions;
@@ -203,6 +211,7 @@ private:
         bool m_shouldDispatchSyntheticMouseEventsWhenModifyingSelection;
         bool m_shouldDispatchSyntheticMouseOutAfterSyntheticClick { false };
         bool m_shouldDeactivateAudioSession;
+        bool m_animatedImageDebugCanvasDrawingEnabled;
         UserInterfaceDirectionPolicy m_userInterfaceDirectionPolicy;
         TextDirection m_systemLayoutDirection;
         PDFImageCachingPolicy m_pdfImageCachingPolicy;
@@ -215,8 +224,8 @@ private:
         // Runtime enabled settings.
         bool m_indexedDBWorkersEnabled;
         bool m_webGL2Enabled;
-        bool m_webVREnabled;
         bool m_setScreenCaptureEnabled;
+        bool m_fetchAPIKeepAliveAPIEnabled;
         
         bool m_shouldMockBoldSystemFontForAccessibility;
 #if USE(AUDIO_SESSION)

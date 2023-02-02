@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011, 2013 Google Inc.  All rights reserved.
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -32,7 +32,7 @@
 #include "config.h"
 #include "VTTCue.h"
 
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
 
 #include "CSSPropertyNames.h"
 #include "CSSValueKeywords.h"
@@ -47,6 +47,7 @@
 #include "ScriptDisallowedScope.h"
 #include "Text.h"
 #include "TextTrack.h"
+#include "TextTrackCueGeneric.h"
 #include "TextTrackCueList.h"
 #include "VTTRegionList.h"
 #include "VTTScanner.h"
@@ -59,13 +60,11 @@
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(VTTCueBox);
 WTF_MAKE_ISO_ALLOCATED_IMPL(VTTCue);
+WTF_MAKE_ISO_ALLOCATED_IMPL(VTTCueBox);
 
 // This constant should correspond with the percentage returned by CaptionUserPreferences::captionFontSizeScaleAndImportance.
-const static double DEFAULTCAPTIONFONTSIZEPERCENTAGE = 5;
-
-static const int undefinedPosition = -1;
+constexpr double DEFAULTCAPTIONFONTSIZEPERCENTAGE = 5;
 
 static const CSSValueID displayWritingModeMap[] = {
     CSSValueHorizontalTb, CSSValueVerticalRl, CSSValueVerticalLr
@@ -126,31 +125,19 @@ static const String& verticalGrowingRightKeyword()
 
 // ----------------------------
 
-Ref<VTTCueBox> VTTCueBox::create(Document& document, VTTCue& cue)
-{
-    VTTCueBox& cueBox = *new VTTCueBox(document, cue);
-    cueBox.setPseudo(VTTCueBox::vttCueBoxShadowPseudoId());
-    return adoptRef(cueBox);
-}
-
 VTTCueBox::VTTCueBox(Document& document, VTTCue& cue)
-    : HTMLElement(divTag, document)
-    , m_cue(makeWeakPtr(cue))
+    : TextTrackCueBox(document, cue)
 {
-    setPseudo(vttCueBoxShadowPseudoId());
-}
-
-VTTCue* VTTCueBox::getCue() const
-{
-    return m_cue.get();
 }
 
 void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
 {
-    if (!m_cue)
+    auto textTrackCue = getCue();
+    ASSERT(!textTrackCue || is<VTTCue>(textTrackCue));
+    if (!is<VTTCue>(textTrackCue))
         return;
 
-    auto cue = makeRef(*m_cue);
+    auto cue = makeRef(downcast<VTTCue>(*textTrackCue));
 
     // FIXME: Apply all the initial CSS positioning properties. http://wkb.ug/79916
     if (!cue->regionId().isEmpty()) {
@@ -175,13 +162,15 @@ void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
     auto position = cue->getCSSPosition();
 
     // the 'top' property must be set to top,
-    setInlineStyleProperty(CSSPropertyTop, position.second, CSSPrimitiveValue::CSS_PERCENTAGE);
+    setInlineStyleProperty(CSSPropertyTop, position.second, CSSUnitType::CSS_PERCENTAGE);
 
     // the 'left' property must be set to left
     if (cue->vertical() == horizontalKeyword())
-        setInlineStyleProperty(CSSPropertyLeft, position.first, CSSPrimitiveValue::CSS_PERCENTAGE);
-    else if (cue->vertical() == verticalGrowingRightKeyword())
-        setInlineStyleProperty(CSSPropertyLeft, makeString("calc(-", FormattedNumber::fixedWidth(videoSize.width(), 2), "px - ", FormattedNumber::fixedWidth(cue->getCSSSize(), 2), "px)"));
+        setInlineStyleProperty(CSSPropertyLeft, position.first, CSSUnitType::CSS_PERCENTAGE);
+    else if (cue->vertical() == verticalGrowingRightKeyword()) {
+        // FIXME: Why use calc to do the math instead of doing the subtraction here?
+        setInlineStyleProperty(CSSPropertyLeft, makeString("calc(-", videoSize.width(), "px - ", cue->getCSSSize(), "px)"));
+    }
 
     double authorFontSize = std::min(videoSize.width(), videoSize.height()) * DEFAULTCAPTIONFONTSIZEPERCENTAGE / 100.0;
     double multiplier = 1.0;
@@ -199,19 +188,19 @@ void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
     double newCueSize = std::min(cue->getCSSSize() * multiplier, 100.0);
     // the 'width' property must be set to width, and the 'height' property  must be set to height
     if (cue->vertical() == horizontalKeyword()) {
-        setInlineStyleProperty(CSSPropertyWidth, newCueSize, CSSPrimitiveValue::CSS_PERCENTAGE);
+        setInlineStyleProperty(CSSPropertyWidth, newCueSize, CSSUnitType::CSS_PERCENTAGE);
         setInlineStyleProperty(CSSPropertyHeight, CSSValueAuto);
         setInlineStyleProperty(CSSPropertyMinWidth, "min-content");
-        setInlineStyleProperty(CSSPropertyMaxWidth, maxSize, CSSPrimitiveValue::CSS_PERCENTAGE);
+        setInlineStyleProperty(CSSPropertyMaxWidth, maxSize, CSSUnitType::CSS_PERCENTAGE);
         if ((alignment == CSSValueMiddle || alignment == CSSValueCenter) && multiplier != 1.0)
-            setInlineStyleProperty(CSSPropertyLeft, static_cast<double>(position.first - (newCueSize - cue->getCSSSize()) / 2), CSSPrimitiveValue::CSS_PERCENTAGE);
+            setInlineStyleProperty(CSSPropertyLeft, static_cast<double>(position.first - (newCueSize - cue->getCSSSize()) / 2), CSSUnitType::CSS_PERCENTAGE);
     } else {
         setInlineStyleProperty(CSSPropertyWidth, CSSValueAuto);
-        setInlineStyleProperty(CSSPropertyHeight, newCueSize, CSSPrimitiveValue::CSS_PERCENTAGE);
+        setInlineStyleProperty(CSSPropertyHeight, newCueSize, CSSUnitType::CSS_PERCENTAGE);
         setInlineStyleProperty(CSSPropertyMinHeight, "min-content");
-        setInlineStyleProperty(CSSPropertyMaxHeight, maxSize, CSSPrimitiveValue::CSS_PERCENTAGE);
+        setInlineStyleProperty(CSSPropertyMaxHeight, maxSize, CSSUnitType::CSS_PERCENTAGE);
         if ((alignment == CSSValueMiddle || alignment == CSSValueCenter) && multiplier != 1.0)
-            setInlineStyleProperty(CSSPropertyTop, static_cast<double>(position.second - (newCueSize - cue->getCSSSize()) / 2), CSSPrimitiveValue::CSS_PERCENTAGE);
+            setInlineStyleProperty(CSSPropertyTop, static_cast<double>(position.second - (newCueSize - cue->getCSSSize()) / 2), CSSUnitType::CSS_PERCENTAGE);
     }
 
     // The 'text-align' property on the (root) List of WebVTT Node Objects must
@@ -231,8 +220,7 @@ void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
         // of the way across the height of the video's rendering area, while
         // maintaining the relative positions of the boxes in boxes to each
         // other.
-        setInlineStyleProperty(CSSPropertyTransform,
-            makeString("translate(", FormattedNumber::fixedWidth(-position.first, 2), "%, ", FormattedNumber::fixedWidth(-position.second, 2), "%)"));
+        setInlineStyleProperty(CSSPropertyTransform, makeString("translate(", -position.first, "%, ", -position.second, "%)"));
 
         setInlineStyleProperty(CSSPropertyWhiteSpace, CSSValuePre);
     }
@@ -242,12 +230,6 @@ void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
     cue->element().setInlineStyleProperty(CSSPropertyOverflow, CSSValueVisible);
 }
 
-const AtomString& VTTCueBox::vttCueBoxShadowPseudoId()
-{
-    static NeverDestroyed<const AtomString> trackDisplayBoxShadowPseudoId("-webkit-media-text-track-display", AtomString::ConstructFromLiteral);
-    return trackDisplayBoxShadowPseudoId;
-}
-
 RenderPtr<RenderElement> VTTCueBox::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
     return createRenderer<RenderVTTCue>(*this, WTFMove(style));
@@ -255,57 +237,47 @@ RenderPtr<RenderElement> VTTCueBox::createElementRenderer(RenderStyle&& style, c
 
 // ----------------------------
 
-const AtomString& VTTCue::cueBackdropShadowPseudoId()
+Ref<VTTCue> VTTCue::create(Document& document, double start, double end, String&& content)
 {
-    static NeverDestroyed<const AtomString> cueBackdropShadowPseudoId("-webkit-media-text-track-display-backdrop", AtomString::ConstructFromLiteral);
-    return cueBackdropShadowPseudoId;
+    return adoptRef(*new VTTCue(document, MediaTime::createWithDouble(start), MediaTime::createWithDouble(end), WTFMove(content)));
 }
 
-Ref<VTTCue> VTTCue::create(ScriptExecutionContext& context, const WebVTTCueData& data)
+Ref<VTTCue> VTTCue::create(Document& document, const WebVTTCueData& data)
 {
-    return adoptRef(*new VTTCue(context, data));
+    return adoptRef(*new VTTCue(document, data));
 }
 
-VTTCue::VTTCue(ScriptExecutionContext& context, const MediaTime& start, const MediaTime& end, const String& content)
-    : TextTrackCue(context, start, end)
-    , m_content(content)
+VTTCue::VTTCue(Document& document, const MediaTime& start, const MediaTime& end, String&& content)
+    : TextTrackCue(document, start, end)
+    , m_content(WTFMove(content))
+    , m_originalStartTime(MediaTime::zeroTime())
 {
-    initialize(context);
+    initialize();
 }
 
-VTTCue::VTTCue(ScriptExecutionContext& context, const WebVTTCueData& cueData)
-    : TextTrackCue(context, MediaTime::zeroTime(), MediaTime::zeroTime())
+VTTCue::VTTCue(Document& document, const WebVTTCueData& cueData)
+    : TextTrackCue(document, MediaTime::zeroTime(), MediaTime::zeroTime())
+    , m_originalStartTime(cueData.originalStartTime())
 {
-    initialize(context);
+    initialize();
     setText(cueData.content());
     setStartTime(cueData.startTime());
     setEndTime(cueData.endTime());
     setId(cueData.id());
     setCueSettings(cueData.settings());
-    m_originalStartTime = cueData.originalStartTime();
 }
 
 VTTCue::~VTTCue()
 {
 }
 
-void VTTCue::initialize(ScriptExecutionContext& context)
+void VTTCue::initialize()
 {
-    m_linePosition = undefinedPosition;
-    m_computedLinePosition = undefinedPosition;
-    m_textPosition = std::numeric_limits<double>::quiet_NaN();
-    m_cueSize = 100;
-    m_writingDirection = Horizontal;
-    m_cueAlignment = Center;
-    m_webVTTNodeTree = nullptr;
-    m_cueBackdropBox = HTMLDivElement::create(downcast<Document>(context));
-    m_cueHighlightBox = HTMLSpanElement::create(spanTag, downcast<Document>(context));
-    m_displayDirection = CSSValueLtr;
-    m_displaySize = 0;
+    m_cueBackdropBox = HTMLDivElement::create(ownerDocument());
+    m_cueHighlightBox = HTMLSpanElement::create(spanTag, ownerDocument());
     m_snapToLines = true;
     m_displayTreeShouldChange = true;
     m_notifyRegion = true;
-    m_originalStartTime = MediaTime::zeroTime();
 }
 
 Ref<VTTCueBox> VTTCue::createDisplayTree()
@@ -419,11 +391,11 @@ ExceptionOr<void> VTTCue::setPosition(const LineAndPositionSetting& position)
             return { };
         textPosition = std::numeric_limits<double>::quiet_NaN();
     } else {
-        if (!(WTF::get<double>(position) >= 0 && WTF::get<double>(position) <= 100))
+        textPosition = WTF::get<double>(position);
+        if (!(textPosition >= 0 && textPosition <= 100))
             return Exception { IndexSizeError };
 
         // Otherwise, set the text track cue line position to the new value.
-        textPosition = WTF::get<double>(position);
         if (m_textPosition == textPosition)
             return { };
     }
@@ -524,17 +496,17 @@ void VTTCue::createWebVTTNodeTree()
         m_webVTTNodeTree = WebVTTParser::createDocumentFragmentFromCueText(ownerDocument(), m_content);
 }
 
-void VTTCue::copyWebVTTNodeToDOMTree(ContainerNode* webVTTNode, ContainerNode* parent)
+static void copyWebVTTNodeToDOMTree(ContainerNode& webVTTNode, Node& parent)
 {
-    for (RefPtr<Node> node = webVTTNode->firstChild(); node; node = node->nextSibling()) {
+    for (RefPtr<Node> node = webVTTNode.firstChild(); node; node = node->nextSibling()) {
         RefPtr<Node> clonedNode;
         if (is<WebVTTElement>(*node))
-            clonedNode = downcast<WebVTTElement>(*node).createEquivalentHTMLElement(ownerDocument());
+            clonedNode = downcast<WebVTTElement>(*node).createEquivalentHTMLElement(parent.document());
         else
             clonedNode = node->cloneNode(false);
-        parent->appendChild(*clonedNode);
+        parent.appendChild(*clonedNode);
         if (is<ContainerNode>(*node))
-            copyWebVTTNodeToDOMTree(downcast<ContainerNode>(node.get()), downcast<ContainerNode>(clonedNode.get()));
+            copyWebVTTNodeToDOMTree(downcast<ContainerNode>(*node), *clonedNode);
     }
 }
 
@@ -545,7 +517,7 @@ RefPtr<DocumentFragment> VTTCue::getCueAsHTML()
         return nullptr;
 
     auto clonedFragment = DocumentFragment::create(ownerDocument());
-    copyWebVTTNodeToDOMTree(m_webVTTNodeTree.get(), clonedFragment.ptr());
+    copyWebVTTNodeToDOMTree(*m_webVTTNodeTree, clonedFragment);
     return clonedFragment;
 }
 
@@ -867,11 +839,11 @@ void VTTCue::updateDisplayTree(const MediaTime& movieTime)
     m_cueHighlightBox->appendChild(*referenceTree);
 }
 
-VTTCueBox& VTTCue::getDisplayTree(const IntSize& videoSize, int fontSize)
+RefPtr<TextTrackCueBox> VTTCue::getDisplayTree(const IntSize& videoSize, int fontSize)
 {
     Ref<VTTCueBox> displayTree = displayTreeInternal();
     if (!m_displayTreeShouldChange || !track()->isRendered())
-        return displayTree.get();
+        return displayTree;
 
     // 10.1 - 10.10
     calculateDisplayParameters();
@@ -917,27 +889,37 @@ VTTCueBox& VTTCue::getDisplayTree(const IntSize& videoSize, int fontSize)
         }
     }
 
+    if (m_fontSize)
+        displayTree->setInlineStyleProperty(CSSPropertyFontSize, m_fontSize, CSSUnitType::CSS_PX, m_fontSizeIsImportant);
+
     m_displayTreeShouldChange = false;
+
+    if (track()) {
+        if (auto* regions = track()->regions()) {
+            if (auto region = regions->getRegionById(m_regionId))
+                region->cueStyleChanged();
+        }
+    }
 
     // 10.15. Let cue's text track cue display state have the CSS boxes in
     // boxes.
-    return displayTree.get();
+    return displayTree;
 }
 
 void VTTCue::removeDisplayTree()
 {
+    if (!hasDisplayTree())
+        return;
+
     // The region needs to be informed about the cue removal.
     if (m_notifyRegion && track()) {
         if (VTTRegionList* regions = track()->regions()) {
             if (RefPtr<VTTRegion> region = regions->getRegionById(m_regionId)) {
-                if (hasDisplayTree())
+                if (m_displayTree)
                     region->willRemoveTextTrackCueBox(m_displayTree.get());
             }
         }
     }
-
-    if (!hasDisplayTree())
-        return;
 
     // The display tree is never exposed to author scripts so it's safe to dispatch events here.
     ScriptDisallowedScope::EventAllowedScope allowedScope(displayTreeInternal());
@@ -1173,10 +1155,7 @@ void VTTCue::setCueSettings(const String& inputString)
     // If cue's line position is not auto or cue's size is not 100 or cue's
     // writing direction is not horizontal, but cue's region identifier is not
     // the empty string, let cue's region identifier be the empty string.
-    if (m_regionId.isEmpty())
-        return;
-
-    if (m_linePosition != undefinedPosition || m_cueSize != 100 || m_writingDirection != Horizontal)
+    if (!m_regionId.isEmpty() && (m_linePosition != undefinedPosition || m_cueSize != 100 || m_writingDirection != Horizontal))
         m_regionId = emptyString();
 }
 
@@ -1208,84 +1187,42 @@ std::pair<double, double> VTTCue::getCSSPosition() const
     return m_displayPosition;
 }
 
-bool VTTCue::cueContentsMatch(const TextTrackCue& cue) const
+bool VTTCue::cueContentsMatch(const TextTrackCue& otherTextTrackCue) const
 {
-    RefPtr<const VTTCue> vttCue = toVTTCue(&cue);
-    if (text() != vttCue->text())
-        return false;
-    if (cueSettings() != vttCue->cueSettings())
-        return false;
-    if (position() != vttCue->position())
-        return false;
-    if (line() != vttCue->line())
-        return false;
-    if (size() != vttCue->size())
-        return false;
-    if (align() != vttCue->align())
-        return false;
-    
-    return true;
+    auto& other = downcast<VTTCue>(otherTextTrackCue);
+    return TextTrackCue::cueContentsMatch(other)
+        && text() == other.text()
+        && cueSettings() == other.cueSettings()
+        && position() == other.position()
+        && line() == other.line()
+        && size() == other.size()
+        && align() == other.align();
 }
 
-bool VTTCue::isEqual(const TextTrackCue& cue, TextTrackCue::CueMatchRules match) const
-{
-    if (!TextTrackCue::isEqual(cue, match))
-        return false;
-
-    if (cue.cueType() != WebVTT)
-        return false;
-
-    return cueContentsMatch(cue);
-}
-
-bool VTTCue::doesExtendCue(const TextTrackCue& cue) const
-{
-    if (!cueContentsMatch(cue))
-        return false;
-    
-    return TextTrackCue::doesExtendCue(cue);
-}
-    
 void VTTCue::setFontSize(int fontSize, const IntSize&, bool important)
 {
-    if (!hasDisplayTree() || !fontSize)
+    if (fontSize == m_fontSize && important == m_fontSizeIsImportant)
         return;
 
     m_displayTreeShouldChange = true;
-    displayTreeInternal().setInlineStyleProperty(CSSPropertyFontSize, fontSize, CSSPrimitiveValue::CSS_PX, important);
-}
-
-VTTCue* toVTTCue(TextTrackCue* cue)
-{
-    return const_cast<VTTCue*>(toVTTCue(const_cast<const TextTrackCue*>(cue)));
-}
-
-const VTTCue* toVTTCue(const TextTrackCue* cue)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(cue->isRenderable());
-    return static_cast<const VTTCue*>(cue);
-}
-
-String VTTCue::toJSONString() const
-{
-    auto object = JSON::Object::create();
-    toJSON(object.get());
-
-    return object->toJSONString();
+    m_fontSizeIsImportant = important;
+    m_fontSize = fontSize;
 }
 
 void VTTCue::toJSON(JSON::Object& object) const
 {
     TextTrackCue::toJSON(object);
 
+    // FIXME: Seems dangerous to include this based on LOG_DISABLED. Can we just include it unconditionally?
 #if !LOG_DISABLED
     object.setString("text"_s, text());
 #endif
+
     object.setString("vertical"_s, vertical());
     object.setBoolean("snapToLines"_s, snapToLines());
     object.setDouble("line"_s, m_linePosition);
     if (textPositionIsAuto())
-        object.setString("position"_s, "auto");
+        object.setString("position"_s, "auto"_s);
     else
         object.setDouble("position"_s, m_textPosition);
     object.setInteger("size"_s, m_cueSize);

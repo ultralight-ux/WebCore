@@ -38,5 +38,5 @@ msvc_runtime_library_to_msvc_flags(UL_SKIA_CFLAGS ${CMAKE_MSVC_RUNTIME_LIBRARY})
 
 get_filename_component(WIN_PLATFORM_DEFINES_H "win_platform_defines.h" REALPATH BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
-add_cache_flag(CMAKE_C_FLAGS_INIT "/FI ${WIN_PLATFORM_DEFINES_H}")                       
-add_cache_flag(CMAKE_CXX_FLAGS_INIT "/FI ${WIN_PLATFORM_DEFINES_H}")
+#add_cache_flag(CMAKE_C_FLAGS_INIT "/FI ${WIN_PLATFORM_DEFINES_H}")                       
+#add_cache_flag(CMAKE_CXX_FLAGS_INIT "/FI ${WIN_PLATFORM_DEFINES_H}")

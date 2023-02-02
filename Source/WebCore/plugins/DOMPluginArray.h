@@ -20,19 +20,22 @@
 
 #pragma once
 
-#include "DOMPlugin.h"
-#include "DOMWindowProperty.h"
+#include "Navigator.h"
 #include "ScriptWrappable.h"
+#include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
+#include <wtf/Vector.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
-class PluginData;
+class DOMPlugin;
+class Navigator;
 
-class DOMPluginArray final : public ScriptWrappable, public RefCounted<DOMPluginArray>, public DOMWindowProperty {
+class DOMPluginArray final : public ScriptWrappable, public RefCounted<DOMPluginArray> {
     WTF_MAKE_ISO_ALLOCATED(DOMPluginArray);
 public:
-    static Ref<DOMPluginArray> create(DOMWindow* window) { return adoptRef(*new DOMPluginArray(window)); }
+    static Ref<DOMPluginArray> create(Navigator&, Vector<Ref<DOMPlugin>>&& = { }, Vector<Ref<DOMPlugin>>&& = { });
     ~DOMPluginArray();
 
     unsigned length() const;
@@ -42,9 +45,15 @@ public:
 
     void refresh(bool reloadPages);
 
+    Navigator* navigator() { return m_navigator.get(); }
+    
 private:
-    explicit DOMPluginArray(DOMWindow*);
-    PluginData* pluginData() const;
+    explicit DOMPluginArray(Navigator&, Vector<Ref<DOMPlugin>>&&, Vector<Ref<DOMPlugin>>&&);
+
+
+    WeakPtr<Navigator> m_navigator;
+    Vector<Ref<DOMPlugin>> m_publiclyVisiblePlugins;
+    Vector<Ref<DOMPlugin>> m_additionalWebVisibilePlugins;
 };
 
 } // namespace WebCore

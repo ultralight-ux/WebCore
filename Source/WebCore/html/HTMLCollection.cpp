@@ -23,7 +23,6 @@
 #include "config.h"
 #include "HTMLCollection.h"
 
-#include "CachedHTMLCollection.h"
 #include "HTMLNames.h"
 #include "NodeRareData.h"
 #include <wtf/IsoMallocInlines.h>
@@ -205,7 +204,7 @@ void HTMLCollection::updateNamedElementCache() const
     if (hasNamedElementCache())
         return;
 
-    auto cache = std::make_unique<CollectionNamedElementCache>();
+    auto cache = makeUnique<CollectionNamedElementCache>();
 
     unsigned size = length();
     for (unsigned i = 0; i < size; ++i) {

@@ -25,41 +25,49 @@
 
 #pragma once
 
-#if ENABLE(INTL)
-
-#include "JSDestructibleObject.h"
+#include "JSObject.h"
 #include <unicode/unum.h>
 #include <unicode/upluralrules.h>
-#include <unicode/uvernum.h>
-
-#define HAVE_ICU_PLURALRULES_KEYWORDS (U_ICU_VERSION_MAJOR_NUM >= 59)
-#define HAVE_ICU_PLURALRULES_WITH_FORMAT (U_ICU_VERSION_MAJOR_NUM >= 59)
 
 namespace JSC {
 
-class IntlPluralRulesConstructor;
-class JSBoundFunction;
+enum class RelevantExtensionKey : uint8_t;
 
-class IntlPluralRules final : public JSDestructibleObject {
+class IntlPluralRules final : public JSNonFinalObject {
 public:
-    typedef JSDestructibleObject Base;
+    using Base = JSNonFinalObject;
+
+    static constexpr bool needsDestruction = true;
+
+    static void destroy(JSCell* cell)
+    {
+        static_cast<IntlPluralRules*>(cell)->IntlPluralRules::~IntlPluralRules();
+    }
+
+    template<typename CellType, SubspaceAccess mode>
+    static IsoSubspace* subspaceFor(VM& vm)
+    {
+        return vm.intlPluralRulesSpace<mode>();
+    }
 
     static IntlPluralRules* create(VM&, Structure*);
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
     DECLARE_INFO;
 
-    void initializePluralRules(ExecState&, JSValue locales, JSValue options);
-    JSValue select(ExecState&, double value);
-    JSObject* resolvedOptions(ExecState&);
-
-protected:
-    IntlPluralRules(VM&, Structure*);
-    void finishCreation(VM&);
-    static void destroy(JSCell*);
-    static void visitChildren(JSCell*, SlotVisitor&);
+    void initializePluralRules(JSGlobalObject*, JSValue locales, JSValue options);
+    JSValue select(JSGlobalObject*, double value) const;
+    JSObject* resolvedOptions(JSGlobalObject*) const;
 
 private:
+    IntlPluralRules(VM&, Structure*);
+    void finishCreation(VM&);
+    static void visitChildren(JSCell*, SlotVisitor&);
+
+    static Vector<String> localeData(const String&, RelevantExtensionKey);
+
+    enum class Type : bool { Cardinal, Ordinal };
+
     struct UPluralRulesDeleter {
         void operator()(UPluralRules*) const;
     };
@@ -67,19 +75,16 @@ private:
         void operator()(UNumberFormat*) const;
     };
 
-    bool m_initializedPluralRules { false };
     std::unique_ptr<UPluralRules, UPluralRulesDeleter> m_pluralRules;
     std::unique_ptr<UNumberFormat, UNumberFormatDeleter> m_numberFormat;
 
     String m_locale;
-    UPluralType m_type { UPLURAL_TYPE_CARDINAL };
     unsigned m_minimumIntegerDigits { 1 };
     unsigned m_minimumFractionDigits { 0 };
     unsigned m_maximumFractionDigits { 3 };
     Optional<unsigned> m_minimumSignificantDigits;
     Optional<unsigned> m_maximumSignificantDigits;
+    Type m_type { Type::Cardinal };
 };
 
 } // namespace JSC
-
-#endif // ENABLE(INTL)

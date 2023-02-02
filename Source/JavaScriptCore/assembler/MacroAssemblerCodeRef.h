@@ -25,9 +25,9 @@
 
 #pragma once
 
-#include "ExecutableAllocator.h"
 #include "JSCPtrTag.h"
 #include <wtf/DataLog.h>
+#include <wtf/MetaAllocatorHandle.h>
 #include <wtf/PrintStream.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/CString.h>
@@ -54,9 +54,75 @@
 
 namespace JSC {
 
+typedef WTF::MetaAllocatorHandle ExecutableMemoryHandle;
 template<PtrTag> class MacroAssemblerCodePtr;
 
 enum OpcodeID : unsigned;
+
+// CFunctionPtr can only be used to hold C/C++ functions.
+class CFunctionPtr {
+public:
+    using Ptr = void(*)();
+
+    CFunctionPtr() { }
+    CFunctionPtr(std::nullptr_t) { }
+
+    template<typename ReturnType, typename... Arguments>
+    constexpr CFunctionPtr(ReturnType(&ptr)(Arguments...))
+        : m_ptr(reinterpret_cast<Ptr>(&ptr))
+    { }
+
+    template<typename ReturnType, typename... Arguments>
+    explicit CFunctionPtr(ReturnType(*ptr)(Arguments...))
+        : m_ptr(reinterpret_cast<Ptr>(ptr))
+    {
+        assertIsCFunctionPtr(m_ptr);
+    }
+
+    // MSVC doesn't seem to treat functions with different calling conventions as
+    // different types; these methods are already defined for fastcall, below.
+#if CALLING_CONVENTION_IS_STDCALL && !OS(WINDOWS)
+    template<typename ReturnType, typename... Arguments>
+    constexpr CFunctionPtr(ReturnType(CDECL &ptr)(Arguments...))
+        : m_ptr(reinterpret_cast<Ptr>(&ptr))
+    { }
+
+    template<typename ReturnType, typename... Arguments>
+    explicit CFunctionPtr(ReturnType(CDECL *ptr)(Arguments...))
+        : m_ptr(reinterpret_cast<Ptr>(ptr))
+    {
+        assertIsCFunctionPtr(m_ptr);
+    }
+
+#endif // CALLING_CONVENTION_IS_STDCALL && !OS(WINDOWS)
+
+#if COMPILER_SUPPORTS(FASTCALL_CALLING_CONVENTION)
+    template<typename ReturnType, typename... Arguments>
+    constexpr CFunctionPtr(ReturnType(FASTCALL &ptr)(Arguments...))
+        : m_ptr(reinterpret_cast<Ptr>(&ptr))
+    { }
+
+    template<typename ReturnType, typename... Arguments>
+    explicit CFunctionPtr(ReturnType(FASTCALL *ptr)(Arguments...))
+        : m_ptr(reinterpret_cast<Ptr>(ptr))
+    {
+        assertIsCFunctionPtr(m_ptr);
+    }
+#endif // COMPILER_SUPPORTS(FASTCALL_CALLING_CONVENTION)
+
+    constexpr Ptr get() const { return m_ptr; }
+    void* address() const { return reinterpret_cast<void*>(m_ptr); }
+
+    explicit operator bool() const { return !!m_ptr; }
+    bool operator!() const { return !m_ptr; }
+
+    bool operator==(const CFunctionPtr& other) const { return m_ptr == other.m_ptr; }
+    bool operator!=(const CFunctionPtr& other) const { return m_ptr != other.m_ptr; }
+
+private:
+    Ptr m_ptr { nullptr };
+};
+
 
 // FunctionPtr:
 //
@@ -170,13 +236,6 @@ public:
 
     explicit ReturnAddressPtr(const void* value)
         : m_value(value)
-    {
-        ASSERT_VALID_CODE_POINTER(m_value);
-    }
-
-    template<PtrTag tag>
-    explicit ReturnAddressPtr(FunctionPtr<tag> function)
-        : m_value(untagCodePtr<tag>(function.executableAddress()))
     {
         ASSERT_VALID_CODE_POINTER(m_value);
     }
@@ -343,7 +402,7 @@ struct MacroAssemblerCodePtrHash {
     {
         return a == b;
     }
-    static const bool safeToCompareToEmptyOrDeleted = true;
+    static constexpr bool safeToCompareToEmptyOrDeleted = true;
 };
 
 // MacroAssemblerCodeRef:
@@ -376,7 +435,6 @@ public:
         : m_codePtr(executableMemory->start().retaggedPtr<tag>())
         , m_executableMemory(WTFMove(executableMemory))
     {
-        ASSERT(m_executableMemory->isManaged());
         ASSERT(m_executableMemory->start());
         ASSERT(m_codePtr);
     }
@@ -472,9 +530,7 @@ inline FunctionPtr<tag>::FunctionPtr(MacroAssemblerCodePtr<tag> ptr)
 namespace WTF {
 
 template<typename T> struct DefaultHash;
-template<JSC::PtrTag tag> struct DefaultHash<JSC::MacroAssemblerCodePtr<tag>> {
-    typedef JSC::MacroAssemblerCodePtrHash<tag> Hash;
-};
+template<JSC::PtrTag tag> struct DefaultHash<JSC::MacroAssemblerCodePtr<tag>> : JSC::MacroAssemblerCodePtrHash<tag> { };
 
 template<typename T> struct HashTraits;
 template<JSC::PtrTag tag> struct HashTraits<JSC::MacroAssemblerCodePtr<tag>> : public CustomHashTraits<JSC::MacroAssemblerCodePtr<tag>> { };

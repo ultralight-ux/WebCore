@@ -113,7 +113,7 @@ public:
     bool isAudio() const override { return m_box.kind() == MockTrackBox::Audio; }
     bool isText() const override { return m_box.kind() == MockTrackBox::Text; }
 
-protected:
+private:
     MockMediaDescription(const MockTrackBox& box) : m_box(box) { }
     MockTrackBox m_box;
 };
@@ -220,7 +220,7 @@ void MockSourceBufferPrivate::removedFromMediaSource()
 
 MediaPlayer::ReadyState MockSourceBufferPrivate::readyState() const
 {
-    return m_mediaSource ? m_mediaSource->player().readyState() : MediaPlayer::HaveNothing;
+    return m_mediaSource ? m_mediaSource->player().readyState() : MediaPlayer::ReadyState::HaveNothing;
 }
 
 void MockSourceBufferPrivate::setReadyState(MediaPlayer::ReadyState readyState)
@@ -270,7 +270,7 @@ bool MockSourceBufferPrivate::canSwitchToType(const ContentType& contentType)
     MediaEngineSupportParameters parameters;
     parameters.isMediaSource = true;
     parameters.type = contentType;
-    return MockMediaPlayerMediaSource::supportsType(parameters) != MediaPlayer::IsNotSupported;
+    return MockMediaPlayerMediaSource::supportsType(parameters) != MediaPlayer::SupportsType::IsNotSupported;
 }
 
 void MockSourceBufferPrivate::enqueueSample(Ref<MediaSample>&& sample, const AtomString&)

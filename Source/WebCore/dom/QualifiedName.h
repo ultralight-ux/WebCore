@@ -32,10 +32,14 @@ struct QualifiedNameComponents {
     StringImpl* m_namespace;
 };
 
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(QualifiedName);
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(QualifiedNameQualifiedNameImpl);
+
 class QualifiedName {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(QualifiedName);
 public:
     class QualifiedNameImpl : public RefCounted<QualifiedNameImpl> {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(QualifiedNameQualifiedNameImpl);
     public:
         static Ref<QualifiedNameImpl> create(const AtomString& prefix, const AtomString& localName, const AtomString& namespaceURI)
         {
@@ -100,7 +104,7 @@ public:
     WEBCORE_EXPORT static void init();
 
 private:
-    static QualifiedNameImpl* hashTableDeletedValue() { return RefPtr<QualifiedNameImpl>::hashTableDeletedValue(); }
+    static QualifiedNameImpl* hashTableDeletedValue() { return RefPtr<QualifiedNameImpl>::PtrTraits::hashTableDeletedValue(); }
     
     RefPtr<QualifiedNameImpl> m_impl;
 };
@@ -150,9 +154,7 @@ namespace WTF {
     
     template<typename T> struct DefaultHash;
 
-    template<> struct DefaultHash<WebCore::QualifiedName> {
-        typedef WebCore::QualifiedNameHash Hash;
-    };
+    template<> struct DefaultHash<WebCore::QualifiedName> : WebCore::QualifiedNameHash { };
     
     template<> struct HashTraits<WebCore::QualifiedName> : SimpleClassHashTraits<WebCore::QualifiedName> {
         static const bool emptyValueIsZero = false;

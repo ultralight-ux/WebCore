@@ -33,7 +33,7 @@ namespace JSC {
 class Identifier;
 
 enum {
-    // Token Bitfield: 0b000000000RTE000IIIIPPPPKUXXXXXXX
+    // Token Bitfield: 0b000000000RTE00IIIIPPPPKUXXXXXXXX
     // R = right-associative bit
     // T = unterminated error flag
     // E = error flag
@@ -43,12 +43,12 @@ enum {
     // U = unary operator flag
     //
     // We must keep the upper 8bit (1byte) region empty. JSTokenType must be 24bits.
-    UnaryOpTokenFlag = 128,
-    KeywordTokenFlag = 256,
-    BinaryOpTokenPrecedenceShift = 9,
+    UnaryOpTokenFlag = 1 << 8,
+    KeywordTokenFlag = 1 << 9,
+    BinaryOpTokenPrecedenceShift = 10,
     BinaryOpTokenAllowsInPrecedenceAdditionalShift = 4,
     BinaryOpTokenPrecedenceMask = 15 << BinaryOpTokenPrecedenceShift,
-    ErrorTokenFlag = 1 << (BinaryOpTokenAllowsInPrecedenceAdditionalShift + BinaryOpTokenPrecedenceShift + 7),
+    ErrorTokenFlag = 1 << (BinaryOpTokenAllowsInPrecedenceAdditionalShift + BinaryOpTokenPrecedenceShift + 6),
     UnterminatedErrorTokenFlag = ErrorTokenFlag << 1,
     RightAssociativeBinaryOpTokenFlag = UnterminatedErrorTokenFlag << 1
 };
@@ -85,7 +85,7 @@ enum JSTokenType {
     DEBUGGER,
     ELSE,
     IMPORT,
-    EXPORT,
+    EXPORT_,
     CLASSTOKEN,
     EXTENDS,
     SUPER,
@@ -114,6 +114,7 @@ enum JSTokenType {
     DOUBLE,
     BIGINT,
     IDENT,
+    PRIVATENAME,
     STRING,
     TEMPLATE,
     REGEXP,
@@ -129,13 +130,17 @@ enum JSTokenType {
     LSHIFTEQUAL,
     RSHIFTEQUAL,
     URSHIFTEQUAL,
-    ANDEQUAL,
     MODEQUAL,
     POWEQUAL,
-    XOREQUAL,
+    BITANDEQUAL,
+    BITXOREQUAL,
+    BITOREQUAL,
+    COALESCEEQUAL,
     OREQUAL,
+    ANDEQUAL,
     DOTDOTDOT,
     ARROWFUNCTION,
+    QUESTIONDOT,
     LastUntaggedToken,
 
     // Begin tagged tokens
@@ -148,30 +153,31 @@ enum JSTokenType {
     TYPEOF = 6 | UnaryOpTokenFlag | KeywordTokenFlag,
     VOIDTOKEN = 7 | UnaryOpTokenFlag | KeywordTokenFlag,
     DELETETOKEN = 8 | UnaryOpTokenFlag | KeywordTokenFlag,
-    OR = 0 | BINARY_OP_PRECEDENCE(1),
-    AND = 1 | BINARY_OP_PRECEDENCE(2),
-    BITOR = 2 | BINARY_OP_PRECEDENCE(3),
-    BITXOR = 3 | BINARY_OP_PRECEDENCE(4),
-    BITAND = 4 | BINARY_OP_PRECEDENCE(5),
-    EQEQ = 5 | BINARY_OP_PRECEDENCE(6),
-    NE = 6 | BINARY_OP_PRECEDENCE(6),
-    STREQ = 7 | BINARY_OP_PRECEDENCE(6),
-    STRNEQ = 8 | BINARY_OP_PRECEDENCE(6),
-    LT = 9 | BINARY_OP_PRECEDENCE(7),
-    GT = 10 | BINARY_OP_PRECEDENCE(7),
-    LE = 11 | BINARY_OP_PRECEDENCE(7),
-    GE = 12 | BINARY_OP_PRECEDENCE(7),
-    INSTANCEOF = 13 | BINARY_OP_PRECEDENCE(7) | KeywordTokenFlag,
-    INTOKEN = 14 | IN_OP_PRECEDENCE(7) | KeywordTokenFlag,
-    LSHIFT = 15 | BINARY_OP_PRECEDENCE(8),
-    RSHIFT = 16 | BINARY_OP_PRECEDENCE(8),
-    URSHIFT = 17 | BINARY_OP_PRECEDENCE(8),
-    PLUS = 18 | BINARY_OP_PRECEDENCE(9) | UnaryOpTokenFlag,
-    MINUS = 19 | BINARY_OP_PRECEDENCE(9) | UnaryOpTokenFlag,
-    TIMES = 20 | BINARY_OP_PRECEDENCE(10),
-    DIVIDE = 21 | BINARY_OP_PRECEDENCE(10),
-    MOD = 22 | BINARY_OP_PRECEDENCE(10),
-    POW = 23 | BINARY_OP_PRECEDENCE(11) | RightAssociativeBinaryOpTokenFlag, // Make sure that POW has the highest operator precedence.
+    COALESCE = 0 | BINARY_OP_PRECEDENCE(1),
+    OR = 0 | BINARY_OP_PRECEDENCE(2),
+    AND = 0 | BINARY_OP_PRECEDENCE(3),
+    BITOR = 0 | BINARY_OP_PRECEDENCE(4),
+    BITXOR = 0 | BINARY_OP_PRECEDENCE(5),
+    BITAND = 0 | BINARY_OP_PRECEDENCE(6),
+    EQEQ = 0 | BINARY_OP_PRECEDENCE(7),
+    NE = 1 | BINARY_OP_PRECEDENCE(7),
+    STREQ = 2 | BINARY_OP_PRECEDENCE(7),
+    STRNEQ = 3 | BINARY_OP_PRECEDENCE(7),
+    LT = 0 | BINARY_OP_PRECEDENCE(8),
+    GT = 1 | BINARY_OP_PRECEDENCE(8),
+    LE = 2 | BINARY_OP_PRECEDENCE(8),
+    GE = 3 | BINARY_OP_PRECEDENCE(8),
+    INSTANCEOF = 4 | BINARY_OP_PRECEDENCE(8) | KeywordTokenFlag,
+    INTOKEN = 5 | IN_OP_PRECEDENCE(8) | KeywordTokenFlag,
+    LSHIFT = 0 | BINARY_OP_PRECEDENCE(9),
+    RSHIFT = 1 | BINARY_OP_PRECEDENCE(9),
+    URSHIFT = 2 | BINARY_OP_PRECEDENCE(9),
+    PLUS = 0 | BINARY_OP_PRECEDENCE(10) | UnaryOpTokenFlag,
+    MINUS = 1 | BINARY_OP_PRECEDENCE(10) | UnaryOpTokenFlag,
+    TIMES = 0 | BINARY_OP_PRECEDENCE(11),
+    DIVIDE = 1 | BINARY_OP_PRECEDENCE(11),
+    MOD = 2 | BINARY_OP_PRECEDENCE(11),
+    POW = 0 | BINARY_OP_PRECEDENCE(12) | RightAssociativeBinaryOpTokenFlag, // Make sure that POW has the highest operator precedence.
     ERRORTOK = 0 | ErrorTokenFlag,
     UNTERMINATED_IDENTIFIER_ESCAPE_ERRORTOK = 0 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
     INVALID_IDENTIFIER_ESCAPE_ERRORTOK = 1 | ErrorTokenFlag,
@@ -190,12 +196,20 @@ enum JSTokenType {
     UNTERMINATED_REGEXP_LITERAL_ERRORTOK = 14 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
     INVALID_TEMPLATE_LITERAL_ERRORTOK = 15 | ErrorTokenFlag,
     UNEXPECTED_ESCAPE_ERRORTOK = 16 | ErrorTokenFlag,
+    INVALID_UNICODE_ENCODING_ERRORTOK = 17 | ErrorTokenFlag,
+    INVALID_IDENTIFIER_UNICODE_ERRORTOK = 18 | ErrorTokenFlag,
 };
 static_assert(static_cast<unsigned>(POW) <= 0x00ffffffU, "JSTokenType must be 24bits.");
 
 struct JSTextPosition {
     JSTextPosition() = default;
-    JSTextPosition(int _line, int _offset, int _lineStartOffset) : line(_line), offset(_offset), lineStartOffset(_lineStartOffset) { }
+    JSTextPosition(int _line, int _offset, int _lineStartOffset) 
+        : line(_line)
+        , offset(_offset)
+        , lineStartOffset(_lineStartOffset)
+    { 
+        checkConsistency();
+    }
 
     JSTextPosition operator+(int adjustment) const { return JSTextPosition(line, offset + adjustment, lineStartOffset); }
     JSTextPosition operator+(unsigned adjustment) const { return *this + static_cast<int>(adjustment); }
@@ -215,9 +229,19 @@ struct JSTextPosition {
         return !(*this == other);
     }
 
-    int line { 0 };
-    int offset { 0 };
-    int lineStartOffset { 0 };
+    int column() const { return offset - lineStartOffset; }
+    void checkConsistency()
+    {
+        // FIXME: We should test ASSERT(offset >= lineStartOffset); but that breaks a lot of tests.
+        ASSERT(line >= 0);
+        ASSERT(offset >= 0);
+        ASSERT(lineStartOffset >= 0);
+    }
+
+    // FIXME: these should be unsigned.
+    int line { -1 };
+    int offset { -1 };
+    int lineStartOffset { -1 };
 };
 
 union JSTokenData {

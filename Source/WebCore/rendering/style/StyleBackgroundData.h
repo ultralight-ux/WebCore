@@ -27,6 +27,7 @@
 #include "Color.h"
 #include "FillLayer.h"
 #include "OutlineValue.h"
+#include <wtf/DataRef.h>
 #include <wtf/RefCounted.h>
 #include <wtf/Ref.h>
 
@@ -42,13 +43,17 @@ public:
 
     bool isEquivalentForPainting(const StyleBackgroundData&) const;
 
-    FillLayer background;
+    DataRef<FillLayer> background;
     Color color;
     OutlineValue outline;
+
+    void dump(TextStream&, DumpStyleValues = DumpStyleValues::All) const;
 
 private:
     StyleBackgroundData();
     StyleBackgroundData(const StyleBackgroundData&);
 };
+
+WTF::TextStream& operator<<(WTF::TextStream&, const StyleBackgroundData&);
 
 } // namespace WebCore

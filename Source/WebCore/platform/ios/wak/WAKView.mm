@@ -284,15 +284,15 @@ static void _WAKCopyWrapper(const void *value, void *context)
 {
     CFArrayRef subviews = WKViewGetSubviews([self _viewRef]);
     if (!subviews)
-        return [NSArray array];
+        return @[ ];
     
     CFIndex count = CFArrayGetCount(subviews);
     if (count == 0)
-        return [NSArray array];
+        return @[ ];
     
     NSMutableArray *result = [NSMutableArray arrayWithCapacity:count];
     if (!result)
-        return [NSArray array];
+        return @[ ];
     
     CFArrayApplyFunction(subviews, CFRangeMake(0, count), _WAKCopyWrapper, (void*)result);
     
@@ -471,15 +471,15 @@ static void _WAKCopyWrapper(const void *value, void *context)
 static CGInterpolationQuality toCGInterpolationQuality(WebCore::InterpolationQuality quality)
 {
     switch (quality) {
-    case WebCore::InterpolationDefault:
+    case WebCore::InterpolationQuality::Default:
         return kCGInterpolationDefault;
-    case WebCore::InterpolationNone:
+    case WebCore::InterpolationQuality::DoNotInterpolate:
         return kCGInterpolationNone;
-    case WebCore::InterpolationLow:
+    case WebCore::InterpolationQuality::Low:
         return kCGInterpolationLow;
-    case WebCore::InterpolationMedium:
+    case WebCore::InterpolationQuality::Medium:
         return kCGInterpolationMedium;
-    case WebCore::InterpolationHigh:
+    case WebCore::InterpolationQuality::High:
         return kCGInterpolationHigh;
     default:
         ASSERT_NOT_REACHED();

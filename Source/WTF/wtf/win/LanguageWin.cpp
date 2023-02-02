@@ -48,7 +48,7 @@ static String localeInfo(LCTYPE localeType, const String& fallback)
     return localeName;
 #else
     LANGID langID = GetUserDefaultUILanguage();
-    int localeChars = GetLocaleInfo(langID, localeType, 0, 0);
+    int localeChars = GetLocaleInfo(langID, localeType, nullptr, 0);
     if (!localeChars)
         return fallback;
     UChar* localeNameBuf;
@@ -66,7 +66,7 @@ static String localeInfo(LCTYPE localeType, const String& fallback)
 
 static String platformLanguage()
 {
-    std::lock_guard<Lock> lock(platformLanguageMutex);
+    auto locker = holdLock(platformLanguageMutex);
 
     static String computedDefaultLanguage;
     if (!computedDefaultLanguage.isEmpty())

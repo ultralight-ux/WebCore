@@ -70,6 +70,7 @@ adcampaignid
 addestination
 autocomplete
 autofocus
+autopictureinpicture
 autoplay
 autosave
 axis
@@ -115,14 +116,19 @@ dir
 direction
 dirname
 disabled
+disablepictureinpicture
+disableremoteplayback
 disposition
 download
 draggable
+dropzone
 webkitdropzone
 enctype
 end
+enterkeyhint
 event
 expanded
+exportparts
 face
 filename
 focused
@@ -165,6 +171,7 @@ language
 leftmargin
 link
 list
+loading
 longdesc
 loop
 low
@@ -332,6 +339,7 @@ onwebkitwillrevealright
 onwebkitwillrevealtop
 open
 optimum
+part
 pattern
 placeholder
 playsinline

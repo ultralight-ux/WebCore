@@ -38,49 +38,59 @@
 namespace WebCore {
 using namespace JSC;
 
+// https://heycam.github.io/webidl/#call-a-user-objects-operation
 JSValue JSCallbackData::invokeCallback(JSDOMGlobalObject& globalObject, JSObject* callback, JSValue thisValue, MarkedArgumentBuffer& args, CallbackType method, PropertyName functionName, NakedPtr<JSC::Exception>& returnedException)
 {
     ASSERT(callback);
 
-    ExecState* exec = globalObject.globalExec();
-    VM& vm = exec->vm();
+    JSGlobalObject* lexicalGlobalObject = &globalObject;
+    VM& vm = lexicalGlobalObject->vm();
+    auto scope = DECLARE_CATCH_SCOPE(vm);
+
     JSValue function;
     CallData callData;
-    CallType callType = CallType::None;
 
     if (method != CallbackType::Object) {
         function = callback;
-        callType = callback->methodTable(vm)->getCallData(callback, callData);
+        callData = getCallData(vm, callback);
     }
-    if (callType == CallType::None) {
+    if (callData.type == CallData::Type::None) {
         if (method == CallbackType::Function) {
-            returnedException = JSC::Exception::create(vm, createTypeError(exec));
+            returnedException = JSC::Exception::create(vm, createTypeError(lexicalGlobalObject));
             return JSValue();
         }
 
         ASSERT(!functionName.isNull());
-        function = callback->get(exec, functionName);
-        callType = getCallData(vm, function, callData);
-        if (callType == CallType::None) {
-            returnedException = JSC::Exception::create(vm, createTypeError(exec));
+        function = callback->get(lexicalGlobalObject, functionName);
+        if (UNLIKELY(scope.exception())) {
+            returnedException = scope.exception();
+            scope.clearException();
             return JSValue();
         }
+
+        callData = getCallData(vm, function);
+        if (callData.type == CallData::Type::None) {
+            returnedException = JSC::Exception::create(vm, createTypeError(lexicalGlobalObject, makeString("'", String(functionName.uid()), "' property of callback interface should be callable")));
+            return JSValue();
+        }
+
+        thisValue = callback;
     }
 
     ASSERT(!function.isEmpty());
-    ASSERT(callType != CallType::None);
+    ASSERT(callData.type != CallData::Type::None);
 
     ScriptExecutionContext* context = globalObject.scriptExecutionContext();
     // We will fail to get the context if the frame has been detached.
     if (!context)
         return JSValue();
 
-    InspectorInstrumentationCookie cookie = JSExecState::instrumentFunctionCall(context, callType, callData);
+    JSExecState::instrumentFunction(context, callData);
 
     returnedException = nullptr;
-    JSValue result = JSExecState::profiledCall(exec, JSC::ProfilingReason::Other, function, callType, callData, thisValue, args, returnedException);
+    JSValue result = JSExecState::profiledCall(lexicalGlobalObject, JSC::ProfilingReason::Other, function, callData, thisValue, args, returnedException);
 
-    InspectorInstrumentation::didCallFunction(cookie, context);
+    InspectorInstrumentation::didCallFunction(context);
 
     return result;
 }

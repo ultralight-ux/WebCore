@@ -31,7 +31,6 @@
 #include "AirCCallSpecial.h"
 #include "AirCode.h"
 #include "B3CCallValue.h"
-#include "B3ValueInlines.h"
 
 namespace JSC { namespace B3 { namespace Air {
 
@@ -45,7 +44,7 @@ Arg marshallCCallArgumentImpl(unsigned& argumentCount, unsigned& stackOffset, Va
         return Tmp(BankInfo::toArgumentRegister(argumentIndex));
 
     unsigned slotSize;
-    if (isARM64() && isIOS()) {
+    if (isARM64() && isDarwin()) {
         // Arguments are packed.
         slotSize = sizeofType(child->type());
     } else {
@@ -66,13 +65,7 @@ Arg marshallCCallArgument(
     case GP:
         return marshallCCallArgumentImpl<GPRInfo>(gpArgumentCount, stackOffset, child);
     case FP:
-#if OS(WINDOWS) && CPU(X86_64)
-        // On Windows, arguments map to designated registers based on the argument positions,
-        // even when there are interlaced scalar and floating point arguments.
-        return marshallCCallArgumentImpl<FPRInfo>(gpArgumentCount, stackOffset, child);
-#else
         return marshallCCallArgumentImpl<FPRInfo>(fpArgumentCount, stackOffset, child);
-#endif
     }
     RELEASE_ASSERT_NOT_REACHED();
     return Arg();
@@ -97,7 +90,7 @@ Vector<Arg> computeCCallingConvention(Code& code, CCallValue* value)
 
 Tmp cCallResult(Type type)
 {
-    switch (type) {
+    switch (type.kind()) {
     case Void:
         return Tmp();
     case Int32:
@@ -106,6 +99,8 @@ Tmp cCallResult(Type type)
     case Float:
     case Double:
         return Tmp(FPRInfo::returnValueFPR);
+    case Tuple:
+        break;
     }
 
     RELEASE_ASSERT_NOT_REACHED();

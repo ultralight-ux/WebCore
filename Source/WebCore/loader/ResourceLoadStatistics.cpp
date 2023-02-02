@@ -60,6 +60,16 @@ static void encodeOptionSet(KeyedEncoder& encoder, const String& label, const Op
 }
 
 #if ENABLE(WEB_API_STATISTICS)
+static void encodeHashSet(KeyedEncoder& encoder, const String& label,  const String& key, const HashSet<String>& hashSet)
+{
+    if (hashSet.isEmpty())
+        return;
+    
+    encoder.encodeObjects(label, hashSet.begin(), hashSet.end(), [&key](KeyedEncoder& encoderInner, const String& origin) {
+        encoderInner.encodeString(key, origin);
+    });
+}
+
 static void encodeFontHashSet(KeyedEncoder& encoder, const String& label, const HashSet<String>& hashSet)
 {
     encodeHashSet(encoder, label, "font", hashSet);
@@ -95,6 +105,7 @@ void ResourceLoadStatistics::encode(KeyedEncoder& encoder) const
     encodeHashSet(encoder, "topFrameUniqueRedirectsFrom"_s, "domain"_s, topFrameUniqueRedirectsFrom);
     encodeHashSet(encoder, "topFrameLinkDecorationsFrom"_s, "domain", topFrameLinkDecorationsFrom);
     encoder.encodeBool("gotLinkDecorationFromPrevalentResource"_s, gotLinkDecorationFromPrevalentResource);
+    encodeHashSet(encoder, "topFrameLoadedThirdPartyScripts"_s, "domain", topFrameLoadedThirdPartyScripts);
 
     // Subframe stats
     encodeHashSet(encoder, "subframeUnderTopFrameDomains"_s, "domain"_s, subframeUnderTopFrameDomains);
@@ -115,7 +126,7 @@ void ResourceLoadStatistics::encode(KeyedEncoder& encoder) const
 #if ENABLE(WEB_API_STATISTICS)
     encodeFontHashSet(encoder, "fontsFailedToLoad", fontsFailedToLoad);
     encodeFontHashSet(encoder, "fontsSuccessfullyLoaded", fontsSuccessfullyLoaded);
-    encodeHashCountedSet(encoder, "topFrameRegistrableDomainsWhichAccessedWebAPIs", topFrameRegistrableDomainsWhichAccessedWebAPIs);
+    encodeHashSet(encoder, "topFrameRegistrableDomainsWhichAccessedWebAPIs", "domain", topFrameRegistrableDomainsWhichAccessedWebAPIs);
     encodeCanvasActivityRecord(encoder, "canvasActivityRecord", canvasActivityRecord);
     encodeOptionSet(encoder, "navigatorFunctionsAccessedBitMask", navigatorFunctionsAccessed);
     encodeOptionSet(encoder, "screenFunctionsAccessedBitMask", screenFunctionsAccessed);
@@ -124,8 +135,9 @@ void ResourceLoadStatistics::encode(KeyedEncoder& encoder) const
 
 static void decodeHashCountedSet(KeyedDecoder& decoder, const String& label, HashCountedSet<RegistrableDomain>& hashCountedSet)
 {
-    Vector<String> ignore;
-    decoder.decodeObjects(label, ignore, [&hashCountedSet](KeyedDecoder& decoderInner, String& domain) {
+    Vector<String> ignored;
+IGNORE_WARNINGS_BEGIN("unused-result")
+    decoder.decodeObjects(label, ignored, [&hashCountedSet](KeyedDecoder& decoderInner, String& domain) {
         if (!decoderInner.decodeString("origin", domain))
             return false;
         
@@ -136,29 +148,46 @@ static void decodeHashCountedSet(KeyedDecoder& decoder, const String& label, Has
         hashCountedSet.add(RegistrableDomain::uncheckedCreateFromRegistrableDomainString(domain), count);
         return true;
     });
+IGNORE_WARNINGS_END
 }
 
 static void decodeHashSet(KeyedDecoder& decoder, const String& label, const String& key, HashSet<RegistrableDomain>& hashSet)
 {
-    Vector<String> ignore;
-    decoder.decodeObjects(label, ignore, [&hashSet, &key](KeyedDecoder& decoderInner, String& domain) {
+    Vector<String> ignored;
+IGNORE_WARNINGS_BEGIN("unused-result")
+    decoder.decodeObjects(label, ignored, [&hashSet, &key](KeyedDecoder& decoderInner, String& domain) {
         if (!decoderInner.decodeString(key, domain))
             return false;
         
         hashSet.add(RegistrableDomain::uncheckedCreateFromRegistrableDomainString(domain));
         return true;
     });
+IGNORE_WARNINGS_END
 }
 
 template<typename T>
 static void decodeOptionSet(KeyedDecoder& decoder, const String& label, OptionSet<T>& optionSet)
 {
     uint64_t optionSetBitMask = 0;
-    decoder.decodeUInt64(label, optionSetBitMask);
-    optionSet = OptionSet<T>::fromRaw(optionSetBitMask);
+    if (decoder.decodeUInt64(label, optionSetBitMask))
+        optionSet = OptionSet<T>::fromRaw(optionSetBitMask);
 }
 
 #if ENABLE(WEB_API_STATISTICS)
+static void decodeHashSet(KeyedDecoder& decoder, const String& label, const String& key, HashSet<String>& hashSet)
+{
+    Vector<String> ignore;
+IGNORE_WARNINGS_BEGIN("unused-result")
+    decoder.decodeObjects(label, ignore, [&hashSet, &key](KeyedDecoder& decoderInner, String& origin) {
+        if (!decoderInner.decodeString(key, origin))
+            return false;
+        
+        hashSet.add(origin);
+        return true;
+    });
+IGNORE_WARNINGS_END
+}
+
 static void decodeFontHashSet(KeyedDecoder& decoder, const String& label, HashSet<String>& hashSet)
 {
     decodeHashSet(decoder, label, "font", hashSet);
@@ -166,6 +195,7 @@ static void decodeFontHashSet(KeyedDecoder& decoder, const String& label, HashSe
     
 static void decodeCanvasActivityRecord(KeyedDecoder& decoder, const String& label, CanvasActivityRecord& canvasActivityRecord)
 {
+IGNORE_WARNINGS_BEGIN("unused-result")
     decoder.decodeObject(label, canvasActivityRecord, [] (KeyedDecoder& decoderInner, CanvasActivityRecord& canvasActivityRecord) {
         if (!decoderInner.decodeBool("wasDataRead", canvasActivityRecord.wasDataRead))
             return false;
@@ -178,6 +208,7 @@ static void decodeCanvasActivityRecord(KeyedDecoder& decoder, const String& labe
         });
         return true;
     });
+IGNORE_WARNINGS_END
 }
 #endif
 
@@ -223,6 +254,13 @@ bool ResourceLoadStatistics::decode(KeyedDecoder& decoder, unsigned modelVersion
         decodeHashSet(decoder, "topFrameLinkDecorationsFrom", "domain", topFrameLinkDecorationsFrom);
         if (!decoder.decodeBool("gotLinkDecorationFromPrevalentResource", gotLinkDecorationFromPrevalentResource))
             return false;
+    }
+
+    if (modelVersion >= 17) {
+        HashCountedSet<RegistrableDomain> topFrameLoadedThirdPartyScriptsCounted;
+        decodeHashCountedSet(decoder, "topFrameLoadedThirdPartyScripts", topFrameLoadedThirdPartyScriptsCounted);
+        for (auto& domain : topFrameLoadedThirdPartyScriptsCounted.values())
+            topFrameLoadedThirdPartyScripts.add(domain);
     }
 
     // Subframe stats
@@ -301,7 +339,7 @@ bool ResourceLoadStatistics::decode(KeyedDecoder& decoder, unsigned modelVersion
     if (modelVersion >= 13) {
         decodeFontHashSet(decoder, "fontsFailedToLoad", fontsFailedToLoad);
         decodeFontHashSet(decoder, "fontsSuccessfullyLoaded", fontsSuccessfullyLoaded);
-        decodeHashCountedSet(decoder, "topFrameRegistrableDomainsWhichAccessedWebAPIs", topFrameRegistrableDomainsWhichAccessedWebAPIs);
+        decodeHashSet(decoder, "topFrameRegistrableDomainsWhichAccessedWebAPIs", "domain", topFrameRegistrableDomainsWhichAccessedWebAPIs);
         decodeCanvasActivityRecord(decoder, "canvasActivityRecord", canvasActivityRecord);
         decodeOptionSet(decoder, "navigatorFunctionsAccessedBitMask", navigatorFunctionsAccessed);
         decodeOptionSet(decoder, "screenFunctionsAccessedBitMask", screenFunctionsAccessed);
@@ -336,6 +374,22 @@ static void appendHashSet(StringBuilder& builder, const String& label, const Has
 }
 
 #if ENABLE(WEB_API_STATISTICS)
+static void appendHashSet(StringBuilder& builder, const String& label, const HashSet<String>& hashSet)
+{
+    if (hashSet.isEmpty())
+        return;
+    
+    builder.appendLiteral("    ");
+    builder.append(label);
+    builder.appendLiteral(":\n");
+    
+    for (auto& entry : hashSet) {
+        builder.appendLiteral("        ");
+        builder.append(entry);
+        builder.append('\n');
+    }
+}
+
 static ASCIILiteral navigatorAPIEnumToString(ResourceLoadStatistics::NavigatorAPI navigatorEnum)
 {
     switch (navigatorEnum) {
@@ -405,21 +459,26 @@ static void appendScreenAPIOptionSet(StringBuilder& builder, const OptionSet<Res
 }
 #endif
 
+static bool hasHadRecentUserInteraction(WTF::Seconds interactionTimeSeconds)
+{
+    return interactionTimeSeconds > Seconds(0) && WallTime::now().secondsSinceEpoch() - interactionTimeSeconds < 24_h;
+}
+
 String ResourceLoadStatistics::toString() const
 {
     StringBuilder builder;
     builder.appendLiteral("Registrable domain: ");
     builder.append(registrableDomain.string());
     builder.append('\n');
-    builder.appendLiteral("    lastSeen: ");
-    builder.appendFixedPrecisionNumber(lastSeen.secondsSinceEpoch().value());
-    builder.append('\n');
-    
+
     // User interaction
     appendBoolean(builder, "hadUserInteraction", hadUserInteraction);
     builder.append('\n');
     builder.appendLiteral("    mostRecentUserInteraction: ");
-    builder.appendFixedPrecisionNumber(mostRecentUserInteractionTime.secondsSinceEpoch().value());
+    if (hasHadRecentUserInteraction(mostRecentUserInteractionTime.secondsSinceEpoch()))
+        builder.appendLiteral("within 24 hours");
+    else
+        builder.appendLiteral("-1");
     builder.append('\n');
     appendBoolean(builder, "grandfathered", grandfathered);
     builder.append('\n');
@@ -432,6 +491,8 @@ String ResourceLoadStatistics::toString() const
     appendHashSet(builder, "topFrameUniqueRedirectsFrom", topFrameUniqueRedirectsFrom);
     appendHashSet(builder, "topFrameLinkDecorationsFrom", topFrameLinkDecorationsFrom);
     appendBoolean(builder, "gotLinkDecorationFromPrevalentResource", gotLinkDecorationFromPrevalentResource);
+    builder.append('\n');
+    appendHashSet(builder, "topFrameLoadedThirdPartyScripts", topFrameLoadedThirdPartyScripts);
 
     // Subframe stats
     appendHashSet(builder, "subframeUnderTopFrameDomains", subframeUnderTopFrameDomains);
@@ -453,7 +514,7 @@ String ResourceLoadStatistics::toString() const
 #if ENABLE(WEB_API_STATISTICS)
     appendHashSet(builder, "fontsFailedToLoad", fontsFailedToLoad);
     appendHashSet(builder, "fontsSuccessfullyLoaded", fontsSuccessfullyLoaded);
-    appendHashCountedSet(builder, "topFrameRegistrableDomainsWhichAccessedWebAPIs", topFrameRegistrableDomainsWhichAccessedWebAPIs);
+    appendHashSet(builder, "topFrameRegistrableDomainsWhichAccessedWebAPIs", topFrameRegistrableDomainsWhichAccessedWebAPIs);
     appendNavigatorAPIOptionSet(builder, navigatorFunctionsAccessed);
     appendScreenAPIOptionSet(builder, screenFunctionsAccessed);
     appendHashSet(builder, "canvasTextWritten", canvasActivityRecord.textWritten);
@@ -508,6 +569,7 @@ void ResourceLoadStatistics::merge(const ResourceLoadStatistics& other)
     mergeHashSet(topFrameUniqueRedirectsFrom, other.topFrameUniqueRedirectsFrom);
     mergeHashSet(topFrameLinkDecorationsFrom, other.topFrameLinkDecorationsFrom);
     gotLinkDecorationFromPrevalentResource |= other.gotLinkDecorationFromPrevalentResource;
+    mergeHashSet(topFrameLoadedThirdPartyScripts, other.topFrameLoadedThirdPartyScripts);
 
     // Subframe stats
     mergeHashSet(subframeUnderTopFrameDomains, other.subframeUnderTopFrameDomains);

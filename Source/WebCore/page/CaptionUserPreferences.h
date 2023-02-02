@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
 
 #include "AudioTrack.h"
 #include "TextTrack.h"
@@ -40,6 +40,7 @@ class TextTrackList;
 struct MediaSelectionOption;
 
 class CaptionUserPreferences {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     CaptionUserPreferences(PageGroup&);
     virtual ~CaptionUserPreferences();

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2008-2018 Apple Inc. All Rights Reserved.
+ *  Copyright (C) 2008-2020 Apple Inc. All Rights Reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -24,6 +24,7 @@
 #include "JSArray.h"
 #include "JSCInlines.h"
 #include "JSGlobalObject.h"
+#include "ObjectConstructor.h"
 #include "RegExpInlines.h"
 #include "RegExpObject.h"
 
@@ -38,7 +39,7 @@ ALWAYS_INLINE JSArray* tryCreateUninitializedRegExpMatchesArray(ObjectInitializa
     VM& vm = scope.vm();
     unsigned vectorLength = initialLength;
     if (vectorLength > MAX_STORAGE_VECTOR_LENGTH)
-        return 0;
+        return nullptr;
 
     const bool hasIndexingHeader = true;
     Butterfly* butterfly = Butterfly::tryCreateUninitialized(vm, nullptr, 0, structure->outOfLineCapacity(), hasIndexingHeader, vectorLength * sizeof(EncodedJSValue), deferralContext);
@@ -53,8 +54,7 @@ ALWAYS_INLINE JSArray* tryCreateUninitializedRegExpMatchesArray(ObjectInitializa
 
     JSArray* result = JSArray::createWithButterfly(vm, deferralContext, structure, butterfly);
 
-    const bool createUninitialized = true;
-    scope.notifyAllocated(result, createUninitialized);
+    scope.notifyAllocated(result);
     return result;
 }
 
@@ -62,11 +62,11 @@ ALWAYS_INLINE JSArray* createRegExpMatchesArray(
     VM& vm, JSGlobalObject* globalObject, JSString* input, const String& inputValue,
     RegExp* regExp, unsigned startOffset, MatchResult& result)
 {
-    if (validateDFGDoesGC)
-        RELEASE_ASSERT(vm.heap.expectDoesGC());
+    if constexpr (validateDFGDoesGC)
+        vm.heap.verifyCanGC();
 
     Vector<int, 32> subpatternResults;
-    int position = regExp->matchInline(vm, inputValue, startOffset, subpatternResults);
+    int position = regExp->matchInline(globalObject, vm, inputValue, startOffset, subpatternResults);
     if (position == -1) {
         result = MatchResult::failed();
         return nullptr;
@@ -82,23 +82,18 @@ ALWAYS_INLINE JSArray* createRegExpMatchesArray(
     
     unsigned numSubpatterns = regExp->numSubpatterns();
     bool hasNamedCaptures = regExp->hasNamedCaptures();
-    JSObject* groups = nullptr;
+    JSObject* groups = hasNamedCaptures ? constructEmptyObject(vm, globalObject->nullPrototypeObjectStructure()) : nullptr;
     Structure* matchStructure = globalObject->regExpMatchesArrayStructure();
-    if (hasNamedCaptures) {
-        groups = JSFinalObject::create(vm, JSFinalObject::createStructure(vm, globalObject, globalObject->objectPrototype(), 0));
-        matchStructure = globalObject->regExpMatchesArrayWithGroupsStructure();
-    }
 
     auto setProperties = [&] () {
         array->putDirect(vm, RegExpMatchesArrayIndexPropertyOffset, jsNumber(result.start));
         array->putDirect(vm, RegExpMatchesArrayInputPropertyOffset, input);
-        if (hasNamedCaptures)
-            array->putDirect(vm, RegExpMatchesArrayGroupsPropertyOffset, groups);
+        array->putDirect(vm, RegExpMatchesArrayGroupsPropertyOffset, hasNamedCaptures ? groups : jsUndefined());
 
         ASSERT(!array->butterfly()->indexingHeader()->preCapacity(matchStructure));
         auto capacity = matchStructure->outOfLineCapacity();
         auto size = matchStructure->outOfLineSize();
-        memset(array->butterfly()->base(0, capacity), 0, (capacity - size) * sizeof(JSValue));
+        gcSafeZeroMemory(static_cast<JSValue*>(array->butterfly()->base(0, capacity)), (capacity - size) * sizeof(JSValue));
     };
 
     if (UNLIKELY(globalObject->isHavingABadTime())) {
@@ -155,25 +150,29 @@ ALWAYS_INLINE JSArray* createRegExpMatchesArray(
 
     // We initialize the groups object late as it could allocate, which with the current API could cause
     // allocations.
-    if (groups) {
+    if (hasNamedCaptures) {
         for (unsigned i = 1; i <= numSubpatterns; ++i) {
             String groupName = regExp->getCaptureGroupName(i);
             if (!groupName.isEmpty())
-                groups->putDirect(vm, Identifier::fromString(&vm, groupName), array->getIndexQuickly(i));
+                groups->putDirect(vm, Identifier::fromString(vm, groupName), array->getIndexQuickly(i));
         }
     }
     return array;
 }
 
-inline JSArray* createRegExpMatchesArray(ExecState* exec, JSGlobalObject* globalObject, JSString* string, RegExp* regExp, unsigned startOffset)
+inline JSArray* createRegExpMatchesArray(JSGlobalObject* globalObject, JSString* string, RegExp* regExp, unsigned startOffset)
 {
+    VM& vm = getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     MatchResult ignoredResult;
-    return createRegExpMatchesArray(globalObject->vm(), globalObject, string, string->value(exec), regExp, startOffset, ignoredResult);
+    String input = string->value(globalObject);
+    RETURN_IF_EXCEPTION(scope, { });
+
+    RELEASE_AND_RETURN(scope, createRegExpMatchesArray(vm, globalObject, string, input, regExp, startOffset, ignoredResult));
 }
 JSArray* createEmptyRegExpMatchesArray(JSGlobalObject*, JSString*, RegExp*);
 Structure* createRegExpMatchesArrayStructure(VM&, JSGlobalObject*);
 Structure* createRegExpMatchesArraySlowPutStructure(VM&, JSGlobalObject*);
-Structure* createRegExpMatchesArrayWithGroupsStructure(VM&, JSGlobalObject*);
-Structure* createRegExpMatchesArrayWithGroupsSlowPutStructure(VM&, JSGlobalObject*);
 
 } // namespace JSC

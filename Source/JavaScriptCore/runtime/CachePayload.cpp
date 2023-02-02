@@ -26,20 +26,14 @@
 #include "config.h"
 #include "CachePayload.h"
 
-#if !OS(WINDOWS)
-#include <sys/mman.h>
-#endif
-
 namespace JSC {
 
-#if !OS(WINDOWS)
-CachePayload CachePayload::makeMappedPayload(void* data, size_t size)
+CachePayload CachePayload::makeMappedPayload(FileSystem::MappedFileData&& data)
 {
-    return CachePayload(true, data, size);
+    return CachePayload(true, data.leakHandle(), data.size());
 }
-#endif
 
-CachePayload CachePayload::makeMallocPayload(MallocPtr<uint8_t>&& data, size_t size)
+CachePayload CachePayload::makeMallocPayload(MallocPtr<uint8_t, VMMalloc>&& data, size_t size)
 {
     return CachePayload(false, data.leakPtr(), size);
 }
@@ -76,11 +70,7 @@ void CachePayload::freeData()
     if (!m_data)
         return;
     if (m_mapped) {
-#if !OS(WINDOWS)
-        munmap(m_data, m_size);
-#else
-        RELEASE_ASSERT_NOT_REACHED();
-#endif
+        FileSystem::unmapViewOfFile(m_data, m_size);
     } else
         fastFree(m_data);
 }

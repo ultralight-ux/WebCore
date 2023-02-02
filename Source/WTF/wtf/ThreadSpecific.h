@@ -55,6 +55,7 @@ enum class CanBeGCThread {
 
 template<typename T, CanBeGCThread canBeGCThread = CanBeGCThread::False> class ThreadSpecific {
     WTF_MAKE_NONCOPYABLE(ThreadSpecific);
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     ThreadSpecific();
     bool isSet(); // Useful as a fast check to see if this thread has set this value.
@@ -99,12 +100,12 @@ private:
     T* get();
     T* set();
     void setInTLS(Data*);
-    void static THREAD_SPECIFIC_CALL destroy(void* ptr);
+    void static destroy(void* ptr);
 
 #if USE(PTHREADS)
     pthread_key_t m_key { };
 #elif OS(WINDOWS)
-    ThreadSpecificKey m_key;
+    int m_key;
 #endif
 };
 
@@ -137,32 +138,26 @@ inline void ThreadSpecific<T, canBeGCThread>::setInTLS(Data* data)
 
 template<typename T, CanBeGCThread canBeGCThread>
 inline ThreadSpecific<T, canBeGCThread>::ThreadSpecific()
-    : m_key(FLS_OUT_OF_INDEXES)
+    : m_key(-1)
 {
-    m_key = flsKeyCreate(destroy);
-    if (m_key == FLS_OUT_OF_INDEXES)
+    bool ok = Thread::SpecificStorage::allocateKey(m_key, destroy);
+    if (!ok)
         CRASH();
-}
-
-template<typename T, CanBeGCThread canBeGCThread>
-inline ThreadSpecific<T, canBeGCThread>::~ThreadSpecific()
-{
-    flsKeyDestroy(m_key);
 }
 
 template<typename T, CanBeGCThread canBeGCThread>
 inline T* ThreadSpecific<T, canBeGCThread>::get()
 {
-    Data* data = static_cast<Data*>(FlsGetValue(m_key));
-    if (data)
-        return data->storagePointer();
-    return nullptr;
+    auto data = static_cast<Data*>(Thread::current().specificStorage().get(m_key));
+    if (!data)
+        return nullptr;
+    return data->storagePointer();
 }
 
 template<typename T, CanBeGCThread canBeGCThread>
 inline void ThreadSpecific<T, canBeGCThread>::setInTLS(Data* data)
 {
-    FlsSetValue(m_key, data);
+    return Thread::current().specificStorage().set(m_key, data);
 }
 
 #else
@@ -170,7 +165,7 @@ inline void ThreadSpecific<T, canBeGCThread>::setInTLS(Data* data)
 #endif
 
 template<typename T, CanBeGCThread canBeGCThread>
-inline void THREAD_SPECIFIC_CALL ThreadSpecific<T, canBeGCThread>::destroy(void* ptr)
+inline void ThreadSpecific<T, canBeGCThread>::destroy(void* ptr)
 {
     Data* data = static_cast<Data*>(ptr);
 

@@ -36,6 +36,7 @@
 #include "SharedBuffer.h"
 #include "ResourceHandle.h"
 #include "ResourceHandleInternal.h"
+#include "SynchronousLoaderClient.h"
 
 #if USE(ULTRALIGHT)
 #include <Ultralight/private/tracy/Tracy.hpp>

@@ -66,7 +66,8 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ultralight/GraphicsContextPlatformPrivateUltralight.h
     platform/graphics/ultralight/GraphicsContextUltralight.cpp
     platform/graphics/ultralight/ImageBufferDataUltralight.h
-    platform/graphics/ultralight/ImageBufferUltralight.cpp
+    platform/graphics/ultralight/ImageBufferUltralightBackend.cpp
+    platform/graphics/ultralight/ImageBufferUltralightBackend.h
     platform/graphics/ultralight/ImageDecoderUltralight.cpp
     platform/graphics/ultralight/ImageUltralight.cpp
     platform/graphics/ultralight/IntRectUltralight.cpp

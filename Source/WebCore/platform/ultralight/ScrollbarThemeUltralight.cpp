@@ -10,7 +10,7 @@ namespace WebCore {
 
 //static const int thickness = 16;
 static const int thickness = 12;
-static const RGBA32 trackColor = 0xFFE6E6E6;
+//static const RGBA32 trackColor = 0xFFE6E6E6;
 static bool enableButtons = false;
 
 class ScrollbarThemeUltralight : public ScrollbarThemeComposite {
@@ -20,7 +20,7 @@ protected:
 
   bool hasThumb(Scrollbar&) override { return true; }
 
-  virtual int scrollbarThickness(ScrollbarControlSize = RegularScrollbar, ScrollbarExpansionState = ScrollbarExpansionState::Expanded) override { return thickness; }
+  virtual int scrollbarThickness(ScrollbarControlSize = ScrollbarControlSize::Regular, ScrollbarExpansionState = ScrollbarExpansionState::Expanded) override { return thickness; }
 
   IntRect backButtonRect(Scrollbar& scrollbar, ScrollbarPart part, bool painting) override {
     if (!enableButtons || part != BackButtonStartPart)
@@ -80,7 +80,7 @@ protected:
         alpha = 0.85f;
       else if (scrollbar.hoveredPart() == ScrollbarPart::ThumbPart)
         alpha = 0.65f;
-      context.fillRoundedRect(rrect, Color(0.4f, 0.4f, 0.4f, alpha));
+      context.fillRoundedRect(rrect, Color(SRGBA<uint8_t>(100, 100, 100, static_cast<uint8_t>(alpha * 255))));
     }
   }
 

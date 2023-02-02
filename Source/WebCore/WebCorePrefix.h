@@ -41,12 +41,7 @@
 #endif
 #endif
 
-#if OS(WINDOWS)
-#undef WEBCORE_EXPORT
-#define WEBCORE_EXPORT WTF_EXPORT_DECLARATION
-#undef WEBCORE_TESTSUPPORT_EXPORT
-#define WEBCORE_TESTSUPPORT_EXPORT WTF_EXPORT_DECLARATION
-#else
+#if !OS(WINDOWS)
 #include <pthread.h>
 #endif // OS(WINDOWS)
 
@@ -185,7 +180,7 @@
 
 #ifdef __cplusplus
 
-#if !PLATFORM(WIN) && (!PLATFORM(MAC) || __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300) && !USE(ULTRALIGHT)
+#if !PLATFORM(WIN) && !USE(ULTRALIGHT)
 #import <wtf/FastMalloc.h>
 #import <wtf/Optional.h>
 #import <wtf/StdLibExtras.h>
@@ -196,6 +191,7 @@
 #if USE(ULTRALIGHT)
 #include <Ultralight/private/tracy/Tracy.hpp>
 #include <wtf/MemoryProfiler.h>
+#include <wtf/Shutdown.h>
 #else
 #define ProfileAlloc(ptr, size, name)
 #define ProfileFree(ptr, name)

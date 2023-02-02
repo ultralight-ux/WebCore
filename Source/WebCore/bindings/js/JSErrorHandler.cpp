@@ -67,7 +67,7 @@ void JSErrorHandler::handleEvent(ScriptExecutionContext& scriptExecutionContext,
     VM& vm = scriptExecutionContext.vm();
     JSLockHolder lock(vm);
 
-    JSObject* jsFunction = this->jsFunction(scriptExecutionContext);
+    JSObject* jsFunction = this->ensureJSFunction(scriptExecutionContext);
     if (!jsFunction)
         return;
 
@@ -75,12 +75,8 @@ void JSErrorHandler::handleEvent(ScriptExecutionContext& scriptExecutionContext,
     if (!globalObject)
         return;
 
-    ExecState* exec = globalObject->globalExec();
-
-    CallData callData;
-    CallType callType = jsFunction->methodTable(vm)->getCallData(jsFunction, callData);
-
-    if (callType != CallType::None) {
+    auto callData = getCallData(vm, jsFunction);
+    if (callData.type != CallData::Type::None) {
         Ref<JSErrorHandler> protectedThis(*this);
 
         Event* savedEvent = globalObject->currentEvent();
@@ -89,27 +85,27 @@ void JSErrorHandler::handleEvent(ScriptExecutionContext& scriptExecutionContext,
         auto& errorEvent = downcast<ErrorEvent>(event);
 
         MarkedArgumentBuffer args;
-        args.append(toJS<IDLDOMString>(*exec, errorEvent.message()));
-        args.append(toJS<IDLUSVString>(*exec, errorEvent.filename()));
+        args.append(toJS<IDLDOMString>(*globalObject, errorEvent.message()));
+        args.append(toJS<IDLUSVString>(*globalObject, errorEvent.filename()));
         args.append(toJS<IDLUnsignedLong>(errorEvent.lineno()));
         args.append(toJS<IDLUnsignedLong>(errorEvent.colno()));
-        args.append(errorEvent.error(*exec, *globalObject));
+        args.append(errorEvent.error(*globalObject));
         ASSERT(!args.hasOverflowed());
 
         VM& vm = globalObject->vm();
         VMEntryScope entryScope(vm, vm.entryScope ? vm.entryScope->globalObject() : globalObject);
 
-        InspectorInstrumentationCookie cookie = JSExecState::instrumentFunctionCall(&scriptExecutionContext, callType, callData);
+        JSExecState::instrumentFunction(&scriptExecutionContext, callData);
 
         NakedPtr<JSC::Exception> exception;
-        JSValue returnValue = JSExecState::profiledCall(exec, JSC::ProfilingReason::Other, jsFunction, callType, callData, globalObject, args, exception);
+        JSValue returnValue = JSExecState::profiledCall(globalObject, JSC::ProfilingReason::Other, jsFunction, callData, globalObject, args, exception);
 
-        InspectorInstrumentation::didCallFunction(cookie, &scriptExecutionContext);
+        InspectorInstrumentation::didCallFunction(&scriptExecutionContext);
 
         globalObject->setCurrentEvent(savedEvent);
 
         if (exception)
-            reportException(exec, exception);
+            reportException(globalObject, exception);
         else {
             if (returnValue.isTrue())
                 event.preventDefault();

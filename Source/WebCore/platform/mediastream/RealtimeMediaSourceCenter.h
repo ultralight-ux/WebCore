@@ -63,7 +63,7 @@ public:
     using InvalidConstraintsHandler = Function<void(const String& invalidConstraint)>;
     WEBCORE_EXPORT void validateRequestConstraints(ValidConstraintsHandler&&, InvalidConstraintsHandler&&, const MediaStreamRequest&, String&&);
 
-    using NewMediaStreamHandler = Function<void(RefPtr<MediaStreamPrivate>&&)>;
+    using NewMediaStreamHandler = Function<void(Expected<Ref<MediaStreamPrivate>, String>&&)>;
     void createMediaStream(Ref<const Logger>&&, NewMediaStreamHandler&&, String&&, CaptureDevice&& audioDevice, CaptureDevice&& videoDevice, const MediaStreamRequest&);
 
     WEBCORE_EXPORT Vector<CaptureDevice> getMediaStreamDevices();
@@ -85,8 +85,6 @@ public:
     WEBCORE_EXPORT String hashStringWithSalt(const String& id, const String& hashSalt);
 
     WEBCORE_EXPORT void setDevicesChangedObserver(std::function<void()>&&);
-
-    void setCapturePageState(bool interrupted, bool pageMuted);
 
     void captureDevicesChanged();
 

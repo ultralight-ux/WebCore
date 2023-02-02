@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,7 +40,7 @@ class MacroAssemblerX86Common : public AbstractMacroAssembler<Assembler> {
 public:
 #if CPU(X86_64)
     // Use this directly only if you're not generating code with it.
-    static const X86Registers::RegisterID s_scratchRegister = X86Registers::r11;
+    static constexpr X86Registers::RegisterID s_scratchRegister = X86Registers::r11;
 
     // Use this when generating code so that we get enforcement of the disallowing of scratch register
     // usage.
@@ -52,9 +52,9 @@ public:
 #endif
     
 protected:
-    static const int DoubleConditionBitInvert = 0x10;
-    static const int DoubleConditionBitSpecial = 0x20;
-    static const int DoubleConditionBits = DoubleConditionBitInvert | DoubleConditionBitSpecial;
+    static constexpr int DoubleConditionBitInvert = 0x10;
+    static constexpr int DoubleConditionBitSpecial = 0x20;
+    static constexpr int DoubleConditionBits = DoubleConditionBitInvert | DoubleConditionBitSpecial;
 
 public:
     typedef X86Assembler::XMMRegisterID XMMRegisterID;
@@ -88,12 +88,12 @@ public:
     // FIXME: it would be neat to rename this to FloatingPointCondition in every assembler.
     enum DoubleCondition {
         // These conditions will only evaluate to true if the comparison is ordered - i.e. neither operand is NaN.
-        DoubleEqual = X86Assembler::ConditionE | DoubleConditionBitSpecial,
-        DoubleNotEqual = X86Assembler::ConditionNE,
-        DoubleGreaterThan = X86Assembler::ConditionA,
-        DoubleGreaterThanOrEqual = X86Assembler::ConditionAE,
-        DoubleLessThan = X86Assembler::ConditionA | DoubleConditionBitInvert,
-        DoubleLessThanOrEqual = X86Assembler::ConditionAE | DoubleConditionBitInvert,
+        DoubleEqualAndOrdered = X86Assembler::ConditionE | DoubleConditionBitSpecial,
+        DoubleNotEqualAndOrdered = X86Assembler::ConditionNE,
+        DoubleGreaterThanAndOrdered = X86Assembler::ConditionA,
+        DoubleGreaterThanOrEqualAndOrdered = X86Assembler::ConditionAE,
+        DoubleLessThanAndOrdered = X86Assembler::ConditionA | DoubleConditionBitInvert,
+        DoubleLessThanOrEqualAndOrdered = X86Assembler::ConditionAE | DoubleConditionBitInvert,
         // If either operand is NaN, these conditions always evaluate to true.
         DoubleEqualOrUnordered = X86Assembler::ConditionE,
         DoubleNotEqualOrUnordered = X86Assembler::ConditionNE | DoubleConditionBitSpecial,
@@ -106,8 +106,8 @@ public:
         !((X86Assembler::ConditionE | X86Assembler::ConditionNE | X86Assembler::ConditionA | X86Assembler::ConditionAE | X86Assembler::ConditionB | X86Assembler::ConditionBE) & DoubleConditionBits),
         DoubleConditionBits_should_not_interfere_with_X86Assembler_Condition_codes);
 
-    static const RegisterID stackPointerRegister = X86Registers::esp;
-    static const RegisterID framePointerRegister = X86Registers::ebp;
+    static constexpr RegisterID stackPointerRegister = X86Registers::esp;
+    static constexpr RegisterID framePointerRegister = X86Registers::ebp;
     
     static bool canBlind() { return true; }
     static bool shouldBlindForSpecificArch(uint32_t value) { return value >= 0x00ffffff; }
@@ -208,7 +208,7 @@ public:
     void add32(TrustedImm32 imm, RegisterID src, RegisterID dest)
     {
         if (!imm.m_value) {
-            zeroExtend32ToPtr(src, dest);
+            zeroExtend32ToWord(src, dest);
             return;
         }
 
@@ -333,7 +333,7 @@ public:
     void and32(RegisterID op1, RegisterID op2, RegisterID dest)
     {
         if (op1 == op2)
-            zeroExtend32ToPtr(op1, dest);
+            zeroExtend32ToWord(op1, dest);
         else if (op1 == dest)
             and32(op2, dest);
         else {
@@ -350,7 +350,7 @@ public:
             load32(op1, dest);
             and32(op2, dest);
         } else {
-            zeroExtend32ToPtr(op2, dest);
+            zeroExtend32ToWord(op2, dest);
             and32(op1, dest);
         }
     }
@@ -494,7 +494,7 @@ public:
             load32(op1, dest);
             mul32(op2, dest);
         } else {
-            zeroExtend32ToPtr(op2, dest);
+            zeroExtend32ToWord(op2, dest);
             mul32(op1, dest);
         }
     }
@@ -669,7 +669,7 @@ public:
     void or32(RegisterID op1, RegisterID op2, RegisterID dest)
     {
         if (op1 == op2)
-            zeroExtend32ToPtr(op1, dest);
+            zeroExtend32ToWord(op1, dest);
         else if (op1 == dest)
             or32(op2, dest);
         else {
@@ -686,7 +686,7 @@ public:
             load32(op1, dest);
             or32(op2, dest);
         } else {
-            zeroExtend32ToPtr(op2, dest);
+            zeroExtend32ToWord(op2, dest);
             or32(op1, dest);
         }
     }
@@ -1029,7 +1029,7 @@ public:
             load32(op1, dest);
             xor32(op2, dest);
         } else {
-            zeroExtend32ToPtr(op2, dest);
+            zeroExtend32ToWord(op2, dest);
             xor32(op1, dest);
         }
     }
@@ -1103,7 +1103,7 @@ public:
     void absDouble(FPRegisterID src, FPRegisterID dst)
     {
         ASSERT(src != dst);
-        static const double negativeZeroConstant = -0.0;
+        static constexpr double negativeZeroConstant = -0.0;
         loadDouble(TrustedImmPtr(&negativeZeroConstant), dst);
         m_assembler.andnpd_rr(src, dst);
     }
@@ -1111,7 +1111,7 @@ public:
     void negateDouble(FPRegisterID src, FPRegisterID dst)
     {
         ASSERT(src != dst);
-        static const double negativeZeroConstant = -0.0;
+        static constexpr double negativeZeroConstant = -0.0;
         loadDouble(TrustedImmPtr(&negativeZeroConstant), dst);
         m_assembler.xorpd_rr(src, dst);
     }
@@ -2080,7 +2080,7 @@ public:
     Jump branchDoubleNonZero(FPRegisterID reg, FPRegisterID scratch)
     {
         m_assembler.xorpd_rr(scratch, scratch);
-        return branchDouble(DoubleNotEqual, reg, scratch);
+        return branchDouble(DoubleNotEqualAndOrdered, reg, scratch);
     }
 
     Jump branchDoubleZeroOrNaN(FPRegisterID reg, FPRegisterID scratch)
@@ -2287,12 +2287,12 @@ public:
         m_assembler.movsxd_rr(src, dest);
     }
 
-    void zeroExtend32ToPtr(RegisterID src, RegisterID dest)
+    void zeroExtend32ToWord(RegisterID src, RegisterID dest)
     {
         m_assembler.movl_rr(src, dest);
     }
 
-    void zeroExtend32ToPtr(TrustedImm32 src, RegisterID dest)
+    void zeroExtend32ToWord(TrustedImm32 src, RegisterID dest)
     {
         m_assembler.movl_i32r(src.m_value, dest);
     }
@@ -2324,7 +2324,7 @@ public:
         else
             m_assembler.ucomisd_rr(right, left);
 
-        if (cond == DoubleEqual) {
+        if (cond == DoubleEqualAndOrdered) {
             if (left == right) {
                 m_assembler.cmovnpl_rr(src, dest);
                 return;
@@ -2375,7 +2375,7 @@ public:
         move(src, dest);
     }
 
-    void zeroExtend32ToPtr(RegisterID src, RegisterID dest)
+    void zeroExtend32ToWord(RegisterID src, RegisterID dest)
     {
         move(src, dest);
     }
@@ -2644,6 +2644,36 @@ public:
         return Jump(m_assembler.jCC(x86Condition(cond)));
     }
 
+    Jump branchTestBit32(ResultCondition cond, RegisterID reg, TrustedImm32 bit)
+    {
+        m_assembler.bt_ir(static_cast<unsigned>(bit.m_value) % 32, reg);
+        if (cond == NonZero)
+            return Jump(m_assembler.jb());
+        if (cond == Zero)
+            return Jump(m_assembler.jae());
+        RELEASE_ASSERT_NOT_REACHED();
+    }
+
+    Jump branchTestBit32(ResultCondition cond, Address testValue, TrustedImm32 bit)
+    {
+        m_assembler.bt_im(static_cast<unsigned>(bit.m_value) % 32, testValue.offset, testValue.base);
+        if (cond == NonZero)
+            return Jump(m_assembler.jb());
+        if (cond == Zero)
+            return Jump(m_assembler.jae());
+        RELEASE_ASSERT_NOT_REACHED();
+    }
+
+    Jump branchTestBit32(ResultCondition cond, RegisterID reg, RegisterID bit)
+    {
+        m_assembler.bt_ir(bit, reg);
+        if (cond == NonZero)
+            return Jump(m_assembler.jb());
+        if (cond == Zero)
+            return Jump(m_assembler.jae());
+        RELEASE_ASSERT_NOT_REACHED();
+    }
+
     void test32(RegisterID reg, TrustedImm32 mask = TrustedImm32(-1))
     {
         if (mask.m_value == -1)
@@ -2715,26 +2745,26 @@ public:
         return Jump(m_assembler.jmp());
     }
 
-    void jump(RegisterID target, PtrTag)
+    void farJump(RegisterID target, PtrTag)
     {
         m_assembler.jmp_r(target);
     }
 
     // Address is a memory location containing the address to jump to
-    void jump(Address address, PtrTag)
+    void farJump(Address address, PtrTag)
     {
         m_assembler.jmp_m(address.offset, address.base);
     }
 
     // Address is a memory location containing the address to jump to
-    void jump(BaseIndex address, PtrTag)
+    void farJump(BaseIndex address, PtrTag)
     {
         m_assembler.jmp_m(address.offset, address.base, address.index, address.scale);
     }
 
-    ALWAYS_INLINE void jump(RegisterID target, RegisterID jumpTag) { UNUSED_PARAM(jumpTag), jump(target, NoPtrTag); }
-    ALWAYS_INLINE void jump(Address address, RegisterID jumpTag) { UNUSED_PARAM(jumpTag), jump(address, NoPtrTag); }
-    ALWAYS_INLINE void jump(BaseIndex address, RegisterID jumpTag) { UNUSED_PARAM(jumpTag), jump(address, NoPtrTag); }
+    ALWAYS_INLINE void farJump(RegisterID target, RegisterID jumpTag) { UNUSED_PARAM(jumpTag), farJump(target, NoPtrTag); }
+    ALWAYS_INLINE void farJump(Address address, RegisterID jumpTag) { UNUSED_PARAM(jumpTag), farJump(address, NoPtrTag); }
+    ALWAYS_INLINE void farJump(BaseIndex address, RegisterID jumpTag) { UNUSED_PARAM(jumpTag), farJump(address, NoPtrTag); }
 
     // Arithmetic control flow operations:
     //
@@ -2792,7 +2822,7 @@ public:
             load32(op1, dest);
             return branchAdd32(cond, op2, dest);
         }
-        zeroExtend32ToPtr(op2, dest);
+        zeroExtend32ToWord(op2, dest);
         return branchAdd32(cond, op1, dest);
     }
 
@@ -3007,33 +3037,33 @@ public:
     static DoubleCondition invert(DoubleCondition cond)
     {
         switch (cond) {
-        case DoubleEqual:
+        case DoubleEqualAndOrdered:
             return DoubleNotEqualOrUnordered;
-        case DoubleNotEqual:
+        case DoubleNotEqualAndOrdered:
             return DoubleEqualOrUnordered;
-        case DoubleGreaterThan:
+        case DoubleGreaterThanAndOrdered:
             return DoubleLessThanOrEqualOrUnordered;
-        case DoubleGreaterThanOrEqual:
+        case DoubleGreaterThanOrEqualAndOrdered:
             return DoubleLessThanOrUnordered;
-        case DoubleLessThan:
+        case DoubleLessThanAndOrdered:
             return DoubleGreaterThanOrEqualOrUnordered;
-        case DoubleLessThanOrEqual:
+        case DoubleLessThanOrEqualAndOrdered:
             return DoubleGreaterThanOrUnordered;
         case DoubleEqualOrUnordered:
-            return DoubleNotEqual;
+            return DoubleNotEqualAndOrdered;
         case DoubleNotEqualOrUnordered:
-            return DoubleEqual;
+            return DoubleEqualAndOrdered;
         case DoubleGreaterThanOrUnordered:
-            return DoubleLessThanOrEqual;
+            return DoubleLessThanOrEqualAndOrdered;
         case DoubleGreaterThanOrEqualOrUnordered:
-            return DoubleLessThan;
+            return DoubleLessThanAndOrdered;
         case DoubleLessThanOrUnordered:
-            return DoubleGreaterThanOrEqual;
+            return DoubleGreaterThanOrEqualAndOrdered;
         case DoubleLessThanOrEqualOrUnordered:
-            return DoubleGreaterThan;
+            return DoubleGreaterThanAndOrdered;
         }
         RELEASE_ASSERT_NOT_REACHED();
-        return DoubleEqual; // make compiler happy
+        return DoubleEqualAndOrdered; // make compiler happy
     }
 
     static bool isInvertible(ResultCondition cond)
@@ -4092,7 +4122,7 @@ private:
     {
         if (cond & DoubleConditionBitSpecial) {
             ASSERT(!(cond & DoubleConditionBitInvert));
-            if (cond == DoubleEqual) {
+            if (cond == DoubleEqualAndOrdered) {
                 if (left == right) {
                     compare(right, left);
                     set32(X86Assembler::ConditionNP, dest);
@@ -4134,7 +4164,7 @@ private:
 
     Jump jumpAfterFloatingPointCompare(DoubleCondition cond, FPRegisterID left, FPRegisterID right)
     {
-        if (cond == DoubleEqual) {
+        if (cond == DoubleEqualAndOrdered) {
             if (left == right)
                 return Jump(m_assembler.jnp());
             Jump isUnordered(m_assembler.jp());
@@ -4169,7 +4199,7 @@ private:
 #if CPU(X86_64)
     void moveConditionallyAfterFloatingPointCompare(DoubleCondition cond, FPRegisterID left, FPRegisterID right, RegisterID src, RegisterID dest)
     {
-        if (cond == DoubleEqual) {
+        if (cond == DoubleEqualAndOrdered) {
             if (left == right) {
                 m_assembler.cmovnpq_rr(src, dest);
                 return;

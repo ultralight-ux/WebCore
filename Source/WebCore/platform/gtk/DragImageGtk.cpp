@@ -72,8 +72,10 @@ DragImageRef dissolveDragImageToFraction(DragImageRef image, float fraction)
     if (!image)
         return nullptr;
 
+#if !USE(GTK4)
     if (!gdk_screen_is_composited(gdk_screen_get_default()))
         return image;
+#endif
 
     RefPtr<cairo_t> context = adoptRef(cairo_create(image.get()));
     cairo_set_operator(context.get(), CAIRO_OPERATOR_DEST_IN);
@@ -82,7 +84,7 @@ DragImageRef dissolveDragImageToFraction(DragImageRef image, float fraction)
     return image;
 }
 
-DragImageRef createDragImageFromImage(Image* image, ImageOrientationDescription)
+DragImageRef createDragImageFromImage(Image* image, ImageOrientation)
 {
     return image->nativeImageForCurrentFrame();
 }

@@ -26,7 +26,7 @@
 #import "config.h"
 #import "RemoteCommandListenerIOS.h"
 
-#if PLATFORM(IOS_FAMILY) && HAVE(MEDIA_PLAYER)
+#if PLATFORM(IOS_FAMILY)
 
 #import <MediaPlayer/MPRemoteCommand.h>
 #import <MediaPlayer/MPRemoteCommandCenter.h>
@@ -45,7 +45,7 @@ std::unique_ptr<RemoteCommandListener> RemoteCommandListener::create(RemoteComma
     if (!MediaPlayerLibrary())
         return nullptr;
 
-    return std::make_unique<RemoteCommandListenerIOS>(client);
+    return makeUnique<RemoteCommandListenerIOS>(client);
 }
 
 RemoteCommandListenerIOS::RemoteCommandListenerIOS(RemoteCommandListenerClient& client)
@@ -151,4 +151,4 @@ void RemoteCommandListenerIOS::updateSupportedCommands()
 
 }
 
-#endif // PLATFORM(IOS_FAMILY) && HAVE(MEDIA_PLAYER)
+#endif // PLATFORM(IOS_FAMILY)

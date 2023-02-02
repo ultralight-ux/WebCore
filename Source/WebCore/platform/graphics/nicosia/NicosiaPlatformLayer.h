@@ -35,8 +35,8 @@
 #include "FloatRect.h"
 #include "FloatSize.h"
 #include "NicosiaAnimatedBackingStoreClient.h"
+#include "NicosiaAnimation.h"
 #include "NicosiaSceneIntegration.h"
-#include "TextureMapperAnimation.h"
 #include "TransformationMatrix.h"
 #include <wtf/Function.h>
 #include <wtf/Lock.h>
@@ -112,13 +112,17 @@ public:
                     bool positionChanged : 1;
                     bool anchorPointChanged : 1;
                     bool sizeChanged : 1;
+                    bool boundsOriginChanged : 1;
                     bool transformChanged : 1;
                     bool childrenTransformChanged : 1;
                     bool contentsRectChanged : 1;
                     bool contentsTilingChanged : 1;
+                    bool contentsClippingRectChanged : 1;
                     bool opacityChanged : 1;
                     bool solidColorChanged : 1;
                     bool filtersChanged : 1;
+                    bool backdropFiltersChanged : 1;
+                    bool backdropFiltersRectChanged : 1;
                     bool animationsChanged : 1;
                     bool childrenChanged : 1;
                     bool maskChanged : 1;
@@ -157,6 +161,7 @@ public:
         WebCore::FloatPoint position;
         WebCore::FloatPoint3D anchorPoint;
         WebCore::FloatSize size;
+        WebCore::FloatPoint boundsOrigin;
 
         WebCore::TransformationMatrix transform;
         WebCore::TransformationMatrix childrenTransform;
@@ -164,6 +169,7 @@ public:
         WebCore::FloatRect contentsRect;
         WebCore::FloatSize contentsTilePhase;
         WebCore::FloatSize contentsTileSize;
+        WebCore::FloatRoundedRect contentsClippingRect;
 
         float opacity { 0 };
         WebCore::Color solidColor;
@@ -171,11 +177,12 @@ public:
         WebCore::FilterOperations filters;
         // FIXME: Despite the name, this implementation is not
         // TextureMapper-specific. Should be renamed when necessary.
-        WebCore::TextureMapperAnimations animations;
+        Animations animations;
 
         Vector<RefPtr<CompositionLayer>> children;
         RefPtr<CompositionLayer> replica;
         RefPtr<CompositionLayer> mask;
+        RefPtr<CompositionLayer> backdropLayer;
 
         RefPtr<ContentLayer> contentLayer;
         RefPtr<BackingStore> backingStore;
@@ -215,6 +222,8 @@ public:
             staging.anchorPoint = pending.anchorPoint;
         if (pending.delta.sizeChanged)
             staging.size = pending.size;
+        if (pending.delta.boundsOriginChanged)
+            staging.boundsOrigin = pending.boundsOrigin;
 
         if (pending.delta.transformChanged)
             staging.transform = pending.transform;
@@ -227,6 +236,8 @@ public:
             staging.contentsTilePhase = pending.contentsTilePhase;
             staging.contentsTileSize = pending.contentsTileSize;
         }
+        if (pending.delta.contentsClippingRectChanged)
+            staging.contentsClippingRect = pending.contentsClippingRect;
 
         if (pending.delta.opacityChanged)
             staging.opacity = pending.opacity;
@@ -235,6 +246,8 @@ public:
 
         if (pending.delta.filtersChanged)
             staging.filters = pending.filters;
+        if (pending.delta.backdropFiltersChanged)
+            staging.backdropLayer = pending.backdropLayer;
         if (pending.delta.animationsChanged)
             staging.animations = pending.animations;
 

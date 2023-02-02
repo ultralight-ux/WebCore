@@ -32,10 +32,11 @@ namespace JSC {
 class VM;
 
 class DoublePredictionFuzzerAgent final : public FuzzerAgent {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     DoublePredictionFuzzerAgent(VM&);
 
-    SpeculatedType getPrediction(CodeBlock*, const CodeOrigin&, SpeculatedType) override;
+    SpeculatedType getPrediction(CodeBlock*, const CodeOrigin&, SpeculatedType) final;
 };
 
 } // namespace JSC

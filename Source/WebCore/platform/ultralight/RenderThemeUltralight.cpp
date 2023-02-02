@@ -40,6 +40,8 @@ public:
     RenderThemeUltralight() {}
     virtual ~RenderThemeUltralight() {}
 
+    virtual bool canPaint(const PaintInfo& paintInfo) const override { return paintInfo.context().hasPlatformContext(); }
+
     virtual String extraDefaultStyleSheet() override
     {
         auto& config = ultralight::Platform::instance().config();
@@ -122,11 +124,19 @@ public:
         return border.rect();
     }
 
-    virtual Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override { return Color(0, 151, 255); }
+    virtual Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override { return Color(SRGBA<uint8_t>(0, 151, 255, 255)); }
 
     virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const {}
 
     // Graphics / drawing
+
+    static bool shouldUseConvexGradient(const Color& backgroundColor)
+    {
+        // FIXME: This should probably be using luminance.
+        auto [r, g, b, a] = backgroundColor.toSRGBALossy<float>();
+        float largestNonAlphaChannel = std::max({ r, g, b });
+        return a > 0.5 && largestNonAlphaChannel < 0.5;
+    }
 
     struct ColorPair {
         ultralight::Color color1;
@@ -204,7 +214,7 @@ public:
 
     const Color& shadowColor() const
     {
-        static Color color(0.0f, 0.0f, 0.0f, 0.7f);
+        static Color color(SRGBA<float>(0.0f, 0.0f, 0.0f, 0.7f));
         return color;
     }
 
@@ -277,7 +287,7 @@ public:
             path->LineTo(points[i]);
 
         ultralight::Paint paint;
-        paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+        paint.color = ToColor(color);
 
         canvas->StrokePath(path, paint, strokeWidth, use_square_cap ? ultralight::kLineCap_Square : ultralight::kLineCap_Butt);
     }
@@ -292,21 +302,25 @@ public:
         return RenderTheme::baselinePosition(box);
     }
 
-    virtual bool isControlStyled(const RenderStyle& style, const BorderData& border, const FillLayer& background, const Color& backgroundColor) const override
+    virtual bool isControlStyled(const RenderStyle& style, const RenderStyle& userAgentStyle) const override
     {
-        // Buttons and MenulistButtons are styled if they contain a background image.
-        if (style.appearance() == PushButtonPart || style.appearance() == MenulistButtonPart)
-            return !style.visitedDependentColor(CSSPropertyBackgroundColor).isVisible() || style.backgroundLayers().hasImage();
+        auto appearance = style.appearance();
+        if (appearance == TextFieldPart || appearance == TextAreaPart || appearance == SearchFieldPart || appearance == ListboxPart)
+            return style.border() != userAgentStyle.border();
 
-        if (style.appearance() == TextFieldPart || style.appearance() == TextAreaPart)
-            return style.backgroundLayers() != background;
+        // FIXME: This is horrible, but there is not much else that can be done.  Menu lists cannot draw properly when
+        // scaled.  They can't really draw properly when transformed either.  We can't detect the transform case at style
+        // adjustment time so that will just have to stay broken.  We can however detect that we're zooming.  If zooming
+        // is in effect we treat it like the control is styled.
+        if (appearance == MenulistPart && style.effectiveZoom() != 1.0f)
+            return true;
 
-        return RenderTheme::isControlStyled(style, border, background, backgroundColor);
+        return RenderTheme::isControlStyled(style, userAgentStyle);
     }
 
     // Check boxes
 
-    virtual void adjustCheckboxStyle(StyleResolver&, RenderStyle& style, const Element*) const override
+    virtual void adjustCheckboxStyle(RenderStyle& style, const Element*) const override
     {
         if (!style.width().isIntrinsicOrAuto() && !style.height().isAuto())
             return;
@@ -331,7 +345,7 @@ public:
         if (checked || indeterminate) {
             auto border = box.style().getRoundedBorderFor(rect);
 #if OS(DARWIN)
-            paintInfo.context().fillRoundedRect(border.pixelSnappedRoundedRectForPainting(box.document().deviceScaleFactor()), Color(0.0f, 0.0f, 0.0f, 0.8f));
+            paintInfo.context().fillRoundedRect(border.pixelSnappedRoundedRectForPainting(box.document().deviceScaleFactor()), Color(SRGBA<float>(0.0f, 0.0f, 0.0f, 0.8f)));
 #endif
 
             auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
@@ -376,13 +390,13 @@ public:
 
 #if OS(DARWIN)
             lineWidth = std::max<float>(lineWidth, 1);
-            drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(shadow) }, true, lineWidth, Color { 0.0f, 0.0f, 0.0f, 0.7f });
+            drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(shadow) }, true, lineWidth, Color(SRGBA<float>(0.0f, 0.0f, 0.0f, 0.7f)));
 
             lineWidth = std::max<float>(std::min(width, height) * thicknessRatio, 1);
-            drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(line) }, false, lineWidth, Color { 1.0f, 1.0f, 1.0f, 240 / 255.0f });
+            drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(line) }, false, lineWidth, Color(SRGBA<float>(1.0f, 1.0f, 1.0f, 240 / 255.0f )));
 #else
             lineWidth = std::max<float>(std::min(width, height) * 1.5f * thicknessRatio, 1);
-            drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(line) }, false, lineWidth, Color { 0.0f, 0.0f, 0.0f, 0.7f });
+            drawJoinedLines(canvas, Vector<ultralight::Point> { WTFMove(line) }, false, lineWidth, Color(SRGBA<float>(0.0f, 0.0f, 0.0f, 0.7f)));
 #endif
         } else {
             auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
@@ -397,7 +411,7 @@ public:
     }
 
     // Radio buttons
-    virtual void adjustRadioStyle(StyleResolver&, RenderStyle& style, const Element*) const override
+    virtual void adjustRadioStyle(RenderStyle& style, const Element*) const override
     {
         if (!style.width().isIntrinsicOrAuto() && !style.height().isAuto())
             return;
@@ -425,7 +439,7 @@ public:
         if (isChecked(box)) {
             auto border = box.style().getRoundedBorderFor(rect);
 #if OS(DARWIN)
-            paintInfo.context().fillRoundedRect(border.pixelSnappedRoundedRectForPainting(box.document().deviceScaleFactor()), Color(0.0f, 0.0f, 0.0f, 0.8f));
+            paintInfo.context().fillRoundedRect(border.pixelSnappedRoundedRectForPainting(box.document().deviceScaleFactor()), Color(SRGBA<float>(0.0f, 0.0f, 0.0f, 0.8f)));
 #endif
 
             auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
@@ -453,7 +467,7 @@ public:
             paintInfo.context().clipRoundedRect(FloatRoundedRect(clip, radius, radius, radius, radius));
             drawShadeAndShineGradients(clip);
 #else
-            paintInfo.context().setFillColor(Color(0.0f, 0.0f, 0.0f, 0.7f));
+            paintInfo.context().setFillColor(Color(SRGBA<float>(0.0f, 0.0f, 0.0f, 0.7f)));
             paintInfo.context().drawEllipse(clip);
 #endif
         } else {
@@ -487,8 +501,9 @@ public:
     static void applyCommonButtonPaddingToStyle(RenderStyle& style, const Element& element)
     {
         Document& document = element.document();
-        auto emSize = CSSPrimitiveValue::create(0.5, CSSPrimitiveValue::CSS_EMS);
-        int pixels = emSize->computeLength<int>(CSSToLengthConversionData(&style, document.renderStyle(), document.renderView(), document.frame()->pageZoomFactor()));
+        auto emSize = CSSPrimitiveValue::create(0.5, CSSUnitType::CSS_EMS);
+        // We don't need this element's parent style to calculate `em` units, so it's okay to pass nullptr for it here.
+        int pixels = emSize->computeLength<int>(CSSToLengthConversionData(&style, document.renderStyle(), nullptr, document.renderView(), document.frame()->pageZoomFactor()));
         style.setPaddingBox(LengthBox(0, pixels, 0, pixels));
     }
 
@@ -507,7 +522,7 @@ public:
         applyCommonButtonPaddingToStyle(style, inputElement);
     }
 
-    virtual void adjustMenuListButtonStyle(StyleResolver&, RenderStyle& style, const Element* element) const override
+    virtual void adjustMenuListButtonStyle(RenderStyle& style, const Element* element) const override
     {
         // Set the min-height to be at least MenuListMinHeight.
         if (style.height().isAuto())
@@ -619,7 +634,7 @@ public:
             FloatRect ellipse(buttonClip.x() + (buttonClip.width() - count * (size + padding) + padding) / 2.0, buttonClip.maxY() - 10.0, size, size);
 
             for (int i = 0; i < count; ++i) {
-                paintInfo.context().drawRaisedEllipse(ellipse, Color::white, Color(0.0f, 0.0f, 0.0f, 0.5f));
+                paintInfo.context().drawRaisedEllipse(ellipse, Color::white, Color::black.colorWithAlphaByte(128));
                 ellipse.move(size + padding, 0);
             }
         } else {
@@ -643,29 +658,29 @@ public:
             WebCore::Path shadowPath = Path::polygonPathFromPoints(shadow);
             ultralight::Paint paint;
             paint.color = UltralightRGBA(0, 0, 0, 255 * opacity);
-            canvas->FillPath(shadowPath.ultralightPath(), paint, ultralight::kFillRule_EvenOdd);
+            canvas->FillPath(shadowPath.ensurePlatformPath(), paint, ultralight::kFillRule_EvenOdd);
 
             WebCore::Path arrowPath = Path::polygonPathFromPoints(arrow);
             paint.color = UltralightColorWHITE;
-            canvas->FillPath(arrowPath.ultralightPath(), paint, ultralight::kFillRule_EvenOdd);
+            canvas->FillPath(arrowPath.ensurePlatformPath(), paint, ultralight::kFillRule_EvenOdd);
         }
 
         return false;
     }
 
-    virtual void adjustButtonStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const override
+    virtual void adjustButtonStyle(RenderStyle& style, const Element* element) const override
     {
-        RenderTheme::adjustButtonStyle(selector, style, element);
+        RenderTheme::adjustButtonStyle(style, element);
 
         // TODO: Not working correctly with styled buttons. Disable these adjustments for now:
         return;
 
         // Set padding: 0 1.0em; on buttons.
         // CSSPrimitiveValue::computeLengthInt only needs the element's style to calculate em lengths.
-        // Since the element might not be in a document, just pass nullptr for the root element style
-        // and the render view.
-        RefPtr<CSSPrimitiveValue> emSize = CSSPrimitiveValue::create(1.0, CSSPrimitiveValue::CSS_EMS);
-        int pixels = emSize->computeLength<int>(CSSToLengthConversionData(&style, nullptr, nullptr, 1.0, false));
+        // Since the element might not be in a document, just pass nullptr for the root element style,
+        // the parent element style, and the render view.
+        auto emSize = CSSPrimitiveValue::create(1.0, CSSUnitType::CSS_EMS);
+        int pixels = emSize->computeLength<int>(CSSToLengthConversionData(&style, nullptr, nullptr, nullptr, 1.0, WTF::nullopt));
         style.setPaddingBox(LengthBox(0, pixels, 0, pixels));
 
         if (!element)
@@ -688,7 +703,7 @@ public:
         bool flip = isPressed(box);
         FloatPoint start = flip ? FloatPoint(clip.x(), clip.maxY()) : clip.location();
         FloatPoint end = flip ? clip.location() : FloatPoint(clip.x(), clip.maxY());
-        if (box.style().visitedDependentColor(CSSPropertyBackgroundColor).isDark())
+        if (shouldUseConvexGradient(box.style().visitedDependentColor(CSSPropertyBackgroundColor)))
             drawAxialGradient(canvas, getConvexGradient(), start, end, clip);
         else {
             drawAxialGradient(canvas, getShadeGradient(), start, end, clip);
@@ -702,9 +717,9 @@ public:
         return paintPushButtonDecorations(box, paintInfo, rect);
     }
 
-    virtual void adjustSearchFieldStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const override
+    virtual void adjustSearchFieldStyle(RenderStyle& style, const Element* element) const override
     {
-        RenderTheme::adjustSearchFieldStyle(selector, style, element);
+        RenderTheme::adjustSearchFieldStyle(style, element);
 
         if (!element)
             return;
@@ -727,7 +742,7 @@ public:
     }
 
     // Text fields
-    virtual void adjustTextFieldStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const override
+    virtual void adjustTextFieldStyle(RenderStyle& style, const Element* element) const override
     {
         // This is to match Chrome behavior
         style.setLineHeight(RenderStyle::initialLineHeight());
@@ -803,7 +818,7 @@ public:
             return true;
 
         const int progressBarHeight = 9;
-        const float verticalOffset = (rect.height() - progressBarHeight) / 2.0;
+        const float verticalOffset = (rect.height() - progressBarHeight) / 2.0f;
 
         PlatformGraphicsContext* ctx = paintInfo.context().platformContext();
         PlatformCanvas canvas = ctx->canvas();
@@ -828,9 +843,9 @@ public:
 
         ultralight::Paint paint;
         paint.color = UltralightRGBA(240, 240, 240, 255);
-        canvas->FillPath(trackPath.ultralightPath(), paint, ultralight::kFillRule_EvenOdd);
+        canvas->FillPath(trackPath.ensurePlatformPath(), paint, ultralight::kFillRule_EvenOdd);
         paint.color = UltralightRGBA(220, 220, 220, 255);
-        canvas->StrokePath(trackPath.ultralightPath(), paint, 1.0f);
+        canvas->StrokePath(trackPath.ensurePlatformPath(), paint, 1.0f);
 
         FloatRect border(rect.x(), rect.y() + verticalOffset, rect.width(), progressBarHeight);
         paintInfo.context().clipRoundedRect(FloatRoundedRect(border, roundedCornerRadius, roundedCornerRadius, roundedCornerRadius, roundedCornerRadius));
@@ -850,7 +865,7 @@ public:
 
             // Blue for progress indicator
             paint.color = UltralightRGBA(0, 151, 255, 255);
-            canvas->FillPath(barPath.ultralightPath(), paint, ultralight::kFillRule_EvenOdd);
+            canvas->FillPath(barPath.ensurePlatformPath(), paint, ultralight::kFillRule_EvenOdd);
         }
 
         return false;
@@ -860,9 +875,9 @@ public:
     const double kTrackRadius = kTrackThickness / 2.0;
     const int kDefaultSliderThumbSize = 16;
 
-    virtual void adjustSliderTrackStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const override
+    virtual void adjustSliderTrackStyle(RenderStyle& style, const Element* element) const override
     {
-        RenderTheme::adjustSliderTrackStyle(selector, style, element);
+        RenderTheme::adjustSliderTrackStyle(style, element);
 
         // FIXME: We should not be relying on border radius for the appearance of our controls <rdar://problem/7675493>.
         int radius = static_cast<int>(kTrackRadius);
@@ -942,7 +957,7 @@ public:
             else
                 paint.color = UltralightRGBA(76, 76, 76, 255);
 
-            canvas->StrokePath(trackPath.ultralightPath(), paint, 1.0f);
+            canvas->StrokePath(trackPath.ensurePlatformPath(), paint, 1.0f);
         }
 
         return false;

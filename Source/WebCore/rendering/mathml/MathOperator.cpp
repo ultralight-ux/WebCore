@@ -86,21 +86,8 @@ static const StretchyCharacter stretchyCharacters[14] = {
     { 0x222b, 0x2320, 0x23ae, 0x2321, 0x0    } // integral sign
 };
 
-void MathOperator::GlyphAssemblyData::initialize()
-{
-    topOrRightCodePoint = 0;
-    topOrRightFallbackGlyph = 0;
-    extensionCodePoint = 0;
-    extensionFallbackGlyph = 0;
-    bottomOrLeftCodePoint = 0;
-    bottomOrLeftFallbackGlyph = 0;
-    middleCodePoint = 0;
-    middleFallbackGlyph = 0;
-}
-    
 MathOperator::MathOperator()
 {
-    m_assembly.initialize();
     m_variantGlyph = 0;
 }
 
@@ -538,7 +525,7 @@ LayoutRect MathOperator::paintGlyph(const RenderStyle& style, PaintInfo& info, c
     info.context().clip(clipBounds);
 
     GlyphBuffer buffer;
-    buffer.add(data.glyph, data.font, advanceWidthForGlyph(data));
+    buffer.add(data.glyph, *data.font, advanceWidthForGlyph(data));
     info.context().drawGlyphs(*data.font, buffer, 0, 1, origin, style.fontCascade().fontDescription().fontSmoothing());
 
     return glyphPaintRect;
@@ -742,7 +729,7 @@ void MathOperator::paint(const RenderStyle& style, PaintInfo& info, const Layout
         glyphData.glyph = m_variantGlyph;
 
     GlyphBuffer buffer;
-    buffer.add(glyphData.glyph, glyphData.font, advanceWidthForGlyph(glyphData));
+    buffer.add(glyphData.glyph, *glyphData.font, advanceWidthForGlyph(glyphData));
     LayoutPoint operatorTopLeft = paintOffset;
     FloatRect glyphBounds = boundsForGlyph(glyphData);
     LayoutPoint operatorOrigin { operatorTopLeft.x(), LayoutUnit(operatorTopLeft.y() - glyphBounds.y()) };

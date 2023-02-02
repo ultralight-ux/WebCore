@@ -60,7 +60,7 @@ StringView CachedScript::script()
     ProfiledMemoryZone(MemoryTag::Cache);
 
     if (!m_data)
-        return { };
+        return emptyString();
 
     if (m_decodingState == NeverDecoded
         && TextEncoding(encoding()).isByteBasedEncoding()
@@ -99,11 +99,11 @@ unsigned CachedScript::scriptHash()
     return m_scriptHash;
 }
 
-void CachedScript::finishLoading(SharedBuffer* data)
+void CachedScript::finishLoading(SharedBuffer* data, const NetworkLoadMetrics& metrics)
 {
     m_data = data;
     setEncodedSize(data ? data->size() : 0);
-    CachedResource::finishLoading(data);
+    CachedResource::finishLoading(data, metrics);
 }
 
 void CachedScript::destroyDecodedData()

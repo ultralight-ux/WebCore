@@ -14,7 +14,7 @@ list(APPEND WTF_SOURCES
     win/OSAllocatorWin.cpp
     win/PathWalker.cpp
     win/ThreadingWin.cpp
-    win/ThreadSpecificWin.cpp
+#    win/ThreadSpecificWin.cpp
 )
 
 if (UL_PROFILE_MEMORY OR UL_ENABLE_MEMORY_STATS)

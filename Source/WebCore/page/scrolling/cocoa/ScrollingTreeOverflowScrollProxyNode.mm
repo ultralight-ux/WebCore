@@ -52,7 +52,7 @@ void ScrollingTreeOverflowScrollProxyNode::commitStateBeforeChildren(const Scrol
     const ScrollingStateOverflowScrollProxyNode& overflowProxyStateNode = downcast<ScrollingStateOverflowScrollProxyNode>(stateNode);
 
     if (stateNode.hasChangedProperty(ScrollingStateNode::Layer))
-        m_layer = stateNode.layer();
+        m_layer = static_cast<CALayer*>(stateNode.layer());
 
     if (overflowProxyStateNode.hasChangedProperty(ScrollingStateOverflowScrollProxyNode::OverflowScrollingNode))
         m_overflowScrollingNodeID = overflowProxyStateNode.overflowScrollingNode();
@@ -87,7 +87,7 @@ void ScrollingTreeOverflowScrollProxyNode::applyLayerPositions()
         }
     }
 
-    LOG_WITH_STREAM(Scrolling, stream << "ScrollingTreeOverflowScrollProxyNode " << scrollingNodeID() << " applyLayerPositions: setting bounds origin to " << scrollOffset);
+    LOG_WITH_STREAM(ScrollingTree, stream << "ScrollingTreeOverflowScrollProxyNode " << scrollingNodeID() << " applyLayerPositions: setting bounds origin to " << scrollOffset);
     [m_layer _web_setLayerBoundsOrigin:scrollOffset];
 }
 

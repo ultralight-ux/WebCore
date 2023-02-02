@@ -26,7 +26,6 @@
 #include "config.h"
 #include "PageNetworkAgent.h"
 
-#include "CustomHeaderFields.h"
 #include "Document.h"
 #include "DocumentLoader.h"
 #include "Frame.h"
@@ -46,10 +45,12 @@ PageNetworkAgent::PageNetworkAgent(PageAgentContext& context)
 {
 }
 
+PageNetworkAgent::~PageNetworkAgent() = default;
+
 String PageNetworkAgent::loaderIdentifier(DocumentLoader* loader)
 {
     if (loader) {
-        if (auto* pageAgent = m_instrumentingAgents.inspectorPageAgent())
+        if (auto* pageAgent = m_instrumentingAgents.enabledPageAgent())
             return pageAgent->loaderId(loader);
     }
     return { };
@@ -58,7 +59,7 @@ String PageNetworkAgent::loaderIdentifier(DocumentLoader* loader)
 String PageNetworkAgent::frameIdentifier(DocumentLoader* loader)
 {
     if (loader) {
-        if (auto* pageAgent = m_instrumentingAgents.inspectorPageAgent())
+        if (auto* pageAgent = m_instrumentingAgents.enabledPageAgent())
             return pageAgent->frameId(loader->frame());
     }
     return { };
@@ -95,14 +96,14 @@ Vector<WebSocket*> PageNetworkAgent::activeWebSockets(const LockHolder& lock)
 
 void PageNetworkAgent::setResourceCachingDisabled(bool disabled)
 {
-    m_inspectedPage.setResourceCachingDisabledOverride(disabled);
+    m_inspectedPage.setResourceCachingDisabledByWebInspector(disabled);
 }
 
 ScriptExecutionContext* PageNetworkAgent::scriptExecutionContext(ErrorString& errorString, const String& frameId)
 {
-    auto* pageAgent = m_instrumentingAgents.inspectorPageAgent();
+    auto* pageAgent = m_instrumentingAgents.enabledPageAgent();
     if (!pageAgent) {
-        errorString = "Missing Page agent"_s;
+        errorString = "Page domain must be enabled"_s;
         return nullptr;
     }
 
@@ -112,7 +113,7 @@ ScriptExecutionContext* PageNetworkAgent::scriptExecutionContext(ErrorString& er
 
     auto* document = frame->document();
     if (!document) {
-        errorString = "No Document instance for the specified frame"_s;
+        errorString = "Missing frame of docuemnt for given frameId"_s;
         return nullptr;
     }
 

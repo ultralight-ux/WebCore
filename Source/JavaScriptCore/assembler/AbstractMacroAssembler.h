@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,14 +46,17 @@ namespace JSC {
 #if ENABLE(ASSEMBLER)
 
 class AllowMacroScratchRegisterUsage;
-class DisallowMacroScratchRegisterUsage;
 class LinkBuffer;
 class Watchpoint;
+
+template<typename T> class DisallowMacroScratchRegisterUsage;
+
 namespace DFG {
 struct OSRExit;
 }
 
 class AbstractMacroAssemblerBase {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     enum StatusCondition {
         Success,
@@ -119,14 +122,8 @@ public:
         TimesTwo,
         TimesFour,
         TimesEight,
+        ScalePtr = isAddress64Bit() ? TimesEight : TimesFour,
     };
-    
-    static Scale timesPtr()
-    {
-        if (sizeof(void*) == 4)
-            return TimesFour;
-        return TimesEight;
-    }
     
     struct BaseIndex;
     
@@ -195,12 +192,14 @@ public:
             : base(base)
             , offset(0)
         {
+            ASSERT(base != RegisterID::InvalidGPRReg);
         }
 
         ImplicitAddress(Address address)
             : base(address.base)
             , offset(address.offset)
         {
+            ASSERT(base != RegisterID::InvalidGPRReg);
         }
 
         RegisterID base;
@@ -292,7 +291,7 @@ public:
             return const_cast<void*>(m_value);
         }
 
-        const void* m_value { 0 };
+        const void* m_value { nullptr };
     };
 
     struct ImmPtr : private TrustedImmPtr
@@ -916,6 +915,22 @@ public:
         RELEASE_ASSERT_NOT_REACHED();
     }
 
+    template<PtrTag callTag, PtrTag destTag>
+    static CodeLocationLabel<destTag> prepareForAtomicRepatchNearCallConcurrently(CodeLocationNearCall<callTag> nearCall, CodeLocationLabel<destTag> destination)
+    {
+#if USE(JUMP_ISLANDS)
+        switch (nearCall.callMode()) {
+        case NearCallMode::Tail:
+            return CodeLocationLabel<destTag>(tagCodePtr<destTag>(AssemblerType::prepareForAtomicRelinkJumpConcurrently(nearCall.dataLocation(), destination.dataLocation())));
+        case NearCallMode::Regular:
+            return CodeLocationLabel<destTag>(tagCodePtr<destTag>(AssemblerType::prepareForAtomicRelinkCallConcurrently(nearCall.dataLocation(), destination.untaggedExecutableAddress())));
+        }
+#else
+        UNUSED_PARAM(nearCall);
+        return destination;
+#endif
+    }
+
     template<PtrTag tag>
     static void repatchCompact(CodeLocationDataLabelCompact<tag> dataLabelCompact, int32_t value)
     {
@@ -958,6 +973,14 @@ public:
         m_linkTasks.append(createSharedTask<void(LinkBuffer&)>(functor));
     }
 
+#if COMPILER(GCC)
+    // Workaround for GCC demanding that memcpy "must be the name of a function with external linkage".
+    static void* memcpy(void* dst, const void* src, size_t size)
+    {
+        return std::memcpy(dst, src, size);
+    }
+#endif
+
     void emitNops(size_t memoryToFillWithNopsInBytes)
     {
 #if CPU(ARM64)
@@ -969,19 +992,20 @@ public:
         size_t startCodeSize = buffer.codeSize();
         size_t targetCodeSize = startCodeSize + memoryToFillWithNopsInBytes;
         buffer.ensureSpace(memoryToFillWithNopsInBytes);
-        AssemblerType::fillNops(static_cast<char*>(buffer.data()) + startCodeSize, memoryToFillWithNopsInBytes, memcpy);
+        AssemblerType::template fillNops<memcpy>(static_cast<char*>(buffer.data()) + startCodeSize, memoryToFillWithNopsInBytes);
         buffer.setCodeSize(targetCodeSize);
 #endif
     }
 
     ALWAYS_INLINE void tagReturnAddress() { }
-    ALWAYS_INLINE void untagReturnAddress() { }
+    ALWAYS_INLINE void untagReturnAddress(RegisterID = RegisterID::InvalidGPRReg) { }
 
     ALWAYS_INLINE void tagPtr(PtrTag, RegisterID) { }
     ALWAYS_INLINE void tagPtr(RegisterID, RegisterID) { }
     ALWAYS_INLINE void untagPtr(PtrTag, RegisterID) { }
     ALWAYS_INLINE void untagPtr(RegisterID, RegisterID) { }
     ALWAYS_INLINE void removePtrTag(RegisterID) { }
+    ALWAYS_INLINE void validateUntaggedPtr(RegisterID, RegisterID = RegisterID::InvalidGPRReg) { }
 
 protected:
     AbstractMacroAssembler()
@@ -1087,7 +1111,7 @@ protected:
 
     friend class AllowMacroScratchRegisterUsage;
     friend class AllowMacroScratchRegisterUsageIf;
-    friend class DisallowMacroScratchRegisterUsage;
+    template<typename T> friend class DisallowMacroScratchRegisterUsage;
     unsigned m_tempRegistersValidBits;
     bool m_allowScratchRegister { true };
 

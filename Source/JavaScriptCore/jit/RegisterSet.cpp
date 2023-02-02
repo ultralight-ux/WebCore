@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,10 +29,8 @@
 #if ENABLE(ASSEMBLER)
 
 #include "GPRInfo.h"
-#include "JSCInlines.h"
 #include "MacroAssembler.h"
 #include "RegisterAtOffsetList.h"
-#include "assembler/RegisterInfo.h"
 #include <wtf/CommaPrinter.h>
 
 namespace JSC {
@@ -61,7 +59,7 @@ RegisterSet RegisterSet::reservedHardwareRegisters()
 RegisterSet RegisterSet::runtimeTagRegisters()
 {
 #if USE(JSVALUE64)
-    return RegisterSet(GPRInfo::tagTypeNumberRegister, GPRInfo::tagMaskRegister);
+    return RegisterSet(GPRInfo::numberTagRegister, GPRInfo::notCellMaskRegister);
 #else
     return { };
 #endif
@@ -156,6 +154,7 @@ RegisterSet RegisterSet::vmCalleeSaveRegisters()
     result.set(FPRInfo::fpRegCS7);
 #elif CPU(ARM_THUMB2) || CPU(MIPS)
     result.set(GPRInfo::regCS0);
+    result.set(GPRInfo::regCS1);
 #endif
     return result;
 }
@@ -178,29 +177,31 @@ RegisterSet RegisterSet::llintBaselineCalleeSaveRegisters()
 #if !OS(WINDOWS)
     result.set(GPRInfo::regCS1);
     result.set(GPRInfo::regCS2);
-    ASSERT(GPRInfo::regCS3 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS4 == GPRInfo::tagMaskRegister);
+    static_assert(GPRInfo::regCS3 == GPRInfo::numberTagRegister, "");
+    static_assert(GPRInfo::regCS4 == GPRInfo::notCellMaskRegister, "");
     result.set(GPRInfo::regCS3);
     result.set(GPRInfo::regCS4);
 #else
     result.set(GPRInfo::regCS3);
     result.set(GPRInfo::regCS4);
-    ASSERT(GPRInfo::regCS5 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS6 == GPRInfo::tagMaskRegister);
+    static_assert(GPRInfo::regCS5 == GPRInfo::numberTagRegister, "");
+    static_assert(GPRInfo::regCS6 == GPRInfo::notCellMaskRegister, "");
     result.set(GPRInfo::regCS5);
     result.set(GPRInfo::regCS6);
 #endif
 #elif CPU(ARM_THUMB2)
     result.set(GPRInfo::regCS0);
+    result.set(GPRInfo::regCS1);
 #elif CPU(ARM64)
     result.set(GPRInfo::regCS6);
     result.set(GPRInfo::regCS7);
-    ASSERT(GPRInfo::regCS8 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS9 == GPRInfo::tagMaskRegister);
+    static_assert(GPRInfo::regCS8 == GPRInfo::numberTagRegister, "");
+    static_assert(GPRInfo::regCS9 == GPRInfo::notCellMaskRegister, "");
     result.set(GPRInfo::regCS8);
     result.set(GPRInfo::regCS9);
 #elif CPU(MIPS)
     result.set(GPRInfo::regCS0);
+    result.set(GPRInfo::regCS1);
 #else
     UNREACHABLE_FOR_PLATFORM();
 #endif
@@ -216,22 +217,23 @@ RegisterSet RegisterSet::dfgCalleeSaveRegisters()
     result.set(GPRInfo::regCS1);
     result.set(GPRInfo::regCS2);
 #if !OS(WINDOWS)
-    ASSERT(GPRInfo::regCS3 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS4 == GPRInfo::tagMaskRegister);
+    static_assert(GPRInfo::regCS3 == GPRInfo::numberTagRegister, "");
+    static_assert(GPRInfo::regCS4 == GPRInfo::notCellMaskRegister, "");
     result.set(GPRInfo::regCS3);
     result.set(GPRInfo::regCS4);
 #else
     result.set(GPRInfo::regCS3);
     result.set(GPRInfo::regCS4);
-    ASSERT(GPRInfo::regCS5 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS6 == GPRInfo::tagMaskRegister);
+    static_assert(GPRInfo::regCS5 == GPRInfo::numberTagRegister, "");
+    static_assert(GPRInfo::regCS6 == GPRInfo::notCellMaskRegister, "");
     result.set(GPRInfo::regCS5);
     result.set(GPRInfo::regCS6);
 #endif
 #elif CPU(ARM_THUMB2)
+    result.set(GPRInfo::regCS1);
 #elif CPU(ARM64)
-    ASSERT(GPRInfo::regCS8 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS9 == GPRInfo::tagMaskRegister);
+    static_assert(GPRInfo::regCS8 == GPRInfo::numberTagRegister, "");
+    static_assert(GPRInfo::regCS9 == GPRInfo::notCellMaskRegister, "");
     result.set(GPRInfo::regCS8);
     result.set(GPRInfo::regCS9);
 #elif CPU(MIPS)
@@ -245,23 +247,14 @@ RegisterSet RegisterSet::ftlCalleeSaveRegisters()
 {
     RegisterSet result;
 #if ENABLE(FTL_JIT)
-#if CPU(X86_64)
+#if CPU(X86_64) && !OS(WINDOWS)
     result.set(GPRInfo::regCS0);
     result.set(GPRInfo::regCS1);
     result.set(GPRInfo::regCS2);
-#if !OS(WINDOWS)
-    ASSERT(GPRInfo::regCS3 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS4 == GPRInfo::tagMaskRegister);
+    static_assert(GPRInfo::regCS3 == GPRInfo::numberTagRegister, "");
+    static_assert(GPRInfo::regCS4 == GPRInfo::notCellMaskRegister, "");
     result.set(GPRInfo::regCS3);
     result.set(GPRInfo::regCS4);
-#else
-    result.set(GPRInfo::regCS3);
-    result.set(GPRInfo::regCS4);
-    ASSERT(GPRInfo::regCS5 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS6 == GPRInfo::tagMaskRegister);
-    result.set(GPRInfo::regCS5);
-    result.set(GPRInfo::regCS6);
-#endif
 #elif CPU(ARM64)
     // B3 might save and use all ARM64 callee saves specified in the ABI.
     result.set(GPRInfo::regCS0);
@@ -272,8 +265,8 @@ RegisterSet RegisterSet::ftlCalleeSaveRegisters()
     result.set(GPRInfo::regCS5);
     result.set(GPRInfo::regCS6);
     result.set(GPRInfo::regCS7);
-    ASSERT(GPRInfo::regCS8 == GPRInfo::tagTypeNumberRegister);
-    ASSERT(GPRInfo::regCS9 == GPRInfo::tagMaskRegister);
+    static_assert(GPRInfo::regCS8 == GPRInfo::numberTagRegister, "");
+    static_assert(GPRInfo::regCS9 == GPRInfo::notCellMaskRegister, "");
     result.set(GPRInfo::regCS8);
     result.set(GPRInfo::regCS9);
     result.set(FPRInfo::fpRegCS0);

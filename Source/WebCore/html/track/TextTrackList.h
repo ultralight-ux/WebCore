@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
 
 #include "TrackListBase.h"
 
@@ -36,9 +36,11 @@ class TextTrack;
 class TextTrackList final : public TrackListBase {
     WTF_MAKE_ISO_ALLOCATED(TextTrackList);
 public:
-    static Ref<TextTrackList> create(HTMLMediaElement* element, ScriptExecutionContext* context)
+    static Ref<TextTrackList> create(WeakPtr<HTMLMediaElement> element, ScriptExecutionContext* context)
     {
-        return adoptRef(*new TextTrackList(element, context));
+        auto list = adoptRef(*new TextTrackList(element, context));
+        list->suspendIfNeeded();
+        return list;
     }
     virtual ~TextTrackList();
 
@@ -60,10 +62,10 @@ public:
     EventTargetInterface eventTargetInterface() const override;
 
 private:
-    TextTrackList(HTMLMediaElement*, ScriptExecutionContext*);
+    TextTrackList(WeakPtr<HTMLMediaElement>, ScriptExecutionContext*);
+    const char* activeDOMObjectName() const final;
 
     void invalidateTrackIndexesAfterTrack(TextTrack&);
-    const char* activeDOMObjectName() const final;
 
     Vector<RefPtr<TrackBase>> m_addTrackTracks;
     Vector<RefPtr<TrackBase>> m_elementTracks;
@@ -71,4 +73,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(VIDEO_TRACK)
+#endif // ENABLE(VIDEO)

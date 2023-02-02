@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 
 include(WebKitCommon)
+include(target/TargetWTF)
+include(target/TargetJavaScriptCore)
 include(WebCoreMacros.cmake)
 include(Headers.cmake)
 
@@ -16,11 +18,6 @@ list(APPEND WebCore_UNIFIED_SOURCE_LIST_FILES
     "Sources.txt"
 )
 
-set(WebCore_INCLUDE_DIRECTORIES
-    "${JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS_DIR}"
-    "${PAL_FRAMEWORK_HEADERS_DIR}"
-)
-
 set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_BINARY_DIR}"
     "${WebCore_DERIVED_SOURCES_DIR}"
@@ -29,6 +26,7 @@ set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/Modules/applepay"
     "${WEBCORE_DIR}/Modules/applepay/paymentrequest"
     "${WEBCORE_DIR}/Modules/applicationmanifest"
+    "${WEBCORE_DIR}/Modules/async-clipboard"
     "${WEBCORE_DIR}/Modules/beacon"
     "${WEBCORE_DIR}/Modules/cache"
     "${WEBCORE_DIR}/Modules/credentialmanagement"
@@ -37,6 +35,7 @@ set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/Modules/entriesapi"
     "${WEBCORE_DIR}/Modules/fetch"
     "${WEBCORE_DIR}/Modules/geolocation"
+    "${WEBCORE_DIR}/Modules/highlight"
     "${WEBCORE_DIR}/Modules/indexeddb"
     "${WEBCORE_DIR}/Modules/indexeddb/client"
     "${WEBCORE_DIR}/Modules/indexeddb/server"
@@ -51,8 +50,10 @@ set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/Modules/navigatorcontentutils"
     "${WEBCORE_DIR}/Modules/notifications"
     "${WEBCORE_DIR}/Modules/paymentrequest"
+    "${WEBCORE_DIR}/Modules/pictureinpicture"
     "${WEBCORE_DIR}/Modules/plugins"
     "${WEBCORE_DIR}/Modules/quota"
+    "${WEBCORE_DIR}/Modules/remoteplayback"
     "${WEBCORE_DIR}/Modules/speech"
     "${WEBCORE_DIR}/Modules/streams"
     "${WEBCORE_DIR}/Modules/webaudio"
@@ -65,7 +66,7 @@ set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/Modules/webgpu/WHLSL"
     "${WEBCORE_DIR}/Modules/webgpu/WHLSL/AST"
     "${WEBCORE_DIR}/Modules/websockets"
-    "${WEBCORE_DIR}/Modules/webvr"
+    "${WEBCORE_DIR}/Modules/webxr"
     "${WEBCORE_DIR}/accessibility"
     "${WEBCORE_DIR}/accessibility/isolatedtree"
     "${WEBCORE_DIR}/animation"
@@ -101,11 +102,15 @@ set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/inspector/agents/worker"
     "${WEBCORE_DIR}/layout"
     "${WEBCORE_DIR}/layout/blockformatting"
+    "${WEBCORE_DIR}/layout/blockformatting/tablewrapper"
     "${WEBCORE_DIR}/layout/displaytree"
     "${WEBCORE_DIR}/layout/floats"
     "${WEBCORE_DIR}/layout/inlineformatting"
     "${WEBCORE_DIR}/layout/inlineformatting/text"
+    "${WEBCORE_DIR}/layout/integration"
+    "${WEBCORE_DIR}/layout/invalidation"
     "${WEBCORE_DIR}/layout/layouttree"
+    "${WEBCORE_DIR}/layout/tableformatting"
     "${WEBCORE_DIR}/loader"
     "${WEBCORE_DIR}/loader/appcache"
     "${WEBCORE_DIR}/loader/archive"
@@ -140,7 +145,7 @@ set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/network"
     "${WEBCORE_DIR}/platform/sql"
     "${WEBCORE_DIR}/platform/text"
-    "${WEBCORE_DIR}/platform/vr"
+    "${WEBCORE_DIR}/platform/xr"
     "${WEBCORE_DIR}/plugins"
     "${WEBCORE_DIR}/rendering"
     "${WEBCORE_DIR}/rendering/line"
@@ -167,14 +172,6 @@ set(WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/xml/parser"
 )
 
-set(WebCore_SYSTEM_INCLUDE_DIRECTORIES
-    ${ICU_INCLUDE_DIRS}
-    ${LIBXML2_INCLUDE_DIR}
-    ${LIBXSLT_INCLUDE_DIR}
-    ${SQLITE_INCLUDE_DIR}
-    ${ZLIB_INCLUDE_DIRS}
-)
-
 set(WebCore_IDL_INCLUDES
     css
     dom
@@ -195,6 +192,7 @@ set(WebCore_IDL_INCLUDES
     Modules/entriesapi
     Modules/fetch
     Modules/geolocation
+    Modules/highlight
     Modules/indexeddb
     Modules/mediacapabilities
     Modules/mediarecorder
@@ -209,7 +207,6 @@ set(WebCore_IDL_INCLUDES
     Modules/webdatabase
     Modules/webgpu
     Modules/websockets
-    Modules/webvr
 
     bindings/js
 
@@ -225,6 +222,10 @@ set(WebCore_IDL_INCLUDES
 set(WebCore_NON_SVG_IDL_FILES
     Modules/airplay/WebKitPlaybackTargetAvailabilityEvent.idl
 
+    Modules/async-clipboard/Clipboard.idl
+    Modules/async-clipboard/ClipboardItem.idl
+    Modules/async-clipboard/NavigatorClipboard.idl
+
     Modules/beacon/NavigatorBeacon.idl
 
     Modules/cache/CacheQueryOptions.idl
@@ -238,6 +239,18 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/credentialmanagement/CredentialRequestOptions.idl
     Modules/credentialmanagement/CredentialsContainer.idl
     Modules/credentialmanagement/NavigatorCredentials.idl
+
+    Modules/encryptedmedia/MediaKeyEncryptionScheme.idl
+    Modules/encryptedmedia/MediaKeyMessageEvent.idl
+    Modules/encryptedmedia/MediaKeySession.idl
+    Modules/encryptedmedia/MediaKeySessionType.idl
+    Modules/encryptedmedia/MediaKeyStatusMap.idl
+    Modules/encryptedmedia/MediaKeySystemAccess.idl
+    Modules/encryptedmedia/MediaKeySystemConfiguration.idl
+    Modules/encryptedmedia/MediaKeySystemMediaCapability.idl
+    Modules/encryptedmedia/MediaKeys.idl
+    Modules/encryptedmedia/MediaKeysRequirement.idl
+    Modules/encryptedmedia/NavigatorEME.idl
 
     Modules/entriesapi/DOMFileSystem.idl
     Modules/entriesapi/ErrorCallback.idl
@@ -263,14 +276,17 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/fetch/FetchResponse.idl
     Modules/fetch/WorkerGlobalScopeFetch.idl
 
-    Modules/geolocation/Coordinates.idl
     Modules/geolocation/Geolocation.idl
-    Modules/geolocation/Geoposition.idl
+    Modules/geolocation/GeolocationCoordinates.idl
+    Modules/geolocation/GeolocationPosition.idl
+    Modules/geolocation/GeolocationPositionError.idl
     Modules/geolocation/NavigatorGeolocation.idl
     Modules/geolocation/PositionCallback.idl
-    Modules/geolocation/PositionError.idl
     Modules/geolocation/PositionErrorCallback.idl
     Modules/geolocation/PositionOptions.idl
+
+    Modules/highlight/HighlightMap.idl
+    Modules/highlight/HighlightRangeGroup.idl
 
     Modules/indexeddb/DOMWindowIndexedDatabase.idl
     Modules/indexeddb/IDBCursor.idl
@@ -289,6 +305,8 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/indexeddb/WorkerGlobalScopeIndexedDatabase.idl
 
     Modules/mediacapabilities/AudioConfiguration.idl
+    Modules/mediacapabilities/ColorGamut.idl
+    Modules/mediacapabilities/HdrMetadataType.idl
     Modules/mediacapabilities/MediaCapabilities.idl
     Modules/mediacapabilities/MediaCapabilitiesDecodingInfo.idl
     Modules/mediacapabilities/MediaCapabilitiesEncodingInfo.idl
@@ -299,8 +317,7 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/mediacapabilities/MediaEncodingConfiguration.idl
     Modules/mediacapabilities/MediaEncodingType.idl
     Modules/mediacapabilities/NavigatorMediaCapabilities.idl
-    Modules/mediacapabilities/ScreenColorGamut.idl
-    Modules/mediacapabilities/ScreenLuminance.idl
+    Modules/mediacapabilities/TransferFunction.idl
     Modules/mediacapabilities/VideoConfiguration.idl
 
     Modules/mediacontrols/MediaControlsHost.idl
@@ -313,11 +330,14 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/mediasession/MediaRemoteControls.idl
     Modules/mediasession/MediaSession.idl
 
+    Modules/mediasource/AudioTrackMediaSource.idl
     Modules/mediasource/DOMURLMediaSource.idl
     Modules/mediasource/MediaSource.idl
     Modules/mediasource/SourceBuffer.idl
     Modules/mediasource/SourceBufferList.idl
+    Modules/mediasource/TextTrackMediaSource.idl
     Modules/mediasource/VideoPlaybackQuality.idl
+    Modules/mediasource/VideoTrackMediaSource.idl
 
     Modules/mediastream/CanvasCaptureMediaStreamTrack.idl
     Modules/mediastream/DoubleRange.idl
@@ -350,10 +370,12 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/mediastream/RTCOfferAnswerOptions.idl
     Modules/mediastream/RTCOfferOptions.idl
     Modules/mediastream/RTCPeerConnection.idl
+    Modules/mediastream/RTCPeerConnectionIceErrorEvent.idl
     Modules/mediastream/RTCPeerConnectionIceEvent.idl
     Modules/mediastream/RTCPeerConnectionState.idl
     Modules/mediastream/RTCPriorityType.idl
     Modules/mediastream/RTCRtpCapabilities.idl
+    Modules/mediastream/RTCRtpCodecCapability.idl
     Modules/mediastream/RTCRtpCodecParameters.idl
     Modules/mediastream/RTCRtpContributingSource.idl
     Modules/mediastream/RTCRtpEncodingParameters.idl
@@ -398,6 +420,14 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/paymentrequest/PaymentShippingType.idl
     Modules/paymentrequest/PaymentValidationErrors.idl
 
+    Modules/pictureinpicture/DocumentPictureInPicture.idl
+    Modules/pictureinpicture/EnterPictureInPictureEvent.idl
+    Modules/pictureinpicture/HTMLVideoElementPictureInPicture.idl
+    Modules/pictureinpicture/PictureInPictureWindow.idl
+
+    Modules/remoteplayback/RemotePlayback.idl
+    Modules/remoteplayback/RemotePlaybackAvailabilityCallback.idl
+
     Modules/speech/DOMWindowSpeechSynthesis.idl
     Modules/speech/SpeechSynthesis.idl
     Modules/speech/SpeechSynthesisEvent.idl
@@ -415,37 +445,85 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/streams/ReadableStreamSink.idl
     Modules/streams/ReadableStreamSource.idl
     Modules/streams/WritableStream.idl
+    Modules/streams/WritableStreamDefaultController.idl
+    Modules/streams/WritableStreamDefaultWriter.idl
 
     Modules/webaudio/AnalyserNode.idl
+    Modules/webaudio/AnalyserOptions.idl
     Modules/webaudio/AudioBuffer.idl
     Modules/webaudio/AudioBufferCallback.idl
+    Modules/webaudio/AudioBufferOptions.idl
     Modules/webaudio/AudioBufferSourceNode.idl
+    Modules/webaudio/AudioBufferSourceOptions.idl
     Modules/webaudio/AudioContext.idl
+    Modules/webaudio/AudioContextLatencyCategory.idl
+    Modules/webaudio/AudioContextOptions.idl
+    Modules/webaudio/AudioContextState.idl
     Modules/webaudio/AudioDestinationNode.idl
     Modules/webaudio/AudioListener.idl
     Modules/webaudio/AudioNode.idl
+    Modules/webaudio/AudioNodeOptions.idl
     Modules/webaudio/AudioParam.idl
     Modules/webaudio/AudioProcessingEvent.idl
+    Modules/webaudio/AudioProcessingEventInit.idl
+    Modules/webaudio/AudioScheduledSourceNode.idl
+    Modules/webaudio/AudioTimestamp.idl
+    Modules/webaudio/BaseAudioContext.idl
     Modules/webaudio/BiquadFilterNode.idl
+    Modules/webaudio/BiquadFilterOptions.idl
+    Modules/webaudio/BiquadFilterType.idl
+    Modules/webaudio/ChannelCountMode.idl
+    Modules/webaudio/ChannelInterpretation.idl
     Modules/webaudio/ChannelMergerNode.idl
+    Modules/webaudio/ChannelMergerOptions.idl
     Modules/webaudio/ChannelSplitterNode.idl
+    Modules/webaudio/ChannelSplitterOptions.idl
+    Modules/webaudio/ConstantSourceNode.idl
+    Modules/webaudio/ConstantSourceOptions.idl
     Modules/webaudio/ConvolverNode.idl
+    Modules/webaudio/ConvolverOptions.idl
     Modules/webaudio/DelayNode.idl
+    Modules/webaudio/DelayOptions.idl
+    Modules/webaudio/DistanceModelType.idl
     Modules/webaudio/DynamicsCompressorNode.idl
+    Modules/webaudio/DynamicsCompressorOptions.idl
     Modules/webaudio/GainNode.idl
+    Modules/webaudio/GainOptions.idl
     Modules/webaudio/MediaElementAudioSourceNode.idl
+    Modules/webaudio/MediaElementAudioSourceOptions.idl
     Modules/webaudio/MediaStreamAudioDestinationNode.idl
     Modules/webaudio/MediaStreamAudioSourceNode.idl
+    Modules/webaudio/MediaStreamAudioSourceOptions.idl
     Modules/webaudio/OfflineAudioCompletionEvent.idl
+    Modules/webaudio/OfflineAudioCompletionEventInit.idl
     Modules/webaudio/OfflineAudioContext.idl
+    Modules/webaudio/OfflineAudioContextOptions.idl
     Modules/webaudio/OscillatorNode.idl
+    Modules/webaudio/OscillatorOptions.idl
+    Modules/webaudio/OscillatorType.idl
+    Modules/webaudio/OverSampleType.idl
     Modules/webaudio/PannerNode.idl
+    Modules/webaudio/PannerOptions.idl
+    Modules/webaudio/PanningModelType.idl
     Modules/webaudio/PeriodicWave.idl
+    Modules/webaudio/PeriodicWaveConstraints.idl
+    Modules/webaudio/PeriodicWaveOptions.idl
+    Modules/webaudio/StereoPannerNode.idl
+    Modules/webaudio/StereoPannerOptions.idl
     Modules/webaudio/ScriptProcessorNode.idl
     Modules/webaudio/WaveShaperNode.idl
+    Modules/webaudio/WaveShaperOptions.idl
+    Modules/webaudio/WebKitAudioBufferSourceNode.idl
+    Modules/webaudio/WebKitAudioContext.idl
+    Modules/webaudio/WebKitAudioListener.idl
+    Modules/webaudio/WebKitAudioPannerNode.idl
+    Modules/webaudio/WebKitDynamicsCompressorNode.idl
+    Modules/webaudio/WebKitOfflineAudioContext.idl
+    Modules/webaudio/WebKitOscillatorNode.idl
 
     Modules/webauthn/AttestationConveyancePreference.idl
     Modules/webauthn/AuthenticationExtensionsClientInputs.idl
+    Modules/webauthn/AuthenticationExtensionsClientOutputs.idl
     Modules/webauthn/AuthenticatorAssertionResponse.idl
     Modules/webauthn/AuthenticatorAttestationResponse.idl
     Modules/webauthn/AuthenticatorResponse.idl
@@ -479,19 +557,23 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/webgpu/GPUCanvasContext.idl
     Modules/webgpu/GPUColor.idl
     Modules/webgpu/GPUColorStateDescriptor.idl
-    Modules/webgpu/GPUColorWriteBits.idl
+    Modules/webgpu/GPUColorWrite.idl
     Modules/webgpu/GPUCompareFunction.idl
     Modules/webgpu/GPUDepthStencilStateDescriptor.idl
+    Modules/webgpu/GPUErrorFilter.idl
     Modules/webgpu/GPUExtent3D.idl
     Modules/webgpu/GPULoadOp.idl
     Modules/webgpu/GPUOrigin3D.idl
+    Modules/webgpu/GPUOutOfMemoryError.idl
     Modules/webgpu/GPURequestAdapterOptions.idl
     Modules/webgpu/GPUSamplerDescriptor.idl
-    Modules/webgpu/GPUShaderStageBit.idl
+    Modules/webgpu/GPUShaderStage.idl
     Modules/webgpu/GPUStoreOp.idl
     Modules/webgpu/GPUTextureDescriptor.idl
     Modules/webgpu/GPUTextureFormat.idl
     Modules/webgpu/GPUTextureUsage.idl
+    Modules/webgpu/GPUUncapturedErrorEvent.idl
+    Modules/webgpu/GPUValidationError.idl
     Modules/webgpu/GPUVertexAttributeDescriptor.idl
     Modules/webgpu/GPUVertexBufferDescriptor.idl
     Modules/webgpu/GPUVertexInputDescriptor.idl
@@ -510,10 +592,12 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/webgpu/WebGPUComputePipeline.idl
     Modules/webgpu/WebGPUComputePipelineDescriptor.idl
     Modules/webgpu/WebGPUDevice.idl
+    Modules/webgpu/WebGPUDeviceErrorScopes.idl
+    Modules/webgpu/WebGPUDeviceEventHandler.idl
     Modules/webgpu/WebGPUPipelineDescriptorBase.idl
     Modules/webgpu/WebGPUPipelineLayout.idl
     Modules/webgpu/WebGPUPipelineLayoutDescriptor.idl
-    Modules/webgpu/WebGPUPipelineStageDescriptor.idl
+    Modules/webgpu/WebGPUProgrammableStageDescriptor.idl
     Modules/webgpu/WebGPUProgrammablePassEncoder.idl
     Modules/webgpu/WebGPUQueue.idl
     Modules/webgpu/WebGPURenderPassDescriptor.idl
@@ -530,20 +614,6 @@ set(WebCore_NON_SVG_IDL_FILES
 
     Modules/websockets/CloseEvent.idl
     Modules/websockets/WebSocket.idl
-
-    Modules/webvr/DOMWindowWebVR.idl
-    Modules/webvr/NavigatorWebVR.idl
-    Modules/webvr/VRDisplay.idl
-    Modules/webvr/VRDisplayCapabilities.idl
-    Modules/webvr/VRDisplayEvent.idl
-    Modules/webvr/VRDisplayEventReason.idl
-    Modules/webvr/VREye.idl
-    Modules/webvr/VREyeParameters.idl
-    Modules/webvr/VRFieldOfView.idl
-    Modules/webvr/VRFrameData.idl
-    Modules/webvr/VRLayerInit.idl
-    Modules/webvr/VRPose.idl
-    Modules/webvr/VRStageParameters.idl
 
     accessibility/AccessibilityRole.idl
     accessibility/AriaAttributes.idl
@@ -562,6 +632,7 @@ set(WebCore_NON_SVG_IDL_FILES
     animation/DocumentTimeline.idl
     animation/DocumentTimelineOptions.idl
     animation/FillMode.idl
+    animation/GetAnimationsOptions.idl
     animation/IterationCompositeOperation.idl
     animation/KeyframeAnimationOptions.idl
     animation/KeyframeEffect.idl
@@ -636,7 +707,7 @@ set(WebCore_NON_SVG_IDL_FILES
     css/FontFaceSet.idl
     css/MediaList.idl
     css/MediaQueryList.idl
-    css/MediaQueryListListener.idl
+    css/MediaQueryListEvent.idl
     css/StyleMedia.idl
     css/StyleSheet.idl
     css/StyleSheetList.idl
@@ -650,7 +721,6 @@ set(WebCore_NON_SVG_IDL_FILES
     css/typedom/TypedOMCSSUnparsedValue.idl
 
     css/WebKitCSSMatrix.idl
-    css/WebKitCSSViewportRule.idl
 
     dom/AbortController.idl
     dom/AbortSignal.idl
@@ -691,8 +761,10 @@ set(WebCore_NON_SVG_IDL_FILES
     dom/DocumentFragment.idl
     dom/DocumentFullscreen.idl
     dom/DocumentOrShadowRoot.idl
+    dom/DocumentStorageAccess.idl
     dom/DocumentTouch.idl
     dom/DocumentType.idl
+    dom/DragEvent.idl
     dom/Element.idl
     dom/ErrorEvent.idl
     dom/Event.idl
@@ -702,6 +774,9 @@ set(WebCore_NON_SVG_IDL_FILES
     dom/FocusEvent.idl
     dom/GlobalEventHandlers.idl
     dom/HashChangeEvent.idl
+    dom/IdleDeadline.idl
+    dom/IdleRequestCallback.idl
+    dom/IdleRequestOptions.idl
     dom/InputEvent.idl
     dom/KeyboardEvent.idl
     dom/MessageChannel.idl
@@ -735,7 +810,6 @@ set(WebCore_NON_SVG_IDL_FILES
     dom/ShadowRoot.idl
     dom/ShadowRootMode.idl
     dom/Slotable.idl
-    dom/SpectreGadget.idl
     dom/StaticRange.idl
     dom/StringCallback.idl
     dom/Text.idl
@@ -757,10 +831,9 @@ set(WebCore_NON_SVG_IDL_FILES
 
     fileapi/Blob.idl
     fileapi/BlobCallback.idl
-    fileapi/BlobLineEndings.idl
     fileapi/BlobPropertyBag.idl
+    fileapi/EndingType.idl
     fileapi/File.idl
-    fileapi/FileError.idl
     fileapi/FileList.idl
     fileapi/FileReader.idl
     fileapi/FileReaderSync.idl
@@ -784,6 +857,7 @@ set(WebCore_NON_SVG_IDL_FILES
     html/HTMLDataElement.idl
     html/HTMLDataListElement.idl
     html/HTMLDetailsElement.idl
+    html/HTMLDialogElement.idl
     html/HTMLDirectoryElement.idl
     html/HTMLDivElement.idl
     html/HTMLDocument.idl
@@ -821,6 +895,7 @@ set(WebCore_NON_SVG_IDL_FILES
     html/HTMLOptGroupElement.idl
     html/HTMLOptionElement.idl
     html/HTMLOptionsCollection.idl
+    html/HTMLOrForeignElement.idl
     html/HTMLOutputElement.idl
     html/HTMLParagraphElement.idl
     html/HTMLParamElement.idl
@@ -852,6 +927,7 @@ set(WebCore_NON_SVG_IDL_FILES
     html/ImageBitmapOptions.idl
     html/ImageData.idl
     html/MediaController.idl
+    html/MediaEncryptedEvent.idl
     html/MediaError.idl
     html/OffscreenCanvas.idl
     html/RadioNodeList.idl
@@ -893,6 +969,21 @@ set(WebCore_NON_SVG_IDL_FILES
     html/canvas/PaintRenderingContext2D.idl
     html/canvas/Path2D.idl
 
+    html/track/AudioTrack.idl
+    html/track/AudioTrackList.idl
+    html/track/DataCue.idl
+    html/track/TextTrack.idl
+    html/track/TextTrackCue.idl
+    html/track/TextTrackCueGeneric.idl
+    html/track/TextTrackCueList.idl
+    html/track/TextTrackList.idl
+    html/track/TrackEvent.idl
+    html/track/VTTCue.idl
+    html/track/VTTRegion.idl
+    html/track/VTTRegionList.idl
+    html/track/VideoTrack.idl
+    html/track/VideoTrackList.idl
+
     inspector/CommandLineAPIHost.idl
     inspector/InspectorAuditAccessibilityObject.idl
     inspector/InspectorAuditDOMObject.idl
@@ -900,6 +991,9 @@ set(WebCore_NON_SVG_IDL_FILES
     inspector/InspectorFrontendHost.idl
 
     loader/appcache/DOMApplicationCache.idl
+
+    mathml/MathMLElement.idl
+    mathml/MathMLMathElement.idl
 
     page/BarProp.idl
     page/Crypto.idl
@@ -917,6 +1011,7 @@ set(WebCore_NON_SVG_IDL_FILES
     page/NavigatorID.idl
     page/NavigatorLanguage.idl
     page/NavigatorOnLine.idl
+    page/NavigatorPlugins.idl
     page/NavigatorServiceWorker.idl
     page/NavigatorShare.idl
     page/Performance.idl
@@ -927,16 +1022,20 @@ set(WebCore_NON_SVG_IDL_FILES
     page/PerformanceObserverCallback.idl
     page/PerformanceObserverEntryList.idl
     page/PerformanceNavigation.idl
+    page/PerformancePaintTiming.idl
     page/PerformanceResourceTiming.idl
     page/PerformanceServerTiming.idl
     page/PerformanceTiming.idl
+    page/PostMessageOptions.idl
     page/RemoteDOMWindow.idl
     page/ResizeObserver.idl
     page/ResizeObserverCallback.idl
     page/ResizeObserverEntry.idl
     page/Screen.idl
+    page/ScrollBehavior.idl
     page/ScrollIntoViewOptions.idl
     page/ScrollLogicalPosition.idl
+    page/ScrollOptions.idl
     page/ScrollToOptions.idl
     page/ShareData.idl
     page/UndoItem.idl
@@ -980,6 +1079,7 @@ set(WebCore_NON_SVG_IDL_FILES
     worklets/Worklet.idl
     worklets/WorkletGlobalScope.idl
 
+    xml/CustomXPathNSResolver.idl
     xml/DOMParser.idl
     xml/XMLHttpRequest.idl
     xml/XMLHttpRequestEventTarget.idl
@@ -1025,7 +1125,6 @@ set(WebCore_SVG_IDL_FILES
     svg/SVGDocument.idl
     svg/SVGElement.idl
     svg/SVGEllipseElement.idl
-    svg/SVGExternalResourcesRequired.idl
     svg/SVGFEBlendElement.idl
     svg/SVGFEColorMatrixElement.idl
     svg/SVGFEComponentTransferElement.idl
@@ -1141,24 +1240,22 @@ set(WebCore_SVG_IDL_FILES
     svg/SVGZoomEvent.idl
 )
 
+list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+    "${WEBCORE_DIR}/Modules/gamepad"
+)
+
+list(APPEND WebCore_IDL_INCLUDES
+    Modules/gamepad
+)
+
+list(APPEND WebCore_NON_SVG_IDL_FILES
+    Modules/gamepad/Gamepad.idl
+    Modules/gamepad/GamepadButton.idl
+    Modules/gamepad/GamepadEvent.idl
+    Modules/gamepad/NavigatorGamepad.idl
+)
+
 if (ENABLE_GAMEPAD)
-    list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
-        "${WEBCORE_DIR}/Modules/gamepad"
-    )
-
-    list(APPEND WebCore_IDL_INCLUDES
-        Modules/gamepad
-    )
-
-    list(APPEND WebCore_NON_SVG_IDL_FILES
-        Modules/gamepad/Gamepad.idl
-        Modules/gamepad/GamepadButton.idl
-        Modules/gamepad/GamepadEvent.idl
-        Modules/gamepad/NavigatorGamepad.idl
-
-        Modules/webvr/GamepadWebVR.idl
-    )
-
     list(APPEND WebCore_SOURCES
         Modules/gamepad/Gamepad.cpp
         Modules/gamepad/GamepadButton.cpp
@@ -1170,6 +1267,42 @@ if (ENABLE_GAMEPAD)
         platform/gamepad/GamepadProvider.cpp
     )
 endif ()
+
+list(APPEND WebCore_NON_SVG_IDL_FILES
+    Modules/webxr/NavigatorWebXR.idl
+    Modules/webxr/WebXRBoundedReferenceSpace.idl
+    Modules/webxr/WebXRFrame.idl
+    Modules/webxr/WebXRInputSource.idl
+    Modules/webxr/WebXRInputSourceArray.idl
+    Modules/webxr/WebXRLayer.idl
+    Modules/webxr/WebXRPose.idl
+    Modules/webxr/WebXRReferenceSpace.idl
+    Modules/webxr/WebXRRenderState.idl
+    Modules/webxr/WebXRRigidTransform.idl
+    Modules/webxr/WebXRSession.idl
+    Modules/webxr/WebXRSpace.idl
+    Modules/webxr/WebXRSystem.idl
+    Modules/webxr/WebXRView.idl
+    Modules/webxr/WebXRViewerPose.idl
+    Modules/webxr/WebXRViewport.idl
+    Modules/webxr/WebXRWebGLLayer.idl
+    Modules/webxr/XREnvironmentBlendMode.idl
+    Modules/webxr/XREye.idl
+    Modules/webxr/XRFrameRequestCallback.idl
+    Modules/webxr/XRHandedness.idl
+    Modules/webxr/XRInputSourceEvent.idl
+    Modules/webxr/XRInputSourcesChangeEvent.idl
+    Modules/webxr/XRInteractionMode.idl
+    Modules/webxr/XRReferenceSpaceEvent.idl
+    Modules/webxr/XRReferenceSpaceType.idl
+    Modules/webxr/XRRenderStateInit.idl
+    Modules/webxr/XRSessionEvent.idl
+    Modules/webxr/XRSessionInit.idl
+    Modules/webxr/XRSessionMode.idl
+    Modules/webxr/XRTargetRayMode.idl
+    Modules/webxr/XRVisibilityState.idl
+    Modules/webxr/XRWebGLLayerInit.idl
+)
 
 set(WebCore_IDL_FILES
     ${WebCore_NON_SVG_IDL_FILES}
@@ -1185,6 +1318,7 @@ set(WebCore_CSS_VALUE_KEYWORDS
 )
 
 set(WebCore_USER_AGENT_STYLE_SHEETS
+    ${WEBCORE_DIR}/css/dialog.css
     ${WEBCORE_DIR}/css/fullscreen.css
     ${WEBCORE_DIR}/css/html.css
     ${WEBCORE_DIR}/css/mathml.css
@@ -1200,17 +1334,19 @@ set(WebCore_PLUG_INS_RESOURCES
 )
 
 set(WebCore_LIBRARIES
-    ${ICU_LIBRARIES}
     ${LIBXML2_LIBRARIES}
     ${LIBXSLT_LIBRARIES}
     ${SQLITE_LIBRARIES}
+    WebKit::JavaScriptCore
+    WebKit::PAL
     ${ZLIB_LIBRARIES}
-    PAL${DEBUG_SUFFIX}
 )
 
 set(WebCoreTestSupport_LIBRARIES
-    JavaScriptCore${DEBUG_SUFFIX}
+    WebKit::JavaScriptCore
+    WebKit::PAL
 )
+set(WebCoreTestSupport_DEPENDENCIES WebCoreTestSupportBindings)
 
 if (ENABLE_LEGACY_ENCRYPTED_MEDIA)
     list(APPEND WebCore_SOURCES
@@ -1227,15 +1363,16 @@ if (ENABLE_LEGACY_ENCRYPTED_MEDIA)
     list(APPEND WebCoreTestSupport_SOURCES
         testing/LegacyMockCDM.cpp
     )
-    list(APPEND WebCore_IDL_FILES
-        Modules/encryptedmedia/legacy/WebKitMediaKeyMessageEvent.idl
-        Modules/encryptedmedia/legacy/WebKitMediaKeyNeededEvent.idl
-        Modules/encryptedmedia/legacy/WebKitMediaKeySession.idl
-        Modules/encryptedmedia/legacy/WebKitMediaKeys.idl
-
-        html/WebKitMediaKeyError.idl
-    )
 endif ()
+
+list(APPEND WebCore_IDL_FILES
+    Modules/encryptedmedia/legacy/WebKitMediaKeyMessageEvent.idl
+    Modules/encryptedmedia/legacy/WebKitMediaKeyNeededEvent.idl
+    Modules/encryptedmedia/legacy/WebKitMediaKeySession.idl
+    Modules/encryptedmedia/legacy/WebKitMediaKeys.idl
+
+    html/WebKitMediaKeyError.idl
+)
 
 if (ENABLE_ENCRYPTED_MEDIA)
     list(APPEND WebCore_SOURCES
@@ -1250,21 +1387,6 @@ if (ENABLE_ENCRYPTED_MEDIA)
 
         html/MediaEncryptedEvent.cpp
     )
-    list(APPEND WebCore_IDL_FILES
-        Modules/encryptedmedia/MediaKeyEncryptionScheme.idl
-        Modules/encryptedmedia/MediaKeyMessageEvent.idl
-        Modules/encryptedmedia/MediaKeySession.idl
-        Modules/encryptedmedia/MediaKeySessionType.idl
-        Modules/encryptedmedia/MediaKeyStatusMap.idl
-        Modules/encryptedmedia/MediaKeySystemAccess.idl
-        Modules/encryptedmedia/MediaKeySystemConfiguration.idl
-        Modules/encryptedmedia/MediaKeySystemMediaCapability.idl
-        Modules/encryptedmedia/MediaKeys.idl
-        Modules/encryptedmedia/MediaKeysRequirement.idl
-        Modules/encryptedmedia/NavigatorEME.idl
-
-        html/MediaEncryptedEvent.idl
-    )
 endif ()
 
 list(APPEND WebCore_CSS_VALUE_KEYWORDS
@@ -1275,6 +1397,8 @@ if (ENABLE_WEBGL)
     list(APPEND WebCore_SOURCES
         html/canvas/ANGLEInstancedArrays.cpp
         html/canvas/EXTBlendMinMax.cpp
+        html/canvas/EXTColorBufferFloat.cpp
+        html/canvas/EXTColorBufferHalfFloat.cpp
         html/canvas/EXTFragDepth.cpp
         html/canvas/EXTShaderTextureLOD.cpp
         html/canvas/EXTTextureFilterAnisotropic.cpp
@@ -1288,10 +1412,14 @@ if (ENABLE_WEBGL)
         html/canvas/OESVertexArrayObject.cpp
         html/canvas/WebGL2RenderingContext.cpp
         html/canvas/WebGLBuffer.cpp
+        html/canvas/WebGLColorBufferFloat.cpp
         html/canvas/WebGLCompressedTextureASTC.cpp
         html/canvas/WebGLCompressedTextureATC.cpp
+        html/canvas/WebGLCompressedTextureETC.cpp
+        html/canvas/WebGLCompressedTextureETC1.cpp
         html/canvas/WebGLCompressedTexturePVRTC.cpp
         html/canvas/WebGLCompressedTextureS3TC.cpp
+        html/canvas/WebGLCompressedTextureS3TCsRGB.cpp
         html/canvas/WebGLContextEvent.cpp
         html/canvas/WebGLContextGroup.cpp
         html/canvas/WebGLContextObject.cpp
@@ -1320,112 +1448,58 @@ if (ENABLE_WEBGL)
         html/canvas/WebGLVertexArrayObjectBase.cpp
         html/canvas/WebGLVertexArrayObjectOES.cpp
     )
-    list(APPEND WebCore_IDL_FILES
-        html/canvas/ANGLEInstancedArrays.idl
-        html/canvas/EXTBlendMinMax.idl
-        html/canvas/EXTFragDepth.idl
-        html/canvas/EXTShaderTextureLOD.idl
-        html/canvas/EXTTextureFilterAnisotropic.idl
-        html/canvas/EXTsRGB.idl
-        html/canvas/OESElementIndexUint.idl
-        html/canvas/OESStandardDerivatives.idl
-        html/canvas/OESTextureFloat.idl
-        html/canvas/OESTextureFloatLinear.idl
-        html/canvas/OESTextureHalfFloat.idl
-        html/canvas/OESTextureHalfFloatLinear.idl
-        html/canvas/OESVertexArrayObject.idl
-        html/canvas/WebGL2RenderingContext.idl
-        html/canvas/WebGLActiveInfo.idl
-        html/canvas/WebGLBuffer.idl
-        html/canvas/WebGLCompressedTextureASTC.idl
-        html/canvas/WebGLCompressedTextureATC.idl
-        html/canvas/WebGLCompressedTexturePVRTC.idl
-        html/canvas/WebGLCompressedTextureS3TC.idl
-        html/canvas/WebGLContextAttributes.idl
-        html/canvas/WebGLContextEvent.idl
-        html/canvas/WebGLDebugRendererInfo.idl
-        html/canvas/WebGLDebugShaders.idl
-        html/canvas/WebGLDepthTexture.idl
-        html/canvas/WebGLDrawBuffers.idl
-        html/canvas/WebGLFramebuffer.idl
-        html/canvas/WebGLLoseContext.idl
-        html/canvas/WebGLProgram.idl
-        html/canvas/WebGLQuery.idl
-        html/canvas/WebGLRenderbuffer.idl
-        html/canvas/WebGLRenderingContext.idl
-        html/canvas/WebGLRenderingContextBase.idl
-        html/canvas/WebGLSampler.idl
-        html/canvas/WebGLShader.idl
-        html/canvas/WebGLShaderPrecisionFormat.idl
-        html/canvas/WebGLSync.idl
-        html/canvas/WebGLTexture.idl
-        html/canvas/WebGLTransformFeedback.idl
-        html/canvas/WebGLUniformLocation.idl
-        html/canvas/WebGLVertexArrayObject.idl
-        html/canvas/WebGLVertexArrayObjectOES.idl
-    )
 endif ()
 
-if (ENABLE_VIDEO_TRACK)
-    list(APPEND WebCore_IDL_FILES
-        html/track/AudioTrack.idl
-        html/track/AudioTrackList.idl
-        html/track/DataCue.idl
-        html/track/TextTrack.idl
-        html/track/TextTrackCue.idl
-        html/track/TextTrackCueGeneric.idl
-        html/track/TextTrackCueList.idl
-        html/track/TextTrackList.idl
-        html/track/TrackEvent.idl
-        html/track/VTTCue.idl
-        html/track/VTTRegion.idl
-        html/track/VTTRegionList.idl
-        html/track/VideoTrack.idl
-        html/track/VideoTrackList.idl
-    )
-
-    if (ENABLE_MEDIA_SOURCE)
-        list(APPEND WebCore_IDL_FILES
-            Modules/mediasource/AudioTrackMediaSource.idl
-            Modules/mediasource/TextTrackMediaSource.idl
-            Modules/mediasource/VideoTrackMediaSource.idl
-        )
-    endif ()
-
-    list(APPEND WebCore_SOURCES
-        html/track/AudioTrack.cpp
-        html/track/AudioTrackList.cpp
-        html/track/BufferedLineReader.cpp
-        html/track/DataCue.cpp
-        html/track/InbandDataTextTrack.cpp
-        html/track/InbandGenericTextTrack.cpp
-        html/track/InbandTextTrack.cpp
-        html/track/InbandWebVTTTextTrack.cpp
-        html/track/LoadableTextTrack.cpp
-        html/track/TextTrack.cpp
-        html/track/TextTrackCue.cpp
-        html/track/TextTrackCueGeneric.cpp
-        html/track/TextTrackCueList.cpp
-        html/track/TextTrackList.cpp
-        html/track/TrackBase.cpp
-        html/track/TrackEvent.cpp
-        html/track/TrackListBase.cpp
-        html/track/VTTCue.cpp
-        html/track/VTTRegion.cpp
-        html/track/VTTRegionList.cpp
-        html/track/VTTScanner.cpp
-        html/track/VideoTrack.cpp
-        html/track/VideoTrackList.cpp
-        html/track/WebVTTElement.cpp
-        html/track/WebVTTParser.cpp
-        html/track/WebVTTTokenizer.cpp
-
-        loader/cache/CachedTextTrack.cpp
-
-        platform/graphics/TextTrackRepresentation.cpp
-        platform/graphics/TrackPrivateBase.cpp
-    )
-endif ()
+list(APPEND WebCore_IDL_FILES
+    html/canvas/ANGLEInstancedArrays.idl
+    html/canvas/EXTBlendMinMax.idl
+    html/canvas/EXTColorBufferFloat.idl
+    html/canvas/EXTColorBufferHalfFloat.idl
+    html/canvas/EXTFragDepth.idl
+    html/canvas/EXTShaderTextureLOD.idl
+    html/canvas/EXTTextureFilterAnisotropic.idl
+    html/canvas/EXTsRGB.idl
+    html/canvas/OESElementIndexUint.idl
+    html/canvas/OESStandardDerivatives.idl
+    html/canvas/OESTextureFloat.idl
+    html/canvas/OESTextureFloatLinear.idl
+    html/canvas/OESTextureHalfFloat.idl
+    html/canvas/OESTextureHalfFloatLinear.idl
+    html/canvas/OESVertexArrayObject.idl
+    html/canvas/WebGL2RenderingContext.idl
+    html/canvas/WebGLActiveInfo.idl
+    html/canvas/WebGLBuffer.idl
+    html/canvas/WebGLColorBufferFloat.idl
+    html/canvas/WebGLCompressedTextureASTC.idl
+    html/canvas/WebGLCompressedTextureATC.idl
+    html/canvas/WebGLCompressedTextureETC.idl
+    html/canvas/WebGLCompressedTextureETC1.idl
+    html/canvas/WebGLCompressedTexturePVRTC.idl
+    html/canvas/WebGLCompressedTextureS3TC.idl
+    html/canvas/WebGLCompressedTextureS3TCsRGB.idl
+    html/canvas/WebGLContextAttributes.idl
+    html/canvas/WebGLContextEvent.idl
+    html/canvas/WebGLDebugRendererInfo.idl
+    html/canvas/WebGLDebugShaders.idl
+    html/canvas/WebGLDepthTexture.idl
+    html/canvas/WebGLDrawBuffers.idl
+    html/canvas/WebGLFramebuffer.idl
+    html/canvas/WebGLLoseContext.idl
+    html/canvas/WebGLProgram.idl
+    html/canvas/WebGLQuery.idl
+    html/canvas/WebGLRenderbuffer.idl
+    html/canvas/WebGLRenderingContext.idl
+    html/canvas/WebGLRenderingContextBase.idl
+    html/canvas/WebGLSampler.idl
+    html/canvas/WebGLShader.idl
+    html/canvas/WebGLShaderPrecisionFormat.idl
+    html/canvas/WebGLSync.idl
+    html/canvas/WebGLTexture.idl
+    html/canvas/WebGLTransformFeedback.idl
+    html/canvas/WebGLUniformLocation.idl
+    html/canvas/WebGLVertexArrayObject.idl
+    html/canvas/WebGLVertexArrayObjectOES.idl
+)
 
 if (ENABLE_QUOTA)
     list(APPEND WebCore_SOURCES
@@ -1436,24 +1510,24 @@ if (ENABLE_QUOTA)
         Modules/quota/StorageQuota.cpp
         Modules/quota/WorkerNavigatorStorageQuota.cpp
     )
-
-    list(APPEND WebCore_IDL_FILES
-        Modules/quota/DOMWindowQuota.idl
-        Modules/quota/NavigatorStorageQuota.idl
-        Modules/quota/StorageErrorCallback.idl
-        Modules/quota/StorageInfo.idl
-        Modules/quota/StorageQuota.idl
-        Modules/quota/StorageQuotaCallback.idl
-        Modules/quota/StorageUsageCallback.idl
-        Modules/quota/WorkerNavigatorStorageQuota.idl
-    )
 endif ()
 
-if (ENABLE_GRAPHICS_CONTEXT_3D)
+list(APPEND WebCore_IDL_FILES
+    Modules/quota/DOMWindowQuota.idl
+    Modules/quota/NavigatorStorageQuota.idl
+    Modules/quota/StorageErrorCallback.idl
+    Modules/quota/StorageInfo.idl
+    Modules/quota/StorageQuota.idl
+    Modules/quota/StorageQuotaCallback.idl
+    Modules/quota/StorageUsageCallback.idl
+    Modules/quota/WorkerNavigatorStorageQuota.idl
+)
+
+if (ENABLE_GRAPHICS_CONTEXT_GL)
     list(APPEND WebCore_SOURCES
         platform/graphics/ANGLEWebKitBridge.cpp
         platform/graphics/FormatConverter.cpp
-        platform/graphics/GraphicsContext3D.cpp
+        platform/graphics/opengl/GraphicsContextGLOpenGL.cpp
     )
 
     list(APPEND WebCore_LIBRARIES ANGLEFramework)
@@ -1505,12 +1579,13 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
     )
 endif ()
 
+list(APPEND WebCore_IDL_FILES
+    page/UserMessageHandler.idl
+    page/UserMessageHandlersNamespace.idl
+    page/WebKitNamespace.idl
+)
+
 if (ENABLE_USER_MESSAGE_HANDLERS)
-    list(APPEND WebCore_IDL_FILES
-        page/UserMessageHandler.idl
-        page/UserMessageHandlersNamespace.idl
-        page/WebKitNamespace.idl
-    )
     list(APPEND WebCore_SOURCES
         page/UserMessageHandler.cpp
         page/UserMessageHandlerDescriptor.cpp
@@ -1519,15 +1594,8 @@ if (ENABLE_USER_MESSAGE_HANDLERS)
     )
 endif ()
 
-if (USE_OPENVR)
-  list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES "${THIRDPARTY_DIR}/openvr/headers")
-  list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES "${WEBCORE_DIR}/platform/vr/openvr")
-  list(APPEND WebCore_LIBRARIES openvr_api)
-endif ()
-
 if (USE_WOFF2)
-  list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES "${WOFF2DEC_INCLUDE_DIRS}")
-  list(APPEND WebCore_LIBRARIES "${WOFF2DEC_LIBRARIES}")
+  list(APPEND WebCore_LIBRARIES WOFF2::dec)
 endif ()
 
 if (USE_XDGMIME)
@@ -1571,6 +1639,8 @@ set(WebCoreTestSupport_IDL_FILES
     testing/GCObservation.idl
     testing/InternalSettings.idl
     testing/Internals.idl
+    testing/InternalsMapLike.idl
+    testing/InternalsSetLike.idl
     testing/MallocStatistics.idl
     testing/MemoryInfo.idl
     testing/MockCDMFactory.idl
@@ -1591,6 +1661,8 @@ list(APPEND WebCoreTestSupport_SOURCES
     testing/GCObservation.cpp
     testing/InternalSettings.cpp
     testing/Internals.cpp
+    testing/InternalsMapLike.cpp
+    testing/InternalsSetLike.cpp
     testing/MockCDMFactory.cpp
     testing/MockGamepad.cpp
     testing/MockGamepadProvider.cpp
@@ -1600,6 +1672,26 @@ list(APPEND WebCoreTestSupport_SOURCES
     testing/ServiceWorkerInternals.cpp
     testing/js/WebCoreTestSupport.cpp
 )
+
+
+if (ENABLE_WEBXR)
+    list(APPEND WebCoreTestSupport_IDL_FILES
+        testing/FakeXRBoundsPoint.idl
+        testing/FakeXRButtonStateInit.idl
+        testing/FakeXRInputSourceInit.idl
+        testing/FakeXRRigidTransformInit.idl
+        testing/FakeXRViewInit.idl
+        testing/WebFakeXRDevice.idl
+        testing/WebFakeXRInputController.idl
+        testing/WebXRTest.idl
+        testing/XRSimulateUserActivationFunction.idl
+    )
+    list(APPEND WebCoreTestSupport_SOURCES
+        testing/WebFakeXRDevice.cpp
+        testing/WebFakeXRInputController.cpp
+        testing/WebXRTest.cpp
+    )
+endif ()
 
 # Modules that the bindings generator scripts may use
 set(SCRIPTS_RESOLVE_SUPPLEMENTAL
@@ -1618,6 +1710,7 @@ set(MAKE_NAMES_DEPENDENCIES
     ${WEBCORE_DIR}/bindings/scripts/StaticString.pm
 )
 set(SUPPLEMENTAL_DEPENDENCY_FILE ${WebCore_DERIVED_SOURCES_DIR}/supplemental_dependency.tmp)
+set(ISO_SUBSPACES_HEADER_FILE ${WebCore_DERIVED_SOURCES_DIR}/DOMIsoSubspaces.h)
 set(WINDOW_CONSTRUCTORS_FILE ${WebCore_DERIVED_SOURCES_DIR}/DOMWindowConstructors.idl)
 set(WORKERGLOBALSCOPE_CONSTRUCTORS_FILE ${WebCore_DERIVED_SOURCES_DIR}/WorkerGlobalScopeConstructors.idl)
 set(DEDICATEDWORKERGLOBALSCOPE_CONSTRUCTORS_FILE ${WebCore_DERIVED_SOURCES_DIR}/DedicatedWorkerGlobalScopeConstructors.idl)
@@ -1625,15 +1718,17 @@ set(SERVICEWORKERGLOBALSCOPE_CONSTRUCTORS_FILE ${WebCore_DERIVED_SOURCES_DIR}/Se
 set(WORKLETGLOBALSCOPE_CONSTRUCTORS_FILE ${WebCore_DERIVED_SOURCES_DIR}/WorkletGlobalScopeConstructors.idl)
 set(PAINTWORKLETGLOBALSCOPE_CONSTRUCTORS_FILE ${WebCore_DERIVED_SOURCES_DIR}/PaintWorkletGlobalScopeConstructors.idl)
 
-WEBKIT_FRAMEWORK_DECLARE(WebCore)
-WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
+set(WebCore_INTERFACE_LIBRARIES WebCore)
+set(WebCore_INTERFACE_INCLUDE_DIRECTORIES ${WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR})
 
-WEBKIT_MAKE_FORWARDING_HEADERS(WebCore
-    TARGET_NAME WebCorePrivateFrameworkHeaders
-    DESTINATION ${WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR}/WebCore
-    FILES ${WebCore_PRIVATE_FRAMEWORK_HEADERS}
-    FLATTENED
+set(WebCoreTestSupport_INTERFACE_LIBRARIES WebCoreTestSupport)
+set(WebCoreTestSupport_INTERFACE_INCLUDE_DIRECTORIES
+    ${WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR}/WebCoreTestSupport
 )
+
+WEBKIT_FRAMEWORK_DECLARE(WebCore)
+#WEBKIT_FRAMEWORK_DECLARE(WebCoreTestSupport)
+WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
 
 # Generate CommandLineAPIModuleSource.h
 add_custom_command(
@@ -1701,7 +1796,7 @@ list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/HTTPHeaderNames.cpp)
 
 # Generate CSS property names
 add_custom_command(
-    OUTPUT ${WebCore_DERIVED_SOURCES_DIR}/CSSProperties.json ${WebCore_DERIVED_SOURCES_DIR}/CSSPropertyNames.h ${WebCore_DERIVED_SOURCES_DIR}/CSSPropertyNames.cpp ${WebCore_DERIVED_SOURCES_DIR}/CSSPropertyNames.gperf ${WebCore_DERIVED_SOURCES_DIR}/StyleBuilder.cpp ${WebCore_DERIVED_SOURCES_DIR}/StylePropertyShorthandFunctions.h ${WebCore_DERIVED_SOURCES_DIR}/StylePropertyShorthandFunctions.cpp
+    OUTPUT ${WebCore_DERIVED_SOURCES_DIR}/CSSProperties.json ${WebCore_DERIVED_SOURCES_DIR}/CSSPropertyNames.h ${WebCore_DERIVED_SOURCES_DIR}/CSSPropertyNames.cpp ${WebCore_DERIVED_SOURCES_DIR}/CSSPropertyNames.gperf ${WebCore_DERIVED_SOURCES_DIR}/StyleBuilderGenerated.cpp ${WebCore_DERIVED_SOURCES_DIR}/StylePropertyShorthandFunctions.h ${WebCore_DERIVED_SOURCES_DIR}/StylePropertyShorthandFunctions.cpp
     MAIN_DEPENDENCY ${WEBCORE_DIR}/css/makeprop.pl
     DEPENDS ${WebCore_CSS_PROPERTY_NAMES}
     WORKING_DIRECTORY ${WebCore_DERIVED_SOURCES_DIR}
@@ -1709,7 +1804,7 @@ add_custom_command(
     COMMAND ${PERL_EXECUTABLE} ${WEBCORE_DIR}/css/makeprop.pl --defines "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}" --gperf-executable "${GPERF_EXECUTABLE}"
     VERBATIM)
 list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/CSSPropertyNames.cpp)
-list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/StyleBuilder.cpp)
+list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/StyleBuilderGenerated.cpp)
 list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/StylePropertyShorthandFunctions.cpp)
 ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/css/CSSParser.cpp CSSValueKeywords.h)
 
@@ -1781,11 +1876,17 @@ list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/PlugInsResourcesData.
 ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/css/StyleResolver.cpp PlugInsResourcesData.cpp PlugInsResources.h)
 
 set(FEATURE_DEFINES_JAVASCRIPT "LANGUAGE_JAVASCRIPT ${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}")
+
+GENERATE_SETTINGS_MACROS(${WEBCORE_DIR}/page/Settings.yaml Settings.h)
+list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/Settings.h)
+list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/Settings.cpp)
+list(APPEND WebCoreTestSupport_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/InternalSettingsGenerated.cpp)
 list(APPEND WebCoreTestSupport_IDL_FILES ${WebCore_DERIVED_SOURCES_DIR}/InternalSettingsGenerated.idl)
 
 GENERATE_BINDINGS(WebCoreBindings
     OUTPUT_SOURCE WebCore_SOURCES
     INPUT_FILES ${WebCore_IDL_FILES}
+    PP_INPUT_FILES ${WebCore_IDL_FILES} ${WebCoreTestSupport_IDL_FILES}
     BASE_DIR ${WEBCORE_DIR}
     IDL_INCLUDES ${WebCore_IDL_INCLUDES} ${WebCore_DERIVED_SOURCES_DIR}
     FEATURES ${FEATURE_DEFINES_JAVASCRIPT}
@@ -1793,14 +1894,20 @@ GENERATE_BINDINGS(WebCoreBindings
     GENERATOR JS
     SUPPLEMENTAL_DEPFILE ${SUPPLEMENTAL_DEPENDENCY_FILE}
     PP_EXTRA_OUTPUT
-        ${WINDOW_CONSTRUCTORS_FILE} ${WORKERGLOBALSCOPE_CONSTRUCTORS_FILE} ${DEDICATEDWORKERGLOBALSCOPE_CONSTRUCTORS_FILE}
+        ${ISO_SUBSPACES_HEADER_FILE} ${WINDOW_CONSTRUCTORS_FILE} ${WORKERGLOBALSCOPE_CONSTRUCTORS_FILE} ${DEDICATEDWORKERGLOBALSCOPE_CONSTRUCTORS_FILE}
     PP_EXTRA_ARGS
+        --isoSubspacesHeaderFile ${ISO_SUBSPACES_HEADER_FILE}
         --windowConstructorsFile ${WINDOW_CONSTRUCTORS_FILE}
         --workerGlobalScopeConstructorsFile ${WORKERGLOBALSCOPE_CONSTRUCTORS_FILE}
         --dedicatedWorkerGlobalScopeConstructorsFile ${DEDICATEDWORKERGLOBALSCOPE_CONSTRUCTORS_FILE}
         --serviceWorkerGlobalScopeConstructorsFile ${SERVICEWORKERGLOBALSCOPE_CONSTRUCTORS_FILE}
         --workletGlobalScopeConstructorsFile ${WORKLETGLOBALSCOPE_CONSTRUCTORS_FILE}
         --paintWorkletGlobalScopeConstructorsFile ${PAINTWORKLETGLOBALSCOPE_CONSTRUCTORS_FILE})
+list(APPEND WebCore_DEPENDENCIES WebCoreBindings)
+
+if (ENABLE_WEBINSPECTORUI)
+    list(APPEND WebCore_DEPENDENCIES WebInspectorUI)
+endif ()
 
 GENERATE_BINDINGS(WebCoreTestSupportBindings
     OUTPUT_SOURCE WebCoreTestSupport_SOURCES
@@ -1811,8 +1918,11 @@ GENERATE_BINDINGS(WebCoreTestSupportBindings
     DESTINATION ${WebCore_DERIVED_SOURCES_DIR}
     GENERATOR JS)
 
-# WebCoreTestSupportBindings needs InternalSettingsGenerated.idl
-add_dependencies(WebCoreTestSupportBindings WebCore)
+# WebCoreTestSupportBindings needs to have a direct or indirect
+# dependency to WebCoreBindings for CMake Visual Studio generator to
+# eliminate duplicated custom commands. Otherwise,
+# GenerateSettings.rb will be triggered in both projects.
+add_dependencies(WebCoreTestSupportBindings WebCoreBindings)
 
 # WebCore JS Builtins
 
@@ -1831,6 +1941,8 @@ set(WebCore_BUILTINS_SOURCES
     ${WEBCORE_DIR}/Modules/streams/ReadableStreamDefaultReader.js
     ${WEBCORE_DIR}/Modules/streams/StreamInternals.js
     ${WEBCORE_DIR}/Modules/streams/WritableStream.js
+    ${WEBCORE_DIR}/Modules/streams/WritableStreamDefaultController.js
+    ${WEBCORE_DIR}/Modules/streams/WritableStreamDefaultWriter.js
     ${WEBCORE_DIR}/Modules/streams/WritableStreamInternals.js
     ${WEBCORE_DIR}/bindings/js/JSDOMBindingInternals.js
 )
@@ -1896,11 +2008,6 @@ list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/EventTargetInterfaces
 list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/EventTargetFactory.cpp)
 
 
-GENERATE_SETTINGS_MACROS(${WEBCORE_DIR}/page/Settings.yaml Settings.h)
-list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/Settings.h)
-list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/Settings.cpp)
-list(APPEND WebCoreTestSupport_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/InternalSettingsGenerated.cpp)
-
 GENERATE_FONT_NAMES(${WEBCORE_DIR}/css/WebKitFontFamilyNames.in)
 list(APPEND WebCore_SOURCES ${WebCore_DERIVED_SOURCES_DIR}/WebKitFontFamilyNames.cpp)
 
@@ -1941,10 +2048,22 @@ if (MSVC)
     WEBKIT_ADD_PRECOMPILED_HEADER("WebCorePrefix.h" "WebCorePrefix.cpp" WebCore_SOURCES)
 endif ()
 
-WEBKIT_FRAMEWORK(WebCore)
+WEBKIT_COPY_FILES(WebCore_CopyPrivateHeaders
+    DESTINATION ${WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR}/WebCore
+    FILES ${WebCore_PRIVATE_FRAMEWORK_HEADERS}
+    FLATTENED
+)
+list(APPEND WebCore_INTERFACE_DEPENDENCIES WebCore_CopyPrivateHeaders)
+# WebCore_CopyPrivateHeaders needs to have a direct or indirect
+# dependency of WebCore target for CMake Visual Studio generator to
+# eliminate duplicated custom commands. Otherwise, CSSPropertyNames.h
+# will be generated in both projects.
+if (NOT INTERNAL_BUILD)
+    add_dependencies(WebCore_CopyPrivateHeaders WebCore)
+endif ()
 
-add_dependencies(WebCore WebCoreBindings)
-add_dependencies(WebCorePrivateFrameworkHeaders WebCoreBindings)
+WEBKIT_FRAMEWORK(WebCore)
+WEBKIT_FRAMEWORK_TARGET(WebCore)
 
 add_dependencies(WebCore UltralightCoreBin)
 
@@ -1964,15 +2083,6 @@ if (CMAKE_COMPILER_IS_GNUCXX AND "${LOWERCASE_CMAKE_HOST_SYSTEM_PROCESSOR}" MATC
     WEBKIT_ADD_TARGET_CXX_FLAGS(WebCore -fno-tree-sra)
 endif ()
 
-# Include paths of WebCore doesn't propagate to targets using WebKit
-# because WebCore is linked to WebKit as a PRIVATE library. Forwarding
-# headers generated by generate-forwarding-headers.pl needs include
-# paths of WebCore.
-add_library(WebCoreHeaderInterface INTERFACE)
-target_include_directories(WebCoreHeaderInterface INTERFACE ${WebCore_INCLUDE_DIRECTORIES})
-target_include_directories(WebCoreHeaderInterface SYSTEM INTERFACE ${WebCore_SYSTEM_INCLUDE_DIRECTORIES})
-target_link_libraries(WebCoreHeaderInterface INTERFACE ${WebCore_LIBRARIES})
-
 if (MSVC)
     WEBKIT_ADD_PRECOMPILED_HEADER("WebCoreTestSupportPrefix.h" "testing/js/WebCoreTestSupportPrefix.cpp" WebCoreTestSupport_SOURCES)
 endif ()
@@ -1990,6 +2100,9 @@ endif ()
 #        add_compile_options(/WX-)
 #    endif ()
 #endif ()
+
+#WEBKIT_FRAMEWORK(WebCoreTestSupport)
+#WEBKIT_FRAMEWORK_TARGET(WebCoreTestSupport)
 
 if (${WebCore_LIBRARY_TYPE} MATCHES "SHARED")
     #set_target_properties(WebCore PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})

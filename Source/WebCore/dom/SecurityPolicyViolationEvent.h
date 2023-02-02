@@ -30,6 +30,7 @@
 namespace WebCore {
 
 class SecurityPolicyViolationEvent final : public Event {
+    WTF_MAKE_ISO_ALLOCATED(SecurityPolicyViolationEvent);
 public:
     static Ref<SecurityPolicyViolationEvent> create(const AtomString& type, CanBubble canBubble, IsCancelable cancelable, const String& documentURI, const String& referrer, const String& blockedURI, const String& violatedDirective, const String& effectiveDirective, const String& originalPolicy, const String& sourceFile, unsigned short statusCode, int lineNumber, int columnNumber)
     {
@@ -54,7 +55,7 @@ public:
         int columnNumber { 0 };
 
         template<class Encoder> void encode(Encoder&) const;
-        template<class Decoder> static bool decode(Decoder&, Init&);
+        template<class Decoder> static WARN_UNUSED_RETURN bool decode(Decoder&, Init&);
     };
 
     static Ref<SecurityPolicyViolationEvent> create(const AtomString& type, const Init& initializer, IsTrusted isTrusted = IsTrusted::No)

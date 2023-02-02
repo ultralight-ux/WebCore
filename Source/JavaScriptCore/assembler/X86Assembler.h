@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -292,8 +292,11 @@ private:
         OP2_IMUL_GvEv       = 0xAF,
         OP2_CMPXCHGb        = 0xB0,
         OP2_CMPXCHG         = 0xB1,
+        OP2_BTR             = 0xB3,
         OP2_MOVZX_GvEb      = 0xB6,
         OP2_POPCNT          = 0xB8,
+        OP2_GROUP_BT_EvIb   = 0xBA,
+        OP2_BT_EvEv         = 0xA3,
         OP2_BSF             = 0xBC,
         OP2_TZCNT           = 0xBC,
         OP2_BSR             = 0xBD,
@@ -382,6 +385,8 @@ private:
 
         ESCAPE_D9_FSTP_singleReal = 3,
         ESCAPE_DD_FSTP_doubleReal = 3,
+
+        GROUP_BT_OP_BT = 4,
     } GroupOpcodeID;
     
     class X86InstructionFormatter;
@@ -1644,6 +1649,13 @@ public:
     }
 #endif
 
+#if CPU(X86_64)
+    void btrq_rr(RegisterID src, RegisterID dst)
+    {
+        m_formatter.twoByteOp64(OP2_BTR, dst, src);
+    }
+#endif
+
     void popcnt_rr(RegisterID src, RegisterID dst)
     {
         m_formatter.prefix(PRE_SSE_F3);
@@ -2148,6 +2160,56 @@ public:
             m_formatter.oneByteOp8(OP_GROUP3_EbIb, GROUP3_OP_TEST, dst);
         m_formatter.immediate8(imm);
     }
+
+    void bt_ir(int bitOffset, RegisterID testValue)
+    {
+        ASSERT(-128 <= bitOffset && bitOffset < 128);
+        m_formatter.twoByteOp(OP2_GROUP_BT_EvIb, GROUP_BT_OP_BT, testValue);
+        m_formatter.immediate8(bitOffset);
+    }
+
+    void bt_im(int bitOffset, int offset, RegisterID base)
+    {
+        ASSERT(-128 <= bitOffset && bitOffset < 128);
+        m_formatter.twoByteOp(OP2_GROUP_BT_EvIb, GROUP_BT_OP_BT, base, offset);
+        m_formatter.immediate8(bitOffset);
+    }
+
+    void bt_ir(RegisterID bitOffset, RegisterID testValue)
+    {
+        m_formatter.twoByteOp(OP2_BT_EvEv, bitOffset, testValue);
+    }
+
+    void bt_im(RegisterID bitOffset, int offset, RegisterID base)
+    {
+        m_formatter.twoByteOp(OP2_BT_EvEv, bitOffset, base, offset);
+    }
+
+#if CPU(X86_64)
+    void btw_ir(int bitOffset, RegisterID testValue)
+    {
+        ASSERT(-128 <= bitOffset && bitOffset < 128);
+        m_formatter.twoByteOp64(OP2_GROUP_BT_EvIb, GROUP_BT_OP_BT, testValue);
+        m_formatter.immediate8(bitOffset);
+    }
+
+    void btw_im(int bitOffset, int offset, RegisterID base)
+    {
+        ASSERT(-128 <= bitOffset && bitOffset < 128);
+        m_formatter.twoByteOp64(OP2_GROUP_BT_EvIb, GROUP_BT_OP_BT, base, offset);
+        m_formatter.immediate8(bitOffset);
+    }
+
+    void btw_ir(RegisterID bitOffset, RegisterID testValue)
+    {
+        m_formatter.twoByteOp64(OP2_BT_EvEv, bitOffset, testValue);
+    }
+
+    void btw_im(RegisterID bitOffset, int offset, RegisterID base)
+    {
+        m_formatter.twoByteOp64(OP2_BT_EvEv, bitOffset, base, offset);
+    }
+#endif
 
     void setCC_r(Condition cond, RegisterID dst)
     {
@@ -3898,8 +3960,10 @@ public:
         m_formatter.oneByteOp(OP_NOP);
     }
 
-    template <typename CopyFunction>
-    static void fillNops(void* base, size_t size, CopyFunction copy)
+    using CopyFunction = void*(&)(void*, const void*, size_t);
+
+    template <CopyFunction copy>
+    static void fillNops(void* base, size_t size)
     {
         UNUSED_PARAM(copy);
 #if CPU(X86_64)
@@ -3973,7 +4037,7 @@ private:
     }
 
     class X86InstructionFormatter {
-        static const int maxInstructionSize = 16;
+        static constexpr int maxInstructionSize = 16;
 
     public:
         enum ModRmMode {
@@ -4642,7 +4706,7 @@ private:
 
         // Immediates:
         //
-        // An immedaite should be appended where appropriate after an op has been emitted.
+        // An immediate should be appended where appropriate after an op has been emitted.
         // The writes are unchecked since the opcode formatters above will have ensured space.
 
         void immediate8(int imm)

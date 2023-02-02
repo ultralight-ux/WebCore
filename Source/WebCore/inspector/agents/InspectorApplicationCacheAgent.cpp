@@ -27,7 +27,6 @@
 #include "InspectorApplicationCacheAgent.h"
 
 #include "ApplicationCacheHost.h"
-#include "CustomHeaderFields.h"
 #include "DocumentLoader.h"
 #include "Frame.h"
 #include "FrameLoader.h"
@@ -44,11 +43,13 @@ using namespace Inspector;
 
 InspectorApplicationCacheAgent::InspectorApplicationCacheAgent(PageAgentContext& context)
     : InspectorAgentBase("ApplicationCache"_s, context)
-    , m_frontendDispatcher(std::make_unique<Inspector::ApplicationCacheFrontendDispatcher>(context.frontendRouter))
+    , m_frontendDispatcher(makeUnique<Inspector::ApplicationCacheFrontendDispatcher>(context.frontendRouter))
     , m_backendDispatcher(Inspector::ApplicationCacheBackendDispatcher::create(context.backendDispatcher, this))
     , m_inspectedPage(context.inspectedPage)
 {
 }
+
+InspectorApplicationCacheAgent::~InspectorApplicationCacheAgent() = default;
 
 void InspectorApplicationCacheAgent::didCreateFrontendAndBackend(FrontendRouter*, BackendDispatcher*)
 {
@@ -56,20 +57,36 @@ void InspectorApplicationCacheAgent::didCreateFrontendAndBackend(FrontendRouter*
 
 void InspectorApplicationCacheAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
-    m_instrumentingAgents.setInspectorApplicationCacheAgent(nullptr);
+    ErrorString ignored;
+    disable(ignored);
 }
 
-void InspectorApplicationCacheAgent::enable(ErrorString&)
+void InspectorApplicationCacheAgent::enable(ErrorString& errorString)
 {
-    m_instrumentingAgents.setInspectorApplicationCacheAgent(this);
+    if (m_instrumentingAgents.enabledApplicationCacheAgent() == this) {
+        errorString = "ApplicationCache domain already enabled"_s;
+        return;
+    }
+
+    m_instrumentingAgents.setEnabledApplicationCacheAgent(this);
 
     // We need to pass initial navigator.onOnline.
     networkStateChanged();
 }
 
+void InspectorApplicationCacheAgent::disable(ErrorString& errorString)
+{
+    if (m_instrumentingAgents.enabledApplicationCacheAgent() != this) {
+        errorString = "ApplicationCache domain already disabled"_s;
+        return;
+    }
+
+    m_instrumentingAgents.setEnabledApplicationCacheAgent(nullptr);
+}
+
 void InspectorApplicationCacheAgent::updateApplicationCacheStatus(Frame* frame)
 {
-    auto* pageAgent = m_instrumentingAgents.inspectorPageAgent();
+    auto* pageAgent = m_instrumentingAgents.enabledPageAgent();
     if (!pageAgent)
         return;
 
@@ -92,11 +109,15 @@ void InspectorApplicationCacheAgent::networkStateChanged()
     m_frontendDispatcher->networkStateUpdated(platformStrategies()->loaderStrategy()->isOnLine());
 }
 
-void InspectorApplicationCacheAgent::getFramesWithManifests(ErrorString&, RefPtr<JSON::ArrayOf<Inspector::Protocol::ApplicationCache::FrameWithManifest>>& result)
+void InspectorApplicationCacheAgent::getFramesWithManifests(ErrorString& errorString, RefPtr<JSON::ArrayOf<Inspector::Protocol::ApplicationCache::FrameWithManifest>>& result)
 {
-    result = JSON::ArrayOf<Inspector::Protocol::ApplicationCache::FrameWithManifest>::create();
+    auto* pageAgent = m_instrumentingAgents.enabledPageAgent();
+    if (!pageAgent) {
+        errorString = "Page domain must be enabled"_s;
+        return;
+    }
 
-    auto* pageAgent = m_instrumentingAgents.inspectorPageAgent();
+    result = JSON::ArrayOf<Inspector::Protocol::ApplicationCache::FrameWithManifest>::create();
 
     for (Frame* frame = &m_inspectedPage.mainFrame(); frame; frame = frame->tree().traverseNext()) {
         auto* documentLoader = frame->loader().documentLoader();
@@ -117,13 +138,13 @@ void InspectorApplicationCacheAgent::getFramesWithManifests(ErrorString&, RefPtr
 
 DocumentLoader* InspectorApplicationCacheAgent::assertFrameWithDocumentLoader(ErrorString& errorString, const String& frameId)
 {
-    auto* pageAgent = m_instrumentingAgents.inspectorPageAgent();
+    auto* pageAgent = m_instrumentingAgents.enabledPageAgent();
     if (!pageAgent) {
-        errorString = "Missing Page agent"_s;
+        errorString = "Page domain must be enabled"_s;
         return nullptr;
     }
 
-    Frame* frame = pageAgent->assertFrame(errorString, frameId);
+    auto* frame = pageAgent->assertFrame(errorString, frameId);
     if (!frame)
         return nullptr;
 

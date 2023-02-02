@@ -72,6 +72,9 @@ if not "%3" == "" (
     set ALLOC_OVERRIDE=1
     set NO_MIMALLOC=1
   )
+  if "%3"=="local" (
+    set USE_LOCAL_DEPS=1
+  )
   shift
   goto PROCESS_ARG
 )

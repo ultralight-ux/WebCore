@@ -31,10 +31,13 @@
 #include "Blob.h"
 #include "EventNames.h"
 #include <JavaScriptCore/JSCInlines.h>
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
 using namespace JSC;
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(MessageEvent);
 
 MessageEvent::MessageEvent() = default;
 
@@ -122,6 +125,21 @@ void MessageEvent::initMessageEvent(const AtomString& type, bool canBubble, bool
 EventInterface MessageEvent::eventInterface() const
 {
     return MessageEventInterfaceType;
+}
+
+size_t MessageEvent::memoryCost() const
+{
+    return WTF::switchOn(m_data, [] (const JSValueInWrappedObject&) {
+        return 0;
+    }, [] (const Ref<SerializedScriptValue>& data) {
+        return data->memoryCost();
+    }, [] (const String& string) {
+        return string.sizeInBytes();
+    }, [] (const Ref<Blob>& blob) {
+        return blob->size();
+    }, [] (const Ref<ArrayBuffer>& buffer) {
+        return buffer->byteLength();
+    });
 }
 
 } // namespace WebCore

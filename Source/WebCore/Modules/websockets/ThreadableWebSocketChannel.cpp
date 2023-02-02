@@ -33,6 +33,7 @@
 
 #include "ContentRuleListResults.h"
 #include "Document.h"
+#include "HTTPHeaderValues.h"
 #include "Page.h"
 #include "RuntimeEnabledFeatures.h"
 #include "ScriptExecutionContext.h"
@@ -48,6 +49,25 @@
 
 namespace WebCore {
 
+Ref<ThreadableWebSocketChannel> ThreadableWebSocketChannel::create(Document& document, WebSocketChannelClient& client, SocketProvider& provider)
+{
+#if USE(SOUP)
+    auto channel = provider.createWebSocketChannel(document, client);
+    ASSERT(channel);
+    return channel.releaseNonNull();
+#else
+
+#if HAVE(NSURLSESSION_WEBSOCKET)
+    if (RuntimeEnabledFeatures::sharedFeatures().isNSURLSessionWebSocketEnabled()) {
+        if (auto channel = provider.createWebSocketChannel(document, client))
+            return channel.releaseNonNull();
+    }
+#endif
+
+    return WebSocketChannel::create(document, client, provider);
+#endif
+}
+
 Ref<ThreadableWebSocketChannel> ThreadableWebSocketChannel::create(ScriptExecutionContext& context, WebSocketChannelClient& client, SocketProvider& provider)
 {
     if (is<WorkerGlobalScope>(context)) {
@@ -56,29 +76,16 @@ Ref<ThreadableWebSocketChannel> ThreadableWebSocketChannel::create(ScriptExecuti
         return WorkerThreadableWebSocketChannel::create(workerGlobalScope, client, makeString("webSocketChannelMode", runLoop.createUniqueId()), provider);
     }
 
-    auto& document = downcast<Document>(context);
-
-    bool shouldProviderCreateSocketChannel = false;
-#if HAVE(NSURLSESSION_WEBSOCKET)
-    shouldProviderCreateSocketChannel = RuntimeEnabledFeatures::sharedFeatures().isNSURLSessionWebSocketEnabled();
-#endif
-#if USE(SOUP)
-    shouldProviderCreateSocketChannel = getenv("WEBKIT_USE_SOUP_WEBSOCKETS");
-#endif
-
-    if (shouldProviderCreateSocketChannel) {
-        if (auto channel = provider.createWebSocketChannel(document, client))
-            return channel.releaseNonNull();
-    }
-
-    return WebSocketChannel::create(document, client, provider);
+    return create(downcast<Document>(context), client, provider);
 }
 
 Optional<ThreadableWebSocketChannel::ValidatedURL> ThreadableWebSocketChannel::validateURL(Document& document, const URL& requestedURL)
 {
     ValidatedURL validatedURL { requestedURL, true };
-#if ENABLE(CONTENT_EXTENSIONS)
     if (auto* page = document.page()) {
+        if (!page->loadsFromNetwork())
+            return { };
+#if ENABLE(CONTENT_EXTENSIONS)
         if (auto* documentLoader = document.loader()) {
             auto results = page->userContentProvider().processContentRuleListsForLoad(validatedURL.url, ContentExtensions::ResourceType::Raw, *documentLoader);
             if (results.summary.blockedLoad)
@@ -89,10 +96,10 @@ Optional<ThreadableWebSocketChannel::ValidatedURL> ThreadableWebSocketChannel::v
             }
             validatedURL.areCookiesAllowed = !results.summary.blockedCookies;
         }
-    }
 #else
-    UNUSED_PARAM(document);
+        UNUSED_PARAM(document);
 #endif
+    }
     return validatedURL;
 }
 
@@ -106,13 +113,15 @@ Optional<ResourceRequest> ThreadableWebSocketChannel::webSocketConnectRequest(Do
     request.setHTTPUserAgent(document.userAgent(validatedURL->url));
     request.setDomainForCachePartition(document.domainForCachePartition());
     request.setAllowCookies(validatedURL->areCookiesAllowed);
+    request.setFirstPartyForCookies(document.firstPartyForCookies());
+    request.setHTTPHeaderField(HTTPHeaderName::Origin, document.securityOrigin().toString());
 
     // Add no-cache headers to avoid compatibility issue.
     // There are some proxies that rewrite "Connection: upgrade"
     // to "Connection: close" in the response if a request doesn't contain
     // these headers.
-    request.addHTTPHeaderField(HTTPHeaderName::Pragma, "no-cache");
-    request.addHTTPHeaderField(HTTPHeaderName::CacheControl, "no-cache");
+    request.addHTTPHeaderField(HTTPHeaderName::Pragma, HTTPHeaderValues::noCache());
+    request.addHTTPHeaderField(HTTPHeaderName::CacheControl, HTTPHeaderValues::noCache());
 
     return request;
 }

@@ -24,9 +24,9 @@
  */
 
 #import "config.h"
-
-#if PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
 #import "VideoFullscreenModelVideoElement.h"
+
+#if ENABLE(VIDEO_PRESENTATION_MODE)
 
 #import "DOMWindow.h"
 #import "Event.h"
@@ -110,6 +110,13 @@ void VideoFullscreenModelVideoElement::willExitFullscreen()
         m_videoElement->willExitFullscreen();
 }
 
+RetainPtr<PlatformLayer> VideoFullscreenModelVideoElement::createVideoFullscreenLayer()
+{
+    if (m_videoElement)
+        return m_videoElement->createVideoFullscreenLayer();
+    return nullptr;
+}
+
 void VideoFullscreenModelVideoElement::setVideoFullscreenLayer(PlatformLayer* videoLayer, WTF::Function<void()>&& completionHandler)
 {
     if (m_videoFullscreenLayer == videoLayer) {
@@ -148,7 +155,7 @@ void VideoFullscreenModelVideoElement::requestFullscreenMode(HTMLMediaElementEnu
     if (m_videoElement && m_videoElement->fullscreenMode() != mode)
         m_videoElement->setFullscreenMode(mode);
 
-    if (m_videoElement && finishedWithMedia && mode == MediaPlayerEnums::VideoFullscreenModeNone) {
+    if (m_videoElement && finishedWithMedia && mode == MediaPlayer::VideoFullscreenModeNone) {
         if (m_videoElement->document().isMediaDocument()) {
             if (auto* window = m_videoElement->document().domWindow())
                 window->history().back();
@@ -164,7 +171,7 @@ void VideoFullscreenModelVideoElement::setVideoLayerFrame(FloatRect rect)
         m_videoElement->setVideoFullscreenFrame(rect);
 }
 
-void VideoFullscreenModelVideoElement::setVideoLayerGravity(MediaPlayerEnums::VideoGravity gravity)
+void VideoFullscreenModelVideoElement::setVideoLayerGravity(MediaPlayer::VideoGravity gravity)
 {
     m_videoElement->setVideoFullscreenGravity(gravity);
 }
@@ -177,7 +184,7 @@ const Vector<AtomString>& VideoFullscreenModelVideoElement::observedEventNames()
 
 const AtomString& VideoFullscreenModelVideoElement::eventNameAll()
 {
-    static NeverDestroyed<AtomString> sEventNameAll = "allEvents";
+    static MainThreadNeverDestroyed<const AtomString> sEventNameAll = "allEvents";
     return sEventNameAll;
 }
 

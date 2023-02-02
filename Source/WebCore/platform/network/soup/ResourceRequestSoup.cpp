@@ -27,9 +27,9 @@
 #include "GUniquePtrSoup.h"
 #include "HTTPParsers.h"
 #include "MIMETypeRegistry.h"
+#include "RegistrableDomain.h"
 #include "SharedBuffer.h"
 #include "URLSoup.h"
-#include "WebKitSoupRequestGeneric.h"
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
@@ -68,7 +68,7 @@ static uint64_t appendEncodedBlobItemToSoupMessageBody(SoupMessage* soupMessage,
     return 0;
 }
 
-void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage) const
+void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage, BlobRegistryImpl& blobRegistry) const
 {
     auto* formData = httpBody();
     if (!formData || formData->isEmpty())
@@ -92,7 +92,7 @@ void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage) const
                         soup_message_body_append_buffer(soupMessage->request_body, soupBuffer.get());
                 }
             }, [&] (const FormDataElement::EncodedBlobData& blob) {
-                if (auto* blobData = static_cast<BlobRegistryImpl&>(blobRegistry()).getBlobDataFromURL(blob.url)) {
+                if (auto* blobData = blobRegistry.getBlobDataFromURL(blob.url)) {
                     for (const auto& item : blobData->items())
                         bodySize += appendEncodedBlobItemToSoupMessageBody(soupMessage, item);
                 }
@@ -110,6 +110,15 @@ void ResourceRequest::updateSoupMessageMembers(SoupMessage* soupMessage) const
     GUniquePtr<SoupURI> firstParty = urlToSoupURI(firstPartyForCookies());
     if (firstParty)
         soup_message_set_first_party(soupMessage, firstParty.get());
+
+#if SOUP_CHECK_VERSION(2, 69, 90)
+    if (m_sameSiteDisposition == ResourceRequest::SameSiteDisposition::SameSite) {
+        GUniquePtr<SoupURI> siteForCookies = urlToSoupURI(m_url);
+        soup_message_set_site_for_cookies(soupMessage, siteForCookies.get());
+    }
+
+    soup_message_set_is_top_level_navigation(soupMessage, isTopSite());
+#endif
 
     soup_message_set_flags(soupMessage, m_soupFlags);
 
@@ -140,7 +149,7 @@ void ResourceRequest::updateFromSoupMessageHeaders(SoupMessageHeaders* soupHeade
         m_httpHeaderFields.set(String(headerName), String(headerValue));
 }
 
-void ResourceRequest::updateSoupMessage(SoupMessage* soupMessage) const
+void ResourceRequest::updateSoupMessage(SoupMessage* soupMessage, BlobRegistryImpl& blobRegistry) const
 {
     g_object_set(soupMessage, SOUP_MESSAGE_METHOD, httpMethod().ascii().data(), NULL);
 
@@ -148,7 +157,7 @@ void ResourceRequest::updateSoupMessage(SoupMessage* soupMessage) const
     soup_message_set_uri(soupMessage, uri.get());
 
     updateSoupMessageMembers(soupMessage);
-    updateSoupMessageBody(soupMessage);
+    updateSoupMessageBody(soupMessage, blobRegistry);
 }
 
 void ResourceRequest::updateFromSoupMessage(SoupMessage* soupMessage)
@@ -171,10 +180,23 @@ void ResourceRequest::updateFromSoupMessage(SoupMessage* soupMessage)
     if (SoupURI* firstParty = soup_message_get_first_party(soupMessage))
         m_firstPartyForCookies = soupURIToURL(firstParty);
 
+#if SOUP_CHECK_VERSION(2, 69, 90)
+    setIsTopSite(soup_message_get_is_top_level_navigation(soupMessage));
+
+    if (SoupURI* siteForCookies = soup_message_get_site_for_cookies(soupMessage))
+        setIsSameSite(areRegistrableDomainsEqual(soupURIToURL(siteForCookies), m_url));
+    else
+        m_sameSiteDisposition = SameSiteDisposition::Unspecified;
+#else
+    m_sameSiteDisposition = SameSiteDisposition::Unspecified;
+#endif
+
     m_soupFlags = soup_message_get_flags(soupMessage);
 
-    // FIXME: m_allowCookies should probably be handled here and on
-    // doUpdatePlatformRequest somehow.
+#if SOUP_CHECK_VERSION(2, 71, 0)
+    m_acceptEncoding = !soup_message_is_feature_disabled(soupMessage, SOUP_TYPE_CONTENT_DECODER);
+    m_allowCookies = !soup_message_is_feature_disabled(soupMessage, SOUP_TYPE_COOKIE_JAR);
+#endif
 }
 
 static const char* gSoupRequestInitiatingPageIDKey = "wk-soup-request-initiating-page-id";
@@ -183,18 +205,15 @@ void ResourceRequest::updateSoupRequest(SoupRequest* soupRequest) const
 {
     if (m_initiatingPageID) {
         uint64_t* initiatingPageIDPtr = static_cast<uint64_t*>(fastMalloc(sizeof(uint64_t)));
-        *initiatingPageIDPtr = m_initiatingPageID->toUInt64();
+        *initiatingPageIDPtr = *m_initiatingPageID;
         g_object_set_data_full(G_OBJECT(soupRequest), g_intern_static_string(gSoupRequestInitiatingPageIDKey), initiatingPageIDPtr, fastFree);
     }
-
-    if (WEBKIT_IS_SOUP_REQUEST_GENERIC(soupRequest))
-        webkitSoupRequestGenericSetRequest(WEBKIT_SOUP_REQUEST_GENERIC(soupRequest), *this);
 }
 
 void ResourceRequest::updateFromSoupRequest(SoupRequest* soupRequest)
 {
     uint64_t* initiatingPageIDPtr = static_cast<uint64_t*>(g_object_get_data(G_OBJECT(soupRequest), gSoupRequestInitiatingPageIDKey));
-    m_initiatingPageID = makeObjectIdentifier<PageIdentifierType>(initiatingPageIDPtr ? *initiatingPageIDPtr : 0);
+    m_initiatingPageID = initiatingPageIDPtr ? *initiatingPageIDPtr : 0;
 }
 
 unsigned initializeMaximumHTTPConnectionCountPerHost()
@@ -224,7 +243,7 @@ GUniquePtr<SoupURI> ResourceRequest::createSoupURI() const
     // when both the username and password are non-null. When we have credentials, empty usernames and passwords
     // should be empty strings instead of null.
     String urlUser = m_url.user();
-    String urlPass = m_url.pass();
+    String urlPass = m_url.password();
     if (!urlUser.isEmpty() || !urlPass.isEmpty()) {
         soup_uri_set_user(soupURI.get(), urlUser.utf8().data());
         soup_uri_set_password(soupURI.get(), urlPass.utf8().data());

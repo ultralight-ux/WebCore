@@ -28,14 +28,9 @@ if (USE_CAIRO)
     )
 endif ()
 
-list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
-    ${FONTCONFIG_INCLUDE_DIRS}
-    ${FREETYPE_INCLUDE_DIRS}
-    ${HARFBUZZ_INCLUDE_DIRS}
-)
-
 list(APPEND WebCore_LIBRARIES
-    ${FONTCONFIG_LIBRARIES}
-    ${FREETYPE_LIBRARIES}
-    ${HARFBUZZ_LIBRARIES}
+    Fontconfig::Fontconfig
+    Freetype::Freetype
+    HarfBuzz::HarfBuzz
+    HarfBuzz::ICU
 )

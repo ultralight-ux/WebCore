@@ -106,6 +106,9 @@ const Vector<Node*>* HTMLSlotElement::assignedNodes() const
 
 static void flattenAssignedNodes(Vector<Ref<Node>>& nodes, const HTMLSlotElement& slot)
 {
+    if (!slot.containingShadowRoot())
+        return;
+
     auto* assignedNodes = slot.assignedNodes();
     if (!assignedNodes) {
         for (RefPtr<Node> child = slot.firstChild(); child; child = child->nextSibling()) {
@@ -116,8 +119,8 @@ static void flattenAssignedNodes(Vector<Ref<Node>>& nodes, const HTMLSlotElement
         }
         return;
     }
-    for (RefPtr<Node> node : *assignedNodes) {
-        if (is<HTMLSlotElement>(*node))
+    for (const RefPtr<Node>& node : *assignedNodes) {
+        if (is<HTMLSlotElement>(*node) && downcast<HTMLSlotElement>(*node).containingShadowRoot())
             flattenAssignedNodes(nodes, downcast<HTMLSlotElement>(*node));
         else
             nodes.append(*node);

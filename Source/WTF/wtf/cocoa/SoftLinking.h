@@ -42,6 +42,16 @@
         return dylib; \
     }
 
+#define SOFT_LINK_LIBRARY_OPTIONAL(lib) \
+static void* lib##Library() \
+{ \
+    static void* dylib = ^{ \
+        void *result = dlopen("/usr/lib/" #lib ".dylib", RTLD_NOW); \
+        return result; \
+    }(); \
+    return dylib; \
+}
+
 #define SOFT_LINK_FRAMEWORK(framework) \
     static void* framework##Library() \
     { \
@@ -531,12 +541,12 @@
     resultType softLink_##framework##_##functionName parameterDeclarations; \
     }
 
-#define SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE(functionNamespace, framework, functionName, resultType, parameterDeclarations, parameterNames) \
+#define SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(functionNamespace, framework, functionName, resultType, parameterDeclarations, parameterNames, export) \
     WTF_EXTERN_C_BEGIN \
     resultType functionName parameterDeclarations; \
     WTF_EXTERN_C_END \
     namespace functionNamespace { \
-    resultType (*softLink##framework##functionName) parameterDeclarations = 0; \
+    export resultType (*softLink##framework##functionName) parameterDeclarations = 0; \
     bool init_##framework##_##functionName(); \
     bool init_##framework##_##functionName() \
     { \
@@ -546,7 +556,7 @@
     } \
     \
     bool canLoad_##framework##_##functionName(); \
-    bool canLoad_##framework##_##functionName() \
+    export bool canLoad_##framework##_##functionName() \
     { \
         static bool loaded = init_##framework##_##functionName(); \
         return loaded; \
@@ -559,6 +569,9 @@
         return softLink##framework##functionName parameterNames; \
     } \
     }
+
+#define SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE(functionNamespace, framework, functionName, resultType, parameterDeclarations, parameterNames) \
+    SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(functionNamespace, framework, functionName, resultType, parameterDeclarations, parameterNames, )
 
 #define SOFT_LINK_POINTER_FOR_HEADER(functionNamespace, framework, variableName, variableType) \
     namespace functionNamespace { \

@@ -44,12 +44,19 @@ public:
 
     static JSC::Structure* createStructure(JSC::VM& vm, JSC::JSGlobalObject* globalObject, JSC::JSValue prototype)
     {
-        return JSC::Structure::create(vm, globalObject, prototype, JSC::TypeInfo(JSC::ObjectType, StructureFlags), info());
+        return JSC::Structure::create(vm, globalObject, prototype, JSC::TypeInfo(JSC::ObjectType, StructureFlags), info(), JSC::NonArray);
     }
 
     static JSC::JSValue getConstructor(JSC::VM&, const JSC::JSGlobalObject*);
-    static JSC::JSObject* serialize(JSC::ExecState&, JSTestSerializationInheritFinal& thisObject, JSDOMGlobalObject&, JSC::ThrowScope&);
-    static void heapSnapshot(JSCell*, JSC::HeapSnapshotBuilder&);
+    static JSC::JSObject* serialize(JSC::JSGlobalObject&, JSTestSerializationInheritFinal& thisObject, JSDOMGlobalObject&);
+    template<typename, JSC::SubspaceAccess mode> static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    {
+        if constexpr (mode == JSC::SubspaceAccess::Concurrently)
+            return nullptr;
+        return subspaceForImpl(vm);
+    }
+    static JSC::IsoSubspace* subspaceForImpl(JSC::VM& vm);
+    static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
     TestSerializationInheritFinal& wrapped() const
     {
         return static_cast<TestSerializationInheritFinal&>(Base::wrapped());

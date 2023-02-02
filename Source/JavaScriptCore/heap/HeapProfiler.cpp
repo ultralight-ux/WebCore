@@ -27,7 +27,6 @@
 #include "HeapProfiler.h"
 
 #include "HeapSnapshot.h"
-#include "VM.h"
 
 namespace JSC {
 
@@ -57,10 +56,10 @@ void HeapProfiler::clearSnapshots()
     m_snapshots.clear();
 }
 
-void HeapProfiler::setActiveSnapshotBuilder(HeapSnapshotBuilder* builder)
+void HeapProfiler::setActiveHeapAnalyzer(HeapAnalyzer* analyzer)
 {
-    ASSERT(!!m_activeBuilder != !!builder);
-    m_activeBuilder = builder;
+    ASSERT(!!m_activeAnalyzer != !!analyzer);
+    m_activeAnalyzer = analyzer;
 }
 
 } // namespace JSC

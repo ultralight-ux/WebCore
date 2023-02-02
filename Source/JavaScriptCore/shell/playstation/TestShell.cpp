@@ -25,32 +25,44 @@
 
 #include "../jsc.cpp"
 
+#include <wtf/Language.h>
+
+#define STATIC_OPTION(type_, name_, defaultValue_, availability_, description_) \
+    static OptionsStorage::type_ orig##name_;
+    FOR_EACH_JSC_OPTION(STATIC_OPTION)
+#undef STATIC_OPTION
+
 extern "C" void setupTestRun()
 {
-    // Need to initialize WTF threading before we start any threads. Cannot initialize JSC
-    // threading yet, since that would do somethings that we'd like to defer until after we
+    CommandLine options(0, nullptr);
+#define STATIC_OPTION(type_, name_, defaultValue_, availability_, description_) \
+    orig##name_ = JSC::Options::name_();
+    FOR_EACH_JSC_OPTION(STATIC_OPTION)
+#undef STATIC_OPTION
+
+    // Need to initialize WTF before we start any threads. Cannot initialize JSC
+    // yet, since that would do somethings that we'd like to defer until after we
     // have a chance to parse options.
-    WTF::initializeThreading();
+    WTF::initializeMainThread();
 
     // Need to override and enable restricted options before we start parsing options below.
-    Options::enableRestrictedOptions(true);
+    Config::enableRestrictedOptions();
 
-    // Initialize JSC before getting VM.
-    WTF::initializeMainThread();
-    JSC::initializeThreading();
+    JSC::initialize();
 
 #if ENABLE(WEBASSEMBLY)
     JSC::Wasm::enableFastMemory();
 #endif
-    Gigacage::disableDisablingPrimitiveGigacageIfShouldBeEnabled();
+    Gigacage::forbidDisablingPrimitiveGigacage();
 }
 
 extern "C" void preTest()
 {
-#define FOR_EACH_OPTION(type_, name_, defaultValue_, availability_, description_) \
-    JSC::Options::name_() = JSC::Options::name_##Default();
-    JSC_OPTIONS(FOR_EACH_OPTION)
-#undef FOR_EACH_OPTION
+#define INIT_OPTION(type_, name_, defaultValue_, availability_, description_) \
+    JSC::Options::name_() = orig##name_;
+    FOR_EACH_JSC_OPTION(INIT_OPTION)
+#undef INIT_OPTION
+    overrideUserPreferredLanguages(platformUserPreferredLanguages());
 }
 
 extern "C" int runTest(int argc, char* argv[])

@@ -31,6 +31,7 @@
 #include "FetchEvent.h"
 #include "JSFetchResponse.h"
 #include "SWContextManager.h"
+#include <wtf/ProcessID.h>
 
 namespace WebCore {
 
@@ -68,14 +69,14 @@ Ref<FetchEvent> ServiceWorkerInternals::createBeingDispatchedFetchEvent(ScriptEx
 
 Ref<FetchResponse> ServiceWorkerInternals::createOpaqueWithBlobBodyResponse(ScriptExecutionContext& context)
 {
-    auto blob = Blob::create();
+    auto blob = Blob::create(&context);
     auto formData = FormData::create();
     formData->appendBlob(blob->url());
 
     ResourceResponse response;
     response.setType(ResourceResponse::Type::Cors);
     response.setTainting(ResourceResponse::Tainting::Opaque);
-    auto fetchResponse = FetchResponse::create(context, FetchBody::fromFormData(formData), FetchHeaders::Guard::Response, WTFMove(response));
+    auto fetchResponse = FetchResponse::create(context, FetchBody::fromFormData(context, formData), FetchHeaders::Guard::Response, WTFMove(response));
     fetchResponse->initializeOpaqueLoadIdentifierForTesting();
     return fetchResponse;
 }
@@ -100,6 +101,11 @@ bool ServiceWorkerInternals::isThrottleable() const
 {
     auto* connection = SWContextManager::singleton().connection();
     return connection ? connection->isThrottleable() : true;
+}
+
+int ServiceWorkerInternals::processIdentifier() const
+{
+    return getCurrentProcessID();
 }
 
 } // namespace WebCore

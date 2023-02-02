@@ -10,6 +10,7 @@
 #include "FloatRect.h"
 #include "FloatRoundedRect.h"
 #include "Font.h"
+#include "Gradient.h"
 #include "GraphicsContextPlatformPrivateUltralight.h"
 #include "ImageBuffer.h"
 #include "IntRect.h"
@@ -86,6 +87,49 @@ void GraphicsContext::restorePlatformState()
     m_state.shadowsIgnoreTransforms);
 }
 
+void GraphicsContext::drawNativeImage(const NativeImagePtr& image, const FloatSize& selfSize, const FloatRect& destRect,
+    const FloatRect& srcRect, const ImagePaintingOptions& options)
+{
+    if (!image)
+        return;
+
+    save();
+
+    // Set the compositing operation.
+    if (options.compositeOperator() == CompositeOperator::SourceOver && options.blendMode() == BlendMode::Normal && !nativeImageHasAlpha(image))
+        setCompositeOperation(CompositeOperator::Copy);
+    else
+        setCompositeOperation(options.compositeOperator(), options.blendMode());
+
+#if ENABLE(IMAGE_DECODER_DOWN_SAMPLING)
+    IntSize scaledSize = nativeImageSize(image);
+    FloatRect adjustedSrcRect = adjustSourceRectForDownSampling(srcRect, scaledSize);
+#else
+    FloatRect adjustedSrcRect(srcRect);
+#endif
+
+    FloatRect adjustedDestRect = destRect;
+
+    auto orientation = options.orientation();
+    if (orientation != ImageOrientation()) {
+        // ImageOrientation expects the origin to be at (0, 0).
+        translate(destRect.x(), destRect.y());
+        adjustedDestRect.setLocation(FloatPoint());
+        concatCTM(orientation.transformFromDefault(adjustedDestRect.size()));
+        if (orientation.usesWidthAsHeight()) {
+            // The destination rectangle will have it's width and height already reversed for the orientation of
+            // the image, as it was needed for page layout, so we need to reverse it back here.
+            adjustedDestRect.setSize(adjustedDestRect.size().transposedSize());
+        }
+    }
+
+    ultralight::Paint paint;
+    paint.color = UltralightColorWHITE;
+    platformContext()->canvas()->DrawImage(image, adjustedSrcRect,
+        adjustedDestRect, paint);
+    restore();
+}
+
 // Draws a filled rectangle with a stroked border.
 void GraphicsContext::drawRect(const FloatRect& rect, float borderThickness)
 {
@@ -96,15 +140,6 @@ void GraphicsContext::drawRect(const FloatRect& rect, float borderThickness)
   ASSERT(hasPlatformContext());
   fillRect(rect, platformContext()->fillColor());
   // TODO, handle stroked border
-}
-
-void GraphicsContext::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
-{
-  if (paintingDisabled())
-    return;
-
-  // TODO
-  notImplemented();
 }
 
 // This is only used to draw borders, so we should not draw shadows.
@@ -128,8 +163,7 @@ void GraphicsContext::drawEllipse(const FloatRect& rect)
 
   ASSERT(hasPlatformContext());
   ultralight::Paint paint;
-  WebCore::Color color = fillColor();
-  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+  paint.color = ToColor(fillColor());
   ultralight::RoundedRect rrect;
   rrect.rect = rect;
   float radius = rect.width() * 0.5;
@@ -160,9 +194,8 @@ void GraphicsContext::fillPath(const Path& path)
   }
 
   ultralight::Paint paint;
-  WebCore::Color color = fillColor();
-  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->FillPath(path.ultralightPath(), paint, 
+  paint.color = ToColor(fillColor());
+  platformContext()->canvas()->FillPath(path.platformPath(), paint, 
     fillRule() == WindRule::NonZero ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd);
   // TODO, handle shadow state
 }
@@ -175,8 +208,7 @@ void GraphicsContext::strokePath(const Path& path)
   ASSERT(hasPlatformContext());
 
   ultralight::Paint paint;
-  WebCore::Color color = strokeColor();
-  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+  paint.color = ToColor(strokeColor());
 
   ultralight::LineCap lineCap;
   switch (platformContext()->lineCap()) {
@@ -210,7 +242,7 @@ void GraphicsContext::strokePath(const Path& path)
   if (dashArraySize)
       dashArray = platformContext()->lineDashData();
 
-  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, strokeThickness(),
+  platformContext()->canvas()->StrokePath(path.platformPath(), paint, strokeThickness(),
     lineCap, lineJoin, platformContext()->miterLimit(), dashArray, dashArraySize,
     platformContext()->lineDashOffset());
 
@@ -251,7 +283,7 @@ void GraphicsContext::fillRect(const FloatRect& rect, const Color& color)
 
   if (color.isVisible()) {
     ultralight::Paint paint;
-    paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+    paint.color = ToColor(color);
     platformContext()->canvas()->DrawRect(rect, paint);
   }
 }
@@ -347,8 +379,9 @@ void GraphicsContext::clipToImageBuffer(ImageBuffer& buffer, const FloatRect& de
   if (paintingDisabled())
     return;
 
-  // TODO
-  notImplemented();
+  ASSERT(hasPlatformContext());
+  NativeImagePtr image = buffer.copyNativeImage(DontCopyBackingStore);
+  platformContext()->canvas()->SetClip(image, destRect);
 }
 
 /*
@@ -369,7 +402,7 @@ IntRect GraphicsContext::clipBounds() const
 
 static inline void adjustFocusRingColor(Color& color)
 {
-  color = Color(makeRGBA(0, 150, 255, 200));
+  color = Color(SRGBA<uint8_t>(0, 150, 255, 200));
 }
 
 static inline void adjustFocusRingLineWidth(float& width)
@@ -402,8 +435,8 @@ void GraphicsContext::drawFocusRing(const Path& path, float width, float /* offs
 
   ASSERT(hasPlatformContext());
   ultralight::Paint paint;
-  paint.color = UltralightRGBA(ringColor.red(), ringColor.green(), ringColor.blue(), ringColor.alpha());
-  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width * 0.5 / scaleFactor().width());
+  paint.color = ToColor(ringColor);
+  platformContext()->canvas()->StrokePath(path.platformPath(), paint, width * 0.5 / scaleFactor().width());
 }
 
 void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width, float /* offset */, const Color& color)
@@ -483,8 +516,7 @@ void GraphicsContext::drawLinesForText(const FloatPoint& point, float thickness,
   }
 
   ultralight::Paint paint;
-  WebCore::Color color = localStrokeColor;
-  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+  paint.color = ToColor(localStrokeColor);
 
   for (auto& dash : dashBounds)
     platformContext()->canvas()->DrawRect(dash, paint);
@@ -701,9 +733,8 @@ void GraphicsContext::strokeRect(const FloatRect& rect, float width)
   path.addRect(rect);
 
   ultralight::Paint paint;
-  WebCore::Color color = strokeColor();
-  paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
-  platformContext()->canvas()->StrokePath(path.ultralightPath(), paint, width);
+  paint.color = ToColor(strokeColor());
+  platformContext()->canvas()->StrokePath(path.ensurePlatformPath(), paint, width);
   // TODO, handle shadow state
 }
 
@@ -772,7 +803,7 @@ void GraphicsContext::clipOut(const Path& path)
   if (paintingDisabled())
     return;
 
-  ultralight::RefPtr<ultralight::Path> p = path.ultralightPath();
+  ultralight::RefPtr<ultralight::Path> p = path.platformPath();
   // CoreGraphics seems to use EvenOdd rule here so we do the same.
   ultralight::FillRule fill_rule = ultralight::kFillRule_EvenOdd;
   platformContext()->canvas()->SetClip(p, fill_rule, true);
@@ -831,7 +862,7 @@ void GraphicsContext::platformFillRoundedRect(const FloatRoundedRect& rect, cons
 
   if (color.isVisible()) {
     ultralight::Paint paint;
-    paint.color = UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
+    paint.color = ToColor(color);
     ultralight::RoundedRect rrect;
     rrect.rect = rect.rect();
     rrect.radii_x[0] = rect.radii().topLeft().width();
@@ -881,7 +912,7 @@ void GraphicsContext::fillRectWithRoundedHole(const FloatRect& rect, const Float
     setFillColor(oldFillColor);
 }
 
-void GraphicsContext::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator op, BlendMode blendMode)
+void GraphicsContext::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
   if (paintingDisabled())
     return;
@@ -917,8 +948,7 @@ void GraphicsContext::drawPattern(Image& image, const FloatRect& destRect, const
 
     ultralight::Rect dest = destRect;
     ultralight::Rect src = tileRect;
-    platformContext()->canvas()->DrawPattern(
-      nativeImage->first, nativeImage->second, src, dest, combined);
+    platformContext()->canvas()->DrawPattern(nativeImage, src, dest, combined);
 
     platformContext()->restore();
   }

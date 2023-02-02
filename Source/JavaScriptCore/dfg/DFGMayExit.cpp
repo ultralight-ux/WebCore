@@ -29,10 +29,9 @@
 #if ENABLE(DFG_JIT)
 
 #include "DFGAtTailAbstractState.h"
-#include "DFGGraph.h"
 #include "DFGNode.h"
 #include "DFGNullAbstractState.h"
-#include "Operations.h"
+#include "JSCJSValueInlines.h"
 
 namespace JSC { namespace DFG {
 
@@ -71,6 +70,7 @@ ExitMode mayExitImpl(Graph& graph, Node* node, StateType& state)
     case BottomValue:
     case PutHint:
     case PhantomNewObject:
+    case PhantomNewInternalFieldObject:
     case PutStack:
     case KillStack:
     case GetStack:
@@ -101,12 +101,14 @@ ExitMode mayExitImpl(Graph& graph, Node* node, StateType& state)
     case FencedStoreBarrier:
     case PutByOffset:
     case PutClosureVar:
+    case PutInternalField:
     case RecordRegExpCachedResult:
     case NukeStructureAndSetButterfly:
     case FilterCallLinkStatus:
-    case FilterGetByIdStatus:
+    case FilterGetByStatus:
     case FilterPutByIdStatus:
     case FilterInByIdStatus:
+    case FilterDeleteByStatus:
         break;
 
     case StrCat:
@@ -120,14 +122,17 @@ ExitMode mayExitImpl(Graph& graph, Node* node, StateType& state)
     case CreateActivation:
     case MaterializeCreateActivation:
     case MaterializeNewObject:
+    case MaterializeNewInternalFieldObject:
     case NewFunction:
     case NewGeneratorFunction:
     case NewAsyncFunction:
     case NewAsyncGeneratorFunction:
     case NewStringObject:
     case NewSymbol:
+    case NewInternalFieldObject:
     case NewRegexp:
     case ToNumber:
+    case ToNumeric:
     case RegExpExecNonGlobalOrSticky:
     case RegExpMatchFastGlobal:
         result = ExitsForExceptions;

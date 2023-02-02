@@ -23,17 +23,15 @@
 #include "config.h"
 #include "GetterSetter.h"
 
-#include "Error.h"
 #include "Exception.h"
-#include "JSObject.h"
-#include "JSCInlines.h"
+#include "JSObjectInlines.h"
 #include <wtf/Assertions.h>
 
 namespace JSC {
 
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(GetterSetter);
 
-const ClassInfo GetterSetter::s_info = { "GetterSetter", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(GetterSetter) };
+const ClassInfo GetterSetter::s_info = { "GetterSetter", nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(GetterSetter) };
 
 void GetterSetter::visitChildren(JSCell* cell, SlotVisitor& visitor)
 {
@@ -45,9 +43,9 @@ void GetterSetter::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(thisObject->m_setter);
 }
 
-JSValue callGetter(ExecState* exec, JSValue base, JSValue getterSetter)
+JSValue callGetter(JSGlobalObject* globalObject, JSValue base, JSValue getterSetter)
 {
-    VM& vm = exec->vm();
+    VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     // FIXME: Some callers may invoke get() without checking for an exception first.
     // We work around that by checking here.
@@ -55,20 +53,19 @@ JSValue callGetter(ExecState* exec, JSValue base, JSValue getterSetter)
 
     JSObject* getter = jsCast<GetterSetter*>(getterSetter)->getter();
 
-    CallData callData;
-    CallType callType = getter->methodTable(vm)->getCallData(getter, callData);
-    RELEASE_AND_RETURN(scope, call(exec, getter, callType, callData, base, ArgList()));
+    auto callData = getCallData(vm, getter);
+    RELEASE_AND_RETURN(scope, call(globalObject, getter, callData, base, ArgList()));
 }
 
-bool callSetter(ExecState* exec, JSValue base, JSValue getterSetter, JSValue value, ECMAMode ecmaMode)
+bool callSetter(JSGlobalObject* globalObject, JSValue base, JSValue getterSetter, JSValue value, ECMAMode ecmaMode)
 {
-    VM& vm = exec->vm();
+    VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     GetterSetter* getterSetterObj = jsCast<GetterSetter*>(getterSetter);
 
     if (getterSetterObj->isSetterNull())
-        return typeError(exec, scope, ecmaMode == StrictMode, ReadonlyPropertyWriteError);
+        return typeError(globalObject, scope, ecmaMode.isStrict(), ReadonlyPropertyWriteError);
 
     JSObject* setter = getterSetterObj->setter();
 
@@ -76,10 +73,9 @@ bool callSetter(ExecState* exec, JSValue base, JSValue getterSetter, JSValue val
     args.append(value);
     ASSERT(!args.hasOverflowed());
 
-    CallData callData;
-    CallType callType = setter->methodTable(vm)->getCallData(setter, callData);
+    auto callData = getCallData(vm, setter);
     scope.release();
-    call(exec, setter, callType, callData, base, args);
+    call(globalObject, setter, callData, base, args);
     return true;
 }
 

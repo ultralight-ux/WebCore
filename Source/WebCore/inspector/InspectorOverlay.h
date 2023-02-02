@@ -32,9 +32,11 @@
 #include "Color.h"
 #include "FloatQuad.h"
 #include "FloatRect.h"
+#include "Path.h"
 #include "Timer.h"
 #include <wtf/Deque.h>
 #include <wtf/MonotonicTime.h>
+#include <wtf/Optional.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
@@ -105,6 +107,7 @@ public:
     void update();
     void paint(GraphicsContext&);
     void getHighlight(Highlight&, CoordinateSystem) const;
+    bool shouldShowOverlay() const;
 
     void hideHighlight();
     void highlightNodeList(RefPtr<NodeList>&&, const HighlightConfig&);
@@ -126,15 +129,18 @@ public:
 private:
     using TimeRectPair = std::pair<MonotonicTime, FloatRect>;
 
-    bool shouldShowOverlay() const;
+    struct RulerExclusion {
+        Highlight::Bounds bounds;
+        Path titlePath;
+    };
 
-    Highlight::Bounds drawNodeHighlight(GraphicsContext&, Node&);
-    Highlight::Bounds drawQuadHighlight(GraphicsContext&, const FloatQuad&);
+    RulerExclusion drawNodeHighlight(GraphicsContext&, Node&);
+    RulerExclusion drawQuadHighlight(GraphicsContext&, const FloatQuad&);
     void drawPaintRects(GraphicsContext&, const Deque<TimeRectPair>&);
     void drawBounds(GraphicsContext&, const Highlight::Bounds&);
-    void drawRulers(GraphicsContext&, const Highlight::Bounds&);
+    void drawRulers(GraphicsContext&, const RulerExclusion&);
 
-    void drawElementTitle(GraphicsContext&, Node&, const Highlight::Bounds&);
+    Path drawElementTitle(GraphicsContext&, Node&, const Highlight::Bounds&);
 
     void updatePaintRectsTimerFired();
 

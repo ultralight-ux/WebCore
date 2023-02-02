@@ -29,7 +29,6 @@
 
 #include "ClientOrigin.h"
 #include "SecurityOriginData.h"
-#include <pal/SessionID.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
@@ -45,7 +44,7 @@ public:
     {
     }
 
-    WEBCORE_EXPORT IDBDatabaseIdentifier(const String& databaseName, const PAL::SessionID&, SecurityOriginData&& openingOrigin, SecurityOriginData&& mainFrameOrigin);
+    WEBCORE_EXPORT IDBDatabaseIdentifier(const String& databaseName, SecurityOriginData&& openingOrigin, SecurityOriginData&& mainFrameOrigin, bool isTransient = false);
 
     IDBDatabaseIdentifier isolatedCopy() const;
 
@@ -57,10 +56,10 @@ public:
     unsigned hash() const
     {
         unsigned nameHash = StringHash::hash(m_databaseName);
-        unsigned sessionIDHash = WTF::SessionIDHash::hash(m_sessionID);
         unsigned originHash = m_origin.hash();
+        unsigned transientHash = m_isTransient;
 
-        unsigned hashCodes[3] = { nameHash, sessionIDHash, originHash };
+        unsigned hashCodes[3] = { nameHash, originHash, transientHash };
         return StringHasher::hashMemory<sizeof(hashCodes)>(hashCodes);
     }
 
@@ -77,12 +76,12 @@ public:
 
     bool operator==(const IDBDatabaseIdentifier& other) const
     {
-        return other.m_databaseName == m_databaseName && other.m_origin == m_origin;
+        return other.m_databaseName == m_databaseName && other.m_origin == m_origin && other.m_isTransient == m_isTransient;
     }
 
     const String& databaseName() const { return m_databaseName; }
-    const PAL::SessionID& sessionID() const { return m_sessionID; }
     const ClientOrigin& origin() const { return m_origin; }
+    bool isTransient() const { return m_isTransient; }
 
     String databaseDirectoryRelativeToRoot(const String& rootDirectory, const String& versionString="v1") const;
     static String databaseDirectoryRelativeToRoot(const SecurityOriginData& topLevelOrigin, const SecurityOriginData& openingOrigin, const String& rootDirectory, const String& versionString);
@@ -91,16 +90,15 @@ public:
     template<class Decoder> static Optional<IDBDatabaseIdentifier> decode(Decoder&);
 
 #if !LOG_DISABLED
-    String debugString() const;
+    String loggingString() const;
 #endif
 
     bool isRelatedToOrigin(const SecurityOriginData& other) const { return m_origin.isRelated(other); }
 
 private:
     String m_databaseName;
-    PAL::SessionID m_sessionID;
     ClientOrigin m_origin;
-    SecurityOriginData m_mainFrameOrigin;
+    bool m_isTransient { false };
 };
 
 struct IDBDatabaseIdentifierHash {
@@ -118,7 +116,7 @@ struct IDBDatabaseIdentifierHashTraits : WTF::SimpleClassHashTraits<IDBDatabaseI
 template<class Encoder>
 void IDBDatabaseIdentifier::encode(Encoder& encoder) const
 {
-    encoder << m_databaseName << m_sessionID << m_origin;
+    encoder << m_databaseName << m_origin << m_isTransient;
 }
 
 template<class Decoder>
@@ -129,20 +127,20 @@ Optional<IDBDatabaseIdentifier> IDBDatabaseIdentifier::decode(Decoder& decoder)
     if (!databaseName)
         return WTF::nullopt;
 
-    Optional<PAL::SessionID> sessionID;
-    decoder >> sessionID;
-    if (!sessionID)
-        return WTF::nullopt;
-    
     Optional<ClientOrigin> origin;
     decoder >> origin;
     if (!origin)
         return WTF::nullopt;
 
+    Optional<bool> isTransient;
+    decoder >> isTransient;
+    if (!isTransient)
+        return WTF::nullopt;
+
     IDBDatabaseIdentifier identifier;
     identifier.m_databaseName = WTFMove(*databaseName); // FIXME: When decoding from IPC, databaseName can be null, and the non-empty constructor asserts that this is not the case.
-    identifier.m_sessionID = WTFMove(*sessionID);
     identifier.m_origin = WTFMove(*origin);
+    identifier.m_isTransient = *isTransient;
     return identifier;
 }
 
@@ -151,9 +149,7 @@ Optional<IDBDatabaseIdentifier> IDBDatabaseIdentifier::decode(Decoder& decoder)
 namespace WTF {
 
 template<> struct HashTraits<WebCore::IDBDatabaseIdentifier> : WebCore::IDBDatabaseIdentifierHashTraits { };
-template<> struct DefaultHash<WebCore::IDBDatabaseIdentifier> {
-    typedef WebCore::IDBDatabaseIdentifierHash Hash;
-};
+template<> struct DefaultHash<WebCore::IDBDatabaseIdentifier> : WebCore::IDBDatabaseIdentifierHash { };
 
 } // namespace WTF
 

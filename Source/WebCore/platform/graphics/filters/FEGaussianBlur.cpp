@@ -29,6 +29,7 @@
 #include "FEGaussianBlurNEON.h"
 #include "Filter.h"
 #include "GraphicsContext.h"
+#include "ImageData.h"
 #include <wtf/text/TextStream.h>
 
 #if USE(ACCELERATE)
@@ -79,7 +80,7 @@ inline void kernelPosition(int blurIteration, unsigned& radius, int& deltaLeft, 
 }
 
 FEGaussianBlur::FEGaussianBlur(Filter& filter, float x, float y, EdgeModeType edgeMode)
-    : FilterEffect(filter)
+    : FilterEffect(filter, Type::GaussianBlur)
     , m_stdX(x)
     , m_stdY(y)
     , m_edgeMode(edgeMode)
@@ -487,6 +488,14 @@ IntSize FEGaussianBlur::calculateKernelSize(const Filter& filter, FloatSize stdD
     return calculateUnscaledKernelSize(filter.scaledByFilterResolution(stdDeviation));
 }
 
+IntSize FEGaussianBlur::calculateOutsetSize(FloatSize stdDeviation)
+{
+    auto kernelSize = calculateUnscaledKernelSize(stdDeviation);
+
+    // We take the half kernel size and multiply it with three, because we run box blur three times.
+    return { 3 * kernelSize.width() / 2, 3 * kernelSize.height() / 2 };
+}
+
 void FEGaussianBlur::determineAbsolutePaintRect()
 {
     IntSize kernelSize = calculateKernelSize(filter(), { m_stdX, m_stdY });
@@ -514,15 +523,15 @@ void FEGaussianBlur::platformApplySoftware()
 {
     FilterEffect* in = inputEffect(0);
 
-    Uint8ClampedArray* resultPixelArray = createPremultipliedImageResult();
-    if (!resultPixelArray)
+    auto* resultImage = createPremultipliedImageResult();
+    auto* dstPixelArray = resultImage ? resultImage->data() : nullptr;
+    if (!dstPixelArray)
         return;
 
     setIsAlphaImage(in->isAlphaImage());
 
     IntRect effectDrawingRect = requestedRegionOfInputImageData(in->absolutePaintRect());
-    in->copyPremultipliedResult(*resultPixelArray, effectDrawingRect);
-
+    in->copyPremultipliedResult(*dstPixelArray, effectDrawingRect, operatingColorSpace());
     if (!m_stdX && !m_stdY)
         return;
 
@@ -535,7 +544,13 @@ void FEGaussianBlur::platformApplySoftware()
     if (!tmpImageData)
         return;
 
-    platformApply(*resultPixelArray, *tmpImageData, kernelSize.width(), kernelSize.height(), paintSize);
+    platformApply(*dstPixelArray, *tmpImageData, kernelSize.width(), kernelSize.height(), paintSize);
+}
+
+IntOutsets FEGaussianBlur::outsets() const
+{
+    IntSize outsetSize = calculateOutsetSize({ m_stdX, m_stdY });
+    return { outsetSize.height(), outsetSize.width(), outsetSize.height(), outsetSize.width() };
 }
 
 TextStream& FEGaussianBlur::externalRepresentation(TextStream& ts, RepresentationType representation) const

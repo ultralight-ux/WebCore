@@ -41,12 +41,12 @@ private:
 
     void parseAttribute(const QualifiedName&, const AtomString&) override;
 
-    void resetAnimatedType() override;
-    void clearAnimatedType(SVGElement* targetElement) override;
+    void startAnimation() override;
+    void stopAnimation(SVGElement* targetElement) override;
     bool calculateToAtEndOfDurationValue(const String& toAtEndOfDurationString) override;
     bool calculateFromAndToValues(const String& fromString, const String& toString) override;
     bool calculateFromAndByValues(const String& fromString, const String& byString) override;
-    void calculateAnimatedValue(float percentage, unsigned repeatCount, SVGSMILElement* resultElement) override;
+    void calculateAnimatedValue(float percentage, unsigned repeatCount) override;
     void applyResultsToTarget() override;
     Optional<float> calculateDistance(const String& fromString, const String& toString) override;
 
@@ -58,14 +58,12 @@ private:
     RotateMode rotateMode() const;
     void buildTransformForProgress(AffineTransform*, float percentage);
 
-    bool m_hasToPointAtEndOfDuration;
-
     void updateAnimationMode() override;
 
     // Note: we do not support percentage values for to/from coords as the spec implies we should (opera doesn't either)
     FloatPoint m_fromPoint;
     FloatPoint m_toPoint;
-    FloatPoint m_toPointAtEndOfDuration;
+    Optional<FloatPoint> m_toPointAtEndOfDuration;
 
     Path m_path;
     Path m_animationPath;

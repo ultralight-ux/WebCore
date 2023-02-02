@@ -2,7 +2,14 @@ add_definitions(-DNOMINMAX -DUNICODE -D_UNICODE -D_WINDOWS -DWINVER=0x601 -DWTF_
 
 WEBKIT_OPTION_BEGIN()
 include(UltralightOptions)
+
+# TODO: Re-enable FTL JIT on Windows, need to re-apply patches and test against latest
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_FTL_JIT PUBLIC OFF)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBASSEMBLY PRIVATE OFF)
+
 WEBKIT_OPTION_END()
+
+
 
 include(UltralightDefinitions)
 

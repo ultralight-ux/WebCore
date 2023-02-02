@@ -36,12 +36,12 @@
 
 namespace WebCore {
 
-PerformanceEntry::PerformanceEntry(Type type, const String& name, const String& entryType, double startTime, double finishTime)
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(PerformanceEntry);
+
+PerformanceEntry::PerformanceEntry(const String& name, double startTime, double finishTime)
     : m_name(name)
-    , m_entryType(entryType)
     , m_startTime(startTime)
     , m_duration(finishTime - startTime)
-    , m_type(type)
 {
 }
 
@@ -62,6 +62,11 @@ Optional<PerformanceEntry::Type> PerformanceEntry::parseEntryTypeString(const St
     if (RuntimeEnabledFeatures::sharedFeatures().resourceTimingEnabled()) {
         if (entryType == "resource")
             return Optional<Type>(Type::Resource);
+    }
+
+    if (RuntimeEnabledFeatures::sharedFeatures().paintTimingEnabled()) {
+        if (entryType == "paint")
+            return Optional<Type>(Type::Paint);
     }
 
     return WTF::nullopt;

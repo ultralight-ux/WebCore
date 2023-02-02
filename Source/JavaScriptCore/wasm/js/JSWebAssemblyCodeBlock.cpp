@@ -28,12 +28,10 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "JSCInlines.h"
-#include "JSWebAssemblyLinkError.h"
-#include "JSWebAssemblyMemory.h"
+#include "JSCJSValueInlines.h"
+#include "JSCellInlines.h"
 #include "WasmModuleInformation.h"
 #include "WasmToJS.h"
-
 
 namespace JSC {
 
@@ -55,7 +53,7 @@ JSWebAssemblyCodeBlock::JSWebAssemblyCodeBlock(VM& vm, Ref<Wasm::CodeBlock>&& co
     m_wasmToJSExitStubs.reserveCapacity(m_codeBlock->functionImportCount());
     for (unsigned importIndex = 0; importIndex < m_codeBlock->functionImportCount(); ++importIndex) {
         Wasm::SignatureIndex signatureIndex = moduleInformation.importFunctionSignatureIndices.at(importIndex);
-        auto binding = Wasm::wasmToJS(&vm, m_callLinkInfos, signatureIndex, importIndex);
+        auto binding = Wasm::wasmToJS(vm, m_callLinkInfos, signatureIndex, importIndex);
         if (UNLIKELY(!binding)) {
             switch (binding.error()) {
             case Wasm::BindingFailure::OutOfMemory:

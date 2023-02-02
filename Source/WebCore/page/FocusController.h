@@ -39,7 +39,6 @@ class Document;
 class Element;
 class FocusNavigationScope;
 class Frame;
-class HTMLFrameOwnerElement;
 class IntRect;
 class KeyboardEvent;
 class Node;
@@ -78,6 +77,8 @@ public:
 
     void setFocusedElementNeedsRepaint();
     Seconds timeSinceFocusWasSet() const;
+
+    WEBCORE_EXPORT bool relinquishFocusToChrome(FocusDirection);
 
 private:
     void setActiveInternal(bool);

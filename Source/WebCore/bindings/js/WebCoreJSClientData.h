@@ -29,6 +29,8 @@
 
 namespace WebCore {
 
+class DOMIsoSubspaces;
+
 class JSVMClientData : public JSC::VM::ClientData {
     WTF_MAKE_NONCOPYABLE(JSVMClientData); WTF_MAKE_FAST_ALLOCATED;
     friend class VMWorldIterator;
@@ -59,17 +61,25 @@ public:
     WebCoreBuiltinNames& builtinNames() { return m_builtinNames; }
     JSBuiltinFunctions& builtinFunctions() { return m_builtinFunctions; }
     
+    JSC::IsoSubspace& domBuiltinConstructorSpace() { return m_domBuiltinConstructorSpace; }
+    JSC::IsoSubspace& domConstructorSpace() { return m_domConstructorSpace; }
+    JSC::IsoSubspace& domWindowPropertiesSpace() { return m_domWindowPropertiesSpace; }
+    JSC::IsoSubspace& runtimeArraySpace() { return m_runtimeArraySpace; }
     JSC::IsoSubspace& runtimeMethodSpace() { return m_runtimeMethodSpace; }
-    
-    JSC::CompleteSubspace& outputConstraintSpace() { return m_outputConstraintSpace; }
-    JSC::CompleteSubspace& globalObjectOutputConstraintSpace() { return m_globalObjectOutputConstraintSpace; }
-    
+    JSC::IsoSubspace& runtimeObjectSpace() { return m_runtimeObjectSpace; }
+    JSC::IsoSubspace& windowProxySpace() { return m_windowProxySpace; }
+    JSC::IsoSubspace& idbSerializationSpace() { return m_idbSerializationSpace; }
+
+    Vector<JSC::IsoSubspace*>& outputConstraintSpaces() { return m_outputConstraintSpaces; }
+
     template<typename Func>
     void forEachOutputConstraintSpace(const Func& func)
     {
-        func(m_outputConstraintSpace);
-        func(m_globalObjectOutputConstraintSpace);
+        for (auto* space : m_outputConstraintSpaces)
+            func(*space);
     }
+
+    DOMIsoSubspaces& subspaces() { return *m_subspaces.get(); }
 
 private:
     HashSet<DOMWrapperWorld*> m_worldSet;
@@ -77,11 +87,38 @@ private:
 
     JSBuiltinFunctions m_builtinFunctions;
     WebCoreBuiltinNames m_builtinNames;
-    
+
+    std::unique_ptr<JSC::HeapCellType> m_runtimeArrayHeapCellType;
+    std::unique_ptr<JSC::HeapCellType> m_runtimeObjectHeapCellType;
+    std::unique_ptr<JSC::HeapCellType> m_windowProxyHeapCellType;
+public:
+    std::unique_ptr<JSC::HeapCellType> m_heapCellTypeForJSDOMWindow;
+    std::unique_ptr<JSC::HeapCellType> m_heapCellTypeForJSDedicatedWorkerGlobalScope;
+    std::unique_ptr<JSC::HeapCellType> m_heapCellTypeForJSRemoteDOMWindow;
+    std::unique_ptr<JSC::HeapCellType> m_heapCellTypeForJSWorkerGlobalScope;
+#if ENABLE(SERVICE_WORKER)
+    std::unique_ptr<JSC::HeapCellType> m_heapCellTypeForJSServiceWorkerGlobalScope;
+#endif
+#if ENABLE(CSS_PAINTING_API)
+    std::unique_ptr<JSC::HeapCellType> m_heapCellTypeForJSPaintWorkletGlobalScope;
+    std::unique_ptr<JSC::HeapCellType> m_heapCellTypeForJSWorkletGlobalScope;
+#endif
+#if ENABLE(INDEXED_DATABASE)
+    std::unique_ptr<JSC::HeapCellType> m_heapCellTypeForJSIDBSerializationGlobalObject;
+#endif
+private:
+    JSC::IsoSubspace m_domBuiltinConstructorSpace;
+    JSC::IsoSubspace m_domConstructorSpace;
+    JSC::IsoSubspace m_domWindowPropertiesSpace;
+    JSC::IsoSubspace m_runtimeArraySpace;
     JSC::IsoSubspace m_runtimeMethodSpace;
-    
-    JSC::CompleteSubspace m_outputConstraintSpace;
-    JSC::CompleteSubspace m_globalObjectOutputConstraintSpace;
+    JSC::IsoSubspace m_runtimeObjectSpace;
+    JSC::IsoSubspace m_windowProxySpace;
+#if ENABLE(INDEXED_DATABASE)
+    JSC::IsoSubspace m_idbSerializationSpace;
+#endif
+    std::unique_ptr<DOMIsoSubspaces> m_subspaces;
+    Vector<JSC::IsoSubspace*> m_outputConstraintSpaces;
 };
 
 } // namespace WebCore

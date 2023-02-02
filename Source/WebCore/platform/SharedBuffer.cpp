@@ -29,6 +29,9 @@
 #include "SharedBuffer.h"
 
 #include <algorithm>
+#include <wtf/HexNumber.h>
+#include <wtf/persistence/PersistentCoders.h>
+#include <wtf/text/StringBuilder.h>
 #include <wtf/unicode/UTF8Conversion.h>
 
 namespace WebCore {
@@ -55,13 +58,12 @@ SharedBuffer::SharedBuffer(Vector<char>&& data)
 }
 
 #if USE(GSTREAMER)
-Ref<SharedBuffer> SharedBuffer::create(GstMappedBuffer& mappedBuffer)
+Ref<SharedBuffer> SharedBuffer::create(GstMappedOwnedBuffer& mappedBuffer)
 {
-    ASSERT(mappedBuffer.isSharable());
     return adoptRef(*new SharedBuffer(mappedBuffer));
 }
 
-SharedBuffer::SharedBuffer(GstMappedBuffer& mappedBuffer)
+SharedBuffer::SharedBuffer(GstMappedOwnedBuffer& mappedBuffer)
     : m_size(mappedBuffer.size())
 {
     m_segments.append({0, DataSegment::create(&mappedBuffer)});
@@ -84,7 +86,7 @@ SharedBuffer::SharedBuffer(ultralight::RefPtr<ultralight::Buffer> buffer)
 RefPtr<SharedBuffer> SharedBuffer::createWithContentsOfFile(const String& filePath)
 {
     bool mappingSuccess;
-    FileSystem::MappedFileData mappedFileData(filePath, mappingSuccess);
+    FileSystem::MappedFileData mappedFileData(filePath, FileSystem::MappedFileMode::Shared, mappingSuccess);
 
     if (!mappingSuccess)
         return SharedBuffer::createFromReadingFile(filePath);
@@ -105,7 +107,7 @@ Ref<SharedBuffer> SharedBuffer::create(Vector<uint8_t>&& vector)
 
 void SharedBuffer::combineIntoOneSegment() const
 {
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
     // FIXME: We ought to be able to set this to true and have no assertions fire.
     // Remove all instances of appending after calling this, because they are all O(n^2) algorithms since r215686.
     // m_hasBeenCombinedIntoOneSegment = true;
@@ -133,6 +135,11 @@ const char* SharedBuffer::data() const
     return m_segments[0].segment->data();
 }
 
+const uint8_t* SharedBuffer::dataAsUInt8Ptr() const
+{
+    return reinterpret_cast<const uint8_t*>(data());
+}
+
 SharedBufferDataView SharedBuffer::getSomeData(size_t position) const
 {
     RELEASE_ASSERT(position < m_size);
@@ -142,6 +149,16 @@ SharedBufferDataView SharedBuffer::getSomeData(size_t position) const
     const DataSegmentVectorEntry* element = std::upper_bound(m_segments.begin(), m_segments.end(), position, comparator);
     element--; // std::upper_bound gives a pointer to the element that is greater than position. We want the element just before that.
     return { element->segment.copyRef(), position - element->beginPosition };
+}
+
+String SharedBuffer::toHexString() const
+{
+    StringBuilder stringBuilder;
+    for (unsigned byteOffset = 0; byteOffset < size(); byteOffset++) {
+        const uint8_t byte = data()[byteOffset];
+        stringBuilder.append(pad('0', 2, hex(byte)));
+    }
+    return stringBuilder.toString();
 }
 
 RefPtr<ArrayBuffer> SharedBuffer::tryCreateArrayBuffer() const
@@ -212,7 +229,7 @@ Ref<SharedBuffer> SharedBuffer::copy() const
     return clone;
 }
 
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
 bool SharedBuffer::internallyConsistent() const
 {
     size_t position = 0;
@@ -223,7 +240,7 @@ bool SharedBuffer::internallyConsistent() const
     }
     return position == m_size;
 }
-#endif
+#endif // ASSERT_ENABLED
 
 const char* SharedBuffer::DataSegment::data() const
 {
@@ -239,7 +256,7 @@ const char* SharedBuffer::DataSegment::data() const
         [](const GRefPtr<GBytes>& data) { return reinterpret_cast<const char*>(g_bytes_get_data(data.get(), nullptr)); },
 #endif
 #if USE(GSTREAMER)
-        [](const RefPtr<GstMappedBuffer>& data) { return reinterpret_cast<const char*>(data->data()); },
+        [](const RefPtr<GstMappedOwnedBuffer>& data) { return reinterpret_cast<const char*>(data->data()); },
 #endif
 #if USE(ULTRALIGHT)
         [](const ultralight::RefPtr<ultralight::Buffer>& data) { return reinterpret_cast<const char*>(data->data()); },
@@ -254,6 +271,11 @@ void SharedBuffer::hintMemoryNotNeededSoon() const
 {
 }
 #endif
+
+WTF::Persistence::Decoder SharedBuffer::decoder() const
+{
+    return { reinterpret_cast<const uint8_t*>(data()), size() };
+}
 
 bool SharedBuffer::operator==(const SharedBuffer& other) const
 {
@@ -318,7 +340,7 @@ size_t SharedBuffer::DataSegment::size() const
         [](const GRefPtr<GBytes>& data) { return g_bytes_get_size(data.get()); },
 #endif
 #if USE(GSTREAMER)
-        [](const RefPtr<GstMappedBuffer>& data) { return data->size(); },
+        [](const RefPtr<GstMappedOwnedBuffer>& data) { return data->size(); },
 #endif
 #if USE(ULTRALIGHT)
         [](const ultralight::RefPtr<ultralight::Buffer>& data) { return data->size(); },

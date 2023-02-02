@@ -27,8 +27,7 @@
 
 #pragma once
 
-#include "GraphicsTypes.h"
-#include "ImageOrientation.h"
+#include "ImagePaintingOptions.h"
 
 #if USE(CG)
 #include <wtf/RetainPtr.h>
@@ -39,11 +38,13 @@ typedef struct CGImage* CGImageRef;
 #include "SharedBitmap.h"
 #elif USE(ULTRALIGHT)
 #include <Ultralight/private/Image.h>
+#include <Ultralight/Bitmap.h>
 #endif
 
 #if USE(DIRECT2D)
 #include "COMPtr.h"
 #include <d2d1.h>
+#include <wincodec.h>
 #endif
 
 namespace WebCore {
@@ -62,15 +63,21 @@ typedef RefPtr<cairo_surface_t> NativeImagePtr;
 #elif USE(WINGDI)
 typedef RefPtr<SharedBitmap> NativeImagePtr;
 #elif USE(ULTRALIGHT)
-typedef std::pair<ultralight::RefPtr<ultralight::Image>, uint32_t> FramePair;
-typedef std::shared_ptr<FramePair> NativeImagePtr;
+typedef ultralight::RefPtr<ultralight::Image> NativeImagePtr;
 #endif
 
-IntSize nativeImageSize(const NativeImagePtr&);
+WEBCORE_EXPORT IntSize nativeImageSize(const NativeImagePtr&);
 bool nativeImageHasAlpha(const NativeImagePtr&);
 Color nativeImageSinglePixelSolidColor(const NativeImagePtr&);
 
-void drawNativeImage(const NativeImagePtr&, GraphicsContext&, const FloatRect&, const FloatRect&, const IntSize&, CompositeOperator, BlendMode, const ImageOrientation&);
+void drawNativeImage(const NativeImagePtr&, GraphicsContext&, const FloatRect&, const FloatRect&, const IntSize&, const ImagePaintingOptions&);
+WEBCORE_EXPORT void drawNativeImage(const NativeImagePtr&, GraphicsContext&, float scaleFactor, const IntPoint& destination, const IntRect& source);
+
 void clearNativeImageSubimages(const NativeImagePtr&);
+
+class NativeImageHandle {
+public:
+    NativeImagePtr image;
+};
     
 }

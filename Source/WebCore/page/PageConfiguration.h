@@ -25,10 +25,14 @@
 
 #pragma once
 
+#include "ShouldRelaxThirdPartyCookieBlocking.h"
+#include <pal/SessionID.h>
+#include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/Optional.h>
 #include <wtf/RefPtr.h>
 #include <wtf/UniqueRef.h>
+#include <wtf/Vector.h>
 
 #if ENABLE(APPLICATION_MANIFEST)
 #include "ApplicationManifest.h"
@@ -51,6 +55,7 @@ class EditorClient;
 class FrameLoaderClient;
 class InspectorClient;
 class LibWebRTCProvider;
+class MediaRecorderProvider;
 class PaymentCoordinatorClient;
 class PerformanceLoggingClient;
 class PlugInClient;
@@ -59,6 +64,7 @@ class ProgressTrackerClient;
 class SocketProvider;
 class StorageNamespaceProvider;
 class UserContentProvider;
+class UserContentURLPattern;
 class ValidationMessageClient;
 class VisitedLinkStore;
 class WebGLStateTracker;
@@ -67,18 +73,19 @@ class SpeechSynthesisClient;
 class PageConfiguration {
     WTF_MAKE_NONCOPYABLE(PageConfiguration); WTF_MAKE_FAST_ALLOCATED;
 public:
-    WEBCORE_EXPORT PageConfiguration(UniqueRef<EditorClient>&&, Ref<SocketProvider>&&, UniqueRef<LibWebRTCProvider>&&, Ref<CacheStorageProvider>&&, Ref<BackForwardClient>&&, Ref<CookieJar>&&);
+    WEBCORE_EXPORT PageConfiguration(PAL::SessionID, UniqueRef<EditorClient>&&, Ref<SocketProvider>&&, UniqueRef<LibWebRTCProvider>&&, Ref<CacheStorageProvider>&&, Ref<BackForwardClient>&&, Ref<CookieJar>&&, UniqueRef<ProgressTrackerClient>&&, UniqueRef<FrameLoaderClient>&&, UniqueRef<MediaRecorderProvider>&&);
     WEBCORE_EXPORT ~PageConfiguration();
     PageConfiguration(PageConfiguration&&);
 
-    AlternativeTextClient* alternativeTextClient { nullptr };
+    PAL::SessionID sessionID;
+    std::unique_ptr<AlternativeTextClient> alternativeTextClient;
     ChromeClient* chromeClient { nullptr };
 #if ENABLE(CONTEXT_MENUS)
     ContextMenuClient* contextMenuClient { nullptr };
 #endif
     UniqueRef<EditorClient> editorClient;
     Ref<SocketProvider> socketProvider;
-    DragClient* dragClient { nullptr };
+    std::unique_ptr<DragClient> dragClient;
     InspectorClient* inspectorClient { nullptr };
 #if ENABLE(APPLE_PAY)
     PaymentCoordinatorClient* paymentCoordinatorClient { nullptr };
@@ -94,15 +101,17 @@ public:
 
     UniqueRef<LibWebRTCProvider> libWebRTCProvider;
 
-    PlugInClient* plugInClient { nullptr };
-    ProgressTrackerClient* progressTrackerClient { nullptr };
+    std::unique_ptr<PlugInClient> plugInClient;
+    UniqueRef<ProgressTrackerClient> progressTrackerClient;
     Ref<BackForwardClient> backForwardClient;
     Ref<CookieJar> cookieJar;
     std::unique_ptr<ValidationMessageClient> validationMessageClient;
-    FrameLoaderClient* loaderClientForMainFrame { nullptr };
+    UniqueRef<FrameLoaderClient> loaderClientForMainFrame;
     std::unique_ptr<DiagnosticLoggingClient> diagnosticLoggingClient;
     std::unique_ptr<PerformanceLoggingClient> performanceLoggingClient;
+#if ENABLE(WEBGL)
     std::unique_ptr<WebGLStateTracker> webGLStateTracker;
+#endif
 #if ENABLE(SPEECH_SYNTHESIS)
     std::unique_ptr<SpeechSynthesisClient> speechSynthesisClient;
 #endif
@@ -114,6 +123,16 @@ public:
     RefPtr<StorageNamespaceProvider> storageNamespaceProvider;
     RefPtr<UserContentProvider> userContentProvider;
     RefPtr<VisitedLinkStore> visitedLinkStore;
+    
+#if ENABLE(DEVICE_ORIENTATION) && PLATFORM(IOS_FAMILY)
+    RefPtr<DeviceOrientationUpdateProvider> deviceOrientationUpdateProvider;
+#endif
+    Vector<UserContentURLPattern> corsDisablingPatterns;
+    UniqueRef<MediaRecorderProvider> mediaRecorderProvider;
+    bool loadsSubresources { true };
+    bool loadsFromNetwork { true };
+    bool userScriptsShouldWaitUntilNotification { true };
+    ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking { ShouldRelaxThirdPartyCookieBlocking::No };
 };
 
 }

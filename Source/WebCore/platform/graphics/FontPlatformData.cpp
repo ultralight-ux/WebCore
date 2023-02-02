@@ -31,10 +31,6 @@
 #include <CoreGraphics/CGFont.h>
 #endif
 
-#if USE(DIRECT2D)
-#include <dwrite.h>
-#endif
-
 namespace WebCore {
 
 FontPlatformData::FontPlatformData(WTF::HashTableDeletedValueType)
@@ -86,6 +82,16 @@ FontPlatformData FontPlatformData::cloneWithSize(const FontPlatformData& source,
     copy.m_size = size;
     return copy;
 }
+#endif
+
+#if !PLATFORM(COCOA)
+
+String FontPlatformData::familyName() const
+{
+    // FIXME: Not implemented yet.
+    return { };
+}
+
 #endif
 
 }

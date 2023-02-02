@@ -32,7 +32,6 @@
 #include <wtf/Deque.h>
 #include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/StringPrintStream.h>
 #include <wtf/Threading.h>
 
 #if OS(WINDOWS) && !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
@@ -124,8 +123,12 @@ bool hadAnyAsynchronousDisassembly = false;
 
 AsynchronousDisassembler& asynchronousDisassembler()
 {
-    static NeverDestroyed<AsynchronousDisassembler> disassembler;
-    hadAnyAsynchronousDisassembly = true;
+    static LazyNeverDestroyed<AsynchronousDisassembler> disassembler;
+    static std::once_flag onceKey;
+    std::call_once(onceKey, [&] {
+        disassembler.construct();
+        hadAnyAsynchronousDisassembly = true;
+    });
     return disassembler.get();
 }
 
@@ -134,7 +137,7 @@ AsynchronousDisassembler& asynchronousDisassembler()
 void disassembleAsynchronously(
     const CString& header, const MacroAssemblerCodeRef<DisassemblyPtrTag>& codeRef, size_t size, const char* prefix)
 {
-    std::unique_ptr<DisassemblyTask> task = std::make_unique<DisassemblyTask>();
+    std::unique_ptr<DisassemblyTask> task = makeUnique<DisassemblyTask>();
     task->header = strdup(header.data()); // Yuck! We need this because CString does racy refcounting.
     task->codeRef = codeRef;
     task->size = size;

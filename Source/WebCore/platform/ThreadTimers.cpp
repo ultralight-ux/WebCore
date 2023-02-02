@@ -44,9 +44,7 @@
 namespace WebCore {
 
 // Fire timers for this length of time, and then quit to let the run loop process user input events.
-// 100ms is about a perceptable delay in UI, so use a half of that as a threshold.
-// This is to prevent UI freeze when there are too many timers or machine performance is low.
-static const Seconds maxDurationOfFiringTimers { 50_ms };
+static constexpr auto maxDurationOfFiringTimers { 16_ms };
 
 // Timers are created, started and fired on the same thread, and each thread has its own ThreadTimers
 // copy to keep the heap and a set of currently firing timers.
@@ -138,9 +136,13 @@ void ThreadTimers::sharedTimerFiredInternal()
         // Catch the case where the timer asked timers to fire in a nested event loop, or we are over time limit.
         if (!m_firingTimers || timeToQuit < MonotonicTime::now())
             break;
+
+        if (m_shouldBreakFireLoopForRenderingUpdate)
+            break;
     }
 
     m_firingTimers = false;
+    m_shouldBreakFireLoopForRenderingUpdate = false;
 
     updateSharedTimer();
 }
@@ -156,6 +158,13 @@ void ThreadTimers::fireTimersInNestedEventLoop()
     }
 
     updateSharedTimer();
+}
+
+void ThreadTimers::breakFireLoopForRenderingUpdate()
+{
+    if (!m_firingTimers)
+        return;
+    m_shouldBreakFireLoopForRenderingUpdate = true;
 }
 
 } // namespace WebCore

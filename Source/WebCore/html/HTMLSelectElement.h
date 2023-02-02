@@ -73,7 +73,7 @@ public:
 
     WEBCORE_EXPORT const Vector<HTMLElement*>& listItems() const;
 
-    void accessKeyAction(bool sendMouseEvents) final;
+    bool accessKeyAction(bool sendMouseEvents) final;
     void accessKeySetSelectedIndex(int);
 
     WEBCORE_EXPORT void setMultiple(bool);
@@ -111,7 +111,8 @@ protected:
 
 private:
     const AtomString& formControlType() const final;
-    
+
+    int defaultTabIndex() const final;
     bool isKeyboardFocusable(KeyboardEvent*) const final;
     bool isMouseFocusable() const final;
 
@@ -122,6 +123,8 @@ private:
 
     bool isEnumeratable() const final { return true; }
     bool supportLabels() const final { return true; }
+
+    bool isInteractiveContent() const final { return true; }
 
     FormControlState saveFormControlState() const final;
     void restoreFormControlState(const FormControlState&) final;

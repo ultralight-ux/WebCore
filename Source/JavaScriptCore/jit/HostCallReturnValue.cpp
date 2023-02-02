@@ -29,8 +29,6 @@
 #if !ENABLE(C_LOOP)
 
 #include "CallFrame.h"
-#include "JSCJSValueInlines.h"
-#include "JSObject.h"
 #include "JSCInlines.h"
 #include <wtf/InlineASM.h>
 
@@ -40,11 +38,11 @@ namespace JSC {
 // Note: getHostCallReturnValueWithExecState() needs to be placed before the
 // definition of getHostCallReturnValue() below because the Windows build
 // requires it.
-extern "C" EncodedJSValue HOST_CALL_RETURN_VALUE_OPTION getHostCallReturnValueWithExecState(ExecState* exec)
+extern "C" EncodedJSValue HOST_CALL_RETURN_VALUE_OPTION getHostCallReturnValueWithExecState(CallFrame* callFrame)
 {
-    if (!exec)
+    if (!callFrame)
         return JSValue::encode(JSValue());
-    return JSValue::encode(exec->vm().hostCallReturnValue);
+    return JSValue::encode(callFrame->deprecatedVM().hostCallReturnValue);
 }
 
 #if COMPILER(GCC_COMPATIBLE) && CPU(X86_64)

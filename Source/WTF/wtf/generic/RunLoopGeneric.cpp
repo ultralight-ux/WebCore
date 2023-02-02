@@ -26,38 +26,8 @@
 
 #include "config.h"
 #include <wtf/RunLoop.h>
-#include <wtf/Vector.h>
-
-#if USE(GLIB)
-#include <glib.h>
-#include <wtf/glib/RunLoopSourcePriority.h>
-#endif
-
-#if USE(ULTRALIGHT)
-#include <Ultralight/private/tracy/Tracy.hpp>
-#endif
 
 namespace WTF {
-
-#if USE(GLIB)
-
-static const Seconds glibUpdateInterval = 16_ms;
-
-static GSourceFuncs runLoopSourceFunctions = {
-    nullptr, // prepare
-    nullptr, // check
-    // dispatch
-    [](GSource* source, GSourceFunc callback, gpointer userData) -> gboolean {
-        if (g_source_get_ready_time(source) == -1)
-            return G_SOURCE_CONTINUE;
-        g_source_set_ready_time(source, -1);
-        return callback(userData);
-    },
-    nullptr, // finalize
-    nullptr, // closure_callback
-    nullptr, // closure_marshall
-};
-#endif
 
 class RunLoop::TimerBase::ScheduledTask : public ThreadSafeRefCounted<ScheduledTask> {
 WTF_MAKE_NONCOPYABLE(ScheduledTask);
@@ -102,13 +72,6 @@ public:
         m_scheduledTimePoint += m_fireInterval;
     }
 
-    void updateReadyTimeWithThrottledFireInterval(Seconds interval) {
-        m_scheduledTimePoint = MonotonicTime::now();
-        if (!m_fireInterval)
-            return;
-        m_scheduledTimePoint += std::max(m_fireInterval, interval);
-    }
-
     struct EarliestSchedule {
         bool operator()(const RefPtr<ScheduledTask>& lhs, const RefPtr<ScheduledTask>& rhs)
         {
@@ -136,30 +99,6 @@ private:
 
 RunLoop::RunLoop()
 {
-#if USE(GLIB)
-    m_mainContext = g_main_context_get_thread_default();
-    if (!m_mainContext)
-        m_mainContext = isMainThread() ? g_main_context_default() : adoptGRef(g_main_context_new());
-    ASSERT(m_mainContext);
-
-    GRefPtr<GMainLoop> innermostLoop = adoptGRef(g_main_loop_new(m_mainContext.get(), FALSE));
-    ASSERT(innermostLoop);
-    m_mainLoopsGlib.append(innermostLoop);
-
-    m_source = adoptGRef(g_source_new(&runLoopSourceFunctions, sizeof(GSource)));
-    g_source_set_priority(m_source.get(), RunLoopSourcePriority::RunLoopDispatcher);
-    g_source_set_name(m_source.get(), "[WebKit] RunLoop work");
-    g_source_set_can_recurse(m_source.get(), TRUE);
-    g_source_set_callback(
-        m_source.get(), [](gpointer userData) -> gboolean {
-            static_cast<RunLoop*>(userData)->performWork();
-            return G_SOURCE_CONTINUE;
-        },
-        this, nullptr);
-    g_source_attach(m_source.get(), m_mainContext.get());
-
-    m_lastGlibUpdateTime = MonotonicTime::now();
-#endif
 }
 
 RunLoop::~RunLoop()
@@ -171,16 +110,6 @@ RunLoop::~RunLoop()
     // Here is running main loops. Wait until all the main loops are destroyed.
     if (!m_mainLoops.isEmpty())
         m_stopCondition.wait(m_loopLock);
-
-#if USE(GLIB)
-    g_source_destroy(m_source.get());
-
-    for (int i = m_mainLoopsGlib.size() - 1; i >= 0; --i) {
-        if (!g_main_loop_is_running(m_mainLoopsGlib[i].get()))
-            continue;
-        g_main_loop_quit(m_mainLoopsGlib[i].get());
-    }
-#endif
 }
 
 inline bool RunLoop::populateTasks(RunMode runMode, Status& statusOfThisLoop, Deque<RefPtr<TimerBase::ScheduledTask>>& firedTimers)
@@ -247,13 +176,6 @@ void RunLoop::runImpl(RunMode runMode)
             }
         }
         performWork();
-
-#if USE(GLIB)
-        GMainContext* mainContext = m_mainContext.get();
-        g_main_context_push_thread_default(mainContext);
-        g_main_context_iteration(mainContext, false);
-        g_main_context_pop_thread_default(mainContext);
-#endif
     }
 }
 
@@ -262,79 +184,14 @@ void RunLoop::run()
     RunLoop::current().runImpl(RunMode::Drain);
 }
 
-void RunLoop::iterateWithMaxDuration(Seconds duration)
-{
-#if USE(ULTRALIGHT)
-    ProfiledZone;
-#endif
-
-    ASSERT(this == &RunLoop::current());
-
-    MonotonicTime now = MonotonicTime::now();
-    WTF::Deque<RefPtr<TimerBase::ScheduledTask>> tasks;
-    WTF::Deque<Function<void()>> functions;
-
-    // Collect all pending tasks and functions.
-    {
-        LockHolder loopLocker(m_loopLock);
-        while (!m_schedules.isEmpty()) {
-            RefPtr<TimerBase::ScheduledTask> earliestTask = m_schedules.first();
-
-            // We only want tasks whose timers have expired.
-            if (earliestTask->scheduledTimePoint() <= now) {
-                std::pop_heap(m_schedules.begin(), m_schedules.end(), TimerBase::ScheduledTask::EarliestSchedule());
-                m_schedules.removeLast();
-                tasks.append(std::move(earliestTask));
-            } else {
-                break;
-            }
-        }
- 
-        // Collect all functions in the function queue.
-        auto locker = holdLock(m_functionQueueLock);
-        while (!m_functionQueue.isEmpty())
-            functions.append(m_functionQueue.takeFirst());
-    }
-    
-    // Fire the tasks
-    while (!tasks.isEmpty()) {
-        auto nextTask = tasks.takeFirst();
-        MonotonicTime startTime = MonotonicTime::now();
-        if (nextTask->fired()) {
-            auto taskDuration = MonotonicTime::now() - startTime;
-            if (taskDuration > duration) {
-                // This task has exceeded our max duration!
-                // Throttle the timer for this task (delay 3 durations) before we reschedule it.
-                nextTask->updateReadyTimeWithThrottledFireInterval(duration * 3.0);
-            }
-            // Reschedule because the task is repeating.
-            schedule(*nextTask);
-        }
-    }
-
-    // Fire the functions
-    while (!functions.isEmpty()) {
-        auto nextFunction = functions.takeFirst();
-        nextFunction();
-    }
-
-#if USE(GLIB)
-    if (MonotonicTime::now() - m_lastGlibUpdateTime >= glibUpdateInterval) {
-        GMainContext* mainContext = m_mainContext.get();
-        g_main_context_push_thread_default(mainContext);
-        g_main_context_iteration(mainContext, false);
-        g_main_context_pop_thread_default(mainContext);
-        m_lastGlibUpdateTime = MonotonicTime::now();
-    }
-#endif
-}
-
 void RunLoop::iterate()
 {
-#if USE(ULTRALIGHT)
-    ProfiledZone;
-#endif
     RunLoop::current().runImpl(RunMode::Iterate);
+}
+
+void RunLoop::setWakeUpCallback(WTF::Function<void()>&& function)
+{
+    RunLoop::current().m_wakeUpCallback = WTFMove(function);
 }
 
 // RunLoop operations are thread-safe. These operations can be called from outside of the RunLoop's thread.
@@ -358,12 +215,21 @@ void RunLoop::wakeUp(const AbstractLocker&)
 {
     m_pendingTasks = true;
     m_readyToRun.notifyOne();
+
+    if (m_wakeUpCallback)
+        m_wakeUpCallback();
 }
 
 void RunLoop::wakeUp()
 {
     LockHolder locker(m_loopLock);
     wakeUp(locker);
+}
+
+RunLoop::CycleResult RunLoop::cycle(RunLoopMode)
+{
+    iterate();
+    return CycleResult::Continue;
 }
 
 void RunLoop::schedule(const AbstractLocker&, Ref<TimerBase::ScheduledTask>&& task)
@@ -381,14 +247,6 @@ void RunLoop::schedule(Ref<TimerBase::ScheduledTask>&& task)
 void RunLoop::scheduleAndWakeUp(const AbstractLocker& locker, Ref<TimerBase::ScheduledTask>&& task)
 {
     schedule(locker, WTFMove(task));
-    wakeUp(locker);
-}
-
-void RunLoop::dispatchAfter(Seconds delay, Function<void()>&& function)
-{
-    LockHolder locker(m_loopLock);
-    bool repeating = false;
-    schedule(locker, TimerBase::ScheduledTask::create(WTFMove(function), delay, repeating));
     wakeUp(locker);
 }
 

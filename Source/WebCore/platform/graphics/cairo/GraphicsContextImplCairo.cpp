@@ -33,10 +33,10 @@
 #include "FloatRoundedRect.h"
 #include "Font.h"
 #include "GlyphBuffer.h"
+#include "Gradient.h"
 #include "GraphicsContextPlatformPrivateCairo.h"
 #include "ImageBuffer.h"
 #include "IntRect.h"
-
 
 namespace WebCore {
 
@@ -45,7 +45,7 @@ GraphicsContext::GraphicsContextImplFactory GraphicsContextImplCairo::createFact
     return GraphicsContext::GraphicsContextImplFactory(
         [&platformContext](GraphicsContext& context)
         {
-            return std::make_unique<GraphicsContextImplCairo>(context, platformContext);
+            return makeUnique<GraphicsContextImplCairo>(context, platformContext);
         });
 }
 
@@ -54,14 +54,14 @@ GraphicsContext::GraphicsContextImplFactory GraphicsContextImplCairo::createFact
     return GraphicsContext::GraphicsContextImplFactory(
         [cairoContext](GraphicsContext& context)
         {
-            return std::make_unique<GraphicsContextImplCairo>(context, cairoContext);
+            return makeUnique<GraphicsContextImplCairo>(context, cairoContext);
         });
 }
 
 GraphicsContextImplCairo::GraphicsContextImplCairo(GraphicsContext& context, PlatformContextCairo& platformContext)
     : GraphicsContextImpl(context, FloatRect { }, AffineTransform { })
     , m_platformContext(platformContext)
-    , m_private(std::make_unique<GraphicsContextPlatformPrivate>(m_platformContext))
+    , m_private(makeUnique<GraphicsContextPlatformPrivate>(m_platformContext))
 {
     m_platformContext.setGraphicsContextPrivate(m_private.get());
     m_private->syncContext(m_platformContext.cr());
@@ -69,9 +69,9 @@ GraphicsContextImplCairo::GraphicsContextImplCairo(GraphicsContext& context, Pla
 
 GraphicsContextImplCairo::GraphicsContextImplCairo(GraphicsContext& context, cairo_t* cairoContext)
     : GraphicsContextImpl(context, FloatRect { }, AffineTransform { })
-    , m_ownedPlatformContext(std::make_unique<PlatformContextCairo>(cairoContext))
+    , m_ownedPlatformContext(makeUnique<PlatformContextCairo>(cairoContext))
     , m_platformContext(*m_ownedPlatformContext)
-    , m_private(std::make_unique<GraphicsContextPlatformPrivate>(m_platformContext))
+    , m_private(makeUnique<GraphicsContextPlatformPrivate>(m_platformContext))
 {
     m_platformContext.setGraphicsContextPrivate(m_private.get());
     m_private->syncContext(m_platformContext.cr());
@@ -154,12 +154,12 @@ void GraphicsContextImplCairo::fillRect(const FloatRect& rect, const Color& colo
 
 void GraphicsContextImplCairo::fillRect(const FloatRect& rect, Gradient& gradient)
 {
-    RefPtr<cairo_pattern_t> platformGradient = adoptRef(gradient.createPlatformGradient(1.0));
-    if (!platformGradient)
+    auto pattern = gradient.createPattern(1.0);
+    if (!pattern)
         return;
 
     Cairo::save(m_platformContext);
-    Cairo::fillRect(m_platformContext, rect, platformGradient.get());
+    Cairo::fillRect(m_platformContext, rect, pattern.get());
     Cairo::restore(m_platformContext);
 }
 
@@ -233,7 +233,6 @@ void GraphicsContextImplCairo::clearRect(const FloatRect& rect)
 
 void GraphicsContextImplCairo::drawGlyphs(const Font& font, const GlyphBuffer& glyphBuffer, unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode fontSmoothing)
 {
-    UNUSED_PARAM(fontSmoothing);
     if (!font.platformData().size())
         return;
 
@@ -248,17 +247,21 @@ void GraphicsContextImplCairo::drawGlyphs(const Font& font, const GlyphBuffer& g
         for (size_t i = 0; i < numGlyphs; ++i) {
             glyphs[i] = { glyphsData[i], xOffset, yOffset };
             xOffset += advances[i].width();
-            yOffset -= advances[i].height();
+            yOffset += advances[i].height();
         }
     }
 
     cairo_scaled_font_t* scaledFont = font.platformData().scaledFont();
     double syntheticBoldOffset = font.syntheticBoldOffset();
 
+    if (!font.allowsAntialiasing())
+        fontSmoothing = FontSmoothingMode::NoSmoothing;
+
     auto& state = graphicsContext().state();
     Cairo::drawGlyphs(m_platformContext, Cairo::FillSource(state), Cairo::StrokeSource(state),
         Cairo::ShadowState(state), point, scaledFont, syntheticBoldOffset, glyphs, xOffset,
-        state.textDrawingMode, state.strokeThickness, state.shadowOffset, state.shadowColor);
+        state.textDrawingMode, state.strokeThickness, state.shadowOffset, state.shadowColor,
+        fontSmoothing);
 }
 
 ImageDrawResult GraphicsContextImplCairo::drawImage(Image& image, const FloatRect& destination, const FloatRect& source, const ImagePaintingOptions& imagePaintingOptions)
@@ -276,17 +279,17 @@ ImageDrawResult GraphicsContextImplCairo::drawTiledImage(Image& image, const Flo
     return GraphicsContextImpl::drawTiledImageImpl(graphicsContext(), image, destination, source, tileScaleFactor, hRule, vRule, imagePaintingOptions);
 }
 
-void GraphicsContextImplCairo::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator compositeOperator, BlendMode blendMode, ImageOrientation orientation)
+void GraphicsContextImplCairo::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
     UNUSED_PARAM(imageSize);
     auto& state = graphicsContext().state();
-    Cairo::drawNativeImage(m_platformContext, image.get(), destRect, srcRect, compositeOperator, blendMode, orientation, state.imageInterpolationQuality, state.alpha, Cairo::ShadowState(state));
+    Cairo::drawNativeImage(m_platformContext, image.get(), destRect, srcRect, { options, state.imageInterpolationQuality }, state.alpha, Cairo::ShadowState(state));
 }
 
-void GraphicsContextImplCairo::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize&, CompositeOperator compositeOperator, BlendMode blendMode)
+void GraphicsContextImplCairo::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize&, const ImagePaintingOptions& options)
 {
     if (auto surface = image.nativeImageForCurrentFrame())
-        Cairo::drawPattern(m_platformContext, surface.get(), IntSize(image.size()), destRect, tileRect, patternTransform, phase, compositeOperator, blendMode);
+        Cairo::drawPattern(m_platformContext, surface.get(), IntSize(image.size()), destRect, tileRect, patternTransform, phase, options);
 }
 
 void GraphicsContextImplCairo::drawRect(const FloatRect& rect, float borderThickness)
@@ -411,11 +414,7 @@ IntRect GraphicsContextImplCairo::clipBounds()
 
 void GraphicsContextImplCairo::clipToImageBuffer(ImageBuffer& buffer, const FloatRect& destRect)
 {
-    RefPtr<Image> image = buffer.copyImage(DontCopyBackingStore);
-    if (!image)
-        return;
-
-    if (auto surface = image->nativeImageForCurrentFrame())
+    if (auto surface = buffer.copyNativeImage(DontCopyBackingStore))
         Cairo::clipToImageBuffer(m_platformContext, surface.get(), destRect);
 }
 

@@ -39,96 +39,15 @@ namespace WTF {
 
 static ThreadIdentifier mainThread { 0 };
 
-#if USE(ULTRALIGHT)
 void initializeMainThreadPlatform()
 {
-    if (mainThread)
-        return;
-
     mainThread = Thread::currentID();
-
     Thread::initializeCurrentThreadInternal("Main Thread");
 }
-
-class MainThreadDispatcher {
-public:
-    MainThreadDispatcher()
-        : m_timer(RunLoop::main(), this, &MainThreadDispatcher::fired)
-    {
-    }
-
-    void schedule()
-    {
-        m_timer.startOneShot(0_s);
-    }
-
-private:
-    void fired()
-    {
-        dispatchFunctionsFromMainThread();
-    }
-
-    RunLoop::Timer<MainThreadDispatcher> m_timer;
-};
-#else
-
-static HWND threadingWindowHandle;
-static UINT threadingFiredMessage;
-const LPCWSTR kThreadingWindowClassName = L"ThreadingWindowClass";
-
-LRESULT CALLBACK ThreadingWindowWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    if (message == threadingFiredMessage)
-        dispatchFunctionsFromMainThread();
-    else
-        return DefWindowProc(hWnd, message, wParam, lParam);
-    return 0;
-}
-
-void initializeMainThreadPlatform()
-{
-    if (threadingWindowHandle)
-        return;
-
-    WNDCLASSW wcex;
-    memset(&wcex, 0, sizeof(WNDCLASSW));
-    wcex.lpfnWndProc    = ThreadingWindowWndProc;
-    wcex.lpszClassName  = kThreadingWindowClassName;
-    RegisterClassW(&wcex);
-
-    threadingWindowHandle = CreateWindowW(kThreadingWindowClassName, 0, 0,
-        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, HWND_MESSAGE, 0, 0, 0);
-    threadingFiredMessage = RegisterWindowMessageW(L"com.apple.WebKit.MainThreadFired");
-
-    mainThread = Thread::currentID();
-
-    Thread::initializeCurrentThreadInternal("Main Thread");
-    RunLoop::registerRunLoopMessageWindowClass();
-}
-
-#endif
 
 bool isMainThread()
 {
     return mainThread == Thread::currentID();
-}
-
-bool isMainThreadIfInitialized()
-{
-    return isMainThread();
-}
-
-void scheduleDispatchFunctionsOnMainThread()
-{
-#if USE(ULTRALIGHT)
-    // Use a RunLoop::Timer instead of RunLoop::dispatch() to be able to use a different priority and
-    // avoid the double queue because dispatchOnMainThread also queues the functions.
-    static MainThreadDispatcher dispatcher;
-    dispatcher.schedule();
-#else
-    ASSERT(threadingWindowHandle);
-    PostMessage(threadingWindowHandle, threadingFiredMessage, 0, 0);
-#endif
 }
 
 } // namespace WTF

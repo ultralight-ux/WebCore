@@ -40,7 +40,9 @@ public:
 private:
     HTMLLabelElement(const QualifiedName&, Document&);
 
-    void accessKeyAction(bool sendMouseEvents) final;
+    bool isEventTargetedAtInteractiveDescendants(Event&) const;
+
+    bool accessKeyAction(bool sendMouseEvents) final;
 
     // Overridden to update the hover/active state of the corresponding control.
     void setActive(bool = true, bool pause = false) final;
@@ -50,6 +52,8 @@ private:
     void defaultEventHandler(Event&) final;
 
     void focus(bool restorePreviousSelection, FocusDirection) final;
+
+    bool isInteractiveContent() const final { return true; }
 };
 
 } //namespace

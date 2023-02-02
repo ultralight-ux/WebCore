@@ -96,14 +96,7 @@ RenderPtr<RenderElement> HTMLAppletElement::createElementRenderer(RenderStyle&& 
 
 RenderWidget* HTMLAppletElement::renderWidgetLoadingPlugin() const
 {
-    if (!canEmbedJava())
-        return nullptr;
-
-    // Needs to load the plugin immediatedly because this function is called
-    // when JavaScript code accesses the plugin.
-    // FIXME: <rdar://16893708> Check if dispatching events here is safe.
-    document().updateLayoutIgnorePendingStylesheets(Document::RunPostLayoutTasks::Synchronously);
-    return renderWidget();
+    return canEmbedJava() ? HTMLPlugInImageElement::renderWidgetLoadingPlugin() : nullptr;
 }
 
 void HTMLAppletElement::updateWidget(CreatePlugins createPlugins)
@@ -117,20 +110,12 @@ void HTMLAppletElement::updateWidget(CreatePlugins createPlugins)
 #if PLATFORM(IOS_FAMILY)
     UNUSED_PARAM(createPlugins);
 #else
-    // FIXME: It's sadness that we have this special case here.
-    //        See http://trac.webkit.org/changeset/25128 and
-    //        plugins/netscape-plugin-setwindow-size.html
+    // FIXME: It's unfortunate that we have this special case here.
+    // See http://trac.webkit.org/changeset/25128 and the plugins/netscape-plugin-setwindow-size.html test.
     if (createPlugins == CreatePlugins::No)
         return;
 
     setNeedsWidgetUpdate(false);
-
-    RenderEmbeddedObject* renderer = renderEmbeddedObject();
-
-    LayoutUnit contentWidth = renderer->style().width().isFixed() ? LayoutUnit(renderer->style().width().value()) :
-        renderer->width() - renderer->horizontalBorderAndPaddingExtent();
-    LayoutUnit contentHeight = renderer->style().height().isFixed() ? LayoutUnit(renderer->style().height().value()) :
-        renderer->height() - renderer->verticalBorderAndPaddingExtent();
 
     Vector<String> paramNames;
     Vector<String> paramValues;
@@ -176,7 +161,20 @@ void HTMLAppletElement::updateWidget(CreatePlugins createPlugins)
     RefPtr<Frame> frame = document().frame();
     ASSERT(frame);
 
-    renderer->setWidget(frame->loader().subframeLoader().createJavaAppletWidget(roundedIntSize(LayoutSize(contentWidth, contentHeight)), *this, paramNames, paramValues));
+    auto contentSize = LayoutSize { };
+    {
+        auto* renderer = renderEmbeddedObject();
+        auto& style = renderer->style();
+
+        contentSize = LayoutSize { style.width().isFixed() ? LayoutUnit(style.width().value()) : renderer->width() - renderer->horizontalBorderAndPaddingExtent(),
+            style.height().isFixed() ? LayoutUnit(style.height().value()) : renderer->height() - renderer->verticalBorderAndPaddingExtent() };
+    }
+
+    auto widget = frame->loader().subframeLoader().createJavaAppletWidget(roundedIntSize(contentSize), *this, paramNames, paramValues);
+    // createJavaAppletWidget needs to check if the plugin(replacement) is obscured. Since the overlapping test requires up-to-date geometry, it initiates a top level style recalc/layout.
+    // Let's see if this element still has a renderer after the style recalc.
+    if (auto* renderer = renderEmbeddedObject())
+        renderer->setWidget(WTFMove(widget));
 #endif // !PLATFORM(IOS_FAMILY)
 }
 

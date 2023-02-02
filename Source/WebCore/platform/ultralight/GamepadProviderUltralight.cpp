@@ -19,6 +19,10 @@ GamepadProviderUltralight& GamepadProviderUltralight::singleton()
 
 GamepadProviderUltralight::GamepadProviderUltralight() = default;
 
+GamepadProviderUltralight::~GamepadProviderUltralight()
+{
+}
+
 void GamepadProviderUltralight::startMonitoringGamepads(GamepadProviderClient& client)
 {
     ASSERT(!m_clients.contains(&client));
@@ -31,15 +35,15 @@ void GamepadProviderUltralight::stopMonitoringGamepads(GamepadProviderClient& cl
     m_clients.remove(&client);
 }
 
-void GamepadProviderUltralight::setGamepadDetails(unsigned index, const String& gamepadID, unsigned axisCount, unsigned buttonCount)
+void GamepadProviderUltralight::setGamepadDetails(unsigned index, const String& gamepadID, const String& mapping, unsigned axisCount, unsigned buttonCount)
 {
     if (index >= m_gamepadVector.size())
         m_gamepadVector.resize(index + 1);
 
     if (m_gamepadVector[index])
-        m_gamepadVector[index]->updateDetails(gamepadID, axisCount, buttonCount);
+        m_gamepadVector[index]->updateDetails(gamepadID, mapping, axisCount, buttonCount);
     else
-        m_gamepadVector[index] = std::make_unique<GamepadUltralight>(index, gamepadID, axisCount, buttonCount);
+        m_gamepadVector[index] = std::make_unique<GamepadUltralight>(index, gamepadID, mapping, axisCount, buttonCount);
 }
 
 bool GamepadProviderUltralight::connectGamepad(unsigned index)
@@ -63,7 +67,7 @@ bool GamepadProviderUltralight::connectGamepad(unsigned index)
     m_connectedGamepadVector[index] = m_gamepadVector[index].get();
 
     for (auto& client : m_clients)
-        client->platformGamepadConnected(*m_connectedGamepadVector[index]);
+        client->platformGamepadConnected(*m_connectedGamepadVector[index], EventMakesGamepadsVisible::Yes);
 
     return true;
 }

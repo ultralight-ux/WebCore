@@ -73,10 +73,13 @@
 #define WIRDestinationKey                       @"WIRDestinationKey"
 #define WIRConnectionDiedMessage                @"WIRConnectionDiedMessage"
 #define WIRTypeKey                              @"WIRTypeKey"
-#define WIRTypeJavaScript                       @"WIRTypeJavaScript"
-#define WIRTypeServiceWorker                    @"WIRTypeServiceWorker"
-#define WIRTypeWeb                              @"WIRTypeWeb"
 #define WIRTypeAutomation                       @"WIRTypeAutomation"
+#define WIRTypeITML                             @"WIRTypeITML"
+#define WIRTypeJavaScript                       @"WIRTypeJavaScript"
+#define WIRTypePage                             @"WIRTypePage"
+#define WIRTypeServiceWorker                    @"WIRTypeServiceWorker"
+#define WIRTypeWeb                              @"WIRTypeWeb" // COMPATIBILITY (iOS 13): "Web" was split into "Page" (WebCore::Page) and "WebPage" (WebKit::WebPageProxy).
+#define WIRTypeWebPage                          @"WIRTypeWebPage"
 #define WIRAutomaticallyPause                   @"WIRAutomaticallyPause"
 
 // Allowed values for WIRAutomationAvailabilityKey.
@@ -116,3 +119,6 @@
 #define WIRProxyApplicationParentAuditDataKey   @"WIRProxyApplicationParentAuditData"
 #define WIRProxyApplicationSetupMessage         @"WIRProxyApplicationSetupMessage"
 #define WIRProxyApplicationSetupResponseMessage @"WIRProxyApplicationSetupResponseMessage"
+
+#define WIRRemoteInspectorEnabledKey            CFSTR("RemoteInspectorEnabled")
+#define WIRRemoteInspectorDomainName            CFSTR("com.apple.webinspectord")

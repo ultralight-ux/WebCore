@@ -37,22 +37,15 @@ CrossThreadTaskHandler::CrossThreadTaskHandler(const char* threadName, Autodrain
     Locker<Lock> locker(m_taskThreadCreationLock);
     Thread::create(threadName, [this] {
         taskRunLoop();
+
+        if (m_completionCallback)
+            m_completionCallback();
     })->detach();
 }
 
 CrossThreadTaskHandler::~CrossThreadTaskHandler()
 {
     ASSERT(isMainThread());
-
-    m_taskQueue.kill();
-    // Post an empty task to ensure database thread exits m_taskQueue.waitForMessage() and checks kill status
-    m_taskQueue.append(CrossThreadTask([]() {}));
-
-    resume();
-
-    LockHolder locker(m_isRunningLock);
-    while (m_isRunning)
-        m_isRunningCondition.wait(m_isRunningLock);
 }
 
 void CrossThreadTaskHandler::postTask(CrossThreadTask&& task)
@@ -82,27 +75,10 @@ void CrossThreadTaskHandler::taskRunLoop()
     }
 
     while (!m_taskQueue.isKilled()) {
-        {
-            std::unique_ptr<AutodrainedPool> autodrainedPool = (m_useAutodrainedPool == AutodrainedPoolForRunLoop::Use) ? std::make_unique<AutodrainedPool>() : nullptr;
+        std::unique_ptr<AutodrainedPool> autodrainedPool = (m_useAutodrainedPool == AutodrainedPoolForRunLoop::Use) ? makeUnique<AutodrainedPool>() : nullptr;
 
-            m_taskQueue.waitForMessage().performTask();
-        }
-
-        Locker<Lock> shouldSuspendLocker(m_shouldSuspendLock);
-        while (m_shouldSuspend) {
-            m_suspendedLock.lock();
-            if (!m_suspended) {
-                m_suspended = true;
-                m_suspendedCondition.notifyOne();
-            }
-            m_suspendedLock.unlock();
-            m_shouldSuspendCondition.wait(m_shouldSuspendLock);
-        }
+        m_taskQueue.waitForMessage().performTask();
     }
-
-    LockHolder locker(m_isRunningLock);
-    m_isRunning = false;
-    m_isRunningCondition.notifyAll();
 }
 
 void CrossThreadTaskHandler::handleTaskRepliesOnMainThread()
@@ -116,34 +92,15 @@ void CrossThreadTaskHandler::handleTaskRepliesOnMainThread()
         task->performTask();
 }
 
-void CrossThreadTaskHandler::suspendAndWait()
+void CrossThreadTaskHandler::setCompletionCallback(Function<void ()>&& completionCallback)
 {
-    ASSERT(isMainThread());
-    {
-        Locker<Lock> locker(m_shouldSuspendLock);
-        m_shouldSuspend = true;
-    }
-
-    // Post an empty task to ensure database thread knows m_shouldSuspend and sets m_suspended.
-    postTask(CrossThreadTask([]() { }));
-
-    Locker<Lock> locker(m_suspendedLock);
-    while (!m_suspended)
-        m_suspendedCondition.wait(m_suspendedLock);
+    m_completionCallback = WTFMove(completionCallback);
 }
 
-void CrossThreadTaskHandler::resume()
+void CrossThreadTaskHandler::kill()
 {
-    ASSERT(isMainThread());
-    Locker<Lock> locker(m_shouldSuspendLock);
-    if (m_shouldSuspend) {
-        m_suspendedLock.lock();
-        if (m_suspended)
-            m_suspended = false;
-        m_suspendedLock.unlock();
-        m_shouldSuspend = false;
-        m_shouldSuspendCondition.notifyOne();
-    }
+    m_taskQueue.kill();
+    m_taskReplyQueue.kill();
 }
 
 } // namespace WTF

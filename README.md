@@ -40,7 +40,7 @@ Click any of the bucket links to get an XML file listing. Download a package by 
 3. Run the following from command line: 
 
 ```
-choco install cmake ninja activeperl python2 ruby1.9 gperf
+choco install cmake ninja strawberryperl ruby gperf python2
 ```
 
 ### Setting up on macOS

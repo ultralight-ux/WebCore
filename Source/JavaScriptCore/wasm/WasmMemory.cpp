@@ -33,8 +33,6 @@
 #include <wtf/DataLog.h>
 #include <wtf/Gigacage.h>
 #include <wtf/Lock.h>
-#include <wtf/OSAllocator.h>
-#include <wtf/PageBlock.h>
 #include <wtf/Platform.h>
 #include <wtf/PrintStream.h>
 #include <wtf/RAMSize.h>
@@ -94,6 +92,8 @@ struct MemoryResult {
 };
 
 class MemoryManager {
+    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_NONCOPYABLE(MemoryManager);
 public:
     MemoryManager()
         : m_maxFastMemoryCount(Options::maxNumWebAssemblyFastMemories())
@@ -118,8 +118,7 @@ public:
                 m_fastMemories.size() >= m_maxFastMemoryCount / 2 ? MemoryResult::SuccessAndNotifyMemoryPressure : MemoryResult::Success);
         }();
         
-        if (Options::logWebAssemblyMemory())
-            dataLog("Allocated virtual: ", result, "; state: ", *this, "\n");
+        dataLogLnIf(Options::logWebAssemblyMemory(), "Allocated virtual: ", result, "; state: ", *this);
         
         return result;
     }
@@ -132,8 +131,7 @@ public:
             m_fastMemories.removeFirst(basePtr);
         }
         
-        if (Options::logWebAssemblyMemory())
-            dataLog("Freed virtual; state: ", *this, "\n");
+        dataLogLnIf(Options::logWebAssemblyMemory(), "Freed virtual; state: ", *this);
     }
     
     bool isAddressInFastMemory(void* address)
@@ -170,8 +168,7 @@ public:
             return MemoryResult::Success;
         }();
         
-        if (Options::logWebAssemblyMemory())
-            dataLog("Allocated physical: ", bytes, ", ", MemoryResult::toString(result), "; state: ", *this, "\n");
+        dataLogLnIf(Options::logWebAssemblyMemory(), "Allocated physical: ", bytes, ", ", MemoryResult::toString(result), "; state: ", *this);
         
         return result;
     }
@@ -183,8 +180,7 @@ public:
             m_physicalBytes -= bytes;
         }
         
-        if (Options::logWebAssemblyMemory())
-            dataLog("Freed physical: ", bytes, "; state: ", *this, "\n");
+        dataLogLnIf(Options::logWebAssemblyMemory(), "Freed physical: ", bytes, "; state: ", *this);
     }
     
     void dump(PrintStream& out) const
@@ -310,12 +306,11 @@ RefPtr<Memory> Memory::tryCreate(PageCount initial, PageCount maximum, WTF::Func
     }
     
     if (fastMemory) {
-#if !OS(WINDOWS)
+        
         if (mprotect(fastMemory + initialBytes, Memory::fastMappedBytes() - initialBytes, PROT_NONE)) {
             dataLog("mprotect failed: ", strerror(errno), "\n");
             RELEASE_ASSERT_NOT_REACHED();
         }
-#endif
 
         return adoptRef(new Memory(fastMemory, initial, maximum, Memory::fastMappedBytes(), MemoryMode::Signaling, WTFMove(notifyMemoryPressure), WTFMove(syncTryToReclaimMemory), WTFMove(growSuccessCallback)));
     }
@@ -340,12 +335,10 @@ Memory::~Memory()
         memoryManager().freePhysicalBytes(m_size);
         switch (m_mode) {
         case MemoryMode::Signaling:
-#if !OS(WINDOWS)
             if (mprotect(memory(), Memory::fastMappedBytes(), PROT_READ | PROT_WRITE)) {
                 dataLog("mprotect failed: ", strerror(errno), "\n");
                 RELEASE_ASSERT_NOT_REACHED();
             }
-#endif
             memoryManager().freeFastMemory(memory());
             break;
         case MemoryMode::BoundsChecking:
@@ -363,7 +356,7 @@ size_t Memory::fastMappedRedzoneBytes()
 size_t Memory::fastMappedBytes()
 {
     static_assert(sizeof(uint64_t) == sizeof(size_t), "We rely on allowing the maximum size of Memory we map to be 2^32 + redzone which is larger than fits in a 32-bit integer that we'd pass to mprotect if this didn't hold.");
-    return static_cast<size_t>(std::numeric_limits<uint32_t>::max()) + fastMappedRedzoneBytes();
+    return (static_cast<size_t>(1) << 32) + fastMappedRedzoneBytes();
 }
 
 bool Memory::addressIsInActiveFastMemory(void* address)
@@ -438,12 +431,10 @@ Expected<PageCount, Memory::GrowFailReason> Memory::grow(PageCount delta)
         uint8_t* startAddress = static_cast<uint8_t*>(memory()) + m_size;
         
         dataLogLnIf(verbose, "Marking WebAssembly memory's ", RawPointer(memory()), " as read+write in range [", RawPointer(startAddress), ", ", RawPointer(startAddress + extraBytes), ")");
-#if !OS(WINDOWS)
         if (mprotect(startAddress, extraBytes, PROT_READ | PROT_WRITE)) {
             dataLog("mprotect failed: ", strerror(errno), "\n");
             RELEASE_ASSERT_NOT_REACHED();
         }
-#endif
         m_memory.recage(m_size, desiredSize);
         m_size = desiredSize;
         return success();

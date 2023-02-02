@@ -62,7 +62,7 @@ bool DoubleToStringConverter::HandleSpecialValues(
     StringBuilder* result_builder) const {
   Double double_inspect(value);
   if (double_inspect.IsInfinite()) {
-    if (infinity_symbol_ == NULL) return false;
+    if (infinity_symbol_ == nullptr) return false;
     if (value < 0) {
       result_builder->AddCharacter('-');
     }
@@ -70,7 +70,7 @@ bool DoubleToStringConverter::HandleSpecialValues(
     return true;
   }
   if (double_inspect.IsNan()) {
-    if (nan_symbol_ == NULL) return false;
+    if (nan_symbol_ == nullptr) return false;
     result_builder->AddString(nan_symbol_);
     return true;
   }
@@ -205,8 +205,8 @@ bool DoubleToStringConverter::ToShortestIeeeNumber(
 bool DoubleToStringConverter::ToFixed(double value,
                                       int requested_digits,
                                       StringBuilder* result_builder) const {
-  ASSERT(kMaxFixedDigitsBeforePoint == 60);
-  const double kFirstNonFixed = 1e60;
+  ASSERT(kMaxFixedDigitsBeforePoint == 21);
+  const double kFirstNonFixed = 1e21;
 
   if (Double(value).IsSpecial()) {
     return HandleSpecialValues(value, result_builder);
@@ -267,10 +267,12 @@ bool DoubleToStringConverter::ToExponential(
                   &sign, &decimal_rep_length, &decimal_point);
     ASSERT(decimal_rep_length <= requested_digits + 1);
 
-    for (int i = decimal_rep_length; i < requested_digits + 1; ++i) {
-      decimal_rep[i] = '0';
+    if (decimal_rep_length < requested_digits + 1) {
+      for (int i = decimal_rep_length; i < requested_digits + 1; ++i)
+        decimal_rep[i] = '0';
+      decimal_rep_length = requested_digits + 1;
+      decimal_rep[decimal_rep_length] = '\0';
     }
-    decimal_rep_length = requested_digits + 1;
   }
 
   bool unique_zero = ((flags_ & UNIQUE_ZERO) != 0);

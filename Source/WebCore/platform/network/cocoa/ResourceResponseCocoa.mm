@@ -96,11 +96,7 @@ CertificateInfo ResourceResponse::platformCertificateInfo() const
         return { };
 
     if (trustResultType == kSecTrustResultInvalid) {
-        // FIXME: This is deprecated <rdar://problem/45894288>.
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        result = SecTrustEvaluate(trust, &trustResultType);
-        ALLOW_DEPRECATED_DECLARATIONS_END
-        if (result != errSecSuccess)
+        if (!SecTrustEvaluateWithError(trust, nullptr))
             return { };
     }
 
@@ -148,7 +144,7 @@ static inline AtomString extractHTTPStatusText(CFHTTPMessageRef messageRef)
     if (auto httpStatusLine = adoptCF(CFHTTPMessageCopyResponseStatusLine(messageRef)))
         return extractReasonPhraseFromHTTPStatusLine(httpStatusLine.get());
 
-    static NeverDestroyed<AtomString> defaultStatusText("OK", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> defaultStatusText("OK", AtomString::ConstructFromLiteral);
     return defaultStatusText;
 }
 

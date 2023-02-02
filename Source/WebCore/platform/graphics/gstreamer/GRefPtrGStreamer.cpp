@@ -23,6 +23,10 @@
 #if USE(GSTREAMER)
 #include <gst/gst.h>
 
+#if USE(GSTREAMER_GL)
+#include <gst/gl/egl/gsteglimage.h>
+#endif
+
 namespace WTF {
 
 template <> GRefPtr<GstElement> adoptGRef(GstElement* ptr)
@@ -40,6 +44,27 @@ template <> GstElement* refGPtr<GstElement>(GstElement* ptr)
 }
 
 template <> void derefGPtr<GstElement>(GstElement* ptr)
+{
+    if (ptr)
+        gst_object_unref(ptr);
+}
+
+
+template <> GRefPtr<GstPlugin> adoptGRef(GstPlugin* ptr)
+{
+    ASSERT(!ptr || !g_object_is_floating(ptr));
+    return GRefPtr<GstPlugin>(ptr, GRefPtrAdopt);
+}
+
+template <> GstPlugin* refGPtr<GstPlugin>(GstPlugin* ptr)
+{
+    if (ptr)
+        gst_object_ref_sink(GST_OBJECT(ptr));
+
+    return ptr;
+}
+
+template <> void derefGPtr<GstPlugin>(GstPlugin* ptr)
 {
     if (ptr)
         gst_object_unref(ptr);
@@ -481,6 +506,24 @@ template<> void derefGPtr<GstGLContext>(GstGLContext* ptr)
 {
     if (ptr)
         gst_object_unref(GST_OBJECT(ptr));
+}
+
+template <> GRefPtr<GstEGLImage> adoptGRef(GstEGLImage* ptr)
+{
+    return GRefPtr<GstEGLImage>(ptr, GRefPtrAdopt);
+}
+
+template <> GstEGLImage* refGPtr<GstEGLImage>(GstEGLImage* ptr)
+{
+    if (ptr)
+        gst_egl_image_ref(ptr);
+    return ptr;
+}
+
+template <> void derefGPtr<GstEGLImage>(GstEGLImage* ptr)
+{
+    if (ptr)
+        gst_egl_image_unref(ptr);
 }
 
 #endif // USE(GSTREAMER_GL)

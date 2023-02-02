@@ -31,7 +31,7 @@
 
 #pragma once
 
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
 
 #include "ContextDestructionObserver.h"
 #include "FloatPoint.h"
@@ -88,9 +88,11 @@ public:
 
     HTMLDivElement& getDisplayTree();
     
-    void appendTextTrackCueBox(Ref<VTTCueBox>&&);
+    void appendTextTrackCueBox(Ref<TextTrackCueBox>&&);
     void displayLastTextTrackCueBox();
     void willRemoveTextTrackCueBox(VTTCueBox*);
+
+    void cueStyleChanged() { m_recalculateStyles = true; }
 
 private:
     VTTRegion(ScriptExecutionContext&);
@@ -151,6 +153,8 @@ private:
     // currently it is used also for non-scrolling regions to use a single
     // code path.
     Timer m_scrollTimer;
+
+    bool m_recalculateStyles { true };
 };
 
 } // namespace WebCore

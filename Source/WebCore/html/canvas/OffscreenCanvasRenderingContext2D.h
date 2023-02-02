@@ -25,6 +25,8 @@
 
 #pragma once
 
+#if ENABLE(OFFSCREEN_CANVAS)
+
 #include "CanvasRenderingContext2DBase.h"
 
 #include "OffscreenCanvas.h"
@@ -40,9 +42,12 @@ public:
     bool isOffscreen2d() const override { return true; }
 
     OffscreenCanvas& canvas() const { return downcast<OffscreenCanvas>(canvasBase()); }
+
+    void commit();
 };
 
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CANVASRENDERINGCONTEXT(WebCore::OffscreenCanvasRenderingContext2D, isOffscreen2d())
 
+#endif

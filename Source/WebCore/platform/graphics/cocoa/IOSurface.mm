@@ -26,14 +26,11 @@
 #import "config.h"
 #import "IOSurface.h"
 
-#if HAVE(IOSURFACE)
-
-#import "GraphicsContext3D.h"
 #import "GraphicsContextCG.h"
+#import "GraphicsContextGLOpenGL.h"
 #import "HostWindow.h"
 #import "IOSurfacePool.h"
 #import "ImageBuffer.h"
-#import "ImageBufferDataCG.h"
 #import "Logging.h"
 #import "PlatformScreen.h"
 #import <pal/spi/cg/CoreGraphicsSPI.h>
@@ -109,13 +106,6 @@ void IOSurface::moveToPool(std::unique_ptr<IOSurface>&& surface)
 {
     IOSurfacePool::sharedPool().addSurface(WTFMove(surface));
 }
-
-#if USE(IOSURFACE_CANVAS_BACKING_STORE)
-std::unique_ptr<IOSurface> IOSurface::createFromImageBuffer(std::unique_ptr<ImageBuffer> imageBuffer)
-{
-    return WTFMove(imageBuffer->m_data.surface);
-}
-#endif
 
 static NSDictionary *optionsForBiplanarSurface(IntSize size, unsigned pixelFormat, size_t firstPlaneBytesPerPixel, size_t secondPlaneBytesPerPixel)
 {
@@ -232,6 +222,8 @@ IOSurface::IOSurface(IOSurfaceRef surface, CGColorSpaceRef colorSpace)
     m_totalBytes = IOSurfaceGetAllocSize(surface);
 }
 
+IOSurface::~IOSurface() = default;
+
 IntSize IOSurface::maximumSize()
 {
     IntSize maxSize(clampToInteger(IOSurfaceGetPropertyMaximum(kIOSurfaceWidth)), clampToInteger(IOSurfaceGetPropertyMaximum(kIOSurfaceHeight)));
@@ -326,7 +318,7 @@ GraphicsContext& IOSurface::ensureGraphicsContext()
     if (m_graphicsContext)
         return *m_graphicsContext;
 
-    m_graphicsContext = std::make_unique<GraphicsContext>(ensurePlatformContext());
+    m_graphicsContext = makeUnique<GraphicsContext>(ensurePlatformContext());
     m_graphicsContext->setIsAcceleratedContext(true);
 
     return *m_graphicsContext;
@@ -383,7 +375,9 @@ IOSurface::Format IOSurface::format() const
 
 IOSurfaceID IOSurface::surfaceID() const
 {
-#if PLATFORM(IOS_FAMILY) && (!USE(APPLE_INTERNAL_SDK) || __IPHONE_OS_VERSION_MIN_REQUIRED < 110000)
+// FIXME: Should be able to do this even without the Apple internal SDK.
+// FIXME: Should be able to do this on watchOS and tvOS.
+#if PLATFORM(IOS_FAMILY) && (!USE(APPLE_INTERNAL_SDK) || PLATFORM(WATCHOS) || PLATFORM(APPLETV))
     return 0;
 #else
     return IOSurfaceGetID(m_surface.get());
@@ -505,5 +499,3 @@ TextStream& operator<<(TextStream& ts, const IOSurface& surface)
 }
 
 } // namespace WebCore
-
-#endif // HAVE(IOSURFACE)

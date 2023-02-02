@@ -208,14 +208,19 @@ String DiagnosticLoggingKeys::notInMemoryCacheKey()
     return "notInMemoryCache"_s;
 }
 
-String DiagnosticLoggingKeys::pageCacheKey()
+String DiagnosticLoggingKeys::backForwardCacheKey()
 {
-    return "pageCache"_s;
+    return "backForwardCache"_s;
 }
 
-String DiagnosticLoggingKeys::pageCacheFailureKey()
+String DiagnosticLoggingKeys::backForwardCacheFailureKey()
 {
-    return "pageCacheFailure"_s;
+    return "backForwardCacheFailure"_s;
+}
+
+String DiagnosticLoggingKeys::visuallyEmptyKey()
+{
+    return "visuallyEmpty"_s;
 }
 
 String DiagnosticLoggingKeys::noDocumentLoaderKey()
@@ -231,11 +236,6 @@ String DiagnosticLoggingKeys::noLongerInCacheKey()
 String DiagnosticLoggingKeys::otherKey()
 {
     return "other"_s;
-}
-
-String DiagnosticLoggingKeys::mainDocumentErrorKey()
-{
-    return "mainDocumentError"_s;
 }
 
 String DiagnosticLoggingKeys::mainResourceKey()
@@ -475,6 +475,16 @@ String DiagnosticLoggingKeys::diskCacheAfterValidationKey()
     return "diskCacheAfterValidation"_s;
 }
 
+String DiagnosticLoggingKeys::memoryCacheKey()
+{
+    return "memoryCache"_s;
+}
+
+String DiagnosticLoggingKeys::memoryCacheAfterValidationKey()
+{
+    return "memoryCacheAfterValidation"_s;
+}
+
 String DiagnosticLoggingKeys::reloadKey()
 {
     return "reload"_s;
@@ -533,6 +543,11 @@ String DiagnosticLoggingKeys::scriptKey()
 String DiagnosticLoggingKeys::serviceWorkerKey()
 {
     return "serviceWorker"_s;
+}
+
+String DiagnosticLoggingKeys::siteSpecificQuirkKey()
+{
+    return "siteSpecificQuirk"_s;
 }
 
 String DiagnosticLoggingKeys::streamingMedia()

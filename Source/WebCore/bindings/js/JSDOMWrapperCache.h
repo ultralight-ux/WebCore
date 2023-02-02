@@ -40,7 +40,7 @@ WEBCORE_EXPORT JSC::Structure* getCachedDOMStructure(JSDOMGlobalObject&, const J
 WEBCORE_EXPORT JSC::Structure* cacheDOMStructure(JSDOMGlobalObject&, JSC::Structure*, const JSC::ClassInfo*);
 
 template<typename WrapperClass> JSC::Structure* getDOMStructure(JSC::VM&, JSDOMGlobalObject&);
-template<typename WrapperClass> JSC::Structure* deprecatedGetDOMStructure(JSC::ExecState*);
+template<typename WrapperClass> JSC::Structure* deprecatedGetDOMStructure(JSC::JSGlobalObject*);
 template<typename WrapperClass> JSC::JSObject* getDOMPrototype(JSC::VM&, JSC::JSGlobalObject*);
 
 JSC::WeakHandleOwner* wrapperOwner(DOMWrapperWorld&, JSC::ArrayBuffer*);
@@ -65,17 +65,17 @@ template<typename DOMClass, typename WrapperClass> void uncacheWrapper(DOMWrappe
 template<typename DOMClass, typename T> auto createWrapper(JSDOMGlobalObject*, Ref<T>&&) -> typename std::enable_if<std::is_same<DOMClass, T>::value, typename JSDOMWrapperConverterTraits<DOMClass>::WrapperClass*>::type;
 template<typename DOMClass, typename T> auto createWrapper(JSDOMGlobalObject*, Ref<T>&&) -> typename std::enable_if<!std::is_same<DOMClass, T>::value, typename JSDOMWrapperConverterTraits<DOMClass>::WrapperClass*>::type;
 
-template<typename DOMClass> JSC::JSValue wrap(JSC::ExecState*, JSDOMGlobalObject*, DOMClass&);
+template<typename DOMClass> JSC::JSValue wrap(JSC::JSGlobalObject*, JSDOMGlobalObject*, DOMClass&);
 
 
 // Inline functions and template definitions.
 
-inline JSDOMGlobalObject* deprecatedGlobalObjectForPrototype(JSC::ExecState* exec)
+inline JSDOMGlobalObject* deprecatedGlobalObjectForPrototype(JSC::JSGlobalObject* lexicalGlobalObject)
 {
     // FIXME: Callers to this function should be using the global object
     // from which the object is being created, instead of assuming the lexical one.
     // e.g. subframe.document.body should use the subframe's global object, not the lexical one.
-    return JSC::jsCast<JSDOMGlobalObject*>(exec->lexicalGlobalObject());
+    return JSC::jsCast<JSDOMGlobalObject*>(lexicalGlobalObject);
 }
 
 template<typename WrapperClass> inline JSC::Structure* getDOMStructure(JSC::VM& vm, JSDOMGlobalObject& globalObject)
@@ -85,10 +85,10 @@ template<typename WrapperClass> inline JSC::Structure* getDOMStructure(JSC::VM& 
     return cacheDOMStructure(globalObject, WrapperClass::createStructure(vm, &globalObject, WrapperClass::createPrototype(vm, globalObject)), WrapperClass::info());
 }
 
-template<typename WrapperClass> inline JSC::Structure* deprecatedGetDOMStructure(JSC::ExecState* exec)
+template<typename WrapperClass> inline JSC::Structure* deprecatedGetDOMStructure(JSC::JSGlobalObject* lexicalGlobalObject)
 {
     // FIXME: This function is wrong. It uses the wrong global object for creating the prototype structure.
-    return getDOMStructure<WrapperClass>(exec->vm(), *deprecatedGlobalObjectForPrototype(exec));
+    return getDOMStructure<WrapperClass>(JSC::getVM(lexicalGlobalObject), *deprecatedGlobalObjectForPrototype(lexicalGlobalObject));
 }
 
 template<typename WrapperClass> inline JSC::JSObject* getDOMPrototype(JSC::VM& vm, JSDOMGlobalObject& globalObject)
@@ -194,11 +194,30 @@ template<typename DOMClass, typename T> inline auto createWrapper(JSDOMGlobalObj
     return createWrapper<DOMClass>(globalObject, static_reference_cast<DOMClass>(WTFMove(domObject)));
 }
 
-template<typename DOMClass> inline JSC::JSValue wrap(JSC::ExecState* state, JSDOMGlobalObject* globalObject, DOMClass& domObject)
+template<typename DOMClass> inline JSC::JSValue wrap(JSC::JSGlobalObject* lexicalGlobalObject, JSDOMGlobalObject* globalObject, DOMClass& domObject)
 {
     if (auto* wrapper = getCachedWrapper(globalObject->world(), domObject))
         return wrapper;
-    return toJSNewlyCreated(state, globalObject, Ref<DOMClass>(domObject));
+    return toJSNewlyCreated(lexicalGlobalObject, globalObject, Ref<DOMClass>(domObject));
+}
+
+template<typename DOMClass> inline void setSubclassStructureIfNeeded(JSC::JSGlobalObject* lexicalGlobalObject, JSC::CallFrame* callFrame, JSC::JSObject* jsObject)
+{
+    JSC::JSObject* newTarget = callFrame->newTarget().getObject();
+    JSC::JSObject* constructor = callFrame->jsCallee();
+    if (!newTarget || newTarget == constructor)
+        return;
+
+    using WrapperClass = typename JSDOMWrapperConverterTraits<DOMClass>::WrapperClass;
+
+    JSC::VM& vm = lexicalGlobalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    auto* newTargetGlobalObject = JSC::jsCast<JSDOMGlobalObject*>(JSC::getFunctionRealm(vm, newTarget));
+    auto* baseStructure = getDOMStructure<WrapperClass>(vm, *newTargetGlobalObject);
+    auto* subclassStructure = JSC::InternalFunction::createSubclassStructure(lexicalGlobalObject, newTarget, baseStructure);
+    RETURN_IF_EXCEPTION(scope, void());
+    jsObject->setStructure(vm, subclassStructure);
 }
 
 } // namespace WebCore

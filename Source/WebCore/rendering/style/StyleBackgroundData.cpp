@@ -28,7 +28,7 @@
 namespace WebCore {
 
 StyleBackgroundData::StyleBackgroundData()
-    : background(FillLayerType::Background)
+    : background(FillLayer::create(FillLayerType::Background))
     , color(RenderStyle::initialBackgroundColor())
 {
 }
@@ -58,6 +58,22 @@ bool StyleBackgroundData::isEquivalentForPainting(const StyleBackgroundData& oth
     if (!outline.isVisible() && !other.outline.isVisible())
         return true;
     return outline == other.outline;
+}
+
+void StyleBackgroundData::dump(TextStream& ts, DumpStyleValues behavior) const
+{
+    if (behavior == DumpStyleValues::All || *background != FillLayer::create(FillLayerType::Background).get())
+        ts.dumpProperty("background-image", background);
+    if (behavior == DumpStyleValues::All || color != RenderStyle::initialBackgroundColor())
+        ts.dumpProperty("background-color", color);
+    if (behavior == DumpStyleValues::All || outline != OutlineValue())
+        ts.dumpProperty("outline", outline);
+}
+
+TextStream& operator<<(TextStream& ts, const StyleBackgroundData& backgroundData)
+{
+    backgroundData.dump(ts);
+    return ts;
 }
 
 } // namespace WebCore

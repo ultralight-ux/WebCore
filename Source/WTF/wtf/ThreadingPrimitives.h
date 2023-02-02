@@ -48,18 +48,11 @@
 #endif
 #endif
 
-#if OS(WINDOWS) && CPU(X86)
-#define THREAD_SPECIFIC_CALL __stdcall
-#else
-#define THREAD_SPECIFIC_CALL
-#endif
-
 namespace WTF {
 
 using ThreadFunction = void (*)(void* argument);
 
 #if USE(PTHREADS)
-using ThreadIdentifier = uint32_t;
 using PlatformThreadHandle = pthread_t;
 using PlatformMutex = pthread_mutex_t;
 using PlatformCondition = pthread_cond_t;
@@ -74,7 +67,7 @@ using ThreadSpecificKey = DWORD;
 #error "Not supported platform"
 #endif
 
-class Mutex {
+class Mutex final {
     WTF_MAKE_NONCOPYABLE(Mutex);
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -97,7 +90,7 @@ private:
 
 typedef Locker<Mutex> MutexLocker;
 
-class ThreadCondition {
+class ThreadCondition final {
     WTF_MAKE_NONCOPYABLE(ThreadCondition);
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -144,38 +137,6 @@ inline void threadSpecificSet(ThreadSpecificKey key, void* value)
 inline void* threadSpecificGet(ThreadSpecificKey key)
 {
     return pthread_getspecific(key);
-}
-
-#elif OS(WINDOWS)
-
-static constexpr ThreadSpecificKey InvalidThreadSpecificKey = FLS_OUT_OF_INDEXES;
-
-WTF_EXPORT_PRIVATE ThreadSpecificKey flsKeyCreate(void(THREAD_SPECIFIC_CALL* destructor)(void*));
-WTF_EXPORT_PRIVATE void flsKeyDestroy(ThreadSpecificKey key);
-WTF_EXPORT_PRIVATE void flsKeyDestroyAll();
-
-inline void threadSpecificKeyCreate(ThreadSpecificKey* key, void (THREAD_SPECIFIC_CALL *destructor)(void *))
-{
-    DWORD flsKey = flsKeyCreate(destructor);
-    if (flsKey == FLS_OUT_OF_INDEXES)
-        CRASH();
-
-    *key = flsKey;
-}
-
-inline void threadSpecificKeyDelete(ThreadSpecificKey key)
-{
-    flsKeyDestroy(key);
-}
-
-inline void threadSpecificSet(ThreadSpecificKey key, void* data)
-{
-    FlsSetValue(key, data);
-}
-
-inline void* threadSpecificGet(ThreadSpecificKey key)
-{
-    return FlsGetValue(key);
 }
 
 #endif

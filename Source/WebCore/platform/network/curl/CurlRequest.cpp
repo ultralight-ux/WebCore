@@ -41,6 +41,8 @@
 #include "NetworkLoadMetrics.h"
 #include "ResourceError.h"
 #include "SharedBuffer.h"
+#include "SynchronousLoaderClient.h"
+#include <wtf/CrossThreadCopier.h>
 #include <wtf/Language.h>
 #include <wtf/MainThread.h>
 
@@ -50,9 +52,9 @@
 
 namespace WebCore {
 
-CurlRequest::CurlRequest(const ResourceRequest&request, CurlRequestClient* client, ShouldSuspend shouldSuspend, EnableMultipart enableMultipart, CaptureNetworkLoadMetrics captureExtraMetrics, MessageQueue<Function<void()>>* messageQueue)
+CurlRequest::CurlRequest(const ResourceRequest&request, CurlRequestClient* client, ShouldSuspend shouldSuspend, EnableMultipart enableMultipart, CaptureNetworkLoadMetrics captureExtraMetrics, RefPtr<SynchronousLoaderMessageQueue>&& messageQueue)
     : m_client(client)
-    , m_messageQueue(messageQueue)
+    , m_messageQueue(WTFMove(messageQueue))
     , m_request(request.isolatedCopy())
     , m_shouldSuspend(shouldSuspend == ShouldSuspend::Yes)
     , m_enableMultipart(enableMultipart == EnableMultipart::Yes)
@@ -61,6 +63,8 @@ CurlRequest::CurlRequest(const ResourceRequest&request, CurlRequestClient* clien
 {
     ASSERT(isMainThread());
 }
+
+CurlRequest::~CurlRequest() = default;
 
 void CurlRequest::invalidateClient()
 {
@@ -121,13 +125,11 @@ void CurlRequest::start()
 
     ASSERT(isMainThread());
 
-    auto url = m_request.url().isolatedCopy();
-
     if (std::isnan(m_requestStartTime))
         m_requestStartTime = MonotonicTime::now().isolatedCopy();
 
-    if (url.isLocalFile())
-        invokeDidReceiveResponseForFile(url);
+    if (m_request.url().isLocalFile())
+        invokeDidReceiveResponseForFile(m_request.url());
     else
         startWithJobManager();
 }
@@ -205,7 +207,7 @@ void CurlRequest::callClient(Function<void(CurlRequest&, CurlRequestClient&)>&& 
 void CurlRequest::runOnMainThread(Function<void()>&& task)
 {
     if (m_messageQueue)
-        m_messageQueue->append(std::make_unique<Function<void()>>(WTFMove(task)));
+        m_messageQueue->append(makeUnique<Function<void()>>(WTFMove(task)));
     else if (isMainThread())
         task();
     else
@@ -226,7 +228,7 @@ CURL* CurlRequest::setupTransfer()
     auto httpHeaderFields = m_request.httpHeaderFields();
     appendAcceptLanguageHeader(httpHeaderFields);
 
-    m_curlHandle = std::make_unique<CurlHandle>();
+    m_curlHandle = makeUnique<CurlHandle>();
 
     m_curlHandle->setUrl(m_request.url());
 
@@ -651,7 +653,7 @@ void CurlRequest::setupSendData(bool forPutMethod)
     m_curlHandle->setReadCallbackFunction(willSendDataCallback, this);
 }
 
-void CurlRequest::invokeDidReceiveResponseForFile(URL& url)
+void CurlRequest::invokeDidReceiveResponseForFile(const URL& url)
 {
     // Since the code in didReceiveHeader() will not have run for local files
     // the code to set the URL and fire didReceiveResponse is never run,
@@ -661,15 +663,17 @@ void CurlRequest::invokeDidReceiveResponseForFile(URL& url)
     ASSERT(isMainThread());
     ASSERT(url.isLocalFile());
 
-    m_response.url = url;
-    m_response.statusCode = 200;
-
     // Determine the MIME type based on the path.
-    m_response.headers.append(String("Content-Type: " + MIMETypeRegistry::getMIMETypeForPath(m_response.url.path())));
+    auto mimeType = MIMETypeRegistry::mimeTypeForPath(url.path().toString());
 
     // DidReceiveResponse must not be called immediately
-    runOnWorkerThreadIfRequired([this, protectedThis = makeRef(*this)]() {
-        invokeDidReceiveResponse(m_response, Action::StartTransfer);
+    runOnWorkerThreadIfRequired([this, protectedThis = makeRef(*this), url = crossThreadCopy(url), mimeType = crossThreadCopy(WTFMove(mimeType))]() mutable {
+        CurlResponse response;
+        response.url = WTFMove(url);
+        response.statusCode = 200;
+        response.headers.append("Content-Type: " + mimeType);
+
+        invokeDidReceiveResponse(response, Action::StartTransfer);
     });
 }
 

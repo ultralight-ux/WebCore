@@ -290,8 +290,8 @@ public:
     bool isRounded() const;
 
     TriState asTriState() const;
-    bool isLikeZero() const { return asTriState() == FalseTriState; }
-    bool isLikeNonZero() const { return asTriState() == TrueTriState; }
+    bool isLikeZero() const { return asTriState() == TriState::False; }
+    bool isLikeNonZero() const { return asTriState() == TriState::True; }
 
     Effects effects() const;
 
@@ -391,6 +391,7 @@ protected:
         case Const64:
         case ConstFloat:
         case ConstDouble:
+        case BottomTuple:
         case Fence:
         case SlotBase:
         case Get:
@@ -423,6 +424,7 @@ protected:
         case Load:
         case Switch:
         case Upsilon:
+        case Extract:
         case Set:
         case WasmAddress:
         case WasmBoundsCheck:
@@ -474,8 +476,10 @@ protected:
         case CheckMul:
         case Patchpoint:
             return sizeof(Vector<Value*, 3>);
+#ifdef NDEBUG
         default:
             break;
+#endif
         }
         RELEASE_ASSERT_NOT_REACHED();
         return 0;

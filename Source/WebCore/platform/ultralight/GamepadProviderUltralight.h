@@ -4,10 +4,11 @@
 #if ENABLE(GAMEPAD)
 
 #include "GamepadProvider.h"
-#include "GamepadUltralight.h"
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
+
+class GamepadUltralight;
 
 class GamepadProviderUltralight : public GamepadProvider {
     WTF_MAKE_NONCOPYABLE(GamepadProviderUltralight);
@@ -21,7 +22,7 @@ public:
     const Vector<PlatformGamepad*>& platformGamepads() final { return m_connectedGamepadVector; }
     bool isMockGamepadProvider() const final { return false; }
 
-    WEBCORE_EXPORT void setGamepadDetails(unsigned index, const String& gamepadID, unsigned axisCount, unsigned buttonCount);
+    WEBCORE_EXPORT void setGamepadDetails(unsigned index, const String& gamepadID, const String& mapping, unsigned axisCount, unsigned buttonCount);
     WEBCORE_EXPORT bool setGamepadAxisValue(unsigned index, unsigned axisIndex, double value);
     WEBCORE_EXPORT bool setGamepadButtonValue(unsigned index, unsigned buttonIndex, double value);
     WEBCORE_EXPORT bool connectGamepad(unsigned index);
@@ -29,6 +30,7 @@ public:
 
 private:
     GamepadProviderUltralight();
+    virtual ~GamepadProviderUltralight();
 
     void gamepadInputActivity();
 

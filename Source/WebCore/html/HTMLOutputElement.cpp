@@ -57,7 +57,7 @@ Ref<HTMLOutputElement> HTMLOutputElement::create(const QualifiedName& tagName, D
 
 const AtomString& HTMLOutputElement::formControlType() const
 {
-    static NeverDestroyed<const AtomString> output("output", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> output("output", AtomString::ConstructFromLiteral);
     return output;
 }
 
@@ -132,7 +132,7 @@ void HTMLOutputElement::setDefaultValue(const String& value)
 DOMTokenList& HTMLOutputElement::htmlFor()
 {
     if (!m_tokens)
-        m_tokens = std::make_unique<DOMTokenList>(*this, forAttr);
+        m_tokens = makeUnique<DOMTokenList>(*this, forAttr);
     return *m_tokens;
 }
 

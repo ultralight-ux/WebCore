@@ -6,10 +6,20 @@
 #include <Ultralight/private/Canvas.h>
 #include "ShadowBlur.h"
 
-
 typedef ultralight::RefPtr<ultralight::Canvas> PlatformCanvas;
 
 namespace WebCore {
+
+  inline ultralight::Color ToColor(const Color& color)
+  {
+      auto srgba = color.toSRGBALossy<uint8_t>();
+      return UltralightRGBA(srgba.red, srgba.green, srgba.blue, srgba.alpha);
+  }
+
+  inline Color ToColor(const ultralight::Color& color)
+  {
+      return Color(SRGBA<uint8_t>(UltralightColorGetR(color), UltralightColorGetG(color), UltralightColorGetB(color), UltralightColorGetA(color)));
+  }
 
   class BorderEdge;
 

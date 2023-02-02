@@ -32,16 +32,22 @@
 #include "Document.h"
 #include "Frame.h"
 #include "FrameLoader.h"
-#include "FrameLoaderClient.h"
 #include "HistoryItem.h"
 #include "MouseEvent.h"
 
 namespace WebCore {
 
+static GlobalFrameIdentifier createGlobalFrameIdentifier(const Document& document)
+{
+    if (document.frame())
+        return { document.frame()->loader().pageID().valueOr(PageIdentifier { }), document.frame()->loader().frameID().valueOr(FrameIdentifier { }) };
+    return GlobalFrameIdentifier();
+}
+
 NavigationAction::Requester::Requester(const Document& document)
     : m_url { URL { document.url() } }
     , m_origin { makeRefPtr(document.securityOrigin()) }
-    , m_pageIDAndFrameIDPair { document.frame() ? std::make_pair(document.frame()->loader().client().pageID().valueOr(PageIdentifier { }), document.frame()->loader().client().frameID().valueOr(0)) : std::make_pair<PageIdentifier, uint64_t>({ }, 0) }
+    , m_globalFrameIdentifier(createGlobalFrameIdentifier(document))
 {
 }
 

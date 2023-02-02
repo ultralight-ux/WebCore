@@ -56,6 +56,7 @@ public:
     WEBCORE_EXPORT Image* image(); // Returns the nullImage() if the image is not available yet.
     WEBCORE_EXPORT Image* imageForRenderer(const RenderObject*); // Returns the nullImage() if the image is not available yet.
     bool hasImage() const { return m_image.get(); }
+    bool hasSVGImage() const;
     bool currentFrameKnownToBeOpaque(const RenderElement*);
 
     std::pair<Image*, float> brokenImage(float deviceScaleFactor) const; // Returns an image and the image's resolution scale factor.
@@ -69,7 +70,7 @@ public:
     bool imageHasRelativeHeight() const { return m_image && m_image->hasRelativeHeight(); }
 
     void updateBuffer(SharedBuffer&) override;
-    void finishLoading(SharedBuffer*) override;
+    void finishLoading(SharedBuffer*, const NetworkLoadMetrics&) override;
 
     enum SizeType {
         UsedSize,
@@ -78,6 +79,7 @@ public:
     WEBCORE_EXPORT FloatSize imageSizeForRenderer(const RenderElement* renderer, SizeType = UsedSize) const;
     // This method takes a zoom multiplier that can be used to increase the natural size of the image by the zoom.
     LayoutSize imageSizeForRenderer(const RenderElement*, float multiplier, SizeType = UsedSize) const; // returns the size of the complete image.
+    LayoutSize unclampedImageSizeForRenderer(const RenderElement* renderer, float multiplier, SizeType = UsedSize) const;
     void computeIntrinsicDimensions(Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio);
 
     bool isManuallyCached() const { return m_isManuallyCached; }
@@ -91,7 +93,9 @@ public:
     void removeAllClientsWaitingForAsyncDecoding();
 
     void setForceUpdateImageDataEnabledForTesting(bool enabled) { m_forceUpdateImageDataEnabledForTesting =  enabled; }
-    
+
+    bool stillNeedsLoad() const override { return !errorOccurred() && status() == Unknown && !isLoading(); }
+
 private:
     void clear();
 
@@ -128,8 +132,6 @@ private:
     // For compatibility, images keep loading even if there are HTTP errors.
     bool shouldIgnoreHTTPStatusCodeErrors() const override { return true; }
 
-    bool stillNeedsLoad() const override { return !errorOccurred() && status() == Unknown && !isLoading(); }
-
     class CachedImageObserver final : public RefCounted<CachedImageObserver>, public ImageObserver {
     public:
         static Ref<CachedImageObserver> create(CachedImage& image) { return adoptRef(*new CachedImageObserver(image)); }
@@ -151,6 +153,7 @@ private:
         bool canDestroyDecodedData(const Image&) final;
         void imageFrameAvailable(const Image&, ImageAnimatingState, const IntRect* changeRect = nullptr, DecodingStatus = DecodingStatus::Invalid) final;
         void changedInRect(const Image&, const IntRect*) final;
+        void scheduleTimedRenderingUpdate(const Image&) final;
 
         HashSet<CachedImage*> m_cachedImages;
     };
@@ -161,6 +164,7 @@ private:
     bool canDestroyDecodedData(const Image&);
     void imageFrameAvailable(const Image&, ImageAnimatingState, const IntRect* changeRect = nullptr, DecodingStatus = DecodingStatus::Invalid);
     void changedInRect(const Image&, const IntRect*);
+    void scheduleTimedRenderingUpdate(const Image&);
 
     void updateBufferInternal(SharedBuffer&);
 
@@ -183,10 +187,11 @@ private:
 
     MonotonicTime m_lastUpdateImageDataTime;
 
-    unsigned m_updateImageDataCount { 0 };
-    bool m_isManuallyCached { false };
-    bool m_shouldPaintBrokenImage { true };
-    bool m_forceUpdateImageDataEnabledForTesting { false };
+    static constexpr unsigned maxUpdateImageDataCount = 4;
+    unsigned m_updateImageDataCount : 3;
+    bool m_isManuallyCached : 1;
+    bool m_shouldPaintBrokenImage : 1;
+    bool m_forceUpdateImageDataEnabledForTesting : 1;
 };
 
 } // namespace WebCore

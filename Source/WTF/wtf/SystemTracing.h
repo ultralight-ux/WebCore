@@ -78,11 +78,22 @@ enum TracePointCode {
     DisplayRefreshDispatchingToMainThread,
     ComputeEventRegionsStart,
     ComputeEventRegionsEnd,
-
     ScheduleRenderingUpdate,
     TriggerRenderingUpdate,
     RenderingUpdateStart,
     RenderingUpdateEnd,
+    CompositingUpdateStart,
+    CompositingUpdateEnd,
+    DispatchTouchEventsStart,
+    DispatchTouchEventsEnd,
+    ParseHTMLStart,
+    ParseHTMLEnd,
+    DisplayListReplayStart,
+    DisplayListReplayEnd,
+    ScrollingThreadRenderUpdateSyncStart,
+    ScrollingThreadRenderUpdateSyncEnd,
+    ScrollingThreadDisplayDidRefreshStart,
+    ScrollingThreadDisplayDidRefreshEnd,
 
     WebKitRange = 10000,
     WebHTMLViewPaintStart,
@@ -99,6 +110,10 @@ enum TracePointCode {
     SyncTouchEventEnd,
     InitializeWebProcessStart,
     InitializeWebProcessEnd,
+    RenderingUpdateRunLoopObserverStart,
+    RenderingUpdateRunLoopObserverEnd,
+    LayerTreeFreezeStart,
+    LayerTreeFreezeEnd,
 
     UIProcessRange = 14000,
     CommitLayerTreeStart,
@@ -127,6 +142,7 @@ inline void tracePoint(TracePointCode code, uint64_t data1 = 0, uint64_t data2 =
 }
 
 class TraceScope {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
 
     TraceScope(TracePointCode entryCode, TracePointCode exitCode, uint64_t data1 = 0, uint64_t data2 = 0, uint64_t data3 = 0, uint64_t data4 = 0)
@@ -150,3 +166,38 @@ using WTF::TraceScope;
 using WTF::tracePoint;
 
 #endif // __cplusplus
+
+#if HAVE(OS_SIGNPOST)
+
+#import <os/signpost.h>
+
+WTF_EXTERN_C_BEGIN
+WTF_EXPORT_PRIVATE bool WTFSignpostsEnabled();
+WTF_EXPORT_PRIVATE os_log_t WTFSignpostLogHandle();
+WTF_EXTERN_C_END
+
+#define WTFEmitSignpost(pointer, name, ...) \
+    WTFEmitSignpostWithFunction(os_signpost_event_emit, (pointer), name, ##__VA_ARGS__)
+
+#define WTFBeginSignpost(pointer, name, ...) \
+    WTFEmitSignpostWithFunction(os_signpost_interval_begin, (pointer), name, ##__VA_ARGS__)
+
+#define WTFEndSignpost(pointer, name, ...) \
+    WTFEmitSignpostWithFunction(os_signpost_interval_end, (pointer), name, ##__VA_ARGS__)
+
+#define WTFEmitSignpostWithFunction(emitFunc, pointer, name, ...) \
+do { \
+    if (UNLIKELY(WTFSignpostsEnabled())) { \
+        os_log_t handle = WTFSignpostLogHandle(); \
+        os_signpost_id_t signpostID = os_signpost_id_make_with_pointer(handle, (pointer)); \
+        emitFunc(handle, signpostID, name, ##__VA_ARGS__); \
+    } \
+} while (0)
+
+#else
+
+#define WTFEmitSignpost(pointer, name, ...) do { } while (0)
+#define WTFBeginSignpost(pointer, name, ...) do { } while (0)
+#define WTFEndSignpost(pointer, name, ...) do { } while (0)
+
+#endif

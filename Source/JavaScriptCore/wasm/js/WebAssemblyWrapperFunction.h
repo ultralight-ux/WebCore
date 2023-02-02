@@ -38,7 +38,7 @@ class WebAssemblyWrapperFunction final : public WebAssemblyFunctionBase {
 public:
     using Base = WebAssemblyFunctionBase;
 
-    const static unsigned StructureFlags = Base::StructureFlags;
+    static constexpr unsigned StructureFlags = Base::StructureFlags;
 
     template<typename CellType, SubspaceAccess mode>
     static IsoSubspace* subspaceFor(VM& vm)
@@ -56,13 +56,10 @@ public:
     WasmToWasmImportableFunction importableFunction() const { return m_importableFunction; }
     JSObject* function() { return m_function.get(); }
 
-protected:
-    static void visitChildren(JSCell*, SlotVisitor&);
-
-    void finishCreation(VM&, NativeExecutable*, unsigned length, const String& name, JSObject*, JSWebAssemblyInstance*);
-
 private:
-    WebAssemblyWrapperFunction(VM&, JSGlobalObject*, Structure*, WasmToWasmImportableFunction);
+    WebAssemblyWrapperFunction(VM&, NativeExecutable*, JSGlobalObject*, Structure*, WasmToWasmImportableFunction);
+    void finishCreation(VM&, NativeExecutable*, unsigned length, const String& name, JSObject*, JSWebAssemblyInstance*);
+    static void visitChildren(JSCell*, SlotVisitor&);
 
     WriteBarrier<JSObject> m_function;
     // It's safe to just hold the raw WasmToWasmImportableFunction because we have a reference

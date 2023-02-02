@@ -77,8 +77,7 @@ void BitmapTextureUltralight::updateContents(Image* image,
       ultralight::Paint paint;
       paint.color = UltralightColorWHITE;
       canvas_->set_blending_enabled(false);
-      canvas_->DrawImage(frameImage->first, frameImage->second, srcRect,
-        destRect, paint);
+      canvas_->DrawImage(frameImage, srcRect, destRect, paint);
       canvas_->set_blending_enabled(true);
     }
 }

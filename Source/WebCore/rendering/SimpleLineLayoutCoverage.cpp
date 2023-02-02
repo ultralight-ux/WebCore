@@ -135,6 +135,9 @@ static void printReason(AvoidanceReason reason, TextStream& stream)
     case FlowHasNonAutoLineBreak:
         stream << "line-break is not auto";
         break;
+    case FlowHasTextSecurity:
+        stream << "text-security is not none";
+        break;
     case FlowHasSVGFont:
         stream << "SVG font";
         break;
@@ -269,7 +272,7 @@ static void collectNonEmptyLeafRenderBlockFlows(const RenderObject& renderer, Ha
 static void collectNonEmptyLeafRenderBlockFlowsForCurrentPage(HashSet<const RenderBlockFlow*>& leafRenderers)
 {
     for (const auto* document : Document::allDocuments()) {
-        if (!document->renderView() || document->pageCacheState() != Document::NotInPageCache)
+        if (!document->renderView() || document->backForwardCacheState() != Document::NotInBackForwardCache)
             continue;
         if (!document->isHTMLDocument() && !document->isXHTMLDocument())
             continue;

@@ -13,7 +13,7 @@ namespace WebCore {
   public:
     State()
       : m_shouldAntialias(true)
-      , m_imageInterpolationQuality(InterpolationDefault)
+      , m_imageInterpolationQuality(InterpolationQuality::Default)
       , m_fillColor(Color::black)
       , m_strokeColor(Color::black)
       , m_strokeThickness(1.0f)
@@ -195,7 +195,7 @@ InterpolationQuality PlatformContextUltralight::imageInterpolationQuality() cons
 {
   // TODO
   notImplemented();
-  return InterpolationDefault;
+  return InterpolationQuality::Default;
 }
 
 void PlatformContextUltralight::prepareForFilling(const GraphicsContextState&, PatternAdjustment)
@@ -211,15 +211,14 @@ void PlatformContextUltralight::prepareForStroking(const GraphicsContextState&, 
 }
 
 void PlatformContextUltralight::setMask(const Path& path, WindRule clipRule) {
-  ultralight::RefPtr<ultralight::Path> p = path.ultralightPath();
+  ultralight::RefPtr<ultralight::Path> p = path.platformPath();
   ultralight::FillRule fill_rule = clipRule == WindRule::NonZero ? ultralight::kFillRule_NonZero : ultralight::kFillRule_EvenOdd;
   canvas()->SetClip(p, fill_rule, false);
 }
 
 ultralight::BorderPaint GetBorderPaint(const BorderEdge& edge) {
   ultralight::BorderPaint result;
-  Color c = edge.color();
-  result.color = UltralightRGBA(c.red(), c.green(), c.blue(), c.alpha());
+  result.color = ToColor(edge.color());
 
   switch (edge.style()) {
   case BorderStyle::Inset:
@@ -294,7 +293,7 @@ void PlatformContextUltralight::DrawBoxDecorations(const FloatRect& layout_rect,
   if (border_left.style == ultralight::kBorderStyle_None)
     border_left.color = UltralightColorTRANSPARENT;
 
-  ultralight::Color bgColor = UltralightRGBA(fill_color.red(), fill_color.green(), fill_color.blue(), fill_color.alpha());
+  ultralight::Color bgColor = ToColor(fill_color);
 
   m_canvas->DrawBoxDecorations(layout_rect, rrect1, rrect2, border_top, border_right, border_bottom, border_left, bgColor);
 }
@@ -312,10 +311,6 @@ inline ultralight::RoundedRect ToRoundedRect(const FloatRoundedRect& rrect) {
   result.radii_y[2] = rrect.radii().bottomRight().height();
   result.radii_y[3] = rrect.radii().bottomLeft().height();
   return result;
-}
-
-inline ultralight::Color ToColor(const Color& color) {
-  return UltralightRGBA(color.red(), color.green(), color.blue(), color.alpha());
 }
 
 void PlatformContextUltralight::DrawRoundedRect(const FloatRect& layout_rect, const FloatRoundedRect& rrect,

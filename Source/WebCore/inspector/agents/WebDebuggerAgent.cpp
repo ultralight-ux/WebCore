@@ -26,8 +26,11 @@
 #include "config.h"
 #include "WebDebuggerAgent.h"
 
+#include "EventListener.h"
+#include "EventTarget.h"
 #include "InstrumentingAgents.h"
-
+#include "ScriptExecutionContext.h"
+#include "Timer.h"
 
 namespace WebCore {
 
@@ -39,16 +42,139 @@ WebDebuggerAgent::WebDebuggerAgent(WebAgentContext& context)
 {
 }
 
+WebDebuggerAgent::~WebDebuggerAgent() = default;
+
+bool WebDebuggerAgent::enabled() const
+{
+    return m_instrumentingAgents.enabledWebDebuggerAgent() == this && InspectorDebuggerAgent::enabled();
+}
+
 void WebDebuggerAgent::enable()
 {
+    m_instrumentingAgents.setEnabledWebDebuggerAgent(this);
+
     InspectorDebuggerAgent::enable();
-    m_instrumentingAgents.setInspectorDebuggerAgent(this);
 }
 
 void WebDebuggerAgent::disable(bool isBeingDestroyed)
 {
-    m_instrumentingAgents.setInspectorDebuggerAgent(nullptr);
+    m_instrumentingAgents.setEnabledWebDebuggerAgent(nullptr);
+
     InspectorDebuggerAgent::disable(isBeingDestroyed);
+}
+
+void WebDebuggerAgent::didAddEventListener(EventTarget& target, const AtomString& eventType, EventListener& listener, bool capture)
+{
+    if (!breakpointsActive())
+        return;
+
+    auto& eventListeners = target.eventListeners(eventType);
+    auto position = eventListeners.findMatching([&](auto& registeredListener) {
+        return &registeredListener->callback() == &listener && registeredListener->useCapture() == capture;
+    });
+    if (position == notFound)
+        return;
+
+    auto& registeredListener = eventListeners.at(position);
+    if (m_registeredEventListeners.contains(registeredListener.get()))
+        return;
+
+    JSC::JSGlobalObject* scriptState = target.scriptExecutionContext()->execState();
+    if (!scriptState)
+        return;
+
+    int identifier = m_nextEventListenerIdentifier++;
+    m_registeredEventListeners.set(registeredListener.get(), identifier);
+
+    didScheduleAsyncCall(scriptState, InspectorDebuggerAgent::AsyncCallType::EventListener, identifier, registeredListener->isOnce());
+}
+
+void WebDebuggerAgent::willRemoveEventListener(EventTarget& target, const AtomString& eventType, EventListener& listener, bool capture)
+{
+    auto& eventListeners = target.eventListeners(eventType);
+    size_t listenerIndex = eventListeners.findMatching([&](auto& registeredListener) {
+        return &registeredListener->callback() == &listener && registeredListener->useCapture() == capture;
+    });
+
+    if (listenerIndex == notFound)
+        return;
+
+    int identifier = m_registeredEventListeners.take(eventListeners[listenerIndex].get());
+    didCancelAsyncCall(InspectorDebuggerAgent::AsyncCallType::EventListener, identifier);
+}
+
+void WebDebuggerAgent::willHandleEvent(const RegisteredEventListener& listener)
+{
+    auto it = m_registeredEventListeners.find(&listener);
+    if (it == m_registeredEventListeners.end())
+        return;
+
+    willDispatchAsyncCall(InspectorDebuggerAgent::AsyncCallType::EventListener, it->value);
+}
+
+int WebDebuggerAgent::willPostMessage()
+{
+    if (!breakpointsActive())
+        return 0;
+
+    auto postMessageIdentifier = m_nextPostMessageIdentifier++;
+    m_postMessageTasks.add(postMessageIdentifier);
+    return postMessageIdentifier;
+}
+
+void WebDebuggerAgent::didPostMessage(int postMessageIdentifier, JSC::JSGlobalObject& state)
+{
+    if (!breakpointsActive())
+        return;
+
+    if (!postMessageIdentifier || !m_postMessageTasks.contains(postMessageIdentifier))
+        return;
+
+    didScheduleAsyncCall(&state, InspectorDebuggerAgent::AsyncCallType::PostMessage, postMessageIdentifier, true);
+}
+
+void WebDebuggerAgent::didFailPostMessage(int postMessageIdentifier)
+{
+    if (!postMessageIdentifier)
+        return;
+
+    auto it = m_postMessageTasks.find(postMessageIdentifier);
+    if (it == m_postMessageTasks.end())
+        return;
+
+    didCancelAsyncCall(InspectorDebuggerAgent::AsyncCallType::PostMessage, postMessageIdentifier);
+
+    m_postMessageTasks.remove(it);
+}
+
+void WebDebuggerAgent::willDispatchPostMessage(int postMessageIdentifier)
+{
+    if (!postMessageIdentifier || !m_postMessageTasks.contains(postMessageIdentifier))
+        return;
+
+    willDispatchAsyncCall(InspectorDebuggerAgent::AsyncCallType::PostMessage, postMessageIdentifier);
+}
+
+void WebDebuggerAgent::didDispatchPostMessage(int postMessageIdentifier)
+{
+    if (!postMessageIdentifier)
+        return;
+
+    auto it = m_postMessageTasks.find(postMessageIdentifier);
+    if (it == m_postMessageTasks.end())
+        return;
+
+    didDispatchAsyncCall();
+
+    m_postMessageTasks.remove(it);
+}
+
+void WebDebuggerAgent::didClearAsyncStackTraceData()
+{
+    m_registeredEventListeners.clear();
+    m_postMessageTasks.clear();
+    m_nextEventListenerIdentifier = 1;
+    m_nextPostMessageIdentifier = 1;
 }
 
 } // namespace WebCore

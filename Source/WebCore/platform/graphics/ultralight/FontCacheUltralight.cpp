@@ -274,7 +274,7 @@ Vector<FontTraitsMask> FontCache::getTraitsInFamily(const AtomicString&)
 */
 
 std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDescription& fontDescription,
-  const AtomString& family, const FontFeatureSettings*, const FontVariantSettings*, FontSelectionSpecifiedCapabilities)
+  const AtomString& family, const FontFeatureSettings*, FontSelectionSpecifiedCapabilities)
 {
   ProfiledZone;
   ProfiledMemoryZone(MemoryTag::Font);

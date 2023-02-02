@@ -26,22 +26,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebAccessibilityObjectWrapperBase_h
-#define WebAccessibilityObjectWrapperBase_h
-
-#include "AXIsolatedTree.h"
-#include "AXIsolatedTreeNode.h"
-#include "AccessibilityObject.h"
-#include <CoreGraphics/CoreGraphics.h>
-#include <wtf/RefPtr.h>
-#include <wtf/Variant.h>
-#include <wtf/WeakPtr.h>
+#import "AccessibilityObjectInterface.h"
+#import <CoreGraphics/CoreGraphics.h>
+#import <wtf/RefPtr.h>
+#import <wtf/Variant.h>
+#import <wtf/WeakPtr.h>
 
 namespace WebCore {
-class AccessibilityObject;
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-class AXIsolatedTreeNode;
-#endif
 struct AccessibilitySearchCriteria;
 class IntRect;
 class FloatPoint;
@@ -51,29 +42,31 @@ class VisiblePosition;
 }
 
 @interface WebAccessibilityObjectWrapperBase : NSObject {
-    WebCore::AccessibilityObject* m_object;
-    WebCore::AXID _identifier;
+    WebCore::AXCoreObject* m_axObject;
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    RefPtr<WebCore::AXIsolatedTreeNode> m_isolatedTreeNode;
+    WebCore::AXCoreObject* m_isolatedObject;
 #endif
+    WebCore::AXID _identifier;
 }
- 
-- (id)initWithAccessibilityObject:(WebCore::AccessibilityObject*)axObject;
 
+- (id)initWithAccessibilityObject:(WebCore::AXCoreObject*)axObject;
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-@property (nonatomic, readonly) RefPtr<WebCore::AXIsolatedTreeNode> isolatedTreeNode;
-@property (nonatomic, assign) WebCore::AXIsolatedTreeID isolatedTreeIdentifier;
+- (void)attachIsolatedObject:(WebCore::AXCoreObject*)isolatedObject;
 #endif
 
 - (void)detach;
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+- (void)detachIsolatedObject:(WebCore::AccessibilityDetachmentType)detachmentType;
+#endif
 
 @property (nonatomic, assign) WebCore::AXID identifier;
 
-- (WebCore::AccessibilityObject*)accessibilityObject;
-- (BOOL)updateObjectBackingStore;
+// Updates the underlying object and accessibility hierarchy , and returns the
+// corresponding AXCoreObject.
+- (WebCore::AXCoreObject*)updateObjectBackingStore;
 
-// This can be either an AccessibilityObject or an AXIsolatedTreeNode
-- (WebCore::AccessibilityObjectInterface*)axBackingObject;
+// This can be either an AccessibilityObject or an AXIsolatedObject
+- (WebCore::AXCoreObject*)axBackingObject;
 
 // These are pre-fixed with base so that AppKit does not end up calling into these directly (bypassing safety checks).
 - (NSString *)baseAccessibilityTitle;
@@ -89,25 +82,22 @@ class VisiblePosition;
 - (void)accessibilityPostedNotification:(NSString *)notificationName;
 - (void)accessibilityPostedNotification:(NSString *)notificationName userInfo:(NSDictionary *)userInfo;
 
-- (CGPathRef)convertPathToScreenSpace:(WebCore::Path &)path;
+- (CGPathRef)convertPathToScreenSpace:(const WebCore::Path&)path;
 
-- (CGRect)convertRectToSpace:(WebCore::FloatRect &)rect space:(WebCore::AccessibilityConversionSpace)space;
+- (CGRect)convertRectToSpace:(const WebCore::FloatRect&)rect space:(WebCore::AccessibilityConversionSpace)space;
 
 // Math related functions
 - (NSArray *)accessibilityMathPostscriptPairs;
 - (NSArray *)accessibilityMathPrescriptPairs;
 
+- (NSDictionary<NSString *, id> *)baseAccessibilityResolvedEditingStyles;
+
 extern WebCore::AccessibilitySearchCriteria accessibilitySearchCriteriaForSearchPredicateParameterizedAttribute(const NSDictionary *);
 
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-extern NSArray *convertToNSArray(const Vector<RefPtr<WebCore::AXIsolatedTreeNode>>&);
-#endif
-extern NSArray *convertToNSArray(const WebCore::AccessibilityObject::AccessibilityChildrenVector&);
+extern NSArray *convertToNSArray(const WebCore::AXCoreObject::AccessibilityChildrenVector&);
 
 #if PLATFORM(IOS_FAMILY)
 - (id)_accessibilityWebDocumentView;
 #endif
 
 @end
-
-#endif // WebAccessibilityObjectWrapperBase_h

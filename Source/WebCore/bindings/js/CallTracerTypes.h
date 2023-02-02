@@ -33,8 +33,10 @@
 #include "HTMLCanvasElement.h"
 #include "HTMLImageElement.h"
 #include "HTMLVideoElement.h"
-#include "ImageBitmap.h"
 #include "ImageData.h"
+#if ENABLE(OFFSCREEN_CANVAS)
+#include "OffscreenCanvas.h"
+#endif
 #include "Path2D.h"
 #include "TypedOMCSSImageValue.h"
 #include <JavaScriptCore/ArrayBuffer.h>
@@ -59,13 +61,13 @@
 #include "WebGLShader.h"
 #include "WebGLSync.h"
 #include "WebGLTexture.h"
-#include "WebGLTransformFeedback.h"
 #include "WebGLUniformLocation.h"
 #include "WebGLVertexArrayObject.h"
 #endif
 
 #if ENABLE(WEBGL2)
 #include "WebGL2RenderingContext.h"
+#include "WebGLTransformFeedback.h"
 #endif
 
 namespace WebCore {
@@ -99,9 +101,11 @@ using RecordCanvasActionVariant = Variant<
     WebGLShader*,
     WebGLSync*,
     WebGLTexture*,
-    WebGLTransformFeedback*,
     WebGLUniformLocation*,
     WebGLVertexArrayObject*,
+#endif
+#if ENABLE(WEBGL2)
+    WebGLTransformFeedback*,
 #endif
     RefPtr<ArrayBuffer>,
     RefPtr<ArrayBufferView>,
@@ -118,12 +122,15 @@ using RecordCanvasActionVariant = Variant<
     RefPtr<TypedOMCSSImageValue>,
 #endif
     RefPtr<ImageData>,
+#if ENABLE(OFFSCREEN_CANVAS)
+    RefPtr<OffscreenCanvas>,
+#endif
     RefPtr<Int32Array>,
     RefPtr<Uint32Array>,
 
     // variant
     CanvasImageSource,
-    CanvasRenderingContext2DBase::Style,
+    CanvasRenderingContext2DBase::StyleVariant,
 #if ENABLE(WEBGL)
     WebGLRenderingContextBase::BufferDataSource,
     Optional<WebGLRenderingContextBase::BufferDataSource>,

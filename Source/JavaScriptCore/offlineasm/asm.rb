@@ -363,20 +363,26 @@ inputHash =
     " " + Digest::SHA1.hexdigest($options.has_key?(:assembler) ? $options[:assembler] : "")
 
 if FileTest.exist? outputFlnm
+    lastLine = nil
     File.open(outputFlnm, "r") {
-        | inp |
-        firstLine = inp.gets
-        if firstLine and firstLine.chomp == inputHash
-            $stderr.puts "offlineasm: Nothing changed."
-            exit 0
-        end
+        | file |
+        file.each_line {
+            | line |
+            line = line.chomp
+            unless line.empty?
+                lastLine = line
+            end
+        }
     }
+    if lastLine and lastLine == inputHash
+        # Nothing changed.
+        exit 0
+    end
 end
 
 File.open(outputFlnm, "w") {
     | outp |
     $output = outp
-    $output.puts inputHash
 
     $asm = Assembler.new($output)
     
@@ -401,11 +407,14 @@ File.open(outputFlnm, "w") {
             lowLevelAST = lowLevelAST.resolve(buildOffsetsMap(lowLevelAST, offsetsList))
             lowLevelAST.validate
             emitCodeInConfiguration(concreteSettings, lowLevelAST, backend) {
-                 $currentSettings = concreteSettings
+                $currentSettings = concreteSettings
                 $asm.inAsm {
                     lowLevelAST.lower(backend)
                 }
             }
         }
     }
+
+    $output.fsync
+    $output.puts inputHash
 }

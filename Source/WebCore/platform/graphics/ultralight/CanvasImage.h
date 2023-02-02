@@ -27,14 +27,13 @@ public:
   bool hasRelativeWidth() const override { return true; }
   bool hasRelativeHeight() const override { return true; }
   void computeIntrinsicDimensions(Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio) override;
-  FloatSize size() const override { return FloatSize((float)m_canvas->width(), (float)m_canvas->height()); }
+  FloatSize size(ImageOrientation = ImageOrientation::FromImage) const override { return FloatSize((float)m_canvas->width(), (float)m_canvas->height()); }
   void destroyDecodedData(bool /*destroyAll*/ = true) override { }
 
 protected:
-  ImageDrawResult draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator,
-    BlendMode, DecodingMode, ImageOrientationDescription) override;
-  void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform,
-    const FloatPoint& phase, const FloatSize& spacing, CompositeOperator, BlendMode) override;
+  ImageDrawResult draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, const ImagePaintingOptions& = {}) override;
+  
+  void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& = {}) override;
 
   bool currentFrameKnownToBeOpaque() const override { return false; }
 

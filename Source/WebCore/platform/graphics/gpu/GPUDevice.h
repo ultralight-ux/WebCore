@@ -27,9 +27,15 @@
 
 #if ENABLE(WEBGPU)
 
+#include "GPUBindGroupAllocator.h"
+#include "GPUErrorScopes.h"
 #include "GPUQueue.h"
 #include "GPUSwapChain.h"
+#include <wtf/Function.h>
+#include <wtf/Optional.h>
+#include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
+#include <wtf/RefPtr.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
 
@@ -37,16 +43,19 @@ OBJC_PROTOCOL(MTLDevice);
 
 namespace WebCore {
 
+class GPUBindGroup;
 class GPUBindGroupLayout;
 class GPUBuffer;
 class GPUCommandBuffer;
 class GPUComputePipeline;
+class GPUErrorScopes;
 class GPUPipelineLayout;
 class GPURenderPipeline;
 class GPUSampler;
 class GPUShaderModule;
 class GPUTexture;
 
+struct GPUBindGroupDescriptor;
 struct GPUBindGroupLayoutDescriptor;
 struct GPUBufferDescriptor;
 struct GPUComputePipelineDescriptor;
@@ -57,7 +66,9 @@ struct GPUSamplerDescriptor;
 struct GPUShaderModuleDescriptor;
 struct GPUSwapChainDescriptor;
 struct GPUTextureDescriptor;
-    
+
+enum class GPUBufferMappedOption;
+
 using PlatformDevice = MTLDevice;
 using PlatformDeviceSmartPtr = RetainPtr<MTLDevice>;
 
@@ -65,16 +76,17 @@ class GPUDevice : public RefCounted<GPUDevice>, public CanMakeWeakPtr<GPUDevice>
 public:
     static RefPtr<GPUDevice> tryCreate(const Optional<GPURequestAdapterOptions>&);
 
-    RefPtr<GPUBuffer> tryCreateBuffer(const GPUBufferDescriptor&, bool isMappedOnCreation = false);
+    RefPtr<GPUBuffer> tryCreateBuffer(const GPUBufferDescriptor&, GPUBufferMappedOption, GPUErrorScopes&);
     RefPtr<GPUTexture> tryCreateTexture(const GPUTextureDescriptor&) const;
     RefPtr<GPUSampler> tryCreateSampler(const GPUSamplerDescriptor&) const;
 
     RefPtr<GPUBindGroupLayout> tryCreateBindGroupLayout(const GPUBindGroupLayoutDescriptor&) const;
     Ref<GPUPipelineLayout> createPipelineLayout(GPUPipelineLayoutDescriptor&&) const;
+    RefPtr<GPUBindGroup> tryCreateBindGroup(const GPUBindGroupDescriptor&, GPUErrorScopes&) const;
 
     RefPtr<GPUShaderModule> tryCreateShaderModule(const GPUShaderModuleDescriptor&) const;
-    RefPtr<GPURenderPipeline> tryCreateRenderPipeline(const GPURenderPipelineDescriptor&) const;
-    RefPtr<GPUComputePipeline> tryCreateComputePipeline(const GPUComputePipelineDescriptor&) const;
+    RefPtr<GPURenderPipeline> tryCreateRenderPipeline(const GPURenderPipelineDescriptor&, GPUErrorScopes&) const;
+    RefPtr<GPUComputePipeline> tryCreateComputePipeline(const GPUComputePipelineDescriptor&, GPUErrorScopes&) const;
 
     RefPtr<GPUCommandBuffer> tryCreateCommandBuffer() const;
 
@@ -84,12 +96,18 @@ public:
     GPUSwapChain* swapChain() const { return m_swapChain.get(); }
     void setSwapChain(RefPtr<GPUSwapChain>&&);
 
+    void setErrorScopes(Ref<GPUErrorScopes>&& errorScopes) { m_errorScopes = WTFMove(errorScopes); }
+
+    static constexpr bool useWHLSL = true;
+
 private:
     explicit GPUDevice(PlatformDeviceSmartPtr&&);
 
     PlatformDeviceSmartPtr m_platformDevice;
     mutable RefPtr<GPUQueue> m_queue;
     RefPtr<GPUSwapChain> m_swapChain;
+    mutable RefPtr<GPUBindGroupAllocator> m_bindGroupAllocator;
+    RefPtr<GPUErrorScopes> m_errorScopes;
 };
 
 } // namespace WebCore

@@ -127,9 +127,10 @@ void PlatformCALayerWinInternal::drawRepaintCounters(CACFLayerRef caLayer, CGCon
     if (borderWidth > 0)
         backgroundColor = CACFLayerGetBorderColor(caLayer);
     else
-        backgroundColor = cachedCGColor(Color(255, 0, 0));
+        backgroundColor = cachedCGColor(Color::red);
 
-    PlatformCALayer::drawRepaintIndicator(context, owner(), drawCount, backgroundColor);
+    GraphicsContext graphicsContext(context);
+    PlatformCALayer::drawRepaintIndicator(graphicsContext, owner(), drawCount, backgroundColor);
 }
 
 void PlatformCALayerWinInternal::internalSetNeedsDisplay(const FloatRect* dirtyRect)
@@ -206,7 +207,7 @@ void PlatformCALayerWinInternal::getSublayers(PlatformCALayerList& list) const
 
     list.resize(count);
     for (size_t arrayIndex = 0; arrayIndex < count; ++arrayIndex)
-        list[arrayIndex] = PlatformCALayer::platformCALayer(const_cast<void*>(CFArrayGetValueAtIndex(sublayers, arrayIndex)));
+        list[arrayIndex] = PlatformCALayer::platformCALayerForLayer(const_cast<void*>(CFArrayGetValueAtIndex(sublayers, arrayIndex)));
 }
 
 void PlatformCALayerWinInternal::removeAllSublayers()
@@ -256,7 +257,7 @@ PlatformCALayer* PlatformCALayerWinInternal::sublayerAtIndex(int index) const
     if (!sublayers || index < 0 || CFArrayGetCount(sublayers) <= index)
         return nullptr;
     
-    return PlatformCALayer::platformCALayer(static_cast<CACFLayerRef>(const_cast<void*>(CFArrayGetValueAtIndex(sublayers, index))));
+    return PlatformCALayer::platformCALayerForLayer(static_cast<CACFLayerRef>(const_cast<void*>(CFArrayGetValueAtIndex(sublayers, index)))).get();
 }
 
 void PlatformCALayerWinInternal::setBounds(const FloatRect& rect)
@@ -311,15 +312,7 @@ void PlatformCALayerWinInternal::setBorderWidth(float value)
 
 void PlatformCALayerWinInternal::setBorderColor(const Color& value)
 {
-    CGFloat components[4] = { 0, 0, 0, 0 };
-    RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
-
-    if (value.isValid())
-        value.getRGBA(components[0], components[1], components[2], components[3]);
-
-    RetainPtr<CGColorRef> color = adoptCF(CGColorCreate(colorSpace.get(), components));
-
-    CACFLayerSetBorderColor(owner()->platformLayer(), color.get());
+    CACFLayerSetBorderColor(owner()->platformLayer(), cachedCGColor(value));
 }
 
 #endif

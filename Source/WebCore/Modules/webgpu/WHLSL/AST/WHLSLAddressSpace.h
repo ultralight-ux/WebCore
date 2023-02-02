@@ -28,6 +28,7 @@
 #if ENABLE(WEBGPU)
 
 #include <cstdint>
+#include <wtf/FastMalloc.h>
 #include <wtf/Variant.h>
 
 namespace WebCore {
@@ -43,18 +44,18 @@ enum class AddressSpace : uint8_t {
     Thread
 };
 
-ALWAYS_INLINE String toString(AddressSpace addressSpace)
+ALWAYS_INLINE StringView toString(AddressSpace addressSpace)
 {
     switch (addressSpace) {
     case AddressSpace::Constant:
-        return "constant"_str;
+        return "constant";
     case AddressSpace::Device:
-        return "device"_str;
+        return "device";
     case AddressSpace::Threadgroup:
-        return "threadgroup"_str;
+        return "threadgroup";
     default:
         ASSERT(addressSpace == AddressSpace::Thread);
-        return "thread"_str;
+        return "thread";
     }
 }
 
@@ -70,9 +71,10 @@ struct RightValue {
 
 // FIXME: https://bugs.webkit.org/show_bug.cgi?id=198158 This wrapper might not be necessary.
 class TypeAnnotation {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     TypeAnnotation()
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
         : m_empty(true)
 #endif
     {
@@ -119,9 +121,15 @@ public:
         return WTF::visit(visitor, m_inner);
     }
 
+    bool isAbstractLeftValue() const
+    {
+        ASSERT(!m_empty);
+        return WTF::holds_alternative<AbstractLeftValue>(m_inner);
+    }
+
 private:
     Variant<LeftValue, AbstractLeftValue, RightValue> m_inner;
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
     bool m_empty { false };
 #endif
 };

@@ -32,7 +32,7 @@
 namespace WebCore {
 
 FETile::FETile(Filter& filter)
-    : FilterEffect(filter)
+    : FilterEffect(filter, Type::Tile)
 {
 }
 
@@ -64,7 +64,7 @@ void FETile::platformApplySoftware()
         tileRect.scale(filter.filterResolution().width(), filter.filterResolution().height());
     }
 
-    auto tileImage = SVGRenderingContext::createImageBuffer(tileRect, tileRect, ColorSpaceSRGB, filter().renderingMode());
+    auto tileImage = SVGRenderingContext::createImageBuffer(tileRect, tileRect, ColorSpace::SRGB, filter().renderingMode());
     if (!tileImage)
         return;
 

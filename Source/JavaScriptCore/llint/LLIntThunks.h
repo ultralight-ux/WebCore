@@ -26,10 +26,11 @@
 #pragma once
 
 #include "MacroAssemblerCodeRef.h"
+#include "VM.h"
+#include <wtf/Scope.h>
 
 namespace JSC {
 
-class VM;
 struct ProtoCallFrame;
 typedef int64_t EncodedJSValue;
 
@@ -40,6 +41,9 @@ extern "C" {
 
 inline EncodedJSValue vmEntryToWasm(void* code, VM* vm, ProtoCallFrame* frame)
 {
+    auto clobberizeValidator = makeScopeExit([&] {
+        vm->didEnterVM = true;
+    });
     code = retagCodePtr<WasmEntryPtrTag, JSEntryPtrTag>(code);
     return vmEntryToJavaScript(code, vm, frame);
 }
@@ -53,5 +57,9 @@ MacroAssemblerCodeRef<JITThunkPtrTag> functionForConstructArityCheckThunk();
 MacroAssemblerCodeRef<JITThunkPtrTag> evalEntryThunk();
 MacroAssemblerCodeRef<JITThunkPtrTag> programEntryThunk();
 MacroAssemblerCodeRef<JITThunkPtrTag> moduleProgramEntryThunk();
+
+#if ENABLE(WEBASSEMBLY)
+MacroAssemblerCodeRef<JITThunkPtrTag> wasmFunctionEntryThunk();
+#endif // ENABLE(WEBASSEMBLY)
 
 } } // namespace JSC::LLInt

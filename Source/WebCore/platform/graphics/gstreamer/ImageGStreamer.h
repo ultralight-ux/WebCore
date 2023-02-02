@@ -17,8 +17,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef ImageGStreamer_h
-#define ImageGStreamer_h
+#pragma once
 
 #if ENABLE(VIDEO) && USE(GSTREAMER)
 
@@ -74,6 +73,8 @@ public:
     }
 #endif
 
+    bool hasAlpha() const { return m_hasAlpha; }
+
 private:
     ImageGStreamer(GstSample*);
 #if USE(ULTRALIGHT)
@@ -87,8 +88,7 @@ private:
     GstVideoFrame m_videoFrame;
     bool m_frameMapped { false };
 #endif
+    bool m_hasAlpha { false };
 };
 }
-
-#endif // USE(GSTREAMER)
-#endif
+#endif // ENABLE(VIDEO) && USE(GSTREAMER)

@@ -26,7 +26,7 @@
 #include "config.h"
 #include "DataView.h"
 
-#include "JSCInlines.h"
+#include "HeapInlines.h"
 #include "JSDataView.h"
 #include "JSGlobalObject.h"
 
@@ -49,10 +49,10 @@ Ref<DataView> DataView::create(RefPtr<ArrayBuffer>&& buffer)
     return create(WTFMove(buffer), 0, byteLength);
 }
 
-JSArrayBufferView* DataView::wrap(ExecState* exec, JSGlobalObject* globalObject)
+JSArrayBufferView* DataView::wrap(JSGlobalObject* lexicalGlobalObject, JSGlobalObject* globalObject)
 {
     return JSDataView::create(
-        exec, globalObject->typedArrayStructure(TypeDataView), possiblySharedBuffer(), byteOffset(),
+        lexicalGlobalObject, globalObject->typedArrayStructure(TypeDataView), possiblySharedBuffer(), byteOffset(),
         byteLength());
 }
 

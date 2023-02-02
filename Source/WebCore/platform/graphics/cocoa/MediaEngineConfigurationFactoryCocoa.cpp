@@ -32,10 +32,14 @@
 #include "MediaCapabilitiesDecodingInfo.h"
 #include "MediaDecodingConfiguration.h"
 #include "MediaPlayer.h"
+#include "VP9UtilitiesCocoa.h"
 
 #include "VideoToolboxSoftLink.h"
 
 namespace WebCore {
+
+// FIXME: Remove this once kCMVideoCodecType_VP9 is added to CMFormatDescription.h
+constexpr CMVideoCodecType kCMVideoCodecType_VP9 { 'vp09' };
 
 static CMVideoCodecType videoCodecTypeFromRFC4281Type(String type)
 {
@@ -45,6 +49,8 @@ static CMVideoCodecType videoCodecTypeFromRFC4281Type(String type)
         return kCMVideoCodecType_H264;
     if (type.startsWith("hvc1") || type.startsWith("hev1"))
         return kCMVideoCodecType_HEVC;
+    if (type.startsWith("vp09"))
+        return kCMVideoCodecType_VP9;
     return 0;
 }
 
@@ -57,7 +63,7 @@ void createMediaPlayerDecodingConfigurationCocoa(MediaDecodingConfiguration&& co
         MediaEngineSupportParameters parameters { };
         parameters.type = ContentType(videoConfiguration.contentType);
         parameters.isMediaSource = configuration.type == MediaDecodingType::MediaSource;
-        if (MediaPlayer::supportsType(parameters) != MediaPlayer::IsSupported) {
+        if (MediaPlayer::supportsType(parameters) != MediaPlayer::SupportsType::IsSupported) {
             callback({{ }, WTFMove(configuration)});
             return;
         }
@@ -71,21 +77,34 @@ void createMediaPlayerDecodingConfigurationCocoa(MediaDecodingConfiguration&& co
         info.supported = true;
         auto& codec = codecs[0];
         auto videoCodecType = videoCodecTypeFromRFC4281Type(codec);
-        if (!videoCodecType) {
+        if (!videoCodecType && !(codec.startsWith("dvh1") || codec.startsWith("dvhe"))) {
             callback({{ }, WTFMove(configuration)});
             return;
         }
 
+        bool hdrSupported = videoConfiguration.colorGamut || videoConfiguration.hdrMetadataType || videoConfiguration.transferFunction;
         bool alphaChannel = videoConfiguration.alphaChannel && videoConfiguration.alphaChannel.value();
 
         if (videoCodecType == kCMVideoCodecType_HEVC) {
             auto parameters = parseHEVCCodecParameters(codec);
-            if (!parameters || !validateHEVCParameters(parameters.value(), info, alphaChannel)) {
+            if (!parameters || !validateHEVCParameters(parameters.value(), info, alphaChannel, hdrSupported)) {
+                callback({{ }, WTFMove(configuration)});
+                return;
+            }
+        } else if (codec.startsWith("dvh1") || codec.startsWith("dvhe")) {
+            auto parameters = parseDoViCodecParameters(codec);
+            if (!parameters || !validateDoViParameters(parameters.value(), info, alphaChannel, hdrSupported)) {
+                callback({{ }, WTFMove(configuration)});
+                return;
+            }
+        } else if (videoCodecType == kCMVideoCodecType_VP9) {
+            auto codecConfiguration = parseVPCodecParameters(codec);
+            if (!codecConfiguration || !validateVPParameters(*codecConfiguration, info, videoConfiguration)) {
                 callback({{ }, WTFMove(configuration)});
                 return;
             }
         } else {
-            if (alphaChannel) {
+            if (alphaChannel || hdrSupported) {
                 callback({{ }, WTFMove(configuration)});
                 return;
             }
@@ -101,7 +120,7 @@ void createMediaPlayerDecodingConfigurationCocoa(MediaDecodingConfiguration&& co
         MediaEngineSupportParameters parameters { };
         parameters.type = ContentType(configuration.audio.value().contentType);
         parameters.isMediaSource = configuration.type == MediaDecodingType::MediaSource;
-        if (MediaPlayer::supportsType(parameters) != MediaPlayer::IsSupported) {
+        if (MediaPlayer::supportsType(parameters) != MediaPlayer::SupportsType::IsSupported) {
             callback({{ }, WTFMove(configuration)});
             return;
         }

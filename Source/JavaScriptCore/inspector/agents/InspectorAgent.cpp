@@ -32,7 +32,6 @@
 #include "InspectorAgent.h"
 
 #include "InspectorEnvironment.h"
-#include "InspectorFrontendRouter.h"
 #include <wtf/JSONValues.h>
 
 namespace Inspector {
@@ -40,10 +39,12 @@ namespace Inspector {
 InspectorAgent::InspectorAgent(AgentContext& context)
     : InspectorAgentBase("Inspector"_s)
     , m_environment(context.environment)
-    , m_frontendDispatcher(std::make_unique<InspectorFrontendDispatcher>(context.frontendRouter))
+    , m_frontendDispatcher(makeUnique<InspectorFrontendDispatcher>(context.frontendRouter))
     , m_backendDispatcher(InspectorBackendDispatcher::create(context.backendDispatcher, this))
 {
 }
+
+InspectorAgent::~InspectorAgent() = default;
 
 void InspectorAgent::didCreateFrontendAndBackend(FrontendRouter*, BackendDispatcher*)
 {
@@ -53,8 +54,8 @@ void InspectorAgent::willDestroyFrontendAndBackend(DisconnectReason)
 {
     m_pendingEvaluateTestCommands.clear();
 
-    ErrorString unused;
-    disable(unused);
+    ErrorString ignored;
+    disable(ignored);
 }
 
 void InspectorAgent::enable(ErrorString&)
@@ -118,7 +119,7 @@ void InspectorAgent::activateExtraDomains(const Vector<String>& extraDomains)
         return;
 
     auto domainNames = JSON::ArrayOf<String>::create();
-    for (auto domainName : extraDomains)
+    for (const auto& domainName : extraDomains)
         domainNames->addItem(domainName);
 
     m_frontendDispatcher->activateExtraDomains(WTFMove(domainNames));

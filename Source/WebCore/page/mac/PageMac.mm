@@ -29,7 +29,6 @@
 #import "config.h"
 #import "Page.h"
 
-#import "CustomHeaderFields.h"
 #import "DocumentLoader.h"
 #import "Frame.h"
 #import "FrameLoader.h"
@@ -90,7 +89,7 @@ void Page::platformInitialize()
 void Page::addSchedulePair(Ref<SchedulePair>&& pair)
 {
     if (!m_scheduledRunLoopPairs)
-        m_scheduledRunLoopPairs = std::make_unique<SchedulePairHashSet>();
+        m_scheduledRunLoopPairs = makeUnique<SchedulePairHashSet>();
     m_scheduledRunLoopPairs->add(pair.ptr());
 
     for (Frame* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {

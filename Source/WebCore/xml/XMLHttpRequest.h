@@ -128,20 +128,24 @@ public:
 
     size_t memoryCost() const;
 
-    WEBCORE_EXPORT void setMaximumIntervalForUserGestureForwarding(double);
+    using EventTarget::dispatchEvent;
+    void dispatchEvent(Event&) override;
 
 private:
     explicit XMLHttpRequest(ScriptExecutionContext&);
+
+    // EventTarget.
+    void eventListenersDidChange() final;
 
     TextEncoding finalResponseCharset() const;
 
     // ActiveDOMObject
     void contextDestroyed() override;
-    bool canSuspendForDocumentSuspension() const override;
     void suspend(ReasonForSuspension) override;
     void resume() override;
     void stop() override;
     const char* activeDOMObjectName() const override;
+    bool virtualHasPendingActivity() const final;
 
     void refEventTarget() override { ref(); }
     void derefEventTarget() override { deref(); }
@@ -186,13 +190,7 @@ private:
 
     void dispatchErrorEvents(const AtomString&);
 
-    using EventTarget::dispatchEvent;
-    void dispatchEvent(Event&) override;
-
-    void resumeTimerFired();
     Ref<TextResourceDecoder> createDecoder() const;
-
-    void networkErrorTimerFired();
 
     unsigned m_async : 1;
     unsigned m_includeCredentials : 1;
@@ -203,7 +201,6 @@ private:
     unsigned m_uploadComplete : 1;
     unsigned m_wasAbortedByClient : 1;
     unsigned m_responseCacheIsValid : 1;
-    unsigned m_dispatchErrorOnResuming : 1;
     unsigned m_readyState : 3; // State
     unsigned m_responseType : 3; // ResponseType
 
@@ -217,7 +214,11 @@ private:
     RefPtr<FormData> m_requestEntityBody;
     String m_mimeTypeOverride;
 
-    RefPtr<ThreadableLoader> m_loader;
+    struct LoadingActivity {
+        Ref<XMLHttpRequest> protectedThis; // Keep object alive while loading even if there is no longer a JS wrapper.
+        Ref<ThreadableLoader> loader;
+    };
+    Optional<LoadingActivity> m_loadingActivity;
 
     String m_responseEncoding;
 
@@ -238,15 +239,13 @@ private:
 
     mutable String m_allResponseHeaders;
 
-    Timer m_resumeTimer;
-    Timer m_networkErrorTimer;
     Timer m_timeoutTimer;
 
     MonotonicTime m_sendingTime;
 
     Optional<ExceptionCode> m_exceptionCode;
     RefPtr<UserGestureToken> m_userGestureToken;
-    Seconds m_maximumIntervalForUserGestureForwarding;
+    bool m_hasRelevantEventListener { false };
 };
 
 inline auto XMLHttpRequest::responseType() const -> ResponseType

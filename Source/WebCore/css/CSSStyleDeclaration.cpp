@@ -29,8 +29,11 @@
 #include "CSSPropertyNames.h"
 #include "CSSPropertyParser.h"
 #include "DeprecatedGlobalSettings.h"
+#include "Document.h"
 #include "HashTools.h"
 #include "RuntimeEnabledFeatures.h"
+#include "Settings.h"
+#include "StyledElement.h"
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/Optional.h>
 #include <wtf/Variant.h>
@@ -247,12 +250,19 @@ static CSSPropertyInfo parseJavaScriptCSSPropertyName(const AtomString& property
     auto* hashTableEntry = findProperty(name, outputLength);
     if (auto propertyID = hashTableEntry ? hashTableEntry->id : 0) {
         auto id = static_cast<CSSPropertyID>(propertyID);
-        if (isEnabledCSSProperty(id)) {
-            propertyInfo.hadPixelOrPosPrefix = hadPixelOrPosPrefix;
-            propertyInfo.propertyID = id;
-            propertyInfoCache.get().add(propertyNameString, propertyInfo);
-        }
+        propertyInfo.hadPixelOrPosPrefix = hadPixelOrPosPrefix;
+        propertyInfo.propertyID = id;
+        propertyInfoCache.get().add(propertyNameString, propertyInfo);
     }
+    return propertyInfo;
+}
+
+static CSSPropertyInfo propertyInfoFromJavaScriptCSSPropertyName(const AtomString& propertyName, const Settings* settings)
+{
+    auto propertyInfo = parseJavaScriptCSSPropertyName(propertyName);
+    auto id = propertyInfo.propertyID;
+    if (!isEnabledCSSProperty(id) || !isCSSPropertyEnabledBySettings(id, settings))
+        return { CSSPropertyInvalid, false };
     return propertyInfo;
 }
 
@@ -260,12 +270,13 @@ static CSSPropertyInfo parseJavaScriptCSSPropertyName(const AtomString& property
 
 CSSPropertyID CSSStyleDeclaration::getCSSPropertyIDFromJavaScriptPropertyName(const AtomString& propertyName)
 {
-    return parseJavaScriptCSSPropertyName(propertyName).propertyID;
+    return propertyInfoFromJavaScriptCSSPropertyName(propertyName, nullptr).propertyID;
 }
 
 Optional<Variant<String, double>> CSSStyleDeclaration::namedItem(const AtomString& propertyName)
 {
-    auto propertyInfo = parseJavaScriptCSSPropertyName(propertyName);
+    auto* settings = parentElement() ? &parentElement()->document().settings() : nullptr;
+    auto propertyInfo = propertyInfoFromJavaScriptCSSPropertyName(propertyName, settings);
     if (!propertyInfo.propertyID)
         return WTF::nullopt;
 
@@ -279,7 +290,7 @@ Optional<Variant<String, double>> CSSStyleDeclaration::namedItem(const AtomStrin
         // Call this version of the getter so that, e.g., pixelTop returns top as a number
         // in pixel units and posTop should does the same _if_ this is a positioned element.
         // FIXME: If not a positioned element, MSIE documentation says posTop should return 0; this rule is not implemented.
-        return Variant<String, double> { downcast<CSSPrimitiveValue>(*value).floatValue(CSSPrimitiveValue::CSS_PX) };
+        return Variant<String, double> { downcast<CSSPrimitiveValue>(*value).floatValue(CSSUnitType::CSS_PX) };
     }
 
     return Variant<String, double> { value->cssText() };
@@ -287,7 +298,8 @@ Optional<Variant<String, double>> CSSStyleDeclaration::namedItem(const AtomStrin
 
 ExceptionOr<void> CSSStyleDeclaration::setNamedItem(const AtomString& propertyName, String value, bool& propertySupported)
 {
-    auto propertyInfo = parseJavaScriptCSSPropertyName(propertyName);
+    auto* settings = parentElement() ? &parentElement()->document().settings() : nullptr;
+    auto propertyInfo = propertyInfoFromJavaScriptCSSPropertyName(propertyName, settings);
     if (!propertyInfo.propertyID) {
         propertySupported = false;
         return { };
@@ -321,6 +333,7 @@ Vector<AtomString> CSSStyleDeclaration::supportedPropertyNames() const
         String names[numCSSProperties];
         for (int i = 0; i < numCSSProperties; ++i) {
             CSSPropertyID id = static_cast<CSSPropertyID>(firstCSSProperty + i);
+            // FIXME: Should take account for flags in settings().
             if (isEnabledCSSProperty(id))
                 names[numNames++] = getJSPropertyName(id);
         }

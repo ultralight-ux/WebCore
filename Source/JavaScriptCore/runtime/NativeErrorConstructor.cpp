@@ -22,11 +22,8 @@
 #include "NativeErrorConstructor.h"
 
 #include "ErrorInstance.h"
-#include "Interpreter.h"
-#include "JSFunction.h"
-#include "JSString.h"
-#include "NativeErrorPrototype.h"
 #include "JSCInlines.h"
+#include "NativeErrorPrototype.h"
 
 namespace JSC {
 
@@ -42,7 +39,7 @@ NativeErrorConstructor<errorType>::NativeErrorConstructor(VM& vm, Structure* str
 
 void NativeErrorConstructorBase::finishCreation(VM& vm, NativeErrorPrototype* prototype, ErrorType errorType)
 {
-    Base::finishCreation(vm, errorTypeName(errorType), NameVisibility::Visible, NameAdditionMode::WithoutStructureTransition);
+    Base::finishCreation(vm, errorTypeName(errorType), NameAdditionMode::WithoutStructureTransition);
     ASSERT(inherits(vm, info()));
     
     putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
@@ -50,24 +47,28 @@ void NativeErrorConstructorBase::finishCreation(VM& vm, NativeErrorPrototype* pr
 }
 
 template<ErrorType errorType>
-EncodedJSValue JSC_HOST_CALL NativeErrorConstructor<errorType>::constructNativeErrorConstructor(ExecState* exec)
+EncodedJSValue JSC_HOST_CALL NativeErrorConstructor<errorType>::constructNativeErrorConstructor(JSGlobalObject* globalObject, CallFrame* callFrame)
 {
-    VM& vm = exec->vm();
+    VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    JSValue message = exec->argument(0);
-    Structure* errorStructure = InternalFunction::createSubclassStructure(exec, exec->newTarget(), jsCast<NativeErrorConstructor*>(exec->jsCallee())->errorStructure(vm));
-    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    JSValue message = callFrame->argument(0);
+
+    JSObject* newTarget = asObject(callFrame->newTarget());
+    Structure* errorStructure = newTarget == callFrame->jsCallee()
+        ? globalObject->errorStructure(errorType)
+        : InternalFunction::createSubclassStructure(globalObject, newTarget, getFunctionRealm(vm, newTarget)->errorStructure(errorType));
+    RETURN_IF_EXCEPTION(scope, { });
     ASSERT(errorStructure);
-    RELEASE_AND_RETURN(scope, JSValue::encode(ErrorInstance::create(exec, errorStructure, message, nullptr, TypeNothing, false)));
+
+    RELEASE_AND_RETURN(scope, JSValue::encode(ErrorInstance::create(globalObject, errorStructure, message, nullptr, TypeNothing, false)));
 }
 
 template<ErrorType errorType>
-EncodedJSValue JSC_HOST_CALL NativeErrorConstructor<errorType>::callNativeErrorConstructor(ExecState* exec)
+EncodedJSValue JSC_HOST_CALL NativeErrorConstructor<errorType>::callNativeErrorConstructor(JSGlobalObject* globalObject, CallFrame* callFrame)
 {
-    VM& vm = exec->vm();
-    JSValue message = exec->argument(0);
-    Structure* errorStructure = jsCast<NativeErrorConstructor*>(exec->jsCallee())->errorStructure(vm);
-    return JSValue::encode(ErrorInstance::create(exec, errorStructure, message, nullptr, TypeNothing, false));
+    JSValue message = callFrame->argument(0);
+    Structure* errorStructure = globalObject->errorStructure(errorType);
+    return JSValue::encode(ErrorInstance::create(globalObject, errorStructure, message, nullptr, TypeNothing, false));
 }
 
 template class NativeErrorConstructor<ErrorType::EvalError>;

@@ -48,9 +48,8 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(SVGUseElement);
 
 inline SVGUseElement::SVGUseElement(const QualifiedName& tagName, Document& document)
     : SVGGraphicsElement(tagName, document)
-    , SVGExternalResourcesRequired(this)
     , SVGURIReference(this)
-    , m_svgLoadEventTimer(*this, &SVGElement::svgLoadEventTimerFired)
+    , m_loadEventTimer(*this, &SVGElement::loadEventTimerFired)
 {
     ASSERT(hasCustomStyleResolveCallbacks());
     ASSERT(hasTagName(SVGNames::useTag));
@@ -90,7 +89,6 @@ void SVGUseElement::parseAttribute(const QualifiedName& name, const AtomString& 
 
     reportAttributeParsingError(parseError, name, value);
 
-    SVGExternalResourcesRequired::parseAttribute(name, value);
     SVGGraphicsElement::parseAttribute(name, value);
     SVGURIReference::parseAttribute(name, value);
 }
@@ -101,7 +99,6 @@ Node::InsertedIntoAncestorResult SVGUseElement::insertedIntoAncestor(InsertionTy
     if (insertionType.connectedToDocument) {
         if (m_shadowTreeNeedsUpdate)
             document().addSVGUseElement(*this);
-        SVGExternalResourcesRequired::insertedIntoDocument();
         invalidateShadowTree();
         // FIXME: Move back the call to updateExternalDocument() here once notifyFinished is made always async.
         return InsertedIntoAncestorResult::NeedsPostInsertionCallback;
@@ -177,11 +174,7 @@ void SVGUseElement::svgAttributeChanged(const QualifiedName& attrName)
         return;
     }
 
-    if (SVGLangSpace::isKnownAttribute(attrName) || SVGExternalResourcesRequired::isKnownAttribute(attrName))
-        invalidateShadowTree();
-
     SVGGraphicsElement::svgAttributeChanged(attrName);
-    SVGExternalResourcesRequired::svgAttributeChanged(attrName);
 }
 
 static HashSet<AtomString> createAllowedElementSet()
@@ -338,8 +331,7 @@ static void removeDisallowedElementsFromSubtree(SVGElement& subtree)
     ASSERT(!subtree.isConnected());
 
     Vector<Element*> disallowedElements;
-    auto descendants = descendantsOfType<Element>(subtree);
-    for (auto it = descendants.begin(), end = descendants.end(); it != end; ) {
+    for (auto it = descendantsOfType<Element>(subtree).begin(); it; ) {
         if (isDisallowedElement(*it)) {
             disallowedElements.append(&*it);
             it.traverseNextSkippingChildren();
@@ -459,9 +451,9 @@ static void cloneDataAndChildren(SVGElement& replacementClone, SVGElement& origi
 void SVGUseElement::expandUseElementsInShadowTree() const
 {
     auto descendants = descendantsOfType<SVGUseElement>(*userAgentShadowRoot());
-    for (auto it = descendants.begin(), end = descendants.end(); it != end; ) {
+    for (auto it = descendants.begin(); it; ) {
         SVGUseElement& originalClone = *it;
-        it = end; // Efficiently quiets assertions due to the outstanding iterator.
+        it.dropAssertions();
 
         auto* target = originalClone.findTarget();
 
@@ -492,9 +484,9 @@ void SVGUseElement::expandUseElementsInShadowTree() const
 void SVGUseElement::expandSymbolElementsInShadowTree() const
 {
     auto descendants = descendantsOfType<SVGSymbolElement>(*userAgentShadowRoot());
-    for (auto it = descendants.begin(), end = descendants.end(); it != end; ) {
+    for (auto it = descendants.begin(); it; ) {
         SVGSymbolElement& originalClone = *it;
-        it = end; // Efficiently quiets assertions due to the outstanding iterator.
+        it.dropAssertions();
 
         // Spec: The referenced 'symbol' and its contents are deep-cloned into the generated tree,
         // with the exception that the 'symbol' is replaced by an 'svg'. This generated 'svg' will
@@ -550,20 +542,15 @@ bool SVGUseElement::selfHasRelativeLengths() const
     return targetClone && targetClone->hasRelativeLengths();
 }
 
-void SVGUseElement::notifyFinished(CachedResource& resource)
+void SVGUseElement::notifyFinished(CachedResource& resource, const NetworkLoadMetrics&)
 {
     ASSERT(ScriptDisallowedScope::InMainThread::isScriptAllowed());
     invalidateShadowTree();
-    if (resource.errorOccurred())
+    if (resource.errorOccurred()) {
+        setErrorOccurred(true);
         dispatchEvent(Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
-    else if (!resource.wasCanceled())
-        SVGExternalResourcesRequired::dispatchLoadEvent();
-}
-
-void SVGUseElement::finishParsingChildren()
-{
-    SVGGraphicsElement::finishParsingChildren();
-    SVGExternalResourcesRequired::finishParsingChildren();
+    } else if (!resource.wasCanceled())
+        SVGURIReference::dispatchLoadEvent();
 }
 
 void SVGUseElement::updateExternalDocument()
@@ -595,31 +582,6 @@ void SVGUseElement::updateExternalDocument()
     }
 
     invalidateShadowTree();
-}
-
-bool SVGUseElement::isValid() const
-{
-    return SVGTests::isValid();
-}
-
-bool SVGUseElement::haveLoadedRequiredResources()
-{
-    return SVGExternalResourcesRequired::haveLoadedRequiredResources();
-}
-
-void SVGUseElement::setHaveFiredLoadEvent(bool haveFiredLoadEvent)
-{
-    m_haveFiredLoadEvent = haveFiredLoadEvent;
-}
-
-bool SVGUseElement::haveFiredLoadEvent() const
-{
-    return m_haveFiredLoadEvent;
-}
-
-Timer* SVGUseElement::svgLoadEventTimer()
-{
-    return &m_svgLoadEventTimer;
 }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2020 Apple Inc. All rights reserved.
  * Portions Copyright (c) 2011 Motorola Mobility, Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,6 +27,7 @@
 #include "config.h"
 #include "VisiblePosition.h"
 
+#include "BoundaryPoint.h"
 #include "Document.h"
 #include "Editing.h"
 #include "FloatQuad.h"
@@ -38,6 +39,7 @@
 #include "Range.h"
 #include "RenderBlock.h"
 #include "RootInlineBox.h"
+#include "SimpleRange.h"
 #include "Text.h"
 #include "VisibleUnits.h"
 #include <stdio.h>
@@ -136,7 +138,7 @@ Position VisiblePosition::leftVisuallyDistinctCandidate() const
                 return box->isLeftToRightDirection() ? previousVisuallyDistinctCandidate(m_deepPosition) : nextVisuallyDistinctCandidate(m_deepPosition);
 
             if (!renderer->node()) {
-                box = box->prevLeafChild();
+                box = box->previousLeafOnLine();
                 if (!box)
                     return primaryDirection == TextDirection::LTR ? previousVisuallyDistinctCandidate(m_deepPosition) : nextVisuallyDistinctCandidate(m_deepPosition);
                 renderer = &box->renderer();
@@ -154,7 +156,7 @@ Position VisiblePosition::leftVisuallyDistinctCandidate() const
 
             if (box->isLeftToRightDirection() ? offset < caretMinOffset : offset > caretMaxOffset) {
                 // Overshot to the left.
-                InlineBox* prevBox = box->prevLeafChildIgnoringLineBreak();
+                InlineBox* prevBox = box->previousLeafOnLineIgnoringLineBreak();
                 if (!prevBox) {
                     Position positionOnLeft = primaryDirection == TextDirection::LTR ? previousVisuallyDistinctCandidate(m_deepPosition) : nextVisuallyDistinctCandidate(m_deepPosition);
                     if (positionOnLeft.isNull())
@@ -178,7 +180,7 @@ Position VisiblePosition::leftVisuallyDistinctCandidate() const
             ASSERT(offset == box->caretLeftmostOffset());
 
             unsigned char level = box->bidiLevel();
-            InlineBox* prevBox = box->prevLeafChild();
+            InlineBox* prevBox = box->previousLeafOnLine();
 
             if (box->direction() == primaryDirection) {
                 if (!prevBox) {
@@ -197,7 +199,7 @@ Position VisiblePosition::leftVisuallyDistinctCandidate() const
 
                 InlineBox* nextBox = box;
                 do {
-                    nextBox = nextBox->nextLeafChild();
+                    nextBox = nextBox->nextLeafOnLine();
                 } while (nextBox && nextBox->bidiLevel() > level);
 
                 if (nextBox && nextBox->bidiLevel() == level)
@@ -212,7 +214,7 @@ Position VisiblePosition::leftVisuallyDistinctCandidate() const
             }
 
             while (prevBox && !prevBox->renderer().node())
-                prevBox = prevBox->prevLeafChild();
+                prevBox = prevBox->previousLeafOnLine();
 
             if (prevBox) {
                 box = prevBox;
@@ -220,7 +222,7 @@ Position VisiblePosition::leftVisuallyDistinctCandidate() const
                 offset = box->caretRightmostOffset();
                 if (box->bidiLevel() > level) {
                     do {
-                        prevBox = prevBox->prevLeafChild();
+                        prevBox = prevBox->previousLeafOnLine();
                     } while (prevBox && prevBox->bidiLevel() > level);
 
                     if (!prevBox || prevBox->bidiLevel() < level)
@@ -229,7 +231,7 @@ Position VisiblePosition::leftVisuallyDistinctCandidate() const
             } else {
                 // Trailing edge of a secondary run. Set to the leading edge of the entire run.
                 while (true) {
-                    while (InlineBox* nextBox = box->nextLeafChild()) {
+                    while (InlineBox* nextBox = box->nextLeafOnLine()) {
                         if (nextBox->bidiLevel() < level)
                             break;
                         box = nextBox;
@@ -237,7 +239,7 @@ Position VisiblePosition::leftVisuallyDistinctCandidate() const
                     if (box->bidiLevel() == level)
                         break;
                     level = box->bidiLevel();
-                    while (InlineBox* prevBox = box->prevLeafChild()) {
+                    while (InlineBox* prevBox = box->previousLeafOnLine()) {
                         if (prevBox->bidiLevel() < level)
                             break;
                         box = prevBox;
@@ -306,7 +308,7 @@ Position VisiblePosition::rightVisuallyDistinctCandidate() const
                 return box->isLeftToRightDirection() ? nextVisuallyDistinctCandidate(m_deepPosition) : previousVisuallyDistinctCandidate(m_deepPosition);
 
             if (!renderer->node()) {
-                box = box->nextLeafChild();
+                box = box->nextLeafOnLine();
                 if (!box)
                     return primaryDirection == TextDirection::LTR ? nextVisuallyDistinctCandidate(m_deepPosition) : previousVisuallyDistinctCandidate(m_deepPosition);
                 renderer = &box->renderer();
@@ -324,7 +326,7 @@ Position VisiblePosition::rightVisuallyDistinctCandidate() const
 
             if (box->isLeftToRightDirection() ? offset > caretMaxOffset : offset < caretMinOffset) {
                 // Overshot to the right.
-                InlineBox* nextBox = box->nextLeafChildIgnoringLineBreak();
+                InlineBox* nextBox = box->nextLeafOnLineIgnoringLineBreak();
                 if (!nextBox) {
                     Position positionOnRight = primaryDirection == TextDirection::LTR ? nextVisuallyDistinctCandidate(m_deepPosition) : previousVisuallyDistinctCandidate(m_deepPosition);
                     if (positionOnRight.isNull())
@@ -348,7 +350,7 @@ Position VisiblePosition::rightVisuallyDistinctCandidate() const
             ASSERT(offset == box->caretRightmostOffset());
 
             unsigned char level = box->bidiLevel();
-            InlineBox* nextBox = box->nextLeafChild();
+            InlineBox* nextBox = box->nextLeafOnLine();
 
             if (box->direction() == primaryDirection) {
                 if (!nextBox) {
@@ -368,7 +370,7 @@ Position VisiblePosition::rightVisuallyDistinctCandidate() const
 
                 InlineBox* prevBox = box;
                 do {
-                    prevBox = prevBox->prevLeafChild();
+                    prevBox = prevBox->previousLeafOnLine();
                 } while (prevBox && prevBox->bidiLevel() > level);
 
                 if (prevBox && prevBox->bidiLevel() == level)   // For example, abc FED 123 ^ CBA
@@ -384,7 +386,7 @@ Position VisiblePosition::rightVisuallyDistinctCandidate() const
             }
 
             while (nextBox && !nextBox->renderer().node())
-                nextBox = nextBox->nextLeafChild();
+                nextBox = nextBox->nextLeafOnLine();
 
             if (nextBox) {
                 box = nextBox;
@@ -393,7 +395,7 @@ Position VisiblePosition::rightVisuallyDistinctCandidate() const
 
                 if (box->bidiLevel() > level) {
                     do {
-                        nextBox = nextBox->nextLeafChild();
+                        nextBox = nextBox->nextLeafOnLine();
                     } while (nextBox && nextBox->bidiLevel() > level);
 
                     if (!nextBox || nextBox->bidiLevel() < level)
@@ -402,7 +404,7 @@ Position VisiblePosition::rightVisuallyDistinctCandidate() const
             } else {
                 // Trailing edge of a secondary run. Set to the leading edge of the entire run.
                 while (true) {
-                    while (InlineBox* prevBox = box->prevLeafChild()) {
+                    while (InlineBox* prevBox = box->previousLeafOnLine()) {
                         if (prevBox->bidiLevel() < level)
                             break;
                         box = prevBox;
@@ -410,7 +412,7 @@ Position VisiblePosition::rightVisuallyDistinctCandidate() const
                     if (box->bidiLevel() == level)
                         break;
                     level = box->bidiLevel();
-                    while (InlineBox* nextBox = box->nextLeafChild()) {
+                    while (InlineBox* nextBox = box->nextLeafOnLine()) {
                         if (nextBox->bidiLevel() < level)
                             break;
                         box = nextBox;
@@ -667,6 +669,27 @@ IntRect VisiblePosition::absoluteCaretBounds(bool* insideFixed) const
     return absoluteBoundsForLocalCaretRect(renderer, localRect, insideFixed);
 }
 
+FloatRect VisiblePosition::absoluteSelectionBoundsForLine() const
+{
+    if (m_deepPosition.isNull())
+        return { };
+
+    auto* node = m_deepPosition.anchorNode();
+    if (!node->renderer())
+        return { };
+
+    InlineBox* inlineBox = nullptr;
+    int caretOffset = 0;
+    getInlineBoxAndOffset(inlineBox, caretOffset);
+
+    if (!inlineBox)
+        return { };
+
+    auto& root = inlineBox->root();
+    auto localRect = FloatRect { root.x(), root.selectionTop(), root.width(), root.selectionHeight() };
+    return root.renderer().localToAbsoluteQuad(localRect).boundingBox();
+}
+
 int VisiblePosition::lineDirectionPointForBlockDirectionNavigation() const
 {
     RenderObject* renderer;
@@ -708,53 +731,6 @@ void VisiblePosition::showTreeForThis() const
 
 #endif
 
-RefPtr<Range> makeRange(const VisiblePosition& start, const VisiblePosition& end)
-{
-    if (start.isNull() || end.isNull())
-        return nullptr;
-    
-    Position s = start.deepEquivalent().parentAnchoredEquivalent();
-    Position e = end.deepEquivalent().parentAnchoredEquivalent();
-    if (s.isNull() || e.isNull())
-        return nullptr;
-
-    return Range::create(s.containerNode()->document(), s.containerNode(), s.offsetInContainerNode(), e.containerNode(), e.offsetInContainerNode());
-}
-
-VisiblePosition startVisiblePosition(const Range *r, EAffinity affinity)
-{
-    return VisiblePosition(r->startPosition(), affinity);
-}
-
-VisiblePosition endVisiblePosition(const Range *r, EAffinity affinity)
-{
-    return VisiblePosition(r->endPosition(), affinity);
-}
-
-bool setStart(Range* range, const VisiblePosition& visiblePosition)
-{
-    if (!range)
-        return false;
-
-    Position p = visiblePosition.deepEquivalent().parentAnchoredEquivalent();
-    if (!p.containerNode())
-        return false;
-
-    return !range->setStart(*p.containerNode(), p.offsetInContainerNode()).hasException();
-}
-
-bool setEnd(Range* range, const VisiblePosition& visiblePosition)
-{
-    if (!range)
-        return false;
-
-    Position p = visiblePosition.deepEquivalent().parentAnchoredEquivalent();
-    if (!p.containerNode())
-        return false;
-
-    return !range->setEnd(*p.containerNode(), p.offsetInContainerNode()).hasException();
-}
-
 // FIXME: Maybe this should be deprecated too, like the underlying function?
 Element* enclosingBlockFlowElement(const VisiblePosition& visiblePosition)
 {
@@ -788,9 +764,19 @@ bool isLastVisiblePositionInNode(const VisiblePosition &visiblePosition, const N
     return next.isNull() || !next.deepEquivalent().deprecatedNode()->isDescendantOf(node);
 }
 
+bool areVisiblePositionsInSameTreeScope(const VisiblePosition& a, const VisiblePosition& b)
+{
+    return areNodesConnectedInSameTreeScope(a.deepEquivalent().anchorNode(), b.deepEquivalent().anchorNode());
+}
+
 bool VisiblePosition::equals(const VisiblePosition& other) const
 {
     return m_affinity == other.m_affinity && m_deepPosition.equals(other.m_deepPosition);
+}
+
+Optional<BoundaryPoint> makeBoundaryPoint(const VisiblePosition& position)
+{
+    return makeBoundaryPoint(position.deepEquivalent());
 }
 
 TextStream& operator<<(TextStream& stream, EAffinity affinity)
@@ -815,6 +801,11 @@ TextStream& operator<<(TextStream& stream, const VisiblePosition& visiblePositio
     stream.dumpProperty("affinity", visiblePosition.affinity());
 
     return stream;
+}
+
+Optional<SimpleRange> makeSimpleRange(const VisiblePositionRange& range)
+{
+    return makeSimpleRange(range.start, range.end);
 }
 
 }  // namespace WebCore

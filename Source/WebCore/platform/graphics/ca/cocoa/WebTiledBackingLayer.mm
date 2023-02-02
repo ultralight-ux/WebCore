@@ -51,18 +51,10 @@
     [super dealloc];
 }
 
-- (id)initWithLayer:(id)layer
-{
-    UNUSED_PARAM(layer);
-
-    ASSERT_NOT_REACHED();
-    return nil;
-}
-
 - (WebCore::TileController*)createTileController:(WebCore::PlatformCALayer*)rootLayer
 {
     ASSERT(!_tileController);
-    _tileController = std::make_unique<WebCore::TileController>(rootLayer);
+    _tileController = makeUnique<WebCore::TileController>(rootLayer);
     return _tileController.get();
 }
 

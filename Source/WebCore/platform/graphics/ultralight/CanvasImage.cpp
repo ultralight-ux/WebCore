@@ -30,10 +30,10 @@ void CanvasImage::computeIntrinsicDimensions(Length& intrinsicWidth, Length& int
     intrinsicRatio = FloatSize();
 }
 
-ImageDrawResult CanvasImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator op, BlendMode mode, DecodingMode decodingMode, ImageOrientationDescription orientation)
+ImageDrawResult CanvasImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
     context.save();
-    context.setCompositeOperation(op, mode);
+    context.setCompositeOperation(options.compositeOperator(), options.blendMode());
     ultralight::Paint paint;
     paint.color = UltralightColorWHITE;
     context.platformContext()->canvas()->DrawCanvas(m_canvas, srcRect, dstRect, paint);
@@ -43,9 +43,9 @@ ImageDrawResult CanvasImage::draw(GraphicsContext& context, const FloatRect& dst
 }
 
 void CanvasImage::drawPattern(GraphicsContext& context, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform,
-    const FloatPoint& phase, const FloatSize& spacing, CompositeOperator op, BlendMode blend)
+  const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
-    context.drawPattern(*this, destRect, srcRect, patternTransform, phase, spacing, op, blend);
+    context.drawPattern(*this, destRect, srcRect, patternTransform, phase, spacing, options);
 }
 
 } // namespace WebCore

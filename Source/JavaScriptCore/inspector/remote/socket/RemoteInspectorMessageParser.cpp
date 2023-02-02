@@ -41,10 +41,9 @@ namespace Inspector {
                | <------------ size ------------> |
 */
 
-MessageParser::MessageParser(ConnectionID id, size_t bufferSize)
-    : m_connectionID(id)
+MessageParser::MessageParser(Function<void(Vector<uint8_t>&&)>&& listener)
+    : m_listener(WTFMove(listener))
 {
-    m_buffer.reserveCapacity(bufferSize);
 }
 
 Vector<uint8_t> MessageParser::createMessage(const uint8_t* data, size_t size)
@@ -54,7 +53,7 @@ Vector<uint8_t> MessageParser::createMessage(const uint8_t* data, size_t size)
 
     auto messageBuffer = Vector<uint8_t>(size + sizeof(uint32_t));
     uint32_t uintSize = static_cast<uint32_t>(size);
-    uint32_t nboSize = htonl(uintSize);
+    uint32_t nboSize = WTF::htonl(uintSize);
     memcpy(&messageBuffer[0], &nboSize, sizeof(uint32_t));
     memcpy(&messageBuffer[sizeof(uint32_t)], data, uintSize);
     return messageBuffer;
@@ -62,7 +61,7 @@ Vector<uint8_t> MessageParser::createMessage(const uint8_t* data, size_t size)
 
 void MessageParser::pushReceivedData(const uint8_t* data, size_t size)
 {
-    if (!data || !size)
+    if (!data || !size || !m_listener)
         return;
 
     m_buffer.reserveCapacity(m_buffer.size() + size);
@@ -87,7 +86,7 @@ bool MessageParser::parse()
 
         uint32_t dataSize = 0;
         memcpy(&dataSize, &m_buffer[0], sizeof(uint32_t));
-        dataSize = ntohl(dataSize);
+        dataSize = WTF::ntohl(dataSize);
         if (!dataSize) {
             LOG_ERROR("Message Parser received an invalid message size");
             return false;
@@ -103,8 +102,7 @@ bool MessageParser::parse()
         auto dataBuffer = Vector<uint8_t>(dataSize);
         memcpy(&dataBuffer[0], &m_buffer[sizeof(uint32_t)], dataSize);
 
-        if (m_didParseMessageListener)
-            m_didParseMessageListener(m_connectionID, WTFMove(dataBuffer));
+        m_listener(WTFMove(dataBuffer));
 
         m_buffer.remove(0, messageSize);
     }

@@ -12,12 +12,7 @@ namespace WebCore {
     if (!image)
       return IntSize();
 
-    uint32_t width, height;
-    if (!image->first->GetFrameSize(image->second, width, height))
-      return IntSize();
-
-
-    return IntSize(width, height);
+    return IntSize(image->bitmap()->width(), image->bitmap()->height());
   }
 
   bool nativeImageHasAlpha(const NativeImagePtr& image)
@@ -39,51 +34,14 @@ namespace WebCore {
     return 1;
   }
 
-  void drawNativeImage(const NativeImagePtr& image, GraphicsContext& context, const FloatRect& destRect, const FloatRect& srcRect, const IntSize&, CompositeOperator op, BlendMode mode, const ImageOrientation& orientation)
+  void drawNativeImage(const NativeImagePtr& image, GraphicsContext& context, const FloatRect& destRect, const FloatRect& srcRect, const IntSize& imageSize, const ImagePaintingOptions& options)
   {
-    if (!image)
-      return;
-
-    context.save();
-
-    // Set the compositing operation.
-    if (op == CompositeSourceOver && mode == BlendMode::Normal && !nativeImageHasAlpha(image))
-      context.setCompositeOperation(CompositeCopy);
-    else
-      context.setCompositeOperation(op, mode);
-
-#if ENABLE(IMAGE_DECODER_DOWN_SAMPLING)
-    IntSize scaledSize = nativeImageSize(image);
-    FloatRect adjustedSrcRect = adjustSourceRectForDownSampling(srcRect, scaledSize);
-#else
-    FloatRect adjustedSrcRect(srcRect);
-#endif
-
-    FloatRect adjustedDestRect = destRect;
-
-    if (orientation != DefaultImageOrientation) {
-      // ImageOrientation expects the origin to be at (0, 0).
-      context.translate(destRect.x(), destRect.y());
-      adjustedDestRect.setLocation(FloatPoint());
-      context.concatCTM(orientation.transformFromDefault(adjustedDestRect.size()));
-      if (orientation.usesWidthAsHeight()) {
-        // The destination rectangle will have it's width and height already reversed for the orientation of
-        // the image, as it was needed for page layout, so we need to reverse it back here.
-        adjustedDestRect.setSize(adjustedDestRect.size().transposedSize());
-      }
-    }
-
-    ultralight::Paint paint;
-    paint.color = UltralightColorWHITE;
-    context.platformContext()->canvas()->DrawImage(image->first, image->second, adjustedSrcRect,
-      adjustedDestRect, paint);
-    context.restore();
+      context.drawNativeImage(image, imageSize, destRect, srcRect, options);
   }
 
   void clearNativeImageSubimages(const NativeImagePtr& image)
   {
-    if (image)
-      image->first->ClearFrame(image->second);
+    // FIXME, handle this
   }
 
 } // namespace WebCore

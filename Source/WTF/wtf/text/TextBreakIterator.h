@@ -21,12 +21,13 @@
 
 #pragma once
 
+#include <mutex>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Variant.h>
 #include <wtf/text/StringView.h>
 #include <wtf/text/icu/TextBreakIteratorICU.h>
 
-#if PLATFORM(MAC) || PLATFORM(IOS_FAMILY)
+#if PLATFORM(COCOA)
 #include <wtf/text/cf/TextBreakIteratorCF.h>
 #else
 #include <wtf/text/NullTextBreakIterator.h>
@@ -34,7 +35,7 @@
 
 namespace WTF {
 
-#if PLATFORM(MAC) || PLATFORM(IOS_FAMILY)
+#if PLATFORM(COCOA)
 typedef TextBreakIteratorCF TextBreakIteratorPlatform;
 #else
 typedef NullTextBreakIterator TextBreakIteratorPlatform;
@@ -43,6 +44,7 @@ typedef NullTextBreakIterator TextBreakIteratorPlatform;
 class TextBreakIteratorCache;
 
 class TextBreakIterator {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     enum class Mode {
         Line,
@@ -81,7 +83,7 @@ private:
     friend class TextBreakIteratorCache;
 
     // Use CachedTextBreakIterator instead of constructing one of these directly.
-    WTF_EXPORT TextBreakIterator(StringView, Mode, const AtomString& locale);
+    WTF_EXPORT_PRIVATE TextBreakIterator(StringView, Mode, const AtomString& locale);
 
     void setText(StringView string)
     {
@@ -108,16 +110,13 @@ private:
 class CachedTextBreakIterator;
 
 class TextBreakIteratorCache {
+    WTF_MAKE_FAST_ALLOCATED;
 // Use CachedTextBreakIterator instead of dealing with the cache directly.
 private:
-    friend class NeverDestroyed<TextBreakIteratorCache>;
+    friend class LazyNeverDestroyed<TextBreakIteratorCache>;
     friend class CachedTextBreakIterator;
 
-    static TextBreakIteratorCache& singleton()
-    {
-        static NeverDestroyed<TextBreakIteratorCache> cache;
-        return cache.get();
-    }
+    WTF_EXPORT_PRIVATE static TextBreakIteratorCache& singleton();
 
     TextBreakIteratorCache(const TextBreakIteratorCache&) = delete;
     TextBreakIteratorCache(TextBreakIteratorCache&&) = delete;
@@ -156,6 +155,7 @@ private:
 
 // RAII for TextBreakIterator and TextBreakIteratorCache.
 class CachedTextBreakIterator {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     CachedTextBreakIterator(StringView string, TextBreakIterator::Mode mode, const AtomString& locale)
         : m_backing(TextBreakIteratorCache::singleton().take(string, mode, locale))
@@ -207,6 +207,7 @@ void closeLineBreakIterator(UBreakIterator*&);
 WTF_EXPORT_PRIVATE bool isWordTextBreak(UBreakIterator*);
 
 class LazyLineBreakIterator {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     LazyLineBreakIterator()
     {
@@ -281,7 +282,7 @@ public:
     UBreakIterator* get(unsigned priorContextLength)
     {
         ASSERT(priorContextLength <= priorContextCapacity);
-        const UChar* priorContext = priorContextLength ? &m_priorContext[priorContextCapacity - priorContextLength] : 0;
+        const UChar* priorContext = priorContextLength ? &m_priorContext[priorContextCapacity - priorContextLength] : nullptr;
         if (!m_iterator) {
             m_iterator = acquireLineBreakIterator(m_stringView, m_locale, priorContext, priorContextLength, m_mode);
             m_cachedPriorContext = priorContext;
@@ -322,6 +323,7 @@ private:
 // Use this for general text processing, e.g. string truncation.
 
 class NonSharedCharacterBreakIterator {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(NonSharedCharacterBreakIterator);
 public:
     WTF_EXPORT_PRIVATE NonSharedCharacterBreakIterator(StringView);

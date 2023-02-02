@@ -31,13 +31,15 @@ namespace JSC {
 
 class JSArrayBufferPrototype final : public JSNonFinalObject {
 public:
-    typedef JSNonFinalObject Base;
+    using Base = JSNonFinalObject;
 
-protected:
-    JSArrayBufferPrototype(VM&, Structure*, ArrayBufferSharingMode);
-    void finishCreation(VM&, JSGlobalObject*);
+    template<typename CellType, SubspaceAccess>
+    static IsoSubspace* subspaceFor(VM& vm)
+    {
+        STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSArrayBufferPrototype, Base);
+        return &vm.plainObjectSpace;
+    }
 
-public:
     static JSArrayBufferPrototype* create(VM&, JSGlobalObject*, Structure*, ArrayBufferSharingMode = ArrayBufferSharingMode::Default);
     
     DECLARE_INFO;
@@ -45,7 +47,8 @@ public:
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue prototype);
 
 private:
-    ArrayBufferSharingMode m_sharingMode;
+    JSArrayBufferPrototype(VM&, Structure*);
+    void finishCreation(VM&, JSGlobalObject*, ArrayBufferSharingMode);
 };
 
 } // namespace JSC

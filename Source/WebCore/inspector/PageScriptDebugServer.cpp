@@ -29,7 +29,6 @@
 
 #include "CommonVM.h"
 #include "Document.h"
-#include "EventLoop.h"
 #include "Frame.h"
 #include "FrameView.h"
 #include "InspectorController.h"
@@ -116,27 +115,26 @@ void PageScriptDebugServer::runEventLoopWhilePausedInternal()
 
     m_page.incrementNestedRunLoopCount();
 
-    EventLoop loop;
-    while (!m_doneProcessingDebuggerEvents && !loop.ended())
-        loop.cycle();
+    while (!m_doneProcessingDebuggerEvents) {
+        if (!platformShouldContinueRunningEventLoopWhilePaused())
+            break;
+    }
 
     m_page.decrementNestedRunLoopCount();
 }
 
-bool PageScriptDebugServer::isContentScript(ExecState* state) const
+bool PageScriptDebugServer::isContentScript(JSGlobalObject* state) const
 {
     return &currentWorld(*state) != &mainThreadNormalWorld();
 }
 
-void PageScriptDebugServer::reportException(ExecState* state, JSC::Exception* exception) const
+void PageScriptDebugServer::reportException(JSGlobalObject* state, JSC::Exception* exception) const
 {
     WebCore::reportException(state, exception);
 }
 
 void PageScriptDebugServer::setJavaScriptPaused(const PageGroup& pageGroup, bool paused)
 {
-    setMainThreadCallbacksPaused(paused);
-
     for (auto& page : pageGroup.pages()) {
         for (Frame* frame = &page->mainFrame(); frame; frame = frame->tree().traverseNext())
             setJavaScriptPaused(*frame, paused);
@@ -175,5 +173,12 @@ void PageScriptDebugServer::setJavaScriptPaused(Frame& frame, bool paused)
         }
     }
 }
+
+#if !PLATFORM(MAC)
+bool PageScriptDebugServer::platformShouldContinueRunningEventLoopWhilePaused()
+{
+    return RunLoop::cycle() != RunLoop::CycleResult::Stop;
+}
+#endif // !PLATFORM(MAC)
 
 } // namespace WebCore

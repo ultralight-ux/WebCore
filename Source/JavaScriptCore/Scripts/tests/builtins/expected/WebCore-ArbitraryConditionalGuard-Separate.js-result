@@ -31,7 +31,7 @@
 
 #pragma once
 
-#if ENABLE(STREAMS_API) || USE(CF)
+#if ENABLE(TEST_ARBITARY_CONDTIONAL_GUARD_SEPARATE_A) || USE(TEST_ARBITARY_CONDTIONAL_GUARD_SEPARATE_B)
 
 #include <JavaScriptCore/BuiltinUtils.h>
 #include <JavaScriptCore/Identifier.h>
@@ -48,6 +48,7 @@ namespace WebCore {
 extern const char* const s_arbitraryConditionalGuardIsReadableStreamLockedCode;
 extern const int s_arbitraryConditionalGuardIsReadableStreamLockedCodeLength;
 extern const JSC::ConstructAbility s_arbitraryConditionalGuardIsReadableStreamLockedCodeConstructAbility;
+extern const JSC::ConstructorKind s_arbitraryConditionalGuardIsReadableStreamLockedCodeConstructorKind;
 
 #define WEBCORE_FOREACH_ARBITRARYCONDITIONALGUARD_BUILTIN_DATA(macro) \
     macro(isReadableStreamLocked, arbitraryConditionalGuardIsReadableStreamLocked, 1) \
@@ -68,8 +69,8 @@ WEBCORE_FOREACH_ARBITRARYCONDITIONALGUARD_BUILTIN_CODE(DECLARE_BUILTIN_GENERATOR
 
 class ArbitraryConditionalGuardBuiltinsWrapper : private JSC::WeakHandleOwner {
 public:
-    explicit ArbitraryConditionalGuardBuiltinsWrapper(JSC::VM* vm)
-        : m_vm(*vm)
+    explicit ArbitraryConditionalGuardBuiltinsWrapper(JSC::VM& vm)
+        : m_vm(vm)
         WEBCORE_FOREACH_ARBITRARYCONDITIONALGUARD_BUILTIN_FUNCTION_NAME(INITIALIZE_BUILTIN_NAMES)
 #define INITIALIZE_BUILTIN_SOURCE_MEMBERS(name, functionName, overriddenName, length) , m_##name##Source(JSC::makeSource(StringImpl::createFromLiteral(s_##name, length), { }))
         WEBCORE_FOREACH_ARBITRARYCONDITIONALGUARD_BUILTIN_CODE(INITIALIZE_BUILTIN_SOURCE_MEMBERS)
@@ -106,8 +107,8 @@ inline JSC::UnlinkedFunctionExecutable* ArbitraryConditionalGuardBuiltinsWrapper
     if (!m_##name##Executable) {\
         JSC::Identifier executableName = functionName##PublicName();\
         if (overriddenName)\
-            executableName = JSC::Identifier::fromString(&m_vm, overriddenName);\
-        m_##name##Executable = JSC::Weak<JSC::UnlinkedFunctionExecutable>(JSC::createBuiltinExecutable(m_vm, m_##name##Source, executableName, s_##name##ConstructAbility), this, &m_##name##Executable);\
+            executableName = JSC::Identifier::fromString(m_vm, overriddenName);\
+        m_##name##Executable = JSC::Weak<JSC::UnlinkedFunctionExecutable>(JSC::createBuiltinExecutable(m_vm, m_##name##Source, executableName, s_##name##ConstructorKind, s_##name##ConstructAbility), this, &m_##name##Executable);\
     }\
     return m_##name##Executable.get();\
 }
@@ -123,7 +124,7 @@ inline void ArbitraryConditionalGuardBuiltinsWrapper::exportNames()
 
 } // namespace WebCore
 
-#endif // ENABLE(STREAMS_API) || USE(CF)
+#endif // ENABLE(TEST_ARBITARY_CONDTIONAL_GUARD_SEPARATE_A) || USE(TEST_ARBITARY_CONDTIONAL_GUARD_SEPARATE_B)
 ### End File: ArbitraryConditionalGuardBuiltins.h
 
 ### Begin File: ArbitraryConditionalGuardBuiltins.cpp
@@ -160,7 +161,7 @@ inline void ArbitraryConditionalGuardBuiltinsWrapper::exportNames()
 #include "config.h"
 #include "ArbitraryConditionalGuardBuiltins.h"
 
-#if ENABLE(STREAMS_API) || USE(CF)
+#if ENABLE(TEST_ARBITARY_CONDTIONAL_GUARD_SEPARATE_A) || USE(TEST_ARBITARY_CONDTIONAL_GUARD_SEPARATE_B)
 
 #include "WebCoreJSClientData.h"
 #include <JavaScriptCore/HeapInlines.h>
@@ -174,6 +175,7 @@ inline void ArbitraryConditionalGuardBuiltinsWrapper::exportNames()
 namespace WebCore {
 
 const JSC::ConstructAbility s_arbitraryConditionalGuardIsReadableStreamLockedCodeConstructAbility = JSC::ConstructAbility::CannotConstruct;
+const JSC::ConstructorKind s_arbitraryConditionalGuardIsReadableStreamLockedCodeConstructorKind = JSC::ConstructorKind::None;
 const int s_arbitraryConditionalGuardIsReadableStreamLockedCodeLength = 71;
 static const JSC::Intrinsic s_arbitraryConditionalGuardIsReadableStreamLockedCodeIntrinsic = JSC::NoIntrinsic;
 const char* const s_arbitraryConditionalGuardIsReadableStreamLockedCode =
@@ -198,6 +200,6 @@ WEBCORE_FOREACH_ARBITRARYCONDITIONALGUARD_BUILTIN_CODE(DEFINE_BUILTIN_GENERATOR)
 
 } // namespace WebCore
 
-#endif // ENABLE(STREAMS_API) || USE(CF)
+#endif // ENABLE(TEST_ARBITARY_CONDTIONAL_GUARD_SEPARATE_A) || USE(TEST_ARBITARY_CONDTIONAL_GUARD_SEPARATE_B)
 
 ### End File: ArbitraryConditionalGuardBuiltins.cpp

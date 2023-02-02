@@ -3,7 +3,7 @@
 #include "config.h"
 #include "ImageBuffer.h"
 
-#if USE(ULTRALIGHT)
+#if USE(ULTRALIGHT) && 0
 
 #include "BitmapImage.h"
 #include "GraphicsContext.h"

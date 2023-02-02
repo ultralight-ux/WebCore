@@ -46,6 +46,7 @@ using MessageEventSource = Variant<RefPtr<WindowProxy>, RefPtr<MessagePort>>;
 #endif
 
 class MessageEvent final : public Event {
+    WTF_MAKE_ISO_ALLOCATED(MessageEvent);
 public:
     static Ref<MessageEvent> create(Vector<RefPtr<MessagePort>>&&, Ref<SerializedScriptValue>&&, const String& origin = { }, const String& lastEventId = { }, Optional<MessageEventSource>&& source = WTF::nullopt);
     static Ref<MessageEvent> create(const AtomString& type, Ref<SerializedScriptValue>&&, const String& origin, const String& lastEventId);
@@ -77,6 +78,8 @@ public:
 
     JSValueInWrappedObject& cachedData() { return m_cachedData; }
     JSValueInWrappedObject& cachedPorts() { return m_cachedPorts; }
+
+    size_t memoryCost() const;
 
 private:
     MessageEvent();

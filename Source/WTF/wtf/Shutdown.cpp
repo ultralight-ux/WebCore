@@ -66,7 +66,7 @@ void Shutdown() {
 
     // Clear out the FLS values (to prevent destruction callbacks from being invoked)
     // and return FLS keys to the process
-    flsKeyDestroyAll();
+    // flsKeyDestroyAll();
 #endif
 }
 

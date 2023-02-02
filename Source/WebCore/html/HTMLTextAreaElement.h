@@ -98,6 +98,8 @@ private:
     bool isEnumeratable() const final { return true; }
     bool supportLabels() const final { return true; }
 
+    bool isInteractiveContent() const final { return true; }
+
     const AtomString& formControlType() const final;
 
     FormControlState saveFormControlState() const final;
@@ -113,11 +115,12 @@ private:
     bool appendFormData(DOMFormData&, bool) final;
     void reset() final;
     bool hasCustomFocusLogic() const final;
+    int defaultTabIndex() const final;
     bool isMouseFocusable() const final;
     bool isKeyboardFocusable(KeyboardEvent*) const final;
     void updateFocusAppearance(SelectionRestorationMode, SelectionRevealMode) final;
 
-    void accessKeyAction(bool sendMouseEvents) final;
+    bool accessKeyAction(bool sendMouseEvents) final;
 
     bool shouldUseInputMethod() final;
     bool matchesReadWritePseudoClass() const final;

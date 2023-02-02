@@ -41,7 +41,6 @@
 #include "ApplePayShippingMethodSelectedEvent.h"
 #include "ApplePayShippingMethodUpdate.h"
 #include "ApplePayValidateMerchantEvent.h"
-#include "CustomHeaderFields.h"
 #include "DOMWindow.h"
 #include "Document.h"
 #include "DocumentLoader.h"
@@ -63,16 +62,19 @@
 #include "Settings.h"
 #include "UserGestureIndicator.h"
 #include <wtf/IsoMallocInlines.h>
+#include <wtf/RunLoop.h>
 
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/ApplePaySessionAdditions.cpp>
+namespace WebCore {
+
+static void finishConverting(PaymentMethodUpdate& convertedUpdate, ApplePayPaymentMethodUpdate&& update)
+{
+#if ENABLE(APPLE_PAY_INSTALLMENTS)
+    convertedUpdate.setInstallmentGroupIdentifier(update.installmentGroupIdentifier);
 #else
-namespace WebCore {
-static void finishConverting(PaymentMethodUpdate&, ApplePayPaymentMethodUpdate&&) { }
-}
+    UNUSED_PARAM(convertedUpdate);
+    UNUSED_PARAM(update);
 #endif
-
-namespace WebCore {
+}
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(ApplePaySession);
 
@@ -540,7 +542,7 @@ ExceptionOr<void> ApplePaySession::abort()
     return { };
 }
 
-ExceptionOr<void> ApplePaySession::completeMerchantValidation(JSC::ExecState& state, JSC::JSValue merchantSessionValue)
+ExceptionOr<void> ApplePaySession::completeMerchantValidation(JSC::JSGlobalObject& state, JSC::JSValue merchantSessionValue)
 {
     if (!canCompleteMerchantValidation())
         return Exception { InvalidAccessError };
@@ -823,7 +825,7 @@ const char* ApplePaySession::activeDOMObjectName() const
     return "ApplePaySession";
 }
 
-bool ApplePaySession::canSuspendForDocumentSuspension() const
+bool ApplePaySession::canSuspendWithoutCanceling() const
 {
     switch (m_state) {
     case State::Idle:
@@ -849,6 +851,21 @@ void ApplePaySession::stop()
 
     m_state = State::Aborted;
     paymentCoordinator().abortPaymentSession();
+
+    didReachFinalState();
+}
+
+void ApplePaySession::suspend(ReasonForSuspension reason)
+{
+    if (reason != ReasonForSuspension::BackForwardCache)
+        return;
+
+    if (canSuspendWithoutCanceling())
+        return;
+
+    m_state = State::Canceled;
+    paymentCoordinator().abortPaymentSession();
+    queueTaskToDispatchEvent(*this, TaskSource::UserInteraction, ApplePayCancelEvent::create(eventNames().cancelEvent, { }));
 
     didReachFinalState();
 }

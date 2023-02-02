@@ -18,8 +18,7 @@
  */
 
 
-#ifndef CoordinatedGraphicsLayer_h
-#define CoordinatedGraphicsLayer_h
+#pragma once
 
 #if USE(COORDINATED_GRAPHICS)
 
@@ -30,20 +29,20 @@
 #include "Image.h"
 #include "IntSize.h"
 #include "NicosiaAnimatedBackingStoreClient.h"
+#include "NicosiaAnimation.h"
 #include "NicosiaBuffer.h"
 #include "NicosiaPlatformLayer.h"
-#include "TextureMapperAnimation.h"
 #include "TransformationMatrix.h"
 #include <wtf/RunLoop.h>
 #include <wtf/text/StringHash.h>
 
 namespace Nicosia {
+class Animations;
 class PaintingEngine;
 }
 
 namespace WebCore {
 class CoordinatedGraphicsLayer;
-class TextureMapperAnimations;
 
 class CoordinatedGraphicsLayerClient {
 public:
@@ -73,8 +72,11 @@ public:
     bool replaceChild(GraphicsLayer*, Ref<GraphicsLayer>&&) override;
     void removeFromParent() override;
     void setPosition(const FloatPoint&) override;
+    void syncPosition(const FloatPoint&) override;
     void setAnchorPoint(const FloatPoint3D&) override;
     void setSize(const FloatSize&) override;
+    void setBoundsOrigin(const FloatPoint&) override;
+    void syncBoundsOrigin(const FloatPoint&) override;
     void setTransform(const TransformationMatrix&) override;
     void setChildrenTransform(const TransformationMatrix&) override;
     void setPreserves3D(bool) override;
@@ -87,6 +89,7 @@ public:
     void setContentsRect(const FloatRect&) override;
     void setContentsTilePhase(const FloatSize&) override;
     void setContentsTileSize(const FloatSize&) override;
+    void setContentsClippingRect(const FloatRoundedRect&) override;
     void setContentsToImage(Image*) override;
     void setContentsToSolidColor(const Color&) override;
     void setShowDebugBorder(bool) override;
@@ -102,12 +105,19 @@ public:
     void flushCompositingState(const FloatRect&) override;
     void flushCompositingStateForThisLayerOnly() override;
     bool setFilters(const FilterOperations&) override;
+    bool setBackdropFilters(const FilterOperations&) override;
+    void setBackdropFiltersRect(const FloatRoundedRect&) override;
     bool addAnimation(const KeyframeValueList&, const FloatSize&, const Animation*, const String&, double) override;
     void pauseAnimation(const String&, double) override;
     void removeAnimation(const String&) override;
     void suspendAnimations(MonotonicTime) override;
     void resumeAnimations() override;
     bool usesContentsLayer() const override;
+    void dumpAdditionalProperties(WTF::TextStream&, LayerTreeAsTextBehavior) const override;
+
+#if USE(NICOSIA)
+    PlatformLayer* platformLayer() const override;
+#endif
 
     void syncPendingStateChangesIncludingSubLayers();
     void updateContentBuffersIncludingSubLayers();
@@ -117,7 +127,7 @@ public:
 
     IntRect transformedVisibleRect();
 
-    void setCoordinator(CoordinatedGraphicsLayerClient*);
+    void invalidateCoordinator();
     void setCoordinatorIncludingSubLayersIfNeeded(CoordinatedGraphicsLayerClient*);
 
     void setNeedsVisibleRectAdjustment();
@@ -150,6 +160,11 @@ public:
     void requestBackingStoreUpdate();
 
 private:
+    enum class FlushNotification {
+        Required,
+        NotRequired,
+    };
+
     bool isCoordinatedGraphicsLayer() const override;
 
     void updatePlatformLayer();
@@ -157,9 +172,11 @@ private:
     void setDebugBorder(const Color&, float width) override;
 
     void didChangeAnimations();
-    void didChangeGeometry();
+    void didChangeGeometry(FlushNotification = FlushNotification::Required);
     void didChangeChildren();
     void didChangeFilters();
+    void didChangeBackdropFilters();
+    void didChangeBackdropFiltersRect();
     void didUpdateTileBuffers();
 
     void computeTransformedVisibleRect();
@@ -210,7 +227,7 @@ private:
 
     Timer m_animationStartedTimer;
     RunLoop::Timer<CoordinatedGraphicsLayer> m_requestPendingTileCreationTimer;
-    TextureMapperAnimations m_animations;
+    Nicosia::Animations m_animations;
     MonotonicTime m_lastAnimationStartTime;
 
     struct {
@@ -227,6 +244,7 @@ private:
     } m_nicosia;
 
     RefPtr<AnimatedBackingStoreHost> m_animatedBackingStoreHost;
+    RefPtr<CoordinatedGraphicsLayer> m_backdropLayer;
 };
 
 } // namespace WebCore
@@ -234,5 +252,3 @@ private:
 SPECIALIZE_TYPE_TRAITS_GRAPHICSLAYER(WebCore::CoordinatedGraphicsLayer, isCoordinatedGraphicsLayer())
 
 #endif // USE(COORDINATED_GRAPHICS)
-
-#endif // CoordinatedGraphicsLayer_h

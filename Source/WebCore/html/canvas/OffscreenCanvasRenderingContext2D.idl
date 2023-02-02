@@ -25,15 +25,15 @@
 
 [
     CustomIsReachable,
-    EnabledAtRuntime=ImageBitmapOffscreenCanvas,
-    Exposed=(Window), // FIXME: OffscreenCanvas - should be Window,Worker
+    EnabledAtRuntime=OffscreenCanvas,
+    Conditional=OFFSCREEN_CANVAS,
+    Exposed=(Window,Worker),
     JSGenerateToJSObject,
     JSCustomMarkFunction,
     // CallTracingCallback=recordCanvasAction, // FIXME: OffscreenCanvas.
 ] interface OffscreenCanvasRenderingContext2D {
     readonly attribute OffscreenCanvas canvas;
-    // FIXME: OffscreenCanvas.
-    // void commit();
+    void commit();
 
     // Inspector-only.
     // FIXME: OffscreenCanvas.

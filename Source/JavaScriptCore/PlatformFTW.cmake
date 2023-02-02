@@ -7,6 +7,26 @@ list(APPEND JavaScriptCore_PUBLIC_FRAMEWORK_HEADERS
     API/JavaScriptCore.h
 )
 
+if (USE_CF)
+    list(APPEND JavaScriptCore_SOURCES
+        API/JSStringRefCF.cpp
+    )
+
+    list(APPEND JavaScriptCore_PUBLIC_FRAMEWORK_HEADERS
+        API/JSStringRefCF.h
+    )
+
+    list(APPEND JavaScriptCore_LIBRARIES
+        ${COREFOUNDATION_LIBRARY}
+    )
+endif ()
+
+if (NOT WTF_PLATFORM_WIN_CAIRO)
+    list(APPEND JavaScriptCore_LIBRARIES
+        winmm
+    )
+endif ()
+
 if (ENABLE_REMOTE_INSPECTOR)
     list(APPEND JavaScriptCore_PRIVATE_INCLUDE_DIRECTORIES
         "${JAVASCRIPTCORE_DIR}/inspector/remote/socket"
@@ -44,9 +64,8 @@ if (ENABLE_REMOTE_INSPECTOR)
         inspector/remote/socket/win/RemoteInspectorSocketWin.cpp
     )
 
-    set(JavaScriptCore_LIBRARIES PUBLIC ${JavaScriptCore_LIBRARIES})
-    list(APPEND JavaScriptCore_LIBRARIES
-        PRIVATE ws2_32
+    list(APPEND JavaScriptCore_PRIVATE_LIBRARIES
+        ws2_32
     )
 else ()
     list(REMOVE_ITEM JavaScriptCore_SOURCES

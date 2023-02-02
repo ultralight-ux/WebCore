@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2003-2019 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2020 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -25,9 +25,11 @@
 #include "CellState.h"
 #include "CollectionScope.h"
 #include "CollectorPhase.h"
+#include "DFGDoesGCCheck.h"
 #include "DeleteAllCodeEffort.h"
 #include "GCConductor.h"
 #include "GCIncomingRefCountedSet.h"
+#include "GCMemoryOperations.h"
 #include "GCRequest.h"
 #include "HandleSet.h"
 #include "HeapFinalizerCallback.h"
@@ -72,6 +74,7 @@ class LLIntOffsetsExtractor;
 class MachineThreads;
 class MarkStackArray;
 class MarkStackMergingConstraint;
+class MarkedJSValueRefArray;
 class BlockDirectory;
 class MarkedArgumentBuffer;
 class MarkingConstraint;
@@ -95,11 +98,12 @@ class SpeculativeJIT;
 class Worklist;
 }
 
-#if !ASSERT_DISABLED
+#if ENABLE(DFG_JIT) && ASSERT_ENABLED
 #define ENABLE_DFG_DOES_GC_VALIDATION 1
 #else
 #define ENABLE_DFG_DOES_GC_VALIDATION 0
 #endif
+
 constexpr bool validateDFGDoesGC = ENABLE_DFG_DOES_GC_VALIDATION;
 
 typedef HashCountedSet<JSCell*> ProtectCountSet;
@@ -121,7 +125,7 @@ public:
     // deadline when calling Heap::isPagedOut. Decreasing it will cause us to detect 
     // overstepping our deadline more quickly, while increasing it will cause 
     // our scan to run faster. 
-    static const unsigned s_timeCheckResolution = 16;
+    static constexpr unsigned s_timeCheckResolution = 16;
 
     bool isMarked(const void*);
     static bool testAndSetMarked(HeapVersion, const void*);
@@ -139,12 +143,12 @@ public:
     // Take this if you know that from->cellState() < barrierThreshold.
     JS_EXPORT_PRIVATE void writeBarrierSlowPath(const JSCell* from);
 
-    Heap(VM*, HeapType);
+    Heap(VM&, HeapType);
     ~Heap();
     void lastChanceToFinalize();
     void releaseDelayedReleasedObjects();
 
-    VM* vm() const;
+    VM& vm() const;
 
     MarkedSpace& objectSpace() { return m_objectSpace; }
     MachineThreads& machineThreads() { return *m_machineThreads; }
@@ -170,15 +174,17 @@ public:
     // helping heap.
     JS_EXPORT_PRIVATE bool isCurrentThreadBusy();
     
-    typedef void (*Finalizer)(JSCell*);
-    JS_EXPORT_PRIVATE void addFinalizer(JSCell*, Finalizer);
+    typedef void (*CFinalizer)(JSCell*);
+    JS_EXPORT_PRIVATE void addFinalizer(JSCell*, CFinalizer);
+    using LambdaFinalizer = WTF::Function<void(JSCell*)>;
+    JS_EXPORT_PRIVATE void addFinalizer(JSCell*, LambdaFinalizer);
 
     void notifyIsSafeToCollect();
     bool isSafeToCollect() const { return m_isSafeToCollect; }
     
     bool isShuttingDown() const { return m_isShuttingDown; }
 
-    JS_EXPORT_PRIVATE bool isHeapSnapshotting() const;
+    JS_EXPORT_PRIVATE bool isAnalyzingHeap() const;
 
     JS_EXPORT_PRIVATE void sweepSynchronously();
 
@@ -241,6 +247,7 @@ public:
     JS_EXPORT_PRIVATE std::unique_ptr<TypeCountSet> objectTypeCounts();
 
     HashSet<MarkedArgumentBuffer*>& markListSet();
+    void addMarkedJSValueRefArray(MarkedJSValueRefArray*);
     
     template<typename Functor> void forEachProtectedCell(const Functor&);
     template<typename Functor> void forEachCodeBlock(const Functor&);
@@ -302,13 +309,15 @@ public:
     const unsigned* addressOfBarrierThreshold() const { return &m_barrierThreshold; }
 
 #if ENABLE(DFG_DOES_GC_VALIDATION)
-    bool expectDoesGC() const { return m_expectDoesGC; }
-    void setExpectDoesGC(bool value) { m_expectDoesGC = value; }
-    bool* addressOfExpectDoesGC() { return &m_expectDoesGC; }
+    DoesGCCheck* addressOfDoesGC() { return &m_doesGC; }
+    void setDoesGCExpectation(bool expectDoesGC, unsigned nodeIndex, unsigned nodeOp) { m_doesGC.set(expectDoesGC, nodeIndex, nodeOp); }
+    void setDoesGCExpectation(bool expectDoesGC, DoesGCCheck::Special special) { m_doesGC.set(expectDoesGC, special); }
+    void verifyCanGC() { m_doesGC.verifyCanGC(vm()); }
 #else
-    bool expectDoesGC() const { UNREACHABLE_FOR_PLATFORM(); return true; }
-    void setExpectDoesGC(bool) { UNREACHABLE_FOR_PLATFORM(); }
-    bool* addressOfExpectDoesGC() { UNREACHABLE_FOR_PLATFORM(); return nullptr; }
+    DoesGCCheck* addressOfDoesGC() { UNREACHABLE_FOR_PLATFORM(); return nullptr; }
+    void setDoesGCExpectation(bool, unsigned, unsigned) { }
+    void setDoesGCExpectation(bool, DoesGCCheck::Special) { }
+    void verifyCanGC() { }
 #endif
 
     // If true, the GC believes that the mutator is currently messing with the heap. We call this
@@ -428,10 +437,14 @@ private:
     class HeapThread;
     friend class HeapThread;
 
-    static const size_t minExtraMemory = 256;
+    static constexpr size_t minExtraMemory = 256;
     
-    class FinalizerOwner : public WeakHandleOwner {
-        void finalize(Handle<Unknown>, void* context) override;
+    class CFinalizerOwner final : public WeakHandleOwner {
+        void finalize(Handle<Unknown>, void* context) final;
+    };
+
+    class LambdaFinalizerOwner final : public WeakHandleOwner {
+        void finalize(Handle<Unknown>, void* context) final;
     };
 
     JS_EXPORT_PRIVATE bool isValidAllocation(size_t);
@@ -530,7 +543,7 @@ private:
     void updateAllocationLimits();
     void didFinishCollection();
     void resumeCompilerThreads();
-    void gatherExtraHeapSnapshotData(HeapProfiler&);
+    void gatherExtraHeapData(HeapProfiler&);
     void removeDeadHeapSnapshotNodes(HeapProfiler&);
     void finalize();
     void sweepInFinalize();
@@ -601,7 +614,7 @@ private:
     Markable<CollectionScope, EnumMarkableTraits<CollectionScope>> m_lastCollectionScope;
     Lock m_raceMarkStackLock;
 #if ENABLE(DFG_DOES_GC_VALIDATION)
-    bool m_expectDoesGC { true };
+    DoesGCCheck m_doesGC;
 #endif
 
     StructureIDTable m_structureIDTable;
@@ -614,6 +627,7 @@ private:
 
     ProtectCountSet m_protectedValues;
     std::unique_ptr<HashSet<MarkedArgumentBuffer*>> m_markListSet;
+    SentinelLinkedList<MarkedJSValueRefArray, BasicRawSentinelNode<MarkedJSValueRefArray>> m_markedJSValueRefArrays;
 
     std::unique_ptr<MachineThreads> m_machineThreads;
     
@@ -633,7 +647,8 @@ private:
     HandleSet m_handleSet;
     std::unique_ptr<CodeBlockSet> m_codeBlocks;
     std::unique_ptr<JITStubRoutineSet> m_jitStubRoutines;
-    FinalizerOwner m_finalizerOwner;
+    CFinalizerOwner m_cFinalizerOwner;
+    LambdaFinalizerOwner m_lambdaFinalizerOwner;
     
     Lock m_parallelSlotVisitorLock;
     bool m_isSafeToCollect { false };
@@ -642,7 +657,7 @@ private:
 
     unsigned m_barrierThreshold { Options::forceFencedBarrier() ? tautologicalThreshold : blackThreshold };
 
-    VM* m_vm;
+    VM& m_vm;
     Seconds m_lastFullGCLength { 10_ms };
     Seconds m_lastEdenGCLength { 10_ms };
 
@@ -678,7 +693,7 @@ private:
     unsigned m_numberOfWaitingParallelMarkers { 0 };
 
     ConcurrentPtrHashSet m_opaqueRoots;
-    static const size_t s_blockFragmentLength = 32;
+    static constexpr size_t s_blockFragmentLength = 32;
 
     ParallelHelperClient m_helperClient;
     RefPtr<SharedTask<void(SlotVisitor&)>> m_bonusVisitorTask;
@@ -690,12 +705,12 @@ private:
     
     std::unique_ptr<MutatorScheduler> m_scheduler;
     
-    static const unsigned mutatorHasConnBit = 1u << 0u; // Must also be protected by threadLock.
-    static const unsigned stoppedBit = 1u << 1u; // Only set when !hasAccessBit
-    static const unsigned hasAccessBit = 1u << 2u;
-    static const unsigned gcDidJITBit = 1u << 3u; // Set when the GC did some JITing, so on resume we need to cpuid.
-    static const unsigned needFinalizeBit = 1u << 4u;
-    static const unsigned mutatorWaitingBit = 1u << 5u; // Allows the mutator to use this as a condition variable.
+    static constexpr unsigned mutatorHasConnBit = 1u << 0u; // Must also be protected by threadLock.
+    static constexpr unsigned stoppedBit = 1u << 1u; // Only set when !hasAccessBit
+    static constexpr unsigned hasAccessBit = 1u << 2u;
+    static constexpr unsigned gcDidJITBit = 1u << 3u; // Set when the GC did some JITing, so on resume we need to cpuid.
+    static constexpr unsigned needFinalizeBit = 1u << 4u;
+    static constexpr unsigned mutatorWaitingBit = 1u << 5u; // Allows the mutator to use this as a condition variable.
     Atomic<unsigned> m_worldState;
     bool m_worldIsStopped { false };
     Lock m_visitRaceLock;
@@ -739,9 +754,9 @@ private:
     CurrentThreadState* m_currentThreadState { nullptr };
     Thread* m_currentThread { nullptr }; // It's OK if this becomes a dangling pointer.
 
-#if PLATFORM(IOS_FAMILY)
-    unsigned m_precentAvailableMemoryCachedCallCount;
-    bool m_overCriticalMemoryThreshold;
+#if USE(BMALLOC_MEMORY_FOOTPRINT_API)
+    unsigned m_percentAvailableMemoryCachedCallCount { 0 };
+    bool m_overCriticalMemoryThreshold { false };
 #endif
 
     bool m_parallelMarkersShouldExit { false };

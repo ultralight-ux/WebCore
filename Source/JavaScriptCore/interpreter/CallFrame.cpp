@@ -27,25 +27,26 @@
 #include "CallFrame.h"
 
 #include "CodeBlock.h"
+#include "ExecutableAllocator.h"
 #include "InlineCallFrame.h"
-#include "Interpreter.h"
 #include "JSCInlines.h"
 #include "JSWebAssemblyInstance.h"
-#include "VMEntryScope.h"
+#include "LLIntPCRanges.h"
+#include "VMEntryRecord.h"
 #include "WasmContextInlines.h"
 #include "WasmInstance.h"
 #include <wtf/StringPrintStream.h>
 
 namespace JSC {
 
-void ExecState::initGlobalExec(ExecState* globalExec, JSCallee* globalCallee)
+void CallFrame::initDeprecatedCallFrameForDebugger(CallFrame* globalExec, JSCallee* globalCallee)
 {
     globalExec->setCodeBlock(nullptr);
     globalExec->setCallerFrame(noCaller());
-    globalExec->setReturnPC(0);
+    globalExec->setReturnPC(nullptr);
     globalExec->setArgumentCountIncludingThis(0);
     globalExec->setCallee(globalCallee);
-    ASSERT(globalExec->isGlobalExec());
+    ASSERT(globalExec->isDeprecatedCallFrameForDebugger());
 }
 
 bool CallFrame::callSiteBitsAreBytecodeOffset() const
@@ -88,44 +89,24 @@ bool CallFrame::callSiteBitsAreCodeOriginIndex() const
 
 unsigned CallFrame::callSiteAsRawBits() const
 {
-    return this[CallFrameSlot::argumentCount].tag();
+    return this[static_cast<int>(CallFrameSlot::argumentCountIncludingThis)].tag();
 }
 
 SUPPRESS_ASAN unsigned CallFrame::unsafeCallSiteAsRawBits() const
 {
-    return this[CallFrameSlot::argumentCount].unsafeTag();
+    return this[static_cast<int>(CallFrameSlot::argumentCountIncludingThis)].unsafeTag();
 }
 
 CallSiteIndex CallFrame::callSiteIndex() const
 {
-    return CallSiteIndex(callSiteAsRawBits());
+    return CallSiteIndex::fromBits(callSiteAsRawBits());
 }
 
 SUPPRESS_ASAN CallSiteIndex CallFrame::unsafeCallSiteIndex() const
 {
-    return CallSiteIndex(unsafeCallSiteAsRawBits());
+    return CallSiteIndex::fromBits(unsafeCallSiteAsRawBits());
 }
 
-#if USE(JSVALUE32_64)
-const Instruction* CallFrame::currentVPC() const
-{
-    return bitwise_cast<Instruction*>(callSiteIndex().bits());
-}
-
-void CallFrame::setCurrentVPC(const Instruction* vpc)
-{
-    CallSiteIndex callSite(vpc);
-    this[CallFrameSlot::argumentCount].tag() = callSite.bits();
-}
-
-unsigned CallFrame::callSiteBitsAsBytecodeOffset() const
-{
-    ASSERT(codeBlock());
-    ASSERT(callSiteBitsAreBytecodeOffset());
-    return codeBlock()->bytecodeOffset(currentVPC());     
-}
-
-#else // USE(JSVALUE32_64)
 const Instruction* CallFrame::currentVPC() const
 {
     ASSERT(callSiteBitsAreBytecodeOffset());
@@ -134,8 +115,9 @@ const Instruction* CallFrame::currentVPC() const
 
 void CallFrame::setCurrentVPC(const Instruction* vpc)
 {
-    CallSiteIndex callSite(codeBlock()->bytecodeOffset(vpc));
-    this[CallFrameSlot::argumentCount].tag() = static_cast<int32_t>(callSite.bits());
+    CallSiteIndex callSite(codeBlock()->bytecodeIndex(vpc));
+    this[static_cast<int>(CallFrameSlot::argumentCountIncludingThis)].tag() = callSite.bits();
+    ASSERT(currentVPC() == vpc);
 }
 
 unsigned CallFrame::callSiteBitsAsBytecodeOffset() const
@@ -145,13 +127,11 @@ unsigned CallFrame::callSiteBitsAsBytecodeOffset() const
     return callSiteIndex().bits();
 }
 
-#endif
-    
-unsigned CallFrame::bytecodeOffset()
+BytecodeIndex CallFrame::bytecodeIndex() const
 {
     ASSERT(!callee().isWasm());
     if (!codeBlock())
-        return 0;
+        return BytecodeIndex(0);
 #if ENABLE(DFG_JIT)
     if (callSiteBitsAreCodeOriginIndex()) {
         ASSERT(codeBlock());
@@ -164,13 +144,13 @@ unsigned CallFrame::bytecodeOffset()
     }
 #endif
     ASSERT(callSiteBitsAreBytecodeOffset());
-    return callSiteBitsAsBytecodeOffset();
+    return callSiteIndex().bytecodeIndex();
 }
 
-CodeOrigin CallFrame::codeOrigin()
+CodeOrigin CallFrame::codeOrigin() const
 {
     if (!codeBlock())
-        return CodeOrigin(0);
+        return CodeOrigin(BytecodeIndex(0));
 #if ENABLE(DFG_JIT)
     if (callSiteBitsAreCodeOriginIndex()) {
         CallSiteIndex index = callSiteIndex();
@@ -178,7 +158,7 @@ CodeOrigin CallFrame::codeOrigin()
         return codeBlock()->codeOrigin(index);
     }
 #endif
-    return CodeOrigin(callSiteBitsAsBytecodeOffset());
+    return CodeOrigin(callSiteIndex().bytecodeIndex());
 }
 
 Register* CallFrame::topOfFrameInternal()
@@ -188,18 +168,6 @@ Register* CallFrame::topOfFrameInternal()
     return registers() + codeBlock->stackPointerOffset();
 }
 
-JSGlobalObject* CallFrame::wasmAwareLexicalGlobalObject(VM& vm)
-{
-#if ENABLE(WEBASSEMBLY)
-    if (!callee().isWasm())
-        return lexicalGlobalObject();
-    return vm.wasmContext.load()->owner<JSWebAssemblyInstance>()->globalObject(vm);
-#else
-    UNUSED_PARAM(vm);
-    return lexicalGlobalObject();
-#endif
-}
-
 bool CallFrame::isAnyWasmCallee()
 {
     CalleeBits callee = this->callee();
@@ -207,7 +175,7 @@ bool CallFrame::isAnyWasmCallee()
         return true;
 
     ASSERT(callee.isCell());
-    if (!!callee.rawPtr() && isWebAssemblyToJSCallee(callee.asCell()))
+    if (!!callee.rawPtr() && isWebAssemblyModule(callee.asCell()))
         return true;
 
     return false;
@@ -233,10 +201,9 @@ SUPPRESS_ASAN CallFrame* CallFrame::unsafeCallerFrame(EntryFrame*& currEntryFram
     return static_cast<CallFrame*>(unsafeCallerFrameOrEntryFrame());
 }
 
-SourceOrigin CallFrame::callerSourceOrigin()
+SourceOrigin CallFrame::callerSourceOrigin(VM& vm)
 {
     RELEASE_ASSERT(callee().isCell());
-    VM* vm = &this->vm();
     SourceOrigin sourceOrigin;
     bool haveSkippedFirstFrame = false;
     StackVisitor::visit(this, vm, [&](StackVisitor& visitor) {
@@ -292,7 +259,7 @@ String CallFrame::friendlyFunctionName()
         return "global code"_s;
     case FunctionCode:
         if (jsCallee())
-            return getCalculatedDisplayName(vm(), jsCallee());
+            return getCalculatedDisplayName(codeBlock->vm(), jsCallee());
         return emptyString();
     }
 
@@ -300,10 +267,10 @@ String CallFrame::friendlyFunctionName()
     return emptyString();
 }
 
-void CallFrame::dump(PrintStream& out)
+void CallFrame::dump(PrintStream& out) const
 {
     if (CodeBlock* codeBlock = this->codeBlock()) {
-        out.print(codeBlock->inferredName(), "#", codeBlock->hashAsStringIfPossible(), " [", codeBlock->jitType(), " bc#", bytecodeOffset(), "]");
+        out.print(codeBlock->inferredName(), "#", codeBlock->hashAsStringIfPossible(), " [", codeBlock->jitType(), " ", bytecodeIndex(), "]");
 
         out.print("(");
         thisValue().dumpForBacktrace(out);
@@ -324,22 +291,26 @@ void CallFrame::dump(PrintStream& out)
 
 const char* CallFrame::describeFrame()
 {
-    const size_t bufferSize = 200;
-    static char buffer[bufferSize + 1];
-    
+    constexpr size_t bufferSize = 200;
+    static char* buffer = nullptr;
+    static std::once_flag onceKey;
+    std::call_once(onceKey, [&] {
+        buffer = static_cast<char*>(fastZeroedMalloc(bufferSize + 1));
+    });
+
     WTF::StringPrintStream stringStream;
 
     dump(stringStream);
 
     strncpy(buffer, stringStream.toCString().data(), bufferSize);
     buffer[bufferSize] = '\0';
-    
+
     return buffer;
 }
 
 void CallFrame::convertToStackOverflowFrame(VM& vm, CodeBlock* codeBlockToKeepAliveUntilFrameIsUnwound)
 {
-    ASSERT(!isGlobalExec());
+    ASSERT(!isDeprecatedCallFrameForDebugger());
     ASSERT(codeBlockToKeepAliveUntilFrameIsUnwound->inherits<CodeBlock>(vm));
 
     EntryFrame* entryFrame = vm.topEntryFrame;
@@ -354,6 +325,27 @@ void CallFrame::convertToStackOverflowFrame(VM& vm, CodeBlock* codeBlockToKeepAl
     setCodeBlock(codeBlockToKeepAliveUntilFrameIsUnwound);
     setCallee(stackOverflowCallee);
     setArgumentCountIncludingThis(0);
+}
+
+#if ENABLE(WEBASSEMBLY)
+JSGlobalObject* CallFrame::lexicalGlobalObjectFromWasmCallee(VM& vm) const
+{
+    return vm.wasmContext.load()->owner<JSWebAssemblyInstance>()->globalObject();
+}
+#endif
+
+bool isFromJSCode(void* returnAddress)
+{
+    UNUSED_PARAM(returnAddress);
+#if ENABLE(JIT)
+    if (isJITPC(returnAddress))
+        return true;
+#endif
+#if ENABLE(C_LOOP)
+    return true;
+#else
+    return LLInt::isLLIntPC(returnAddress);
+#endif
 }
 
 } // namespace JSC

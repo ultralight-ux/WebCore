@@ -44,8 +44,8 @@
 #include "Page.h"
 #include "PointerLockController.h"
 #include "PseudoElement.h"
+#include "RadioButtonGroups.h"
 #include "RenderView.h"
-#include "RuntimeEnabledFeatures.h"
 #include "Settings.h"
 #include "ShadowRoot.h"
 #include <wtf/text/CString.h>
@@ -53,7 +53,7 @@
 namespace WebCore {
 
 struct SameSizeAsTreeScope {
-    void* pointers[9];
+    void* pointers[10];
 };
 
 COMPILE_ASSERT(sizeof(TreeScope) == sizeof(SameSizeAsTreeScope), treescope_should_stay_small);
@@ -64,7 +64,7 @@ TreeScope::TreeScope(ShadowRoot& shadowRoot, Document& document)
     : m_rootNode(shadowRoot)
     , m_documentScope(document)
     , m_parentTreeScope(&document)
-    , m_idTargetObserverRegistry(std::make_unique<IdTargetObserverRegistry>())
+    , m_idTargetObserverRegistry(makeUnique<IdTargetObserverRegistry>())
 {
     shadowRoot.setTreeScope(*this);
 }
@@ -73,7 +73,7 @@ TreeScope::TreeScope(Document& document)
     : m_rootNode(document)
     , m_documentScope(document)
     , m_parentTreeScope(nullptr)
-    , m_idTargetObserverRegistry(std::make_unique<IdTargetObserverRegistry>())
+    , m_idTargetObserverRegistry(makeUnique<IdTargetObserverRegistry>())
 {
     document.setTreeScope(*this);
 }
@@ -100,7 +100,7 @@ void TreeScope::setParentTreeScope(TreeScope& newParentScope)
 
 Element* TreeScope::getElementById(const AtomString& elementId) const
 {
-    if (elementId.isNull())
+    if (elementId.isEmpty())
         return nullptr;
     if (!m_elementsById)
         return nullptr;
@@ -112,8 +112,8 @@ Element* TreeScope::getElementById(const String& elementId) const
     if (!m_elementsById)
         return nullptr;
 
-    if (RefPtr<AtomStringImpl> atomicElementId = AtomStringImpl::lookUp(elementId.impl()))
-        return m_elementsById->getElementById(*atomicElementId, *this);
+    if (auto atomElementId = AtomStringImpl::lookUp(elementId.impl()))
+        return m_elementsById->getElementById(*atomElementId, *this);
 
     return nullptr;
 }
@@ -123,8 +123,8 @@ Element* TreeScope::getElementById(StringView elementId) const
     if (!m_elementsById)
         return nullptr;
 
-    if (auto atomicElementId = elementId.toExistingAtomString())
-        return m_elementsById->getElementById(*atomicElementId, *this);
+    if (auto atomElementId = elementId.toExistingAtomString())
+        return m_elementsById->getElementById(*atomElementId, *this);
 
     return nullptr;
 }
@@ -141,7 +141,7 @@ const Vector<Element*>* TreeScope::getAllElementsById(const AtomString& elementI
 void TreeScope::addElementById(const AtomStringImpl& elementId, Element& element, bool notifyObservers)
 {
     if (!m_elementsById)
-        m_elementsById = std::make_unique<TreeScopeOrderedMap>();
+        m_elementsById = makeUnique<TreeScopeOrderedMap>();
     m_elementsById->add(elementId, element, *this);
     if (notifyObservers)
         m_idTargetObserverRegistry->notifyObservers(elementId);
@@ -168,7 +168,7 @@ Element* TreeScope::getElementByName(const AtomString& name) const
 void TreeScope::addElementByName(const AtomStringImpl& name, Element& element)
 {
     if (!m_elementsByName)
-        m_elementsByName = std::make_unique<TreeScopeOrderedMap>();
+        m_elementsByName = makeUnique<TreeScopeOrderedMap>();
     m_elementsByName->add(name, element, *this);
 }
 
@@ -180,7 +180,7 @@ void TreeScope::removeElementByName(const AtomStringImpl& name, Element& element
 }
 
 
-Node& TreeScope::retargetToScope(Node& node) const
+Ref<Node> TreeScope::retargetToScope(Node& node) const
 {
     auto& scope = node.treeScope();
     if (LIKELY(this == &scope || !node.isInShadowTree()))
@@ -196,8 +196,8 @@ Node& TreeScope::retargetToScope(Node& node) const
     for (auto* currentScope = this; currentScope; currentScope = currentScope->parentTreeScope())
         ancestorScopes.append(currentScope);
 
-    size_t i = nodeTreeScopes.size();
-    size_t j = ancestorScopes.size();
+    auto i = nodeTreeScopes.size();
+    auto j = ancestorScopes.size();
     while (i > 0 && j > 0 && nodeTreeScopes[i - 1] == ancestorScopes[j - 1]) {
         --i;
         --j;
@@ -207,7 +207,7 @@ Node& TreeScope::retargetToScope(Node& node) const
     if (nodeIsInOuterTreeScope)
         return node;
 
-    ShadowRoot& shadowRootInLowestCommonTreeScope = downcast<ShadowRoot>(nodeTreeScopes[i - 1]->rootNode());
+    auto& shadowRootInLowestCommonTreeScope = downcast<ShadowRoot>(nodeTreeScopes[i - 1]->rootNode());
     return *shadowRootInLowestCommonTreeScope.host();
 }
 
@@ -239,7 +239,7 @@ void TreeScope::addImageMap(HTMLMapElement& imageMap)
     if (!name)
         return;
     if (!m_imageMapsByName)
-        m_imageMapsByName = std::make_unique<TreeScopeOrderedMap>();
+        m_imageMapsByName = makeUnique<TreeScopeOrderedMap>();
     m_imageMapsByName->add(*name, imageMap, *this);
 }
 
@@ -263,7 +263,7 @@ HTMLMapElement* TreeScope::getImageMap(const AtomString& name) const
 void TreeScope::addImageElementByUsemap(const AtomStringImpl& name, HTMLImageElement& element)
 {
     if (!m_imagesByUsemap)
-        m_imagesByUsemap = std::make_unique<TreeScopeOrderedMap>();
+        m_imagesByUsemap = makeUnique<TreeScopeOrderedMap>();
     return m_imagesByUsemap->add(name, element, *this);
 }
 
@@ -300,7 +300,7 @@ HTMLLabelElement* TreeScope::labelElementForId(const AtomString& forAttributeVal
 
     if (!m_labelsByForAttribute) {
         // Populate the map on first access.
-        m_labelsByForAttribute = std::make_unique<TreeScopeOrderedMap>();
+        m_labelsByForAttribute = makeUnique<TreeScopeOrderedMap>();
 
         for (auto& label : descendantsOfType<HTMLLabelElement>(m_rootNode)) {
             const AtomString& forValue = label.attributeWithoutSynchronization(forAttr);
@@ -349,7 +349,7 @@ static Optional<LayoutPoint> absolutePointIfNotClipped(Document& document, const
     return WTF::nullopt;
 }
 
-Node* TreeScope::nodeFromPoint(const LayoutPoint& clientPoint, LayoutPoint* localPoint)
+RefPtr<Node> TreeScope::nodeFromPoint(const LayoutPoint& clientPoint, LayoutPoint* localPoint)
 {
     auto absolutePoint = absolutePointIfNotClipped(documentScope(), clientPoint);
     if (!absolutePoint)
@@ -368,19 +368,19 @@ RefPtr<Element> TreeScope::elementFromPoint(double clientX, double clientY)
     if (!document.hasLivingRenderTree())
         return nullptr;
 
-    Node* node = nodeFromPoint(LayoutPoint(clientX, clientY), nullptr);
+    auto node = nodeFromPoint(LayoutPoint { clientX, clientY }, nullptr);
     if (!node)
         return nullptr;
 
-    node = &retargetToScope(*node);
+    node = retargetToScope(*node);
     while (!is<Element>(*node)) {
         node = node->parentInComposedTree();
         if (!node)
             break;
-        node = &retargetToScope(*node);
+        node = retargetToScope(*node);
     }
 
-    return downcast<Element>(node);
+    return static_pointer_cast<Element>(node);
 }
 
 Vector<RefPtr<Element>> TreeScope::elementsFromPoint(double clientX, double clientY)
@@ -395,23 +395,20 @@ Vector<RefPtr<Element>> TreeScope::elementsFromPoint(double clientX, double clie
     if (!absolutePoint)
         return elements;
 
-    HitTestRequest request(HitTestRequest::ReadOnly
-        | HitTestRequest::Active
-        | HitTestRequest::DisallowUserAgentShadowContent
-        | HitTestRequest::CollectMultipleElements
-        | HitTestRequest::IncludeAllElementsUnderPoint);
-    HitTestResult result(absolutePoint.value());
-    documentScope().hitTest(request, result);
+    constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::CollectMultipleElements, HitTestRequest::IncludeAllElementsUnderPoint };
+    HitTestResult result { absolutePoint.value() };
+    documentScope().hitTest(hitType, result);
 
-    Node* lastNode = nullptr;
-    for (const auto& listBasedNode : result.listBasedTestResult()) {
-        Node* node = listBasedNode.get();
-        node = &retargetToScope(*node);
-        while (!is<Element>(*node)) {
+    RefPtr<Node> lastNode;
+    auto& nodeSet = result.listBasedTestResult();
+    elements.reserveInitialCapacity(nodeSet.size());
+    for (auto& listBasedNode : nodeSet) {
+        RefPtr<Node> node = retargetToScope(listBasedNode);
+        while (!is<Element>(node)) {
             node = node->parentInComposedTree();
             if (!node)
                 break;
-            node = &retargetToScope(*node);
+            node = retargetToScope(*node);
         }
 
         if (!node)
@@ -425,7 +422,7 @@ Vector<RefPtr<Element>> TreeScope::elementsFromPoint(double clientX, double clie
         if (node == lastNode)
             continue;
 
-        elements.append(downcast<Element>(node));
+        elements.append(static_pointer_cast<Element>(node));
         lastNode = node;
     }
 
@@ -444,6 +441,8 @@ Vector<RefPtr<Element>> TreeScope::elementsFromPoint(const FloatPoint& p)
     return elementsFromPoint(p.x(), p.y());
 }
 
+// FIXME: Would be nice to change this to take a StringView, since that's what callers have
+// and there is no particular advantage to already having a String.
 Element* TreeScope::findAnchor(const String& name)
 {
     if (name.isEmpty())
@@ -537,6 +536,13 @@ TreeScope* commonTreeScope(Node* nodeA, Node* nodeB)
         return nullptr;
     
     return treeScopesA[indexA] == treeScopesB[indexB] ? treeScopesA[indexA] : nullptr;
+}
+
+RadioButtonGroups& TreeScope::radioButtonGroups()
+{
+    if (!m_radioButtonGroups)
+        m_radioButtonGroups = makeUnique<RadioButtonGroups>();
+    return *m_radioButtonGroups;
 }
 
 } // namespace WebCore

@@ -77,11 +77,12 @@ public:
     double timestampOffset() const;
     ExceptionOr<void> setTimestampOffset(double);
 
-#if ENABLE(VIDEO_TRACK)
     VideoTrackList& videoTracks();
+    VideoTrackList* videoTracksIfExists() const { return m_videoTracks.get(); }
     AudioTrackList& audioTracks();
+    AudioTrackList* audioTracksIfExists() const { return m_audioTracks.get(); }
     TextTrackList& textTracks();
-#endif
+    TextTrackList* textTracksIfExists() const { return m_textTracks.get(); }
 
     double appendWindowStart() const;
     ExceptionOr<void> setAppendWindowStart(double);
@@ -127,8 +128,6 @@ public:
     MediaTime highestPresentationTimestamp() const;
     void readyStateChanged();
 
-    bool hasPendingActivity() const final;
-
     void trySignalAllSamplesEnqueued();
 
 #if !RELEASE_LOG_DISABLED
@@ -144,11 +143,10 @@ private:
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
 
-    void suspend(ReasonForSuspension) final;
-    void resume() final;
+    // ActiveDOMObject.
     void stop() final;
     const char* activeDOMObjectName() const final;
-    bool canSuspendForDocumentSuspension() const final;
+    bool virtualHasPendingActivity() const final;
 
     void sourceBufferPrivateDidReceiveInitializationSegment(const InitializationSegment&) final;
     void sourceBufferPrivateDidReceiveSample(MediaSample&) final;
@@ -217,7 +215,7 @@ private:
 
     Ref<SourceBufferPrivate> m_private;
     MediaSource* m_source;
-    GenericEventQueue m_asyncEventQueue;
+    UniqueRef<MainThreadGenericEventQueue> m_asyncEventQueue;
     AppendMode m_mode { AppendMode::Segments };
 
     Vector<unsigned char> m_pendingAppendData;

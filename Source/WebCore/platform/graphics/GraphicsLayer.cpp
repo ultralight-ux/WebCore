@@ -24,9 +24,9 @@
  */
 
 #include "config.h"
-
 #include "GraphicsLayer.h"
 
+#include "ColorSerialization.h"
 #include "FloatPoint.h"
 #include "FloatRect.h"
 #include "GraphicsContext.h"
@@ -112,7 +112,7 @@ bool GraphicsLayer::supportsContentsTiling()
 #endif
 
 // Singleton client used for layers on which clearClient has been called.
-class EmptyGraphicsLayerClient : public GraphicsLayerClient {
+class EmptyGraphicsLayerClient final : public GraphicsLayerClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     static EmptyGraphicsLayerClient& singleton();
@@ -135,6 +135,7 @@ GraphicsLayer::GraphicsLayer(Type type, GraphicsLayerClient& layerClient)
     , m_masksToBounds(false)
     , m_drawsContent(false)
     , m_contentsVisible(true)
+    , m_contentsRectClipsDescendants(false)
     , m_acceleratesDrawing(false)
     , m_usesDisplayListDrawing(false)
     , m_appliesPageScale(false)
@@ -348,7 +349,7 @@ void GraphicsLayer::setTransform(const TransformationMatrix& matrix)
     if (m_transform)
         *m_transform = matrix;
     else
-        m_transform = std::make_unique<TransformationMatrix>(matrix);
+        m_transform = makeUnique<TransformationMatrix>(matrix);
 }
 
 const TransformationMatrix& GraphicsLayer::childrenTransform() const
@@ -361,7 +362,7 @@ void GraphicsLayer::setChildrenTransform(const TransformationMatrix& matrix)
     if (m_childrenTransform)
         *m_childrenTransform = matrix;
     else
-        m_childrenTransform = std::make_unique<TransformationMatrix>(matrix);
+        m_childrenTransform = makeUnique<TransformationMatrix>(matrix);
 }
 
 void GraphicsLayer::setMaskLayer(RefPtr<GraphicsLayer>&& layer)
@@ -513,7 +514,7 @@ void GraphicsLayer::paintGraphicsLayerContents(GraphicsContext& context, const F
     FloatRect clipRect(clip);
     clipRect.move(offset);
 
-    client().paintContents(this, context, m_paintingPhase, clipRect, layerPaintBehavior);
+    client().paintContents(this, context, clipRect, layerPaintBehavior);
 }
 
 FloatRect GraphicsLayer::adjustCoverageRectForMovement(const FloatRect& coverageRect, const FloatRect& previousVisibleRect, const FloatRect& currentVisibleRect)
@@ -597,34 +598,34 @@ void GraphicsLayer::getDebugBorderInfo(Color& color, float& width) const
     width = 2;
 
     if (needsBackdrop()) {
-        color = Color(255, 0, 255, 128); // has backdrop: magenta
+        color = Color::magenta.colorWithAlphaByte(128); // has backdrop: magenta
         width = 12;
         return;
     }
     
     if (drawsContent()) {
         if (tiledBacking()) {
-            color = Color(255, 128, 0, 128); // tiled layer: orange
+            color = Color::orange.colorWithAlphaByte(128); // tiled layer: orange
             return;
         }
 
-        color = Color(0, 128, 32, 128); // normal layer: green
+        color = SRGBA<uint8_t> { 0, 128, 32, 128 }; // normal layer: green
         return;
     }
 
     if (usesContentsLayer()) {
-        color = Color(0, 64, 128, 150); // non-painting layer with contents: blue
+        color = SRGBA<uint8_t> { 0, 64, 128, 150 }; // non-painting layer with contents: blue
         width = 8;
         return;
     }
     
     if (masksToBounds()) {
-        color = Color(128, 255, 255, 48); // masking layer: pale blue
+        color = SRGBA<uint8_t> { 128, 255, 255, 48 }; // masking layer: pale blue
         width = 16;
         return;
     }
 
-    color = Color(255, 255, 0, 192); // container: yellow
+    color = Color::yellow.colorWithAlphaByte(192); // container: yellow
 }
 
 void GraphicsLayer::updateDebugIndicators()
@@ -898,7 +899,7 @@ void GraphicsLayer::dumpProperties(TextStream& ts, LayerTreeAsTextBehavior behav
 
 #if ENABLE(CSS_COMPOSITING)
     if (m_blendMode != BlendMode::Normal)
-        ts << indent << "(blendMode " << compositeOperatorName(CompositeSourceOver, m_blendMode) << ")\n";
+        ts << indent << "(blendMode " << compositeOperatorName(CompositeOperator::SourceOver, m_blendMode) << ")\n";
 #endif
 
     if (type() == Type::Normal && tiledBacking())
@@ -930,7 +931,7 @@ void GraphicsLayer::dumpProperties(TextStream& ts, LayerTreeAsTextBehavior behav
         ts << indent << "(primary-layer-id " << primaryLayerID() << ")\n";
 
     if (m_backgroundColor.isValid() && client().shouldDumpPropertyForLayer(this, "backgroundColor", behavior))
-        ts << indent << "(backgroundColor " << m_backgroundColor.nameForRenderTreeAsText() << ")\n";
+        ts << indent << "(backgroundColor " << serializationForRenderTreeAsText(m_backgroundColor) << ")\n";
 
     if (behavior & LayerTreeAsTextIncludeAcceleratesDrawing && m_acceleratesDrawing)
         ts << indent << "(acceleratesDrawing " << m_acceleratesDrawing << ")\n";
@@ -1004,6 +1005,11 @@ void GraphicsLayer::dumpProperties(TextStream& ts, LayerTreeAsTextBehavior behav
         ts << indent << "(event region" << m_eventRegion;
         ts << indent << ")\n";
     }
+    
+#if ENABLE(SCROLLING_THREAD)
+    if ((behavior & LayerTreeAsTextDebug) && m_scrollingNodeID)
+        ts << indent << "(scrolling node " << m_scrollingNodeID << ")\n";
+#endif
 
     if (behavior & LayerTreeAsTextIncludePaintingPhases && paintingPhase())
         ts << indent << "(paintingPhases " << paintingPhase() << ")\n";

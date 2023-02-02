@@ -89,6 +89,8 @@ class Preference
   def nameLower
     if @getter
       @getter
+    elsif @name.start_with?("VP")
+      @name[0..1].downcase + @name[2..@name.length]
     elsif @name.start_with?("CSS", "XSS", "FTP", "DOM", "DNS", "PDF", "ICE")
       @name[0..2].downcase + @name[3..@name.length]
     elsif @name.start_with?("HTTP")
@@ -140,8 +142,8 @@ class Preferences
 
     @preferencesNotDebug = @preferences.select { |p| !p.category }
     @preferencesDebug = @preferences.select { |p| p.category == "debug" }
-    @experimentalFeatures = @preferences.select { |p| p.category == "experimental" }
-    @internalDebugFeatures = @preferences.select { |p| p.category == "internal" }
+    @experimentalFeatures = @preferences.select { |p| p.category == "experimental" }.sort! { |x, y| x.humanReadableName <=> y.humanReadableName }
+    @internalDebugFeatures = @preferences.select { |p| p.category == "internal" }.sort! { |x, y| x.humanReadableName <=> y.humanReadableName }
 
     @preferencesBoundToSetting = @preferences.select { |p| !p.webcoreBinding }
     @preferencesBoundToDeprecatedGlobalSettings = @preferences.select { |p| p.webcoreBinding == "DeprecatedGlobalSettings" }

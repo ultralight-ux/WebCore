@@ -30,6 +30,7 @@
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/URL.h>
 
 namespace WebCore {
 
@@ -52,6 +53,7 @@ public:
     CachedScriptFetcher& scriptFetcher() { return m_scriptFetcher.get(); }
     CachedScript* cachedScript() { return m_cachedScript.get(); }
     ModuleFetchParameters* parameters() { return m_parameters.get(); }
+    const URL& sourceURL() const { return m_sourceURL; }
 
     void clearClient()
     {
@@ -62,13 +64,14 @@ public:
 private:
     CachedModuleScriptLoader(CachedModuleScriptLoaderClient&, DeferredPromise&, CachedScriptFetcher&, RefPtr<ModuleFetchParameters>&&);
 
-    void notifyFinished(CachedResource&) final;
+    void notifyFinished(CachedResource&, const NetworkLoadMetrics&) final;
 
     CachedModuleScriptLoaderClient* m_client { nullptr };
     RefPtr<DeferredPromise> m_promise;
     Ref<CachedScriptFetcher> m_scriptFetcher;
     RefPtr<ModuleFetchParameters> m_parameters;
     CachedResourceHandle<CachedScript> m_cachedScript;
+    URL m_sourceURL;
 };
 
 } // namespace WebCore

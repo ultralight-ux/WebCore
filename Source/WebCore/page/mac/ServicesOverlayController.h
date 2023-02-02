@@ -55,14 +55,14 @@ private:
     class Highlight : public RefCounted<Highlight>, private GraphicsLayerClient {
         WTF_MAKE_NONCOPYABLE(Highlight);
     public:
-        static Ref<Highlight> createForSelection(ServicesOverlayController&, RetainPtr<DDHighlightRef>, Ref<Range>&&);
-        static Ref<Highlight> createForTelephoneNumber(ServicesOverlayController&, RetainPtr<DDHighlightRef>, Ref<Range>&&);
+        static Ref<Highlight> createForSelection(ServicesOverlayController&, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
+        static Ref<Highlight> createForTelephoneNumber(ServicesOverlayController&, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
         ~Highlight();
 
         void invalidate();
 
         DDHighlightRef ddHighlight() const { return m_ddHighlight.get(); }
-        Range& range() const { return m_range.get(); }
+        const SimpleRange& range() const { return m_range; }
         GraphicsLayer& layer() const { return m_graphicsLayer.get(); }
 
         enum {
@@ -78,18 +78,18 @@ private:
         void setDDHighlight(DDHighlightRef);
 
     private:
-        Highlight(ServicesOverlayController&, Type, RetainPtr<DDHighlightRef>, Ref<Range>&&);
+        Highlight(ServicesOverlayController&, Type, RetainPtr<DDHighlightRef>&&, SimpleRange&&);
 
         // GraphicsLayerClient
         void notifyFlushRequired(const GraphicsLayer*) override;
-        void paintContents(const GraphicsLayer*, GraphicsContext&, OptionSet<GraphicsLayerPaintingPhase>, const FloatRect& inClip, GraphicsLayerPaintBehavior) override;
+        void paintContents(const GraphicsLayer*, GraphicsContext&, const FloatRect& inClip, GraphicsLayerPaintBehavior) override;
         float deviceScaleFactor() const override;
 
         void didFinishFadeOutAnimation();
 
         ServicesOverlayController* m_controller;
         RetainPtr<DDHighlightRef> m_ddHighlight;
-        Ref<Range> m_range;
+        SimpleRange m_range;
         Ref<GraphicsLayer> m_graphicsLayer;
         Type m_type;
     };
@@ -126,9 +126,9 @@ private:
     Seconds remainingTimeUntilHighlightShouldBeShown(Highlight*) const;
     void determineActiveHighlightTimerFired();
 
-    static bool highlightsAreEquivalent(const Highlight* a, const Highlight* b);
+    static bool highlightsAreEquivalent(const Highlight*, const Highlight*);
 
-    Vector<RefPtr<Range>> telephoneNumberRangesForFocusedFrame();
+    Vector<SimpleRange> telephoneNumberRangesForFocusedFrame();
 
     void didCreateHighlight(Highlight*);
     void willDestroyHighlight(Highlight*);

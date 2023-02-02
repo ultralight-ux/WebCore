@@ -26,19 +26,13 @@
 #include "config.h"
 #include "LLIntThunks.h"
 
-#include "CallData.h"
-#include "ExceptionHelpers.h"
-#include "Interpreter.h"
 #include "JSCJSValueInlines.h"
 #include "JSInterfaceJIT.h"
-#include "JSObject.h"
 #include "LLIntCLoop.h"
 #include "LLIntData.h"
 #include "LinkBuffer.h"
-#include "LowLevelInterpreter.h"
-#include "ProtoCallFrame.h"
-#include "StackAlignment.h"
-#include "VM.h"
+#include "WasmCallingConvention.h"
+#include "WasmContextInlines.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/MemoryProfiler.h>
 
@@ -61,8 +55,13 @@ static MacroAssemblerCodeRef<JITThunkPtrTag> generateThunkWithJumpTo(OpcodeID op
     LLIntCode target = LLInt::getCodeFunctionPtr<JSEntryPtrTag>(opcodeID);
     assertIsTaggedWith(target, JSEntryPtrTag);
 
-    jit.move(JSInterfaceJIT::TrustedImmPtr(target), JSInterfaceJIT::regT0);
-    jit.jump(JSInterfaceJIT::regT0, JSEntryPtrTag);
+#if ENABLE(WEBASSEMBLY)
+    CCallHelpers::RegisterID scratch = Wasm::wasmCallingConvention().prologueScratchGPRs[0];
+#else
+    CCallHelpers::RegisterID scratch = JSInterfaceJIT::regT0;
+#endif
+    jit.move(JSInterfaceJIT::TrustedImmPtr(target), scratch);
+    jit.farJump(scratch, JSEntryPtrTag);
 
     LinkBuffer patchBuffer(jit, GLOBAL_THUNK_ID);
     return FINALIZE_CODE(patchBuffer, JITThunkPtrTag, "LLInt %s prologue thunk", thunkKind);
@@ -137,6 +136,21 @@ MacroAssemblerCodeRef<JITThunkPtrTag> moduleProgramEntryThunk()
     });
     return codeRef;
 }
+
+#if ENABLE(WEBASSEMBLY)
+MacroAssemblerCodeRef<JITThunkPtrTag> wasmFunctionEntryThunk()
+{
+    static LazyNeverDestroyed<MacroAssemblerCodeRef<JITThunkPtrTag>> codeRef;
+    static std::once_flag onceKey;
+    std::call_once(onceKey, [&] {
+        if (Wasm::Context::useFastTLS())
+            codeRef.construct(generateThunkWithJumpTo(wasm_function_prologue, "function for call"));
+        else
+            codeRef.construct(generateThunkWithJumpTo(wasm_function_prologue_no_tls, "function for call"));
+    });
+    return codeRef;
+}
+#endif // ENABLE(WEBASSEMBLY)
 
 } // namespace LLInt
 

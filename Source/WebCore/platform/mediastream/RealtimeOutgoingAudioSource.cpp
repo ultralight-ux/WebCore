@@ -40,42 +40,41 @@ namespace WebCore {
 
 RealtimeOutgoingAudioSource::RealtimeOutgoingAudioSource(Ref<MediaStreamTrackPrivate>&& source)
     : m_audioSource(WTFMove(source))
-#if !RELEASE_LOG_DISABLED
-    , m_logger(m_audioSource->logger())
-    , m_logIdentifier(m_audioSource->logIdentifier())
-#endif
 {
 }
 
 RealtimeOutgoingAudioSource::~RealtimeOutgoingAudioSource()
 {
+    ASSERT(!m_audioSource->hasObserver(*this));
+#if ASSERT_ENABLED
+    auto locker = holdLock(m_sinksLock);
+#endif
     ASSERT(m_sinks.isEmpty());
+
     stop();
 }
 
 void RealtimeOutgoingAudioSource::observeSource()
 {
+    ASSERT(!m_audioSource->hasObserver(*this));
     m_audioSource->addObserver(*this);
+    m_audioSource->source().addAudioSampleObserver(*this);
     initializeConverter();
 }
 
 void RealtimeOutgoingAudioSource::unobserveSource()
 {
+    m_audioSource->source().removeAudioSampleObserver(*this);
     m_audioSource->removeObserver(*this);
 }
 
-bool RealtimeOutgoingAudioSource::setSource(Ref<MediaStreamTrackPrivate>&& newSource)
+void RealtimeOutgoingAudioSource::setSource(Ref<MediaStreamTrackPrivate>&& newSource)
 {
-    auto locker = holdLock(m_sinksLock);
-    bool hasSinks = !m_sinks.isEmpty();
+    ALWAYS_LOG("Changing source to ", newSource->logIdentifier());
 
-    if (hasSinks)
-        unobserveSource();
+    ASSERT(!m_audioSource->hasObserver(*this));
     m_audioSource = WTFMove(newSource);
-    if (hasSinks)
-        observeSource();
-
-    return true;
+    sourceUpdated();
 }
 
 void RealtimeOutgoingAudioSource::initializeConverter()
@@ -96,26 +95,14 @@ void RealtimeOutgoingAudioSource::sourceEnabledChanged()
 
 void RealtimeOutgoingAudioSource::AddSink(webrtc::AudioTrackSinkInterface* sink)
 {
-    {
     auto locker = holdLock(m_sinksLock);
-    if (!m_sinks.add(sink) || m_sinks.size() != 1)
-        return;
-    }
-
-    callOnMainThread([protectedThis = makeRef(*this)]() {
-        protectedThis->observeSource();
-    });
+    m_sinks.add(sink);
 }
 
 void RealtimeOutgoingAudioSource::RemoveSink(webrtc::AudioTrackSinkInterface* sink)
 {
-    {
     auto locker = holdLock(m_sinksLock);
-    if (!m_sinks.remove(sink) || !m_sinks.isEmpty())
-        return;
-    }
-
-    unobserveSource();
+    m_sinks.remove(sink);
 }
 
 void RealtimeOutgoingAudioSource::sendAudioFrames(const void* audioData, int bitsPerSample, int sampleRate, size_t numberOfChannels, size_t numberOfFrames)

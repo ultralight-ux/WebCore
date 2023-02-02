@@ -35,9 +35,8 @@
 
 namespace WTF {
 
-struct AtomStringHash;
-
-class AtomString {
+class AtomString final {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WTF_EXPORT_PRIVATE static void init();
 
@@ -153,7 +152,7 @@ public:
     operator NSString *() const { return m_string; }
 #endif
 
-#if OS(WINDOWS) && U_ICU_VERSION_MAJOR_NUM >= 59
+#if OS(WINDOWS)
     AtomString(const wchar_t* characters, unsigned length)
         : AtomString(ucharFrom(characters), length) { }
 
@@ -290,13 +289,15 @@ inline AtomString::AtomString(NSString *string)
 
 #endif
 
+// nullAtom and emptyAtom are special AtomString. They can be used from any threads since their StringImpls are not actually registered into AtomStringTable.
+extern WTF_EXPORT_PRIVATE LazyNeverDestroyed<const AtomString> nullAtomData;
+extern WTF_EXPORT_PRIVATE LazyNeverDestroyed<const AtomString> emptyAtomData;
+
 // Define external global variables for the commonly used atom strings.
 // These are only usable from the main thread.
-extern WTF_EXPORT_PRIVATE LazyNeverDestroyed<AtomString> nullAtomData;
-extern WTF_EXPORT_PRIVATE LazyNeverDestroyed<AtomString> emptyAtomData;
-extern WTF_EXPORT_PRIVATE LazyNeverDestroyed<AtomString> starAtomData;
-extern WTF_EXPORT_PRIVATE LazyNeverDestroyed<AtomString> xmlAtomData;
-extern WTF_EXPORT_PRIVATE LazyNeverDestroyed<AtomString> xmlnsAtomData;
+extern WTF_EXPORT_PRIVATE MainThreadLazyNeverDestroyed<const AtomString> starAtomData;
+extern WTF_EXPORT_PRIVATE MainThreadLazyNeverDestroyed<const AtomString> xmlAtomData;
+extern WTF_EXPORT_PRIVATE MainThreadLazyNeverDestroyed<const AtomString> xmlnsAtomData;
 
 inline const AtomString& nullAtom() { return nullAtomData.get(); }
 inline const AtomString& emptyAtom() { return emptyAtomData.get(); }
@@ -323,10 +324,8 @@ inline AtomString AtomString::fromUTF8(const char* characters)
 }
 
 // AtomStringHash is the default hash for AtomString
-template<typename T> struct DefaultHash;
-template<> struct DefaultHash<AtomString> {
-    typedef AtomStringHash Hash;
-};
+template<typename> struct DefaultHash;
+template<> struct DefaultHash<AtomString>;
 
 template<unsigned length> inline bool equalLettersIgnoringASCIICase(const AtomString& string, const char (&lowercaseLetters)[length])
 {
