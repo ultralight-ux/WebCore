@@ -98,7 +98,7 @@
 
 #if USE(ULTRALIGHT)
 #include <Ultralight/platform/Platform.h>
-#include <Ultralight/platform/ThreadManager.h>
+#include <Ultralight/platform/Thread.h>
 #include <Ultralight/private/Isolate.h>
 #endif
 
@@ -165,10 +165,10 @@ bool Thread::establishHandle(NewThreadContext* data, Optional<size_t> stackSize,
 #if USE(ULTRALIGHT)
     HANDLE threadHandle = nullptr;
     ultralight::Platform& platform = ultralight::Platform::instance();
-    ultralight::ThreadManager* threadManager = platform.thread_manager();
-    if (threadManager) {
+    ultralight::ThreadFactory* threadFactory = platform.thread_factory();
+    if (threadFactory) {
         ultralight::CreateThreadResult result;
-        bool success = threadManager->CreateThread(name, (ultralight::ThreadType)type,
+        bool success = threadFactory->CreateThread(name, (ultralight::ThreadType)type,
             reinterpret_cast<ultralight::ThreadEntryPoint>(&Thread::entryPoint), (void*)data, result);
         if (success && result.handle != 0) {
             threadIdentifier = (unsigned int)result.id;

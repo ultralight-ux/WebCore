@@ -41,7 +41,7 @@
 
 #if USE(ULTRALIGHT)
 #include <Ultralight/platform/Platform.h>
-#include <Ultralight/platform/ThreadManager.h>
+#include <Ultralight/platform/Thread.h>
 #include <Ultralight/private/Isolate.h>
 #endif
 

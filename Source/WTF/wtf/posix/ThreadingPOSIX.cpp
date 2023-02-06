@@ -208,10 +208,10 @@ bool Thread::establishHandle(NewThreadContext* context, Optional<size_t> stackSi
     unsigned threadIdentifier = 0;
 #if USE(ULTRALIGHT)
     ultralight::Platform& platform = ultralight::Platform::instance();
-    ultralight::ThreadManager* threadManager = platform.thread_manager();
-    if (threadManager) {
+    ultralight::ThreadFactory* threadFactory = platform.thread_factory();
+    if (threadFactory) {
         ultralight::CreateThreadResult result;
-        bool success = threadManager->CreateThread(name, (ultralight::ThreadType)type,
+        bool success = threadFactory->CreateThread(name, (ultralight::ThreadType)type,
             reinterpret_cast<ultralight::ThreadEntryPoint>(&Thread::entryPoint), (void*)data, result);
         if (success) {
             threadIdentifier = (unsigned int)result.id;
