@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -41,12 +42,12 @@ namespace WebCore {
 
 namespace {
 
-static void visitNodeList(JSC::SlotVisitor& visitor, NodeList& nodeList)
+static void visitNodeList(JSC::AbstractSlotVisitor& visitor, NodeList& nodeList)
 {
     ASSERT(!nodeList.isLiveNodeList());
     unsigned length = nodeList.length();
     for (unsigned i = 0; i < length; ++i)
-        visitor.addOpaqueRoot(root(nodeList.item(i)));
+        addWebCoreOpaqueRoot(visitor, nodeList.item(i));
 }
 
 class ChildListRecord final : public MutationRecord {
@@ -68,9 +69,9 @@ private:
     Node* previousSibling() override { return m_previousSibling.get(); }
     Node* nextSibling() override { return m_nextSibling.get(); }
 
-    void visitNodesConcurrently(JSC::SlotVisitor& visitor) const final
+    void visitNodesConcurrently(JSC::AbstractSlotVisitor& visitor) const final
     {
-        visitor.addOpaqueRoot(root(m_target.ptr()));
+        addWebCoreOpaqueRoot(visitor, m_target.get());
         if (m_addedNodes)
             visitNodeList(visitor, *m_addedNodes);
         if (m_removedNodes)
@@ -105,9 +106,9 @@ private:
         return nodeList.get();
     }
 
-    void visitNodesConcurrently(JSC::SlotVisitor& visitor) const final
+    void visitNodesConcurrently(JSC::AbstractSlotVisitor& visitor) const final
     {
-        visitor.addOpaqueRoot(root(m_target.ptr()));
+        addWebCoreOpaqueRoot(visitor, m_target.get());
     }
 
     Ref<Node> m_target;
@@ -164,7 +165,7 @@ private:
 
     String oldValue() override { return String(); }
 
-    void visitNodesConcurrently(JSC::SlotVisitor& visitor) const final
+    void visitNodesConcurrently(JSC::AbstractSlotVisitor& visitor) const final
     {
         m_record->visitNodesConcurrently(visitor);
     }
@@ -174,19 +175,19 @@ private:
 
 const AtomString& ChildListRecord::type()
 {
-    static MainThreadNeverDestroyed<const AtomString> childList("childList", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> childList("childList"_s);
     return childList;
 }
 
 const AtomString& AttributesRecord::type()
 {
-    static MainThreadNeverDestroyed<const AtomString> attributes("attributes", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> attributes("attributes"_s);
     return attributes;
 }
 
 const AtomString& CharacterDataRecord::type()
 {
-    static MainThreadNeverDestroyed<const AtomString> characterData("characterData", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> characterData("characterData"_s);
     return characterData;
 }
 

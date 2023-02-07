@@ -29,7 +29,6 @@
 #include "ReferrerPolicy.h"
 #include "ResourceLoadPriority.h"
 #include <JavaScriptCore/ScriptFetcher.h>
-#include <wtf/Optional.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -44,10 +43,10 @@ public:
     static Ref<CachedScriptFetcher> create(const String& charset);
 
 protected:
-    CachedScriptFetcher(const String& nonce, ReferrerPolicy referrerPolicy, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree)
+    CachedScriptFetcher(const String& nonce, ReferrerPolicy referrerPolicy, const String& charset, const AtomString& initiatorType, bool isInUserAgentShadowTree)
         : m_nonce(nonce)
         , m_charset(charset)
-        , m_initiatorName(initiatorName)
+        , m_initiatorType(initiatorType)
         , m_isInUserAgentShadowTree(isInUserAgentShadowTree)
         , m_referrerPolicy(referrerPolicy)
     {
@@ -58,12 +57,12 @@ protected:
     {
     }
 
-    CachedResourceHandle<CachedScript> requestScriptWithCache(Document&, const URL& sourceURL, const String& crossOriginMode, String&& integrity, Optional<ResourceLoadPriority>) const;
+    CachedResourceHandle<CachedScript> requestScriptWithCache(Document&, const URL& sourceURL, const String& crossOriginMode, String&& integrity, std::optional<ResourceLoadPriority>) const;
 
 private:
     String m_nonce;
     String m_charset;
-    AtomString m_initiatorName;
+    AtomString m_initiatorType;
     bool m_isInUserAgentShadowTree { false };
     ReferrerPolicy m_referrerPolicy { ReferrerPolicy::EmptyString };
 };

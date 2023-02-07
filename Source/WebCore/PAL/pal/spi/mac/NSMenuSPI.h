@@ -27,7 +27,7 @@
 
 #if PLATFORM(MAC)
 
-#if USE(APPLE_INTERNAL_SDK) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
+#if USE(APPLE_INTERNAL_SDK)
 
 #import <AppKit/NSMenu_Private.h>
 
@@ -67,6 +67,10 @@ enum {
 @end
 
 #endif
+
+@interface NSMenu (Staging_81123724)
+- (BOOL)_containsItemMatchingEvent:(NSEvent *)event includingDisabledItems:(BOOL)includingDisabledItems;
+@end
 
 typedef NSUInteger NSPopUpMenuFlags;
 

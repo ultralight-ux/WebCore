@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,11 +31,11 @@
 
 namespace JSC {
 
-const ClassInfo JSAsyncGenerator::s_info = { "AsyncGenerator", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSAsyncGenerator) };
+const ClassInfo JSAsyncGenerator::s_info = { "AsyncGenerator"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSAsyncGenerator) };
 
 JSAsyncGenerator* JSAsyncGenerator::create(VM& vm, Structure* structure)
 {
-    JSAsyncGenerator* generator = new (NotNull, allocateCell<JSAsyncGenerator>(vm.heap)) JSAsyncGenerator(vm, structure);
+    JSAsyncGenerator* generator = new (NotNull, allocateCell<JSAsyncGenerator>(vm)) JSAsyncGenerator(vm, structure);
     generator->finishCreation(vm);
     return generator;
 }
@@ -59,11 +59,14 @@ void JSAsyncGenerator::finishCreation(VM& vm)
         internalField(index).set(vm, this, values[index]);
 }
 
-void JSAsyncGenerator::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void JSAsyncGenerator::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     auto* thisObject = jsCast<JSAsyncGenerator*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
 }
+
+DEFINE_VISIT_CHILDREN(JSAsyncGenerator);
 
 } // namespace JSC

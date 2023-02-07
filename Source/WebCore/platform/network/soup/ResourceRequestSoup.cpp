@@ -29,103 +29,115 @@
 #include "MIMETypeRegistry.h"
 #include "RegistrableDomain.h"
 #include "SharedBuffer.h"
+#include "SoupVersioning.h"
 #include "URLSoup.h"
+#include "WebKitFormDataInputStream.h"
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-static uint64_t appendEncodedBlobItemToSoupMessageBody(SoupMessage* soupMessage, const BlobDataItem& blobItem)
+static inline SoupMessagePriority toSoupMessagePriority(ResourceLoadPriority priority)
 {
-    switch (blobItem.type()) {
-    case BlobDataItem::Type::Data:
-        soup_message_body_append(soupMessage->request_body, SOUP_MEMORY_TEMPORARY, blobItem.data().data()->data() + blobItem.offset(), blobItem.length());
-        return blobItem.length();
-    case BlobDataItem::Type::File: {
-        if (!blobItem.file()->expectedModificationTime())
-            return 0;
+    switch (priority) {
+    case ResourceLoadPriority::VeryLow:
+        return SOUP_MESSAGE_PRIORITY_VERY_LOW;
+    case ResourceLoadPriority::Low:
+        return SOUP_MESSAGE_PRIORITY_LOW;
+    case ResourceLoadPriority::Medium:
+        return SOUP_MESSAGE_PRIORITY_NORMAL;
+    case ResourceLoadPriority::High:
+        return SOUP_MESSAGE_PRIORITY_HIGH;
+    case ResourceLoadPriority::VeryHigh:
+        return SOUP_MESSAGE_PRIORITY_VERY_HIGH;
+    }
 
-        auto fileModificationTime = FileSystem::getFileModificationTime(blobItem.file()->path());
-        if (!fileModificationTime)
-            return 0;
+    RELEASE_ASSERT_NOT_REACHED();
+}
 
-        if (fileModificationTime->secondsSinceEpoch().secondsAs<time_t>() != blobItem.file()->expectedModificationTime()->secondsSinceEpoch().secondsAs<time_t>())
-            return 0;
+GRefPtr<SoupMessage> ResourceRequest::createSoupMessage(BlobRegistryImpl& blobRegistry) const
+{
+    auto uri = createSoupURI();
+    if (!uri)
+        return nullptr;
 
-        if (auto buffer = SharedBuffer::createWithContentsOfFile(blobItem.file()->path())) {
-            if (buffer->isEmpty())
-                return 0;
+    auto soupMessage = adoptGRef(soup_message_new_from_uri(httpMethod().ascii().data(), uri.get()));
 
-            GUniquePtr<SoupBuffer> soupBuffer(buffer->createSoupBuffer(blobItem.offset(), blobItem.length() == BlobDataItem::toEndOfFile ? 0 : blobItem.length()));
-            if (soupBuffer->length)
-                soup_message_body_append_buffer(soupMessage->request_body, soupBuffer.get());
-            return soupBuffer->length;
+    soup_message_set_priority(soupMessage.get(), toSoupMessagePriority(priority()));
+
+    updateSoupMessageHeaders(soup_message_get_request_headers(soupMessage.get()));
+
+    if (firstPartyForCookies().protocolIsInHTTPFamily()) {
+        if (auto firstParty = urlToSoupURI(firstPartyForCookies()))
+            soup_message_set_first_party(soupMessage.get(), firstParty.get());
+    }
+
+#if SOUP_CHECK_VERSION(2, 69, 90)
+    if (!isSameSiteUnspecified()) {
+        if (isSameSite()) {
+            auto siteForCookies = urlToSoupURI(m_requestData.m_url);
+            soup_message_set_site_for_cookies(soupMessage.get(), siteForCookies.get());
         }
-        break;
+        soup_message_set_is_top_level_navigation(soupMessage.get(), isTopSite());
     }
-    }
+#endif
 
-    return 0;
+    if (!acceptEncoding())
+        soup_message_disable_feature(soupMessage.get(), SOUP_TYPE_CONTENT_DECODER);
+    if (!allowCookies())
+        soup_message_disable_feature(soupMessage.get(), SOUP_TYPE_COOKIE_JAR);
+
+    updateSoupMessageBody(soupMessage.get(), blobRegistry);
+
+    return soupMessage;
 }
 
 void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage, BlobRegistryImpl& blobRegistry) const
 {
-    auto* formData = httpBody();
+    auto formData = httpBody();
     if (!formData || formData->isEmpty())
         return;
 
-    soup_message_body_set_accumulate(soupMessage->request_body, FALSE);
-    uint64_t bodySize = 0;
-    for (const auto& element : formData->elements()) {
-        switchOn(element.data,
-            [&] (const Vector<char>& bytes) {
-                bodySize += bytes.size();
-                soup_message_body_append(soupMessage->request_body, SOUP_MEMORY_TEMPORARY, bytes.data(), bytes.size());
-            }, [&] (const FormDataElement::EncodedFileData& fileData) {
-                if (auto buffer = SharedBuffer::createWithContentsOfFile(fileData.filename)) {
-                    if (buffer->isEmpty())
-                        return;
-                    
-                    GUniquePtr<SoupBuffer> soupBuffer(buffer->createSoupBuffer());
-                    bodySize += buffer->size();
-                    if (soupBuffer->length)
-                        soup_message_body_append_buffer(soupMessage->request_body, soupBuffer.get());
-                }
-            }, [&] (const FormDataElement::EncodedBlobData& blob) {
-                if (auto* blobData = blobRegistry.getBlobDataFromURL(blob.url)) {
-                    for (const auto& item : blobData->items())
-                        bodySize += appendEncodedBlobItemToSoupMessageBody(soupMessage, item);
-                }
-            }
-        );
+    // Handle the common special case of one piece of form data, with no files.
+    auto& elements = formData->elements();
+    if (elements.size() == 1 && !formData->alwaysStream()) {
+        if (auto* vector = std::get_if<Vector<uint8_t>>(&elements[0].data)) {
+#if USE(SOUP2)
+            soup_message_body_append(soupMessage->request_body, SOUP_MEMORY_TEMPORARY, vector->data(), vector->size());
+#else
+            GRefPtr<GBytes> bytes = adoptGRef(g_bytes_new_static(vector->data(), vector->size()));
+            soup_message_set_request_body_from_bytes(soupMessage, nullptr, bytes.get());
+#endif
+            return;
+        }
     }
 
-    ASSERT(bodySize == static_cast<uint64_t>(soupMessage->request_body->length));
-}
-
-void ResourceRequest::updateSoupMessageMembers(SoupMessage* soupMessage) const
-{
-    updateSoupMessageHeaders(soupMessage->request_headers);
-
-    GUniquePtr<SoupURI> firstParty = urlToSoupURI(firstPartyForCookies());
-    if (firstParty)
-        soup_message_set_first_party(soupMessage, firstParty.get());
-
-#if SOUP_CHECK_VERSION(2, 69, 90)
-    if (m_sameSiteDisposition == ResourceRequest::SameSiteDisposition::SameSite) {
-        GUniquePtr<SoupURI> siteForCookies = urlToSoupURI(m_url);
-        soup_message_set_site_for_cookies(soupMessage, siteForCookies.get());
+    // Precompute the content length.
+    auto resolvedFormData = formData->resolveBlobReferences();
+    uint64_t length = 0;
+    for (auto& element : resolvedFormData->elements()) {
+        length += element.lengthInBytes([&](auto& url) {
+            return blobRegistry.blobSize(url);
+        });
     }
 
-    soup_message_set_is_top_level_navigation(soupMessage, isTopSite());
+    if (!length)
+        return;
+
+    GRefPtr<GInputStream> stream = webkitFormDataInputStreamNew(WTFMove(resolvedFormData));
+#if USE(SOUP2)
+    if (GBytes* data = webkitFormDataInputStreamReadAll(WEBKIT_FORM_DATA_INPUT_STREAM(stream.get()))) {
+        soup_message_body_set_accumulate(soupMessage->request_body, FALSE);
+        auto* soupBuffer = soup_buffer_new_with_owner(g_bytes_get_data(data, nullptr),
+            g_bytes_get_size(data), data, reinterpret_cast<GDestroyNotify>(g_bytes_unref));
+        soup_message_body_append_buffer(soupMessage->request_body, soupBuffer);
+        soup_buffer_free(soupBuffer);
+    }
+    ASSERT(length == static_cast<uint64_t>(soupMessage->request_body->length));
+#else
+    soup_message_set_request_body(soupMessage, nullptr, stream.get(), length);
 #endif
 
-    soup_message_set_flags(soupMessage, m_soupFlags);
-
-    if (!acceptEncoding())
-        soup_message_disable_feature(soupMessage, SOUP_TYPE_CONTENT_DECODER);
-    if (!allowCookies())
-        soup_message_disable_feature(soupMessage, SOUP_TYPE_COOKIE_JAR);
 }
 
 void ResourceRequest::updateSoupMessageHeaders(SoupMessageHeaders* soupHeaders) const
@@ -140,80 +152,13 @@ void ResourceRequest::updateSoupMessageHeaders(SoupMessageHeaders* soupHeaders) 
 
 void ResourceRequest::updateFromSoupMessageHeaders(SoupMessageHeaders* soupHeaders)
 {
-    m_httpHeaderFields.clear();
+    m_requestData.m_httpHeaderFields.clear();
     SoupMessageHeadersIter headersIter;
     soup_message_headers_iter_init(&headersIter, soupHeaders);
     const char* headerName;
     const char* headerValue;
     while (soup_message_headers_iter_next(&headersIter, &headerName, &headerValue))
-        m_httpHeaderFields.set(String(headerName), String(headerValue));
-}
-
-void ResourceRequest::updateSoupMessage(SoupMessage* soupMessage, BlobRegistryImpl& blobRegistry) const
-{
-    g_object_set(soupMessage, SOUP_MESSAGE_METHOD, httpMethod().ascii().data(), NULL);
-
-    GUniquePtr<SoupURI> uri = createSoupURI();
-    soup_message_set_uri(soupMessage, uri.get());
-
-    updateSoupMessageMembers(soupMessage);
-    updateSoupMessageBody(soupMessage, blobRegistry);
-}
-
-void ResourceRequest::updateFromSoupMessage(SoupMessage* soupMessage)
-{
-    bool shouldPortBeResetToZero = m_url.port() && !m_url.port().value();
-    m_url = soupURIToURL(soup_message_get_uri(soupMessage));
-
-    // SoupURI cannot differeniate between an explicitly specified port 0 and
-    // no port specified.
-    if (shouldPortBeResetToZero)
-        m_url.setPort(0);
-
-    m_httpMethod = String(soupMessage->method);
-
-    updateFromSoupMessageHeaders(soupMessage->request_headers);
-
-    if (soupMessage->request_body->data)
-        m_httpBody = FormData::create(soupMessage->request_body->data, soupMessage->request_body->length);
-
-    if (SoupURI* firstParty = soup_message_get_first_party(soupMessage))
-        m_firstPartyForCookies = soupURIToURL(firstParty);
-
-#if SOUP_CHECK_VERSION(2, 69, 90)
-    setIsTopSite(soup_message_get_is_top_level_navigation(soupMessage));
-
-    if (SoupURI* siteForCookies = soup_message_get_site_for_cookies(soupMessage))
-        setIsSameSite(areRegistrableDomainsEqual(soupURIToURL(siteForCookies), m_url));
-    else
-        m_sameSiteDisposition = SameSiteDisposition::Unspecified;
-#else
-    m_sameSiteDisposition = SameSiteDisposition::Unspecified;
-#endif
-
-    m_soupFlags = soup_message_get_flags(soupMessage);
-
-#if SOUP_CHECK_VERSION(2, 71, 0)
-    m_acceptEncoding = !soup_message_is_feature_disabled(soupMessage, SOUP_TYPE_CONTENT_DECODER);
-    m_allowCookies = !soup_message_is_feature_disabled(soupMessage, SOUP_TYPE_COOKIE_JAR);
-#endif
-}
-
-static const char* gSoupRequestInitiatingPageIDKey = "wk-soup-request-initiating-page-id";
-
-void ResourceRequest::updateSoupRequest(SoupRequest* soupRequest) const
-{
-    if (m_initiatingPageID) {
-        uint64_t* initiatingPageIDPtr = static_cast<uint64_t*>(fastMalloc(sizeof(uint64_t)));
-        *initiatingPageIDPtr = *m_initiatingPageID;
-        g_object_set_data_full(G_OBJECT(soupRequest), g_intern_static_string(gSoupRequestInitiatingPageIDKey), initiatingPageIDPtr, fastFree);
-    }
-}
-
-void ResourceRequest::updateFromSoupRequest(SoupRequest* soupRequest)
-{
-    uint64_t* initiatingPageIDPtr = static_cast<uint64_t*>(g_object_get_data(G_OBJECT(soupRequest), gSoupRequestInitiatingPageIDKey));
-    m_initiatingPageID = initiatingPageIDPtr ? *initiatingPageIDPtr : 0;
+        m_requestData.m_httpHeaderFields.set(String::fromLatin1(headerName), String::fromLatin1(headerValue));
 }
 
 unsigned initializeMaximumHTTPConnectionCountPerHost()
@@ -224,26 +169,26 @@ unsigned initializeMaximumHTTPConnectionCountPerHost()
     return 10000;
 }
 
+#if USE(SOUP2)
 GUniquePtr<SoupURI> ResourceRequest::createSoupURI() const
 {
     // WebKit does not support fragment identifiers in data URLs, but soup does.
     // Before passing the URL to soup, we should make sure to urlencode any '#'
     // characters, so that soup does not interpret them as fragment identifiers.
     // See http://wkbug.com/68089
-    if (m_url.protocolIsData()) {
-        String urlString = m_url.string();
-        urlString.replace("#", "%23");
+    if (m_requestData.m_url.protocolIsData()) {
+        String urlString = makeStringByReplacingAll(m_requestData.m_url.string(), '#', "%23"_s);
         return GUniquePtr<SoupURI>(soup_uri_new(urlString.utf8().data()));
     }
 
-    GUniquePtr<SoupURI> soupURI = urlToSoupURI(m_url);
+    GUniquePtr<SoupURI> soupURI = urlToSoupURI(m_requestData.m_url);
 
     // Versions of libsoup prior to 2.42 have a soup_uri_new that will convert empty passwords that are not
     // prefixed by a colon into null. Some parts of soup like the SoupAuthenticationManager will only be active
     // when both the username and password are non-null. When we have credentials, empty usernames and passwords
     // should be empty strings instead of null.
-    String urlUser = m_url.user();
-    String urlPass = m_url.password();
+    String urlUser = m_requestData.m_url.user();
+    String urlPass = m_requestData.m_url.password();
     if (!urlUser.isEmpty() || !urlPass.isEmpty()) {
         soup_uri_set_user(soupURI.get(), urlUser.utf8().data());
         soup_uri_set_password(soupURI.get(), urlPass.utf8().data());
@@ -251,7 +196,34 @@ GUniquePtr<SoupURI> ResourceRequest::createSoupURI() const
 
     return soupURI;
 }
+#else
+GRefPtr<GUri> ResourceRequest::createSoupURI() const
+{
+    return m_requestData.m_url.createGUri();
+}
+#endif
 
+ResourceRequestPlatformData ResourceRequest::getResourceRequestPlatformData() const
+{
+    if (m_httpBody)
+        return ResourceRequestPlatformData { m_requestData, m_httpBody->flattenToString(), m_acceptEncoding, m_redirectCount };
+    return ResourceRequestPlatformData { m_requestData, std::nullopt, m_acceptEncoding, m_redirectCount };
 }
 
-#endif
+ResourceRequest ResourceRequest::fromResourceRequestData(ResourceRequestData requestData)
+{
+    if (std::holds_alternative<ResourceRequestBase::RequestData>(requestData)) 
+        return ResourceRequest(WTFMove(std::get<ResourceRequestBase::RequestData>(requestData)));
+    return ResourceRequest(WTFMove(std::get<ResourceRequestPlatformData>(requestData)));
+}
+
+ResourceRequestData ResourceRequest::getRequestDataToSerialize() const
+{
+    if (encodingRequiresPlatformData())
+        return getResourceRequestPlatformData();
+    return m_requestData;
+}
+
+} // namespace WebCore
+
+#endif // USE(SOUP)

@@ -28,10 +28,10 @@
 
 #if ENABLE(GAMEPAD) && PLATFORM(MAC)
 
+#import "GameControllerGamepadProvider.h"
 #import "GamepadProviderClient.h"
 #import "Logging.h"
 #import "PlatformGamepad.h"
-#import <pal/spi/mac/IOKitSPIMac.h>
 #import <wtf/NeverDestroyed.h>
 
 #if HAVE(GCCONTROLLER_HID_DEVICE_CHECK)
@@ -43,7 +43,7 @@
 namespace WebCore {
 
 static const Seconds connectionDelayInterval { 500_ms };
-static const Seconds hidInputNotificationDelay { 50_ms };
+static const Seconds hidInputNotificationDelay { 1_ms };
 
 static RetainPtr<CFDictionaryRef> deviceMatchingDictionary(uint32_t usagePage, uint32_t usage)
 {
@@ -230,7 +230,9 @@ void HIDGamepadProvider::deviceAdded(IOHIDDeviceRef device)
     }
 #endif
 
-    ASSERT(!m_gamepadMap.get(device));
+    // HID sometimes notifies us multiple times for the same device.
+    if (m_gamepadMap.contains(device))
+        return;
 
     LOG(Gamepad, "HIDGamepadProvider device %p added", device);
 
@@ -323,6 +325,18 @@ std::unique_ptr<HIDGamepad> HIDGamepadProvider::removeGamepadForDevice(IOHIDDevi
         m_gamepadVector[i] = nullptr;
 
     return result;
+}
+
+void HIDGamepadProvider::playEffect(unsigned, const String&, GamepadHapticEffectType, const GamepadEffectParameters&, CompletionHandler<void(bool)>&& completionHandler)
+{
+    // Not supported by this provider.
+    completionHandler(false);
+}
+
+void HIDGamepadProvider::stopEffects(unsigned, const String&, CompletionHandler<void()>&& completionHandler)
+{
+    // Not supported by this provider.
+    completionHandler();
 }
 
 } // namespace WebCore

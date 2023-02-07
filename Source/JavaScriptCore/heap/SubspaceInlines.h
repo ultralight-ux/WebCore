@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -62,8 +62,8 @@ void Subspace::forEachNotEmptyMarkedBlock(const Func& func)
 template<typename Func>
 void Subspace::forEachPreciseAllocation(const Func& func)
 {
-    for (PreciseAllocation* allocation = m_preciseAllocations.begin(); allocation != m_preciseAllocations.end(); allocation = allocation->next())
-        func(allocation);
+    for (PreciseAllocation& allocation : m_preciseAllocations)
+        func(&allocation);
 }
 
 template<typename Func>
@@ -85,10 +85,10 @@ void Subspace::forEachMarkedCell(const Func& func)
         });
 }
 
-template<typename Func>
-Ref<SharedTask<void(SlotVisitor&)>> Subspace::forEachMarkedCellInParallel(const Func& func)
+template<typename Visitor, typename Func>
+Ref<SharedTask<void(Visitor&)>> Subspace::forEachMarkedCellInParallel(const Func& func)
 {
-    class Task final : public SharedTask<void(SlotVisitor&)> {
+    class Task final : public SharedTask<void(Visitor&)> {
     public:
         Task(Subspace& subspace, const Func& func)
             : m_subspace(subspace)
@@ -97,7 +97,7 @@ Ref<SharedTask<void(SlotVisitor&)>> Subspace::forEachMarkedCellInParallel(const 
         {
         }
         
-        void run(SlotVisitor& visitor) final
+        void run(Visitor& visitor) final
         {
             while (MarkedBlock::Handle* handle = m_blockSource->run()) {
                 handle->forEachMarkedCell(
@@ -108,7 +108,7 @@ Ref<SharedTask<void(SlotVisitor&)>> Subspace::forEachMarkedCellInParallel(const 
             }
             
             {
-                auto locker = holdLock(m_lock);
+                Locker locker { m_lock };
                 if (!m_needToVisitPreciseAllocations)
                     return;
                 m_needToVisitPreciseAllocations = false;
@@ -152,7 +152,7 @@ void Subspace::forEachLiveCell(const Func& func)
         });
 }
 
-inline const CellAttributes& Subspace::attributes() const
+inline CellAttributes Subspace::attributes() const
 {
     return m_heapCellType->attributes();
 }

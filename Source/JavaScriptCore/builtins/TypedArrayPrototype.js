@@ -31,7 +31,7 @@
 // to look up their default constructor, which is expensive. If we used the
 // normal speciesConstructor helper we would need to look up the default
 // constructor every time.
-@globalPrivate
+@linkTimeConstant
 function typedArraySpeciesConstructor(value)
 {
     "use strict";
@@ -52,22 +52,6 @@ function typedArraySpeciesConstructor(value)
     return constructor;
 }
 
-@globalPrivate
-function typedArrayClampArgumentToStartOrEnd(value, length, undefinedValue)
-{
-    "use strict";
-
-    if (value === @undefined)
-        return undefinedValue;
-
-    var int = @toInteger(value);
-    if (int < 0) {
-        int += length;
-        return int < 0 ? 0 : int;
-    }
-    return int > length ? length : int;
-}
-
 function every(callback /*, thisArg */)
 {
     "use strict";
@@ -83,23 +67,6 @@ function every(callback /*, thisArg */)
     }
 
     return true;
-}
-
-function fill(value /* [, start [, end]] */)
-{
-    "use strict";
-
-    var length = @typedArrayLength(this);
-
-    var start = @argument(1);
-    var end = @argument(2);
-
-    start = @typedArrayClampArgumentToStartOrEnd(start, length, 0);
-    end = @typedArrayClampArgumentToStartOrEnd(end, length, length);
-
-    for (var i = start; i < end; i++)
-        this[i] = value;
-    return this;
 }
 
 function find(callback /* [, thisArg] */)
@@ -119,6 +86,23 @@ function find(callback /* [, thisArg] */)
     return @undefined;
 }
 
+function findLast(callback /* [, thisArg] */)
+{
+    "use strict";
+    var length = @typedArrayLength(this);
+    var thisArg = @argument(1);
+
+    if (!@isCallable(callback))
+        @throwTypeError("TypedArray.prototype.findLast callback must be a function");
+
+    for (var i = length - 1; i >= 0; i--) {
+        var element = this[i];
+        if (callback.@call(thisArg, element, i, this))
+            return element;
+    }
+    return @undefined;
+}
+
 function findIndex(callback /* [, thisArg] */)
 {
     "use strict";
@@ -129,6 +113,22 @@ function findIndex(callback /* [, thisArg] */)
         @throwTypeError("TypedArray.prototype.findIndex callback must be a function");
 
     for (var i = 0; i < length; i++) {
+        if (callback.@call(thisArg, this[i], i, this))
+            return i;
+    }
+    return -1;
+}
+
+function findLastIndex(callback /* [, thisArg] */)
+{
+    "use strict";
+    var length = @typedArrayLength(this);
+    var thisArg = @argument(1);
+
+    if (!@isCallable(callback))
+        @throwTypeError("TypedArray.prototype.findLastIndex callback must be a function");
+
+    for (var i = length - 1; i >= 0; i--) {
         if (callback.@call(thisArg, this[i], i, this))
             return i;
     }
@@ -166,86 +166,80 @@ function some(callback /* [, thisArg] */)
     return false;
 }
 
-function sort(comparator)
+@linkTimeConstant
+function typedArrayMerge(dst, src, srcIndex, srcEnd, width, comparator)
 {
-    // 22.2.3.25
     "use strict";
 
-    function min(a, b)
-    {
-        return a < b ? a : b;
-    }
+    var left = srcIndex;
+    var leftEnd = @min(left + width, srcEnd);
+    var right = leftEnd;
+    var rightEnd = @min(right + width, srcEnd);
 
-    function merge(dst, src, srcIndex, srcEnd, width, comparator)
-    {
-        var left = srcIndex;
-        var leftEnd = min(left + width, srcEnd);
-        var right = leftEnd;
-        var rightEnd = min(right + width, srcEnd);
-
-        for (var dstIndex = left; dstIndex < rightEnd; ++dstIndex) {
-            if (right < rightEnd) {
-                if (left >= leftEnd || comparator(src[right], src[left]) < 0) {
-                    dst[dstIndex] = src[right++];
-                    continue;
-                }
+    for (var dstIndex = left; dstIndex < rightEnd; ++dstIndex) {
+        if (right < rightEnd) {
+            if (left >= leftEnd || @toNumber(comparator(src[right], src[left])) < 0) {
+                dst[dstIndex] = src[right++];
+                continue;
             }
-
-            dst[dstIndex] = src[left++];
         }
+
+        dst[dstIndex] = src[left++];
     }
-
-    function mergeSort(array, valueCount, comparator)
-    {
-        var buffer = [ ];
-        buffer.length = valueCount;
-
-        var dst = buffer;
-        var src = array;
-
-        for (var width = 1; width < valueCount; width *= 2) {
-            for (var srcIndex = 0; srcIndex < valueCount; srcIndex += 2 * width)
-                merge(dst, src, srcIndex, valueCount, width, comparator);
-
-            var tmp = src;
-            src = dst;
-            dst = tmp;
-        }
-
-        if (src != array) {
-            for(var i = 0; i < valueCount; i++)
-                array[i] = src[i];
-        }
-    }
-
-    var length = @typedArrayLength(this);
-
-    if (length < 2)
-        return;
-
-    if (@isCallable(comparator))
-        mergeSort(this, length, comparator);
-    else
-        @typedArraySort(this);
-    
-    return this;
 }
 
-function subarray(begin, end)
+@linkTimeConstant
+function typedArrayMergeSort(array, valueCount, comparator)
 {
     "use strict";
 
-    if (!@isTypedArrayView(this))
-        @throwTypeError("|this| should be a typed array view");
+    var constructor = @typedArrayGetOriginalConstructor(array);
+    var buffer = new constructor(valueCount);
+    var dst = buffer;
+    var src = array;
+    if (@isResizableOrGrowableSharedTypedArrayView(array)) {
+        src = new constructor(valueCount);
+        for (var i = 0; i < valueCount; ++i)
+            src[i] = array[i];
+    }
 
-    var start = @toInteger(begin);
-    var finish;
-    if (end !== @undefined)
-        finish = @toInteger(end);
+    for (var width = 1; width < valueCount; width *= 2) {
+        for (var srcIndex = 0; srcIndex < valueCount; srcIndex += 2 * width)
+            @typedArrayMerge(dst, src, srcIndex, valueCount, width, comparator);
 
-    var constructor = @typedArraySpeciesConstructor(this);
+        var tmp = src;
+        src = dst;
+        dst = tmp;
+    }
 
-    return @typedArraySubarrayCreate.@call(this, start, finish, constructor);
+    if (src != array) {
+        valueCount = @min(@typedArrayLength(array), valueCount);
+        for (var i = 0; i < valueCount; ++i)
+            array[i] = src[i];
+    }
+}
+
+function sort(comparator)
+{
+    "use strict";
+
+    if (comparator !== @undefined && !@isCallable(comparator))
+        @throwTypeError("TypedArray.prototype.sort requires the comparator argument to be a function or undefined");
+
+    var length = @typedArrayLength(this);
+    if (length < 2)
+        return this;
+
+    // typedArraySort is not safe when the other thread is modifying content. So if |this| is SharedArrayBuffer,
+    // use JS-implemented sorting.
+    if (comparator !== @undefined || @isSharedTypedArrayView(this)) {
+        if (comparator === @undefined)
+            comparator = @typedArrayDefaultComparator;
+        @typedArrayMergeSort(this, length, comparator);
+    } else
+        @typedArraySort(this);
+
+    return this;
 }
 
 function reduce(callback /* [, initialValue] */)
@@ -312,21 +306,12 @@ function map(callback /*, thisArg */)
 
     var thisArg = @argument(1);
 
-    // Do species construction
-    var constructor = this.constructor;
-    var result;
-    if (constructor === @undefined)
-        result = new (@typedArrayGetOriginalConstructor(this))(length);
-    else {
-        var speciesConstructor = constructor.@@species;
-        if (@isUndefinedOrNull(speciesConstructor))
-            result = new (@typedArrayGetOriginalConstructor(this))(length);
-        else {
-            result = new speciesConstructor(length);
-            // typedArrayLength throws if it doesn't get a view.
-            @typedArrayLength(result);
-        }
-    }
+    var constructor = @typedArraySpeciesConstructor(this);
+    var result = new constructor(length);
+    if (@typedArrayLength(result) < length)
+        @throwTypeError("TypedArray.prototype.map constructed typed array of insufficient length");
+    if (@typedArrayContentType(this) !== @typedArrayContentType(result))
+        @throwTypeError("TypedArray.prototype.map constructed typed array of different content type from |this|");
 
     for (var i = 0; i < length; i++) {
         var mappedValue = callback.@call(thisArg, this[i], i, this);
@@ -350,26 +335,18 @@ function filter(callback /*, thisArg */)
     for (var i = 0; i < length; i++) {
         var value = this[i];
         if (callback.@call(thisArg, value, i, this))
-            kept.@push(value);
+            @arrayPush(kept, value);
     }
+    var length = kept.length;
 
-    var constructor = this.constructor;
-    var result;
-    var resultLength = kept.length;
-    if (constructor === @undefined)
-        result = new (@typedArrayGetOriginalConstructor(this))(resultLength);
-    else {
-        var speciesConstructor = constructor.@@species;
-        if (@isUndefinedOrNull(speciesConstructor))
-            result = new (@typedArrayGetOriginalConstructor(this))(resultLength);
-        else {
-            result = new speciesConstructor(resultLength);
-            // typedArrayLength throws if it doesn't get a view.
-            @typedArrayLength(result);
-        }
-    }
+    var constructor = @typedArraySpeciesConstructor(this);
+    var result = new constructor(length);
+    if (@typedArrayLength(result) < length)
+        @throwTypeError("TypedArray.prototype.filter constructed typed array of insufficient length");
+    if (@typedArrayContentType(this) !== @typedArrayContentType(result))
+        @throwTypeError("TypedArray.prototype.filter constructed typed array of different content type from |this|");
 
-    for (var i = 0; i < kept.length; i++)
+    for (var i = 0; i < length; i++)
         result[i] = kept[i];
 
     return result;
@@ -384,9 +361,53 @@ function toLocaleString(/* locale, options */)
     if (length == 0)
         return "";
 
-    var string = this[0].toLocaleString(@argument(0), @argument(1));
-    for (var i = 1; i < length; i++)
-        string += "," + this[i].toLocaleString(@argument(0), @argument(1));
+    var string = "";
+    for (var i = 0; i < length; ++i) {
+        if (i > 0)
+            string += ",";
+        var element = this[i];
+        if (!@isUndefinedOrNull(element))
+            string += @toString(element.toLocaleString(@argument(0), @argument(1)));
+    }
 
     return string;
+}
+
+function at(index)
+{
+    "use strict";
+
+    var length = @typedArrayLength(this);
+
+    var k = @toIntegerOrInfinity(index);
+    if (k < 0)
+        k += length;
+
+    return (k >= 0 && k < length) ? this[k] : @undefined;
+}
+
+function toSorted(comparator)
+{
+    "use strict";
+
+    // Step 1.
+    if (comparator !== @undefined && !@isCallable(comparator))
+        @throwTypeError("TypedArray.prototype.toSorted requires the comparator argument to be a function or undefined");
+
+    var result = @typedArrayClone.@call(this);
+
+    var length = @typedArrayLength(result);
+    if (length < 2)
+        return result;
+
+    // typedArraySort is not safe when the other thread is modifying content. So if |result| is SharedArrayBuffer,
+    // use JS-implemented sorting.
+    if (comparator !== @undefined || @isSharedTypedArrayView(result)) {
+        if (comparator === @undefined)
+            comparator = @typedArrayDefaultComparator;
+        @typedArrayMergeSort(result, length, comparator);
+    } else
+        @typedArraySort(result);
+
+    return result;
 }

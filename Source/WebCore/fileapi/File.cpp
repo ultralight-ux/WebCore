@@ -30,7 +30,6 @@
 #include "MIMETypeRegistry.h"
 #include "ThreadableBlobRegistry.h"
 #include <wtf/DateMath.h>
-#include <wtf/FileMetadata.h>
 #include <wtf/FileSystem.h>
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/text/WTFString.h>
@@ -46,7 +45,7 @@ Ref<File> File::createWithRelativePath(ScriptExecutionContext* context, const St
     return file;
 }
 
-Ref<File> File::create(ScriptExecutionContext* context, const String& path, const String& replacementPath, const String& nameOverride)
+Ref<File> File::create(ScriptExecutionContext* context, const String& path, const String& replacementPath, const String& nameOverride, const std::optional<FileSystem::PlatformFileID>& fileID)
 {
     String name;
     String type;
@@ -56,7 +55,7 @@ Ref<File> File::create(ScriptExecutionContext* context, const String& path, cons
     auto internalURL = BlobURL::createInternalURL();
     ThreadableBlobRegistry::registerFileBlobURL(internalURL, path, replacementPath, type);
 
-    auto file = adoptRef(*new File(context, WTFMove(internalURL), WTFMove(type), WTFMove(effectivePath), WTFMove(name)));
+    auto file = adoptRef(*new File(context, WTFMove(internalURL), WTFMove(type), WTFMove(effectivePath), WTFMove(name), fileID));
     file->suspendIfNeeded();
     return file;
 }
@@ -68,25 +67,26 @@ File::File(ScriptExecutionContext* context, URL&& url, String&& type, String&& p
 {
 }
 
-File::File(DeserializationContructor, ScriptExecutionContext* context, const String& path, const URL& url, const String& type, const String& name, const Optional<int64_t>& lastModified)
-    : Blob(deserializationContructor, context, url, type, { }, path)
+File::File(ScriptExecutionContext* context, URL&& url, String&& type, String&& path, String&& name, const std::optional<FileSystem::PlatformFileID>& fileID)
+    : Blob(uninitializedContructor, context, WTFMove(url), WTFMove(type))
+    , m_path(WTFMove(path))
+    , m_name(WTFMove(name))
+    , m_fileID(fileID)
+{
+}
+
+File::File(DeserializationContructor, ScriptExecutionContext* context, const String& path, const URL& url, const String& type, const String& name, const std::optional<int64_t>& lastModified)
+    : Blob(deserializationContructor, context, url, type, { }, 0, path)
     , m_path(path)
     , m_name(name)
     , m_lastModifiedDateOverride(lastModified)
 {
 }
 
-static BlobPropertyBag convertPropertyBag(const File::PropertyBag& initialBag)
-{
-    BlobPropertyBag bag;
-    bag.type = initialBag.type;
-    return bag;
-}
-
 File::File(ScriptExecutionContext& context, Vector<BlobPartVariant>&& blobPartVariants, const String& filename, const PropertyBag& propertyBag)
-    : Blob(context, WTFMove(blobPartVariants), convertPropertyBag(propertyBag))
+    : Blob(context, WTFMove(blobPartVariants), propertyBag)
     , m_name(filename)
-    , m_lastModifiedDateOverride(propertyBag.lastModified.valueOr(WallTime::now().secondsSinceEpoch().milliseconds()))
+    , m_lastModifiedDateOverride(propertyBag.lastModified.value_or(WallTime::now().secondsSinceEpoch().milliseconds()))
 {
 }
 
@@ -117,13 +117,13 @@ int64_t File::lastModified() const
     // FIXME: This does sync-i/o on the main thread and also recalculates every time the method is called.
     // The i/o should be performed on a background thread,
     // and the result should be cached along with an asynchronous monitor for changes to the file.
-    auto modificationTime = FileSystem::getFileModificationTime(m_path);
+    auto modificationTime = FileSystem::fileModificationTime(m_path);
     if (modificationTime)
         result = modificationTime->secondsSinceEpoch().millisecondsAs<int64_t>();
     else
         result = WallTime::now().secondsSinceEpoch().millisecondsAs<int64_t>();
 
-    return WTF::timeClip(result);
+    return timeClip(result);
 }
 
 void File::computeNameAndContentType(const String& path, const String& nameOverride, String& effectiveName, String& effectiveContentType)
@@ -134,11 +134,11 @@ void File::computeNameAndContentType(const String& path, const String& nameOverr
         return;
     }
 #endif
-    effectiveName = nameOverride.isEmpty() ? FileSystem::pathGetFileName(path) : nameOverride;
+    effectiveName = nameOverride.isEmpty() ? FileSystem::pathFileName(path) : nameOverride;
     size_t index = effectiveName.reverseFind('.');
     if (index != notFound) {
         callOnMainThreadAndWait([&effectiveContentType, &effectiveName, index] {
-            effectiveContentType = MIMETypeRegistry::mimeTypeForExtension(effectiveName.substring(index + 1)).isolatedCopy();
+            effectiveContentType = MIMETypeRegistry::mimeTypeForExtension(StringView(effectiveName).substring(index + 1)).isolatedCopy();
         });
     }
 }
@@ -155,7 +155,7 @@ String File::contentTypeForFile(const String& path)
 bool File::isDirectory() const
 {
     if (!m_isDirectory)
-        m_isDirectory = FileSystem::fileIsDirectory(m_path, FileSystem::ShouldFollowSymbolicLinks::Yes);
+        m_isDirectory = FileSystem::fileTypeFollowingSymlinks(m_path) == FileSystem::FileType::Directory;
     return *m_isDirectory;
 }
 

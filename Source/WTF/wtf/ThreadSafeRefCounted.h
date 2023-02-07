@@ -104,8 +104,6 @@ private:
 #endif
 };
 
-enum class DestructionThread { Any, Main, MainRunLoop };
-
 template<class T, DestructionThread destructionThread = DestructionThread::Any> class ThreadSafeRefCounted : public ThreadSafeRefCountedBase {
 public:
     void deref() const
@@ -120,17 +118,11 @@ public:
         case DestructionThread::Any:
             break;
         case DestructionThread::Main:
-            if (!isMainThread()) {
-                callOnMainThread(WTFMove(deleteThis));
-                return;
-            }
-            break;
+            ensureOnMainThread(WTFMove(deleteThis));
+            return;
         case DestructionThread::MainRunLoop:
-            if (!isMainRunLoop()) {
-                callOnMainRunLoop(WTFMove(deleteThis));
-                return;
-            }
-            break;
+            ensureOnMainRunLoop(WTFMove(deleteThis));
+            return;
         }
         deleteThis();
     }

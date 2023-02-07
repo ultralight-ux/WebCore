@@ -19,10 +19,9 @@
  */
 
 #include "config.h"
-
-#if ENABLE(SVG_FONTS)
 #include "SVGGlyphRefElement.h"
 
+#include "SVGElementTypeHelpers.h"
 #include "SVGGlyphElement.h"
 #include "SVGNames.h"
 #include "SVGParserUtilities.h"
@@ -35,7 +34,7 @@ namespace WebCore {
 WTF_MAKE_ISO_ALLOCATED_IMPL(SVGGlyphRefElement);
 
 inline SVGGlyphRefElement::SVGGlyphRefElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
     , SVGURIReference(this)
 {
     ASSERT(hasTagName(SVGNames::glyphRefTag));
@@ -58,7 +57,7 @@ bool SVGGlyphRefElement::hasValidGlyphElement(String& glyphName) const
 
 static float parseFloat(const AtomString& value)
 {
-    return parseNumber(value).valueOr(0);
+    return parseNumber(value).value_or(0);
 }
 
 void SVGGlyphRefElement::parseAttribute(const QualifiedName& name, const AtomString& value)
@@ -99,5 +98,3 @@ void SVGGlyphRefElement::setDy(float dy)
 }
 
 }
-
-#endif

@@ -117,7 +117,8 @@ private:
     bool shouldStopCaretBlinking() const final { return true; }
     void setShouldPreventSpellChecking(bool prevent) { m_shouldPreventSpellChecking = prevent; }
 
-    String inputEventTypeName() const final;
+    AtomString inputEventTypeName() const final;
+    bool isInputMethodComposing() const final;
     String inputEventData() const final;
     RefPtr<DataTransfer> inputEventDataTransfer() const final;
     bool isBeforeInputEventCancelable() const final;
@@ -125,7 +126,7 @@ private:
     static void updateSelectionIfDifferentFromCurrentSelection(TypingCommand*, Document&);
 
     void updatePreservesTypingStyle(ETypingCommand);
-    bool willAddTypingToOpenCommand(ETypingCommand, TextGranularity, const String& = emptyString(), const Optional<SimpleRange>& = { });
+    bool willAddTypingToOpenCommand(ETypingCommand, TextGranularity, const String& = emptyString(), const std::optional<SimpleRange>& = { });
     void markMisspellingsAfterTyping(ETypingCommand);
     void typingAddedToOpenCommand(ETypingCommand);
     bool makeEditableRootEmpty();

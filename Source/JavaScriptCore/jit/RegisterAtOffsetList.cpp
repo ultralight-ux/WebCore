@@ -36,19 +36,32 @@ DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(RegisterAtOffsetList);
 
 RegisterAtOffsetList::RegisterAtOffsetList() { }
 
-RegisterAtOffsetList::RegisterAtOffsetList(RegisterSet registerSet, OffsetBaseType offsetBaseType)
+RegisterAtOffsetList::RegisterAtOffsetList(RegisterSet registerSetBuilder, OffsetBaseType offsetBaseType)
+    : m_registers(registerSetBuilder.numberOfSetRegisters())
 {
-    size_t numberOfRegisters = registerSet.numberOfSetRegisters();
-    ptrdiff_t offset = 0;
-    
-    if (offsetBaseType == FramePointerBased)
-        offset = -(static_cast<ptrdiff_t>(numberOfRegisters) * sizeof(CPURegister));
+    ASSERT(!registerSetBuilder.hasAnyWideRegisters() || Options::useWebAssemblySIMD());
 
-    m_registers.reserveInitialCapacity(numberOfRegisters);
-    registerSet.forEach([&] (Reg reg) {
-        m_registers.append(RegisterAtOffset(reg, offset));
-        offset += sizeof(CPURegister);
+    size_t sizeOfAreaInBytes = registerSetBuilder.byteSizeOfSetRegisters();
+    m_sizeOfAreaInBytes = sizeOfAreaInBytes;
+#if USE(JSVALUE64)
+    static_assert(sizeof(CPURegister) == sizeof(double));
+    ASSERT(this->sizeOfAreaInBytes() == registerCount() * sizeof(CPURegister) || Options::useWebAssemblySIMD());
+#endif    
+
+    ptrdiff_t startOffset = 0;
+    if (offsetBaseType == FramePointerBased)
+        startOffset = -static_cast<ptrdiff_t>(sizeOfAreaInBytes);
+
+    ptrdiff_t offset = startOffset;
+    unsigned index = 0;
+
+    registerSetBuilder.forEachWithWidth([&] (Reg reg, Width width) {
+        offset = WTF::roundUpToMultipleOf(alignmentForWidth(width), offset);
+        m_registers[index++] = RegisterAtOffset(reg, offset, width);
+        offset += bytesForWidth(width);
     });
+
+    ASSERT(static_cast<size_t>(offset - startOffset) == sizeOfAreaInBytes);
 }
 
 void RegisterAtOffsetList::dump(PrintStream& out) const
@@ -73,7 +86,17 @@ const RegisterAtOffsetList& RegisterAtOffsetList::llintBaselineCalleeSaveRegiste
     static std::once_flag onceKey;
     static LazyNeverDestroyed<RegisterAtOffsetList> result;
     std::call_once(onceKey, [] {
-        result.construct(RegisterSet::llintBaselineCalleeSaveRegisters());
+        result.construct(RegisterSetBuilder::llintBaselineCalleeSaveRegisters());
+    });
+    return result.get();
+}
+
+const RegisterAtOffsetList& RegisterAtOffsetList::dfgCalleeSaveRegisters()
+{
+    static std::once_flag onceKey;
+    static LazyNeverDestroyed<RegisterAtOffsetList> result;
+    std::call_once(onceKey, [] {
+        result.construct(RegisterSetBuilder::dfgCalleeSaveRegisters());
     });
     return result.get();
 }

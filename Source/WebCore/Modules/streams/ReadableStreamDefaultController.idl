@@ -28,15 +28,16 @@
  */
 
 [
-    Exposed=(Window,Worker),
+    Exposed=*,
     JSBuiltin,
-    PrivateIdentifier
+    PrivateIdentifier,
+    PublicIdentifier
 ] interface ReadableStreamDefaultController {
-    constructor(ReadableStream stream, any underlyingSource, unsigned long size, unsigned long highWaterMark);
+    constructor();
 
-    [NotEnumerable] void enqueue(optional any chunk);
-    [NotEnumerable] void close();
-    [NotEnumerable] void error(optional any error);
+    undefined enqueue(optional any chunk);
+    undefined close();
+    undefined error(optional any error);
 
-    [NotEnumerable] readonly attribute double desiredSize;
+    readonly attribute double desiredSize;
 };

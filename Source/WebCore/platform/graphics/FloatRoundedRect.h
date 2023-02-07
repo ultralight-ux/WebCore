@@ -40,6 +40,7 @@ class FloatRoundedRect {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     class Radii {
+    WTF_MAKE_FAST_ALLOCATED;
     public:
         Radii() { }
         Radii(const FloatSize& topLeft, const FloatSize& topRight, const FloatSize& bottomLeft, const FloatSize& bottomRight)
@@ -63,6 +64,14 @@ public:
             , m_topRight(uniformRadius, uniformRadius)
             , m_bottomLeft(uniformRadius, uniformRadius)
             , m_bottomRight(uniformRadius, uniformRadius)
+        {
+        }
+
+        explicit Radii(float uniformRadiusWidth, float uniformRadiusHeight)
+            : m_topLeft(uniformRadiusWidth, uniformRadiusHeight)
+            , m_topRight(uniformRadiusWidth, uniformRadiusHeight)
+            , m_bottomLeft(uniformRadiusWidth, uniformRadiusHeight)
+            , m_bottomRight(uniformRadiusWidth, uniformRadiusHeight)
         {
         }
 
@@ -93,9 +102,9 @@ public:
     };
 
     WEBCORE_EXPORT explicit FloatRoundedRect(const FloatRect& = FloatRect(), const Radii& = Radii());
+    WEBCORE_EXPORT FloatRoundedRect(const FloatRect&, const FloatSize& topLeft, const FloatSize& topRight, const FloatSize& bottomLeft, const FloatSize& bottomRight);
     explicit FloatRoundedRect(const RoundedRect&);
     FloatRoundedRect(float x, float y, float width, float height);
-    FloatRoundedRect(const FloatRect&, const FloatSize& topLeft, const FloatSize& topRight, const FloatSize& bottomLeft, const FloatSize& bottomRight);
 
     const FloatRect& rect() const { return m_rect; }
     const Radii& radii() const { return m_radii; }

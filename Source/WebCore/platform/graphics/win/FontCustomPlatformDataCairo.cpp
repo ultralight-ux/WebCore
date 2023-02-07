@@ -21,7 +21,9 @@
 #include "config.h"
 #include "FontCustomPlatformData.h"
 
+#include "FontCreationContext.h"
 #include "FontDescription.h"
+#include "FontMemoryResource.h"
 #include "FontPlatformData.h"
 #include "OpenTypeUtilities.h"
 #include "SharedBuffer.h"
@@ -32,20 +34,22 @@
 
 namespace WebCore {
 
-FontCustomPlatformData::~FontCustomPlatformData()
+FontCustomPlatformData::FontCustomPlatformData(const String& name, FontPlatformData::CreationData&& creationData)
+    : name(name)
+    , creationData(WTFMove(creationData))
 {
-    if (m_fontReference)
-        RemoveFontMemResourceEx(m_fontReference);
 }
 
-FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities)
+FontCustomPlatformData::~FontCustomPlatformData() = default;
+
+FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic, const FontCreationContext&)
 {
     int size = fontDescription.computedPixelSize();
     FontRenderingMode renderingMode = fontDescription.renderingMode();
 
     LOGFONT logFont;
     memset(&logFont, 0, sizeof(LOGFONT));
-    wcsncpy(logFont.lfFaceName, m_name.wideCharacters().data(), LF_FACESIZE - 1);
+    wcsncpy(logFont.lfFaceName, name.wideCharacters().data(), LF_FACESIZE - 1);
 
     logFont.lfHeight = -size;
     if (renderingMode == FontRenderingMode::Normal)
@@ -66,7 +70,7 @@ FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription&
 
     cairo_font_face_t* fontFace = cairo_win32_font_face_create_for_hfont(hfont.get());
 
-    FontPlatformData fontPlatformData(WTFMove(hfont), fontFace, size, bold, italic);
+    FontPlatformData fontPlatformData(WTFMove(hfont), fontFace, size, bold, italic, &creationData);
 
     cairo_font_face_destroy(fontFace);
 
@@ -78,30 +82,31 @@ static String createUniqueFontName()
     GUID fontUuid;
     CoCreateGuid(&fontUuid);
 
-    String fontName = base64Encode(reinterpret_cast<char*>(&fontUuid), sizeof(fontUuid));
+    auto fontName = base64EncodeToString(reinterpret_cast<char*>(&fontUuid), sizeof(fontUuid));
     ASSERT(fontName.length() < LF_FACESIZE);
     return fontName;
 }
 
-std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String&)
+std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String& itemInCollection)
 {
     String fontName = createUniqueFontName();
-    HANDLE fontReference = renameAndActivateFont(buffer, fontName);
+    auto fontResource = renameAndActivateFont(buffer, fontName);
 
-    if (!fontReference)
+    if (!fontResource)
         return nullptr;
 
-    return makeUnique<FontCustomPlatformData>(fontReference, fontName);
+    FontPlatformData::CreationData creationData = { buffer, itemInCollection, fontResource.releaseNonNull() };
+    return makeUnique<FontCustomPlatformData>(fontName, WTFMove(creationData));
 }
 
 bool FontCustomPlatformData::supportsFormat(const String& format)
 {
-    return equalLettersIgnoringASCIICase(format, "truetype")
-        || equalLettersIgnoringASCIICase(format, "opentype")
+    return equalLettersIgnoringASCIICase(format, "truetype"_s)
+        || equalLettersIgnoringASCIICase(format, "opentype"_s)
 #if USE(WOFF2)
-        || equalLettersIgnoringASCIICase(format, "woff2")
+        || equalLettersIgnoringASCIICase(format, "woff2"_s)
 #endif
-        || equalLettersIgnoringASCIICase(format, "woff");
+        || equalLettersIgnoringASCIICase(format, "woff"_s);
 }
 
 }

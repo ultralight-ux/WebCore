@@ -36,7 +36,7 @@ class Lock;
 
 namespace WebCore {
 
-class GraphicsContextGLOpenGL;
+class GraphicsContextGL;
 class WebGLContextGroup;
 class WebGLRenderingContextBase;
 
@@ -55,18 +55,18 @@ public:
         return contextGroup == m_contextGroup;
     }
 
-    void detachContextGroup(const WTF::AbstractLocker&);
+    void detachContextGroup(const AbstractLocker&);
 
     void detachContextGroupWithoutDeletingObject();
 
-    WTF::Lock& objectGraphLockForContext() override;
+    Lock& objectGraphLockForContext() override;
 
 protected:
     WebGLSharedObject(WebGLRenderingContextBase&);
 
     bool hasGroupOrContext() const override;
 
-    GraphicsContextGLOpenGL* getAGraphicsContextGL() const override;
+    GraphicsContextGL* getAGraphicsContextGL() const override;
 
 private:
     WebGLContextGroup* m_contextGroup;

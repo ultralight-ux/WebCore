@@ -31,6 +31,7 @@
 #include "AuthenticationChallenge.h"
 #include "NotImplemented.h"
 #include "ResourceHandleInternal.h"
+#include "SecurityOrigin.h"
 
 namespace WebCore {
 
@@ -43,7 +44,7 @@ ResourceError SynchronousLoaderClient::platformBadResponseError()
 {
     int errorCode = 0;
     URL failingURL;
-    String localizedDescription("Bad Server Response");
+    String localizedDescription("Bad Server Response"_s);
 
     return ResourceError("CURL"_s, errorCode, failingURL, localizedDescription);
 }

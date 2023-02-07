@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,7 +25,10 @@
 
 #pragma once
 
+#include "Gate.h"
+#include "Opcode.h"
 #include "OptionsList.h"
+#include "SecureARM64EHashPins.h"
 #include <wtf/WTFConfig.h>
 
 namespace JSC {
@@ -34,19 +37,20 @@ class ExecutableAllocator;
 class FixedVMPoolExecutableAllocator;
 class VM;
 
-constexpr size_t ConfigSizeToProtect = CeilingOnPageSize;
-
 #if ENABLE(SEPARATED_WX_HEAP)
 using JITWriteSeparateHeapsFunction = void (*)(off_t, const void*, size_t);
 #endif
 
 struct Config {
+    static Config& singleton();
+
     JS_EXPORT_PRIVATE static void disableFreezingForTesting();
     JS_EXPORT_PRIVATE static void enableRestrictedOptions();
     static void permanentlyFreeze() { WTF::Config::permanentlyFreeze(); }
 
     static void configureForTesting()
     {
+        WTF::setPermissionsOfConfigPage();
         disableFreezingForTesting();
         enableRestrictedOptions();
     }
@@ -61,6 +65,8 @@ struct Config {
     bool restrictedOptionsEnabled;
     bool jitDisabled;
 
+    bool useFastJITPermissions;
+
     // The following HasBeenCalled flags are for auditing call_once initialization functions.
     bool initializeHasBeenCalled;
 
@@ -71,11 +77,17 @@ struct Config {
         bool canUseJIT;
     } vm;
 
+#if CPU(ARM64E)
+    bool canUseFPAC;
+#endif
+
     ExecutableAllocator* executableAllocator;
     FixedVMPoolExecutableAllocator* fixedVMPoolExecutableAllocator;
     void* startExecutableMemory;
     void* endExecutableMemory;
     uintptr_t startOfFixedWritableMemoryPool;
+    uintptr_t startOfStructureHeap;
+    uintptr_t sizeOfStructureHeap;
 
 #if ENABLE(SEPARATED_WX_HEAP)
     JITWriteSeparateHeapsFunction jitWriteSeparateHeaps;
@@ -85,8 +97,22 @@ struct Config {
 
     void (*shellTimeoutCheckCallback)(VM&);
 
+    struct {
+        uint8_t exceptionInstructions[maxBytecodeStructLength + 1];
+        uint8_t wasmExceptionInstructions[maxBytecodeStructLength + 1];
+        const void* gateMap[numberOfGates];
+    } llint;
+
+#if CPU(ARM64E) && ENABLE(PTRTAG_DEBUGGING)
     WTF::PtrTagLookup ptrTagLookupRecord;
+#endif
+
+#if CPU(ARM64E) && ENABLE(JIT)
+    SecureARM64EHashPins arm64eHashPins;
+#endif
 };
+
+#if ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
 
 constexpr size_t alignmentOfJSCConfig = std::alignment_of<JSC::Config>::value;
 
@@ -95,4 +121,18 @@ static_assert(roundUpToMultipleOf<alignmentOfJSCConfig>(WTF::offsetOfWTFConfigEx
 
 #define g_jscConfig (*bitwise_cast<JSC::Config*>(&g_wtfConfig.spaceForExtensions))
 
+#else // not ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
+
+extern "C" JS_EXPORT_PRIVATE Config g_jscConfig;
+
+#endif // ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
+
+constexpr size_t offsetOfJSCConfigInitializeHasBeenCalled = offsetof(JSC::Config, initializeHasBeenCalled);
+constexpr size_t offsetOfJSCConfigGateMap = offsetof(JSC::Config, llint.gateMap);
+constexpr size_t offsetOfJSCConfigStartOfStructureHeap = offsetof(JSC::Config, startOfStructureHeap);
+
 } // namespace JSC
+
+#if !ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
+using JSC::g_jscConfig;
+#endif

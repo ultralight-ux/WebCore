@@ -27,20 +27,59 @@
 #include "DebuggerParseData.h"
 
 #include "Parser.h"
-#include <wtf/Optional.h>
 
 namespace JSC {
 
-Optional<JSTextPosition> DebuggerPausePositions::breakpointLocationForLineColumn(int line, int column)
+void DebuggerPausePositions::forEachBreakpointLocation(int startLine, int startColumn, int endLine, int endColumn, Function<void(const JSTextPosition&)>&& callback)
+{
+    auto isAfterEnd = [&] (int line, int column) {
+        return (line == endLine && column >= endColumn) || line > endLine;
+    };
+
+    Vector<JSTextPosition> uniquePositions;
+    for (auto it = firstPositionAfter(startLine, startColumn); it != m_positions.end(); ++it) {
+        auto line = it->position.line;
+        auto column = it->position.column();
+
+        if (isAfterEnd(line, column))
+            break;
+
+        if (auto resolvedPosition = breakpointLocationForLineColumn(line, column, it)) {
+            if (!isAfterEnd(resolvedPosition->line, resolvedPosition->column()))
+                uniquePositions.appendIfNotContains(*resolvedPosition);
+        }
+    }
+    std::sort(uniquePositions.begin(), uniquePositions.end(), [] (const auto& a, const auto& b) {
+        if (a.line == b.line)
+            return a.column() < b.column();
+        return a.line < b.line;
+    });
+    for (const auto& position : uniquePositions)
+        callback(position);
+}
+
+DebuggerPausePositions::Positions::iterator DebuggerPausePositions::firstPositionAfter(int line, int column)
 {
     DebuggerPausePosition position = { DebuggerPausePositionType::Invalid, JSTextPosition(line, column, 0) };
-    auto it = std::lower_bound(m_positions.begin(), m_positions.end(), position, [] (const DebuggerPausePosition& a, const DebuggerPausePosition& b) {
+    return std::lower_bound(m_positions.begin(), m_positions.end(), position, [] (const DebuggerPausePosition& a, const DebuggerPausePosition& b) {
         if (a.position.line == b.position.line)
             return a.position.column() < b.position.column();
         return a.position.line < b.position.line;
     });
+}
+
+std::optional<JSTextPosition> DebuggerPausePositions::breakpointLocationForLineColumn(int line, int column)
+{
+    return breakpointLocationForLineColumn(line, column, firstPositionAfter(line, column));
+}
+
+std::optional<JSTextPosition> DebuggerPausePositions::breakpointLocationForLineColumn(int line, int column, DebuggerPausePositions::Positions::iterator it)
+{
+    ASSERT(line <= it->position.line);
+    ASSERT(line != it->position.line || column <= it->position.column());
+
     if (it == m_positions.end())
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (line == it->position.line && column == it->position.column()) {
         // Found an exact position match. Roll forward if this was a function Entry.
@@ -68,7 +107,7 @@ Optional<JSTextPosition> DebuggerPausePositions::breakpointLocationForLineColumn
     // Valid pause location. Use it.
     auto& firstSlidePosition = *it;
     if (firstSlidePosition.type != DebuggerPausePositionType::Enter)
-        return Optional<JSTextPosition>(firstSlidePosition.position);
+        return std::optional<JSTextPosition>(firstSlidePosition.position);
 
     // Determine if we should enter this function or skip past it.
     // If entryStackSize is > 0 we are skipping functions.
@@ -95,11 +134,11 @@ Optional<JSTextPosition> DebuggerPausePositions::breakpointLocationForLineColumn
         }
 
         // Found pause position.
-        return Optional<JSTextPosition>(slidePosition.position);
+        return std::optional<JSTextPosition>(slidePosition.position);
     }
 
     // No pause positions found.
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 void DebuggerPausePositions::sort()
@@ -137,7 +176,7 @@ bool gatherDebuggerParseData(VM& vm, const SourceCode& source, DebuggerParseData
     JSParserScriptMode scriptMode = DebuggerParseInfo<T>::scriptMode;
 
     ParserError error;
-    std::unique_ptr<RootNode> rootNode = parse<RootNode>(vm, source, Identifier(),
+    std::unique_ptr<RootNode> rootNode = parse<RootNode>(vm, source, Identifier(), ImplementationVisibility::Public,
         JSParserBuiltinMode::NotBuiltin, strictMode, scriptMode, parseMode, SuperBinding::NotNeeded,
         error, nullptr, ConstructorKind::None, DerivedContextType::None, EvalContextType::None,
         &debuggerParseData);

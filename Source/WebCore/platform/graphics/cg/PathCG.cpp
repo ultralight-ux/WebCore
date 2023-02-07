@@ -31,9 +31,8 @@
 
 #include "AffineTransform.h"
 #include "FloatRect.h"
-#include "GraphicsContext.h"
+#include "GraphicsContextCG.h"
 #include "IntRect.h"
-#include "StrokeStyleApplier.h"
 #include <pal/spi/cg/CoreGraphicsSPI.h>
 #include <wtf/MathExtras.h>
 #include <wtf/RetainPtr.h>
@@ -46,23 +45,23 @@ static size_t putBytesNowhere(void*, const void*, size_t count)
     return count;
 }
 
-static CGContextRef createScratchContext()
+static RetainPtr<CGContextRef> createScratchContext()
 {
     CGDataConsumerCallbacks callbacks = { putBytesNowhere, 0 };
-    RetainPtr<CGDataConsumerRef> consumer = adoptCF(CGDataConsumerCreate(0, &callbacks));
-    CGContextRef context = CGPDFContextCreate(consumer.get(), 0, 0);
+    auto consumer = adoptCF(CGDataConsumerCreate(0, &callbacks));
+    auto context = adoptCF(CGPDFContextCreate(consumer.get(), 0, 0));
 
     CGFloat black[4] = { 0, 0, 0, 1 };
-    CGContextSetFillColor(context, black);
-    CGContextSetStrokeColor(context, black);
+    CGContextSetFillColor(context.get(), black);
+    CGContextSetStrokeColor(context.get(), black);
 
     return context;
 }
 
 static inline CGContextRef scratchContext()
 {
-    static CGContextRef context = createScratchContext();
-    return context;
+    static NeverDestroyed<RetainPtr<CGContextRef>> context = createScratchContext();
+    return context.get().get();
 }
 
 Path Path::polygonPathFromPoints(const Vector<FloatPoint>& points)
@@ -89,7 +88,7 @@ void Path::createCGPath() const
     m_path = adoptCF(CGPathCreateMutable());
 
     WTF::switchOn(m_inlineData,
-        [&](Monostate) { }, // Start with an empty path.
+        [&](std::monostate) { }, // Start with an empty path.
         [&](const MoveData& move) {
             CGPathMoveToPoint(m_path.get(), nullptr, move.location.x(), move.location.y());
         },
@@ -98,9 +97,11 @@ void Path::createCGPath() const
             CGPathAddLineToPoint(m_path.get(), nullptr, line.end.x(), line.end.y());
         },
         [&](const ArcData& arc) {
-            if (arc.hasOffset)
-                CGPathMoveToPoint(m_path.get(), nullptr, arc.offset.x(), arc.offset.y());
+            if (arc.type == ArcData::Type::LineAndArc || arc.type == ArcData::Type::ClosedLineAndArc)
+                CGPathMoveToPoint(m_path.get(), nullptr, arc.start.x(), arc.start.y());
             CGPathAddArc(m_path.get(), nullptr, arc.center.x(), arc.center.y(), arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
+            if (arc.type == ArcData::Type::ClosedLineAndArc)
+                CGPathAddLineToPoint(m_path.get(), nullptr, arc.start.x(), arc.start.y());
         },
         [&](const QuadCurveData& curve) {
             CGPathMoveToPoint(m_path.get(), nullptr, curve.startPoint.x(), curve.startPoint.y());
@@ -123,7 +124,7 @@ Path::~Path() = default;
 
 PlatformPathPtr Path::platformPath() const
 {
-    if (!m_path && hasAnyInlineData())
+    if (!m_path && hasInlineData())
         createCGPath();
     return m_path.get();
 }
@@ -136,13 +137,13 @@ PlatformPathPtr Path::ensurePlatformPath()
             m_path = adoptCF(CGPathCreateMutableCopy(m_path.get()));
         m_copyPathBeforeMutation = false;
     }
-    m_inlineData = Monostate { };
+    m_inlineData = std::monostate { };
     return m_path.get();
 }
 
 bool Path::isNull() const
 {
-    return !m_path && !hasAnyInlineData();
+    return !m_path && !hasInlineData();
 }
 
 Path::Path(const Path& other)
@@ -157,7 +158,7 @@ Path::Path(const Path& other)
 
 Path::Path(Path&& other)
     : m_path(std::exchange(other.m_path, nullptr))
-    , m_inlineData(std::exchange(other.m_inlineData, Monostate { }))
+    , m_inlineData(std::exchange(other.m_inlineData, std::monostate { }))
     , m_copyPathBeforeMutation(std::exchange(other.m_copyPathBeforeMutation, false))
 {
 }
@@ -209,11 +210,11 @@ static void copyClosingSubpathsApplierFunction(void* info, const CGPathElement* 
     }
 }
 
-static CGMutablePathRef copyCGPathClosingSubpaths(CGPathRef originalPath)
+static RetainPtr<CGMutablePathRef> copyCGPathClosingSubpaths(CGPathRef originalPath)
 {
-    CGMutablePathRef path = CGPathCreateMutable();
-    CGPathApply(originalPath, path, copyClosingSubpathsApplierFunction);
-    CGPathCloseSubpath(path);
+    auto path = adoptCF(CGPathCreateMutable());
+    CGPathApply(originalPath, path.get(), copyClosingSubpathsApplierFunction);
+    CGPathCloseSubpath(path.get());
     return path;
 }
 
@@ -226,13 +227,14 @@ bool Path::contains(const FloatPoint &point, WindRule rule) const
         return false;
 
     // CGPathContainsPoint returns false for non-closed paths, as a work-around, we copy and close the path first.  Radar 4758998 asks for a better CG API to use
-    auto path = adoptCF(copyCGPathClosingSubpaths(platformPath()));
-    bool ret = CGPathContainsPoint(path.get(), 0, point, rule == WindRule::EvenOdd ? true : false);
-    return ret;
+    auto path = copyCGPathClosingSubpaths(platformPath());
+    return CGPathContainsPoint(path.get(), nullptr, point, rule == WindRule::EvenOdd);
 }
 
-bool Path::strokeContains(StrokeStyleApplier& applier, const FloatPoint& point) const
+bool Path::strokeContains(const FloatPoint& point, const Function<void(GraphicsContext&)>& strokeStyleApplier) const
 {
+    ASSERT(strokeStyleApplier);
+
     if (isNull())
         return false;
 
@@ -242,12 +244,12 @@ bool Path::strokeContains(StrokeStyleApplier& applier, const FloatPoint& point) 
     CGContextBeginPath(context);
     CGContextAddPath(context, platformPath());
 
-    GraphicsContext graphicsContext(context);
-    applier.strokeStyle(&graphicsContext);
+    GraphicsContextCG graphicsContext(context);
+    strokeStyleApplier(graphicsContext);
 
     bool hitSuccess = CGContextPathContainsPoint(context, point, kCGPathStroke);
     CGContextRestoreGState(context);
-    
+
     return hitSuccess;
 }
 
@@ -270,7 +272,7 @@ void Path::transform(const AffineTransform& transform)
 #endif
     m_path = WTFMove(path);
     m_copyPathBeforeMutation = false;
-    m_inlineData = Monostate { };
+    m_inlineData = std::monostate { };
 }
 
 static inline FloatRect zeroRectIfNull(CGRect rect)
@@ -291,7 +293,7 @@ FloatRect Path::fastBoundingRectSlowCase() const
     return zeroRectIfNull(CGPathGetBoundingBox(platformPath()));
 }
 
-FloatRect Path::strokeBoundingRect(StrokeStyleApplier* applier) const
+FloatRect Path::strokeBoundingRect(const Function<void(GraphicsContext&)>& strokeStyleApplier) const
 {
     if (isNull())
         return CGRectZero;
@@ -302,9 +304,9 @@ FloatRect Path::strokeBoundingRect(StrokeStyleApplier* applier) const
     CGContextBeginPath(context);
     CGContextAddPath(context, platformPath());
 
-    if (applier) {
-        GraphicsContext graphicsContext(context);
-        applier->strokeStyle(&graphicsContext);
+    if (strokeStyleApplier) {
+        GraphicsContextCG graphicsContext(context);
+        strokeStyleApplier(graphicsContext);
     }
 
     CGContextReplacePathWithStrokedPath(context);
@@ -446,7 +448,7 @@ void Path::clear()
         return;
 
     m_path.clear();
-    m_inlineData = Monostate { };
+    m_inlineData = std::monostate { };
     m_copyPathBeforeMutation = false;
 }
 

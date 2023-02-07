@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
 #include <wtf/IsoMalloc.h>
 #include <wtf/OptionSet.h>
 
@@ -39,8 +37,7 @@ class RenderView;
 
 namespace Layout {
 
-class ContainerBox;
-class InvalidationState;
+class ElementBox;
 class LayoutState;
 class FormattingContext;
 
@@ -54,20 +51,17 @@ class LayoutContext {
 public:
     LayoutContext(LayoutState&);
 
-    void layout(const LayoutSize& rootContentBoxSize, InvalidationState&);
-    void layoutWithPreparedRootGeometry(InvalidationState&);
+    void layout(const LayoutSize& rootContentBoxSize);
 
-    static std::unique_ptr<FormattingContext> createFormattingContext(const ContainerBox& formattingContextRoot, LayoutState&);
+    static std::unique_ptr<FormattingContext> createFormattingContext(const ElementBox& formattingContextRoot, LayoutState&);
 
-    // FIXME: This is temporary. 
-    static void paint(const LayoutState&, GraphicsContext&, const IntRect& dirtyRect);
 #ifndef NDEBUG
     // For testing purposes only
     static void verifyAndOutputMismatchingLayoutTree(const LayoutState&, const RenderView&);
 #endif
 
 private:
-    void layoutFormattingContextSubtree(const ContainerBox&, InvalidationState&);
+    void layoutFormattingContextSubtree(const ElementBox&);
     LayoutState& layoutState() { return m_layoutState; }
 
     LayoutState& m_layoutState;
@@ -75,4 +69,3 @@ private:
 
 }
 }
-#endif

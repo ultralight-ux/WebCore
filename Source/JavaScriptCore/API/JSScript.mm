@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,13 +24,16 @@
  */
 
 #import "config.h"
+#import "JSBase.h"
 #import "JSScriptInternal.h"
 
 #import "APICast.h"
 #import "BytecodeCacheError.h"
 #import "CachedTypes.h"
 #import "CodeCache.h"
+#import "Completion.h"
 #import "Identifier.h"
+#import "IntegrityInlines.h"
 #import "JSContextInternal.h"
 #import "JSScriptSourceProvider.h"
 #import "JSSourceCode.h"
@@ -38,9 +41,9 @@
 #import "JSVirtualMachineInternal.h"
 #import "Symbol.h"
 #import <sys/stat.h>
-#import <wtf/FileMetadata.h>
 #import <wtf/FileSystem.h>
 #import <wtf/SHA1.h>
+#import <wtf/SafeStrerror.h>
 #import <wtf/Scope.h>
 #import <wtf/WeakObjCPtr.h>
 #import <wtf/spi/darwin/DataVaultSPI.h>
@@ -77,20 +80,20 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
 
     String systemPath = cachePathURL.fileSystemPath();
 
-    if (auto metadata = FileSystem::fileMetadata(systemPath)) {
-        if (metadata->type != FileMetadata::Type::File) {
+    if (auto fileType = FileSystem::fileType(systemPath)) {
+        if (*fileType != FileSystem::FileType::Regular) {
             createError([NSString stringWithFormat:@"Cache path `%@` already exists and is not a file", static_cast<NSString *>(systemPath)], error);
             return false;
         }
     }
 
-    String directory = FileSystem::directoryName(systemPath);
+    String directory = FileSystem::parentPath(systemPath);
     if (directory.isNull()) {
         createError([NSString stringWithFormat:@"Cache path `%@` does not contain in a valid directory", static_cast<NSString *>(systemPath)], error);
         return false;
     }
 
-    if (!FileSystem::fileIsDirectory(directory, FileSystem::ShouldFollowSymbolicLinks::No)) {
+    if (FileSystem::fileType(directory) != FileSystem::FileType::Directory) {
         createError([NSString stringWithFormat:@"Cache directory `%@` is not a directory or does not exist", static_cast<NSString *>(directory)], error);
         return false;
     }
@@ -110,14 +113,14 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     if (!validateBytecodeCachePath(cachePath, error))
         return nil;
 
-    JSScript *result = [[[JSScript alloc] init] autorelease];
+    auto result = adoptNS([[JSScript alloc] init]);
     result->m_virtualMachine = vm;
     result->m_type = type;
     result->m_source = source;
     result->m_sourceURL = sourceURL;
     result->m_cachePath = cachePath;
     [result readCache];
-    return result;
+    return result.autorelease();
 }
 
 + (instancetype)scriptOfType:(JSScriptType)type memoryMappedFromASCIIFile:(NSURL *)filePath withSourceURL:(NSURL *)sourceURL andBytecodeCache:(NSURL *)cachePath inVirtualMachine:(JSVirtualMachine *)vm error:(out NSError **)error
@@ -138,7 +141,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     if (!charactersAreAllASCII(reinterpret_cast<const LChar*>(fileData.data()), fileData.size()))
         return createError([NSString stringWithFormat:@"Not all characters in file at %@ are ASCII.", static_cast<NSString *>(systemPath)], error);
 
-    JSScript *result = [[[JSScript alloc] init] autorelease];
+    auto result = adoptNS([[JSScript alloc] init]);
     result->m_virtualMachine = vm;
     result->m_type = type;
     result->m_source = String(StringImpl::createWithoutCopying(bitwise_cast<const LChar*>(fileData.data()), fileData.size()));
@@ -146,7 +149,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     result->m_sourceURL = sourceURL;
     result->m_cachePath = cachePath;
     [result readCache];
-    return result;
+    return result.autorelease();
 }
 
 - (void)readCache
@@ -154,8 +157,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     if (!m_cachePath)
         return;
 
-    NSString *cachePathString = [m_cachePath path];
-    const char* cacheFilename = cachePathString.UTF8String;
+    String cacheFilename = [m_cachePath path];
 
     auto fd = FileSystem::openAndLockFile(cacheFilename, FileSystem::FileOpenMode::Read, {FileSystem::FileLockMode::Exclusive, FileSystem::FileLockMode::Nonblocking});
     if (!FileSystem::isHandleValid(fd))
@@ -305,7 +307,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     const char* tempFileName = [cachePathString stringByAppendingString:@".tmp"].UTF8String;
     int fd = open(cacheFileName, O_CREAT | O_WRONLY | O_EXLOCK | O_NONBLOCK, 0600);
     if (fd == -1) {
-        error = makeString("Could not open or lock the bytecode cache file. It's likely another VM or process is already using it. Error: ", strerror(errno));
+        error = makeString("Could not open or lock the bytecode cache file. It's likely another VM or process is already using it. Error: ", safeStrerror(errno).data());
         return NO;
     }
 
@@ -315,7 +317,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
 
     int tempFD = open(tempFileName, O_CREAT | O_RDWR | O_EXLOCK | O_NONBLOCK, 0600);
     if (tempFD == -1) {
-        error = makeString("Could not open or lock the bytecode cache temp file. Error: ", strerror(errno));
+        error = makeString("Could not open or lock the bytecode cache temp file. Error: ", safeStrerror(errno).data());
         return NO;
     }
 
@@ -346,7 +348,7 @@ static bool validateBytecodeCachePath(NSURL* cachePath, NSError** error)
     SHA1 sha1;
     sha1.addBytes(m_cachedBytecode->data(), m_cachedBytecode->size());
     sha1.computeHash(computedHash);
-    FileSystem::writeToFile(tempFD, reinterpret_cast<const char*>(&computedHash), sizeof(computedHash));
+    FileSystem::writeToFile(tempFD, computedHash.data(), sizeof(computedHash));
 
     fsync(tempFD);
     rename(tempFileName, cacheFileName);

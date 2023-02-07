@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,43 +23,33 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef LegacyTileCache_h
-#define LegacyTileCache_h
+#pragma once
 
 #if PLATFORM(IOS_FAMILY)
 
-#include "Color.h"
 #include "FloatRect.h"
 #include "IntRect.h"
-#include "IntSize.h"
 #include "Timer.h"
 #include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
-#include <wtf/Optional.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Threading.h>
 #include <wtf/Vector.h>
 
-#ifdef __OBJC__
-@class CALayer;
-@class LegacyTileCacheTombstone;
-@class LegacyTileLayer;
-@class WAKWindow;
-#else
-class CALayer;
-class LegacyTileCacheTombstone;
-class LegacyTileLayer;
-class WAKWindow;
-#endif
+OBJC_CLASS CALayer;
+OBJC_CLASS LegacyTileCacheTombstone;
+OBJC_CLASS LegacyTileLayer;
+OBJC_CLASS WAKWindow;
 
 namespace WebCore {
 
+class Color;
 class LegacyTileGrid;
 
 class LegacyTileCache {
     WTF_MAKE_NONCOPYABLE(LegacyTileCache);
 public:
-    LegacyTileCache(WAKWindow*);
+    LegacyTileCache(WAKWindow *);
     ~LegacyTileCache();
 
     CGFloat screenScale() const;
@@ -80,10 +70,10 @@ public:
     void setContentReplacementImage(RetainPtr<CGImageRef>);
     RetainPtr<CGImageRef> contentReplacementImage() const;
 
-    void setTileBordersVisible(bool);
+    WEBCORE_EXPORT void setTileBordersVisible(bool);
     bool tileBordersVisible() const { return m_tileBordersVisible; }
 
-    void setTilePaintCountersVisible(bool);
+    WEBCORE_EXPORT void setTilePaintCountersVisible(bool);
     bool tilePaintCountersVisible() const { return m_tilePaintCountersVisible; }
 
     void setAcceleratedDrawingEnabled(bool enabled) { m_acceleratedDrawingEnabled = enabled; }
@@ -112,16 +102,14 @@ public:
     TilingMode tilingMode() const { return m_tilingMode; }
     void setTilingMode(TilingMode);
 
-    typedef enum {
+    enum TilingDirection {
         TilingDirectionUp,
         TilingDirectionDown,
         TilingDirectionLeft,
         TilingDirectionRight,
-    } TilingDirection;
+    };
     void setTilingDirection(TilingDirection);
     TilingDirection tilingDirection() const;
-
-    bool hasPendingDraw() const;
 
     void hostLayerSizeChanged();
 
@@ -135,7 +123,7 @@ public:
     void doLayoutTiles();
     
     enum class DrawingFlags { None, Snapshotting };
-    void drawLayer(LegacyTileLayer*, CGContextRef, DrawingFlags);
+    void drawLayer(LegacyTileLayer *, CGContextRef, DrawingFlags);
     void prepareToDraw();
     void finishedCreatingTiles(bool didCreateTiles, bool createMore);
     FloatRect visibleRectInLayer(CALayer *) const;
@@ -143,7 +131,7 @@ public:
     unsigned tileCapacityForGrid(LegacyTileGrid*);
     Color colorForGridTileBorder(LegacyTileGrid*) const;
     bool setOverrideVisibleRect(const FloatRect&);
-    void clearOverrideVisibleRect() { m_overrideVisibleRect = WTF::nullopt; }
+    void clearOverrideVisibleRect() { m_overrideVisibleRect = std::nullopt; }
 
     void doPendingRepaints();
 
@@ -174,17 +162,17 @@ private:
 
     void tileCreationTimerFired();
 
-    void drawReplacementImage(LegacyTileLayer*, CGContextRef, CGImageRef);
-    void drawWindowContent(LegacyTileLayer*, CGContextRef, CGRect dirtyRect, DrawingFlags);
+    void drawReplacementImage(LegacyTileLayer *, CGContextRef, CGImageRef);
+    void drawWindowContent(LegacyTileLayer *, CGContextRef, CGRect dirtyRect, DrawingFlags);
 
-    WAKWindow* m_window { nullptr };
+    WAKWindow *m_window { nullptr };
 
     RetainPtr<CGImageRef> m_contentReplacementImage;
 
     // Ensure there are no async calls on a dead tile cache.
     RetainPtr<LegacyTileCacheTombstone> m_tombstone;
 
-    Optional<FloatRect> m_overrideVisibleRect;
+    std::optional<FloatRect> m_overrideVisibleRect;
 
     IntSize m_tileSize { 512, 512 };
     
@@ -222,5 +210,3 @@ private:
 } // namespace WebCore
 
 #endif // PLATFORM(IOS_FAMILY)
-
-#endif // TileCache_h

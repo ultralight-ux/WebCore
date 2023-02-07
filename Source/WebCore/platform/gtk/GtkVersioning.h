@@ -63,6 +63,18 @@ gtk_window_move(GtkWindow*, int, int)
 }
 
 static inline void
+gtk_window_resize(GtkWindow* window, int width, int height)
+{
+    gtk_window_set_default_size(window, width, height);
+}
+
+static inline void
+gtk_window_get_size(GtkWindow* window, int* width, int* height)
+{
+    gtk_window_get_default_size(window, width, height);
+}
+
+static inline void
 gtk_init(int*, char***)
 {
     gtk_init();
@@ -78,6 +90,12 @@ static inline GdkEvent*
 gdk_event_copy(GdkEvent* event)
 {
     return gdk_event_ref(event);
+}
+
+static inline GdkDevice*
+gdk_event_get_source_device(const GdkEvent* event)
+{
+    return gdk_event_get_device(const_cast<GdkEvent*>(event));
 }
 
 static inline void
@@ -256,6 +274,25 @@ static inline GtkWidget*
 gtk_scrolled_window_new()
 {
     return gtk_scrolled_window_new(nullptr, nullptr);
+}
+
+static inline GdkModifierType
+gtk_event_controller_get_current_event_state(GtkEventController*)
+{
+    GdkModifierType modifiers;
+    gtk_get_current_event_state(&modifiers);
+    return modifiers;
+}
+
+static inline uint32_t
+gtk_event_controller_get_current_event_time(GtkEventController*)
+{
+    return gtk_get_current_event_time();
+}
+
+static inline GtkIconTheme* gtk_icon_theme_get_for_display(GdkDisplay* display)
+{
+    return gtk_icon_theme_get_for_screen(gdk_display_get_default_screen(display));
 }
 
 #endif // USE(GTK4)

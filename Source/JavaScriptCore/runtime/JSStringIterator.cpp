@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Yusuke Suzuki <utatane.tea@gmail.com>.
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,12 +32,12 @@
 
 namespace JSC {
 
-const ClassInfo JSStringIterator::s_info = { "String Iterator", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSStringIterator) };
+const ClassInfo JSStringIterator::s_info = { "String Iterator"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSStringIterator) };
 
 void JSStringIterator::finishCreation(VM& vm, JSString* iteratedString)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     internalField(Field::Index).set(vm, this, jsNumber(0));
     internalField(Field::IteratedString).set(vm, this, iteratedString);
 }
@@ -51,11 +51,14 @@ JSStringIterator* JSStringIterator::clone(JSGlobalObject* globalObject)
     return clone;
 }
 
-void JSStringIterator::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void JSStringIterator::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     auto* thisObject = jsCast<JSStringIterator*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
 }
+
+DEFINE_VISIT_CHILDREN(JSStringIterator);
 
 } // namespace JSC

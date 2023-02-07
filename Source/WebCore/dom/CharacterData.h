@@ -33,7 +33,6 @@ public:
     static ptrdiff_t dataMemoryOffset() { return OBJECT_OFFSETOF(CharacterData, m_data); }
 
     WEBCORE_EXPORT void setData(const String&);
-    virtual void setDataAndUpdate(const String&, unsigned offsetOfReplacedData, unsigned oldLength, unsigned newLength);
     unsigned length() const { return m_data.length(); }
     WEBCORE_EXPORT ExceptionOr<String> substringData(unsigned offset, unsigned count);
     WEBCORE_EXPORT void appendData(const String&);
@@ -42,16 +41,17 @@ public:
     WEBCORE_EXPORT ExceptionOr<void> replaceData(unsigned offset, unsigned count, const String&);
 
     // Like appendData, but optimized for the parser (e.g., no mutation events).
-    // Returns how much could be added before length limit was met.
-    unsigned parserAppendData(const String& string, unsigned offset, unsigned lengthLimit);
+    void parserAppendData(StringView);
 
 protected:
-    CharacterData(Document& document, const String& text, ConstructionType type)
+    CharacterData(Document& document, String&& text, ConstructionType type = CreateCharacterData)
         : Node(document, type)
-        , m_data(!text.isNull() ? text : emptyString())
+        , m_data(!text.isNull() ? WTFMove(text) : emptyString())
     {
-        ASSERT(type == CreateOther || type == CreateText || type == CreateEditingText);
+        ASSERT(type == CreateCharacterData || type == CreateText || type == CreateEditingText);
     }
+
+    ~CharacterData();
 
     void setDataWithoutUpdate(const String& data)
     {
@@ -60,19 +60,21 @@ protected:
     }
     void dispatchModifiedEvent(const String& oldValue);
 
+    enum class UpdateLiveRanges : bool { No, Yes };
+    virtual void setDataAndUpdate(const String&, unsigned offsetOfReplacedData, unsigned oldLength, unsigned newLength, UpdateLiveRanges = UpdateLiveRanges::Yes);
+
 private:
     String nodeValue() const final;
-    ExceptionOr<void> setNodeValue(const String&) final;
-    bool virtualIsCharacterData() const final { return true; }
-    void notifyParentAfterChange(ContainerNode::ChildChangeSource);
+    void setNodeValue(const String&) final;
+    void notifyParentAfterChange(const ContainerNode::ChildChange&);
 
     String m_data;
 };
 
 inline unsigned Node::length() const
 {
-    if (is<CharacterData>(*this))
-        return downcast<CharacterData>(*this).length();
+    if (auto characterData = dynamicDowncast<CharacterData>(*this))
+        return characterData->length();
     return countChildNodes();
 }
 

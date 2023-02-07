@@ -44,7 +44,7 @@ class JSGlobalObjectDebuggable final : public Inspector::RemoteInspectionTarget 
     WTF_MAKE_NONCOPYABLE(JSGlobalObjectDebuggable);
 public:
     JSGlobalObjectDebuggable(JSGlobalObject&);
-    ~JSGlobalObjectDebuggable() { }
+    ~JSGlobalObjectDebuggable() final { }
 
     Inspector::RemoteControllableTarget::Type type() const final { return m_type; }
     void setIsITML() { m_type = Inspector::RemoteControllableTarget::Type::ITML; }
@@ -54,7 +54,7 @@ public:
 
     void connect(Inspector::FrontendChannel&, bool isAutomaticConnection = false, bool immediatelyPause = false) final;
     void disconnect(Inspector::FrontendChannel&) final;
-    void dispatchMessageFromRemote(const String& message) final;
+    void dispatchMessageFromRemote(String&& message) final;
 
     bool automaticInspectionAllowed() const final { return true; }
     void pauseWaitingForAutomaticInspection() final;

@@ -27,19 +27,28 @@
 
 #include <CoreMedia/CoreMedia.h>
 
+#if PLATFORM(MAC)
+#include <webrtc/sdk/WebKit/CMBaseObjectSPI.h>
+#endif
+
 #if PLATFORM(COCOA)
 
 #if USE(APPLE_INTERNAL_SDK)
 #include <CoreMedia/CMNotificationCenter.h>
+#include <CoreMedia/FigThreadPlatform.h>
 #else
 typedef struct opaqueCMNotificationCenter *CMNotificationCenterRef;
 typedef void (*CMNotificationCallback)(CMNotificationCenterRef inCenter, const void *inListener, CFStringRef inNotificationName, const void *inNotifyingObject, CFTypeRef inNotificationPayload);
+typedef void (*FigThreadAbortAction)(void* refcon);
+typedef struct OpaqueFigThreadAbortActionToken* FigThreadAbortActionToken;
 #endif
 
 WTF_EXTERN_C_BEGIN
 CMNotificationCenterRef CMNotificationCenterGetDefaultLocalCenter(void);
 OSStatus CMNotificationCenterAddListener(CMNotificationCenterRef inCenter, const void *inListener, CMNotificationCallback inCallBack, CFStringRef inNotificationName, const void *inObjectToObserve, UInt32 inFlags);
 OSStatus CMNotificationCenterRemoveListener(CMNotificationCenterRef inCenter, const void *inListener, CMNotificationCallback inCallBack, CFStringRef inNotificationName, const void *inObject);
+OSStatus FigThreadRegisterAbortAction(FigThreadAbortAction, void* refcon, FigThreadAbortActionToken*);
+void FigThreadUnregisterAbortAction(FigThreadAbortActionToken);
 WTF_EXTERN_C_END
 
 #endif // PLATFORM(COCOA)

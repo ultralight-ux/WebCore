@@ -61,12 +61,15 @@ class SharedBuffer;
 
 template<typename IDLType> class DOMPromiseProxy;
 
-class MediaKeySession final : public RefCounted<MediaKeySession>, public EventTargetWithInlineData, public ActiveDOMObject, public CDMInstanceSessionClient {
+class MediaKeySession final : public RefCounted<MediaKeySession>, public EventTarget, public ActiveDOMObject, public CDMInstanceSessionClient {
     WTF_MAKE_ISO_ALLOCATED(MediaKeySession);
 public:
     static Ref<MediaKeySession> create(Document&, WeakPtr<MediaKeys>&&, MediaKeySessionType, bool useDistinctiveIdentifier, Ref<CDM>&&, Ref<CDMInstanceSession>&&);
     virtual ~MediaKeySession();
 
+    using CDMInstanceSessionClient::weakPtrFactory;
+    using CDMInstanceSessionClient::WeakValueType;
+    using CDMInstanceSessionClient::WeakPtrImplType;
     using RefCounted<MediaKeySession>::ref;
     using RefCounted<MediaKeySession>::deref;
 
@@ -82,7 +85,7 @@ public:
     void close(Ref<DeferredPromise>&&);
     void remove(Ref<DeferredPromise>&&);
 
-    using ClosedPromise = DOMPromiseProxy<IDLVoid>;
+    using ClosedPromise = DOMPromiseProxy<IDLUndefined>;
     ClosedPromise& closed() { return m_closedPromise.get(); }
 
     const Vector<std::pair<Ref<SharedBuffer>, MediaKeyStatus>>& statuses() const { return m_statuses; }
@@ -111,18 +114,19 @@ private:
     // ActiveDOMObject
     const char* activeDOMObjectName() const final;
     bool virtualHasPendingActivity() const final;
+    void stop() final;
 
     // DisplayChangedObserver
     void displayChanged(PlatformDisplayID);
 
 #if !RELEASE_LOG_DISABLED
     // LoggerHelper
-    const WTF::Logger& logger() const { return m_logger; }
+    const Logger& logger() const { return m_logger; }
     const char* logClassName() const { return "MediaKeySession"; }
     WTFLogChannel& logChannel() const;
     const void* logIdentifier() const { return m_logIdentifier; }
 
-    Ref<WTF::Logger> m_logger;
+    Ref<Logger> m_logger;
     const void* m_logIdentifier;
 #endif
 

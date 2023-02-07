@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,7 @@
 
 namespace JSC {
 
-const ClassInfo JSCallee::s_info = { "Callee", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallee) };
+const ClassInfo JSCallee::s_info = { "Callee"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallee) };
 
 JSCallee::JSCallee(VM& vm, JSGlobalObject* globalObject, Structure* structure)
     : Base(vm, structure)
@@ -47,10 +47,11 @@ JSCallee::JSCallee(VM& vm, JSScope* scope, Structure* structure)
 void JSCallee::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 }
 
-void JSCallee::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void JSCallee::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     JSCallee* thisObject = jsCast<JSCallee*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
@@ -58,5 +59,7 @@ void JSCallee::visitChildren(JSCell* cell, SlotVisitor& visitor)
 
     visitor.append(thisObject->m_scope);
 }
+
+DEFINE_VISIT_CHILDREN(JSCallee);
 
 } // namespace JSC

@@ -29,8 +29,10 @@
 #if PLATFORM(MAC)
 
 #import "CachedImage.h"
-#import "Element.h"
+#import "Document.h"
 #import "DragImage.h"
+#import "Element.h"
+#import "FrameDestructionObserverInlines.h"
 
 namespace WebCore {
 

@@ -26,11 +26,11 @@
 
 #include "config.h"
 
-#if ENABLE(GRAPHICS_CONTEXT_GL) && (USE(OPENGL) || USE(OPENGL_ES))
+#if USE(OPENGL) || USE(OPENGL_ES)
 #include "TemporaryOpenGLSetting.h"
 
 #if USE(LIBEPOXY)
-#include "EpoxyShims.h"
+#include <epoxy/gl.h>
 
 #elif PLATFORM(COCOA)
 
@@ -77,4 +77,4 @@ TemporaryOpenGLSetting::~TemporaryOpenGLSetting()
 
 }
 
-#endif
+#endif // USE(OPENGL) || USE(OPENGL_ES)

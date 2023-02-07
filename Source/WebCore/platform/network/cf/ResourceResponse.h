@@ -42,6 +42,12 @@ public:
     {
         m_initLevel = AllFields;
     }
+    
+    ResourceResponse(ResourceResponseBase&& base)
+        : ResourceResponseBase(WTFMove(base))
+    {
+        m_initLevel = AllFields;
+    }
 
 #if USE(CFURLCONNECTION)
     ResourceResponse(CFURLResponseRef cfResponse)
@@ -93,16 +99,16 @@ public:
     void setIsQuickLook(bool isQuickLook) { m_isQuickLook = isQuickLook; }
 #endif
 
+#if PLATFORM(COCOA)
+    void initNSURLResponse() const;
+#endif
+
 private:
     friend class ResourceResponseBase;
 
     void platformLazyInit(InitLevel);
     String platformSuggestedFilename() const;
-    CertificateInfo platformCertificateInfo() const;
-
-#if PLATFORM(COCOA)
-    void initNSURLResponse() const;
-#endif
+    CertificateInfo platformCertificateInfo(Span<const std::byte>) const;
 
     static bool platformCompare(const ResourceResponse& a, const ResourceResponse& b);
 

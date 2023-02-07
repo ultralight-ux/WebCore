@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,7 @@
 #include "config.h"
 #include "testb3.h"
 
-#if ENABLE(B3_JIT)
+#if ENABLE(B3_JIT) && !CPU(ARM)
 
 Lock crashLock;
 
@@ -309,7 +309,9 @@ void run(const char* filter)
     RUN_UNARY(testConvertFloatToDoubleArg, floatingPointOperands<float>());
     RUN_UNARY(testConvertFloatToDoubleImm, floatingPointOperands<float>());
     RUN_UNARY(testConvertFloatToDoubleMem, floatingPointOperands<float>());
+    RUN_UNARY(testConvertDoubleToFloatToDouble, floatingPointOperands<double>());
     RUN_UNARY(testConvertDoubleToFloatToDoubleToFloat, floatingPointOperands<double>());
+    RUN_UNARY(testConvertDoubleToFloatEqual, floatingPointOperands<double>());
     RUN_UNARY(testStoreFloat, floatingPointOperands<double>());
     RUN_UNARY(testStoreDoubleConstantAsFloat, floatingPointOperands<double>());
     RUN_UNARY(testLoadFloatConvertDoubleConvertFloatStoreFloat, floatingPointOperands<float>());
@@ -336,6 +338,7 @@ void run(const char* filter)
     RUN_UNARY(testCheckAddRemoveCheckWithSExt32, int32Operands());
     RUN_UNARY(testCheckAddRemoveCheckWithZExt32, int32Operands());
 
+    RUN(testStoreZeroReg());
     RUN(testStore32(44));
     RUN(testStoreConstant(49));
     RUN(testStoreConstantPtr(49));
@@ -533,10 +536,14 @@ void run(const char* filter)
     addLoadTests(filter, tasks);
     addTupleTests(filter, tasks);
 
-    addCopyTests(filter, tasks);
-
     RUN(testSpillGP());
     RUN(testSpillFP());
+
+    RUN(testWasmAddressDoesNotCSE());
+    RUN(testStoreAfterClobberDifferentWidth());
+    RUN(testStoreAfterClobberExitsSideways());
+    RUN(testStoreAfterClobberDifferentWidthSuccessor());
+    RUN(testStoreAfterClobberExitsSidewaysSuccessor());
 
     RUN(testInt32ToDoublePartialRegisterStall());
     RUN(testInt32ToDoublePartialRegisterWithoutStall());
@@ -757,6 +764,9 @@ void run(const char* filter)
     RUN(testTrappingLoadDCE());
     RUN(testTrappingStoreElimination());
     RUN(testMoveConstants());
+    RUN(testMoveConstantsWithLargeOffsets());
+    if (Options::useWebAssemblySIMD())
+        RUN(testMoveConstantsSIMD());
     RUN(testPCOriginMapDoesntInsertNops());
     RUN(testPinRegisters());
     RUN(testReduceStrengthReassociation(true));
@@ -805,6 +815,7 @@ void run(const char* filter)
     RUN(testWasmBoundsCheck(std::numeric_limits<unsigned>::max() - 5));
 
     RUN(testWasmAddress());
+    RUN(testWasmAddressWithOffset());
     
     RUN(testFastTLSLoad());
     RUN(testFastTLSStore());
@@ -824,6 +835,9 @@ void run(const char* filter)
     RUN(testLoopWithMultipleHeaderEdges());
 
     RUN(testInfiniteLoopDoesntCauseBadHoisting());
+
+    RUN(testFloatMaxMin());
+    RUN(testDoubleMaxMin());
 
     if (isX86()) {
         RUN(testBranchBitAndImmFusion(Identity, Int64, 1, Air::BranchTest32, Air::Arg::Tmp));
@@ -851,6 +865,20 @@ void run(const char* filter)
 
     RUN(testReportUsedRegistersLateUseFollowedByEarlyDefDoesNotMarkUseAsDead());
 
+    if (isARM64() || isX86()) {
+        RUN(testVectorXorOrAllOnesToVectorAndXor());
+        RUN(testVectorXorAndAllOnesToVectorOrXor());
+        RUN(testVectorOrSelf());
+        RUN(testVectorAndSelf());
+        RUN(testVectorXorSelf());
+        RUN_UNARY(testVectorXorOrAllOnesConstantToVectorAndXor, v128Operands());
+        RUN_UNARY(testVectorXorAndAllOnesConstantToVectorOrXor, v128Operands());
+        RUN_BINARY(testVectorOrConstants, v128Operands(), v128Operands());
+        RUN_BINARY(testVectorAndConstants, v128Operands(), v128Operands());
+        RUN_BINARY(testVectorXorConstants, v128Operands(), v128Operands());
+        RUN_BINARY(testVectorAndConstantConstant, v128Operands(), v128Operands());
+    }
+
     if (tasks.isEmpty())
         usage();
 
@@ -865,7 +893,7 @@ void run(const char* filter)
                     for (;;) {
                         RefPtr<SharedTask<void()>> task;
                         {
-                            LockHolder locker(lock);
+                            Locker locker { lock };
                             if (tasks.isEmpty())
                                 return;
                             task = tasks.takeFirst();
@@ -891,6 +919,11 @@ static void run(const char*)
 
 #endif // ENABLE(B3_JIT)
 
+#if ENABLE(JIT_OPERATION_VALIDATION) || ENABLE(JIT_OPERATION_DISASSEMBLY)
+extern const JSC::JITOperationAnnotation startOfJITOperationsInTestB3 __asm("section$start$__DATA_CONST$__jsc_ops");
+extern const JSC::JITOperationAnnotation endOfJITOperationsInTestB3 __asm("section$end$__DATA_CONST$__jsc_ops");
+#endif
+
 int main(int argc, char** argv)
 {
     const char* filter = nullptr;
@@ -909,7 +942,15 @@ int main(int argc, char** argv)
 
     WTF::initializeMainThread();
     JSC::initialize();
-    
+
+#if ENABLE(JIT_OPERATION_VALIDATION)
+    JSC::JITOperationList::populatePointersInEmbedder(&startOfJITOperationsInTestB3, &endOfJITOperationsInTestB3);
+#endif
+#if ENABLE(JIT_OPERATION_DISASSEMBLY)
+    if (UNLIKELY(JSC::Options::needDisassemblySupport()))
+        JSC::JITOperationList::populateDisassemblyLabelsInEmbedder(&startOfJITOperationsInTestB3, &endOfJITOperationsInTestB3);
+#endif
+
     for (unsigned i = 0; i <= 2; ++i) {
         JSC::Options::defaultB3OptLevel() = i;
         run(filter);

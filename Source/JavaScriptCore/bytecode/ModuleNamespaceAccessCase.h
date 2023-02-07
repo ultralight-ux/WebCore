@@ -44,16 +44,14 @@ public:
     JSModuleEnvironment* moduleEnvironment() const { return m_moduleEnvironment.get(); }
     ScopeOffset scopeOffset() const { return m_scopeOffset; }
 
-    static std::unique_ptr<AccessCase> create(VM&, JSCell* owner, CacheableIdentifier, JSModuleNamespaceObject*, JSModuleEnvironment*, ScopeOffset);
-
-    std::unique_ptr<AccessCase> clone() const final;
+    static Ref<AccessCase> create(VM&, JSCell* owner, CacheableIdentifier, JSModuleNamespaceObject*, JSModuleEnvironment*, ScopeOffset);
 
     void emit(AccessGenerationState&, MacroAssembler::JumpList& fallThrough);
 
-    ~ModuleNamespaceAccessCase() final;
-
 private:
     ModuleNamespaceAccessCase(VM&, JSCell* owner, CacheableIdentifier, JSModuleNamespaceObject*, JSModuleEnvironment*, ScopeOffset);
+
+    Ref<AccessCase> cloneImpl() const;
 
     WriteBarrier<JSModuleNamespaceObject> m_moduleNamespaceObject;
     WriteBarrier<JSModuleEnvironment> m_moduleEnvironment;

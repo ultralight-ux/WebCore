@@ -29,6 +29,7 @@
 
 #include "GamepadProvider.h"
 #include "GamepadProviderClient.h"
+#include "PlatformGamepad.h"
 #include <wtf/Forward.h>
 #include <wtf/HashSet.h>
 
@@ -47,6 +48,8 @@ public:
     void stopMonitoringGamepads(GamepadProviderClient&) final;
     const Vector<PlatformGamepad*>& platformGamepads() final { return m_gamepadVector; }
     bool isMockGamepadProvider() const { return false; }
+    void playEffect(unsigned gamepadIndex, const String& gamepadID, GamepadHapticEffectType, const GamepadEffectParameters&, CompletionHandler<void(bool)>&&) final;
+    void stopEffects(unsigned gamepadIndex, const String& gamepadID, CompletionHandler<void()>&&) final;
 
     // GamepadProviderClient
     void platformGamepadConnected(PlatformGamepad&, EventMakesGamepadsVisible) final;

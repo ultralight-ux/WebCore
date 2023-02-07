@@ -29,16 +29,6 @@
 // FIXME: Remove NS_ASSUME_NONNULL_BEGIN/END and all _Nullable annotations once we remove the NSHTTPCookie forward declaration below.
 NS_ASSUME_NONNULL_BEGIN
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED < 101500
-typedef NSString * NSHTTPCookieStringPolicy;
-@interface NSHTTPCookie (Staging)
-@property (nullable, readonly, copy) NSHTTPCookieStringPolicy sameSitePolicy;
-@end
-
-static NSString * const NSHTTPCookieSameSiteLax = @"lax";
-static NSString * const NSHTTPCookieSameSiteStrict = @"strict";
-#endif
-
 namespace WebCore {
 
 static Vector<uint16_t> portVectorFromList(NSArray<NSNumber *> *portList)
@@ -84,11 +74,11 @@ static double cookieCreated(NSHTTPCookie *cookie)
     return 0;
 }
 
-static Optional<double> cookieExpiry(NSHTTPCookie *cookie)
+static std::optional<double> cookieExpiry(NSHTTPCookie *cookie)
 {
     NSDate *expiryDate = cookie.expiresDate;
     if (!expiryDate)
-        return WTF::nullopt;
+        return std::nullopt;
     return [expiryDate timeIntervalSince1970] * 1000.0;
 }
 

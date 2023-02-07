@@ -34,24 +34,25 @@
 #include <memory>
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
+#include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
+class WeakPtrImplWithEventTargetData;
 class HTMLElement;
-class HTMLFormControlElement;
 class Node;
 class ValidationMessageClient;
 
 // FIXME: We should remove the code for !validationMessageClient() when all
 // ports supporting interactive validation switch to ValidationMessageClient.
-class ValidationMessage {
+class ValidationMessage : public CanMakeWeakPtr<ValidationMessage> {
     WTF_MAKE_NONCOPYABLE(ValidationMessage); WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit ValidationMessage(HTMLFormControlElement*);
+    explicit ValidationMessage(HTMLElement&);
     ~ValidationMessage();
 
-    void updateValidationMessage(const String&);
+    void updateValidationMessage(HTMLElement&, const String&);
     void requestToHideMessage();
     bool isVisible() const;
     bool shadowTreeContains(const Node&) const;
@@ -60,10 +61,11 @@ private:
     ValidationMessageClient* validationMessageClient() const;
     void setMessage(const String&);
     void setMessageDOMAndStartTimer();
+    void adjustBubblePosition();
     void buildBubbleTree();
     void deleteBubbleTree();
 
-    HTMLFormControlElement* m_element;
+    WeakPtr<HTMLElement, WeakPtrImplWithEventTargetData> m_element;
     String m_message;
     std::unique_ptr<Timer> m_timer;
     RefPtr<HTMLElement> m_bubble;

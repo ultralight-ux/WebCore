@@ -22,13 +22,14 @@
 #pragma once
 
 #include "FrameView.h"
-#include "HighlightData.h"
 #include "Region.h"
 #include "RenderBlockFlow.h"
 #include "RenderWidget.h"
+#include "SelectionRangeData.h"
 #include <memory>
 #include <wtf/HashSet.h>
 #include <wtf/ListHashSet.h>
+#include <wtf/WeakHashSet.h>
 
 namespace WebCore {
 
@@ -37,13 +38,18 @@ class RenderLayerCompositor;
 class RenderLayoutState;
 class RenderQuote;
 
+namespace Layout {
+class InitialContainingBlock;
+class LayoutState;
+}
+
 class RenderView final : public RenderBlockFlow {
     WTF_MAKE_ISO_ALLOCATED(RenderView);
 public:
     RenderView(Document&, RenderStyle&&);
     virtual ~RenderView();
 
-    const char* renderName() const override { return "RenderView"; }
+    ASCIILiteral renderName() const override { return "RenderView"_s; }
 
     bool requiresLayer() const override { return true; }
 
@@ -68,13 +74,18 @@ public:
 
     FrameView& frameView() const { return m_frameView; }
 
+    Layout::InitialContainingBlock& initialContainingBlock() { return m_initialContainingBlock.get(); }
+    const Layout::InitialContainingBlock& initialContainingBlock() const { return m_initialContainingBlock.get(); }
+    Layout::LayoutState& ensureLayoutState();
+    void updateQuirksMode();
+
     bool needsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly() const { return m_needsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly; };
     void setNeedsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly(bool value = true) { m_needsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly = value; }
 
     bool needsEventRegionUpdateForNonCompositedFrame() const { return m_needsEventRegionUpdateForNonCompositedFrame; }
     void setNeedsEventRegionUpdateForNonCompositedFrame(bool value = true) { m_needsEventRegionUpdateForNonCompositedFrame = value; }
 
-    Optional<LayoutRect> computeVisibleRectInContainer(const LayoutRect&, const RenderLayerModelObject* container, VisibleRectContext) const override;
+    std::optional<LayoutRect> computeVisibleRectInContainer(const LayoutRect&, const RenderLayerModelObject* container, VisibleRectContext) const override;
     void repaintRootContents();
     void repaintViewRectangle(const LayoutRect&) const;
     void repaintViewAndCompositedLayers();
@@ -84,7 +95,7 @@ public:
     // Return the renderer whose background style is used to paint the root background.
     RenderElement* rendererForRootBackground() const;
 
-    HighlightData& selection() { return m_selection; }
+    SelectionRangeData& selection() { return m_selection; }
 
     bool printing() const;
 
@@ -127,11 +138,6 @@ public:
     WEBCORE_EXPORT RenderLayerCompositor& compositor();
     WEBCORE_EXPORT bool usesCompositing() const;
 
-    bool usesFirstLineRules() const { return m_usesFirstLineRules; }
-    bool usesFirstLetterRules() const { return m_usesFirstLetterRules; }
-    void setUsesFirstLineRules(bool value) { m_usesFirstLineRules = value; }
-    void setUsesFirstLetterRules(bool value) { m_usesFirstLetterRules = value; }
-
     WEBCORE_EXPORT IntRect unscaledDocumentRect() const;
     LayoutRect unextendedBackgroundRect() const;
     LayoutRect backgroundRect() const;
@@ -141,7 +147,12 @@ public:
     // Renderer that paints the root background has background-images which all have background-attachment: fixed.
     bool rootBackgroundIsEntirelyFixed() const;
 
-    IntSize viewportSizeForCSSViewportUnits() const;
+    bool shouldPaintBaseBackground() const;
+
+    FloatSize sizeForCSSSmallViewportUnits() const;
+    FloatSize sizeForCSSLargeViewportUnits() const;
+    FloatSize sizeForCSSDynamicViewportUnits() const;
+    FloatSize sizeForCSSDefaultViewportUnits() const;
 
     bool hasQuotesNeedingUpdate() const { return m_hasQuotesNeedingUpdate; }
     void setHasQuotesNeedingUpdate(bool b) { m_hasQuotesNeedingUpdate = b; }
@@ -170,7 +181,9 @@ public:
     void updateVisibleViewportRect(const IntRect&);
     void registerForVisibleInViewportCallback(RenderElement&);
     void unregisterForVisibleInViewportCallback(RenderElement&);
+
     void resumePausedImageAnimationsIfNeeded(const IntRect& visibleRect);
+    void updatePlayStateForAllAnimations(const IntRect& visibleRect);
     void addRendererWithPausedImageAnimations(RenderElement&, CachedImage&);
     void removeRendererWithPausedImageAnimations(RenderElement&);
     void removeRendererWithPausedImageAnimations(RenderElement&, CachedImage&);
@@ -183,7 +196,7 @@ public:
 
     private:
         WeakPtr<RenderView> m_rootView;
-        bool m_wasAccumulatingRepaintRegion;
+        bool m_wasAccumulatingRepaintRegion { false };
     };
 
     void scheduleLazyRepaint(RenderBox&);
@@ -192,19 +205,20 @@ public:
     void layerChildrenChangedDuringStyleChange(RenderLayer&);
     RenderLayer* takeStyleChangeLayerTreeMutationRoot();
 
-    void protectRenderWidgetUntilLayoutIsDone(RenderWidget& widget) { m_protectedRenderWidgets.append(&widget); }
-    void releaseProtectedRenderWidgets() { m_protectedRenderWidgets.clear(); }
-
-#if ENABLE(CSS_SCROLL_SNAP)
     void registerBoxWithScrollSnapPositions(const RenderBox&);
     void unregisterBoxWithScrollSnapPositions(const RenderBox&);
     const HashSet<const RenderBox*>& boxesWithScrollSnapPositions() { return m_boxesWithScrollSnapPositions; }
-#endif
+
+    void registerContainerQueryBox(const RenderBox&);
+    void unregisterContainerQueryBox(const RenderBox&);
+    const WeakHashSet<const RenderBox>& containerQueryBoxes() const { return m_containerQueryBoxes; }
 
 private:
-    void mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState&, MapCoordinatesFlags, bool* wasFixed) const override;
+    void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
+
+    void mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState&, OptionSet<MapCoordinatesMode>, bool* wasFixed) const override;
     const RenderObject* pushMappingToContainer(const RenderLayerModelObject* ancestorToStopAt, RenderGeometryMap&) const override;
-    void mapAbsoluteToLocalPoint(MapCoordinatesFlags, TransformState&) const override;
+    void mapAbsoluteToLocalPoint(OptionSet<MapCoordinatesMode>, TransformState&) const override;
     bool requiresColumns(int desiredColumnCount) const override;
 
     void computeColumnCountAndWidth() override;
@@ -223,8 +237,11 @@ private:
     // Include this RenderView.
     uint64_t m_rendererCount { 1 };
 
+    UniqueRef<Layout::InitialContainingBlock> m_initialContainingBlock;
+    std::unique_ptr<Layout::LayoutState> m_layoutState;
+
     mutable std::unique_ptr<Region> m_accumulatedRepaintRegion;
-    HighlightData m_selection;
+    SelectionRangeData m_selection;
 
     WeakPtr<RenderLayer> m_styleChangeLayerMutationRoot;
 
@@ -247,7 +264,7 @@ private:
     HashSet<RenderBox*> m_renderersNeedingLazyRepaint;
 
     std::unique_ptr<ImageQualityController> m_imageQualityController;
-    Optional<LayoutSize> m_pageLogicalSize;
+    std::optional<LayoutSize> m_pageLogicalSize;
     bool m_pageLogicalHeightChanged { false };
     std::unique_ptr<RenderLayerCompositor> m_compositor;
 
@@ -257,18 +274,15 @@ private:
     unsigned m_renderersWithOutlineCount { 0 };
 
     bool m_hasSoftwareFilters { false };
-    bool m_usesFirstLineRules { false };
-    bool m_usesFirstLetterRules { false };
     bool m_needsRepaintHackAfterCompositingLayerUpdateForDebugOverlaysOnly { false };
     bool m_needsEventRegionUpdateForNonCompositedFrame { false };
 
     HashMap<RenderElement*, Vector<CachedImage*>> m_renderersWithPausedImageAnimation;
+    WeakHashSet<SVGSVGElement, WeakPtrImplWithEventTargetData> m_SVGSVGElementsWithPausedImageAnimation;
     HashSet<RenderElement*> m_visibleInViewportRenderers;
-    Vector<RefPtr<RenderWidget>> m_protectedRenderWidgets;
 
-#if ENABLE(CSS_SCROLL_SNAP)
     HashSet<const RenderBox*> m_boxesWithScrollSnapPositions;
-#endif
+    WeakHashSet<const RenderBox> m_containerQueryBoxes;
 };
 
 } // namespace WebCore

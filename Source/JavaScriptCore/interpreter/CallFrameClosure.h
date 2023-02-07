@@ -30,13 +30,12 @@
 namespace JSC {
 
 struct CallFrameClosure {
-    CallFrame* oldCallFrame;
     ProtoCallFrame* protoCallFrame;
     JSFunction* function;
     FunctionExecutable* functionExecutable;
     VM* vm;
     JSScope* scope;
-    int parameterCountIncludingThis;
+    unsigned parameterCountIncludingThis;
     int argumentCountIncludingThis;
     
     void setThis(JSValue value)

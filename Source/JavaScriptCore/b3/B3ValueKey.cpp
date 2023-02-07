@@ -88,6 +88,8 @@ Value* ValueKey::materialize(Procedure& proc, Origin origin) const
     case UDiv:
     case Mod:
     case UMod:
+    case FMax:
+    case FMin:
     case BitAnd:
     case BitOr:
     case BitXor:
@@ -112,6 +114,8 @@ Value* ValueKey::materialize(Procedure& proc, Origin origin) const
         return proc.add<Const32Value>(origin, static_cast<int32_t>(value()));
     case Const64:
         return proc.add<Const64Value>(origin, value());
+    case Const128:
+        return proc.add<Const128Value>(origin, vectorValue());
     case ConstDouble:
         return proc.add<ConstDoubleValue>(origin, doubleValue());
     case ConstFloat:

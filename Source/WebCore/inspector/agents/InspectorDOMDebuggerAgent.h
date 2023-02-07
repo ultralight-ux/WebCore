@@ -32,10 +32,14 @@
 #pragma once
 
 #include "InspectorWebAgentBase.h"
+#include <JavaScriptCore/Breakpoint.h>
 #include <JavaScriptCore/InspectorBackendDispatchers.h>
 #include <JavaScriptCore/InspectorDebuggerAgent.h>
 #include <wtf/HashMap.h>
+#include <wtf/HashSet.h>
 #include <wtf/JSONValues.h>
+#include <wtf/RefPtr.h>
+#include <wtf/RobinHoodHashMap.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
@@ -46,8 +50,8 @@ namespace WebCore {
 
 class Event;
 class RegisteredEventListener;
-
-typedef String ErrorString;
+class ResourceRequest;
+class ScriptExecutionContext;
 
 class InspectorDOMDebuggerAgent : public InspectorAgentBase, public Inspector::DOMDebuggerBackendDispatcherHandler, public Inspector::InspectorDebuggerAgent::Listener {
     WTF_MAKE_NONCOPYABLE(InspectorDOMDebuggerAgent);
@@ -62,47 +66,71 @@ public:
     virtual bool enabled() const;
 
     // DOMDebuggerBackendDispatcherHandler
-    void setURLBreakpoint(ErrorString&, const String& url, const bool* optionalIsRegex) final;
-    void removeURLBreakpoint(ErrorString&, const String& url) final;
-    void setEventBreakpoint(ErrorString&, const String& breakpointType, const String* eventName) final;
-    void removeEventBreakpoint(ErrorString&, const String& breakpointType, const String* eventName) final;
+    Inspector::Protocol::ErrorStringOr<void> setURLBreakpoint(const String& url, std::optional<bool>&& isRegex, RefPtr<JSON::Object>&& options) final;
+    Inspector::Protocol::ErrorStringOr<void> removeURLBreakpoint(const String& url, std::optional<bool>&& isRegex) final;
+    Inspector::Protocol::ErrorStringOr<void> setEventBreakpoint(Inspector::Protocol::DOMDebugger::EventBreakpointType, const String& eventName, std::optional<bool>&& caseSensitive, std::optional<bool>&& isRegex, RefPtr<JSON::Object>&& options) final;
+    Inspector::Protocol::ErrorStringOr<void> removeEventBreakpoint(Inspector::Protocol::DOMDebugger::EventBreakpointType, const String& eventName, std::optional<bool>&& caseSensitive, std::optional<bool>&& isRegex) final;
 
     // InspectorDebuggerAgent::Listener
     void debuggerWasEnabled() override;
     void debuggerWasDisabled() override;
 
     // InspectorInstrumentation
+    virtual void mainFrameNavigated();
     void willSendXMLHttpRequest(const String& url);
     void willFetch(const String& url);
-    void willHandleEvent(Event&, const RegisteredEventListener&);
-    void didHandleEvent();
+    void willHandleEvent(ScriptExecutionContext&, Event&, const RegisteredEventListener&);
+    void didHandleEvent(ScriptExecutionContext&, Event&, const RegisteredEventListener&);
     void willFireTimer(bool oneShot);
+    void didFireTimer(bool oneShot);
+    void willSendRequest(ResourceRequest&);
+    void willSendRequestOfType(ResourceRequest&);
 
 protected:
     InspectorDOMDebuggerAgent(WebAgentContext&, Inspector::InspectorDebuggerAgent*);
     virtual void enable();
     virtual void disable();
 
-    virtual void setAnimationFrameBreakpoint(ErrorString&, bool enabled) = 0;
+    virtual bool setAnimationFrameBreakpoint(Inspector::Protocol::ErrorString&, RefPtr<JSC::Breakpoint>&&) = 0;
 
     Inspector::InspectorDebuggerAgent* m_debuggerAgent { nullptr };
 
 private:
-    enum class URLBreakpointSource { Fetch, XHR };
-    void breakOnURLIfNeeded(const String& url, URLBreakpointSource);
+    void breakOnURLIfNeeded(const String&);
 
     RefPtr<Inspector::DOMDebuggerBackendDispatcher> m_backendDispatcher;
     Inspector::InjectedScriptManager& m_injectedScriptManager;
 
-    HashSet<String> m_listenerBreakpoints;
+    struct EventBreakpoint {
+        String eventName;
+        bool caseSensitive { true };
+        bool isRegex { false };
 
-    enum class URLBreakpointType { RegularExpression, Text };
-    HashMap<String, URLBreakpointType> m_urlBreakpoints;
+        // This is only used for the breakpoint configuration (i.e. it's irrelevant when comparing).
+        RefPtr<JSC::Breakpoint> specialBreakpoint;
 
-    bool m_pauseOnAllIntervalsEnabled { false };
-    bool m_pauseOnAllListenersEnabled { false };
-    bool m_pauseOnAllTimeoutsEnabled { false };
-    bool m_pauseOnAllURLsEnabled { false };
+        inline bool operator==(const EventBreakpoint& other) const
+        {
+            return eventName == other.eventName
+                && caseSensitive == other.caseSensitive
+                && isRegex == other.isRegex;
+        }
+
+        bool matches(const String&);
+
+    private:
+        // Avoid having to (re)match the regex each time an event is dispatched.
+        std::optional<JSC::Yarr::RegularExpression> m_eventNameMatchRegex;
+        HashSet<String> m_knownMatchingEventNames;
+    };
+    Vector<EventBreakpoint> m_listenerBreakpoints;
+    RefPtr<JSC::Breakpoint> m_pauseOnAllIntervalsBreakpoint;
+    RefPtr<JSC::Breakpoint> m_pauseOnAllListenersBreakpoint;
+    RefPtr<JSC::Breakpoint> m_pauseOnAllTimeoutsBreakpoint;
+
+    MemoryCompactRobinHoodHashMap<String, Ref<JSC::Breakpoint>> m_urlTextBreakpoints;
+    MemoryCompactRobinHoodHashMap<String, Ref<JSC::Breakpoint>> m_urlRegexBreakpoints;
+    RefPtr<JSC::Breakpoint> m_pauseOnAllURLsBreakpoint;
 };
 
 } // namespace WebCore

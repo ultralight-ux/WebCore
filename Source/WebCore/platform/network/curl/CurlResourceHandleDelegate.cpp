@@ -36,6 +36,7 @@
 #include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceHandleInternal.h"
+#include "SecurityOrigin.h"
 
 #include <wtf/CompletionHandler.h>
 
@@ -86,11 +87,11 @@ void CurlResourceHandleDelegate::curlDidSendData(CurlRequest&, unsigned long lon
 
 static void handleCookieHeaders(ResourceHandleInternal* d, const ResourceRequest& request, const CurlResponse& response)
 {
-    static const auto setCookieHeader = "set-cookie: ";
+    static constexpr auto setCookieHeader = "set-cookie: "_s;
 
     for (const auto& header : response.headers) {
         if (header.startsWithIgnoringASCIICase(setCookieHeader)) {
-            const auto contents = header.right(header.length() - strlen(setCookieHeader));
+            const auto contents = header.right(header.length() - setCookieHeader.length());
             d->m_context->storageSession()->setCookiesFromHTTPResponse(request.firstPartyForCookies(), response.url, contents);
         }
     }
@@ -105,7 +106,8 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, Cu
         return;
 
     m_response = ResourceResponse(receivedResponse);
-    m_response.setCertificateInfo(WTFMove(receivedResponse.certificateInfo));
+
+    updateNetworkLoadMetrics(receivedResponse.networkLoadMetrics);
     m_response.setDeprecatedNetworkLoadMetrics(Box<NetworkLoadMetrics>::create(WTFMove(receivedResponse.networkLoadMetrics)));
 
     handleCookieHeaders(d(), request.resourceRequest(), receivedResponse);
@@ -129,38 +131,40 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, Cu
         if (CurlCacheManager::singleton().getCachedResponse(cacheUrl.string(), m_response)) {
             if (d()->m_addedCacheValidationHeaders) {
                 m_response.setHTTPStatusCode(200);
-                m_response.setHTTPStatusText("OK");
+                m_response.setHTTPStatusText("OK"_s);
             }
         }
     }
 
     CurlCacheManager::singleton().didReceiveResponse(m_handle, m_response);
 
-    m_handle.didReceiveResponse(ResourceResponse(m_response), [this, protectedHandle = makeRef(m_handle)] {
+    m_handle.didReceiveResponse(ResourceResponse(m_response), [this, protectedHandle = Ref { m_handle }] {
         m_handle.continueAfterDidReceiveResponse();
     });
 }
 
-void CurlResourceHandleDelegate::curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&& buffer)
+void CurlResourceHandleDelegate::curlDidReceiveData(CurlRequest&, const SharedBuffer& buffer)
 {
     ASSERT(isMainThread());
 
     if (cancelledOrClientless())
         return;
 
-    CurlCacheManager::singleton().didReceiveData(m_handle, buffer->data(), buffer->size());
-    client()->didReceiveBuffer(&m_handle, WTFMove(buffer), buffer->size());
+    CurlCacheManager::singleton().didReceiveData(m_handle, buffer);
+    client()->didReceiveBuffer(&m_handle, buffer, buffer.size());
 }
 
-void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&&)
+void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&& metrics)
 {
     ASSERT(isMainThread());
 
     if (cancelledOrClientless())
         return;
 
+    updateNetworkLoadMetrics(metrics);
+
     CurlCacheManager::singleton().didFinishLoading(m_handle);
-    client()->didFinishLoading(&m_handle);
+    client()->didFinishLoading(&m_handle, WTFMove(metrics));
 }
 
 void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceError&& resourceError, CertificateInfo&&)
@@ -174,6 +178,18 @@ void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceErro
     client()->didFail(&m_handle, resourceError);
 }
 
+void CurlResourceHandleDelegate::updateNetworkLoadMetrics(NetworkLoadMetrics& networkLoadMetrics)
+{
+    if (!d()->m_startTime)
+        d()->m_startTime = networkLoadMetrics.fetchStart;
+
+    m_handle.checkTAO(m_response);
+
+    networkLoadMetrics.redirectStart = m_handle.startTimeBeforeRedirects();
+    networkLoadMetrics.redirectCount = m_handle.redirectCount();
+    networkLoadMetrics.failsTAOCheck = m_handle.failsTAOCheck();
+    networkLoadMetrics.hasCrossOriginRedirect = m_handle.hasCrossOriginRedirect();
+}
 
 } // namespace WebCore
 

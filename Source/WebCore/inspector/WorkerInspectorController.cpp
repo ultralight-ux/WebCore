@@ -35,9 +35,10 @@
 #include "WorkerAuditAgent.h"
 #include "WorkerConsoleAgent.h"
 #include "WorkerDOMDebuggerAgent.h"
+#include "WorkerDebugger.h"
 #include "WorkerDebuggerAgent.h"
-#include "WorkerGlobalScope.h"
 #include "WorkerNetworkAgent.h"
+#include "WorkerOrWorkletGlobalScope.h"
 #include "WorkerRuntimeAgent.h"
 #include "WorkerThread.h"
 #include "WorkerToPageFrontendChannel.h"
@@ -48,6 +49,9 @@
 #include <JavaScriptCore/InspectorFrontendRouter.h>
 
 #if ENABLE(SERVICE_WORKER)
+#include "InspectorClient.h"
+#include "InspectorController.h"
+#include "Page.h"
 #include "ServiceWorkerAgent.h"
 #include "ServiceWorkerGlobalScope.h"
 #endif
@@ -57,16 +61,15 @@ namespace WebCore {
 using namespace JSC;
 using namespace Inspector;
 
-WorkerInspectorController::WorkerInspectorController(WorkerGlobalScope& workerGlobalScope)
+WorkerInspectorController::WorkerInspectorController(WorkerOrWorkletGlobalScope& globalScope)
     : m_instrumentingAgents(InstrumentingAgents::create(*this))
     , m_injectedScriptManager(makeUnique<WebInjectedScriptManager>(*this, WebInjectedScriptHost::create()))
     , m_frontendRouter(FrontendRouter::create())
     , m_backendDispatcher(BackendDispatcher::create(m_frontendRouter.copyRef()))
     , m_executionStopwatch(Stopwatch::create())
-    , m_scriptDebugServer(workerGlobalScope)
-    , m_workerGlobalScope(workerGlobalScope)
+    , m_globalScope(globalScope)
 {
-    ASSERT(workerGlobalScope.isContextThread());
+    ASSERT(globalScope.isContextThread());
 
     auto workerContext = workerAgentContext();
 
@@ -90,6 +93,8 @@ void WorkerInspectorController::workerTerminating()
     disconnectFrontend(Inspector::DisconnectReason::InspectedTargetDestroyed);
 
     m_agents.discardValues();
+
+    m_debugger = nullptr;
 }
 
 void WorkerInspectorController::connectFrontend()
@@ -106,9 +111,13 @@ void WorkerInspectorController::connectFrontend()
     m_executionStopwatch->reset();
     m_executionStopwatch->start();
 
-    m_forwardingChannel = makeUnique<WorkerToPageFrontendChannel>(m_workerGlobalScope);
+    m_forwardingChannel = makeUnique<WorkerToPageFrontendChannel>(m_globalScope);
     m_frontendRouter->connectFrontend(*m_forwardingChannel.get());
     m_agents.didCreateFrontendAndBackend(&m_frontendRouter.get(), &m_backendDispatcher.get());
+
+#if ENABLE(SERVICE_WORKER)
+    updateServiceWorkerPageFrontendCount();
+#endif
 }
 
 void WorkerInspectorController::disconnectFrontend(Inspector::DisconnectReason reason)
@@ -125,7 +134,33 @@ void WorkerInspectorController::disconnectFrontend(Inspector::DisconnectReason r
     m_agents.willDestroyFrontendAndBackend(reason);
     m_frontendRouter->disconnectFrontend(*m_forwardingChannel.get());
     m_forwardingChannel = nullptr;
+
+#if ENABLE(SERVICE_WORKER)
+    updateServiceWorkerPageFrontendCount();
+#endif
 }
+
+#if ENABLE(SERVICE_WORKER)
+void WorkerInspectorController::updateServiceWorkerPageFrontendCount()
+{
+    if (!is<ServiceWorkerGlobalScope>(m_globalScope))
+        return;
+
+    auto serviceWorkerPage = downcast<ServiceWorkerGlobalScope>(m_globalScope).serviceWorkerPage();
+    if (!serviceWorkerPage)
+        return;
+
+    ASSERT(isMainThread());
+
+    // When a service worker is loaded in a Page, we need to report its inspector frontend count
+    // up to the page's inspectorController so the client knows about it.
+    auto inspectorClient = serviceWorkerPage->inspectorController().inspectorClient();
+    if (!inspectorClient)
+        return;
+
+    inspectorClient->frontendCountChanged(m_frontendRouter->frontendCount());
+}
+#endif
 
 void WorkerInspectorController::dispatchMessageFromFrontend(const String& message)
 {
@@ -148,7 +183,7 @@ WorkerAgentContext WorkerInspectorController::workerAgentContext()
 
     WorkerAgentContext workerContext = {
         webContext,
-        m_workerGlobalScope,
+        m_globalScope,
     };
 
     return workerContext;
@@ -161,6 +196,8 @@ void WorkerInspectorController::createLazyAgents()
 
     m_didCreateLazyAgents = true;
 
+    m_debugger = makeUnique<WorkerDebugger>(m_globalScope);
+
     m_injectedScriptManager->connect();
 
     auto workerContext = workerAgentContext();
@@ -168,7 +205,7 @@ void WorkerInspectorController::createLazyAgents()
     m_agents.append(makeUnique<WorkerRuntimeAgent>(workerContext));
 
 #if ENABLE(SERVICE_WORKER)
-    if (is<ServiceWorkerGlobalScope>(m_workerGlobalScope)) {
+    if (is<ServiceWorkerGlobalScope>(m_globalScope)) {
         m_agents.append(makeUnique<ServiceWorkerAgent>(workerContext));
         m_agents.append(makeUnique<WorkerNetworkAgent>(workerContext));
     }
@@ -197,9 +234,20 @@ InspectorEvaluateHandler WorkerInspectorController::evaluateHandler() const
     return WebCore::evaluateHandlerFromAnyThread;
 }
 
+Stopwatch& WorkerInspectorController::executionStopwatch() const
+{
+    return m_executionStopwatch;
+}
+
+JSC::Debugger* WorkerInspectorController::debugger()
+{
+    ASSERT_IMPLIES(m_didCreateLazyAgents, m_debugger);
+    return m_debugger.get();
+}
+
 VM& WorkerInspectorController::vm()
 {
-    return m_workerGlobalScope.vm();
+    return m_globalScope.vm();
 }
 
 } // namespace WebCore

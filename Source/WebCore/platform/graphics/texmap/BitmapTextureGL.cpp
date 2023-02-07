@@ -24,7 +24,6 @@
 
 #if USE(TEXTURE_MAPPER_GL)
 
-#include "ExtensionsGL.h"
 #include "FilterOperations.h"
 #include "LengthFunctions.h"
 #include "NativeImage.h"
@@ -40,11 +39,6 @@
 #include "RefPtrCairo.h"
 #include <cairo.h>
 #include <wtf/text/CString.h>
-#endif
-
-#if USE(DIRECT2D)
-#include <d2d1.h>
-#include <wincodec.h>
 #endif
 
 #if OS(DARWIN)
@@ -80,6 +74,7 @@ void BitmapTextureGL::didReset()
 
     m_shouldClear = true;
     m_colorConvertFlags = TextureMapperGL::NoFlag;
+    m_filterInfo = FilterInfo();
     if (m_textureSize == contentSize())
         return;
 
@@ -103,8 +98,8 @@ void BitmapTextureGL::updateContents(const void* srcData, const IntRect& targetR
     glBindTexture(GL_TEXTURE_2D, m_id);
 
     const unsigned bytesPerPixel = 4;
-    const char* data = static_cast<const char*>(srcData);
-    Vector<char> temporaryData;
+    auto data = static_cast<const uint8_t*>(srcData);
+    Vector<uint8_t> temporaryData;
     IntPoint adjustedSourceOffset = sourceOffset;
 
     // Texture upload requires subimage buffer if driver doesn't support subimage and we don't have full image upload.
@@ -114,10 +109,10 @@ void BitmapTextureGL::updateContents(const void* srcData, const IntRect& targetR
     // prepare temporaryData if necessary
     if (requireSubImageBuffer) {
         temporaryData.resize(targetRect.width() * targetRect.height() * bytesPerPixel);
-        char* dst = temporaryData.data();
+        auto dst = temporaryData.data();
         data = dst;
-        const char* bits = static_cast<const char*>(srcData);
-        const char* src = bits + sourceOffset.y() * bytesPerLine + sourceOffset.x() * bytesPerPixel;
+        auto bits = static_cast<const uint8_t*>(srcData);
+        auto src = bits + sourceOffset.y() * bytesPerLine + sourceOffset.x() * bytesPerPixel;
         const int targetBytesPerLine = targetRect.width() * bytesPerPixel;
         for (int y = 0; y < targetRect.height(); ++y) {
             memcpy(dst, src, targetBytesPerLine);
@@ -151,19 +146,17 @@ void BitmapTextureGL::updateContents(Image* image, const IntRect& targetRect, co
 {
     if (!image)
         return;
-    NativeImagePtr frameImage = image->nativeImageForCurrentFrame();
+    auto frameImage = image->nativeImageForCurrentFrame();
     if (!frameImage)
         return;
 
     int bytesPerLine;
-    const char* imageData;
+    const uint8_t* imageData;
 
 #if USE(CAIRO)
-    cairo_surface_t* surface = frameImage.get();
-    imageData = reinterpret_cast<const char*>(cairo_image_surface_get_data(surface));
+    cairo_surface_t* surface = frameImage->platformImage().get();
+    imageData = cairo_image_surface_get_data(surface);
     bytesPerLine = cairo_image_surface_get_stride(surface);
-#elif USE(DIRECT2D)
-    notImplemented();
 #endif
 
     updateContents(imageData, targetRect, offset, bytesPerLine);
@@ -188,20 +181,20 @@ void BitmapTextureGL::updatePendingContents(const IntRect& targetRect, const Int
 }
 #endif
 
-static unsigned getPassesRequiredForFilter(FilterOperation::OperationType type)
+static unsigned getPassesRequiredForFilter(FilterOperation::Type type)
 {
     switch (type) {
-    case FilterOperation::GRAYSCALE:
-    case FilterOperation::SEPIA:
-    case FilterOperation::SATURATE:
-    case FilterOperation::HUE_ROTATE:
-    case FilterOperation::INVERT:
-    case FilterOperation::BRIGHTNESS:
-    case FilterOperation::CONTRAST:
-    case FilterOperation::OPACITY:
+    case FilterOperation::Type::Grayscale:
+    case FilterOperation::Type::Sepia:
+    case FilterOperation::Type::Saturate:
+    case FilterOperation::Type::HueRotate:
+    case FilterOperation::Type::Invert:
+    case FilterOperation::Type::Brightness:
+    case FilterOperation::Type::Contrast:
+    case FilterOperation::Type::Opacity:
         return 1;
-    case FilterOperation::BLUR:
-    case FilterOperation::DROP_SHADOW:
+    case FilterOperation::Type::Blur:
+    case FilterOperation::Type::DropShadow:
         // We use two-passes (vertical+horizontal) for blur and drop-shadow.
         return 2;
     default:
@@ -209,7 +202,7 @@ static unsigned getPassesRequiredForFilter(FilterOperation::OperationType type)
     }
 }
 
-RefPtr<BitmapTexture> BitmapTextureGL::applyFilters(TextureMapper& textureMapper, const FilterOperations& filters)
+RefPtr<BitmapTexture> BitmapTextureGL::applyFilters(TextureMapper& textureMapper, const FilterOperations& filters, bool defersLastFilter)
 {
     if (filters.isEmpty())
         return this;
@@ -229,19 +222,16 @@ RefPtr<BitmapTexture> BitmapTextureGL::applyFilters(TextureMapper& textureMapper
         int numPasses = getPassesRequiredForFilter(filter->type());
         for (int j = 0; j < numPasses; ++j) {
             bool last = (i == filters.size() - 1) && (j == numPasses - 1);
-            if (!last) {
-                if (!intermediateSurface)
-                    intermediateSurface = texmapGL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha);
-                texmapGL.bindSurface(intermediateSurface.get());
-            }
-
-            if (last) {
+            if (defersLastFilter && last) {
                 toBitmapTextureGL(resultSurface.get())->m_filterInfo = BitmapTextureGL::FilterInfo(filter.copyRef(), j, spareSurface.copyRef());
                 break;
             }
 
+            if (!intermediateSurface)
+                intermediateSurface = texmapGL.acquireTextureFromPool(contentSize(), BitmapTexture::SupportsAlpha);
+            texmapGL.bindSurface(intermediateSurface.get());
             texmapGL.drawFiltered(*resultSurface.get(), spareSurface.get(), *filter, j);
-            if (!j && filter->type() == FilterOperation::DROP_SHADOW) {
+            if (!j && filter->type() == FilterOperation::Type::DropShadow) {
                 spareSurface = resultSurface;
                 resultSurface = nullptr;
             }
@@ -255,6 +245,7 @@ RefPtr<BitmapTexture> BitmapTextureGL::applyFilters(TextureMapper& textureMapper
 
 void BitmapTextureGL::initializeStencil()
 {
+#if !USE(TEXMAP_DEPTH_STENCIL_BUFFER)
     if (m_rbo)
         return;
 
@@ -265,6 +256,7 @@ void BitmapTextureGL::initializeStencil()
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_rbo);
     glClearStencil(0);
     glClear(GL_STENCIL_BUFFER_BIT);
+#endif
 }
 
 void BitmapTextureGL::initializeDepthBuffer()
@@ -272,9 +264,15 @@ void BitmapTextureGL::initializeDepthBuffer()
     if (m_depthBufferObject)
         return;
 
+#if USE(TEXMAP_DEPTH_STENCIL_BUFFER)
+    GLenum format = GL_DEPTH24_STENCIL8_OES;
+#else
+    GLenum format = GL_DEPTH_COMPONENT16;
+#endif
+    
     glGenRenderbuffers(1, &m_depthBufferObject);
     glBindRenderbuffer(GL_RENDERBUFFER, m_depthBufferObject);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, m_textureSize.width(), m_textureSize.height());
+    glRenderbufferStorage(GL_RENDERBUFFER, format, m_textureSize.width(), m_textureSize.height());
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_depthBufferObject);
 }
@@ -287,7 +285,8 @@ void BitmapTextureGL::clearIfNeeded()
     m_clipStack.reset(IntRect(IntPoint::zero(), m_textureSize), ClipStack::YAxisMode::Default);
     m_clipStack.applyIfNeeded();
     glClearColor(0, 0, 0, 0);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     m_shouldClear = false;
 }
 
@@ -299,6 +298,8 @@ void BitmapTextureGL::createFboIfNeeded()
     glGenFramebuffers(1, &m_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, id(), 0);
+    if (flags() & DepthBuffer)
+        initializeDepthBuffer();
     m_shouldClear = true;
 }
 
@@ -308,6 +309,10 @@ void BitmapTextureGL::bindAsSurface()
     createFboIfNeeded();
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
     glViewport(0, 0, m_textureSize.width(), m_textureSize.height());
+    if (flags() & DepthBuffer)
+        glEnable(GL_DEPTH_TEST);
+    else
+        glDisable(GL_DEPTH_TEST);
     clearIfNeeded();
     m_clipStack.apply();
 }
@@ -320,8 +325,10 @@ BitmapTextureGL::~BitmapTextureGL()
     if (m_fbo)
         glDeleteFramebuffers(1, &m_fbo);
 
+#if !USE(TEXMAP_DEPTH_STENCIL_BUFFER)
     if (m_rbo)
         glDeleteRenderbuffers(1, &m_rbo);
+#endif
 
     if (m_depthBufferObject)
         glDeleteRenderbuffers(1, &m_depthBufferObject);

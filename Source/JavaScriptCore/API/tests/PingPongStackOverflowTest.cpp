@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,14 +55,10 @@ static bool PingPongStackOverflowObject_hasInstance(JSContextRef context, JSObje
         result = JSObjectCallAsFunction(context, function, constructor, 1, &possibleValue, exception);
     } else {
         StringBuilder builder;
-        builder.appendLiteral("dummy.valueOf([0]");
-        for (int i = 1; i < 35000; i++) {
-            builder.appendLiteral(", [");
-            builder.appendNumber(i);
-            builder.appendLiteral("]");
-        }
-        builder.appendLiteral(");");
-
+        builder.append("dummy.valueOf([0]");
+        for (int i = 1; i < 35000; i++)
+            builder.append(", [", i, ']');
+        builder.append(");");
         JSStringRef script = JSStringCreateWithUTF8CString(builder.toString().utf8().data());
         result = JSEvaluateScript(context, script, nullptr, nullptr, 1, exception);
         JSStringRelease(script);
@@ -75,7 +71,7 @@ static bool PingPongStackOverflowObject_hasInstance(JSContextRef context, JSObje
     return result && JSValueToBoolean(context, result);
 }
 
-JSClassDefinition PingPongStackOverflowObject_definition = {
+static const JSClassDefinition PingPongStackOverflowObject_definition = {
     0,
     kJSClassAttributeNone,
     
@@ -129,7 +125,8 @@ int testPingPongStackOverflow()
     // Normally, we want to disable the LLINT to force the use of JITted code which is necessary for
     // reproducing the regression in https://bugs.webkit.org/show_bug.cgi?id=148749. However, we only
     // want to do this if the LLINT isn't the only available execution engine.
-    Options::useLLInt() = false;
+    if (Options::useJIT())
+        Options::useLLInt() = false;
 #endif
 
     const char* scriptString =

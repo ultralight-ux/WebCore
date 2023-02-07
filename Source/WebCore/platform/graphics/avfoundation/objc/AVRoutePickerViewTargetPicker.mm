@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,9 +28,9 @@
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && HAVE(AVROUTEPICKERVIEW)
 
+#import "FloatRect.h"
 #import "Logging.h"
 #import <AVFoundation/AVRouteDetector.h>
-#import <WebCore/FloatRect.h>
 #import <pal/spi/cocoa/AVFoundationSPI.h>
 #import <pal/spi/cocoa/AVKitSPI.h>
 #import <wtf/MainThread.h>
@@ -72,7 +72,7 @@ bool AVRoutePickerViewTargetPicker::isAvailable()
 
 AVRoutePickerViewTargetPicker::AVRoutePickerViewTargetPicker(AVPlaybackTargetPicker::Client& client)
     : AVPlaybackTargetPicker(client)
-    , m_routePickerViewDelegate(adoptNS([[WebAVRoutePickerViewHelper alloc] initWithCallback:makeWeakPtr(*this)]))
+    , m_routePickerViewDelegate(adoptNS([[WebAVRoutePickerViewHelper alloc] initWithCallback:*this]))
 {
     ASSERT(isAvailable());
 }
@@ -88,7 +88,7 @@ AVOutputContext * AVRoutePickerViewTargetPicker::outputContextInternal()
         m_outputContext = [PAL::getAVOutputContextClass() iTunesAudioContext];
         ASSERT(m_outputContext);
         if (m_outputContext)
-            [[NSNotificationCenter defaultCenter] addObserver:m_routePickerViewDelegate.get() selector:@selector(notificationHandler:) name:PAL::get_AVFoundation_AVOutputContextOutputDevicesDidChangeNotification() object:m_outputContext.get()];
+            [[NSNotificationCenter defaultCenter] addObserver:m_routePickerViewDelegate.get() selector:@selector(notificationHandler:) name:PAL::AVOutputContextOutputDevicesDidChangeNotification object:m_outputContext.get()];
     }
 
     return m_outputContext.get();
@@ -108,7 +108,7 @@ AVRouteDetector *AVRoutePickerViewTargetPicker::routeDetector()
 {
     if (!m_routeDetector) {
         m_routeDetector = adoptNS([PAL::allocAVRouteDetectorInstance() init]);
-        [[NSNotificationCenter defaultCenter] addObserver:m_routePickerViewDelegate.get() selector:@selector(notificationHandler:) name:PAL::get_AVFoundation_AVRouteDetectorMultipleRoutesDetectedDidChangeNotification() object:m_routeDetector.get()];
+        [[NSNotificationCenter defaultCenter] addObserver:m_routePickerViewDelegate.get() selector:@selector(notificationHandler:) name:PAL::AVRouteDetectorMultipleRoutesDetectedDidChangeNotification object:m_routeDetector.get()];
         if ([m_routeDetector multipleRoutesDetected])
             availableDevicesDidChange();
     }
@@ -134,13 +134,24 @@ void AVRoutePickerViewTargetPicker::showPlaybackTargetPicker(NSView *view, const
 
 void AVRoutePickerViewTargetPicker::startingMonitoringPlaybackTargets()
 {
+    m_ignoreNextMultipleRoutesDetectedDidChangeNotification = false;
+
     routeDetector().routeDetectionEnabled = YES;
 }
 
 void AVRoutePickerViewTargetPicker::stopMonitoringPlaybackTargets()
 {
-    if (m_routeDetector)
-        [m_routeDetector setRouteDetectionEnabled:NO];
+    if (!m_routeDetector)
+        return;
+
+    // `-[AVRouteDetector multipleRoutesDetected]` will always return `NO` if route detection is
+    // disabled and `-[AVRouteDetector setRouteDetectionEnabled:]` will always dispatch a
+    // `AVRouteDetectorMultipleRoutesDetectedDidChange` notification, so ignore the next one in
+    // order to prevent the cached value in the WebProcess from always being `false` when the last
+    // JS `"webkitplaybacktargetavailabilitychanged"` event listener is removed.
+    m_ignoreNextMultipleRoutesDetectedDidChangeNotification = true;
+
+    [m_routeDetector setRouteDetectionEnabled:NO];
 }
 
 bool AVRoutePickerViewTargetPicker::externalOutputDeviceAvailable()
@@ -156,13 +167,13 @@ AVOutputContext * AVRoutePickerViewTargetPicker::outputContext()
 void AVRoutePickerViewTargetPicker::invalidatePlaybackTargets()
 {
     if (m_routeDetector) {
-        [[NSNotificationCenter defaultCenter] removeObserver:m_routePickerViewDelegate.get() name:PAL::get_AVFoundation_AVRouteDetectorMultipleRoutesDetectedDidChangeNotification() object:m_routeDetector.get()];
+        [[NSNotificationCenter defaultCenter] removeObserver:m_routePickerViewDelegate.get() name:PAL::AVRouteDetectorMultipleRoutesDetectedDidChangeNotification object:m_routeDetector.get()];
         [m_routeDetector setRouteDetectionEnabled:NO];
         m_routePickerView = nullptr;
     }
 
     if (m_outputContext) {
-        [[NSNotificationCenter defaultCenter] removeObserver:m_routePickerViewDelegate.get() name:PAL::get_AVFoundation_AVOutputContextOutputDevicesDidChangeNotification() object:m_outputContext.get()];
+        [[NSNotificationCenter defaultCenter] removeObserver:m_routePickerViewDelegate.get() name:PAL::AVOutputContextOutputDevicesDidChangeNotification object:m_outputContext.get()];
         m_outputContext = nullptr;
     }
 
@@ -174,6 +185,11 @@ void AVRoutePickerViewTargetPicker::invalidatePlaybackTargets()
 }
 void AVRoutePickerViewTargetPicker::availableDevicesDidChange()
 {
+    if (m_ignoreNextMultipleRoutesDetectedDidChangeNotification) {
+        m_ignoreNextMultipleRoutesDetectedDidChangeNotification = false;
+        return;
+    }
+
     if (client())
         client()->availableDevicesChanged();
 }
@@ -263,9 +279,9 @@ void AVRoutePickerViewTargetPicker::devicePickerWasDismissed()
         if (!m_callback)
             return;
 
-        if ([[notification name] isEqualToString:PAL::get_AVFoundation_AVOutputContextOutputDevicesDidChangeNotification()])
+        if ([[notification name] isEqualToString:PAL::AVOutputContextOutputDevicesDidChangeNotification])
             m_callback->currentDeviceDidChange();
-        else if ([[notification name] isEqualToString:PAL::get_AVFoundation_AVRouteDetectorMultipleRoutesDetectedDidChangeNotification()])
+        else if ([[notification name] isEqualToString:PAL::AVRouteDetectorMultipleRoutesDetectedDidChangeNotification])
             m_callback->availableDevicesDidChange();
     });
 }

@@ -42,7 +42,7 @@ namespace WebCore {
 class CurlRequestClient;
 class NetworkLoadMetrics;
 class ResourceError;
-class SharedBuffer;
+class FragmentedSharedBuffer;
 class SynchronousLoaderMessageQueue;
 
 class CurlRequest : public ThreadSafeRefCounted<CurlRequest>, public CurlRequestSchedulerClient, public CurlMultipartHandleClient {
@@ -71,15 +71,14 @@ public:
 
     virtual ~CurlRequest();
 
-    void invalidateClient();
-    WEBCORE_EXPORT void setAuthenticationScheme(ProtectionSpaceAuthenticationScheme);
+    WEBCORE_EXPORT void invalidateClient();
+    WEBCORE_EXPORT void setAuthenticationScheme(ProtectionSpace::AuthenticationScheme);
     WEBCORE_EXPORT void setUserPass(const String&, const String&);
     bool isServerTrustEvaluationDisabled() { return m_shouldDisableServerTrustEvaluation; }
     void disableServerTrustEvaluation() { m_shouldDisableServerTrustEvaluation = true; }
-    void setStartTime(const MonotonicTime& startTime) { m_requestStartTime = startTime.isolatedCopy(); }
 
-    void start();
-    void cancel();
+    WEBCORE_EXPORT void start();
+    WEBCORE_EXPORT void cancel();
     WEBCORE_EXPORT void suspend();
     WEBCORE_EXPORT void resume();
 
@@ -106,7 +105,7 @@ private:
         FinishTransfer
     };
 
-    CurlRequest(const ResourceRequest&, CurlRequestClient*, ShouldSuspend, EnableMultipart, CaptureNetworkLoadMetrics, RefPtr<SynchronousLoaderMessageQueue>&&);
+    WEBCORE_EXPORT CurlRequest(const ResourceRequest&, CurlRequestClient*, ShouldSuspend, EnableMultipart, CaptureNetworkLoadMetrics, RefPtr<SynchronousLoaderMessageQueue>&&);
 
     void retain() override { ref(); }
     void release() override { deref(); }
@@ -123,9 +122,9 @@ private:
     CURL* setupTransfer() override;
     size_t willSendData(char*, size_t, size_t);
     size_t didReceiveHeader(String&&);
-    size_t didReceiveData(Ref<SharedBuffer>&&);
+    size_t didReceiveData(const SharedBuffer&);
     void didReceiveHeaderFromMultipart(const Vector<String>&) override;
-    void didReceiveDataFromMultipart(Ref<SharedBuffer>&&) override;
+    void didReceiveDataFromMultipart(const SharedBuffer&) override;
     void didCompleteTransfer(CURLcode) override;
     void didCancelTransfer() override;
     void finalizeTransfer();
@@ -135,8 +134,8 @@ private:
 
     // For setup 
     void appendAcceptLanguageHeader(HTTPHeaderMap&);
-    void setupPOST(ResourceRequest&);
-    void setupPUT(ResourceRequest&);
+    void setupPOST();
+    void setupPUT();
     void setupSendData(bool forPutMethod);
 
     // Processing for DidReceiveResponse
@@ -154,7 +153,7 @@ private:
     NetworkLoadMetrics networkLoadMetrics();
 
     // Download
-    void writeDataToDownloadFileIfEnabled(const SharedBuffer&);
+    void writeDataToDownloadFileIfEnabled(const FragmentedSharedBuffer&);
     void closeDownloadFile();
     void cleanupDownloadFile();
 
@@ -176,9 +175,11 @@ private:
     String m_password;
     unsigned long m_authType { CURLAUTH_ANY };
     bool m_shouldDisableServerTrustEvaluation { false };
-    bool m_shouldSuspend { false };
     bool m_enableMultipart { false };
 
+    enum class StartState : uint8_t { StartSuspended, WaitingForStart, DidStart };
+    StartState m_startState;
+    
     std::unique_ptr<CurlHandle> m_curlHandle;
     CurlFormDataStream m_formDataStream;
     std::unique_ptr<CurlMultipartHandle> m_multipartHandle;
@@ -210,7 +211,6 @@ private:
 
     bool m_captureExtraMetrics;
     HTTPHeaderMap m_requestHeaders;
-    MonotonicTime m_requestStartTime { MonotonicTime::nan() };
     MonotonicTime m_performStartTime;
     size_t m_totalReceivedSize { 0 };
 };

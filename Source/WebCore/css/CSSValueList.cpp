@@ -1,6 +1,6 @@
 /*
  * (C) 1999-2003 Lars Knoll (knoll@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2010, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,42 +21,50 @@
 #include "config.h"
 #include "CSSValueList.h"
 
-#include "DeprecatedCSSOMValue.h"
+#include "CSSPrimitiveValue.h"
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
-CSSValueList::CSSValueList(ClassType classType, ValueListSeparator listSeparator)
+CSSValueList::CSSValueList(ClassType classType, ValueSeparator listSeparator)
     : CSSValue(classType)
 {
-    m_valueListSeparator = listSeparator;
+    m_valueSeparator = listSeparator;
 }
 
-CSSValueList::CSSValueList(ValueListSeparator listSeparator)
+CSSValueList::CSSValueList(ValueSeparator listSeparator)
     : CSSValue(ValueListClass)
 {
-    m_valueListSeparator = listSeparator;
+    m_valueSeparator = listSeparator;
 }
 
-bool CSSValueList::removeAll(CSSValue* value)
+bool CSSValueList::removeAll(CSSValue& value)
 {
-    // FIXME: Why even take a pointer?
-    if (!value)
-        return false;
-
-    return m_values.removeAllMatching([value](auto& current) {
-        return current->equals(*value);
+    return m_values.removeAllMatching([&value](auto& current) {
+        return current->equals(value);
     }) > 0;
 }
 
-bool CSSValueList::hasValue(CSSValue* val) const
+bool CSSValueList::removeAll(CSSValueID value)
 {
-    // FIXME: Why even take a pointer?
-    if (!val)
-        return false;
+    return m_values.removeAllMatching([value](auto& current) {
+        return isValueID(current, value);
+    }) > 0;
+}
 
-    for (unsigned i = 0, size = m_values.size(); i < size; ++i) {
-        if (m_values[i].get().equals(*val))
+bool CSSValueList::hasValue(CSSValue& otherValue) const
+{
+    for (auto& value : m_values) {
+        if (value->equals(otherValue))
+            return true;
+    }
+    return false;
+}
+
+bool CSSValueList::hasValue(CSSValueID otherValue) const
+{
+    for (auto& value : m_values) {
+        if (isValueID(value, otherValue))
             return true;
     }
     return false;
@@ -65,7 +73,7 @@ bool CSSValueList::hasValue(CSSValue* val) const
 Ref<CSSValueList> CSSValueList::copy()
 {
     RefPtr<CSSValueList> newList;
-    switch (m_valueListSeparator) {
+    switch (separator()) {
     case SpaceSeparator:
         newList = createSpaceSeparated();
         break;
@@ -85,34 +93,17 @@ Ref<CSSValueList> CSSValueList::copy()
 
 String CSSValueList::customCSSText() const
 {
+    auto prefix = ""_s;
+    auto separator = separatorCSSText();
     StringBuilder result;
-    String separator;
-    switch (m_valueListSeparator) {
-    case SpaceSeparator:
-        separator = " "_s;
-        break;
-    case CommaSeparator:
-        separator = ", "_s;
-        break;
-    case SlashSeparator:
-        separator = " / "_s;
-        break;
-    default:
-        ASSERT_NOT_REACHED();
-    }
-
-    for (auto& value : m_values) {
-        if (!result.isEmpty())
-            result.append(separator);
-        result.append(value.get().cssText());
-    }
-
+    for (auto& value : m_values)
+        result.append(std::exchange(prefix, separator), value.get().cssText());
     return result.toString();
 }
 
 bool CSSValueList::equals(const CSSValueList& other) const
 {
-    if (m_valueListSeparator != other.m_valueListSeparator)
+    if (separator() != other.separator())
         return false;
 
     if (m_values.size() != other.m_values.size())
@@ -133,10 +124,10 @@ bool CSSValueList::equals(const CSSValue& other) const
     return m_values[0].get().equals(other);
 }
 
-bool CSSValueList::traverseSubresources(const WTF::Function<bool (const CachedResource&)>& handler) const
+bool CSSValueList::customTraverseSubresources(const Function<bool(const CachedResource&)>& handler) const
 {
-    for (unsigned i = 0; i < m_values.size(); ++i) {
-        if (m_values[i].get().traverseSubresources(handler))
+    for (auto& value : m_values) {
+        if (value.get().traverseSubresources(handler))
             return true;
     }
     return false;

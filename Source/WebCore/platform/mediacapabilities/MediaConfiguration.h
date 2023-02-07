@@ -27,13 +27,30 @@
 
 #include "AudioConfiguration.h"
 #include "VideoConfiguration.h"
-#include <wtf/Optional.h>
+#include <wtf/CrossThreadCopier.h>
 
 namespace WebCore {
 
 struct MediaConfiguration {
-    Optional<VideoConfiguration> video;
-    Optional<AudioConfiguration> audio;
+    std::optional<VideoConfiguration> video;
+    std::optional<AudioConfiguration> audio;
+
+    std::optional<Vector<String>> allowedMediaContainerTypes;
+    std::optional<Vector<String>> allowedMediaCodecTypes;
+
+    MediaConfiguration isolatedCopy() const &;
+    MediaConfiguration isolatedCopy() &&;
 };
 
+inline MediaConfiguration MediaConfiguration::isolatedCopy() const &
+{
+    return { crossThreadCopy(video),  crossThreadCopy(audio), crossThreadCopy(allowedMediaContainerTypes), crossThreadCopy(allowedMediaCodecTypes) };
 }
+
+inline MediaConfiguration MediaConfiguration::isolatedCopy() &&
+{
+    return { crossThreadCopy(WTFMove(video)),  crossThreadCopy(WTFMove(audio)), crossThreadCopy(WTFMove(allowedMediaContainerTypes)), crossThreadCopy(WTFMove(allowedMediaCodecTypes)) };
+}
+
+} // namespace WebCore
+

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2021 Google Inc. All rights reserved.
+ * Copyright (C) 2011-2021 Apple Inc. All rights reserved.
  * Copyright (C) 2012 Samsung Electronics. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,12 +37,9 @@
 #include "RenderPtr.h"
 #include <wtf/FastMalloc.h>
 #include <wtf/Forward.h>
+#include <wtf/OptionSet.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
-
-#if PLATFORM(IOS_FAMILY)
-#include "DateComponents.h"
-#endif
 
 namespace WebCore {
 
@@ -67,15 +64,97 @@ class TouchEvent;
 struct InputElementClickState;
 
 enum class AnyStepHandling : bool;
+enum class DateComponentsType : uint8_t;
 
 // An InputType object represents the type-specific part of an HTMLInputElement.
 // Do not expose instances of InputType and classes derived from it to classes
 // other than HTMLInputElement.
 class InputType : public RefCounted<InputType> {
     WTF_MAKE_FAST_ALLOCATED;
-
 public:
-    static Ref<InputType> create(HTMLInputElement&, const AtomString&);
+    enum class Type : uint32_t {
+        Button          = 1 << 0,
+        Checkbox        = 1 << 1,
+        Color           = 1 << 2,
+        Date            = 1 << 3,
+        DateTimeLocal   = 1 << 4,
+        Email           = 1 << 5,
+        File            = 1 << 6,
+        Hidden          = 1 << 7,
+        Image           = 1 << 8,
+        Month           = 1 << 9,
+        Number          = 1 << 10,
+        Password        = 1 << 11,
+        Radio           = 1 << 12,
+        Range           = 1 << 13,
+        Reset           = 1 << 14,
+        Search          = 1 << 15,
+        Submit          = 1 << 16,
+        Telephone       = 1 << 17,
+        Time            = 1 << 18,
+        URL             = 1 << 19,
+        Week            = 1 << 20,
+        Text            = 1 << 21,
+    };
+    
+    static constexpr OptionSet<Type> textTypes = {
+        Type::Email,
+        Type::Password,
+        Type::Search,
+        Type::Telephone,
+        Type::Text,
+        Type::URL,
+    };
+
+    static constexpr OptionSet<Type> textFieldTypes = {
+        Type::Email,
+        Type::Number,
+        Type::Password,
+        Type::Search,
+        Type::Telephone,
+        Type::Text,
+        Type::URL,
+    };
+
+    static constexpr OptionSet<Type> textButtonTypes = {
+        Type::Button,
+        Type::Reset,
+        Type::Submit,
+    };
+
+    static constexpr OptionSet<Type> checkableTypes = {
+        Type::Checkbox,
+        Type::Radio,
+    };
+
+    static constexpr OptionSet<Type> steppableTypes = {
+        Type::Date,
+        Type::DateTimeLocal,
+        Type::Month,
+        Type::Time,
+        Type::Week,
+        Type::Number,
+        Type::Range,
+    };
+
+    static constexpr OptionSet<Type> nonValidatingTypes = {
+        Type::Button,
+        Type::Hidden,
+        Type::Image,
+        Type::Reset,
+    };
+
+    static constexpr OptionSet<Type> nonShadowRootTypes = {
+        Type::Button,
+        Type::Checkbox,
+        Type::Hidden,
+        Type::Image,
+        Type::Radio,
+        Type::Reset,
+        Type::Submit,
+    };
+
+    static RefPtr<InputType> createIfDifferent(HTMLInputElement&, const AtomString&, InputType* currentInputType = nullptr);
     static Ref<InputType> createText(HTMLInputElement&);
     virtual ~InputType();
 
@@ -84,6 +163,8 @@ public:
     static bool themeSupportsDataListUI(InputType*);
 
     virtual const AtomString& formControlType() const = 0;
+
+    bool isValidValue(const String&) const;
 
     // Type query functions.
 
@@ -94,31 +175,41 @@ public:
     // inflexible because it's harder to add new input types if there is
     // scattered code with special cases for various types.
 
-    virtual bool isCheckbox() const;
-    virtual bool isColorControl() const;
-    virtual bool isDateField() const;
-    virtual bool isDateTimeField() const;
-    virtual bool isDateTimeLocalField() const;
-    virtual bool isEmailField() const;
-    virtual bool isFileUpload() const;
-    virtual bool isHiddenType() const;
-    virtual bool isImageButton() const;
-    virtual bool isInteractiveContent() const;
-    virtual bool supportLabels() const;
-    virtual bool isMonthField() const;
-    virtual bool isNumberField() const;
-    virtual bool isPasswordField() const;
-    virtual bool isRadioButton() const;
-    virtual bool isRangeControl() const;
-    virtual bool isSearchField() const;
-    virtual bool isSubmitButton() const;
-    virtual bool isTelephoneField() const;
-    virtual bool isTextButton() const;
-    virtual bool isTextField() const;
-    virtual bool isTextType() const;
-    virtual bool isTimeField() const;
-    virtual bool isURLField() const;
-    virtual bool isWeekField() const;
+    bool isCheckbox() const { return m_type == Type::Checkbox; }
+    bool isColorControl() const { return m_type == Type::Color; }
+    bool isDateField() const { return m_type == Type::Date; }
+    bool isDateTimeLocalField() const { return m_type == Type::DateTimeLocal; }
+    bool isEmailField() const { return m_type == Type::Email; }
+    bool isFileUpload() const { return m_type == Type::File; }
+    bool isHiddenType() const { return m_type == Type::Hidden; }
+    bool isImageButton() const { return m_type == Type::Image; }
+    bool isMonthField() const { return m_type == Type::Month; }
+    bool isNumberField() const { return m_type == Type::Number; }
+    bool isPasswordField() const { return m_type == Type::Password; }
+    bool isRadioButton() const { return m_type == Type::Radio; }
+    bool isRangeControl() const { return m_type == Type::Range; }
+    bool isSearchField() const { return m_type == Type::Search; }
+    bool isSubmitButton() const { return m_type == Type::Submit || m_type == Type::Image; }
+    bool isTelephoneField() const { return m_type == Type::Telephone; }
+    bool isTimeField() const { return m_type == Type::Time; }
+    bool isURLField() const { return m_type == Type::URL; }
+    bool isWeekField() const { return m_type == Type::Week; }
+
+    bool isTextButton() const { return textButtonTypes.contains(m_type); }
+    bool isTextField() const { return textFieldTypes.contains(m_type); }
+    bool isTextType() const { return textTypes.contains(m_type); }
+
+    bool isCheckable() const { return checkableTypes.contains(m_type); }
+    bool isSteppable() const { return steppableTypes.contains(m_type); }
+    bool supportsValidation() const { return !nonValidatingTypes.contains(m_type); }
+
+    Type type() const { return m_type; }
+
+    bool isInteractiveContent() const;
+    bool isLabelable() const;
+    bool isEnumeratable() const;
+    bool needsShadowSubtree() const { return !nonShadowRootTypes.contains(m_type); }
+    bool hasCreatedShadowSubtree() const { return m_hasCreatedShadowSubtree; }
 
     // Form value functions.
 
@@ -126,15 +217,14 @@ public:
     virtual FormControlState saveFormControlState() const;
     virtual void restoreFormControlState(const FormControlState&);
     virtual bool isFormDataAppendable() const;
-    virtual bool appendFormData(DOMFormData&, bool multipart) const;
+    virtual bool appendFormData(DOMFormData&) const;
 
     // DOM property functions.
 
-    virtual bool getTypeSpecificValue(String&); // Checked first, before internal storage or the value attribute.
     virtual String fallbackValue() const; // Checked last, if both internal storage and value attribute are missing.
     virtual String defaultValue() const; // Checked after even fallbackValue, only when the valueWithDefault function is called.
-    virtual double valueAsDate() const;
-    virtual ExceptionOr<void> setValueAsDate(double) const;
+    virtual WallTime valueAsDate() const;
+    virtual ExceptionOr<void> setValueAsDate(WallTime) const;
     virtual double valueAsDouble() const;
     virtual ExceptionOr<void> setValueAsDouble(double, TextFieldEventBehavior) const;
     virtual ExceptionOr<void> setValueAsDecimal(const Decimal&, TextFieldEventBehavior) const;
@@ -142,7 +232,6 @@ public:
     // Validation functions.
 
     virtual String validationMessage() const;
-    virtual bool supportsValidation() const;
     virtual bool typeMismatchFor(const String&) const;
     virtual bool supportsRequired() const;
     virtual bool valueMissing(const String&) const;
@@ -186,7 +275,10 @@ public:
     virtual void didDispatchClick(Event&, const InputElementClickState&);
     virtual void handleDOMActivateEvent(Event&);
 
-    enum ShouldCallBaseEventHandler { No, Yes };
+    virtual bool allowsShowPickerAcrossFrames();
+    virtual void showPicker();
+
+    enum ShouldCallBaseEventHandler : bool { No, Yes };
     virtual ShouldCallBaseEventHandler handleKeydownEvent(KeyboardEvent&);
 
     virtual void handleKeypressEvent(KeyboardEvent&);
@@ -220,6 +312,7 @@ public:
 
     // Shadow tree handling.
 
+    void createShadowSubtreeIfNeeded();
     virtual void createShadowSubtree();
     virtual void destroyShadowSubtree();
 
@@ -227,7 +320,6 @@ public:
     virtual HTMLElement* innerBlockElement() const { return nullptr; }
     virtual RefPtr<TextControlInnerTextElement> innerTextElement() const;
     virtual HTMLElement* innerSpinButtonElement() const { return nullptr; }
-    virtual HTMLElement* capsLockIndicatorElement() const { return nullptr; }
     virtual HTMLElement* autoFillButtonElement() const { return nullptr; }
     virtual HTMLElement* resultsButtonElement() const { return nullptr; }
     virtual HTMLElement* cancelButtonElement() const { return nullptr; }
@@ -237,6 +329,7 @@ public:
 #if ENABLE(DATALIST_ELEMENT)
     virtual HTMLElement* dataListButtonElement() const { return nullptr; }
 #endif
+    RefPtr<TextControlInnerTextElement> innerTextElementCreatingShadowSubtreeIfNeeded();
 
     // Miscellaneous functions.
 
@@ -246,18 +339,12 @@ public:
     virtual void attach();
     virtual void detach();
     virtual bool shouldRespectAlignAttribute();
-    virtual FileList* files();
-    virtual void setFiles(RefPtr<FileList>&&);
     virtual Icon* icon() const;
     virtual bool shouldSendChangeEventAfterCheckedChanged();
-    virtual bool canSetValue(const String&);
     virtual bool storesValueSeparateFromAttribute();
-    virtual void setValue(const String&, bool valueChanged, TextFieldEventBehavior);
+    virtual void setValue(const String&, bool valueChanged, TextFieldEventBehavior, TextControlSetValueSelection);
     virtual bool shouldResetOnDocumentActivation();
     virtual bool shouldRespectListAttribute();
-    virtual bool isEnumeratable();
-    virtual bool isCheckable();
-    virtual bool isSteppable() const;
     virtual bool shouldRespectHeightAndWidthAttributes();
     virtual bool supportsPlaceholder() const;
     virtual bool supportsReadOnly() const;
@@ -274,9 +361,10 @@ public:
     virtual bool shouldAppearIndeterminate() const;
     virtual bool isPresentingAttachedView() const;
     virtual bool supportsSelectionAPI() const;
-    virtual Color valueAsColor() const;
-    virtual void selectColor(StringView);
-    virtual Vector<Color> suggestedColors() const;
+#if ENABLE(DATALIST_ELEMENT)
+    virtual bool isFocusingWithDataListDropdown() const { return false; };
+#endif
+    virtual void willUpdateCheckedness(bool /*nowChecked*/) { }
 
     // Parses the specified string for the type, and return
     // the Decimal value for the parsing result if the parsing
@@ -294,24 +382,32 @@ public:
     virtual unsigned height() const;
     virtual unsigned width() const;
 
+    bool isInvalid(const String&) const;
+
     void dispatchSimulatedClickIfActive(KeyboardEvent&) const;
 
 #if ENABLE(DATALIST_ELEMENT)
     virtual void dataListMayHaveChanged();
-    virtual Optional<Decimal> findClosestTickMarkValue(const Decimal&);
+    virtual std::optional<Decimal> findClosestTickMarkValue(const Decimal&);
 #endif
 
 #if ENABLE(DRAG_SUPPORT)
     virtual bool receiveDroppedFiles(const DragData&);
 #endif
 
-    virtual DateComponents::Type dateType() const;
+    virtual DateComponentsType dateType() const;
 
     virtual String displayString() const;
 
+    virtual String resultForDialogSubmit() const;
+
 protected:
-    explicit InputType(HTMLInputElement& element)
-        : m_element(makeWeakPtr(element)) { }
+    InputType(Type type, HTMLInputElement& element)
+        : m_type(type)
+        , m_element(element)
+    {
+    }
+
     HTMLInputElement* element() const { return m_element.get(); }
     Chrome* chrome() const;
     Decimal parseToNumberOrNaN(const String&) const;
@@ -320,13 +416,22 @@ private:
     // Helper for stepUp()/stepDown(). Adds step value * count to the current value.
     ExceptionOr<void> applyStep(int count, AnyStepHandling, TextFieldEventBehavior);
 
+    const Type m_type;
+    bool m_hasCreatedShadowSubtree { false };
     // m_element is null if this InputType is no longer associated with an element (either the element died or changed input type).
-    WeakPtr<HTMLInputElement> m_element;
+    WeakPtr<HTMLInputElement, WeakPtrImplWithEventTargetData> m_element;
 };
+
+template<typename DowncastedType>
+ALWAYS_INLINE bool isInvalidInputType(const InputType& baseInputType, const String& value)
+{
+    auto& inputType = static_cast<const DowncastedType&>(baseInputType);
+    return inputType.typeMismatch() || inputType.stepMismatch(value) || inputType.rangeUnderflow(value) || inputType.rangeOverflow(value) || inputType.patternMismatch(value) || inputType.valueMissing(value) || inputType.hasBadInput();
+}
 
 } // namespace WebCore
 
-#define SPECIALIZE_TYPE_TRAITS_INPUT_TYPE(ToValueTypeName, predicate) \
+#define SPECIALIZE_TYPE_TRAITS_INPUT_TYPE(ToValueTypeName, TypeEnumValue) \
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ToValueTypeName) \
-static bool isType(const WebCore::InputType& input) { return input.predicate; } \
+static bool isType(const WebCore::InputType& input) { return input.type() == WebCore::InputType::TypeEnumValue; } \
 SPECIALIZE_TYPE_TRAITS_END()

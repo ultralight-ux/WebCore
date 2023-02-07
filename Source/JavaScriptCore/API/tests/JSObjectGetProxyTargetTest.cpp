@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 #include "JSObjectGetProxyTargetTest.h"
 
 #include "APICast.h"
+#include "IntegrityInlines.h"
 #include "JSCInlines.h"
 #include "JSObjectRefPrivate.h"
 #include "JSProxy.h"
@@ -60,7 +61,7 @@ int testJSObjectGetProxyTarget()
         JSLockHolder locker(vm);
         JSProxy* globalObjectProxyObject = jsCast<JSProxy*>(toJS(globalObjectProxy));
         globalObjectObject = jsCast<JSGlobalObject*>(globalObjectProxyObject->target());
-        Structure* proxyStructure = JSProxy::createStructure(vm, globalObjectObject, globalObjectObject->objectPrototype(), PureForwardingProxyType);
+        Structure* proxyStructure = JSProxy::createStructure(vm, globalObjectObject, globalObjectObject->objectPrototype());
         globalObjectRef = toRef(jsCast<JSObject*>(globalObjectObject));
         jsProxyObject = JSProxy::create(vm, proxyStructure);
     }

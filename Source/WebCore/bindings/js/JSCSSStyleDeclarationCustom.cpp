@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,12 +34,13 @@
 #include "JSNodeCustom.h"
 #include "JSStyleSheetCustom.h"
 #include "StyledElement.h"
+#include "WebCoreOpaqueRoot.h"
 
 
 namespace WebCore {
 using namespace JSC;
 
-void* root(CSSStyleDeclaration* style)
+WebCoreOpaqueRoot root(CSSStyleDeclaration* style)
 {
     ASSERT(style);
     if (auto* parentRule = style->parentRule())
@@ -48,12 +49,15 @@ void* root(CSSStyleDeclaration* style)
         return root(styleSheet);
     if (auto* parentElement = style->parentElement())
         return root(parentElement);
-    return style;
+    return WebCoreOpaqueRoot { style };
 }
 
-void JSCSSStyleDeclaration::visitAdditionalChildren(SlotVisitor& visitor)
+template<typename Visitor>
+void JSCSSStyleDeclaration::visitAdditionalChildren(Visitor& visitor)
 {
-    visitor.addOpaqueRoot(root(&wrapped()));
+    addWebCoreOpaqueRoot(visitor, wrapped());
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSCSSStyleDeclaration);
 
 } // namespace WebCore

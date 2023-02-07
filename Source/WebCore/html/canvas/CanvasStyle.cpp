@@ -37,31 +37,33 @@
 #include "Gradient.h"
 #include "GraphicsContext.h"
 #include "HTMLCanvasElement.h"
-#if ENABLE(OFFSCREEN_CANVAS)
-#include "OffscreenCanvas.h"
-#endif
 #include "StyleProperties.h"
 
-#if USE(CG)
-#include <CoreGraphics/CGContext.h>
+#if ENABLE(OFFSCREEN_CANVAS)
+#include "CSSPropertyParserWorkerSafe.h"
+#include "OffscreenCanvas.h"
 #endif
 
 namespace WebCore {
 
 bool isCurrentColorString(const String& colorString)
 {
-    return equalLettersIgnoringASCIICase(colorString, "currentcolor");
+    return equalLettersIgnoringASCIICase(colorString, "currentcolor"_s);
 }
 
 Color parseColor(const String& colorString, CanvasBase& canvasBase)
 {
 #if ENABLE(OFFSCREEN_CANVAS)
-    if (canvasBase.isOffscreenCanvas())
-        return CSSParser::parseColorWorkerSafe(colorString);
-#else
-    UNUSED_PARAM(canvasBase);
+    if (is<OffscreenCanvas>(canvasBase))
+        return CSSPropertyParserWorkerSafe::parseColor(colorString);
 #endif
-    Color color = CSSParser::parseColor(colorString);
+
+    Color color;
+    if (is<HTMLCanvasElement>(canvasBase))
+        color = CSSParser::parseColor(colorString, CSSParserContext { downcast<HTMLCanvasElement>(canvasBase).document() });
+    else
+        color = CSSParser::parseColorWithoutContext(colorString);
+
     if (color.isValid())
         return color;
     return CSSParser::parseSystemColor(colorString);
@@ -75,7 +77,7 @@ Color currentColor(CanvasBase& canvasBase)
     auto& canvas = downcast<HTMLCanvasElement>(canvasBase);
     if (!canvas.isConnected() || !canvas.inlineStyle())
         return Color::black;
-    Color color = CSSParser::parseColor(canvas.inlineStyle()->getPropertyValue(CSSPropertyColor));
+    Color color = CSSParser::parseColorWithoutContext(canvas.inlineStyle()->getPropertyValue(CSSPropertyColor));
     if (!color.isValid())
         return Color::black;
     return color;
@@ -95,22 +97,17 @@ CanvasStyle::CanvasStyle(Color color)
 }
 
 CanvasStyle::CanvasStyle(const SRGBA<float>& colorComponents)
-    : m_style(convertToComponentBytes(colorComponents))
-{
-}
-
-CanvasStyle::CanvasStyle(const CMYKA<float>& colorComponents)
-    : m_style(CMYKAColor { convertToComponentBytes(toSRGBA(colorComponents)), colorComponents })
+    : m_style(convertColor<SRGBA<uint8_t>>(colorComponents))
 {
 }
 
 CanvasStyle::CanvasStyle(CanvasGradient& gradient)
-    : m_style(makeRefPtr(gradient))
+    : m_style(&gradient)
 {
 }
 
 CanvasStyle::CanvasStyle(CanvasPattern& pattern)
-    : m_style(makeRefPtr(pattern))
+    : m_style(&pattern)
 {
 }
 
@@ -122,7 +119,7 @@ inline CanvasStyle::CanvasStyle(CurrentColor color)
 CanvasStyle CanvasStyle::createFromString(const String& colorString, CanvasBase& canvasBase)
 {
     if (isCurrentColorString(colorString))
-        return CurrentColor { WTF::nullopt };
+        return CurrentColor { std::nullopt };
 
     Color color = parseColor(colorString, canvasBase);
     if (!color.isValid())
@@ -145,23 +142,15 @@ CanvasStyle CanvasStyle::createFromStringWithOverrideAlpha(const String& colorSt
 
 bool CanvasStyle::isEquivalentColor(const CanvasStyle& other) const
 {
-    if (WTF::holds_alternative<Color>(m_style) && WTF::holds_alternative<Color>(other.m_style))
-        return WTF::get<Color>(m_style) == WTF::get<Color>(other.m_style);
-
-    if (WTF::holds_alternative<CMYKAColor>(m_style) && WTF::holds_alternative<CMYKAColor>(other.m_style))
-        return WTF::get<CMYKAColor>(m_style).components == WTF::get<CMYKAColor>(other.m_style).components;
+    if (std::holds_alternative<Color>(m_style) && std::holds_alternative<Color>(other.m_style))
+        return std::get<Color>(m_style) == std::get<Color>(other.m_style);
 
     return false;
 }
 
 bool CanvasStyle::isEquivalent(const SRGBA<float>& components) const
 {
-    return WTF::holds_alternative<Color>(m_style) && WTF::get<Color>(m_style) == convertToComponentBytes(components);
-}
-
-bool CanvasStyle::isEquivalent(const CMYKA<float>& components) const
-{
-    return WTF::holds_alternative<CMYKAColor>(m_style) && WTF::get<CMYKAColor>(m_style).components == components;
+    return std::holds_alternative<Color>(m_style) && std::get<Color>(m_style) == convertColor<SRGBA<uint8_t>>(components);
 }
 
 void CanvasStyle::applyStrokeColor(GraphicsContext& context) const
@@ -169,15 +158,6 @@ void CanvasStyle::applyStrokeColor(GraphicsContext& context) const
     WTF::switchOn(m_style,
         [&context] (const Color& color) {
             context.setStrokeColor(color);
-        },
-        [&context] (const CMYKAColor& color) {
-            // FIXME: Do this through platform-independent GraphicsContext API.
-            // We'll need a fancier Color abstraction to support CMYKA correctly
-#if USE(CG)
-            CGContextSetCMYKStrokeColor(context.platformContext(), color.components.cyan, color.components.magenta, color.components.yellow, color.components.black, color.components.alpha);
-#else
-            context.setStrokeColor(color.colorConvertedToSRGBA);
-#endif
         },
         [&context] (const RefPtr<CanvasGradient>& gradient) {
             context.setStrokeGradient(gradient->gradient());
@@ -199,15 +179,6 @@ void CanvasStyle::applyFillColor(GraphicsContext& context) const
     WTF::switchOn(m_style,
         [&context] (const Color& color) {
             context.setFillColor(color);
-        },
-        [&context] (const CMYKAColor& color) {
-            // FIXME: Do this through platform-independent GraphicsContext API.
-            // We'll need a fancier Color abstraction to support CMYKA correctly
-#if USE(CG)
-            CGContextSetCMYKFillColor(context.platformContext(), color.components.cyan, color.components.magenta, color.components.yellow, color.components.black, color.components.alpha);
-#else
-            context.setFillColor(color.colorConvertedToSRGBA);
-#endif
         },
         [&context] (const RefPtr<CanvasGradient>& gradient) {
             context.setFillGradient(gradient->gradient());

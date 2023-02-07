@@ -28,6 +28,7 @@
 
 #if ENABLE(WEBGL)
 
+#include "WebCoreOpaqueRoot.h"
 #include "WebGLCompressedTextureS3TC.h"
 #include "WebGLContextGroup.h"
 #include "WebGLDebugRendererInfo.h"
@@ -53,12 +54,12 @@ void WebGLObject::runDestructor()
         auto locker = AbstractLocker(NoLockingNecessary);
         deleteObject(locker, nullptr);
     } else {
-        auto locker = holdLock(lock);
+        Locker locker { lock };
         deleteObject(locker, nullptr);
     }
 }
 
-void WebGLObject::deleteObject(const AbstractLocker& locker, GraphicsContextGLOpenGL* context3d)
+void WebGLObject::deleteObject(const AbstractLocker& locker, GraphicsContextGL* context3d)
 {
     m_deleted = true;
     if (!m_object)
@@ -67,15 +68,7 @@ void WebGLObject::deleteObject(const AbstractLocker& locker, GraphicsContextGLOp
     if (!hasGroupOrContext())
         return;
 
-    // ANGLE correctly handles object deletion with WebGL semantics.
-    // For other GL implementations, delay deletion until we know
-    // the object is not attached anywhere.
-#if USE(ANGLE)
-    if (!m_calledDelete) {
-        m_calledDelete = true;
-#else
     if (!m_attachmentCount) {
-#endif
         if (!context3d)
             context3d = getAGraphicsContextGL();
 
@@ -92,7 +85,7 @@ void WebGLObject::detach()
     m_attachmentCount = 0; // Make sure OpenGL resource is deleted.
 }
 
-void WebGLObject::onDetached(const AbstractLocker& locker, GraphicsContextGLOpenGL* context3d)
+void WebGLObject::onDetached(const AbstractLocker& locker, GraphicsContextGL* context3d)
 {
     if (m_attachmentCount)
         --m_attachmentCount;
@@ -100,6 +93,11 @@ void WebGLObject::onDetached(const AbstractLocker& locker, GraphicsContextGLOpen
         deleteObject(locker, context3d);
 }
 
+WebCoreOpaqueRoot root(WebGLObject* object)
+{
+    return WebCoreOpaqueRoot { object };
 }
+
+} // namespace WebCore
 
 #endif // ENABLE(WEBGL)

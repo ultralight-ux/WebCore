@@ -43,6 +43,7 @@ class TextStream;
 
 namespace WebCore {
 
+struct BlendingContext;
 class FloatRect;
 class Path;
 class RenderBox;
@@ -66,7 +67,7 @@ public:
     virtual WindRule windRule() const { return WindRule::NonZero; }
 
     virtual bool canBlend(const BasicShape&) const = 0;
-    virtual Ref<BasicShape> blend(const BasicShape& from, double) const = 0;
+    virtual Ref<BasicShape> blend(const BasicShape& from, const BlendingContext&) const = 0;
 
     virtual bool operator==(const BasicShape&) const = 0;
     
@@ -75,7 +76,7 @@ public:
 
 class BasicShapeCenterCoordinate {
 public:
-    enum Direction {
+    enum class Direction : uint8_t {
         TopLeft,
         BottomRight
     };
@@ -85,9 +86,9 @@ public:
         updateComputedLength();
     }
 
-    BasicShapeCenterCoordinate(Direction direction, Length length)
+    BasicShapeCenterCoordinate(Direction direction, Length&& length)
         : m_direction(direction)
-        , m_length(length)
+        , m_length(WTFMove(length))
     {
         updateComputedLength();
     }
@@ -96,9 +97,9 @@ public:
     const Length& length() const { return m_length; }
     const Length& computedLength() const { return m_computedLength; }
 
-    BasicShapeCenterCoordinate blend(const BasicShapeCenterCoordinate& from, double progress) const
+    BasicShapeCenterCoordinate blend(const BasicShapeCenterCoordinate& from, const BlendingContext& context) const
     {
-        return BasicShapeCenterCoordinate(TopLeft, WebCore::blend(from.m_computedLength, m_computedLength, progress));
+        return BasicShapeCenterCoordinate(Direction::TopLeft, WebCore::blend(from.m_computedLength, m_computedLength, context));
     }
     
     bool operator==(const BasicShapeCenterCoordinate& other) const
@@ -109,16 +110,16 @@ public:
     }
 
 private:
-    void updateComputedLength();
+    WEBCORE_EXPORT void updateComputedLength();
 
-    Direction m_direction { TopLeft };
-    Length m_length { Undefined };
+    Direction m_direction { Direction::TopLeft };
+    Length m_length { LengthType::Undefined };
     Length m_computedLength;
 };
 
 class BasicShapeRadius {
 public:
-    enum Type {
+    enum class Type : uint8_t {
         Value,
         ClosestSide,
         FarthestSide
@@ -128,10 +129,14 @@ public:
 
     explicit BasicShapeRadius(Length v)
         : m_value(v)
-        , m_type(Value)
+        , m_type(Type::Value)
     { }
     explicit BasicShapeRadius(Type t)
-        : m_value(Undefined)
+        : m_value(LengthType::Undefined)
+        , m_type(t)
+    { }
+    explicit BasicShapeRadius(Length&& v, Type t)
+        : m_value(WTFMove(v))
         , m_type(t)
     { }
 
@@ -141,15 +146,15 @@ public:
     bool canBlend(const BasicShapeRadius& other) const
     {
         // FIXME determine how to interpolate between keywords. See bug 125108.
-        return m_type == Value && other.type() == Value;
+        return m_type == Type::Value && other.type() == Type::Value;
     }
 
-    BasicShapeRadius blend(const BasicShapeRadius& from, double progress) const
+    BasicShapeRadius blend(const BasicShapeRadius& from, const BlendingContext& context) const
     {
-        if (m_type != Value || from.type() != Value)
+        if (m_type != Type::Value || from.type() != Type::Value)
             return BasicShapeRadius(from);
 
-        return BasicShapeRadius(WebCore::blend(from.value(), value(), progress));
+        return BasicShapeRadius(WebCore::blend(from.value(), value(), context));
     }
     
     bool operator==(const BasicShapeRadius& other) const
@@ -158,13 +163,14 @@ public:
     }
 
 private:
-    Length m_value { Undefined };
-    Type m_type { ClosestSide };
+    Length m_value { LengthType::Undefined };
+    Type m_type { Type::ClosestSide };
 };
 
 class BasicShapeCircle final : public BasicShape {
 public:
     static Ref<BasicShapeCircle> create() { return adoptRef(*new BasicShapeCircle); }
+    WEBCORE_EXPORT static Ref<BasicShapeCircle> create(BasicShapeCenterCoordinate&& centerX, BasicShapeCenterCoordinate&& centerY, BasicShapeRadius&&);
 
     const BasicShapeCenterCoordinate& centerX() const { return m_centerX; }
     const BasicShapeCenterCoordinate& centerY() const { return m_centerY; }
@@ -177,13 +183,14 @@ public:
 
 private:
     BasicShapeCircle() = default;
+    BasicShapeCircle(BasicShapeCenterCoordinate&& centerX, BasicShapeCenterCoordinate&& centerY, BasicShapeRadius&&);
 
     Type type() const override { return Type::Circle; }
 
     const Path& path(const FloatRect&) override;
 
     bool canBlend(const BasicShape&) const override;
-    Ref<BasicShape> blend(const BasicShape& from, double) const override;
+    Ref<BasicShape> blend(const BasicShape& from, const BlendingContext&) const override;
 
     bool operator==(const BasicShape&) const override;
 
@@ -197,6 +204,7 @@ private:
 class BasicShapeEllipse final : public BasicShape {
 public:
     static Ref<BasicShapeEllipse> create() { return adoptRef(*new BasicShapeEllipse); }
+    WEBCORE_EXPORT static Ref<BasicShapeEllipse> create(BasicShapeCenterCoordinate&& centerX, BasicShapeCenterCoordinate&& centerY, BasicShapeRadius&& radiusX, BasicShapeRadius&& radiusY);
 
     const BasicShapeCenterCoordinate& centerX() const { return m_centerX; }
     const BasicShapeCenterCoordinate& centerY() const { return m_centerY; }
@@ -211,13 +219,14 @@ public:
 
 private:
     BasicShapeEllipse() = default;
+    BasicShapeEllipse(BasicShapeCenterCoordinate&& centerX, BasicShapeCenterCoordinate&& centerY, BasicShapeRadius&& radiusX, BasicShapeRadius&& radiusY);
 
     Type type() const override { return Type::Ellipse; }
 
     const Path& path(const FloatRect&) override;
 
     bool canBlend(const BasicShape&) const override;
-    Ref<BasicShape> blend(const BasicShape& from, double) const override;
+    Ref<BasicShape> blend(const BasicShape& from, const BlendingContext&) const override;
 
     bool operator==(const BasicShape&) const override;
 
@@ -232,6 +241,7 @@ private:
 class BasicShapePolygon final : public BasicShape {
 public:
     static Ref<BasicShapePolygon> create() { return adoptRef(*new BasicShapePolygon); }
+    WEBCORE_EXPORT static Ref<BasicShapePolygon> create(WindRule, Vector<Length>&& values);
 
     const Vector<Length>& values() const { return m_values; }
     const Length& getXAt(unsigned i) const { return m_values[2 * i]; }
@@ -244,13 +254,14 @@ public:
 
 private:
     BasicShapePolygon() = default;
+    BasicShapePolygon(WindRule, Vector<Length>&& values);
 
     Type type() const override { return Type::Polygon; }
 
     const Path& path(const FloatRect&) override;
 
     bool canBlend(const BasicShape&) const override;
-    Ref<BasicShape> blend(const BasicShape& from, double) const override;
+    Ref<BasicShape> blend(const BasicShape& from, const BlendingContext&) const override;
 
     bool operator==(const BasicShape&) const override;
 
@@ -267,32 +278,41 @@ public:
         return adoptRef(*new BasicShapePath(WTFMove(byteStream)));
     }
 
+    WEBCORE_EXPORT static Ref<BasicShapePath> create(std::unique_ptr<SVGPathByteStream>&&, float zoom, WindRule);
+
     void setWindRule(WindRule windRule) { m_windRule = windRule; }
     WindRule windRule() const override { return m_windRule; }
 
+    void setZoom(float z) { m_zoom = z; }
+    float zoom() const { return m_zoom; }
+
     const SVGPathByteStream* pathData() const { return m_byteStream.get(); }
+    const std::unique_ptr<SVGPathByteStream>& byteStream() const { return m_byteStream; }
 
 private:
     BasicShapePath(std::unique_ptr<SVGPathByteStream>&&);
+    BasicShapePath(std::unique_ptr<SVGPathByteStream>&&, float zoom, WindRule);
 
     Type type() const override { return Type::Path; }
 
     const Path& path(const FloatRect&) override;
 
     bool canBlend(const BasicShape&) const override;
-    Ref<BasicShape> blend(const BasicShape& from, double) const override;
+    Ref<BasicShape> blend(const BasicShape& from, const BlendingContext&) const override;
 
     bool operator==(const BasicShape&) const override;
 
     void dump(TextStream&) const final;
 
     std::unique_ptr<SVGPathByteStream> m_byteStream;
+    float m_zoom { 1 };
     WindRule m_windRule { WindRule::NonZero };
 };
 
 class BasicShapeInset final : public BasicShape {
 public:
     static Ref<BasicShapeInset> create() { return adoptRef(*new BasicShapeInset); }
+    WEBCORE_EXPORT static Ref<BasicShapeInset> create(Length&& right, Length&& top, Length&& bottom, Length&& left, LengthSize&& topLeftRadius, LengthSize&& topRightRadius, LengthSize&& bottomRightRadius, LengthSize&& bottomLeftRadius);
 
     const Length& top() const { return m_top; }
     const Length& right() const { return m_right; }
@@ -316,13 +336,14 @@ public:
 
 private:
     BasicShapeInset() = default;
+    BasicShapeInset(Length&& right, Length&& top, Length&& bottom, Length&& left, LengthSize&& topLeftRadius, LengthSize&& topRightRadius, LengthSize&& bottomRightRadius, LengthSize&& bottomLeftRadius);
 
     Type type() const override { return Type::Inset; }
 
     const Path& path(const FloatRect&) override;
 
     bool canBlend(const BasicShape&) const override;
-    Ref<BasicShape> blend(const BasicShape& from, double) const override;
+    Ref<BasicShape> blend(const BasicShape& from, const BlendingContext&) const override;
 
     bool operator==(const BasicShape&) const override;
 

@@ -25,15 +25,15 @@
 
 #pragma once
 
-#include <wtf/DumbPtrTraits.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/Packed.h>
+#include <wtf/RawPtrTraits.h>
 
 namespace WTF {
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(BagNode);
-template<typename T, typename PassedPtrTraits = DumbPtrTraits<T>>
+template<typename T, typename PassedPtrTraits = RawPtrTraits<T>>
 class BagNode {
     WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(BagNode);
 public:
@@ -48,7 +48,7 @@ public:
     typename PtrTraits::StorageType m_next { nullptr };
 };
 
-template<typename T, typename PassedPtrTraits = DumbPtrTraits<T>>
+template<typename T, typename PassedPtrTraits = RawPtrTraits<T>>
 class Bag final {
     WTF_MAKE_NONCOPYABLE(Bag);
     WTF_MAKE_FAST_ALLOCATED;
@@ -64,6 +64,20 @@ public:
         ASSERT(!m_head);
         m_head = other.unwrappedHead();
         other.m_head = nullptr;
+    }
+
+    template<typename U>
+    Bag& operator=(Bag<T, U>&& other)
+    {
+        if (unwrappedHead() == other.unwrappedHead())
+            return *this;
+
+        Bag destroy;
+        destroy.m_head = unwrappedHead();
+        m_head = other.unwrappedHead();
+        other.m_head = nullptr;
+
+        return *this;
     }
 
     ~Bag()

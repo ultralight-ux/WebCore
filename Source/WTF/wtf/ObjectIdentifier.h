@@ -63,6 +63,7 @@ public:
 
     ObjectIdentifier(HashTableDeletedValueType) : m_identifier(hashTableDeletedValue()) { }
     bool isHashTableDeletedValue() const { return m_identifier == hashTableDeletedValue(); }
+    bool isValid() const { return isValidIdentifier(m_identifier); }
 
     template<typename Encoder> void encode(Encoder& encoder) const
     {
@@ -70,12 +71,12 @@ public:
         encoder << m_identifier;
     }
 
-    template<typename Decoder> static Optional<ObjectIdentifier> decode(Decoder& decoder)
+    template<typename Decoder> static std::optional<ObjectIdentifier> decode(Decoder& decoder)
     {
-        Optional<uint64_t> identifier;
+        std::optional<uint64_t> identifier;
         decoder >> identifier;
         if (!identifier || !isValidIdentifier(*identifier))
-            return WTF::nullopt;
+            return std::nullopt;
         return ObjectIdentifier { *identifier };
     }
 
@@ -87,6 +88,26 @@ public:
     bool operator!=(const ObjectIdentifier& other) const
     {
         return m_identifier != other.m_identifier;
+    }
+
+    bool operator>(const ObjectIdentifier& other) const
+    {
+        return m_identifier > other.m_identifier;
+    }
+
+    bool operator>=(const ObjectIdentifier& other) const
+    {
+        return m_identifier >= other.m_identifier;
+    }
+
+    bool operator<(const ObjectIdentifier& other) const
+    {
+        return m_identifier < other.m_identifier;
+    }
+
+    bool operator<=(const ObjectIdentifier& other) const
+    {
+        return m_identifier <= other.m_identifier;
     }
 
     uint64_t toUInt64() const { return m_identifier; }
@@ -131,6 +152,11 @@ template<typename T> inline ObjectIdentifier<T> makeObjectIdentifier(uint64_t id
     return ObjectIdentifier<T> { identifier };
 }
 
+template<typename T> inline void add(Hasher& hasher, ObjectIdentifier<T> identifier)
+{
+    add(hasher, identifier.toUInt64());
+}
+
 template<typename T> struct ObjectIdentifierHash {
     static unsigned hash(const ObjectIdentifier<T>& identifier) { return intHash(identifier.m_identifier); }
     static bool equal(const ObjectIdentifier<T>& a, const ObjectIdentifier<T>& b) { return a == b; }
@@ -147,6 +173,17 @@ TextStream& operator<<(TextStream& ts, const ObjectIdentifier<T>& identifier)
     ts << identifier.toUInt64();
     return ts;
 }
+
+template<typename T> class StringTypeAdapter<ObjectIdentifier<T>> {
+public:
+    StringTypeAdapter(ObjectIdentifier<T> identifier)
+        : m_identifier(identifier) { }
+    unsigned length() const { return lengthOfIntegerAsString(m_identifier.toUInt64()); }
+    bool is8Bit() const { return true; }
+    template<typename CharacterType> void writeTo(CharacterType* destination) const { writeIntegerToBuffer(m_identifier.toUInt64(), destination); }
+private:
+    ObjectIdentifier<T> m_identifier;
+};
 
 } // namespace WTF
 

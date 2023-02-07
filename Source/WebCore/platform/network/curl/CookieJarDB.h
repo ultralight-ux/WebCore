@@ -51,16 +51,16 @@ public:
         Script
     };
 
-    void open();
+    WEBCORE_EXPORT void open();
     bool isEnabled() const;
 
     void setAcceptPolicy(CookieAcceptPolicy policy) { m_acceptPolicy = policy; }
     CookieAcceptPolicy acceptPolicy() const { return m_acceptPolicy; }
 
     HashSet<String> allDomains();
-    Optional<Vector<Cookie>> searchCookies(const URL& firstParty, const URL& requestUrl, const Optional<bool>& httpOnly, const Optional<bool>& secure, const Optional<bool>& session);
+    std::optional<Vector<Cookie>> searchCookies(const URL& firstParty, const URL& requestUrl, const std::optional<bool>& httpOnly, const std::optional<bool>& secure, const std::optional<bool>& session);
     Vector<Cookie> getAllCookies();
-    bool setCookie(const URL& firstParty, const URL&, const String& cookie, Source, Optional<Seconds> cappedLifetime = WTF::nullopt);
+    WEBCORE_EXPORT bool setCookie(const URL& firstParty, const URL&, const String& cookie, Source, std::optional<Seconds> cappedLifetime = std::nullopt);
     bool setCookie(const Cookie&);
 
     bool deleteCookie(const String& url, const String& name);
@@ -77,7 +77,7 @@ private:
 
     bool m_detectedDatabaseCorruption { false };
 
-    bool isOnMemory() const { return (m_databasePath == ":memory:"); };
+    bool isOnMemory() const { return m_databasePath == ":memory:"_s; };
 
     bool openDatabase();
     void closeDatabase();
@@ -93,9 +93,9 @@ private:
     void verifySchemaVersion();
     void deleteAllTables();
 
-    void createPrepareStatement(const String&);
+    void createPrepareStatement(ASCIILiteral);
     SQLiteStatement& preparedStatement(const String&);
-    bool executeSql(const String&);
+    bool executeSQLStatement(Expected<SQLiteStatement, int>&&);
 
     bool deleteCookieInternal(const String& name, const String& domain, const String& path);
     bool hasHttpOnlyCookie(const String& name, const String& domain, const String& path);

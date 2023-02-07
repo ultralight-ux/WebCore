@@ -25,12 +25,18 @@
 
 #pragma once
 
+#include "ExceptionOr.h"
+#include "RenderStyleConstants.h"
+#include "WebAnimationTypes.h"
 #include <wtf/Forward.h>
 #include <wtf/Markable.h>
 #include <wtf/Seconds.h>
 
 namespace WebCore {
 
+enum class PseudoId : uint16_t;
+
+class AnimationEventBase;
 class Element;
 class WebAnimation;
 
@@ -51,6 +57,10 @@ inline double secondsToWebAnimationsAPITime(const Seconds time)
 const auto timeEpsilon = Seconds::fromMilliseconds(0.001);
 
 bool compareAnimationsByCompositeOrder(const WebAnimation&, const WebAnimation&);
+bool compareAnimationEventsByCompositeOrder(const AnimationEventBase&, const AnimationEventBase&);
+String pseudoIdAsString(PseudoId);
+ExceptionOr<PseudoId> pseudoIdFromString(const String&);
+AtomString animatablePropertyAsString(AnimatableProperty);
 
 } // namespace WebCore
 

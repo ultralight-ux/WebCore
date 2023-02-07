@@ -36,10 +36,6 @@
 #import <pal/cf/CoreMediaSoftLink.h>
 #import <pal/cocoa/AVFoundationSoftLink.h>
 
-#if !PLATFORM(MACCATALYST)
-SOFT_LINK_FRAMEWORK_OPTIONAL_PREFLIGHT(AVFoundation)
-#endif
-
 NS_ASSUME_NONNULL_BEGIN
 @interface AVStreamDataParser (AVStreamDataParserExtendedMIMETypes)
 + (BOOL)canParseExtendedMIMEType:(NSString *)extendedMIMEType;
@@ -52,6 +48,42 @@ AVStreamDataParserMIMETypeCache& AVStreamDataParserMIMETypeCache::singleton()
 {
     static NeverDestroyed<AVStreamDataParserMIMETypeCache> cache;
     return cache.get();
+}
+
+bool AVStreamDataParserMIMETypeCache::isAvailable() const
+{
+#if ENABLE(VIDEO) && USE(AVFOUNDATION)
+    if (!PAL::AVFoundationLibrary())
+        return false;
+
+    return [PAL::getAVStreamDataParserClass() respondsToSelector:@selector(audiovisualMIMETypes)];
+#else
+    return false;
+#endif
+}
+
+MediaPlayerEnums::SupportsType AVStreamDataParserMIMETypeCache::canDecodeType(const String& type)
+{
+    if (isAvailable())
+        return MIMETypeCache::canDecodeType(type);
+
+    auto& assetCache = AVAssetMIMETypeCache::singleton();
+    if (assetCache.isAvailable())
+        return assetCache.canDecodeType(type);
+
+    return MediaPlayerEnums::SupportsType::IsNotSupported;
+}
+
+HashSet<String, ASCIICaseInsensitiveHash>& AVStreamDataParserMIMETypeCache::supportedTypes()
+{
+    if (isAvailable())
+        return MIMETypeCache::supportedTypes();
+
+    auto& assetCache = AVAssetMIMETypeCache::singleton();
+    if (assetCache.isAvailable())
+        return assetCache.supportedTypes();
+
+    return MIMETypeCache::supportedTypes();
 }
 
 bool AVStreamDataParserMIMETypeCache::canDecodeExtendedType(const ContentType& type)
@@ -69,31 +101,11 @@ bool AVStreamDataParserMIMETypeCache::canDecodeExtendedType(const ContentType& t
     if (!assetCache.isAvailable() || assetCache.supportedTypes().isEmpty())
         return false;
 
-    String replacementType { type.raw() };
-    replacementType.replace(type.containerType(), *assetCache.supportedTypes().begin());
+    String replacementType = makeStringByReplacingAll(type.raw(), type.containerType(), *assetCache.supportedTypes().begin());
     return assetCache.canDecodeType(replacementType) == MediaPlayerEnums::SupportsType::IsSupported;
 #endif
 
     return false;
-}
-
-bool AVStreamDataParserMIMETypeCache::isAvailable() const
-{
-#if ENABLE(VIDEO) && USE(AVFOUNDATION)
-#if PLATFORM(MACCATALYST)
-    // FIXME: This should be using AVFoundationLibraryIsAvailable() instead, but doing so causes soft-linking
-    // to subsequently fail on certain symbols. See <rdar://problem/42224780> for more details.
-    if (!PAL::AVFoundationLibrary())
-        return false;
-#else
-    if (!AVFoundationLibraryIsAvailable())
-        return false;
-#endif
-
-    return [PAL::getAVStreamDataParserClass() respondsToSelector:@selector(audiovisualMIMETypes)];
-#else
-    return false;
-#endif
 }
 
 void AVStreamDataParserMIMETypeCache::initializeCache(HashSet<String, ASCIICaseInsensitiveHash>& cache)

@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2008 Apple Inc. All rights reserved.
+ *  Copyright (C) 2008-2022 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -29,15 +29,15 @@ public:
     using Base = JSNonFinalObject;
 
     template<typename CellType, SubspaceAccess>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(MathObject, Base);
-        return &vm.plainObjectSpace;
+        return &vm.plainObjectSpace();
     }
 
     static MathObject* create(VM& vm, JSGlobalObject* globalObject, Structure* structure)
     {
-        MathObject* object = new (NotNull, allocateCell<MathObject>(vm.heap)) MathObject(vm, structure);
+        MathObject* object = new (NotNull, allocateCell<MathObject>(vm)) MathObject(vm, structure);
         object->finishCreation(vm, globalObject);
         return object;
     }
@@ -54,8 +54,9 @@ private:
     void finishCreation(VM&, JSGlobalObject*);
 };
 
-EncodedJSValue JSC_HOST_CALL mathProtoFuncAbs(JSGlobalObject*, CallFrame*);
-EncodedJSValue JSC_HOST_CALL mathProtoFuncFloor(JSGlobalObject*, CallFrame*);
-EncodedJSValue JSC_HOST_CALL mathProtoFuncTrunc(JSGlobalObject*, CallFrame*);
+JSC_DECLARE_HOST_FUNCTION(mathProtoFuncAbs);
+JSC_DECLARE_HOST_FUNCTION(mathProtoFuncFloor);
+JSC_DECLARE_HOST_FUNCTION(mathProtoFuncMin);
+JSC_DECLARE_HOST_FUNCTION(mathProtoFuncTrunc);
 
 } // namespace JSC

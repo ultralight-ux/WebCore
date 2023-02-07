@@ -1,8 +1,8 @@
-The headers in this directory are for compiling on macOS 10.14 (Mojave) and newer.
+The headers in this directory are for compiling on macOS 11.0.1 (Big Sur) and newer.
 macOS releases include the ICU binary, but not ICU headers.
 
 For other platforms, installed ICU headers should be used rather than these.
 They are specific to the macOS platform.
 
-The headers here are from ICU version 62 downloaded from the ICU project.
-http://site.icu-project.org/download/62#TOC-ICU4C-Download
+The headers here are from ICU version 66.1 downloaded from the ICU project.
+https://github.com/unicode-org/icu/releases/tag/release-66-1

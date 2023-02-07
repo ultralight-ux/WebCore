@@ -24,7 +24,7 @@
  */
 
 #import "config.h"
-#import "ColorIOS.h"
+#import "ColorCocoa.h"
 
 #if PLATFORM(IOS_FAMILY)
 
@@ -32,7 +32,7 @@
 
 namespace WebCore {
 
-Color colorFromUIColor(UIColor *color)
+Color colorFromCocoaColor(UIColor *color)
 {
     if (!color)
         return { };
@@ -47,7 +47,7 @@ Color colorFromUIColor(UIColor *color)
 
     [color getRed:&redComponent green:&greenComponent blue:&blueComponent alpha:&alpha];
 
-    return convertToComponentBytes(SRGBA { static_cast<float>(redComponent), static_cast<float>(greenComponent), static_cast<float>(blueComponent), static_cast<float>(alpha) });
+    return convertColor<SRGBA<uint8_t>>(SRGBA<float> { static_cast<float>(redComponent), static_cast<float>(greenComponent), static_cast<float>(blueComponent), static_cast<float>(alpha) });
 }
 
 } // namespace WebCore

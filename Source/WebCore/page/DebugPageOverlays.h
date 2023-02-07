@@ -25,9 +25,10 @@
 
 #pragma once
 
+#include "DebugOverlayRegions.h"
 #include "Frame.h"
-#include "Settings.h"
 #include <wtf/HashMap.h>
+#include <wtf/OptionSet.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
@@ -39,15 +40,18 @@ class DebugPageOverlays {
 public:
     static DebugPageOverlays& singleton();
 
-    enum class RegionType {
+    enum class RegionType : uint8_t {
         WheelEventHandlers,
         NonFastScrollableRegion,
+        InteractionRegion,
     };
-    static const unsigned NumberOfRegionTypes = NonFastScrollableRegion + 1;
+    static constexpr unsigned NumberOfRegionTypes = static_cast<unsigned>(RegionType::InteractionRegion) + 1;
 
     static void didLayout(Frame&);
     static void didChangeEventHandlers(Frame&);
     static void doAfterUpdateRendering(Page&);
+
+    static bool shouldPaintOverlayIntoLayerForRegionType(Page&, RegionType);
 
     WEBCORE_EXPORT static void settingsChanged(Page&);
 
@@ -66,7 +70,9 @@ private:
         return m_pageRegionOverlays.contains(&page);
     }
     
-    void updateOverlayRegionVisibility(Page&, DebugOverlayRegions);
+    void updateOverlayRegionVisibility(Page&, OptionSet<DebugOverlayRegions>);
+
+    bool shouldPaintOverlayIntoLayer(Page&, RegionType) const;
 
     RegionOverlay* regionOverlayForPage(Page&, RegionType) const;
     RegionOverlay& ensureRegionOverlayForPage(Page&, RegionType);
@@ -92,6 +98,7 @@ inline void DebugPageOverlays::didLayout(Frame& frame)
 
     sharedDebugOverlays->regionChanged(frame, RegionType::WheelEventHandlers);
     sharedDebugOverlays->regionChanged(frame, RegionType::NonFastScrollableRegion);
+    sharedDebugOverlays->regionChanged(frame, RegionType::InteractionRegion);
 }
 
 inline void DebugPageOverlays::didChangeEventHandlers(Frame& frame)
@@ -100,6 +107,7 @@ inline void DebugPageOverlays::didChangeEventHandlers(Frame& frame)
 
     sharedDebugOverlays->regionChanged(frame, RegionType::WheelEventHandlers);
     sharedDebugOverlays->regionChanged(frame, RegionType::NonFastScrollableRegion);
+    sharedDebugOverlays->regionChanged(frame, RegionType::InteractionRegion);
 }
 
 inline void DebugPageOverlays::doAfterUpdateRendering(Page& page)
@@ -109,6 +117,14 @@ inline void DebugPageOverlays::doAfterUpdateRendering(Page& page)
 
     sharedDebugOverlays->updateRegionIfNecessary(page, RegionType::WheelEventHandlers);
     sharedDebugOverlays->updateRegionIfNecessary(page, RegionType::NonFastScrollableRegion);
+    sharedDebugOverlays->updateRegionIfNecessary(page, RegionType::InteractionRegion);
+}
+
+inline bool DebugPageOverlays::shouldPaintOverlayIntoLayerForRegionType(Page& page, RegionType regionType)
+{
+    if (LIKELY(!hasOverlays(page)))
+        return false;
+    return sharedDebugOverlays->shouldPaintOverlayIntoLayer(page, regionType);
 }
 
 } // namespace WebCore

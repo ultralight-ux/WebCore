@@ -30,58 +30,69 @@
 
 namespace WebCore {
 
-class PlatformEvent {
-public:
-    enum Type : uint8_t {
-        NoType = 0,
+enum class EventHandling : uint8_t {
+    DispatchedToDOM     = 1 << 0,
+    DefaultPrevented    = 1 << 1,
+    DefaultHandled      = 1 << 2,
+};
 
-        // PlatformKeyboardEvent
-        KeyDown,
-        KeyUp,
-        RawKeyDown,
-        Char,
+enum class PlatformEventType : uint8_t {
+    NoType = 0,
 
-        // PlatformMouseEvent
-        MouseMoved,
-        MousePressed,
-        MouseReleased,
-        MouseForceChanged,
-        MouseForceDown,
-        MouseForceUp,
-        MouseScroll,
+    // PlatformKeyboardEvent
+    KeyDown,
+    KeyUp,
+    RawKeyDown,
+    Char,
 
-        // PlatformWheelEvent
-        Wheel,
+    // PlatformMouseEvent
+    MouseMoved,
+    MousePressed,
+    MouseReleased,
+    MouseForceChanged,
+    MouseForceDown,
+    MouseForceUp,
+    MouseScroll,
+
+    // PlatformWheelEvent
+    Wheel,
 
 #if ENABLE(TOUCH_EVENTS)
-        // PlatformTouchEvent
-        TouchStart,
-        TouchMove,
-        TouchEnd,
-        TouchCancel,
-        TouchForceChange,
+    // PlatformTouchEvent
+    TouchStart,
+    TouchMove,
+    TouchEnd,
+    TouchCancel,
+    TouchForceChange,
 #endif
 
 #if ENABLE(MAC_GESTURE_EVENTS)
-        // PlatformGestureEvent
-        GestureStart,
-        GestureChange,
-        GestureEnd,
+    // PlatformGestureEvent
+    GestureStart,
+    GestureChange,
+    GestureEnd,
 #endif
-    };
+};
 
-    enum class Modifier : uint8_t {
-        AltKey      = 1 << 0,
-        ControlKey  = 1 << 1,
-        MetaKey     = 1 << 2,
-        ShiftKey    = 1 << 3,
-        CapsLockKey = 1 << 4,
+enum class PlatformEventModifier : uint8_t {
+    AltKey      = 1 << 0,
+    ControlKey  = 1 << 1,
+    MetaKey     = 1 << 2,
+    ShiftKey    = 1 << 3,
+    CapsLockKey = 1 << 4,
 
-        // Never used in native platforms but added for initEvent
-        AltGraphKey = 1 << 5,
-    };
+    // Never used in native platforms but added for initEvent
+    AltGraphKey = 1 << 5,
+};
 
-    Type type() const { return static_cast<Type>(m_type); }
+
+class PlatformEvent {
+public:
+
+    using Type = PlatformEventType;
+    using Modifier = PlatformEventModifier;
+
+    Type type() const { return m_type; }
 
     bool shiftKey() const { return m_modifiers.contains(Modifier::ShiftKey); }
     bool controlKey() const { return m_modifiers.contains(Modifier::ControlKey); }
@@ -94,7 +105,7 @@ public:
 
 protected:
     PlatformEvent()
-        : m_type(NoType)
+        : m_type(Type::NoType)
     {
     }
 
@@ -104,15 +115,15 @@ protected:
     }
 
     PlatformEvent(Type type, OptionSet<Modifier> modifiers, WallTime timestamp)
-        : m_type(type)
+        : m_timestamp(timestamp)
+        , m_type(type)
         , m_modifiers(modifiers)
-        , m_timestamp(timestamp)
     {
     }
 
     PlatformEvent(Type type, bool shiftKey, bool ctrlKey, bool altKey, bool metaKey, WallTime timestamp)
-        : m_type(type)
-        , m_timestamp(timestamp)
+        : m_timestamp(timestamp)
+        , m_type(type)
     {
         if (shiftKey)
             m_modifiers.add(Modifier::ShiftKey);
@@ -128,9 +139,9 @@ protected:
     // delete a PlatformEvent.
     ~PlatformEvent() = default;
 
-    unsigned m_type;
-    OptionSet<Modifier> m_modifiers;
     WallTime m_timestamp;
+    Type m_type;
+    OptionSet<Modifier> m_modifiers;
 };
 
 } // namespace WebCore

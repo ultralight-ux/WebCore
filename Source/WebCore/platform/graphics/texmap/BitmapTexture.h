@@ -45,7 +45,8 @@ class BitmapTexture : public RefCounted<BitmapTexture> {
 public:
     enum Flag {
         NoFlag = 0,
-        SupportsAlpha = 0x01,
+        SupportsAlpha = 1 << 0,
+        DepthBuffer = 1 << 1,
     };
 
     typedef unsigned Flags;
@@ -60,7 +61,7 @@ public:
 
     virtual IntSize size() const = 0;
     virtual void updateContents(Image*, const IntRect&, const IntPoint& offset) = 0;
-    virtual void updateContents(TextureMapper&, GraphicsLayer*, const IntRect& target, const IntPoint& offset, float scale = 1);
+    void updateContents(GraphicsLayer*, const IntRect& target, const IntPoint& offset, float scale = 1);
     virtual void updateContents(const void*, const IntRect& target, const IntPoint& offset, int bytesPerLine) = 0;
     virtual bool isValid() const = 0;
     inline Flags flags() const { return m_flags; }
@@ -78,7 +79,7 @@ public:
     inline int numberOfBytes() const { return size().width() * size().height() * bpp() >> 3; }
     inline bool isOpaque() const { return !(m_flags & SupportsAlpha); }
 
-    virtual RefPtr<BitmapTexture> applyFilters(TextureMapper&, const FilterOperations&) { return this; }
+    virtual RefPtr<BitmapTexture> applyFilters(TextureMapper&, const FilterOperations&, bool) { return this; }
 
 protected:
     IntSize m_contentSize;

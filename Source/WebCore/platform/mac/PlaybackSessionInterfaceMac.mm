@@ -52,7 +52,7 @@ Ref<PlaybackSessionInterfaceMac> PlaybackSessionInterfaceMac::create(PlaybackSes
 }
 
 PlaybackSessionInterfaceMac::PlaybackSessionInterfaceMac(PlaybackSessionModel& model)
-    : m_playbackSessionModel(makeWeakPtr(model))
+    : m_playbackSessionModel(model)
 {
 }
 
@@ -92,11 +92,13 @@ void PlaybackSessionInterfaceMac::currentTimeChanged(double currentTime, double 
 #endif
 }
 
-void PlaybackSessionInterfaceMac::rateChanged(bool isPlaying, float playbackRate)
+void PlaybackSessionInterfaceMac::rateChanged(OptionSet<PlaybackSessionModel::PlaybackState> playbackState, double playbackRate, double defaultPlaybackRate)
 {
 #if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+    auto isPlaying = playbackState.contains(PlaybackSessionModel::PlaybackState::Playing);
     WebPlaybackControlsManager* controlsManager = playBackControlsManager();
-    [controlsManager setRate:isPlaying ? playbackRate : 0.];
+    [controlsManager setDefaultPlaybackRate:defaultPlaybackRate fromJavaScript:YES];
+    [controlsManager setRate:isPlaying ? playbackRate : 0. fromJavaScript:YES];
     [controlsManager setPlaying:isPlaying];
     updatePlaybackControlsManagerTiming(m_playbackSessionModel ? m_playbackSessionModel->currentTime() : 0, [[NSProcessInfo processInfo] systemUptime], playbackRate, isPlaying);
 #else
@@ -105,11 +107,16 @@ void PlaybackSessionInterfaceMac::rateChanged(bool isPlaying, float playbackRate
 #endif
 }
 
-void PlaybackSessionInterfaceMac::beginScrubbing()
+void PlaybackSessionInterfaceMac::willBeginScrubbing()
 {
 #if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
     updatePlaybackControlsManagerTiming(m_playbackSessionModel ? m_playbackSessionModel->currentTime() : 0, [[NSProcessInfo processInfo] systemUptime], 0, false);
 #endif
+}
+
+void PlaybackSessionInterfaceMac::beginScrubbing()
+{
+    willBeginScrubbing();
     if (auto* model = playbackSessionModel())
         model->beginScrubbing();
 }
@@ -232,6 +239,7 @@ void PlaybackSessionInterfaceMac::setPlayBackControlsManager(WebPlaybackControls
     manager.contentDuration = duration;
     manager.hasEnabledAudio = duration > 0;
     manager.hasEnabledVideo = duration > 0;
+    manager.defaultPlaybackRate = m_playbackSessionModel->defaultPlaybackRate();
     manager.rate = m_playbackSessionModel->isPlaying() ? m_playbackSessionModel->playbackRate() : 0.;
     manager.seekableTimeRanges = timeRangesToArray(m_playbackSessionModel->seekableRanges()).get();
     manager.canTogglePlayback = YES;

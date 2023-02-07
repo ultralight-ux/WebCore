@@ -61,9 +61,17 @@ public:
 
     constexpr unsigned lengthRemaining() const { return m_end - m_position; }
 
-    StringView stringViewOfCharactersRemaining() { return { m_position, lengthRemaining() }; }
+    StringView stringViewOfCharactersRemaining() const { return { m_position, lengthRemaining() }; }
 
-    CharacterType operator[](unsigned i)
+    CharacterType consume()
+    {
+        ASSERT(hasCharactersRemaining());
+        auto character = *m_position;
+        ++m_position;
+        return character;
+    }
+
+    CharacterType operator[](unsigned i) const
     {
         ASSERT(i < lengthRemaining());
         return m_position[i];

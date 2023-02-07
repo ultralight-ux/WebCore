@@ -28,10 +28,6 @@
 
 #if USE(CG)
 #include "GraphicsContextPlatformPrivateCG.h"
-#elif USE(DIRECT2D)
-#include "GraphicsContextPlatformPrivateDirect2D.h"
-#elif USE(CAIRO)
-#include "GraphicsContextPlatformPrivateCairo.h"
 #endif
 
 #include "AffineTransform.h"
@@ -41,7 +37,6 @@
 #include "Path.h"
 #include <wtf/MathExtras.h>
 #include <wtf/win/GDIObject.h>
-
 
 namespace WebCore {
 
@@ -53,102 +48,50 @@ static void fillWithClearColor(HBITMAP bitmap)
     memset(bmpInfo.bmBits, 0, bufferSize);
 }
 
-#if PLATFORM(WIN)
-void GraphicsContext::setShouldIncludeChildWindows(bool include)
-{
-    m_data->m_shouldIncludeChildWindows = include;
-}
-
-bool GraphicsContext::shouldIncludeChildWindows() const
-{
-    return m_data->m_shouldIncludeChildWindows;
-}
-
-GraphicsContext::WindowsBitmap::WindowsBitmap(HDC hdc, const IntSize& size)
-    : m_hdc(0)
-{
-    BitmapInfo bitmapInfo = BitmapInfo::create(size);
-
-    void* storage = 0;
-    m_bitmap = CreateDIBSection(0, &bitmapInfo, DIB_RGB_COLORS, &storage, 0, 0);
-    if (!m_bitmap)
-        return;
-
-    m_hdc = CreateCompatibleDC(hdc);
-    SelectObject(m_hdc, m_bitmap);
-
-    m_pixelData.initialize(m_bitmap);
-
-    ASSERT(storage == m_pixelData.buffer());
-
-    SetGraphicsMode(m_hdc, GM_ADVANCED);
-}
-
-GraphicsContext::WindowsBitmap::~WindowsBitmap()
-{
-    if (!m_bitmap)
-        return;
-
-    DeleteDC(m_hdc);
-    DeleteObject(m_bitmap);
-}
-
-std::unique_ptr<GraphicsContext::WindowsBitmap> GraphicsContext::createWindowsBitmap(const IntSize& size)
-{
-    return makeUnique<WindowsBitmap>(m_data->m_hdc, size);
-}
-#endif
-
 HDC GraphicsContext::getWindowsContext(const IntRect& dstRect, bool supportAlphaBlend)
 {
-    HDC hdc = nullptr;
-    if (!m_impl)
-        hdc = m_data->m_hdc;
-    // FIXME: Should a bitmap be created also when a shadow is set?
-    if (!hdc || isInTransparencyLayer()) {
-        if (dstRect.isEmpty())
-            return 0;
-
-        // Create a bitmap DC in which to draw.
-        BitmapInfo bitmapInfo = BitmapInfo::create(dstRect.size());
-
-        void* pixels = 0;
-        HBITMAP bitmap = ::CreateDIBSection(NULL, &bitmapInfo, DIB_RGB_COLORS, &pixels, 0, 0);
-        if (!bitmap)
-            return 0;
-
-        auto bitmapDC = adoptGDIObject(::CreateCompatibleDC(hdc));
-        ::SelectObject(bitmapDC.get(), bitmap);
-
-        // Fill our buffer with clear if we're going to alpha blend.
-        if (supportAlphaBlend)
-           fillWithClearColor(bitmap);
-
-        // Make sure we can do world transforms.
-        ::SetGraphicsMode(bitmapDC.get(), GM_ADVANCED);
-
-        // Apply a translation to our context so that the drawing done will be at (0,0) of the bitmap.
-        XFORM xform = TransformationMatrix().translate(-dstRect.x(), -dstRect.y());
-
-        ::SetWorldTransform(bitmapDC.get(), &xform);
-
-        return bitmapDC.leak();
-    }
-
-    m_data->flush();
-    m_data->save();
-    return m_data->m_hdc;
-}
-
-HDC GraphicsContext::hdc() const
-{
-    if (!m_data)
+    if (!hasPlatformContext())
         return nullptr;
+    HDC hdc = nullptr;
+#if !USE(CAIRO)
+    hdc = deprecatedPrivateContext()->m_hdc;
+    if (hdc && !isInTransparencyLayer()) {
+        deprecatedPrivateContext()->flush();
+        deprecatedPrivateContext()->save();
+        return deprecatedPrivateContext()->m_hdc;
+    }
+#endif
+    // FIXME: Should a bitmap be created also when a shadow is set?
+    if (dstRect.isEmpty())
+        return 0;
 
-    return m_data->m_hdc;
+    // Create a bitmap DC in which to draw.
+    BitmapInfo bitmapInfo = BitmapInfo::create(dstRect.size());
+
+    void* pixels = 0;
+    HBITMAP bitmap = ::CreateDIBSection(nullptr, &bitmapInfo, DIB_RGB_COLORS, &pixels, 0, 0);
+    if (!bitmap)
+        return 0;
+
+    auto bitmapDC = adoptGDIObject(::CreateCompatibleDC(hdc));
+    ::SelectObject(bitmapDC.get(), bitmap);
+
+    // Fill our buffer with clear if we're going to alpha blend.
+    if (supportAlphaBlend)
+        fillWithClearColor(bitmap);
+
+    // Make sure we can do world transforms.
+    ::SetGraphicsMode(bitmapDC.get(), GM_ADVANCED);
+
+    // Apply a translation to our context so that the drawing done will be at (0,0) of the bitmap.
+    XFORM xform = TransformationMatrix().translate(-dstRect.x(), -dstRect.y());
+
+    ::SetWorldTransform(bitmapDC.get(), &xform);
+
+    return bitmapDC.leak();
 }
 
-#if PLATFORM(WIN) && !USE(DIRECT2D)
+#if PLATFORM(WIN) && USE(CG)
 void GraphicsContextPlatformPrivate::save()
 {
     if (!m_hdc)

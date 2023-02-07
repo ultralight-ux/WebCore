@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,8 +38,9 @@
 #include "StructureInlines.h"
 
 namespace JSC {
-static EncodedJSValue JSC_HOST_CALL webAssemblyMemoryProtoFuncGrow(JSGlobalObject*, CallFrame*);
-static EncodedJSValue JSC_HOST_CALL webAssemblyMemoryProtoFuncBuffer(JSGlobalObject*, CallFrame*);
+static JSC_DECLARE_HOST_FUNCTION(webAssemblyMemoryProtoFuncGrow);
+static JSC_DECLARE_CUSTOM_GETTER(webAssemblyMemoryProtoGetterBuffer);
+static JSC_DECLARE_HOST_FUNCTION(webAssemblyMemoryProtoFuncType);
 }
 
 #include "WebAssemblyMemoryPrototype.lut.h"
@@ -47,12 +48,13 @@ static EncodedJSValue JSC_HOST_CALL webAssemblyMemoryProtoFuncBuffer(JSGlobalObj
 
 namespace JSC {
 
-const ClassInfo WebAssemblyMemoryPrototype::s_info = { "WebAssembly.Memory", &Base::s_info, &prototypeTableWebAssemblyMemory, nullptr, CREATE_METHOD_TABLE(WebAssemblyMemoryPrototype) };
+const ClassInfo WebAssemblyMemoryPrototype::s_info = { "WebAssembly.Memory"_s, &Base::s_info, &prototypeTableWebAssemblyMemory, nullptr, CREATE_METHOD_TABLE(WebAssemblyMemoryPrototype) };
 
 /* Source for WebAssemblyMemoryPrototype.lut.h
 @begin prototypeTableWebAssemblyMemory
  grow   webAssemblyMemoryProtoFuncGrow   Function 1
- buffer webAssemblyMemoryProtoFuncBuffer Accessor 0
+ buffer webAssemblyMemoryProtoGetterBuffer ReadOnly|CustomAccessor
+ type   webAssemblyMemoryProtoFuncType   Function 0
 @end
 */
 
@@ -60,7 +62,7 @@ ALWAYS_INLINE JSWebAssemblyMemory* getMemory(JSGlobalObject* globalObject, VM& v
 {
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 
-    JSWebAssemblyMemory* memory = jsDynamicCast<JSWebAssemblyMemory*>(vm, value); 
+    JSWebAssemblyMemory* memory = jsDynamicCast<JSWebAssemblyMemory*>(value); 
     if (!memory) {
         throwException(globalObject, throwScope, 
             createTypeError(globalObject, "WebAssembly.Memory.prototype.buffer getter called with non WebAssembly.Memory |this| value"_s));
@@ -69,7 +71,7 @@ ALWAYS_INLINE JSWebAssemblyMemory* getMemory(JSGlobalObject* globalObject, VM& v
     return memory;
 }
 
-EncodedJSValue JSC_HOST_CALL webAssemblyMemoryProtoFuncGrow(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_HOST_FUNCTION(webAssemblyMemoryProtoFuncGrow, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     VM& vm = globalObject->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
@@ -80,25 +82,36 @@ EncodedJSValue JSC_HOST_CALL webAssemblyMemoryProtoFuncGrow(JSGlobalObject* glob
     uint32_t delta = toNonWrappingUint32(globalObject, callFrame->argument(0));
     RETURN_IF_EXCEPTION(throwScope, { });
 
-    Wasm::PageCount result = memory->grow(vm, globalObject, delta);
+    PageCount result = memory->grow(vm, globalObject, delta);
     RETURN_IF_EXCEPTION(throwScope, { });
 
     return JSValue::encode(jsNumber(result.pageCount()));
 }
 
-EncodedJSValue JSC_HOST_CALL webAssemblyMemoryProtoFuncBuffer(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_CUSTOM_GETTER(webAssemblyMemoryProtoGetterBuffer, (JSGlobalObject* globalObject, EncodedJSValue thisValue, PropertyName))
 {
     VM& vm = globalObject->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 
-    JSWebAssemblyMemory* memory = getMemory(globalObject, vm, callFrame->thisValue()); 
+    JSWebAssemblyMemory* memory = getMemory(globalObject, vm, JSValue::decode(thisValue)); 
     RETURN_IF_EXCEPTION(throwScope, { });
-    return JSValue::encode(memory->buffer(globalObject->vm(), globalObject));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(memory->buffer(globalObject)));
 }
+
+JSC_DEFINE_HOST_FUNCTION(webAssemblyMemoryProtoFuncType, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    VM& vm = globalObject->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+
+    JSWebAssemblyMemory* memory = getMemory(globalObject, vm, callFrame->thisValue());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(memory->type(globalObject)));
+}
+
 
 WebAssemblyMemoryPrototype* WebAssemblyMemoryPrototype::create(VM& vm, JSGlobalObject*, Structure* structure)
 {
-    auto* object = new (NotNull, allocateCell<WebAssemblyMemoryPrototype>(vm.heap)) WebAssemblyMemoryPrototype(vm, structure);
+    auto* object = new (NotNull, allocateCell<WebAssemblyMemoryPrototype>(vm)) WebAssemblyMemoryPrototype(vm, structure);
     object->finishCreation(vm);
     return object;
 }
@@ -111,7 +124,7 @@ Structure* WebAssemblyMemoryPrototype::createStructure(VM& vm, JSGlobalObject* g
 void WebAssemblyMemoryPrototype::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     JSC_TO_STRING_TAG_WITHOUT_TRANSITION();
 }
 

@@ -29,12 +29,14 @@
 #include <wtf/URL.h>
 
 namespace WebCore {
+
+enum class ShareDataOriginator : bool { Web, User };
     
 struct ShareData {
     String title;
     String text;
     String url;
-    Vector<RefPtr<File>> files;
+    Vector<RefPtr<File>> files { };
 };
 
 struct RawFile {
@@ -44,8 +46,9 @@ struct RawFile {
     
 struct ShareDataWithParsedURL {
     ShareData shareData;
-    Optional<URL> url;
+    std::optional<URL> url;
     Vector<RawFile> files;
+    ShareDataOriginator originator;
 };
     
 }

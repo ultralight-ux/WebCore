@@ -1,4 +1,4 @@
-add_definitions(-DSTATICALLY_LINKED_WITH_WTF -D__STDC_WANT_LIB_EXT1__)
+add_definitions(-D__STDC_WANT_LIB_EXT1__)
 
 find_library(SECURITY_LIBRARY Security)
 list(APPEND JavaScriptCore_LIBRARIES
@@ -7,11 +7,11 @@ list(APPEND JavaScriptCore_LIBRARIES
 
 list(APPEND JavaScriptCore_UNIFIED_SOURCE_LIST_FILES
     "SourcesCocoa.txt"
+
+    "inspector/remote/SourcesCocoa.txt"
 )
 
 list(APPEND JavaScriptCore_PRIVATE_INCLUDE_DIRECTORIES
-    ${DERIVED_SOURCES_DIR}
-    ${JAVASCRIPTCORE_DIR}/disassembler/udis86
     ${JAVASCRIPTCORE_DIR}/inspector/cocoa
     ${JAVASCRIPTCORE_DIR}/inspector/remote/cocoa
 )
@@ -31,10 +31,10 @@ list(APPEND JavaScriptCore_PUBLIC_FRAMEWORK_HEADERS
 )
 
 list(APPEND JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS
+    inspector/remote/RemoteInspectorConstants.h
+
     inspector/remote/cocoa/RemoteInspectorXPCConnection.h
 )
-
-set(CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS} "-compatibility_version 1 -current_version ${WEBKIT_MAC_VERSION} -force_load ${CMAKE_BINARY_DIR}/lib/libWTF.a")
 
 # FIXME: Make including these files consistent in the source so these forwarding headers are not needed.
 if (NOT EXISTS ${JavaScriptCore_DERIVED_SOURCES_DIR}/AugmentableInspectorControllerClient.h)

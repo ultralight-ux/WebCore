@@ -32,17 +32,19 @@
 
 #include "WebSocketDeflater.h"
 #include "WebSocketExtensionProcessor.h"
-#include "WebSocketFrame.h"
 
 namespace WebCore {
 
 class WebSocketDeflateFramer;
+class WebSocketExtensionProcessor;
+
+struct WebSocketFrame;
 
 class DeflateResultHolder {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit DeflateResultHolder(WebSocketDeflateFramer*);
-    ~DeflateResultHolder();
+    explicit DeflateResultHolder(WebSocketDeflateFramer&);
+    WEBCORE_EXPORT ~DeflateResultHolder();
 
     bool succeeded() const { return m_succeeded; }
     String failureReason() const { return m_failureReason; }
@@ -50,16 +52,16 @@ public:
     void fail(const String& failureReason);
 
 private:
-    WebSocketDeflateFramer* m_framer;
-    bool m_succeeded;
+    WebSocketDeflateFramer& m_framer;
+    bool m_succeeded { true };
     String m_failureReason;
 };
 
 class InflateResultHolder {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit InflateResultHolder(WebSocketDeflateFramer*);
-    ~InflateResultHolder();
+    explicit InflateResultHolder(WebSocketDeflateFramer&);
+    WEBCORE_EXPORT ~InflateResultHolder();
 
     bool succeeded() const { return m_succeeded; }
     String failureReason() const { return m_failureReason; }
@@ -67,30 +69,28 @@ public:
     void fail(const String& failureReason);
 
 private:
-    WebSocketDeflateFramer* m_framer;
-    bool m_succeeded;
+    WebSocketDeflateFramer& m_framer;
+    bool m_succeeded { true };
     String m_failureReason;
 };
 
 class WebSocketDeflateFramer {
 public:
-    WebSocketDeflateFramer();
-
-    std::unique_ptr<WebSocketExtensionProcessor> createExtensionProcessor();
+    WEBCORE_EXPORT std::unique_ptr<WebSocketExtensionProcessor> createExtensionProcessor();
 
     bool enabled() const { return m_enabled; }
 
-    std::unique_ptr<DeflateResultHolder> deflate(WebSocketFrame&);
+    WEBCORE_EXPORT std::unique_ptr<DeflateResultHolder> deflate(WebSocketFrame&);
     void resetDeflateContext();
-    std::unique_ptr<InflateResultHolder> inflate(WebSocketFrame&);
+    WEBCORE_EXPORT std::unique_ptr<InflateResultHolder> inflate(WebSocketFrame&);
     void resetInflateContext();
 
-    void didFail();
+    WEBCORE_EXPORT void didFail();
 
     void enableDeflate(int windowBits, WebSocketDeflater::ContextTakeOverMode);
 
 private:
-    bool m_enabled;
+    bool m_enabled { false };
     std::unique_ptr<WebSocketDeflater> m_deflater;
     std::unique_ptr<WebSocketInflater> m_inflater;
 };

@@ -41,8 +41,6 @@
 #include <wtf/HashSet.h>
 #include <wtf/LoggerHelper.h>
 
-typedef struct _WebKitMediaSrc WebKitMediaSrc;
-
 namespace WebCore {
 
 class SourceBufferPrivateGStreamer;
@@ -55,23 +53,28 @@ class MediaSourcePrivateGStreamer final : public MediaSourcePrivate
 #endif
 {
 public:
-    static void open(MediaSourcePrivateClient&, MediaPlayerPrivateGStreamerMSE&);
+    static Ref<MediaSourcePrivateGStreamer> open(MediaSourcePrivateClient&, MediaPlayerPrivateGStreamerMSE&);
     virtual ~MediaSourcePrivateGStreamer();
 
-    AddStatus addSourceBuffer(const ContentType&, RefPtr<SourceBufferPrivate>&) override;
+    AddStatus addSourceBuffer(const ContentType&, bool, RefPtr<SourceBufferPrivate>&) override;
     void removeSourceBuffer(SourceBufferPrivate*);
 
-    void durationChanged() override;
+    void durationChanged(const MediaTime&) override;
     void markEndOfStream(EndOfStreamStatus) override;
     void unmarkEndOfStream() override;
+    bool isEnded() const override { return m_isEnded; }
 
     MediaPlayer::ReadyState readyState() const override;
     void setReadyState(MediaPlayer::ReadyState) override;
 
-    void waitForSeekCompleted() override;
+    void waitForSeekCompleted() override { }
     void seekCompleted() override;
 
+    MediaTime duration() const;
+    MediaTime currentMediaTime() const;
+
     void sourceBufferPrivateDidChangeActiveState(SourceBufferPrivateGStreamer*, bool);
+    void startPlaybackIfHasAllTracks();
 
     std::unique_ptr<PlatformTimeRanges> buffered();
 
@@ -89,8 +92,10 @@ private:
 
     HashSet<RefPtr<SourceBufferPrivateGStreamer>> m_sourceBuffers;
     HashSet<SourceBufferPrivateGStreamer*> m_activeSourceBuffers;
-    Ref<MediaSourcePrivateClient> m_mediaSource;
+    WeakPtr<MediaSourcePrivateClient> m_mediaSource;
     MediaPlayerPrivateGStreamerMSE& m_playerPrivate;
+    bool m_isEnded { false };
+    bool m_hasAllTracks { false };
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;
     const void* m_logIdentifier;

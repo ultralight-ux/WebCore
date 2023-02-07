@@ -48,12 +48,12 @@ protected:
     {
     }
 
-    Frame* frame() const { return m_frame; }
+    Frame* frame() const { return m_frame.get(); }
 
 private:
-    bool isValid() const override { return m_frame; }
+    bool isValid() const override { return !!m_frame; }
 
-    Frame* m_frame;
+    WeakPtr<Frame> m_frame;
 };
 
 }

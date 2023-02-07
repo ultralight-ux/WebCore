@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 1999-2001 Harri Porten (porten@kde.org)
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2003-2019 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2021 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -32,6 +32,7 @@
 #include "JSLock.h"
 #include "JSTypeInfo.h"
 #include "SlotVisitor.h"
+#include "SlotVisitorMacros.h"
 #include "SubspaceAccess.h"
 #include "TypedArrayType.h"
 #include "WriteBarrier.h"
@@ -58,10 +59,10 @@ enum class GCDeferralContextArgPresense {
     DoesNotHaveArg
 };
 
-template<typename T> void* allocateCell(Heap&, size_t = sizeof(T));
-template<typename T> void* tryAllocateCell(Heap&, size_t = sizeof(T));
-template<typename T> void* allocateCell(Heap&, GCDeferralContext*, size_t = sizeof(T));
-template<typename T> void* tryAllocateCell(Heap&, GCDeferralContext*, size_t = sizeof(T));
+template<typename T> void* allocateCell(VM&, size_t = sizeof(T));
+template<typename T> void* tryAllocateCell(VM&, size_t = sizeof(T));
+template<typename T> void* allocateCell(VM&, GCDeferralContext*, size_t = sizeof(T));
+template<typename T> void* tryAllocateCell(VM&, GCDeferralContext*, size_t = sizeof(T));
 
 #define DECLARE_EXPORT_INFO                                                  \
     protected:                                                               \
@@ -88,6 +89,10 @@ public:
 
     static constexpr uint8_t numberOfLowerTierCells = 8;
 
+    static constexpr size_t atomSize = 16; // This needs to be larger or equal to 16.
+
+    static constexpr bool isResizableOrGrowableSharedTypedArray = false;
+
     static JSCell* seenMultipleCalleeObjects() { return bitwise_cast<JSCell*>(static_cast<uintptr_t>(1)); }
 
     enum CreatingEarlyCellTag { CreatingEarlyCell };
@@ -107,10 +112,13 @@ public:
     bool isGetterSetter() const;
     bool isCustomGetterSetter() const;
     bool isProxy() const;
-    bool isCallable(VM&);
-    bool isConstructor(VM&);
-    bool inherits(VM&, const ClassInfo*) const;
-    template<typename Target> bool inherits(VM&) const;
+    bool isCallable();
+    bool isConstructor();
+    template<Concurrency> TriState isCallableWithConcurrency();
+    template<Concurrency> TriState isConstructorWithConcurrency();
+    bool inherits(const ClassInfo*) const;
+    template<typename Target> bool inherits() const;
+    JS_EXPORT_PRIVATE bool isValidCallee() const;
     bool isAPIValueWrapper() const;
     
     // Each cell has a built-in lock. Currently it's simply available for use if you need it. It's
@@ -119,7 +127,7 @@ public:
 
     // We use this abstraction to make it easier to grep for places where we lock cells.
     // to lock a cell you can just do:
-    // auto locker = holdLock(cell->cellLocker());
+    // Locker locker { cell->cellLocker() };
     JSCellLock& cellLock() { return *reinterpret_cast<JSCellLock*>(this); }
     
     JSType type() const;
@@ -128,14 +136,13 @@ public:
     IndexingType indexingType() const;
     StructureID structureID() const { return m_structureID; }
     Structure* structure() const;
-    Structure* structure(VM&) const;
     void setStructure(VM&, Structure*);
     void setStructureIDDirectly(StructureID id) { m_structureID = id; }
-    void clearStructure() { m_structureID = 0; }
+    void clearStructure() { m_structureID = StructureID(); }
 
     TypeInfo::InlineTypeFlags inlineTypeFlags() const { return m_flags; }
     
-    const char* className(VM&) const;
+    ASCIILiteral className() const;
 
     // Extracting the value.
     JS_EXPORT_PRIVATE bool getString(JSGlobalObject*, String&) const;
@@ -154,7 +161,6 @@ public:
 
     // Basic conversions.
     JS_EXPORT_PRIVATE JSValue toPrimitive(JSGlobalObject*, PreferredPrimitiveType) const;
-    bool getPrimitiveNumber(JSGlobalObject*, double& number, JSValue&) const;
     bool toBoolean(JSGlobalObject*) const;
     TriState pureToBoolean() const;
     JS_EXPORT_PRIVATE double toNumber(JSGlobalObject*) const;
@@ -166,14 +172,14 @@ public:
     size_t estimatedSizeInBytes(VM&) const;
     JS_EXPORT_PRIVATE static size_t estimatedSize(JSCell*, VM&);
 
-    static void visitChildren(JSCell*, SlotVisitor&);
-    static void visitOutputConstraints(JSCell*, SlotVisitor&);
+    DECLARE_VISIT_CHILDREN_WITH_MODIFIER(inline);
+    DECLARE_VISIT_OUTPUT_CONSTRAINTS_WITH_MODIFIER(inline);
 
     JS_EXPORT_PRIVATE static void analyzeHeap(JSCell*, HeapAnalyzer&);
 
     // Object operations, with the toObject operation included.
-    const ClassInfo* classInfo(VM&) const;
-    const MethodTable* methodTable(VM&) const;
+    const ClassInfo* classInfo() const;
+    const MethodTable* methodTable() const;
     static bool put(JSCell*, JSGlobalObject*, PropertyName, JSValue, PutPropertySlot&);
     static bool putByIndex(JSCell*, JSGlobalObject*, unsigned propertyName, JSValue, bool shouldThrow);
     bool putInline(JSGlobalObject*, PropertyName, JSValue, PutPropertySlot&);
@@ -181,8 +187,6 @@ public:
     static bool deleteProperty(JSCell*, JSGlobalObject*, PropertyName, DeletePropertySlot&);
     JS_EXPORT_PRIVATE static bool deleteProperty(JSCell*, JSGlobalObject*, PropertyName);
     static bool deletePropertyByIndex(JSCell*, JSGlobalObject*, unsigned propertyName);
-
-    static JSValue toThis(JSCell*, JSGlobalObject*, ECMAMode);
 
     static bool canUseFastGetOwnProperty(const Structure&);
     JSValue fastGetOwnProperty(VM&, Structure&, PropertyName);
@@ -232,7 +236,7 @@ public:
         return OBJECT_OFFSETOF(JSCell, m_cellState);
     }
     
-    static const TypedArrayType TypedArrayStorageType = NotTypedArray;
+    static constexpr TypedArrayType TypedArrayStorageType = NotTypedArray;
 
     void setPerCellBit(bool);
     bool perCellBit() const;
@@ -242,26 +246,18 @@ protected:
     void finishCreation(VM&, Structure*, CreatingEarlyCellTag);
 
     // Dummy implementations of override-able static functions for classes to put in their MethodTable
-    static JSValue defaultValue(const JSObject*, JSGlobalObject*, PreferredPrimitiveType);
-    static NO_RETURN_DUE_TO_CRASH void getOwnPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, EnumerationMode);
-    static NO_RETURN_DUE_TO_CRASH void getOwnNonIndexPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, EnumerationMode);
-    static NO_RETURN_DUE_TO_CRASH void getPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, EnumerationMode);
+    static NO_RETURN_DUE_TO_CRASH void getOwnPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, DontEnumPropertiesMode);
+    static NO_RETURN_DUE_TO_CRASH void getOwnSpecialPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, DontEnumPropertiesMode);
 
-    static uint32_t getEnumerableLength(JSGlobalObject*, JSObject*);
-    static NO_RETURN_DUE_TO_CRASH void getStructurePropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, EnumerationMode);
-    static NO_RETURN_DUE_TO_CRASH void getGenericPropertyNames(JSObject*, JSGlobalObject*, PropertyNameArray&, EnumerationMode);
     static NO_RETURN_DUE_TO_CRASH bool preventExtensions(JSObject*, JSGlobalObject*);
     static NO_RETURN_DUE_TO_CRASH bool isExtensible(JSObject*, JSGlobalObject*);
     static NO_RETURN_DUE_TO_CRASH bool setPrototype(JSObject*, JSGlobalObject*, JSValue, bool);
     static NO_RETURN_DUE_TO_CRASH JSValue getPrototype(JSObject*, JSGlobalObject*);
 
-    static String className(const JSObject*, VM&);
-    static String toStringName(const JSObject*, JSGlobalObject*);
     JS_EXPORT_PRIVATE static bool customHasInstance(JSObject*, JSGlobalObject*, JSValue);
     static bool defineOwnProperty(JSObject*, JSGlobalObject*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
     static bool getOwnPropertySlot(JSObject*, JSGlobalObject*, PropertyName, PropertySlot&);
     static bool getOwnPropertySlotByIndex(JSObject*, JSGlobalObject*, unsigned propertyName, PropertySlot&);
-    static NO_RETURN_DUE_TO_CRASH void doPutPropertySecurityCheck(JSObject*, JSGlobalObject*, PropertyName, PutPropertySlot&);
 
 private:
     friend class LLIntOffsetsExtractor;

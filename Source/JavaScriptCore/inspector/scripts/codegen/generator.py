@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2014 Apple Inc. All rights reserved.
 # Copyright (c) 2014 University of Washington. All rights reserved.
@@ -32,7 +32,7 @@ from string import Template
 try:
     from .generator_templates import GeneratorTemplates as Templates
     from .models import PrimitiveType, ObjectType, ArrayType, EnumType, AliasedType, Frameworks
-except ValueError:
+except ImportError:
     from generator_templates import GeneratorTemplates as Templates
     from models import PrimitiveType, ObjectType, ArrayType, EnumType, AliasedType, Frameworks
 
@@ -42,7 +42,8 @@ log = logging.getLogger('global')
 def ucfirst(str):
     return str[:1].upper() + str[1:]
 
-_ALWAYS_SPECIALCASED_ENUM_VALUE_SUBSTRINGS = set(['2D', 'API', 'CSS', 'DOM', 'HTML', 'JIT', 'XHR', 'XML', 'IOS', 'MacOS', 'JavaScript', 'ServiceWorker'])
+
+_ALWAYS_SPECIALCASED_ENUM_VALUE_SUBSTRINGS = set(['2D', 'API', 'CSS', 'DOM', 'HTML', 'JIT', 'SRGB', 'XHR', 'XML', 'IOS', 'MacOS', 'JavaScript', 'ServiceWorker'])
 _ALWAYS_SPECIALCASED_ENUM_VALUE_LOOKUP_TABLE = dict([(s.upper(), s) for s in _ALWAYS_SPECIALCASED_ENUM_VALUE_SUBSTRINGS])
 
 _ENUM_IDENTIFIER_RENAME_MAP = {
@@ -51,7 +52,7 @@ _ENUM_IDENTIFIER_RENAME_MAP = {
     'canvas-webgl2': 'CanvasWebGL2',  # Recording.Type.canvas-webgl2
     'webgl': 'WebGL',  # Canvas.ContextType.webgl
     'webgl2': 'WebGL2',  # Canvas.ContextType.webgl2
-    'webgpu': 'WebGPU',  # Canvas.ContextType.gpu
+    'webgpu': 'WebGPU',  # Canvas.ContextType.webgpu
     'bitmaprenderer': 'BitmapRenderer',  # Canvas.ContextType.bitmaprenderer
     'mediasource': 'MediaSource',  # Console.ChannelSource.mediasource
     'webrtc': 'WebRTC',  # Console.ChannelSource.webrtc
@@ -73,9 +74,6 @@ _TYPES_NEEDING_RUNTIME_CASTS = set([
     "Runtime.CollectionEntry",
     "Debugger.FunctionDetails",
     "Debugger.CallFrame",
-    "Canvas.TraceLog",
-    "Canvas.ResourceInfo",
-    "Canvas.ResourceState",
     # This should be a temporary hack. TimelineEvent should be created via generated C++ API.
     "Timeline.TimelineEvent",
     # For testing purposes only.
@@ -85,10 +83,19 @@ _TYPES_NEEDING_RUNTIME_CASTS = set([
 # FIXME: This should be converted into a property in JSON.
 _TYPES_WITH_OPEN_FIELDS = {
     "Timeline.TimelineEvent": [],
-    # InspectorStyleSheet not only creates this property but wants to read it and modify it.
-    "CSS.CSSProperty": [],
-    # InspectorNetworkAgent needs to update mime-type.
-    "Network.Response": ["mimeType"],
+    "CSS.CSSProperty": ["priority", "parsedOk", "status"],
+    "DOM.HighlightConfig": [],
+    "DOM.RGBAColor": [],
+    "DOMStorage.StorageId": [],
+    "Debugger.BreakpointAction": [],
+    "Debugger.BreakpointOptions": [],
+    "Debugger.Location": [],
+    "IndexedDB.Key": [],
+    "IndexedDB.KeyRange": [],
+    "Network.Response": ["status", "statusText", "mimeType", "source"],
+    "Page.Cookie": [],
+    "Runtime.CallArgument": ["objectId"],
+    "Runtime.TypeLocation": [],
     # For testing purposes only.
     "Test.OpenParameters": ["alpha"],
 }
@@ -134,7 +141,7 @@ class Generator:
             if self.model().framework.name not in allowed_frameworks:
                 continue
 
-            if framework_name == "WTF":
+            if framework_name == "WTF" or framework_name == "std":
                 includes.add("#include <%s>" % header_path)
             elif self.model().framework.name != framework_name:
                 includes.add("#include <%s/%s>" % (framework_name, os.path.basename(header_path)))
@@ -152,6 +159,9 @@ class Generator:
 
     def generate_output(self):
         pass
+
+    def needs_preprocess(self):
+        return False
 
     def output_filename(self):
         pass

@@ -35,7 +35,6 @@
 #import "WAKAppKitStubs.h"
 #import "WebEvent.h"
 #import "WindowsKeyboardCodes.h"
-#import <wtf/Optional.h>
 #import <wtf/WallTime.h>
 
 namespace WebCore {
@@ -73,14 +72,14 @@ static PlatformEvent::Type mouseEventType(WebEvent *event)
 {
     switch (event.type) {
     case WebEventMouseDown:
-        return PlatformEvent::MousePressed;
+        return PlatformEvent::Type::MousePressed;
     case WebEventMouseUp:
-        return PlatformEvent::MouseReleased;
+        return PlatformEvent::Type::MouseReleased;
     case WebEventMouseMoved:
-        return PlatformEvent::MouseMoved;
+        return PlatformEvent::Type::MouseMoved;
     default:
         ASSERT_NOT_REACHED();
-        return PlatformEvent::MousePressed;
+        return PlatformEvent::Type::MousePressed;
     }
 }
 
@@ -110,7 +109,7 @@ public:
     {
         ASSERT(event.type == WebEventScrollWheel);
 
-        m_type = PlatformEvent::Wheel;
+        m_type = PlatformEvent::Type::Wheel;
         m_timestamp = WallTime::now();
 
         m_position = pointForEvent(event);
@@ -489,7 +488,7 @@ public:
     {
         ASSERT(event.type == WebEventKeyDown || event.type == WebEventKeyUp);
 
-        m_type = (event.type == WebEventKeyUp ? PlatformEvent::KeyUp : PlatformEvent::KeyDown);
+        m_type = (event.type == WebEventKeyUp ? PlatformEvent::Type::KeyUp : PlatformEvent::Type::KeyDown);
         m_modifiers = modifiersForEvent(event);
         m_timestamp = WallTime::now();
 
@@ -512,21 +511,21 @@ public:
 
         // Always use 13 for Enter/Return -- we don't want to use AppKit's different character for Enter.
         if (m_windowsVirtualKeyCode == '\r') {
-            m_text = "\r";
-            m_unmodifiedText = "\r";
+            m_text = "\r"_s;
+            m_unmodifiedText = m_text;
         }
 
         // The adjustments below are only needed in backward compatibility mode, but we cannot tell what mode we are in from here.
 
         // Turn 0x7F into 8, because backspace needs to always be 8.
-        if (m_text == "\x7F")
-            m_text = "\x8";
-        if (m_unmodifiedText == "\x7F")
-            m_unmodifiedText = "\x8";
+        if (m_text == "\x7F"_s)
+            m_text = "\x8"_s;
+        if (m_unmodifiedText == "\x7F"_s)
+            m_unmodifiedText = "\x8"_s;
         // Always use 9 for tab -- we don't want to use AppKit's different character for shift-tab.
         if (m_windowsVirtualKeyCode == 9) {
-            m_text = "\x9";
-            m_unmodifiedText = "\x9";
+            m_text = "\x9"_s;
+            m_unmodifiedText = m_text;
         }
     }
 };
@@ -561,27 +560,27 @@ static PlatformEvent::Type touchEventType(WebEvent *event)
 {
     switch (event.type) {
     case WebEventTouchBegin:
-        return PlatformEvent::TouchStart;
+        return PlatformEvent::Type::TouchStart;
     case WebEventTouchEnd:
-        return PlatformEvent::TouchEnd;
+        return PlatformEvent::Type::TouchEnd;
     case WebEventTouchCancel:
-        return PlatformEvent::TouchCancel;
+        return PlatformEvent::Type::TouchCancel;
     case WebEventTouchChange:
-        return PlatformEvent::TouchMove;
+        return PlatformEvent::Type::TouchMove;
     default:
         ASSERT_NOT_REACHED();
-        return PlatformEvent::TouchCancel;
+        return PlatformEvent::Type::TouchCancel;
     }
 }
     
 static PlatformTouchPoint::TouchPhaseType touchPhaseFromPlatformEventType(PlatformEvent::Type type)
 {
     switch (type) {
-    case PlatformEvent::TouchStart:
+    case PlatformEvent::Type::TouchStart:
         return PlatformTouchPoint::TouchPhaseBegan;
-    case PlatformEvent::TouchMove:
+    case PlatformEvent::Type::TouchMove:
         return PlatformTouchPoint::TouchPhaseMoved;
-    case PlatformEvent::TouchEnd:
+    case PlatformEvent::Type::TouchEnd:
         return PlatformTouchPoint::TouchPhaseEnded;
     default:
         ASSERT_NOT_REACHED();

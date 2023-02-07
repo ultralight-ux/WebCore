@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 
 #include "SQLValue.h"
 #include "SQLiteDatabase.h"
+#include <wtf/Span.h>
 
 struct sqlite3_stmt;
 
@@ -35,13 +36,16 @@ namespace WebCore {
 class SQLiteStatement {
     WTF_MAKE_NONCOPYABLE(SQLiteStatement); WTF_MAKE_FAST_ALLOCATED;
 public:
-    WEBCORE_EXPORT SQLiteStatement(SQLiteDatabase&, const String&);
     WEBCORE_EXPORT ~SQLiteStatement();
-    
-    WEBCORE_EXPORT int prepare();
-    WEBCORE_EXPORT int bindBlob(int index, const void* blob, int size);
+    WEBCORE_EXPORT SQLiteStatement(SQLiteStatement&&);
+
+    // Binds multiple parameters. Returns true if all were successfully bound.
+    template<typename T, typename... Args>
+    bool bind(T, Args&&...);
+
+    WEBCORE_EXPORT int bindBlob(int index, Span<const uint8_t>);
     WEBCORE_EXPORT int bindBlob(int index, const String&);
-    WEBCORE_EXPORT int bindText(int index, const String&);
+    WEBCORE_EXPORT int bindText(int index, StringView);
     WEBCORE_EXPORT int bindInt(int index, int);
     WEBCORE_EXPORT int bindInt64(int index, int64_t);
     WEBCORE_EXPORT int bindDouble(int index, double);
@@ -50,55 +54,75 @@ public:
     WEBCORE_EXPORT unsigned bindParameterCount() const;
 
     WEBCORE_EXPORT int step();
-    WEBCORE_EXPORT int finalize();
     WEBCORE_EXPORT int reset();
     
-    int prepareAndStep() { if (int error = prepare()) return error; return step(); }
-    
-    // prepares, steps, and finalizes the query.
+    // steps and finalizes the query.
     // returns true if all 3 steps succeed with step() returning SQLITE_DONE
     // returns false otherwise  
     WEBCORE_EXPORT bool executeCommand();
-    
-    // prepares, steps, and finalizes.  
-    // returns true is step() returns SQLITE_ROW
-    // returns false otherwise
-    bool returnsAtLeastOneResult();
-
-    bool isExpired();
 
     // Returns -1 on last-step failing.  Otherwise, returns number of rows
     // returned in the last step()
     int columnCount();
-    
-    WEBCORE_EXPORT bool isColumnNull(int col);
-    WEBCORE_EXPORT bool isColumnDeclaredAsBlob(int col);
-    String getColumnName(int col);
-    SQLValue getColumnValue(int col);
-    WEBCORE_EXPORT String getColumnText(int col);
-    WEBCORE_EXPORT double getColumnDouble(int col);
-    WEBCORE_EXPORT int getColumnInt(int col);
-    WEBCORE_EXPORT int64_t getColumnInt64(int col);
-    WEBCORE_EXPORT String getColumnBlobAsString(int col);
-    WEBCORE_EXPORT void getColumnBlobAsVector(int col, Vector<char>&);
-    WEBCORE_EXPORT void getColumnBlobAsVector(int col, Vector<uint8_t>&);
 
-    bool returnTextResults(int col, Vector<String>&);
-    bool returnIntResults(int col, Vector<int>&);
-    bool returnInt64Results(int col, Vector<int64_t>&);
-    bool returnDoubleResults(int col, Vector<double>&);
+    bool isReadOnly();
+    
+    WEBCORE_EXPORT bool isColumnDeclaredAsBlob(int col);
+    String columnName(int col);
+    SQLValue columnValue(int col);
+    WEBCORE_EXPORT String columnText(int col);
+    WEBCORE_EXPORT double columnDouble(int col);
+    WEBCORE_EXPORT int columnInt(int col);
+    WEBCORE_EXPORT int64_t columnInt64(int col);
+    WEBCORE_EXPORT String columnBlobAsString(int col);
+    WEBCORE_EXPORT Vector<uint8_t> columnBlob(int col);
+
+    // The returned Span stays valid until the next step() / reset() or destruction of the statement.
+    Span<const uint8_t> columnBlobAsSpan(int col);
 
     SQLiteDatabase& database() { return m_database; }
     
-    const String& query() const { return m_query; }
-    
 private:
+    friend class SQLiteDatabase;
+    SQLiteStatement(SQLiteDatabase&, sqlite3_stmt*);
+
+    // Returns true if the prepared statement has been stepped at least once using step() but has neither run to completion (returned SQLITE_DONE from step()) nor been reset().
+    bool hasStartedStepping();
+
+    template<typename T, typename... Args> bool bindImpl(int i, T first, Args&&... args);
+    template<typename T> bool bindImpl(int, T);
+
     SQLiteDatabase& m_database;
-    String m_query;
     sqlite3_stmt* m_statement;
-#if ASSERT_ENABLED
-    bool m_isPrepared { false };
-#endif
 };
+
+template<typename T, typename... Args>
+inline bool SQLiteStatement::bind(T first, Args&&... args)
+{
+    return bindImpl(1, first, std::forward<Args>(args)...);
+}
+
+template<typename T, typename... Args>
+inline bool SQLiteStatement::bindImpl(int i, T first, Args&&... args)
+{
+    return bindImpl(i, first) && bindImpl(i+1, std::forward<Args>(args)...);
+}
+
+template<typename T>
+inline bool SQLiteStatement::bindImpl(int i, T value)
+{
+    if constexpr (std::is_convertible_v<T, Span<const uint8_t>>)
+        return bindBlob(i, value) == SQLITE_OK;
+    else if constexpr (std::is_convertible_v<T, StringView>)
+        return bindText(i, value) == SQLITE_OK;
+    else if constexpr (std::is_same_v<T, std::nullptr_t>)
+        return bindNull(i) == SQLITE_OK;
+    else if constexpr (std::is_floating_point_v<T>)
+        return bindDouble(i, value) == SQLITE_OK;
+    else if constexpr (std::is_same_v<T, SQLValue>)
+        return bindValue(i, value) == SQLITE_OK;
+    else
+        return bindInt64(i, value) == SQLITE_OK;
+}
 
 } // namespace WebCore

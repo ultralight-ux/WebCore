@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (C) 2015 Ericsson AB. All rights reserved.
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,7 +36,6 @@
 
 namespace WebCore {
 
-class AudioSourceProvider;
 class GraphicsContext;
 class MediaSample;
 class RealtimeMediaSourceCapabilities;
@@ -58,6 +57,7 @@ public:
         virtual void trackEnded(MediaStreamTrackPrivate&) = 0;
         virtual void trackMutedChanged(MediaStreamTrackPrivate&) = 0;
         virtual void trackSettingsChanged(MediaStreamTrackPrivate&) = 0;
+        virtual void trackConfigurationChanged(MediaStreamTrackPrivate&) { };
         virtual void trackEnabledChanged(MediaStreamTrackPrivate&) = 0;
         virtual void readyStateChanged(MediaStreamTrackPrivate&) { };
     };
@@ -82,10 +82,10 @@ public:
     void stopProducingData() { m_source->stop(); }
     bool isProducingData() { return m_source->isProducingData(); }
 
-    bool isIsolated() const { return m_source->isIsolated(); }
-
     bool muted() const;
     void setMuted(bool muted) { m_source->setMuted(muted); }
+
+    void setIsInBackground(bool value) { m_source->setIsInBackground(value); }
 
     bool isCaptureTrack() const;
 
@@ -96,7 +96,10 @@ public:
 
     RealtimeMediaSource& source() { return m_source.get(); }
     const RealtimeMediaSource& source() const { return m_source.get(); }
-    WEBCORE_EXPORT RealtimeMediaSource::Type type() const;
+    RealtimeMediaSource::Type type() const { return m_source->type(); }
+    CaptureDevice::DeviceType deviceType() const { return m_source->deviceType(); }
+    bool isVideo() const { return m_source->isVideo(); }
+    bool isAudio() const { return m_source->isAudio(); }
 
     void endTrack();
 
@@ -109,7 +112,7 @@ public:
 
     void applyConstraints(const MediaConstraints&, RealtimeMediaSource::ApplyConstraintsHandler&&);
 
-    AudioSourceProvider* audioSourceProvider();
+    RefPtr<WebAudioSourceProvider> createAudioSourceProvider();
 
     void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&);
 
@@ -131,6 +134,7 @@ private:
     void sourceStopped() final;
     void sourceMutedChanged() final;
     void sourceSettingsChanged() final;
+    void sourceConfigurationChanged() final;
     bool preventSourceFromStopping() final;
     void audioUnitWillStart() final;
     void hasStartedProducingData() final;
@@ -153,14 +157,13 @@ private:
     bool m_isEnded { false };
     bool m_hasStartedProducingData { false };
     HintValue m_contentHint { HintValue::Empty };
-    RefPtr<WebAudioSourceProvider> m_audioSourceProvider;
     Ref<const Logger> m_logger;
 #if !RELEASE_LOG_DISABLED
     const void* m_logIdentifier;
 #endif
 };
 
-typedef Vector<RefPtr<MediaStreamTrackPrivate>> MediaStreamTrackPrivateVector;
+typedef Vector<Ref<MediaStreamTrackPrivate>> MediaStreamTrackPrivateVector;
 
 } // namespace WebCore
 

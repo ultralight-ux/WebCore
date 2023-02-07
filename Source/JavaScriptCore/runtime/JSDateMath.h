@@ -42,18 +42,94 @@
 
 #pragma once
 
-#include "VMInlines.h"
+#include "DateInstanceCache.h"
 #include <wtf/DateMath.h>
 #include <wtf/GregorianDateTime.h>
 
 namespace JSC {
 
 class JSGlobalObject;
+class OpaqueICUTimeZone;
 class VM;
 
-JS_EXPORT_PRIVATE void msToGregorianDateTime(VM::DateCache&, double, WTF::TimeType outputTimeType, GregorianDateTime&);
-JS_EXPORT_PRIVATE double gregorianDateTimeToMS(VM::DateCache&, const GregorianDateTime&, double, WTF::TimeType inputTimeType);
-JS_EXPORT_PRIVATE double getUTCOffset(VM::DateCache&);
-JS_EXPORT_PRIVATE double parseDate(JSGlobalObject*, VM&, const WTF::String&);
+static constexpr double minECMAScriptTime = -8.64E15;
+
+#if PLATFORM(COCOA)
+extern JS_EXPORT_PRIVATE std::atomic<uint64_t> lastTimeZoneID;
+#endif
+
+// We do not expose icu::TimeZone in this header file. And we cannot use icu::TimeZone forward declaration
+// because icu namespace can be an alias to icu$verNum namespace.
+struct OpaqueICUTimeZoneDeleter {
+    JS_EXPORT_PRIVATE void operator()(OpaqueICUTimeZone*);
+};
+
+struct LocalTimeOffsetCache {
+    LocalTimeOffsetCache() = default;
+
+    LocalTimeOffset offset;
+    double start { 0.0 };
+    double end { -1.0 };
+    double incrementStart { 0.0 };
+    double incrementEnd { 0.0 };
+};
+
+class DateCache {
+    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_NONCOPYABLE(DateCache);
+public:
+    DateCache();
+    ~DateCache();
+
+    void resetIfNecessary()
+    {
+#if PLATFORM(COCOA)
+        if (LIKELY(m_cachedTimezoneID == lastTimeZoneID))
+            return;
+        m_cachedTimezoneID = lastTimeZoneID;
+#endif
+        resetIfNecessarySlow();
+    }
+
+    JS_EXPORT_PRIVATE void resetIfNecessarySlow();
+
+    String defaultTimeZone();
+    String timeZoneDisplayName(bool isDST);
+    Ref<DateInstanceData> cachedDateInstanceData(double millisecondsFromEpoch);
+
+    void msToGregorianDateTime(double millisecondsFromEpoch, WTF::TimeType outputTimeType, GregorianDateTime&);
+    double gregorianDateTimeToMS(const GregorianDateTime&, double milliseconds, WTF::TimeType inputTimeType);
+    double localTimeToMS(double milliseconds, WTF::TimeType inputTimeType);
+    JS_EXPORT_PRIVATE double parseDate(JSGlobalObject*, VM&, const WTF::String&);
+
+    static void timeZoneChanged();
+
+private:
+    void timeZoneCacheSlow();
+    LocalTimeOffset localTimeOffset(double millisecondsFromEpoch, WTF::TimeType inputTimeType = WTF::UTCTime);
+    LocalTimeOffset calculateLocalTimeOffset(double millisecondsFromEpoch, WTF::TimeType inputTimeType);
+
+    OpaqueICUTimeZone* timeZoneCache()
+    {
+        if (!m_timeZoneCache)
+            timeZoneCacheSlow();
+        return m_timeZoneCache.get();
+    }
+
+    std::unique_ptr<OpaqueICUTimeZone, OpaqueICUTimeZoneDeleter> m_timeZoneCache;
+    LocalTimeOffsetCache m_utcTimeOffsetCache;
+    LocalTimeOffsetCache m_localTimeOffsetCache;
+    String m_cachedDateString;
+    double m_cachedDateStringValue;
+    DateInstanceCache m_dateInstanceCache;
+    uint64_t m_cachedTimezoneID { 0 };
+    String m_timeZoneStandardDisplayNameCache;
+    String m_timeZoneDSTDisplayNameCache;
+};
+
+ALWAYS_INLINE bool isUTCEquivalent(StringView timeZone)
+{
+    return timeZone == "Etc/UTC"_s || timeZone == "Etc/GMT"_s;
+}
 
 } // namespace JSC

@@ -42,9 +42,9 @@ GST_DEBUG_CATEGORY_EXTERN(webkitMediaThunderDecryptDebugCategory);
 namespace WebCore {
 
 // NOTE: YouTube 2019 EME conformance tests expect this to be >=5s.
-const WTF::Seconds s_licenseKeyResponseTimeout = WTF::Seconds(6);
+const Seconds s_licenseKeyResponseTimeout = Seconds(6);
 
-BoxPtr<OpenCDMSession> CDMProxyThunder::getDecryptionSession(const DecryptionContext& in) const
+BoxPtr<OpenCDMSession> CDMProxyThunder::getDecryptionSession(DecryptionContext& in) const
 {
     GstMappedBuffer mappedKeyID(in.keyIDBuffer, GST_MAP_READ);
     if (!mappedKeyID) {
@@ -54,14 +54,14 @@ BoxPtr<OpenCDMSession> CDMProxyThunder::getDecryptionSession(const DecryptionCon
 
     auto keyID = mappedKeyID.createVector();
 
-    auto keyHandle = getOrWaitForKeyHandle(keyID);
-    if (!keyHandle.hasValue() || !keyHandle.value()->isStatusCurrentlyValid())
+    auto keyHandle = getOrWaitForKeyHandle(keyID, WTFMove(in.cdmProxyDecryptionClient));
+    if (!keyHandle.has_value() || !keyHandle.value()->isStatusCurrentlyValid())
         return nullptr;
 
     KeyHandleValueVariant keyData = keyHandle.value()->value();
-    ASSERT(WTF::holds_alternative<BoxPtr<OpenCDMSession>>(keyData));
+    ASSERT(std::holds_alternative<BoxPtr<OpenCDMSession>>(keyData));
 
-    BoxPtr<OpenCDMSession> keyValue = WTF::get<BoxPtr<OpenCDMSession>>(keyData);
+    BoxPtr<OpenCDMSession> keyValue = std::get<BoxPtr<OpenCDMSession>>(keyData);
 
     if (!keyValue) {
         keyValue = adoptInBoxPtr(opencdm_get_system_session(&static_cast<const CDMInstanceThunder*>(instance())->thunderSystem(), keyID.data(),
@@ -84,7 +84,7 @@ bool CDMProxyThunder::decrypt(CDMProxyThunder::DecryptionContext& input)
 {
     BoxPtr<OpenCDMSession> session = getDecryptionSession(input);
     if (!session) {
-        GST_ERROR("there is no valid session to decrypt for the provided key ID");
+        GST_WARNING("there is no valid session to decrypt for the provided key ID (or the operation was aborted)");
         return false;
     }
 

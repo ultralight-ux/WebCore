@@ -36,8 +36,12 @@ IMAGEIO_EXTERN const CFStringRef kCGImageSourceShouldPreferRGB32;
 IMAGEIO_EXTERN const CFStringRef kCGImageSourceSkipMetadata;
 IMAGEIO_EXTERN const CFStringRef kCGImageSourceSubsampleFactor;
 IMAGEIO_EXTERN const CFStringRef kCGImageSourceShouldCacheImmediately;
+IMAGEIO_EXTERN const CFStringRef kCGImageSourceUseHardwareAcceleration;
 #endif
 
 WTF_EXTERN_C_BEGIN
 CFStringRef CGImageSourceGetTypeWithData(CFDataRef, CFStringRef, bool*);
+#if HAVE(CGIMAGESOURCE_WITH_SET_ALLOWABLE_TYPES)
+OSStatus CGImageSourceSetAllowableTypes(CFArrayRef allowableTypes);
+#endif
 WTF_EXTERN_C_END

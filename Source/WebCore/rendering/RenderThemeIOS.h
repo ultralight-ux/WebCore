@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,12 +30,7 @@
 #include "CSSValueKey.h"
 #include "RenderThemeCocoa.h"
 
-#if USE(SYSTEM_PREVIEW)
-#include "IOSurface.h"
-#include <wtf/RetainPtr.h>
-#endif
-
-OBJC_CLASS CIContext;
+OBJC_CLASS UIImage;
 
 namespace WebCore {
     
@@ -50,10 +45,6 @@ public:
 
     static void adjustRoundBorderRadius(RenderStyle&, RenderBox&);
 
-    CFStringRef contentSizeCategory() const final;
-
-    WEBCORE_EXPORT static void setContentSizeCategory(const String&);
-
 #if USE(SYSTEM_PREVIEW)
     void paintSystemPreviewBadge(Image&, const PaintInfo&, const FloatRect&) override;
 #endif
@@ -65,12 +56,21 @@ public:
 
     WEBCORE_EXPORT static void setFocusRingColor(const Color&);
 
-#if ENABLE(FULL_KEYBOARD_ACCESS)
     WEBCORE_EXPORT static Color systemFocusRingColor();
-#endif
+
+    struct IconAndSize {
+        RetainPtr<UIImage> icon;
+        FloatSize size;
+    };
+
+    WEBCORE_EXPORT static IconAndSize iconForAttachment(const String& fileName, const String& attachmentType, const String& title);
 
 private:
-    LengthBox popupInternalPaddingBox(const RenderStyle&) const override;
+    bool canPaint(const PaintInfo&, const Settings&, StyleAppearance) const final;
+
+    LengthBox popupInternalPaddingBox(const RenderStyle&, const Settings&) const override;
+
+    LayoutRect adjustedPaintRect(const RenderBox&, const LayoutRect&) const override;
 
     int baselinePosition(const RenderBox&) const override;
 
@@ -78,29 +78,30 @@ private:
 
     // Methods for each appearance value.
     void adjustCheckboxStyle(RenderStyle&, const Element*) const override;
-    bool paintCheckboxDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    void paintCheckboxDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
     void adjustRadioStyle(RenderStyle&, const Element*) const override;
-    bool paintRadioDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    void paintRadioDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
     void adjustButtonStyle(RenderStyle&, const Element*) const override;
-    bool paintButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
-    bool paintPushButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
-    void setButtonSize(RenderStyle&) const override;
+    void paintButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    void paintPushButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
-    bool paintFileUploadIconDecorations(const RenderObject& inputRenderer, const RenderObject& buttonRenderer, const PaintInfo&, const IntRect&, Icon*, FileUploadDecorations) override;
+    void adjustTextFieldStyle(RenderStyle&, const Element*) const final;
+    void paintTextFieldDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
+    void adjustTextAreaStyle(RenderStyle&, const Element*) const final;
+    void paintTextAreaDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
 
-    bool paintTextFieldDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) override;
-    bool paintTextAreaDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) override;
+    void paintTextFieldInnerShadow(const PaintInfo&, const FloatRoundedRect&);
 
     void adjustMenuListButtonStyle(RenderStyle&, const Element*) const override;
-    bool paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
+    void paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
 
     void adjustSliderTrackStyle(RenderStyle&, const Element*) const override;
     bool paintSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
     void adjustSliderThumbSize(RenderStyle&, const Element*) const override;
-    bool paintSliderThumbDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    void paintSliderThumbDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
     bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
@@ -110,15 +111,57 @@ private:
 #endif
 
     void adjustSearchFieldStyle(RenderStyle&, const Element*) const override;
-    bool paintSearchFieldDecorations(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    void paintSearchFieldDecorations(const RenderBox&, const PaintInfo&, const IntRect&) override;
+
+#if ENABLE(IOS_FORM_CONTROL_REFRESH)
+    Color checkboxRadioBorderColor(OptionSet<ControlStates::States>, OptionSet<StyleColorOptions>);
+    Color checkboxRadioBackgroundColor(bool useAlternateDesign, const RenderStyle&, OptionSet<ControlStates::States>, OptionSet<StyleColorOptions>);
+    RefPtr<Gradient> checkboxRadioBackgroundGradient(const FloatRect&, OptionSet<ControlStates::States>);
+    Color checkboxRadioIndicatorColor(OptionSet<ControlStates::States>, OptionSet<StyleColorOptions>);
+
+    bool paintCheckbox(const RenderObject&, const PaintInfo&, const FloatRect&) override;
+    bool paintRadio(const RenderObject&, const PaintInfo&, const FloatRect&) override;
+
+    void paintCheckboxRadioInnerShadow(const PaintInfo&, const FloatRoundedRect&, OptionSet<ControlStates::States>);
+
+    Seconds animationRepeatIntervalForProgressBar(const RenderProgress&) const final;
+
+    bool supportsMeter(StyleAppearance, const HTMLMeterElement&) const final;
+    bool paintMeter(const RenderObject&, const PaintInfo&, const IntRect&) final;
+
+#if ENABLE(DATALIST_ELEMENT)
+    bool paintListButton(const RenderObject&, const PaintInfo&, const FloatRect&) final;
+
+    void paintSliderTicks(const RenderObject&, const PaintInfo&, const FloatRect&) final;
+#endif
+
+#if ENABLE(INPUT_TYPE_COLOR)
+    String colorInputStyleSheet(const Settings&) const final;
+
+    void adjustColorWellStyle(RenderStyle&, const Element*) const final;
+    bool paintColorWell(const RenderObject&, const PaintInfo&, const IntRect&) final;
+    void paintColorWellDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) final;
+#endif
+
+    void adjustSearchFieldDecorationPartStyle(RenderStyle&, const Element*) const final;
+    bool paintSearchFieldDecorationPart(const RenderObject&, const PaintInfo&, const IntRect&) final;
+
+    void adjustSearchFieldResultsDecorationPartStyle(RenderStyle&, const Element*) const final;
+    bool paintSearchFieldResultsDecorationPart(const RenderBox&, const PaintInfo&, const IntRect&) final;
+
+    void adjustSearchFieldResultsButtonStyle(RenderStyle&, const Element*) const final;
+    bool paintSearchFieldResultsButton(const RenderBox&, const PaintInfo&, const IntRect&) final;
+#endif
 
     bool supportsFocusRing(const RenderStyle&) const final;
 
-    Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
-    Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
-#if ENABLE(FULL_KEYBOARD_ACCESS)
-    Color platformFocusRingColor(OptionSet<StyleColor::Options>) const final;
-#endif
+    bool supportsBoxShadow(const RenderStyle&) const final;
+
+    Color platformActiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const override;
+    Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColorOptions>) const override;
+    Color platformFocusRingColor(OptionSet<StyleColorOptions>) const final;
+
+    Color platformAnnotationHighlightColor(OptionSet<StyleColorOptions>) const final;
 
 #if ENABLE(TOUCH_EVENTS)
     Color platformTapHighlightColor() const override { return SRGBA<uint8_t> { 26, 26, 26, 77 } ; }
@@ -126,49 +169,40 @@ private:
 
     bool shouldHaveSpinButton(const HTMLInputElement&) const override;
 
-#if ENABLE(VIDEO)
-    String mediaControlsStyleSheet() override;
-    String modernMediaControlsStyleSheet() override;
-    String mediaControlsScript() override;
-    String mediaControlsBase64StringForIconNameAndType(const String&, const String&) override;
-#endif
-
 #if ENABLE(ATTACHMENT_ELEMENT)
     LayoutSize attachmentIntrinsicSize(const RenderAttachment&) const override;
-    int attachmentBaseline(const RenderAttachment&) const override;
     bool attachmentShouldAllowWidthToShrink(const RenderAttachment&) const override { return true; }
+    String attachmentStyleSheet() const final;
     bool paintAttachment(const RenderObject&, const PaintInfo&, const IntRect&) override;
 #endif
-
-    bool shouldMockBoldSystemFontForAccessibility() const override { return m_shouldMockBoldSystemFontForAccessibility; }
-    void setShouldMockBoldSystemFontForAccessibility(bool shouldMockBoldSystemFontForAccessibility) override { m_shouldMockBoldSystemFontForAccessibility = shouldMockBoldSystemFontForAccessibility; }
 
 private:
     RenderThemeIOS();
     virtual ~RenderThemeIOS() = default;
 
-    void purgeCaches() override;
-
 #if PLATFORM(WATCHOS)
     String extraDefaultStyleSheet() final;
 #endif
 
-    FloatRect addRoundedBorderClip(const RenderObject& box, GraphicsContext&, const IntRect&);
-
-    Color systemColor(CSSValueID, OptionSet<StyleColor::Options>) const override;
-
-    String m_legacyMediaControlsScript;
-    String m_mediaControlsScript;
-    String m_legacyMediaControlsStyleSheet;
-    String m_mediaControlsStyleSheet;
-
-#if USE(SYSTEM_PREVIEW)
-    RetainPtr<CIContext> m_ciContext;
-    std::unique_ptr<IOSurface> m_largeBadgeSurface;
-    std::unique_ptr<IOSurface> m_smallBadgeSurface;
+#if ENABLE(IOS_FORM_CONTROL_REFRESH)
+    bool paintProgressBarWithFormControlRefresh(const RenderObject&, const PaintInfo&, const IntRect&);
+    bool paintSliderTrackWithFormControlRefresh(const RenderObject&, const PaintInfo&, const IntRect&);
+    void paintMenuListButtonDecorationsWithFormControlRefresh(const RenderBox&, const PaintInfo&, const FloatRect&);
 #endif
 
-    bool m_shouldMockBoldSystemFontForAccessibility { false };
+    bool isSubmitStyleButton(const Element&) const;
+
+    void adjustButtonLikeControlStyle(RenderStyle&, const Element&) const;
+
+    FloatRect addRoundedBorderClip(const RenderObject& box, GraphicsContext&, const IntRect&);
+
+    Color systemColor(CSSValueID, OptionSet<StyleColorOptions>) const override;
+
+    Color pictureFrameColor(const RenderObject&) override;
+
+    Color controlTintColor(const RenderStyle&, OptionSet<StyleColorOptions>) const;
+
+    void adjustStyleForAlternateFormControlDesignTransition(RenderStyle&, const Element*) const;
 };
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2022 Apple Inc. All Rights Reserved.
  * Copyright (C) 2009, 2011 Google Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,76 +28,115 @@
 #include "config.h"
 #include "WorkerGlobalScope.h"
 
+#include "CSSFontSelector.h"
 #include "CSSValueList.h"
 #include "CSSValuePool.h"
+#include "CommonVM.h"
 #include "ContentSecurityPolicy.h"
 #include "Crypto.h"
+#include "FontCustomPlatformData.h"
+#include "FontFaceSet.h"
 #include "IDBConnectionProxy.h"
 #include "ImageBitmapOptions.h"
 #include "InspectorInstrumentation.h"
+#include "JSDOMExceptionHandling.h"
+#include "NotImplemented.h"
 #include "Performance.h"
-#include "RuntimeEnabledFeatures.h"
+#include "RTCDataChannelRemoteHandlerConnection.h"
+#include "ReportingScope.h"
 #include "ScheduledAction.h"
 #include "ScriptSourceCode.h"
 #include "SecurityOrigin.h"
 #include "SecurityOriginPolicy.h"
+#include "ServiceWorker.h"
+#include "ServiceWorkerClientData.h"
 #include "ServiceWorkerGlobalScope.h"
 #include "SocketProvider.h"
-#include "WorkerEventLoop.h"
-#include "WorkerInspectorController.h"
+#include "URLKeepingBlobAlive.h"
+#include "ViolationReportType.h"
+#include "WorkerCacheStorageConnection.h"
+#include "WorkerClient.h"
+#include "WorkerFileSystemStorageConnection.h"
+#include "WorkerFontLoadRequest.h"
 #include "WorkerLoaderProxy.h"
 #include "WorkerLocation.h"
+#include "WorkerMessagePortChannelProvider.h"
 #include "WorkerMessagingProxy.h"
 #include "WorkerNavigator.h"
+#include "WorkerOrWorkletGlobalScope.h"
 #include "WorkerReportingProxy.h"
 #include "WorkerSWClientConnection.h"
 #include "WorkerScriptLoader.h"
+#include "WorkerStorageConnection.h"
 #include "WorkerThread.h"
 #include <JavaScriptCore/ScriptArguments.h>
 #include <JavaScriptCore/ScriptCallStack.h>
 #include <wtf/IsoMallocInlines.h>
+#include <wtf/Lock.h>
+#include <wtf/WorkQueue.h>
+#include <wtf/threads/BinarySemaphore.h>
 
 namespace WebCore {
 using namespace Inspector;
 
+static Lock allWorkerGlobalScopeIdentifiersLock;
+static HashSet<ScriptExecutionContextIdentifier>& allWorkerGlobalScopeIdentifiers() WTF_REQUIRES_LOCK(allWorkerGlobalScopeIdentifiersLock)
+{
+    static NeverDestroyed<HashSet<ScriptExecutionContextIdentifier>> identifiers;
+    ASSERT(allWorkerGlobalScopeIdentifiersLock.isLocked());
+    return identifiers;
+}
+
+static WorkQueue& sharedFileSystemStorageQueue()
+{
+    static NeverDestroyed<Ref<WorkQueue>> queue(WorkQueue::create("Shared File System Storage Queue",  WorkQueue::QOS::Default));
+    return queue.get();
+}
+
 WTF_MAKE_ISO_ALLOCATED_IMPL(WorkerGlobalScope);
 
-WorkerGlobalScope::WorkerGlobalScope(const WorkerParameters& params, Ref<SecurityOrigin>&& origin, WorkerThread& thread, Ref<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider)
-    : m_url(params.scriptURL)
-    , m_identifier(params.identifier)
+WorkerGlobalScope::WorkerGlobalScope(WorkerThreadType type, const WorkerParameters& params, Ref<SecurityOrigin>&& origin, WorkerThread& thread, Ref<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider, std::unique_ptr<WorkerClient>&& workerClient)
+    : WorkerOrWorkletGlobalScope(type, params.sessionID, isMainThread() ? Ref { commonVM() } : JSC::VM::create(), params.referrerPolicy, &thread, params.clientIdentifier)
+    , m_url(params.scriptURL)
+    , m_ownerURL(params.ownerURL)
+    , m_inspectorIdentifier(params.inspectorIdentifier)
     , m_userAgent(params.userAgent)
-    , m_thread(thread)
-    , m_script(makeUnique<WorkerScriptController>(this))
-    , m_inspectorController(makeUnique<WorkerInspectorController>(*this))
     , m_isOnline(params.isOnline)
     , m_shouldBypassMainWorldContentSecurityPolicy(params.shouldBypassMainWorldContentSecurityPolicy)
     , m_topOrigin(WTFMove(topOrigin))
-#if ENABLE(INDEXED_DATABASE)
     , m_connectionProxy(connectionProxy)
-#endif
     , m_socketProvider(socketProvider)
     , m_performance(Performance::create(this, params.timeOrigin))
-    , m_referrerPolicy(params.referrerPolicy)
-    , m_requestAnimationFrameEnabled(params.requestAnimationFrameEnabled)
+    , m_reportingScope(ReportingScope::create(*this))
+    , m_workerClient(WTFMove(workerClient))
+    , m_settingsValues(params.settingsValues)
+    , m_workerType(params.workerType)
+    , m_credentials(params.credentials)
 {
-#if !ENABLE(INDEXED_DATABASE)
-    UNUSED_PARAM(connectionProxy);
-#endif
+    {
+        Locker locker { allWorkerGlobalScopeIdentifiersLock };
+        allWorkerGlobalScopeIdentifiers().add(identifier());
+    }
 
     if (m_topOrigin->hasUniversalAccess())
         origin->grantUniversalAccess();
     if (m_topOrigin->needsStorageAccessFromFileURLsQuirk())
         origin->grantStorageAccessFromFileURLsQuirk();
 
+    setStorageBlockingPolicy(m_settingsValues.storageBlockingPolicy);
     setSecurityOriginPolicy(SecurityOriginPolicy::create(WTFMove(origin)));
     setContentSecurityPolicy(makeUnique<ContentSecurityPolicy>(URL { m_url }, *this));
+    setCrossOriginEmbedderPolicy(params.crossOriginEmbedderPolicy);
 }
 
 WorkerGlobalScope::~WorkerGlobalScope()
 {
     ASSERT(thread().thread() == &Thread::current());
-    // We need to remove from the contexts map very early in the destructor so that calling postTask() on this WorkerGlobalScope from another thread is safe.
-    removeFromContextsMap();
+
+    {
+        Locker locker { allWorkerGlobalScopeIdentifiersLock };
+        allWorkerGlobalScopeIdentifiers().remove(identifier());
+    }
 
     m_performance = nullptr;
     m_crypto = nullptr;
@@ -106,62 +145,47 @@ WorkerGlobalScope::~WorkerGlobalScope()
     thread().workerReportingProxy().workerGlobalScopeDestroyed();
 }
 
-EventLoopTaskGroup& WorkerGlobalScope::eventLoop()
-{
-    ASSERT(isContextThread());
-    if (UNLIKELY(!m_defaultTaskGroup)) {
-        m_eventLoop = WorkerEventLoop::create(*this);
-        m_defaultTaskGroup = makeUnique<EventLoopTaskGroup>(*m_eventLoop);
-        if (activeDOMObjectsAreStopped())
-            m_defaultTaskGroup->stopAndDiscardAllTasks();
-    }
-    return *m_defaultTaskGroup;
-}
-
 String WorkerGlobalScope::origin() const
 {
     auto* securityOrigin = this->securityOrigin();
     return securityOrigin ? securityOrigin->toString() : emptyString();
 }
 
-void WorkerGlobalScope::prepareForTermination()
+void WorkerGlobalScope::prepareForDestruction()
 {
-#if ENABLE(INDEXED_DATABASE)
-    stopIndexedDatabase();
+    WorkerOrWorkletGlobalScope::prepareForDestruction();
+
+#if ENABLE(SERVICE_WORKER)
+    if (settingsValues().serviceWorkersEnabled)
+        swClientConnection().unregisterServiceWorkerClient(identifier());
 #endif
 
-    if (m_defaultTaskGroup)
-        m_defaultTaskGroup->stopAndDiscardAllTasks();
-    stopActiveDOMObjects();
+    stopIndexedDatabase();
 
     if (m_cacheStorageConnection)
         m_cacheStorageConnection->clearPendingRequests();
 
-    m_inspectorController->workerTerminating();
+    if (m_storageConnection)
+        m_storageConnection->scopeClosed();
 
-    // Event listeners would keep DOMWrapperWorld objects alive for too long. Also, they have references to JS objects,
-    // which become dangling once Heap is destroyed.
-    removeAllEventListeners();
-
-    // MicrotaskQueue and RejectedPromiseTracker reference Heap.
-    if (m_eventLoop)
-        m_eventLoop->clearMicrotaskQueue();
-    removeRejectedPromiseTracker();
+    if (m_fileSystemStorageConnection)
+        m_fileSystemStorageConnection->scopeClosed();
 }
 
 void WorkerGlobalScope::removeAllEventListeners()
 {
-    EventTarget::removeAllEventListeners();
+    WorkerOrWorkletGlobalScope::removeAllEventListeners();
     m_performance->removeAllEventListeners();
     m_performance->removeAllObservers();
+    m_reportingScope->removeAllObservers();
 }
 
 bool WorkerGlobalScope::isSecureContext() const
 {
-    if (!RuntimeEnabledFeatures::sharedFeatures().secureContextChecksEnabled())
+    if (!settingsValues().secureContextChecksEnabled)
         return true;
 
-    return securityOrigin() && securityOrigin()->isPotentiallyTrustworthy();
+    return m_topOrigin->isPotentiallyTrustworthy();
 }
 
 void WorkerGlobalScope::applyContentSecurityPolicyResponseHeaders(const ContentSecurityPolicyResponseHeaders& contentSecurityPolicyResponseHeaders)
@@ -184,57 +208,84 @@ String WorkerGlobalScope::userAgent(const URL&) const
     return m_userAgent;
 }
 
-void WorkerGlobalScope::disableEval(const String& errorMessage)
-{
-    m_script->disableEval(errorMessage);
-}
-
-void WorkerGlobalScope::disableWebAssembly(const String& errorMessage)
-{
-    m_script->disableWebAssembly(errorMessage);
-}
-
 SocketProvider* WorkerGlobalScope::socketProvider()
 {
     return m_socketProvider.get();
 }
 
-#if ENABLE(INDEXED_DATABASE)
+RefPtr<RTCDataChannelRemoteHandlerConnection> WorkerGlobalScope::createRTCDataChannelRemoteHandlerConnection()
+{
+    RefPtr<RTCDataChannelRemoteHandlerConnection> connection;
+    callOnMainThreadAndWait([workerThread = Ref { thread() }, &connection]() mutable {
+        connection = workerThread->workerLoaderProxy().createRTCDataChannelRemoteHandlerConnection();
+    });
+    ASSERT(connection);
+
+    return connection;
+}
 
 IDBClient::IDBConnectionProxy* WorkerGlobalScope::idbConnectionProxy()
 {
-#if ENABLE(INDEXED_DATABASE_IN_WORKERS)
     return m_connectionProxy.get();
-#else
-    return nullptr;
-#endif
 }
 
 void WorkerGlobalScope::stopIndexedDatabase()
 {
-#if ENABLE(INDEXED_DATABASE_IN_WORKERS)
     if (m_connectionProxy)
         m_connectionProxy->forgetActivityForCurrentThread();
-#endif
 }
 
 void WorkerGlobalScope::suspend()
 {
-#if ENABLE(INDEXED_DATABASE_IN_WORKERS)
     if (m_connectionProxy)
-        m_connectionProxy->setContextSuspended(*scriptExecutionContext(), true);
+        m_connectionProxy->setContextSuspended(*this, true);
+
+#if ENABLE(SERVICE_WORKER)
+    if (settingsValues().serviceWorkersEnabled)
+        swClientConnection().unregisterServiceWorkerClient(identifier());
 #endif
 }
 
 void WorkerGlobalScope::resume()
 {
-#if ENABLE(INDEXED_DATABASE_IN_WORKERS)
-    if (m_connectionProxy)
-        m_connectionProxy->setContextSuspended(*scriptExecutionContext(), false);
+#if ENABLE(SERVICE_WORKER)
+    if (settingsValues().serviceWorkersEnabled)
+        updateServiceWorkerClientData();
 #endif
+
+    if (m_connectionProxy)
+        m_connectionProxy->setContextSuspended(*this, false);
 }
 
-#endif // ENABLE(INDEXED_DATABASE)
+WorkerStorageConnection& WorkerGlobalScope::storageConnection()
+{
+    if (!m_storageConnection)
+        m_storageConnection = WorkerStorageConnection::create(*this);
+
+    return *m_storageConnection;
+}
+
+void WorkerGlobalScope::postFileSystemStorageTask(Function<void()>&& task)
+{
+    sharedFileSystemStorageQueue().dispatch(WTFMove(task));
+}
+
+WorkerFileSystemStorageConnection& WorkerGlobalScope::getFileSystemStorageConnection(Ref<FileSystemStorageConnection>&& mainThreadConnection)
+{
+    if (!m_fileSystemStorageConnection)
+        m_fileSystemStorageConnection = WorkerFileSystemStorageConnection::create(*this, WTFMove(mainThreadConnection));
+    else if (m_fileSystemStorageConnection->mainThreadConnection() != mainThreadConnection.ptr()) {
+        m_fileSystemStorageConnection->connectionClosed();
+        m_fileSystemStorageConnection = WorkerFileSystemStorageConnection::create(*this, WTFMove(mainThreadConnection));
+    }
+
+    return *m_fileSystemStorageConnection;
+}
+
+WorkerFileSystemStorageConnection* WorkerGlobalScope::fileSystemStorageConnection()
+{
+    return m_fileSystemStorageConnection.get();
+}
 
 WorkerLocation& WorkerGlobalScope::location() const
 {
@@ -245,13 +296,13 @@ WorkerLocation& WorkerGlobalScope::location() const
 
 void WorkerGlobalScope::close()
 {
-    if (m_closing)
+    if (isClosing())
         return;
 
     // Let current script run to completion but prevent future script evaluations.
     // After m_closing is set, all the tasks in the queue continue to be fetched but only
     // tasks with isCleanupTask()==true will be executed.
-    m_closing = true;
+    markAsClosing();
     postTask({ ScriptExecutionContext::Task::CleanupTask, [] (ScriptExecutionContext& context) {
         ASSERT_WITH_SECURITY_IMPLICATION(is<WorkerGlobalScope>(context));
         WorkerGlobalScope& workerGlobalScope = downcast<WorkerGlobalScope>(context);
@@ -274,16 +325,11 @@ void WorkerGlobalScope::setIsOnline(bool isOnline)
         m_navigator->setIsOnline(isOnline);
 }
 
-void WorkerGlobalScope::postTask(Task&& task)
-{
-    thread().runLoop().postTask(WTFMove(task));
-}
-
-ExceptionOr<int> WorkerGlobalScope::setTimeout(JSC::JSGlobalObject& state, std::unique_ptr<ScheduledAction> action, int timeout, Vector<JSC::Strong<JSC::Unknown>>&& arguments)
+ExceptionOr<int> WorkerGlobalScope::setTimeout(std::unique_ptr<ScheduledAction> action, int timeout, FixedVector<JSC::Strong<JSC::Unknown>>&& arguments)
 {
     // FIXME: Should this check really happen here? Or should it happen when code is about to eval?
     if (action->type() == ScheduledAction::Type::Code) {
-        if (!contentSecurityPolicy()->allowEval(&state))
+        if (!contentSecurityPolicy()->allowEval(globalObject(), LogToConsole::Yes, action->code()))
             return 0;
     }
 
@@ -297,11 +343,11 @@ void WorkerGlobalScope::clearTimeout(int timeoutId)
     DOMTimer::removeById(*this, timeoutId);
 }
 
-ExceptionOr<int> WorkerGlobalScope::setInterval(JSC::JSGlobalObject& state, std::unique_ptr<ScheduledAction> action, int timeout, Vector<JSC::Strong<JSC::Unknown>>&& arguments)
+ExceptionOr<int> WorkerGlobalScope::setInterval(std::unique_ptr<ScheduledAction> action, int timeout, FixedVector<JSC::Strong<JSC::Unknown>>&& arguments)
 {
     // FIXME: Should this check really happen here? Or should it happen when code is about to eval?
     if (action->type() == ScheduledAction::Type::Code) {
-        if (!contentSecurityPolicy()->allowEval(&state))
+        if (!contentSecurityPolicy()->allowEval(globalObject(), LogToConsole::Yes, action->code()))
             return 0;
     }
 
@@ -315,11 +361,16 @@ void WorkerGlobalScope::clearInterval(int timeoutId)
     DOMTimer::removeById(*this, timeoutId);
 }
 
-ExceptionOr<void> WorkerGlobalScope::importScripts(const Vector<String>& urls)
+ExceptionOr<void> WorkerGlobalScope::importScripts(const FixedVector<String>& urls)
 {
     ASSERT(contentSecurityPolicy());
 
-    Vector<URL> completedURLs;
+    // https://html.spec.whatwg.org/multipage/workers.html#importing-scripts-and-libraries
+    // 1. If worker global scope's type is "module", throw a TypeError exception.
+    if (m_workerType == WorkerType::Module)
+        return Exception { TypeError, "importScripts cannot be used if worker type is \"module\""_s };
+
+    Vector<URLKeepingBlobAlive> completedURLs;
     completedURLs.reserveInitialCapacity(urls.size());
     for (auto& entry : urls) {
         URL url = completeURL(entry);
@@ -350,17 +401,29 @@ ExceptionOr<void> WorkerGlobalScope::importScripts(const Vector<String>& urls)
 
         auto scriptLoader = WorkerScriptLoader::create();
         auto cspEnforcement = shouldBypassMainWorldContentSecurityPolicy ? ContentSecurityPolicyEnforcement::DoNotEnforce : ContentSecurityPolicyEnforcement::EnforceScriptSrcDirective;
-        if (auto exception = scriptLoader->loadSynchronously(this, url, FetchOptions::Mode::NoCors, cachePolicy, cspEnforcement, resourceRequestIdentifier()))
+        if (auto exception = scriptLoader->loadSynchronously(this, url, WorkerScriptLoader::Source::ClassicWorkerImport, FetchOptions::Mode::NoCors, cachePolicy, cspEnforcement, resourceRequestIdentifier()))
             return WTFMove(*exception);
 
-        InspectorInstrumentation::scriptImported(*this, scriptLoader->identifier(), scriptLoader->script());
+        // https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-worker-imported-script (step 7).
+        bool mutedErrors = scriptLoader->responseTainting() == ResourceResponse::Tainting::Opaque || scriptLoader->responseTainting() == ResourceResponse::Tainting::Opaqueredirect;
 
-        NakedPtr<JSC::Exception> exception;
-        m_script->evaluate(ScriptSourceCode(scriptLoader->script(), URL(scriptLoader->responseURL())), exception);
-        if (exception) {
-            m_script->setException(exception);
-            return { };
+        InspectorInstrumentation::scriptImported(*this, scriptLoader->identifier(), scriptLoader->script().toString());
+
+        WeakPtr<ScriptBufferSourceProvider> sourceProvider;
+        {
+            NakedPtr<JSC::Exception> exception;
+            ScriptSourceCode sourceCode(scriptLoader->script(), URL(scriptLoader->responseURL()));
+            sourceProvider = static_cast<ScriptBufferSourceProvider&>(sourceCode.provider());
+            script()->evaluate(sourceCode, exception);
+            if (exception) {
+                if (mutedErrors)
+                    return Exception { NetworkError, "Network response is CORS-cross-origin"_s };
+                script()->setException(exception);
+                return { };
+            }
         }
+        if (sourceProvider)
+            addImportedScriptSourceProvider(url, *sourceProvider);
     }
 
     return { };
@@ -406,81 +469,32 @@ void WorkerGlobalScope::addMessage(MessageSource source, MessageLevel level, con
     InspectorInstrumentation::addMessageToConsole(*this, WTFMove(message));
 }
 
-bool WorkerGlobalScope::isContextThread() const
-{
-    return thread().thread() == &Thread::current();
-}
-
-bool WorkerGlobalScope::isJSExecutionForbidden() const
-{
-    return m_script->isExecutionForbidden();
-}
-
 #if ENABLE(WEB_CRYPTO)
-
-class CryptoBufferContainer : public ThreadSafeRefCounted<CryptoBufferContainer> {
-public:
-    static Ref<CryptoBufferContainer> create() { return adoptRef(*new CryptoBufferContainer); }
-    Vector<uint8_t>& buffer() { return m_buffer; }
-
-private:
-    Vector<uint8_t> m_buffer;
-};
-
-class CryptoBooleanContainer : public ThreadSafeRefCounted<CryptoBooleanContainer> {
-public:
-    static Ref<CryptoBooleanContainer> create() { return adoptRef(*new CryptoBooleanContainer); }
-    bool boolean() const { return m_boolean; }
-    void setBoolean(bool boolean) { m_boolean = boolean; }
-
-private:
-    std::atomic<bool> m_boolean { false };
-};
 
 bool WorkerGlobalScope::wrapCryptoKey(const Vector<uint8_t>& key, Vector<uint8_t>& wrappedKey)
 {
-    Ref<WorkerGlobalScope> protectedThis(*this);
-    auto resultContainer = CryptoBooleanContainer::create();
-    auto doneContainer = CryptoBooleanContainer::create();
-    auto wrappedKeyContainer = CryptoBufferContainer::create();
-    m_thread.workerLoaderProxy().postTaskToLoader([resultContainer, key, wrappedKeyContainer, doneContainer, workerMessagingProxy = makeRef(downcast<WorkerMessagingProxy>(m_thread.workerLoaderProxy()))](ScriptExecutionContext& context) {
-        resultContainer->setBoolean(context.wrapCryptoKey(key, wrappedKeyContainer->buffer()));
-        doneContainer->setBoolean(true);
-        workerMessagingProxy->postTaskForModeToWorkerGlobalScope([](ScriptExecutionContext& context) {
-            ASSERT_UNUSED(context, context.isWorkerGlobalScope());
-        }, WorkerRunLoop::defaultMode());
+    Ref protectedThis { *this };
+    bool success = false;
+    BinarySemaphore semaphore;
+    thread().workerLoaderProxy().postTaskToLoader([&semaphore, &success, &key, &wrappedKey](auto& context) {
+        success = context.wrapCryptoKey(key, wrappedKey);
+        semaphore.signal();
     });
-
-    auto waitResult = MessageQueueMessageReceived;
-    while (!doneContainer->boolean() && waitResult != MessageQueueTerminated)
-        waitResult = m_thread.runLoop().runInMode(this, WorkerRunLoop::defaultMode());
-
-    if (doneContainer->boolean())
-        wrappedKey.swap(wrappedKeyContainer->buffer());
-    return resultContainer->boolean();
+    semaphore.wait();
+    return success;
 }
 
 bool WorkerGlobalScope::unwrapCryptoKey(const Vector<uint8_t>& wrappedKey, Vector<uint8_t>& key)
 {
-    Ref<WorkerGlobalScope> protectedThis(*this);
-    auto resultContainer = CryptoBooleanContainer::create();
-    auto doneContainer = CryptoBooleanContainer::create();
-    auto keyContainer = CryptoBufferContainer::create();
-    m_thread.workerLoaderProxy().postTaskToLoader([resultContainer, wrappedKey, keyContainer, doneContainer, workerMessagingProxy = makeRef(downcast<WorkerMessagingProxy>(m_thread.workerLoaderProxy()))](ScriptExecutionContext& context) {
-        resultContainer->setBoolean(context.unwrapCryptoKey(wrappedKey, keyContainer->buffer()));
-        doneContainer->setBoolean(true);
-        workerMessagingProxy->postTaskForModeToWorkerGlobalScope([](ScriptExecutionContext& context) {
-            ASSERT_UNUSED(context, context.isWorkerGlobalScope());
-        }, WorkerRunLoop::defaultMode());
+    Ref protectedThis { *this };
+    bool success = false;
+    BinarySemaphore semaphore;
+    thread().workerLoaderProxy().postTaskToLoader([&semaphore, &success, &key, &wrappedKey](auto& context) {
+        success = context.unwrapCryptoKey(wrappedKey, key);
+        semaphore.signal();
     });
-
-    auto waitResult = MessageQueueMessageReceived;
-    while (!doneContainer->boolean() && waitResult != MessageQueueTerminated)
-        waitResult = m_thread.runLoop().runInMode(this, WorkerRunLoop::defaultMode());
-
-    if (doneContainer->boolean())
-        key.swap(keyContainer->buffer());
-    return resultContainer->boolean();
+    semaphore.wait();
+    return success;
 }
 
 #endif // ENABLE(WEB_CRYPTO)
@@ -537,9 +551,152 @@ CSSValuePool& WorkerGlobalScope::cssValuePool()
     return *m_cssValuePool;
 }
 
-ReferrerPolicy WorkerGlobalScope::referrerPolicy() const
+CSSFontSelector* WorkerGlobalScope::cssFontSelector()
 {
-    return m_referrerPolicy;
+    if (!m_cssFontSelector)
+        m_cssFontSelector = CSSFontSelector::create(*this);
+    return m_cssFontSelector.get();
 }
+
+Ref<FontFaceSet> WorkerGlobalScope::fonts()
+{
+    ASSERT(cssFontSelector());
+    return cssFontSelector()->fontFaceSet();
+}
+
+std::unique_ptr<FontLoadRequest> WorkerGlobalScope::fontLoadRequest(const String& url, bool, bool, LoadedFromOpaqueSource loadedFromOpaqueSource)
+{
+    return makeUnique<WorkerFontLoadRequest>(completeURL(url), loadedFromOpaqueSource);
+}
+
+void WorkerGlobalScope::beginLoadingFontSoon(FontLoadRequest& request)
+{
+    ASSERT(is<WorkerFontLoadRequest>(request));
+    downcast<WorkerFontLoadRequest>(request).load(*this);
+}
+
+WorkerThread& WorkerGlobalScope::thread() const
+{
+    return *static_cast<WorkerThread*>(workerOrWorkletThread());
+}
+
+void WorkerGlobalScope::releaseMemory(Synchronous synchronous)
+{
+    ASSERT(isContextThread());
+    deleteJSCodeAndGC(synchronous);
+    clearDecodedScriptData();
+}
+
+void WorkerGlobalScope::deleteJSCodeAndGC(Synchronous synchronous)
+{
+    ASSERT(isContextThread());
+
+    JSC::JSLockHolder lock(vm());
+    vm().deleteAllCode(JSC::DeleteAllCodeIfNotCollecting);
+
+    if (synchronous == Synchronous::Yes) {
+        if (!vm().heap.currentThreadIsDoingGCWork()) {
+            vm().heap.collectNow(JSC::Sync, JSC::CollectionScope::Full);
+            WTF::releaseFastMallocFreeMemory();
+            return;
+        }
+    }
+#if PLATFORM(IOS_FAMILY)
+    if (!vm().heap.currentThreadIsDoingGCWork()) {
+        vm().heap.collectNowFullIfNotDoneRecently(JSC::Async);
+        return;
+    }
+#endif
+#if USE(CF) || USE(GLIB)
+    vm().heap.reportAbandonedObjectGraph();
+#else
+    vm().heap.collectNow(JSC::Async, JSC::CollectionScope::Full);
+#endif
+}
+
+void WorkerGlobalScope::releaseMemoryInWorkers(Synchronous synchronous)
+{
+    Locker locker { allWorkerGlobalScopeIdentifiersLock };
+    for (auto& globalScopeIdentifier : allWorkerGlobalScopeIdentifiers()) {
+        postTaskTo(globalScopeIdentifier, [synchronous](auto& context) {
+            downcast<WorkerGlobalScope>(context).releaseMemory(synchronous);
+        });
+    }
+}
+
+void WorkerGlobalScope::setMainScriptSourceProvider(ScriptBufferSourceProvider& provider)
+{
+    ASSERT(!m_mainScriptSourceProvider);
+    m_mainScriptSourceProvider = provider;
+}
+
+void WorkerGlobalScope::addImportedScriptSourceProvider(const URL& url, ScriptBufferSourceProvider& provider)
+{
+    m_importedScriptsSourceProviders.ensure(url, [] {
+        return WeakHashSet<ScriptBufferSourceProvider> { };
+    }).iterator->value.add(provider);
+}
+
+void WorkerGlobalScope::clearDecodedScriptData()
+{
+    ASSERT(isContextThread());
+
+    if (m_mainScriptSourceProvider)
+        m_mainScriptSourceProvider->clearDecodedData();
+
+    for (auto& sourceProviders : m_importedScriptsSourceProviders.values()) {
+        for (auto& sourceProvider : sourceProviders)
+            sourceProvider.clearDecodedData();
+    }
+}
+
+bool WorkerGlobalScope::crossOriginIsolated() const
+{
+    return ScriptExecutionContext::crossOriginMode() == CrossOriginMode::Isolated;
+}
+
+void WorkerGlobalScope::updateSourceProviderBuffers(const ScriptBuffer& mainScript, const HashMap<URL, ScriptBuffer>& importedScripts)
+{
+    ASSERT(isContextThread());
+
+    if (mainScript && m_mainScriptSourceProvider)
+        m_mainScriptSourceProvider->tryReplaceScriptBuffer(mainScript);
+
+    for (auto& pair : importedScripts) {
+        auto it = m_importedScriptsSourceProviders.find(pair.key);
+        if (it == m_importedScriptsSourceProviders.end())
+            continue;
+        for (auto& sourceProvider : it->value)
+            sourceProvider.tryReplaceScriptBuffer(pair.value);
+    }
+}
+
+#if ENABLE(SERVICE_WORKER)
+void WorkerGlobalScope::updateServiceWorkerClientData()
+{
+    if (!settingsValues().serviceWorkersEnabled)
+        return;
+
+    ASSERT(type() == WebCore::WorkerGlobalScope::Type::DedicatedWorker || type() == WebCore::WorkerGlobalScope::Type::SharedWorker);
+    auto controllingServiceWorkerRegistrationIdentifier = activeServiceWorker() ? std::make_optional<ServiceWorkerRegistrationIdentifier>(activeServiceWorker()->registrationIdentifier()) : std::nullopt;
+    swClientConnection().registerServiceWorkerClient(clientOrigin(), ServiceWorkerClientData::from(*this), controllingServiceWorkerRegistrationIdentifier, String { m_userAgent });
+}
+#endif
+
+void WorkerGlobalScope::notifyReportObservers(Ref<Report>&& reports)
+{
+    reportingScope().notifyReportObservers(WTFMove(reports));
+}
+
+String WorkerGlobalScope::endpointURIForToken(const String& token) const
+{
+    return reportingScope().endpointURIForToken(token);
+}
+
+void WorkerGlobalScope::sendReportToEndpoints(const URL&, const Vector<String>& /*endpointURIs*/, const Vector<String>& /*endpointTokens*/, Ref<FormData>&&, ViolationReportType)
+{
+    notImplemented();
+}
+
 
 } // namespace WebCore

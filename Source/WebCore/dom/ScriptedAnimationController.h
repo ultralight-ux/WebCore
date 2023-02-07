@@ -39,6 +39,8 @@ namespace WebCore {
 class Document;
 class Page;
 class RequestAnimationFrameCallback;
+class UserGestureToken;
+class WeakPtrImplWithEventTargetData;
 
 class ScriptedAnimationController : public RefCounted<ScriptedAnimationController>
 {
@@ -49,7 +51,6 @@ public:
     }
     ~ScriptedAnimationController();
     void clearDocumentPointer() { m_document = nullptr; }
-    bool requestAnimationFrameEnabled() const;
 
     WEBCORE_EXPORT Seconds interval() const;
     WEBCORE_EXPORT OptionSet<ThrottlingReason> throttlingReasons() const;
@@ -74,10 +75,13 @@ private:
     bool shouldRescheduleRequestAnimationFrame(ReducedResolutionSeconds) const;
     void scheduleAnimation();
 
-    using CallbackList = Vector<RefPtr<RequestAnimationFrameCallback>>;
-    CallbackList m_callbacks;
+    struct CallbackData {
+        Ref<RequestAnimationFrameCallback> callback;
+        RefPtr<UserGestureToken> userGestureTokenToForward;
+    };
+    Vector<CallbackData> m_callbackDataList;
 
-    WeakPtr<Document> m_document;
+    WeakPtr<Document, WeakPtrImplWithEventTargetData> m_document;
     CallbackId m_nextCallbackId { 0 };
     int m_suspendCount { 0 };
 

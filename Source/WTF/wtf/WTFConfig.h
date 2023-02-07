@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,7 +33,7 @@
 #include <wtf/StdLibExtras.h>
 #include <wtf/threads/Signals.h>
 
-#if defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
+#if USE(SYSTEM_MALLOC)
 namespace Gigacage {
 constexpr size_t reservedSlotsForGigacageConfig = 0;
 constexpr size_t reservedBytesForGigacageConfig = 0;
@@ -42,19 +42,23 @@ constexpr size_t reservedBytesForGigacageConfig = 0;
 #include <bmalloc/GigacageConfig.h>
 #endif
 
+#if ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
 namespace WebConfig {
 
 using Slot = uint64_t;
 extern "C" WTF_EXPORT_PRIVATE Slot g_config[];
 
 } // namespace WebConfig
+#endif // ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
 
 namespace WTF {
 
-constexpr size_t ConfigSizeToProtect = CeilingOnPageSize;
+constexpr size_t ConfigAlignment = CeilingOnPageSize;
+constexpr size_t ConfigSizeToProtect = std::max(CeilingOnPageSize, 16 * KB);
 
 struct Config {
     WTF_EXPORT_PRIVATE static void permanentlyFreeze();
+    WTF_EXPORT_PRIVATE static void initialize();
 
     struct AssertNotFrozenScope {
         AssertNotFrozenScope();
@@ -65,8 +69,19 @@ struct Config {
     // initial value is 0 / null / falsy because Config is instantiated
     // as a global singleton.
 
-    bool isPermanentlyFrozen;
+    uintptr_t lowestAccessibleAddress;
+    uintptr_t highestAccessibleAddress;
 
+    bool isPermanentlyFrozen;
+#if PLATFORM(COCOA)
+    bool disableForwardingVPrintfStdErrToOSLog;
+#endif
+
+#if USE(PTHREADS)
+    bool isUserSpecifiedThreadSuspendResumeSignalConfigured;
+    bool isThreadSuspendResumeSignalConfigured;
+    int sigThreadSuspendResume;
+#endif
 #if OS(UNIX)
     SignalHandlers signalHandlers;
 #endif
@@ -74,6 +89,8 @@ struct Config {
 
     uint64_t spaceForExtensions[1];
 };
+
+#if ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
 
 constexpr size_t startSlotOfWTFConfig = Gigacage::reservedSlotsForGigacageConfig;
 constexpr size_t startOffsetOfWTFConfig = startSlotOfWTFConfig * sizeof(WebConfig::Slot);
@@ -85,7 +102,19 @@ constexpr size_t alignmentOfWTFConfig = std::alignment_of<WTF::Config>::value;
 static_assert(Gigacage::reservedBytesForGigacageConfig + sizeof(WTF::Config) <= ConfigSizeToProtect);
 static_assert(roundUpToMultipleOf<alignmentOfWTFConfig>(startOffsetOfWTFConfig) == startOffsetOfWTFConfig);
 
+WTF_EXPORT_PRIVATE void setPermissionsOfConfigPage();
+
 #define g_wtfConfig (*bitwise_cast<WTF::Config*>(&WebConfig::g_config[WTF::startSlotOfWTFConfig]))
+
+#else // not ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
+
+inline void setPermissionsOfConfigPage() { }
+
+extern "C" WTF_EXPORT_PRIVATE Config g_wtfConfig;
+
+#endif // ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
+
+constexpr size_t offsetOfWTFConfigLowestAccessibleAddress = offsetof(WTF::Config, lowestAccessibleAddress);
 
 ALWAYS_INLINE Config::AssertNotFrozenScope::AssertNotFrozenScope()
 {
@@ -100,3 +129,7 @@ ALWAYS_INLINE Config::AssertNotFrozenScope::~AssertNotFrozenScope()
 };
 
 } // namespace WTF
+
+#if !ENABLE(UNIFIED_AND_FREEZABLE_CONFIG_RECORD)
+using WTF::g_wtfConfig;
+#endif

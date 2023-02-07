@@ -38,26 +38,29 @@ ContextMenuItem::ContextMenuItem(ContextMenuItemType type, ContextMenuAction act
     , m_title(title)
     , m_enabled(true)
     , m_checked(false)
+    , m_indentationLevel(0)
 {
     if (subMenu)
         setSubMenu(subMenu);
 }
 
-ContextMenuItem::ContextMenuItem(ContextMenuItemType type, ContextMenuAction action, const String& title, bool enabled, bool checked)
+ContextMenuItem::ContextMenuItem(ContextMenuItemType type, ContextMenuAction action, const String& title, bool enabled, bool checked, unsigned indentationLevel)
     : m_type(type)
     , m_action(action)
     , m_title(title)
     , m_enabled(enabled)
     , m_checked(checked)
+    , m_indentationLevel(indentationLevel)
 {
 }
         
-ContextMenuItem::ContextMenuItem(ContextMenuAction action, const String& title, bool enabled, bool checked, const Vector<ContextMenuItem>& subMenuItems)
+ContextMenuItem::ContextMenuItem(ContextMenuAction action, const String& title, bool enabled, bool checked, const Vector<ContextMenuItem>& subMenuItems, unsigned indentationLevel)
     : m_type(SubmenuType)
     , m_action(action)
     , m_title(title)
     , m_enabled(enabled)
     , m_checked(checked)
+    , m_indentationLevel(indentationLevel)
     , m_subMenuItems(subMenuItems)
 {
 }
@@ -67,6 +70,7 @@ ContextMenuItem::ContextMenuItem()
     , m_action(ContextMenuItemTagNoAction)
     , m_enabled(false)
     , m_checked(false)
+    , m_indentationLevel(0)
 {
 }
 
@@ -109,6 +113,16 @@ ContextMenuAction ContextMenuItem::action() const
     return m_action;
 }
 
+void ContextMenuItem::setIndentationLevel(unsigned indentationLevel)
+{
+    m_indentationLevel = indentationLevel;
+}
+
+unsigned ContextMenuItem::indentationLevel() const
+{
+    return m_indentationLevel;
+}
+
 void ContextMenuItem::setChecked(bool checked)
 {
     m_checked = checked;
@@ -129,7 +143,7 @@ bool ContextMenuItem::enabled() const
     return m_enabled;
 }
 
-bool isValidContextMenuAction(ContextMenuAction action)
+static bool isValidContextMenuAction(WebCore::ContextMenuAction action)
 {
     switch (action) {
     case ContextMenuAction::ContextMenuItemTagNoAction:
@@ -139,6 +153,7 @@ bool isValidContextMenuAction(ContextMenuAction action)
     case ContextMenuAction::ContextMenuItemTagOpenImageInNewWindow:
     case ContextMenuAction::ContextMenuItemTagDownloadImageToDisk:
     case ContextMenuAction::ContextMenuItemTagCopyImageToClipboard:
+    case ContextMenuAction::ContextMenuItemTagCopySubject:
 #if PLATFORM(GTK)
     case ContextMenuAction::ContextMenuItemTagCopyImageUrlToClipboard:
 #endif
@@ -182,6 +197,9 @@ bool isValidContextMenuAction(ContextMenuAction action)
     case ContextMenuAction::ContextMenuItemPDFZoomOut:
     case ContextMenuAction::ContextMenuItemPDFAutoSize:
     case ContextMenuAction::ContextMenuItemPDFSinglePage:
+    case ContextMenuAction::ContextMenuItemPDFSinglePageContinuous:
+    case ContextMenuAction::ContextMenuItemPDFTwoPages:
+    case ContextMenuAction::ContextMenuItemPDFTwoPagesContinuous:
     case ContextMenuAction::ContextMenuItemPDFFacingPages:
     case ContextMenuAction::ContextMenuItemPDFContinuous:
     case ContextMenuAction::ContextMenuItemPDFNextPage:
@@ -215,6 +233,8 @@ bool isValidContextMenuAction(ContextMenuAction action)
     case ContextMenuAction::ContextMenuItemTagTextDirectionDefault:
     case ContextMenuAction::ContextMenuItemTagTextDirectionLeftToRight:
     case ContextMenuAction::ContextMenuItemTagTextDirectionRightToLeft:
+    case ContextMenuAction::ContextMenuItemTagAddHighlightToCurrentQuickNote:
+    case ContextMenuAction::ContextMenuItemTagAddHighlightToNewQuickNote:
 #if PLATFORM(COCOA)
     case ContextMenuAction::ContextMenuItemTagCorrectSpellingAutomatically:
     case ContextMenuAction::ContextMenuItemTagSubstitutionsMenu:
@@ -235,6 +255,7 @@ bool isValidContextMenuAction(ContextMenuAction action)
     case ContextMenuAction::ContextMenuItemTagCopyMediaLinkToClipboard:
     case ContextMenuAction::ContextMenuItemTagToggleMediaControls:
     case ContextMenuAction::ContextMenuItemTagToggleMediaLoop:
+    case ContextMenuAction::ContextMenuItemTagShowMediaStats:
     case ContextMenuAction::ContextMenuItemTagEnterVideoFullscreen:
     case ContextMenuAction::ContextMenuItemTagMediaPlayPause:
     case ContextMenuAction::ContextMenuItemTagMediaMute:
@@ -242,9 +263,13 @@ bool isValidContextMenuAction(ContextMenuAction action)
     case ContextMenuAction::ContextMenuItemTagToggleVideoFullscreen:
     case ContextMenuAction::ContextMenuItemTagShareMenu:
     case ContextMenuAction::ContextMenuItemTagToggleVideoEnhancedFullscreen:
+    case ContextMenuAction::ContextMenuItemTagLookUpImage:
+    case ContextMenuAction::ContextMenuItemTagTranslate:
     case ContextMenuAction::ContextMenuItemBaseCustomTag:
     case ContextMenuAction::ContextMenuItemLastCustomTag:
     case ContextMenuAction::ContextMenuItemBaseApplicationTag:
+    case ContextMenuAction::ContextMenuItemTagPlayAllAnimations:
+    case ContextMenuAction::ContextMenuItemTagPauseAllAnimations:
         return true;
     }
 
@@ -258,5 +283,14 @@ bool isValidContextMenuAction(ContextMenuAction action)
 }
 
 } // namespace WebCore
+
+namespace WTF {
+
+template<> bool isValidEnum<WebCore::ContextMenuAction, void>(std::underlying_type_t<WebCore::ContextMenuAction> action)
+{
+    return WebCore::isValidContextMenuAction(static_cast<WebCore::ContextMenuAction>(action));
+}
+
+}
 
 #endif // ENABLE(CONTEXT_MENUS)

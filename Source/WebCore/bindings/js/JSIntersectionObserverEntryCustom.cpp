@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 Google LLC. All rights reserved.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,15 +28,19 @@
 #include "JSIntersectionObserverEntry.h"
 
 #include "JSNodeCustom.h"
+#include "WebCoreOpaqueRoot.h"
 
 namespace WebCore {
 
-void JSIntersectionObserverEntry::visitAdditionalChildren(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSIntersectionObserverEntry::visitAdditionalChildren(Visitor& visitor)
 {
-    visitor.addOpaqueRoot(root(wrapped().target()));
-    visitor.addOpaqueRoot(wrapped().boundingClientRect());
-    visitor.addOpaqueRoot(wrapped().intersectionRect());
-    visitor.addOpaqueRoot(wrapped().rootBounds());
+    addWebCoreOpaqueRoot(visitor, wrapped().target());
+    addWebCoreOpaqueRoot(visitor, wrapped().boundingClientRect());
+    addWebCoreOpaqueRoot(visitor, wrapped().intersectionRect());
+    addWebCoreOpaqueRoot(visitor, wrapped().rootBounds());
 }
 
-}
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSIntersectionObserverEntry);
+
+} // namespace WebCore

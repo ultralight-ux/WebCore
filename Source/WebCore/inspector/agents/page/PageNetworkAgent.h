@@ -29,24 +29,32 @@
 
 namespace WebCore {
 
+class InspectorClient;
 class Page;
 
 class PageNetworkAgent final : public InspectorNetworkAgent {
     WTF_MAKE_NONCOPYABLE(PageNetworkAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    PageNetworkAgent(PageAgentContext&);
-    ~PageNetworkAgent() override;
+    PageNetworkAgent(PageAgentContext&, InspectorClient*);
+    ~PageNetworkAgent();
 
 private:
-    String loaderIdentifier(DocumentLoader*) override;
-    String frameIdentifier(DocumentLoader*) override;
-    Vector<WebSocket*> activeWebSockets(const LockHolder&) override;
-    void setResourceCachingDisabled(bool) override;
-    ScriptExecutionContext* scriptExecutionContext(ErrorString&, const String& frameId) override;
-    bool shouldForceBufferingNetworkResourceData() const override { return false; }
+    Inspector::Protocol::Network::LoaderId loaderIdentifier(DocumentLoader*);
+    Inspector::Protocol::Network::FrameId frameIdentifier(DocumentLoader*);
+    Vector<WebSocket*> activeWebSockets() WTF_REQUIRES_LOCK(WebSocket::allActiveWebSocketsLock());
+    void setResourceCachingDisabledInternal(bool);
+#if ENABLE(INSPECTOR_NETWORK_THROTTLING)
+    bool setEmulatedConditionsInternal(std::optional<int>&& bytesPerSecondLimit);
+#endif
+    ScriptExecutionContext* scriptExecutionContext(Inspector::Protocol::ErrorString&, const Inspector::Protocol::Network::FrameId&);
+    void addConsoleMessage(std::unique_ptr<Inspector::ConsoleMessage>&&);
+    bool shouldForceBufferingNetworkResourceData() const { return false; }
 
     Page& m_inspectedPage;
+#if ENABLE(INSPECTOR_NETWORK_THROTTLING)
+    InspectorClient* m_client { nullptr };
+#endif
 };
 
 } // namespace WebCore

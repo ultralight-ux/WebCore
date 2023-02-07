@@ -25,25 +25,22 @@
 
 // FIXME: This should include SVGImageElement.
 typedef (HTMLImageElement or HTMLCanvasElement or ImageBitmap
-#if defined(ENABLE_CSS_TYPED_OM) && ENABLE_CSS_TYPED_OM
-    or TypedOMCSSImageValue
-#endif
+    or CSSStyleImageValue
 #if defined(ENABLE_OFFSCREEN_CANVAS) && ENABLE_OFFSCREEN_CANVAS
     or OffscreenCanvas
 #endif
 #if defined(ENABLE_VIDEO) && ENABLE_VIDEO
     or HTMLVideoElement
 #endif
+#if defined(ENABLE_WEB_CODECS) && ENABLE_WEB_CODECS
+    or WebCodecsVideoFrame
+#endif
 ) CanvasImageSource;
 
-[
-    NoInterfaceObject,
-    Exposed=(Window,Worker)
-] interface CanvasDrawImage {
-    // FIXME: All the unrestricted float arguments below should be unrestricted doubles.
-
+// https://html.spec.whatwg.org/multipage/canvas.html#canvasdrawimage
+interface mixin CanvasDrawImage {
     // drawing images
-    [MayThrowException] void drawImage(CanvasImageSource image, unrestricted double dx, unrestricted double dy);
-    [MayThrowException] void drawImage(CanvasImageSource image, unrestricted double dx, unrestricted double dy, unrestricted double dw, unrestricted double dh);
-    [MayThrowException] void drawImage(CanvasImageSource image, unrestricted double sx, unrestricted double sy, unrestricted double sw, unrestricted double sh, unrestricted double dx, unrestricted double dy, unrestricted double dw, unrestricted double dh);
+    undefined drawImage(CanvasImageSource image, unrestricted double dx, unrestricted double dy);
+    undefined drawImage(CanvasImageSource image, unrestricted double dx, unrestricted double dy, unrestricted double dw, unrestricted double dh);
+    undefined drawImage(CanvasImageSource image, unrestricted double sx, unrestricted double sy, unrestricted double sw, unrestricted double sh, unrestricted double dx, unrestricted double dy, unrestricted double dw, unrestricted double dh);
 };

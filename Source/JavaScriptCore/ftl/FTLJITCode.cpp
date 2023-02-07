@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,6 +37,7 @@ using namespace B3;
 
 JITCode::JITCode()
     : JSC::JITCode(JITType::FTLJIT)
+    , common(/* isUnlinked */ false)
 {
 }
 
@@ -75,7 +76,7 @@ void JITCode::initializeArityCheckEntrypoint(CodeRef<JSEntryPtrTag> entrypoint)
     m_arityCheckEntrypoint = entrypoint;
 }
 
-JITCode::CodePtr<JSEntryPtrTag> JITCode::addressForCall(ArityCheckMode arityCheck)
+CodePtr<JSEntryPtrTag> JITCode::addressForCall(ArityCheckMode arityCheck)
 {
     switch (arityCheck) {
     case ArityCheckNotRequired:
@@ -90,9 +91,9 @@ JITCode::CodePtr<JSEntryPtrTag> JITCode::addressForCall(ArityCheckMode arityChec
 void* JITCode::executableAddressAtOffset(size_t offset)
 {
     if (!offset)
-        return m_addressForCall.executableAddress();
+        return m_addressForCall.taggedPtr();
 
-    char* executableAddress = m_addressForCall.untaggedExecutableAddress<char*>();
+    char* executableAddress = m_addressForCall.untaggedPtr<char*>();
     return tagCodePtr<JSEntryPtrTag>(executableAddress + offset);
 }
 
@@ -138,7 +139,7 @@ DFG::CommonData* JITCode::dfgCommon()
 void JITCode::shrinkToFit(const ConcurrentJSLocker&)
 {
     common.shrinkToFit();
-    osrExit.shrinkToFit();
+    m_osrExit.shrinkToFit();
     osrExitDescriptors.shrinkToFit();
     lazySlowPaths.shrinkToFit();
 }
@@ -147,39 +148,39 @@ void JITCode::validateReferences(const TrackedReferences& trackedReferences)
 {
     common.validateReferences(trackedReferences);
     
-    for (OSRExit& exit : osrExit)
+    for (OSRExit& exit : m_osrExit)
         exit.m_descriptor->validateReferences(trackedReferences);
 }
 
-RegisterSet JITCode::liveRegistersToPreserveAtExceptionHandlingCallSite(CodeBlock*, CallSiteIndex callSiteIndex)
+RegisterSetBuilder JITCode::liveRegistersToPreserveAtExceptionHandlingCallSite(CodeBlock*, CallSiteIndex callSiteIndex)
 {
-    for (OSRExit& exit : osrExit) {
+    for (OSRExit& exit : m_osrExit) {
         if (exit.m_exceptionHandlerCallSiteIndex.bits() == callSiteIndex.bits()) {
             RELEASE_ASSERT(exit.isExceptionHandler());
             RELEASE_ASSERT(exit.isGenericUnwindHandler());
-            return ValueRep::usedRegisters(exit.m_valueReps);
+            return ValueRep::usedRegisters(/* isSIMDContext = */ false, exit.m_valueReps);
         }
     }
     return { };
 }
 
-Optional<CodeOrigin> JITCode::findPC(CodeBlock* codeBlock, void* pc)
+std::optional<CodeOrigin> JITCode::findPC(CodeBlock* codeBlock, void* pc)
 {
-    for (OSRExit& exit : osrExit) {
+    for (OSRExit& exit : m_osrExit) {
         if (ExecutableMemoryHandle* handle = exit.m_code.executableMemory()) {
             if (handle->start().untaggedPtr() <= pc && pc < handle->end().untaggedPtr())
-                return Optional<CodeOrigin>(exit.m_codeOriginForExitProfile);
+                return std::optional<CodeOrigin>(exit.m_codeOriginForExitProfile);
         }
     }
 
     for (std::unique_ptr<LazySlowPath>& lazySlowPath : lazySlowPaths) {
         if (ExecutableMemoryHandle* handle = lazySlowPath->stub().executableMemory()) {
             if (handle->start().untaggedPtr() <= pc && pc < handle->end().untaggedPtr())
-                return Optional<CodeOrigin>(codeBlock->codeOrigin(lazySlowPath->callSiteIndex()));
+                return std::optional<CodeOrigin>(codeBlock->codeOrigin(lazySlowPath->callSiteIndex()));
         }
     }
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 } } // namespace JSC::FTL

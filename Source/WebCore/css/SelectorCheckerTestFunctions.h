@@ -27,19 +27,32 @@
 #pragma once
 
 #include "FocusController.h"
-#include "FullscreenManager.h"
+#include "Frame.h"
+#include "FrameSelection.h"
+#include "HTMLDialogElement.h"
 #include "HTMLFrameElement.h"
 #include "HTMLIFrameElement.h"
+#include "HTMLImageElement.h"
 #include "HTMLInputElement.h"
 #include "HTMLOptionElement.h"
+#include "InspectorInstrumentation.h"
+#include "Page.h"
 #include "SelectorChecker.h"
+#include "Settings.h"
+#include "ShadowRoot.h"
 #include <wtf/Compiler.h>
 
 #if ENABLE(ATTACHMENT_ELEMENT)
 #include "HTMLAttachmentElement.h"
 #endif
 
+#if ENABLE(FULLSCREEN_API)
+#include "DocumentOrShadowRootFullscreen.h"
+#include "FullscreenManager.h"
+#endif
+
 #if ENABLE(VIDEO)
+#include "HTMLMediaElement.h"
 #include "WebVTTElement.h"
 #endif
 
@@ -64,6 +77,11 @@ ALWAYS_INLINE bool isAutofilledStrongPasswordViewable(const Element& element)
     return is<HTMLInputElement>(element) && downcast<HTMLInputElement>(element).isAutoFilledAndViewable();
 }
 
+ALWAYS_INLINE bool isAutofilledAndObscured(const Element& element)
+{
+    return is<HTMLInputElement>(element) && downcast<HTMLInputElement>(element).isAutoFilledAndObscured();
+}
+
 ALWAYS_INLINE bool matchesDefaultPseudoClass(const Element& element)
 {
     return element.matchesDefaultPseudoClass();
@@ -81,9 +99,10 @@ ALWAYS_INLINE bool matchesEnabledPseudoClass(const Element& element)
     return is<HTMLElement>(element) && downcast<HTMLElement>(element).canBeActuallyDisabled() && !element.isDisabledFormControl();
 }
 
+// https://dom.spec.whatwg.org/#concept-element-defined
 ALWAYS_INLINE bool isDefinedElement(const Element& element)
 {
-    return !element.isUndefinedCustomElement();
+    return element.isDefinedCustomElement() || element.isUncustomizedCustomElement();
 }
 
 ALWAYS_INLINE bool isMediaDocument(const Element& element)
@@ -101,7 +120,7 @@ ALWAYS_INLINE bool isChecked(const Element& element)
         return inputElement.shouldAppearChecked() && !inputElement.shouldAppearIndeterminate();
     }
     if (is<HTMLOptionElement>(element))
-        return const_cast<HTMLOptionElement&>(downcast<HTMLOptionElement>(element)).selected();
+        return const_cast<HTMLOptionElement&>(downcast<HTMLOptionElement>(element)).selected(AllowStyleInvalidation::No);
 
     return false;
 }
@@ -155,7 +174,7 @@ ALWAYS_INLINE bool containslanguageSubtagMatchingRange(StringView language, Stri
 {
     unsigned languageSubtagsStartIndex = position;
     unsigned languageSubtagsEndIndex = languageLength;
-    bool isAsteriskRange = range == "*";
+    bool isAsteriskRange = range == "*"_s;
     do {
         if (languageSubtagsStartIndex > 0)
             languageSubtagsStartIndex += 1;
@@ -181,7 +200,7 @@ ALWAYS_INLINE bool containslanguageSubtagMatchingRange(StringView language, Stri
     return false;
 }
 
-ALWAYS_INLINE bool matchesLangPseudoClass(const Element& element, const Vector<AtomString>& argumentList)
+ALWAYS_INLINE bool matchesLangPseudoClass(const Element& element, const FixedVector<PossiblyQuotedIdentifier>& argumentList)
 {
     AtomString language;
 #if ENABLE(VIDEO)
@@ -189,26 +208,23 @@ ALWAYS_INLINE bool matchesLangPseudoClass(const Element& element, const Vector<A
         language = downcast<WebVTTElement>(element).language();
     else
 #endif
-        language = element.computeInheritedLanguage();
+        language = element.effectiveLang();
 
     if (language.isEmpty())
         return false;
 
-    // Implement basic and extended filterings of given language tags
-    // as specified in www.ietf.org/rfc/rfc4647.txt.
-    StringView languageStringView = language.string();
+    // Implement basic and extended filterings of given language tags as specified in www.ietf.org/rfc/rfc4647.txt.
+    StringView languageStringView = language;
     unsigned languageLength = language.length();
-    for (const AtomString& range : argumentList) {
-        if (range.isEmpty())
+    for (auto& range : argumentList) {
+        StringView rangeStringView = range.identifier;
+        if (rangeStringView.isEmpty())
             continue;
-
-        if (range == "*")
+        if (rangeStringView == "*"_s)
             return true;
-
-        StringView rangeStringView = range.string();
         if (equalIgnoringASCIICase(languageStringView, rangeStringView) && !languageStringView.contains('-'))
             return true;
-        
+
         unsigned rangeLength = rangeStringView.length();
         unsigned rangeSubtagsStartIndex = 0;
         unsigned rangeSubtagsEndIndex = rangeLength;
@@ -231,6 +247,25 @@ ALWAYS_INLINE bool matchesLangPseudoClass(const Element& element, const Vector<A
         if (matchedRange)
             return true;
     }
+    return false;
+}
+
+ALWAYS_INLINE bool matchesDirPseudoClass(const Element& element, const AtomString& argument)
+{
+    // FIXME: Add support for non-HTML elements.
+    if (!is<HTMLElement>(element))
+        return false;
+
+    if (!element.document().settings().dirPseudoEnabled())
+        return false;
+
+    switch (element.effectiveTextDirection()) {
+    case TextDirection::LTR:
+        return equalIgnoringASCIICase(argument, "ltr"_s);
+    case TextDirection::RTL:
+        return equalIgnoringASCIICase(argument, "rtl"_s);
+    }
+
     return false;
 }
 
@@ -287,12 +322,12 @@ ALWAYS_INLINE bool scrollbarMatchesActivePseudoClass(const SelectorChecker::Chec
 
 ALWAYS_INLINE bool scrollbarMatchesHorizontalPseudoClass(const SelectorChecker::CheckingContext& context)
 {
-    return context.scrollbarState && context.scrollbarState->orientation == HorizontalScrollbar;
+    return context.scrollbarState && context.scrollbarState->orientation == ScrollbarOrientation::Horizontal;
 }
 
 ALWAYS_INLINE bool scrollbarMatchesVerticalPseudoClass(const SelectorChecker::CheckingContext& context)
 {
-    return context.scrollbarState && context.scrollbarState->orientation == VerticalScrollbar;
+    return context.scrollbarState && context.scrollbarState->orientation == ScrollbarOrientation::Vertical;
 }
 
 ALWAYS_INLINE bool scrollbarMatchesDecrementPseudoClass(const SelectorChecker::CheckingContext& context)
@@ -371,13 +406,22 @@ ALWAYS_INLINE bool scrollbarMatchesCornerPresentPseudoClass(const SelectorChecke
 
 #if ENABLE(FULLSCREEN_API)
 
-ALWAYS_INLINE bool matchesFullScreenPseudoClass(const Element& element)
+ALWAYS_INLINE bool matchesFullscreenPseudoClass(const Element& element)
+{
+    if (element.hasFullscreenFlag())
+        return true;
+    if (element.shadowRoot())
+        return DocumentOrShadowRootFullscreen::fullscreenElement(element.document()) == &element;
+    return false;
+}
+
+ALWAYS_INLINE bool matchesWebkitFullScreenPseudoClass(const Element& element)
 {
     // While a Document is in the fullscreen state, and the document's current fullscreen
     // element is an element in the document, the 'full-screen' pseudoclass applies to
     // that element. Also, an <iframe>, <object> or <embed> element whose child browsing
     // context's Document is in the fullscreen state has the 'full-screen' pseudoclass applied.
-    if (is<HTMLFrameElementBase>(element) && element.containsFullScreenElement())
+    if (is<HTMLFrameElementBase>(element) && element.hasFullscreenFlag())
         return true;
     if (!element.document().fullscreenManager().isFullscreen())
         return false;
@@ -393,7 +437,8 @@ ALWAYS_INLINE bool matchesFullScreenAnimatingFullScreenTransitionPseudoClass(con
 
 ALWAYS_INLINE bool matchesFullScreenAncestorPseudoClass(const Element& element)
 {
-    return element.containsFullScreenElement();
+    auto* currentFullscreenElement = element.document().fullscreenManager().currentFullscreenElement();
+    return currentFullscreenElement && currentFullscreenElement->isDescendantOrShadowDescendantOf(element);
 }
 
 ALWAYS_INLINE bool matchesFullScreenDocumentPseudoClass(const Element& element)
@@ -435,6 +480,107 @@ ALWAYS_INLINE bool matchesPastCuePseudoClass(const Element& element)
     return is<WebVTTElement>(element) && downcast<WebVTTElement>(element).isPastNode();
 }
 
+ALWAYS_INLINE bool matchesPlayingPseudoClass(const Element& element)
+{
+    return is<HTMLMediaElement>(element) && !downcast<HTMLMediaElement>(element).paused();
+}
+
+ALWAYS_INLINE bool matchesPausedPseudoClass(const Element& element)
+{
+    return is<HTMLMediaElement>(element) && downcast<HTMLMediaElement>(element).paused();
+}
+
+ALWAYS_INLINE bool matchesSeekingPseudoClass(const Element& element)
+{
+    return is<HTMLMediaElement>(element) && downcast<HTMLMediaElement>(element).seeking();
+}
+
+ALWAYS_INLINE bool matchesBufferingPseudoClass(const Element& element)
+{
+    return is<HTMLMediaElement>(element) && downcast<HTMLMediaElement>(element).buffering();
+}
+
+ALWAYS_INLINE bool matchesStalledPseudoClass(const Element& element)
+{
+    return is<HTMLMediaElement>(element) && downcast<HTMLMediaElement>(element).stalled();
+}
+
+ALWAYS_INLINE bool matchesMutedPseudoClass(const Element& element)
+{
+    return is<HTMLMediaElement>(element) && downcast<HTMLMediaElement>(element).muted();
+}
+
+ALWAYS_INLINE bool matchesVolumeLockedPseudoClass(const Element& element)
+{
+    return is<HTMLMediaElement>(element) && downcast<HTMLMediaElement>(element).volumeLocked();
+}
 #endif
+
+ALWAYS_INLINE bool isFrameFocused(const Element& element)
+{
+    return element.document().frame() && element.document().frame()->selection().isFocusedAndActive();
+}
+
+ALWAYS_INLINE bool matchesLegacyDirectFocusPseudoClass(const Element& element)
+{
+    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassFocus))
+        return true;
+
+    return element.focused() && isFrameFocused(element);
+}
+
+ALWAYS_INLINE bool doesShadowTreeContainFocusedElement(const Element& element)
+{
+    auto* shadowRoot = element.shadowRoot();
+    return shadowRoot && shadowRoot->containsFocusedElement();
+}
+
+ALWAYS_INLINE bool matchesFocusPseudoClass(const Element& element)
+{
+    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassFocus))
+        return true;
+
+    return (element.focused() || doesShadowTreeContainFocusedElement(element)) && isFrameFocused(element);
+}
+
+ALWAYS_INLINE bool matchesFocusVisiblePseudoClass(const Element& element)
+{
+    if (!element.document().settings().focusVisibleEnabled())
+        return matchesLegacyDirectFocusPseudoClass(element);
+
+    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassFocusVisible))
+        return true;
+
+    return element.hasFocusVisible() && isFrameFocused(element);
+}
+
+ALWAYS_INLINE bool matchesFocusWithinPseudoClass(const Element& element)
+{
+    if (InspectorInstrumentation::forcePseudoState(element, CSSSelector::PseudoClassFocusWithin))
+        return true;
+
+    return element.hasFocusWithin() && isFrameFocused(element);
+}
+
+ALWAYS_INLINE bool matchesModalPseudoClass(const Element& element)
+{
+    if (is<HTMLDialogElement>(element))
+        return downcast<HTMLDialogElement>(element).isModal();
+#if ENABLE(FULLSCREEN_API)
+    return element.hasFullscreenFlag();
+#else
+    return false;
+#endif
+}
+
+ALWAYS_INLINE bool matchesUserInvalidPseudoClass(const Element& element)
+{
+    return element.matchesUserInvalidPseudoClass();
+}
+
+ALWAYS_INLINE bool matchesUserValidPseudoClass(const Element& element)
+{
+    return element.matchesUserValidPseudoClass();
+}
 
 } // namespace WebCore

@@ -27,9 +27,10 @@
 
 namespace WebCore {
 
-enum class MediaDecodingType {
+enum class MediaDecodingType : uint8_t {
     File,
     MediaSource,
+    WebRTC
 };
 
 }

@@ -33,9 +33,9 @@
 
 namespace JSC {
 
-static EncodedJSValue JSC_HOST_CALL symbolProtoGetterDescription(JSGlobalObject*, CallFrame*);
-static EncodedJSValue JSC_HOST_CALL symbolProtoFuncToString(JSGlobalObject*, CallFrame*);
-static EncodedJSValue JSC_HOST_CALL symbolProtoFuncValueOf(JSGlobalObject*, CallFrame*);
+static JSC_DECLARE_CUSTOM_GETTER(symbolProtoGetterDescription);
+static JSC_DECLARE_HOST_FUNCTION(symbolProtoFuncToString);
+static JSC_DECLARE_HOST_FUNCTION(symbolProtoFuncValueOf);
 
 }
 
@@ -43,11 +43,11 @@ static EncodedJSValue JSC_HOST_CALL symbolProtoFuncValueOf(JSGlobalObject*, Call
 
 namespace JSC {
 
-const ClassInfo SymbolPrototype::s_info = { "Symbol", &Base::s_info, &symbolPrototypeTable, nullptr, CREATE_METHOD_TABLE(SymbolPrototype) };
+const ClassInfo SymbolPrototype::s_info = { "Symbol"_s, &Base::s_info, &symbolPrototypeTable, nullptr, CREATE_METHOD_TABLE(SymbolPrototype) };
 
 /* Source for SymbolPrototype.lut.h
 @begin symbolPrototypeTable
-  description       symbolProtoGetterDescription    DontEnum|Accessor 0
+  description       symbolProtoGetterDescription    DontEnum|ReadOnly|CustomAccessor
   toString          symbolProtoFuncToString         DontEnum|Function 0
   valueOf           symbolProtoFuncValueOf          DontEnum|Function 0
 @end
@@ -61,9 +61,9 @@ SymbolPrototype::SymbolPrototype(VM& vm, Structure* structure)
 void SymbolPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
-    JSFunction* toPrimitiveFunction = JSFunction::create(vm, globalObject, 1, "[Symbol.toPrimitive]"_s, symbolProtoFuncValueOf, NoIntrinsic);
+    JSFunction* toPrimitiveFunction = JSFunction::create(vm, globalObject, 1, "[Symbol.toPrimitive]"_s, symbolProtoFuncValueOf, ImplementationVisibility::Public);
     putDirectWithoutTransition(vm, vm.propertyNames->toPrimitiveSymbol, toPrimitiveFunction, PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
     JSC_TO_STRING_TAG_WITHOUT_TRANSITION();
 }
@@ -74,7 +74,7 @@ static const ASCIILiteral SymbolDescriptionTypeError { "Symbol.prototype.descrip
 static const ASCIILiteral SymbolToStringTypeError { "Symbol.prototype.toString requires that |this| be a symbol or a symbol object"_s };
 static const ASCIILiteral SymbolValueOfTypeError { "Symbol.prototype.valueOf requires that |this| be a symbol or a symbol object"_s };
 
-inline Symbol* tryExtractSymbol(VM& vm, JSValue thisValue)
+inline Symbol* tryExtractSymbol(JSValue thisValue)
 {
     if (thisValue.isSymbol())
         return asSymbol(thisValue);
@@ -82,47 +82,47 @@ inline Symbol* tryExtractSymbol(VM& vm, JSValue thisValue)
     if (!thisValue.isObject())
         return nullptr;
     JSObject* thisObject = asObject(thisValue);
-    if (!thisObject->inherits<SymbolObject>(vm))
+    if (!thisObject->inherits<SymbolObject>())
         return nullptr;
     return asSymbol(jsCast<SymbolObject*>(thisObject)->internalValue());
 }
 
-EncodedJSValue JSC_HOST_CALL symbolProtoGetterDescription(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_CUSTOM_GETTER(symbolProtoGetterDescription, (JSGlobalObject* globalObject, EncodedJSValue thisValue, PropertyName))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    Symbol* symbol = tryExtractSymbol(vm, callFrame->thisValue());
+    Symbol* symbol = tryExtractSymbol(JSValue::decode(thisValue));
     if (!symbol)
         return throwVMTypeError(globalObject, scope, SymbolDescriptionTypeError);
     scope.release();
-    Integrity::auditStructureID(vm, symbol->structureID());
-    const auto description = symbol->description();
-    return JSValue::encode(description.isNull() ? jsUndefined() : jsString(vm, description));
+    Integrity::auditStructureID(symbol->structureID());
+    auto description = symbol->description();
+    return JSValue::encode(description.isNull() ? jsUndefined() : jsString(vm, WTFMove(description)));
 }
 
-EncodedJSValue JSC_HOST_CALL symbolProtoFuncToString(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_HOST_FUNCTION(symbolProtoFuncToString, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    Symbol* symbol = tryExtractSymbol(vm, callFrame->thisValue());
+    Symbol* symbol = tryExtractSymbol(callFrame->thisValue());
     if (!symbol)
         return throwVMTypeError(globalObject, scope, SymbolToStringTypeError);
-    Integrity::auditStructureID(vm, symbol->structureID());
+    Integrity::auditStructureID(symbol->structureID());
     RELEASE_AND_RETURN(scope, JSValue::encode(jsNontrivialString(vm, symbol->descriptiveString())));
 }
 
-EncodedJSValue JSC_HOST_CALL symbolProtoFuncValueOf(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_HOST_FUNCTION(symbolProtoFuncValueOf, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    Symbol* symbol = tryExtractSymbol(vm, callFrame->thisValue());
+    Symbol* symbol = tryExtractSymbol(callFrame->thisValue());
     if (!symbol)
         return throwVMTypeError(globalObject, scope, SymbolValueOfTypeError);
 
-    Integrity::auditStructureID(vm, symbol->structureID());
+    Integrity::auditStructureID(symbol->structureID());
     RELEASE_AND_RETURN(scope, JSValue::encode(symbol));
 }
 

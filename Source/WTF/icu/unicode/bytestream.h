@@ -38,6 +38,9 @@
  */
 
 #include "unicode/utypes.h"
+
+#if U_SHOW_CPLUSPLUS_API
+
 #include "unicode/uobject.h"
 #include "unicode/std_string.h"
 
@@ -237,13 +240,12 @@ class StringByteSink : public ByteSink {
    * @stable ICU 4.2
    */
   StringByteSink(StringClass* dest) : dest_(dest) { }
-#ifndef U_HIDE_DRAFT_API
   /**
    * Constructs a ByteSink that reserves append capacity and will append bytes to the dest string.
    * 
    * @param dest pointer to string object to append to
    * @param initialAppendCapacity capacity beyond dest->length() to be reserve()d
-   * @draft ICU 60
+   * @stable ICU 60
    */
   StringByteSink(StringClass* dest, int32_t initialAppendCapacity) : dest_(dest) {
     if (initialAppendCapacity > 0 &&
@@ -251,7 +253,6 @@ class StringByteSink : public ByteSink {
       dest->reserve(dest->length() + initialAppendCapacity);
     }
   }
-#endif  // U_HIDE_DRAFT_API
   /**
    * Append "bytes[0,n-1]" to this.
    * @param data the pointer to the bytes
@@ -268,5 +269,7 @@ class StringByteSink : public ByteSink {
 };
 
 U_NAMESPACE_END
+
+#endif /* U_SHOW_CPLUSPLUS_API */
 
 #endif  // __BYTESTREAM_H__

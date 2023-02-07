@@ -36,10 +36,10 @@ namespace WebCore {
 
 void ClipboardImageReader::readBuffer(const String&, const String&, Ref<SharedBuffer>&& buffer)
 {
-    if (m_mimeType == "image/png") {
+    if (m_mimeType == "image/png"_s) {
         auto image = adoptNS([PAL::allocUIImageInstance() initWithData:buffer->createNSData().get()]);
         if (auto nsData = UIImagePNGRepresentation(image.get()))
-            m_result = Blob::create(m_document.get(), SharedBuffer::create(nsData), m_mimeType);
+            m_result = Blob::create(m_document.get(), Vector { static_cast<const uint8_t*>(nsData.bytes), nsData.length }, m_mimeType);
     }
 }
 

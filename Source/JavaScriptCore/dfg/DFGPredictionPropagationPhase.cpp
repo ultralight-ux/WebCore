@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -370,15 +370,19 @@ private:
         }
         case ArithMin:
         case ArithMax: {
-            SpeculatedType left = node->child1()->prediction();
-            SpeculatedType right = node->child2()->prediction();
-            
-            if (left && right) {
-                if (Node::shouldSpeculateInt32OrBooleanForArithmetic(node->child1().node(), node->child2().node())
-                    && node->canSpeculateInt32(m_pass))
+            bool unknownPrediction = false;
+            SpeculatedType prediction = SpecNone;
+            m_graph.doToChildren(node, [&](Edge& child) {
+                if (!child->prediction())
+                    unknownPrediction = true;
+                prediction = mergeSpeculations(prediction, child->prediction());
+            });
+
+            if (!unknownPrediction) {
+                if (m_graph.variadicArithShouldSpeculateInt32(node, m_pass))
                     changed |= mergePrediction(SpecInt32Only);
                 else
-                    changed |= mergePrediction(speculatedDoubleTypeForPredictions(left, right));
+                    changed |= mergePrediction(speculatedDoubleTypeForPrediction(prediction));
             }
             break;
         }
@@ -473,14 +477,14 @@ private:
             Edge child1 = m_graph.child(node, 0);
             if (!child1->prediction())
                 break;
-            
+
             Edge child2 = m_graph.child(node, 1);
             ArrayMode arrayMode = node->arrayMode().refine(
                 m_graph, node,
                 child1->prediction(),
                 child2->prediction(),
                 SpecNone);
-            
+
             switch (arrayMode.type()) {
             case Array::Int32:
                 if (arrayMode.isOutOfBounds())
@@ -514,6 +518,10 @@ private:
             case Array::Uint16Array:
             case Array::Int32Array:
                 changed |= mergePrediction(SpecInt32Only);
+                break;
+            case Array::BigInt64Array:
+            case Array::BigUint64Array:
+                changed |= mergePrediction(SpecBigInt);
                 break;
             default:
                 changed |= mergePrediction(node->getHeapPrediction());
@@ -697,7 +705,20 @@ private:
         }
 
         case ArithMin:
-        case ArithMax:
+        case ArithMax: {
+            bool shouldVoteDouble = true;
+            m_graph.doToChildren(node, [&](Edge& child) {
+                if (!isFullNumberSpeculation(child->prediction()))
+                    shouldVoteDouble = false;
+            });
+
+            DoubleBallot ballot = shouldVoteDouble && !m_graph.variadicArithShouldSpeculateInt32(node, m_pass) ? VoteDouble : VoteValue;
+            m_graph.doToChildren(node, [&](Edge& child) {
+                m_graph.voteNode(child, ballot, weight);
+            });
+            break;
+        }
+
         case ArithMod:
         case ValueDiv:
         case ValueMod:
@@ -858,15 +879,19 @@ private:
             break;
         }
 
+        case NewArrayWithSpecies:
+        case EnumeratorGetByVal:
         case ArrayPop:
         case ArrayPush:
         case RegExpExec:
         case RegExpExecNonGlobalOrSticky:
         case RegExpTest:
+        case RegExpTestInline:
         case RegExpMatchFast:
         case RegExpMatchFastGlobal:
         case StringReplace:
         case StringReplaceRegExp:
+        case StringReplaceString:
         case GetById:
         case GetByIdFlush:
         case GetByIdWithThis:
@@ -875,8 +900,9 @@ private:
         case TryGetById:
         case GetByValWithThis:
         case GetByOffset:
+        case GetPrivateName:
+        case GetPrivateNameById:
         case MultiGetByOffset:
-        case GetDirectPname:
         case Call:
         case DirectCall:
         case TailCallInlinedCaller:
@@ -884,12 +910,13 @@ private:
         case Construct:
         case DirectConstruct:
         case CallVarargs:
-        case CallEval:
+        case CallDirectEval:
         case TailCallVarargsInlinedCaller:
         case ConstructVarargs:
         case CallForwardVarargs:
         case ConstructForwardVarargs:
         case TailCallForwardVarargsInlinedCaller:
+        case CallWasm:
         case GetGlobalVar:
         case GetGlobalLexicalVariable:
         case GetClosureVar:
@@ -915,6 +942,11 @@ private:
         case DataViewGetFloat:
         case DateGetInt32OrNaN: {
             setPrediction(m_currentNode->getHeapPrediction());
+            break;
+        }
+
+        case GetWebAssemblyInstanceExports: {
+            setPrediction(SpecFinalObject);
             break;
         }
 
@@ -980,14 +1012,26 @@ private:
             break;
         }
 
+        case GetTypedArrayLengthAsInt52:
+        case GetTypedArrayByteOffsetAsInt52: {
+            setPrediction(SpecInt52Any);
+            break;
+        }
+
         case StringCharCodeAt:
         case StringCodePointAt: {
             setPrediction(SpecInt32Only);
             break;
         }
 
+        case StringLocaleCompare: {
+            setPrediction(SpecInt32Only);
+            break;
+        }
+
         case StringValueOf:
         case StringSlice:
+        case StringSubstring:
         case ToLowerCase:
             setPrediction(SpecString);
             break;
@@ -1016,9 +1060,12 @@ private:
             setPrediction(SpecDoubleReal);
             break;
         }
+
+        case MapOrSetDelete:
         case DeleteByVal:
         case DeleteById:
         case MultiDeleteByOffset:
+        case ToBoolean:
         case LogicalNot:
         case CompareLess:
         case CompareLessEq:
@@ -1063,6 +1110,10 @@ private:
             setPrediction(SpecOther);
             break;
         }
+
+        case ResolveRope:
+            setPrediction(SpecString);
+            break;
 
         case CheckJSCast:
         case CheckNotJSCast:
@@ -1117,6 +1168,10 @@ private:
             break;
         }
 
+        case ObjectToString:
+            setPrediction(SpecString);
+            break;
+
         case Spread:
             setPrediction(SpecCellOther);
             break;
@@ -1151,6 +1206,7 @@ private:
         case StringCharAt:
         case CallStringConstructor:
         case ToString:
+        case FunctionToString:
         case NumberToStringWithRadix:
         case NumberToStringWithValidRadixConstant:
         case MakeRope:
@@ -1197,23 +1253,19 @@ private:
             setPrediction(SpecObjectOther);
             break;
 
-        case InByVal:
-        case InById:
-            setPrediction(SpecBoolean);
-            break;
-
-        case HasOwnProperty:
-            setPrediction(SpecBoolean);
-            break;
-
-        case GetEnumerableLength: {
+        case EnumeratorNextExtractMode:
+        case EnumeratorNextExtractIndex: {
             setPrediction(SpecInt32Only);
             break;
         }
-        case HasGenericProperty:
-        case HasStructureProperty:
-        case HasOwnStructureProperty:
-        case InStructureProperty:
+
+        case EnumeratorInByVal:
+        case EnumeratorHasOwnProperty:
+        case InByVal:
+        case InById:
+        case HasPrivateName:
+        case HasPrivateBrand:
+        case HasOwnProperty:
         case HasIndexedProperty: {
             setPrediction(SpecBoolean);
             break;
@@ -1222,18 +1274,17 @@ private:
             setPrediction(SpecCell);
             break;
         }
-        case GetEnumeratorStructurePname: {
-            setPrediction(SpecCell | SpecOther);
+
+        case EnumeratorNextUpdateIndexAndMode: {
+            setPrediction(SpecFullNumber);
             break;
         }
-        case GetEnumeratorGenericPname: {
-            setPrediction(SpecCell | SpecOther);
+
+        case EnumeratorNextUpdatePropertyName: {
+            setPrediction(SpecStringIdent);
             break;
         }
-        case ToIndexString: {
-            setPrediction(SpecString);
-            break;
-        }
+
         case ParseInt: {
             // We expect this node to almost always produce an int32. However,
             // it's possible it produces NaN or integers out of int32 range. We
@@ -1315,7 +1366,9 @@ private:
         case CheckTierUpInLoop:
         case CheckTierUpAtReturn:
         case CheckTierUpAndOSREnter:
+        case AssertInBounds:
         case CheckInBounds:
+        case CheckInBoundsInt52:
         case ValueToInt32:
         case DoubleRep:
         case ValueRep:
@@ -1378,6 +1431,10 @@ private:
         case PutByValWithThis:
         case PutByIdWithThis:
         case PutByVal:
+        case PutPrivateName:
+        case PutPrivateNameById:
+        case SetPrivateBrand:
+        case CheckPrivateBrand:
         case PutClosureVar:
         case PutInternalField:
         case PutToArguments:
@@ -1419,7 +1476,7 @@ private:
         case Phantom:
         case Check:
         case CheckArray:
-        case CheckNeutered:
+        case CheckDetached:
         case CheckVarargs:
         case PutGlobalVariable:
         case CheckTraps:
@@ -1430,7 +1487,6 @@ private:
         case NotifyWrite:
         case ConstantStoragePointer:
         case MovHint:
-        case ZombieHint:
         case ExitOK:
         case VarargsLength:
         case LoadVarargs:
@@ -1442,12 +1498,15 @@ private:
         case WeakMapSet:
         case FilterCallLinkStatus:
         case FilterGetByStatus:
-        case FilterPutByIdStatus:
-        case FilterInByIdStatus:
+        case FilterPutByStatus:
+        case FilterInByStatus:
         case FilterDeleteByStatus:
+        case FilterCheckPrivateBrandStatus:
+        case FilterSetPrivateBrandStatus:
         case ClearCatchLocals:
         case DataViewSet:
         case InvalidationPoint:
+        case ObjectAssign:
             break;
             
         // This gets ignored because it only pretends to produce a value.

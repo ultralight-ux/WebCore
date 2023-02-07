@@ -28,7 +28,7 @@
 
 #include "GraphicsTypesGL.h"
 
-#if ENABLE(GRAPHICS_CONTEXT_GL) && (USE(OPENGL) || USE(OPENGL_ES))
+#if USE(OPENGL) || USE(OPENGL_ES)
 
 #include <wtf/Noncopyable.h>
 
@@ -39,13 +39,13 @@ namespace WebCore {
 // value upon destruction, making it an alternative to checking, clearing, and resetting each flag
 // at all of a block's exit points.
 //
-// Based on WTF::SetForScope<>
+// Based on SetForScope<>
 
 class TemporaryOpenGLSetting {
     WTF_MAKE_NONCOPYABLE(TemporaryOpenGLSetting);
 public:
-    TemporaryOpenGLSetting(GCGLenum capability, GCGLenum scopedState);
-    ~TemporaryOpenGLSetting();
+    WEBCORE_EXPORT TemporaryOpenGLSetting(GCGLenum capability, GCGLenum scopedState);
+    WEBCORE_EXPORT ~TemporaryOpenGLSetting();
 
 private:
     const GCGLenum m_capability;
@@ -57,4 +57,4 @@ private:
 
 using WebCore::TemporaryOpenGLSetting;
 
-#endif
+#endif // USE(OPENGL) || USE(OPENGL_ES)

@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ContentType_h
-#define ContentType_h
+#pragma once
 
 #include <wtf/text/WTFString.h>
 
@@ -47,24 +46,7 @@ public:
     const String& raw() const { return m_type; }
     bool isEmpty() const { return m_type.isEmpty(); }
 
-    String toJSONString() const;
-
-    template<class Encoder>
-    void encode(Encoder& encoder) const
-    {
-        encoder << m_type;
-    }
-
-    template <class Decoder>
-    static Optional<ContentType> decode(Decoder& decoder)
-    {
-        Optional<String> type;
-        decoder >> type;
-        if (!type)
-            return WTF::nullopt;
-
-        return { ContentType(WTFMove(*type)) };
-    }
+    WEBCORE_EXPORT String toJSONString() const;
 
 private:
     String m_type;
@@ -84,5 +66,3 @@ struct LogArgument<WebCore::ContentType> {
 };
 
 } // namespace WTF
-
-#endif // ContentType_h

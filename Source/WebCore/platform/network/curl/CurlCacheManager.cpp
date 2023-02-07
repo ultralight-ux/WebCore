@@ -35,6 +35,7 @@
 #include "ResourceHandleClient.h"
 #include "ResourceHandleInternal.h"
 #include "ResourceRequest.h"
+#include "SecurityOrigin.h"
 #include <wtf/FileSystem.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
@@ -84,7 +85,7 @@ void CurlCacheManager::setCacheDirectory(const String& directory)
         }
     }
 
-    m_cacheDir.append("/");
+    m_cacheDir = makeString(m_cacheDir, '/');
 
     m_disabled = false;
     loadIndex();
@@ -100,40 +101,16 @@ void CurlCacheManager::loadIndex()
     if (m_disabled)
         return;
 
-    String indexFilePath(m_cacheDir);
-    indexFilePath.append("index.dat");
-
-    FileSystem::PlatformFileHandle indexFile = FileSystem::openFile(indexFilePath, FileSystem::FileOpenMode::Read);
-    if (!FileSystem::isHandleValid(indexFile)) {
-        LOG(Network, "Cache Warning: Could not open %s for read\n", indexFilePath.latin1().data());
+    String indexFilePath = FileSystem::pathByAppendingComponent(m_cacheDir, "index.dat"_s);
+    auto buffer = FileSystem::readEntireFile(indexFilePath);
+    if (!buffer) {
+        LOG(Network, "Cache Error: Could not read %s\n", indexFilePath.latin1().data());
         return;
     }
-
-    long long filesize = -1;
-    if (!FileSystem::getFileSize(indexFilePath, filesize)) {
-        LOG(Network, "Cache Error: Could not get file size of %s\n", indexFilePath.latin1().data());
-        FileSystem::closeFile(indexFile);
-        return;
-    }
-
-    // Load the file content into buffer
-    Vector<char> buffer;
-    buffer.resize(filesize);
-    int bufferPosition = 0;
-    int bufferReadSize = IO_BUFFERSIZE;
-    while (filesize > bufferPosition) {
-        if (filesize - bufferPosition < bufferReadSize)
-            bufferReadSize = filesize - bufferPosition;
-
-        FileSystem::readFromFile(indexFile, buffer.data() + bufferPosition, bufferReadSize);
-        bufferPosition += bufferReadSize;
-    }
-    FileSystem::closeFile(indexFile);
 
     // Create strings from buffer
-    String headerContent = String(buffer.data(), buffer.size());
+    auto headerContent = String::adopt(WTFMove(*buffer));
     Vector<String> indexURLs = headerContent.split('\n');
-    buffer.clear();
 
     // Add entries to index
     Vector<String>::const_iterator it = indexURLs.begin();
@@ -161,8 +138,7 @@ void CurlCacheManager::saveIndex()
     if (m_disabled)
         return;
 
-    String indexFilePath(m_cacheDir);
-    indexFilePath.append("index.dat");
+    auto indexFilePath = makeString(m_cacheDir, "index.dat"_s);
 
     FileSystem::deleteFile(indexFilePath);
     FileSystem::PlatformFileHandle indexFile = FileSystem::openFile(indexFilePath, FileSystem::FileOpenMode::Write);
@@ -266,7 +242,7 @@ bool CurlCacheManager::getCachedResponse(const String& url, ResourceResponse& re
     return false;
 }
 
-void CurlCacheManager::didReceiveData(ResourceHandle& job, const char* data, size_t size)
+void CurlCacheManager::didReceiveData(ResourceHandle& job, const SharedBuffer& data)
 {
     if (m_disabled)
         return;
@@ -278,11 +254,11 @@ void CurlCacheManager::didReceiveData(ResourceHandle& job, const char* data, siz
         if (it->value->getJob() != &job)
             return;
 
-        if (!it->value->saveCachedData(data, size))
+        if (!it->value->saveCachedData(data.data(), data.size()))
             invalidateCacheEntry(url);
 
         else {
-            m_currentStorageSize += size;
+            m_currentStorageSize += data.size();
             m_LRUEntryList.prependOrMoveToFirst(url);
             makeRoomForNewEntry();
         }

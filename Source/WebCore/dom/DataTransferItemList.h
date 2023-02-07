@@ -43,6 +43,7 @@
 namespace WebCore {
 
 class DataTransferItem;
+class Document;
 class File;
 
 class DataTransferItemList final : public ScriptWrappable, public ContextDestructionObserver, public CanMakeWeakPtr<DataTransferItemList> {
@@ -60,14 +61,14 @@ public:
     // DOM API
     unsigned length() const;
     RefPtr<DataTransferItem> item(unsigned index);
-    ExceptionOr<RefPtr<DataTransferItem>> add(const String& data, const String& type);
+    ExceptionOr<RefPtr<DataTransferItem>> add(Document&, const String& data, const String& type);
     RefPtr<DataTransferItem> add(Ref<File>&&);
     ExceptionOr<void> remove(unsigned index);
     void clear();
 
     void didClearStringData(const String& type);
     void didSetStringData(const String& type);
-    bool hasItems() const { return m_items.hasValue(); }
+    bool hasItems() const { return m_items.has_value(); }
     const Vector<Ref<DataTransferItem>>& items() const
     {
         ASSERT(m_items);
@@ -79,7 +80,7 @@ private:
     Document* document() const;
 
     DataTransfer& m_dataTransfer;
-    mutable Optional<Vector<Ref<DataTransferItem>>> m_items;
+    mutable std::optional<Vector<Ref<DataTransferItem>>> m_items;
 };
 
 } // namespace WebCore

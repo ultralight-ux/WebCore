@@ -40,6 +40,8 @@
     uint64_t m_accessibilityTraitsFromAncestor;
 }
 
+- (WebCore::AccessibilityObject *)axBackingObject;
+
 - (id)accessibilityHitTest:(CGPoint)point;
 - (AccessibilityObjectWrapper *)accessibilityPostProcessHitTest:(CGPoint)point;
 - (BOOL)accessibilityCanFuzzyHitTest;
@@ -55,18 +57,7 @@
 
 - (BOOL)isAttachment;
 
-- (void)postFocusChangeNotification;
-- (void)postSelectedTextChangeNotification;
-- (void)postLayoutChangeNotification;
-- (void)postLiveRegionChangeNotification;
-- (void)postLoadCompleteNotification;
-- (void)postChildrenChangedNotification;
-- (void)postInvalidStatusChangedNotification;
-- (void)postLiveRegionCreatedNotification;
-- (void)postScrollStatusChangeNotification;
-- (void)postValueChangedNotification;
-- (void)postExpandedChangedNotification;
-
+- (void)postNotification:(NSString *)notificationName;
 @end
 
 #endif // ENABLE(ACCESSIBILITY) && PLATFORM(IOS_FAMILY)

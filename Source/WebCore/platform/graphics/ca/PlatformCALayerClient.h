@@ -51,6 +51,8 @@ public:
     
     virtual bool platformCALayerContentsOpaque() const = 0;
     virtual bool platformCALayerDrawsContent() const = 0;
+    virtual bool platformCALayerDelegatesDisplay(PlatformCALayer*) const { return false; };
+    virtual void platformCALayerLayerDisplay(PlatformCALayer*) { }
     virtual void platformCALayerLayerDidDisplay(PlatformCALayer*) { }
 
     virtual void platformCALayerSetNeedsToRevalidateTiles() { }
@@ -61,6 +63,7 @@ public:
     virtual bool platformCALayerShouldTemporarilyRetainTileCohorts(PlatformCALayer*) const { return true; }
 
     virtual bool platformCALayerUseGiantTiles() const { return false; }
+    virtual bool platformCALayerUseCSS3DTransformInteroperability() const { return false; }
 
     virtual bool isCommittingChanges() const { return false; }
 

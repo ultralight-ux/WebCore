@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,15 +38,19 @@ using namespace JSC;
 
 JSValue JSHistory::state(JSGlobalObject& lexicalGlobalObject) const
 {
-    return cachedPropertyValue(lexicalGlobalObject, *this, wrapped().cachedState(), [this, &lexicalGlobalObject] {
+    auto throwScope = DECLARE_THROW_SCOPE(lexicalGlobalObject.vm());
+    return cachedPropertyValue(throwScope, lexicalGlobalObject, *this, wrapped().cachedState(), [this, &lexicalGlobalObject](JSC::ThrowScope&) {
         auto* serialized = wrapped().state();
         return serialized ? serialized->deserialize(lexicalGlobalObject, globalObject()) : jsNull();
     });
 }
 
-void JSHistory::visitAdditionalChildren(SlotVisitor& visitor)
+template<typename Visitor>
+void JSHistory::visitAdditionalChildren(Visitor& visitor)
 {
     wrapped().cachedStateForGC().visit(visitor);
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSHistory);
 
 } // namespace WebCore

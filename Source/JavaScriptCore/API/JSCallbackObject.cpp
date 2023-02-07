@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2022 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Eric Seidel <eric@webkit.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,17 +31,78 @@
 
 namespace JSC {
 
-// Define the two types of JSCallbackObjects we support.
-template <> const ClassInfo JSCallbackObject<JSNonFinalObject>::s_info = { "CallbackObject", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackObject) };
-template <> const ClassInfo JSCallbackObject<JSGlobalObject>::s_info = { "CallbackGlobalObject", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackObject) };
+static JSC_DECLARE_HOST_FUNCTION(callJSNonFinalObjectCallbackObject);
+static JSC_DECLARE_HOST_FUNCTION(constructJSNonFinalObjectCallbackObject);
+static JSC_DECLARE_HOST_FUNCTION(callJSGlobalObjectCallbackObject);
+static JSC_DECLARE_HOST_FUNCTION(constructJSGlobalObjectCallbackObject);
 
+static JSC_DECLARE_CUSTOM_GETTER(callbackGetterJSNonFinalObjectCallbackObject);
+static JSC_DECLARE_CUSTOM_GETTER(staticFunctionGetterJSNonFinalObjectCallbackObject);
+static JSC_DECLARE_CUSTOM_GETTER(callbackGetterJSGlobalObjectCallbackObject);
+static JSC_DECLARE_CUSTOM_GETTER(staticFunctionGetterJSGlobalObjectCallbackObject);
+
+DEFINE_VISIT_CHILDREN_WITH_MODIFIER(template<>, JSCallbackObject<JSNonFinalObject>);
+DEFINE_VISIT_CHILDREN_WITH_MODIFIER(template<>, JSCallbackObject<JSGlobalObject>);
+
+// Define the two types of JSCallbackObjects we support.
+template <> const ClassInfo JSCallbackObject<JSNonFinalObject>::s_info = { "CallbackObject"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackObject) };
+template <> const ClassInfo JSCallbackObject<JSGlobalObject>::s_info = { "CallbackGlobalObject"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackObject) };
 template<> const bool JSCallbackObject<JSNonFinalObject>::needsDestruction = true;
 template<> const bool JSCallbackObject<JSGlobalObject>::needsDestruction = true;
 
 template<>
+NativeFunction::Ptr JSCallbackObject<JSNonFinalObject>::getCallFunction()
+{
+    return callJSNonFinalObjectCallbackObject;
+}
+
+template<>
+NativeFunction::Ptr JSCallbackObject<JSNonFinalObject>::getConstructFunction()
+{
+    return constructJSNonFinalObjectCallbackObject;
+}
+
+template <>
+GetValueFunc JSCallbackObject<JSNonFinalObject>::getCallbackGetter()
+{
+    return callbackGetterJSNonFinalObjectCallbackObject;
+}
+
+template <>
+GetValueFunc JSCallbackObject<JSNonFinalObject>::getStaticFunctionGetter()
+{
+    return staticFunctionGetterJSNonFinalObjectCallbackObject;
+}
+
+
+template<>
+NativeFunction::Ptr JSCallbackObject<JSGlobalObject>::getCallFunction()
+{
+    return callJSGlobalObjectCallbackObject;
+}
+
+template<>
+NativeFunction::Ptr JSCallbackObject<JSGlobalObject>::getConstructFunction()
+{
+    return constructJSGlobalObjectCallbackObject;
+}
+
+template <>
+GetValueFunc JSCallbackObject<JSGlobalObject>::getCallbackGetter()
+{
+    return callbackGetterJSGlobalObjectCallbackObject;
+}
+
+template <>
+GetValueFunc JSCallbackObject<JSGlobalObject>::getStaticFunctionGetter()
+{
+    return staticFunctionGetterJSGlobalObjectCallbackObject;
+}
+
+template<>
 JSCallbackObject<JSGlobalObject>* JSCallbackObject<JSGlobalObject>::create(VM& vm, JSClassRef classRef, Structure* structure)
 {
-    JSCallbackObject<JSGlobalObject>* callbackObject = new (NotNull, allocateCell<JSCallbackObject<JSGlobalObject>>(vm.heap)) JSCallbackObject(vm, classRef, structure);
+    JSCallbackObject<JSGlobalObject>* callbackObject = new (NotNull, allocateCell<JSCallbackObject<JSGlobalObject>>(vm)) JSCallbackObject(vm, classRef, structure);
     callbackObject->finishCreation(vm);
     return callbackObject;
 }
@@ -59,7 +120,7 @@ Structure* JSCallbackObject<JSGlobalObject>::createStructure(VM& vm, JSGlobalObj
 }
 
 template <>
-IsoSubspace* JSCallbackObject<JSNonFinalObject>::subspaceForImpl(VM& vm, SubspaceAccess mode)
+GCClient::IsoSubspace* JSCallbackObject<JSNonFinalObject>::subspaceForImpl(VM& vm, SubspaceAccess mode)
 {
     switch (mode) {
     case SubspaceAccess::OnMainThread:
@@ -72,7 +133,7 @@ IsoSubspace* JSCallbackObject<JSNonFinalObject>::subspaceForImpl(VM& vm, Subspac
 }
 
 template <>
-IsoSubspace* JSCallbackObject<JSGlobalObject>::subspaceForImpl(VM& vm, SubspaceAccess mode)
+GCClient::IsoSubspace* JSCallbackObject<JSGlobalObject>::subspaceForImpl(VM& vm, SubspaceAccess mode)
 {
     switch (mode) {
     case SubspaceAccess::OnMainThread:
@@ -82,6 +143,46 @@ IsoSubspace* JSCallbackObject<JSGlobalObject>::subspaceForImpl(VM& vm, SubspaceA
     }
     RELEASE_ASSERT_NOT_REACHED();
     return nullptr;
+}
+
+JSC_DEFINE_HOST_FUNCTION(callJSNonFinalObjectCallbackObject, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    return JSCallbackObject<JSNonFinalObject>::callImpl(globalObject, callFrame);
+}
+
+JSC_DEFINE_HOST_FUNCTION(constructJSNonFinalObjectCallbackObject, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    return JSCallbackObject<JSNonFinalObject>::constructImpl(globalObject, callFrame);
+}
+
+JSC_DEFINE_HOST_FUNCTION(callJSGlobalObjectCallbackObject, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    return JSCallbackObject<JSGlobalObject>::callImpl(globalObject, callFrame);
+}
+
+JSC_DEFINE_HOST_FUNCTION(constructJSGlobalObjectCallbackObject, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    return JSCallbackObject<JSGlobalObject>::constructImpl(globalObject, callFrame);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(callbackGetterJSNonFinalObjectCallbackObject, (JSGlobalObject* globalObject, EncodedJSValue thisValue, PropertyName propertyName))
+{
+    return JSCallbackObject<JSNonFinalObject>::callbackGetterImpl(globalObject, thisValue, propertyName);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(staticFunctionGetterJSNonFinalObjectCallbackObject, (JSGlobalObject* globalObject, EncodedJSValue thisValue, PropertyName propertyName))
+{
+    return JSCallbackObject<JSNonFinalObject>::staticFunctionGetterImpl(globalObject, thisValue, propertyName);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(callbackGetterJSGlobalObjectCallbackObject, (JSGlobalObject* globalObject, EncodedJSValue thisValue, PropertyName propertyName))
+{
+    return JSCallbackObject<JSGlobalObject>::callbackGetterImpl(globalObject, thisValue, propertyName);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(staticFunctionGetterJSGlobalObjectCallbackObject, (JSGlobalObject* globalObject, EncodedJSValue thisValue, PropertyName propertyName))
+{
+    return JSCallbackObject<JSGlobalObject>::staticFunctionGetterImpl(globalObject, thisValue, propertyName);
 }
 
 } // namespace JSC

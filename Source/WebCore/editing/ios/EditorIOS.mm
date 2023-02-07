@@ -42,11 +42,11 @@
 #import "HTMLNames.h"
 #import "HTMLParserIdioms.h"
 #import "HTMLTextAreaElement.h"
+#import "MutableStyleProperties.h"
 #import "Pasteboard.h"
 #import "RenderBlock.h"
 #import "RenderImage.h"
 #import "SharedBuffer.h"
-#import "StyleProperties.h"
 #import "Text.h"
 #import "TypingCommand.h"
 #import "WAKAppKitStubs.h"
@@ -57,18 +57,6 @@
 namespace WebCore {
 
 using namespace HTMLNames;
-
-void Editor::showFontPanel()
-{
-}
-
-void Editor::showStylesPanel()
-{
-}
-
-void Editor::showColorPanel()
-{
-}
 
 void Editor::setTextAlignmentForChangedBaseWritingDirection(WritingDirection direction)
 {
@@ -90,7 +78,7 @@ void Editor::setTextAlignmentForChangedBaseWritingDirection(WritingDirection dir
     if (!value)
         return;
         
-    const char *newValue = nullptr;
+    ASCIILiteral newValue;
     TextAlignMode textAlign = *value;
     switch (textAlign) {
     case TextAlignMode::Start:
@@ -100,21 +88,21 @@ void Editor::setTextAlignmentForChangedBaseWritingDirection(WritingDirection dir
             // no-op
             break;
         case WritingDirection::LeftToRight:
-            newValue = "left";
+            newValue = "left"_s;
             break;
         case WritingDirection::RightToLeft:
-            newValue = "right";
+            newValue = "right"_s;
             break;
         }
         break;
     }
     case TextAlignMode::Left:
     case TextAlignMode::WebKitLeft:
-        newValue = "right";
+        newValue = "right"_s;
         break;
     case TextAlignMode::Right:
     case TextAlignMode::WebKitRight:
-        newValue = "left";
+        newValue = "left"_s;
         break;
     case TextAlignMode::Center:
     case TextAlignMode::WebKitCenter:
@@ -123,7 +111,7 @@ void Editor::setTextAlignmentForChangedBaseWritingDirection(WritingDirection dir
         break;
     }
 
-    if (!newValue)
+    if (newValue.isNull())
         return;
 
     Element* focusedElement = m_document.focusedElement();
@@ -150,7 +138,7 @@ void Editor::removeUnchangeableStyles()
     auto defaultStyle = editingStyle->style()->mutableCopy();
     
     // Text widgets implement background color via the UIView property. Their body element will not have one.
-    defaultStyle->setProperty(CSSPropertyBackgroundColor, "rgba(255, 255, 255, 0.0)");
+    defaultStyle->setProperty(CSSPropertyBackgroundColor, "rgba(255, 255, 255, 0.0)"_s);
     
     // Remove properties that the user can modify, like font-weight. 
     // Also remove font-family, per HI spec.
@@ -159,7 +147,7 @@ void Editor::removeUnchangeableStyles()
     defaultStyle->removeProperty(CSSPropertyFontStyle);
     defaultStyle->removeProperty(CSSPropertyFontVariantCaps);
     // FIXME: we should handle also pasted quoted text, strikethrough, etc. <rdar://problem/9255115>
-    defaultStyle->removeProperty(CSSPropertyTextDecoration);
+    defaultStyle->removeProperty(CSSPropertyTextDecorationLine);
     defaultStyle->removeProperty(CSSPropertyWebkitTextDecorationsInEffect); // implements underline
 
     // FIXME add EditAction::MatchStlye <rdar://problem/9156507> Undo rich text's paste & match style should say "Undo Match Style"
@@ -204,7 +192,8 @@ void Editor::writeImageToPasteboard(Pasteboard& pasteboard, Element& imageElemen
     pasteboardImage.suggestedName = imageSourceURL.lastPathComponent().toString();
     pasteboardImage.imageSize = image->size();
     pasteboardImage.resourceMIMEType = pasteboard.resourceMIMEType(cachedImage->response().mimeType());
-    pasteboardImage.resourceData = cachedImage->resourceBuffer();
+    if (auto* buffer = cachedImage->resourceBuffer())
+        pasteboardImage.resourceData = buffer->makeContiguous();
 
     if (!pasteboard.isStatic())
         client()->getClientPasteboardData(makeRangeSelectingNode(imageElement), pasteboardImage.clientTypes, pasteboardImage.clientData);
@@ -236,6 +225,14 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
 
     if (fragment && shouldInsertFragment(*fragment, range, EditorInsertAction::Pasted))
         pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(*pasteboard), false, options.contains(PasteOption::IgnoreMailBlockquote) ? MailBlockquoteHandling::IgnoreBlockquote : MailBlockquoteHandling::RespectBlockquote);
+}
+
+void Editor::platformCopyFont()
+{
+}
+
+void Editor::platformPasteFont()
+{
 }
 
 void Editor::insertDictationPhrases(Vector<Vector<String>>&& dictationPhrases, id metadata)
@@ -275,7 +272,7 @@ void Editor::setDictationPhrasesAsChildOfElement(const Vector<Vector<String>>& d
 
     element.appendChild(createFragmentFromText(context, dictationPhrasesBuilder.toString()));
 
-    auto weakElement = makeWeakPtr(element);
+    WeakPtr weakElement { element };
 
     // We need a layout in order to add markers below.
     document().updateLayout();
@@ -319,7 +316,7 @@ void Editor::confirmMarkedText()
         confirmComposition();
 }
 
-void Editor::setTextAsChildOfElement(const String& text, Element& element)
+void Editor::setTextAsChildOfElement(String&& text, Element& element)
 {
     // Clear the composition
     clear();
@@ -329,52 +326,20 @@ void Editor::setTextAsChildOfElement(const String& text, Element& element)
     clearUndoRedoOperations();
 
     // If the element is empty already and we're not adding text, we can early return and avoid clearing/setting
-    // a selection at [0, 0] and the expense involved in creation VisiblePositions.
+    // a selection at [0, 0] and the expense involved in creating VisiblePositions.
     if (!element.firstChild() && text.isEmpty())
         return;
 
-    // As a side effect this function sets a caret selection after the inserted content. Much of what
-    // follows is more expensive if there is a selection, so clear it since it's going to change anyway.
+    // As a side effect this function sets a caret selection after the inserted content.
+    // What follows is more expensive if there is a selection, so clear it since it's going to change anyway.
     m_document.selection().clear();
 
-    // clear out all current children of element
-    element.removeChildren();
+    element.stringReplaceAll(WTFMove(text));
 
-    if (text.length()) {
-        // insert new text
-        // remove element from tree while doing it
-        // FIXME: The element we're inserting into is often the body element. It seems strange to be removing it
-        // (even if it is only temporary). ReplaceSelectionCommand doesn't bother doing this when it inserts
-        // content, why should we here?
-        RefPtr<Node> parent = element.parentNode();
-        RefPtr<Node> siblingAfter = element.nextSibling();
-        if (parent)
-            element.remove();
-
-        element.appendChild(createFragmentFromText(makeRangeSelectingNodeContents(element), text));
-
-        // restore element to document
-        if (parent) {
-            if (siblingAfter)
-                parent->insertBefore(element, siblingAfter.get());
-            else
-                parent->appendChild(element);
-        }
-    }
-
-    // set the selection to the end
-    VisibleSelection selection;
-
-    Position pos = createLegacyEditingPosition(&element, element.countChildNodes());
-
-    VisiblePosition visiblePos(pos, VP_DEFAULT_AFFINITY);
-    if (visiblePos.isNull())
+    VisiblePosition afterContents = makeContainerOffsetPosition(&element, element.countChildNodes());
+    if (afterContents.isNull())
         return;
-
-    selection.setBase(visiblePos);
-    selection.setExtent(visiblePos);
-
-    m_document.selection().setSelection(selection);
+    m_document.selection().setSelection(afterContents);
 
     client()->respondToChangedContents();
 }

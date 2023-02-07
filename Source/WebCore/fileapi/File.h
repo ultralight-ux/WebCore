@@ -26,8 +26,8 @@
 #pragma once
 
 #include "Blob.h"
+#include <wtf/FileSystem.h>
 #include <wtf/IsoMalloc.h>
-#include <wtf/Optional.h>
 #include <wtf/Ref.h>
 #include <wtf/TypeCasts.h>
 #include <wtf/text/WTFString.h>
@@ -38,11 +38,11 @@ class File final : public Blob {
     WTF_MAKE_ISO_ALLOCATED_EXPORT(File, WEBCORE_EXPORT);
 public:
     struct PropertyBag : BlobPropertyBag {
-        Optional<int64_t> lastModified;
+        std::optional<int64_t> lastModified;
     };
 
     // Create a file with an optional name exposed to the author (via File.name and associated DOM properties) that differs from the one provided in the path.
-    WEBCORE_EXPORT static Ref<File> create(ScriptExecutionContext*, const String& path, const String& replacementPath = { }, const String& nameOverride = { });
+    WEBCORE_EXPORT static Ref<File> create(ScriptExecutionContext*, const String& path, const String& replacementPath = { }, const String& nameOverride = { }, const std::optional<FileSystem::PlatformFileID>& fileID = { });
 
     // Create a File using the 'new File' constructor.
     static Ref<File> create(ScriptExecutionContext& context, Vector<BlobPartVariant>&& blobPartVariants, const String& filename, const PropertyBag& propertyBag)
@@ -52,7 +52,7 @@ public:
         return file;
     }
 
-    static Ref<File> deserialize(ScriptExecutionContext* context, const String& path, const URL& srcURL, const String& type, const String& name, const Optional<int64_t>& lastModified = WTF::nullopt)
+    static Ref<File> deserialize(ScriptExecutionContext* context, const String& path, const URL& srcURL, const String& type, const String& name, const std::optional<int64_t>& lastModified = std::nullopt)
     {
         auto file = adoptRef(*new File(deserializationContructor, context, path, srcURL, type, name, lastModified));
         file->suspendIfNeeded();
@@ -82,9 +82,10 @@ public:
     void setRelativePath(const String& relativePath) { m_relativePath = relativePath; }
     const String& name() const { return m_name; }
     WEBCORE_EXPORT int64_t lastModified() const; // Number of milliseconds since Epoch.
-    const Optional<int64_t>& lastModifiedOverride() const { return m_lastModifiedDateOverride; } // Number of milliseconds since Epoch.
+    const std::optional<int64_t>& lastModifiedOverride() const { return m_lastModifiedDateOverride; } // Number of milliseconds since Epoch.
+    const std::optional<FileSystem::PlatformFileID> fileID() const { return m_fileID; }
 
-    static String contentTypeForFile(const String& path);
+    WEBCORE_EXPORT static String contentTypeForFile(const String& path);
 
 #if ENABLE(FILE_REPLACEMENT)
     static bool shouldReplaceFile(const String& path);
@@ -96,10 +97,11 @@ private:
     WEBCORE_EXPORT explicit File(ScriptExecutionContext*, const String& path);
     File(ScriptExecutionContext*, URL&&, String&& type, String&& path, String&& name);
     File(ScriptExecutionContext&, Vector<BlobPartVariant>&& blobPartVariants, const String& filename, const PropertyBag&);
+    File(ScriptExecutionContext*, URL&&, String&& type, String&& path, String&& name, const std::optional<FileSystem::PlatformFileID>&);
     File(ScriptExecutionContext*, const Blob&, const String& name);
     File(ScriptExecutionContext*, const File&, const String& name);
 
-    File(DeserializationContructor, ScriptExecutionContext*, const String& path, const URL& srcURL, const String& type, const String& name, const Optional<int64_t>& lastModified);
+    File(DeserializationContructor, ScriptExecutionContext*, const String& path, const URL& srcURL, const String& type, const String& name, const std::optional<int64_t>& lastModified);
 
     static void computeNameAndContentType(const String& path, const String& nameOverride, String& effectiveName, String& effectiveContentType);
 #if ENABLE(FILE_REPLACEMENT)
@@ -113,8 +115,9 @@ private:
     String m_relativePath;
     String m_name;
 
-    Optional<int64_t> m_lastModifiedDateOverride;
-    mutable Optional<bool> m_isDirectory;
+    std::optional<int64_t> m_lastModifiedDateOverride;
+    std::optional<FileSystem::PlatformFileID> m_fileID;
+    mutable std::optional<bool> m_isDirectory;
 };
 
 } // namespace WebCore

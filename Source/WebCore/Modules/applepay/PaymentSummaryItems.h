@@ -27,14 +27,30 @@
 
 #if ENABLE(APPLE_PAY)
 
-#include "ApplePaySessionPaymentRequest.h"
-
 OBJC_CLASS NSArray;
+OBJC_CLASS PKAutomaticReloadPaymentSummaryItem;
+OBJC_CLASS PKDeferredPaymentSummaryItem;
+OBJC_CLASS PKPaymentSummaryItem;
+OBJC_CLASS PKRecurringPaymentSummaryItem;
 
 namespace WebCore {
 
-WEBCORE_EXPORT NSArray *platformSummaryItems(const ApplePaySessionPaymentRequest::TotalAndLineItems&);
-WEBCORE_EXPORT NSArray *platformSummaryItems(const ApplePaySessionPaymentRequest::LineItem& total, const Vector<ApplePaySessionPaymentRequest::LineItem>&);
+struct ApplePayLineItem;
+
+#if HAVE(PASSKIT_RECURRING_SUMMARY_ITEM)
+WEBCORE_EXPORT PKRecurringPaymentSummaryItem *platformRecurringSummaryItem(const ApplePayLineItem&);
+#endif
+
+#if HAVE(PASSKIT_DEFERRED_SUMMARY_ITEM)
+WEBCORE_EXPORT PKDeferredPaymentSummaryItem *platformDeferredSummaryItem(const ApplePayLineItem&);
+#endif
+
+#if HAVE(PASSKIT_AUTOMATIC_RELOAD_SUMMARY_ITEM)
+WEBCORE_EXPORT PKAutomaticReloadPaymentSummaryItem *platformAutomaticReloadSummaryItem(const ApplePayLineItem&);
+#endif
+
+WEBCORE_EXPORT PKPaymentSummaryItem *platformSummaryItem(const ApplePayLineItem&);
+WEBCORE_EXPORT NSArray *platformSummaryItems(const ApplePayLineItem& total, const Vector<ApplePayLineItem>&);
 
 } // namespace WebCore
 

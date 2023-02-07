@@ -29,8 +29,10 @@
 #import "DisplayListRecorder.h"
 #import "GraphicsContextCG.h"
 #import "GraphicsContextPlatformPrivateCG.h"
+#import "IOSurface.h"
 #import "IntRect.h"
 #import <pal/spi/cg/CoreGraphicsSPI.h>
+#import <pal/spi/cocoa/FeatureFlagsSPI.h>
 #import <pal/spi/mac/NSGraphicsSPI.h>
 #import <wtf/SoftLinking.h>
 #import <wtf/StdLibExtras.h>
@@ -60,23 +62,35 @@ namespace WebCore {
 // NSColor, NSBezierPath, and NSGraphicsContext calls do not raise exceptions
 // so we don't block exceptions.
 
-#if ENABLE(FULL_KEYBOARD_ACCESS)
-
-static bool drawFocusRingAtTime(CGContextRef context, NSTimeInterval timeOffset, const Color& color)
+static RetainPtr<CGColorRef> grammarColor(bool useDarkMode)
 {
-#if USE(APPKIT)
-    CGFocusRingStyle focusRingStyle;
-    BOOL needsRepaint = NSInitializeCGFocusRingStyleForTime(NSFocusRingOnly, &focusRingStyle, timeOffset);
-#else
-    BOOL needsRepaint = NO;
-    UNUSED_PARAM(timeOffset);
+#if ENABLE(POST_EDITING_GRAMMAR_CHECKING)
+    static bool useBlueForGrammar = false;
+    static std::once_flag flag;
+    std::call_once(flag, [] {
+        useBlueForGrammar = os_feature_enabled(TextComposer, PostEditing) && os_feature_enabled(TextComposer, PostEditingUseBlueDots);
+    });
+
+    if (useBlueForGrammar)
+        return cachedCGColor(useDarkMode ? SRGBA<uint8_t> { 40, 145, 255, 217 } : SRGBA<uint8_t> { 0, 122, 255, 191 });
+#endif
+    return cachedCGColor(useDarkMode ? SRGBA<uint8_t> { 50, 215, 75, 217 } : SRGBA<uint8_t> { 25, 175, 50, 191 });
+}
+
+void GraphicsContextCG::drawFocusRing(const Path& path, float, const Color& color)
+{
+    if (path.isNull())
+        return;
 
     CGFocusRingStyle focusRingStyle;
+#if USE(APPKIT)
+    NSInitializeCGFocusRingStyleForTime(NSFocusRingOnly, &focusRingStyle, std::numeric_limits<double>::max());
+#else
     focusRingStyle.version = 0;
     focusRingStyle.tint = kCGFocusRingTintBlue;
     focusRingStyle.ordering = kCGFocusRingOrderingNone;
     focusRingStyle.alpha = [PAL::getUIFocusRingStyleClass() maxAlpha];
-    focusRingStyle.radius = [PAL::getUIFocusRingStyleClass() cornerRadius];
+    focusRingStyle.radius = [PAL::getUIFocusRingStyleClass() borderThickness];
     focusRingStyle.threshold = [PAL::getUIFocusRingStyleClass() alphaThreshold];
     focusRingStyle.bounds = CGRectZero;
 #endif
@@ -86,110 +100,28 @@ static bool drawFocusRingAtTime(CGContextRef context, NSTimeInterval timeOffset,
     // -1. According to CoreGraphics, the reasoning for this behavior has been
     // lost in time.
     focusRingStyle.accumulate = -1;
-    auto style = adoptCF(CGStyleCreateFocusRingWithColor(&focusRingStyle, cachedCGColor(color)));
+    auto style = adoptCF(CGStyleCreateFocusRingWithColor(&focusRingStyle, cachedCGColor(color).get()));
 
-    CGContextStateSaver stateSaver(context);
+    CGContextRef platformContext = this->platformContext();
 
-    CGContextSetStyle(context, style.get());
-    CGContextFillPath(context);
+    CGContextStateSaver stateSaver(platformContext);
 
-    return needsRepaint;
+    CGContextSetStyle(platformContext, style.get());
+    CGContextBeginPath(platformContext);
+    CGContextAddPath(platformContext, path.platformPath());
+
+    CGContextFillPath(platformContext);
 }
 
-inline static void drawFocusRing(CGContextRef context, const Color& color)
+void GraphicsContextCG::drawFocusRing(const Vector<FloatRect>& rects, float outlineOffset, float outlineWidth, const Color& color)
 {
-    drawFocusRingAtTime(context, std::numeric_limits<double>::max(), color);
-}
-
-static void drawFocusRingToContext(CGContextRef context, CGPathRef focusRingPath, const Color& color)
-{
-    CGContextBeginPath(context);
-    CGContextAddPath(context, focusRingPath);
-    drawFocusRing(context, color);
-}
-
-#endif // ENABLE(FULL_KEYBOARD_ACCESS)
-
-void GraphicsContext::drawFocusRing(const Path& path, float width, float offset, const Color& color)
-{
-#if ENABLE(FULL_KEYBOARD_ACCESS)
-    if (paintingDisabled() || path.isNull())
-        return;
-
-    if (m_impl) {
-        m_impl->drawFocusRing(path, width, offset, color);
-        return;
+    Path path;
+    for (const auto& rect : rects) {
+        auto r = rect;
+        r.inflate(-outlineOffset);
+        path.addRect(r);
     }
-
-    drawFocusRingToContext(platformContext(), path.platformPath(), color);
-#else
-    UNUSED_PARAM(path);
-    UNUSED_PARAM(width);
-    UNUSED_PARAM(offset);
-    UNUSED_PARAM(color);
-#endif
-}
-
-#if PLATFORM(MAC)
-
-static bool drawFocusRingToContextAtTime(CGContextRef context, CGPathRef focusRingPath, double timeOffset, const Color& color)
-{
-    UNUSED_PARAM(timeOffset);
-    CGContextBeginPath(context);
-    CGContextAddPath(context, focusRingPath);
-    return drawFocusRingAtTime(context, std::numeric_limits<double>::max(), color);
-}
-
-void GraphicsContext::drawFocusRing(const Path& path, double timeOffset, bool& needsRedraw, const Color& color)
-{
-    if (paintingDisabled() || path.isNull())
-        return;
-
-    if (m_impl) // FIXME: implement animated focus ring drawing.
-        return;
-
-    needsRedraw = drawFocusRingToContextAtTime(platformContext(), path.platformPath(), timeOffset, color);
-}
-
-void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, double timeOffset, bool& needsRedraw, const Color& color)
-{
-    if (paintingDisabled())
-        return;
-
-    if (m_impl) // FIXME: implement animated focus ring drawing.
-        return;
-
-    RetainPtr<CGMutablePathRef> focusRingPath = adoptCF(CGPathCreateMutable());
-    for (const auto& rect : rects)
-        CGPathAddRect(focusRingPath.get(), 0, CGRect(rect));
-
-    needsRedraw = drawFocusRingToContextAtTime(platformContext(), focusRingPath.get(), timeOffset, color);
-}
-
-#endif // PLATFORM(MAC)
-
-void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width, float offset, const Color& color)
-{
-#if ENABLE(FULL_KEYBOARD_ACCESS)
-    if (paintingDisabled())
-        return;
-
-    if (m_impl) {
-        m_impl->drawFocusRing(rects, width, offset, color);
-        return;
-    }
-
-    RetainPtr<CGMutablePathRef> focusRingPath = adoptCF(CGPathCreateMutable());
-    for (auto& rect : rects)
-        CGPathAddRect(focusRingPath.get(), 0, CGRectInset(rect, -offset, -offset));
-
-    drawFocusRingToContext(platformContext(), focusRingPath.get(), color);
-#else
-    UNUSED_PARAM(rects);
-    UNUSED_PARAM(width);
-    UNUSED_PARAM(offset);
-    UNUSED_PARAM(color);
-#endif
+    drawFocusRing(path, outlineWidth, color);
 }
 
 static inline void setPatternPhaseInUserSpace(CGContextRef context, CGPoint phasePoint)
@@ -200,7 +132,7 @@ static inline void setPatternPhaseInUserSpace(CGContextRef context, CGPoint phas
     CGContextSetPatternPhase(context, CGSizeMake(phase.x, phase.y));
 }
 
-static CGColorRef colorForMarkerLineStyle(DocumentMarkerLineStyle::Mode style, bool useDarkMode)
+static RetainPtr<CGColorRef> colorForMarkerLineStyle(DocumentMarkerLineStyle::Mode style, bool useDarkMode)
 {
     switch (style) {
     // Red
@@ -211,17 +143,13 @@ static CGColorRef colorForMarkerLineStyle(DocumentMarkerLineStyle::Mode style, b
     case DocumentMarkerLineStyle::Mode::TextCheckingDictationPhraseWithAlternatives:
     case DocumentMarkerLineStyle::Mode::AutocorrectionReplacement:
         return cachedCGColor(useDarkMode ? SRGBA<uint8_t> { 40, 145, 255, 217 } : SRGBA<uint8_t> { 0, 122, 255, 191 });
-    // Green
     case DocumentMarkerLineStyle::Mode::Grammar:
-        return cachedCGColor(useDarkMode ? SRGBA<uint8_t> { 50, 215, 75, 217 } : SRGBA<uint8_t> { 25, 175, 50, 191 });
+        return grammarColor(useDarkMode);
     }
 }
 
-void GraphicsContext::drawDotsForDocumentMarker(const FloatRect& rect, DocumentMarkerLineStyle style)
+void GraphicsContextCG::drawDotsForDocumentMarker(const FloatRect& rect, DocumentMarkerLineStyle style)
 {
-    if (paintingDisabled())
-        return;
-
     // We want to find the number of full dots, so we're solving the equations:
     // dotDiameter = height
     // dotDiameter / dotGap = 13.247 / 9.457
@@ -242,7 +170,7 @@ void GraphicsContext::drawDotsForDocumentMarker(const FloatRect& rect, DocumentM
 
     CGContextRef platformContext = this->platformContext();
     CGContextStateSaver stateSaver { platformContext };
-    CGContextSetFillColorWithColor(platformContext, circleColor);
+    CGContextSetFillColorWithColor(platformContext, circleColor.get());
     for (unsigned i = 0; i < numberOfWholeDots; ++i) {
         auto location = rect.location();
         location.move(offset + i * (dotDiameter + dotGap), 0);
@@ -251,6 +179,36 @@ void GraphicsContext::drawDotsForDocumentMarker(const FloatRect& rect, DocumentM
     }
     CGContextSetCompositeOperation(platformContext, kCGCompositeSover);
     CGContextFillPath(platformContext);
+}
+
+void GraphicsContextCG::convertToDestinationColorSpaceIfNeeded(RetainPtr<CGImageRef>& image)
+{
+#if HAVE(CORE_ANIMATION_FIX_FOR_RADAR_93560567)
+    UNUSED_PARAM(image);
+#else
+    if (!CGColorSpaceUsesITUR_2100TF(CGImageGetColorSpace(image.get())))
+        return;
+
+    auto context = platformContext();
+
+    auto destinationSurface = CGIOSurfaceContextGetSurface(context);
+    if (!destinationSurface)
+        return;
+
+    auto destinationColorSpace = CGIOSurfaceContextGetColorSpace(context);
+    if (!destinationColorSpace)
+        return;
+
+    auto surface = IOSurface::createFromSurface(destinationSurface, DestinationColorSpace(destinationColorSpace));
+
+    auto width = CGImageGetWidth(image.get());
+    auto height = CGImageGetHeight(image.get());
+
+    auto bitmapContext = surface->createCompatibleBitmap(width, height);
+    CGContextDrawImage(bitmapContext.get(), CGRectMake(0, 0, width, height), image.get());
+
+    image = adoptCF(CGBitmapContextCreateImage(bitmapContext.get()));
+#endif
 }
 
 } // namespace WebCore

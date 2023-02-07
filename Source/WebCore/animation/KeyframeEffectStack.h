@@ -27,12 +27,18 @@
 
 #include "AnimationList.h"
 #include "CSSPropertyNames.h"
+#include "WebAnimationTypes.h"
 #include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
 class KeyframeEffect;
+class RenderStyle;
+
+namespace Style {
+struct ResolutionContext;
+}
 
 class KeyframeEffectStack {
     WTF_MAKE_FAST_ALLOCATED;
@@ -46,16 +52,32 @@ public:
     Vector<WeakPtr<KeyframeEffect>> sortedEffects();
     const AnimationList* cssAnimationList() const { return m_cssAnimationList.get(); }
     void setCSSAnimationList(RefPtr<const AnimationList>&&);
+    bool containsProperty(CSSPropertyID) const;
     bool isCurrentlyAffectingProperty(CSSPropertyID) const;
     bool requiresPseudoElement() const;
+    OptionSet<AnimationImpact> applyKeyframeEffects(RenderStyle& targetStyle, HashSet<AnimatableProperty>& affectedProperties, const RenderStyle* previousLastStyleChangeEventStyle, const Style::ResolutionContext&);
+    bool hasEffectWithImplicitKeyframes() const;
+
+    void effectAbilityToBeAcceleratedDidChange(const KeyframeEffect&);
+    bool allowsAcceleration() const;
+
+    void clearInvalidCSSAnimationNames();
+    bool hasInvalidCSSAnimationNames() const;
+    bool containsInvalidCSSAnimationName(const String&) const;
+    void addInvalidCSSAnimationName(const String&);
+
+    void lastStyleChangeEventStyleDidChange(const RenderStyle* previousStyle, const RenderStyle* currentStyle);
 
 private:
     void ensureEffectsAreSorted();
+    bool hasMatchingEffect(const Function<bool(const KeyframeEffect&)>&) const;
+    void startAcceleratedAnimationsIfPossible();
+    void stopAcceleratedAnimations();
 
     Vector<WeakPtr<KeyframeEffect>> m_effects;
+    HashSet<String> m_invalidCSSAnimationNames;
     RefPtr<const AnimationList> m_cssAnimationList;
     bool m_isSorted { true };
-
 };
 
 } // namespace WebCore

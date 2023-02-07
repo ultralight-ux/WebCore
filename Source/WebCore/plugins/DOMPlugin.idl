@@ -21,14 +21,14 @@
 [
     InterfaceName=Plugin,
     GenerateIsReachable=ReachableFromNavigator,
-    ImplementationLacksVTable,
-    LegacyUnenumerableNamedProperties
+    LegacyUnenumerableNamedProperties,
+    Exposed=Window
 ] interface DOMPlugin {
     readonly attribute DOMString name;
     readonly attribute DOMString filename;
     readonly attribute DOMString description;
     readonly attribute unsigned long length;
     getter DOMMimeType? item(unsigned long index);
-    getter DOMMimeType? namedItem(DOMString name);
+    getter DOMMimeType? namedItem([AtomString] DOMString name);
 };
 

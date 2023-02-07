@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,16 +28,20 @@
 #if ENABLE(WEBGL)
 
 #include "JSWebGLRenderingContext.h"
+#include "WebCoreOpaqueRoot.h"
 
 
 namespace WebCore {
 using namespace JSC;
 
-void JSWebGLRenderingContext::visitAdditionalChildren(SlotVisitor& visitor)
+template<typename Visitor>
+void JSWebGLRenderingContext::visitAdditionalChildren(Visitor& visitor)
 {
-    visitor.addOpaqueRoot(&wrapped());
+    addWebCoreOpaqueRoot(visitor, wrapped());
     wrapped().addMembersToOpaqueRoots(visitor);
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSWebGLRenderingContext);
 
 } // namespace WebCore
 

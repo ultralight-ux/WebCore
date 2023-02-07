@@ -28,6 +28,7 @@
 
 #if !LOG_DISABLED || !RELEASE_LOG_DISABLED
 
+#include "LogInitialization.h"
 #include <windows.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/WTFString.h>
@@ -47,7 +48,7 @@ String logLevelString()
     if (!GetEnvironmentVariableA(loggingEnvironmentVariable, buffer.data(), length))
         return emptyString();
 
-    return String(buffer.data());
+    return String::fromLatin1(buffer.data());
 #else
     return String();
 #endif

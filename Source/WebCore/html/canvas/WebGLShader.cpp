@@ -45,7 +45,6 @@ WebGLShader::WebGLShader(WebGLRenderingContextBase& ctx, GCGLenum type)
     : WebGLSharedObject(ctx)
     , m_type(type)
     , m_source(emptyString())
-    , m_isValid(false)
 {
     setObject(ctx.graphicsContextGL()->createShader(type));
 }
@@ -58,7 +57,7 @@ WebGLShader::~WebGLShader()
     runDestructor();
 }
 
-void WebGLShader::deleteObjectImpl(const AbstractLocker&, GraphicsContextGLOpenGL* context3d, PlatformGLObject object)
+void WebGLShader::deleteObjectImpl(const AbstractLocker&, GraphicsContextGL* context3d, PlatformGLObject object)
 {
     context3d->deleteShader(object);
 }

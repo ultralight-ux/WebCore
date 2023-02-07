@@ -25,23 +25,35 @@
 
 #pragma once
 
+#include <tuple>
+#include <utility>
 #include <wtf/Function.h>
 #include <wtf/MainThread.h>
 
 namespace WTF {
 
 template<typename> class CompletionHandler;
+class CompletionHandlerCallThread {
+public:
+    static inline constexpr auto ConstructionThread = currentThreadLike;
+    static inline constexpr auto MainThread = mainThreadLike;
+    static inline constexpr auto AnyThread = anyThreadLike;
+};
 
 // Wraps a Function to make sure it is always called once and only once.
 template <typename Out, typename... In>
 class CompletionHandler<Out(In...)> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
+    using OutType = Out;
+    using InTypes = std::tuple<In...>;
+
     CompletionHandler() = default;
 
     template<typename CallableType, class = typename std::enable_if<std::is_rvalue_reference<CallableType&&>::value>::type>
-    CompletionHandler(CallableType&& callable)
-        : m_function(WTFMove(callable))
+    CompletionHandler(CallableType&& callable, ThreadLikeAssertion callThread = CompletionHandlerCallThread::ConstructionThread)
+        : m_function(std::forward<CallableType>(callable))
+        , m_callThread(WTFMove(callThread))
     {
     }
 
@@ -51,22 +63,21 @@ public:
     ~CompletionHandler()
     {
         ASSERT_WITH_MESSAGE(!m_function, "Completion handler should always be called");
+        m_callThread = anyThreadLike;
     }
 
     explicit operator bool() const { return !!m_function; }
 
     Out operator()(In... in)
     {
-        ASSERT(m_wasConstructedOnMainThread == isMainThread());
+        assertIsCurrent(m_callThread);
         ASSERT_WITH_MESSAGE(m_function, "Completion handler should not be called more than once");
         return std::exchange(m_function, nullptr)(std::forward<In>(in)...);
     }
 
 private:
     Function<Out(In...)> m_function;
-#if ASSERT_ENABLED
-    bool m_wasConstructedOnMainThread { isMainThread() };
-#endif
+    NO_UNIQUE_ADDRESS ThreadLikeAssertion m_callThread;
 };
 
 // Wraps a Function to make sure it is called at most once.
@@ -77,9 +88,12 @@ template <typename Out, typename... In>
 class CompletionHandlerWithFinalizer<Out(In...)> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
+    using OutType = Out;
+    using InTypes = std::tuple<In...>;
+
     template<typename CallableType, class = typename std::enable_if<std::is_rvalue_reference<CallableType&&>::value>::type>
     CompletionHandlerWithFinalizer(CallableType&& callable, Function<void(Function<Out(In...)>&)>&& finalizer)
-        : m_function(WTFMove(callable))
+        : m_function(std::forward<CallableType>(callable))
         , m_finalizer(WTFMove(finalizer))
     {
     }
@@ -91,7 +105,7 @@ public:
     {
         if (!m_function)
             return;
-
+        assertIsCurrent(m_callThread);
         m_finalizer(m_function);
     }
 
@@ -99,7 +113,7 @@ public:
 
     Out operator()(In... in)
     {
-        ASSERT(m_wasConstructedOnMainThread == isMainThread());
+        assertIsCurrent(m_callThread);
         ASSERT_WITH_MESSAGE(m_function, "Completion handler should not be called more than once");
         return std::exchange(m_function, nullptr)(std::forward<In>(in)...);
     }
@@ -107,9 +121,7 @@ public:
 private:
     Function<Out(In...)> m_function;
     Function<void(Function<Out(In...)>&)> m_finalizer;
-#if ASSERT_ENABLED
-    bool m_wasConstructedOnMainThread { isMainThread() };
-#endif
+    NO_UNIQUE_ADDRESS ThreadLikeAssertion m_callThread;
 };
 
 namespace Detail {
@@ -157,5 +169,6 @@ private:
 } // namespace WTF
 
 using WTF::CompletionHandler;
+using WTF::CompletionHandlerCallThread;
 using WTF::CompletionHandlerCallingScope;
 using WTF::CompletionHandlerWithFinalizer;

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -56,7 +57,8 @@ JSValue JSPopStateEvent::state(JSGlobalObject& lexicalGlobalObject) const
 
     PopStateEvent& event = wrapped();
 
-    if (JSC::JSValue eventState = event.state()) {
+    if (event.state()) {
+        JSC::JSValue eventState = event.state().getValue();
         // We need to make sure a PopStateEvent does not leak objects in its lexicalGlobalObject property across isolated DOM worlds.
         // Ideally, we would check that the worlds have different privileges but that's not possible yet.
         if (!isWorldCompatible(lexicalGlobalObject, eventState)) {
@@ -90,9 +92,12 @@ JSValue JSPopStateEvent::state(JSGlobalObject& lexicalGlobalObject) const
     return cacheState(result);
 }
 
-void JSPopStateEvent::visitAdditionalChildren(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSPopStateEvent::visitAdditionalChildren(Visitor& visitor)
 {
     wrapped().state().visit(visitor);
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSPopStateEvent);
 
 } // namespace WebCore

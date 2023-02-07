@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,8 +26,9 @@
 #include "config.h"
 #include "Color.h"
 
+#include "ColorLuminance.h"
 #include "ColorSerialization.h"
-#include "ColorUtilities.h"
+#include <cmath>
 #include <wtf/Assertions.h>
 #include <wtf/text/TextStream.h>
 
@@ -37,10 +38,10 @@ static constexpr auto lightenedBlack = SRGBA<uint8_t> { 84, 84, 84 };
 static constexpr auto darkenedWhite = SRGBA<uint8_t> { 171, 171, 171 };
 
 Color::Color(const Color& other)
-    : m_colorData(other.m_colorData)
+    : m_colorAndFlags(other.m_colorAndFlags)
 {
-    if (isExtended())
-        m_colorData.extendedColor->ref();
+    if (isOutOfLine())
+        asOutOfLine().ref();
 }
 
 Color::Color(Color&& other)
@@ -53,13 +54,14 @@ Color& Color::operator=(const Color& other)
     if (*this == other)
         return *this;
 
-    if (isExtended())
-        m_colorData.extendedColor->deref();
+    if (isOutOfLine())
+        asOutOfLine().deref();
 
-    m_colorData = other.m_colorData;
+    m_colorAndFlags = other.m_colorAndFlags;
 
-    if (isExtended())
-        m_colorData.extendedColor->ref();
+    if (isOutOfLine())
+        asOutOfLine().ref();
+
     return *this;
 }
 
@@ -68,11 +70,11 @@ Color& Color::operator=(Color&& other)
     if (*this == other)
         return *this;
 
-    if (isExtended())
-        m_colorData.extendedColor->deref();
+    if (isOutOfLine())
+        asOutOfLine().deref();
 
-    m_colorData = other.m_colorData;
-    other.m_colorData.inlineColorAndFlags = invalidInlineColor;
+    m_colorAndFlags = other.m_colorAndFlags;
+    other.m_colorAndFlags = invalidColorAndFlags;
 
     return *this;
 }
@@ -83,7 +85,7 @@ Color Color::lightened() const
     if (isInline() && asInline() == black)
         return lightenedBlack;
 
-    auto [r, g, b, a] = toSRGBALossy<float>();
+    auto [r, g, b, a] = toColorTypeLossy<SRGBA<float>>().resolved();
     float v = std::max({ r, g, b });
 
     if (v == 0.0f)
@@ -91,7 +93,7 @@ Color Color::lightened() const
 
     float multiplier = std::min(1.0f, v + 0.33f) / v;
 
-    return convertToComponentBytes(SRGBA { multiplier * r, multiplier * g, multiplier * b, a });
+    return convertColor<SRGBA<uint8_t>>(SRGBA<float> { multiplier * r, multiplier * g, multiplier * b, a });
 }
 
 Color Color::darkened() const
@@ -100,48 +102,68 @@ Color Color::darkened() const
     if (isInline() && asInline() == white)
         return darkenedWhite;
     
-    auto [r, g, b, a] = toSRGBALossy<float>();
+    auto [r, g, b, a] = toColorTypeLossy<SRGBA<float>>().resolved();
 
     float v = std::max({ r, g, b });
     float multiplier = std::max(0.0f, (v - 0.33f) / v);
 
-    return convertToComponentBytes(SRGBA { multiplier * r, multiplier * g, multiplier * b, a });
+    return convertColor<SRGBA<uint8_t>>(SRGBA<float> { multiplier * r, multiplier * g, multiplier * b, a });
 }
 
-float Color::lightness() const
+double Color::lightness() const
 {
-    // FIXME: This can probably avoid conversion to sRGB by having per-colorspace algorithms for HSL.
-    return WebCore::lightness(toSRGBALossy<float>());
+    // FIXME: Replace remaining uses with luminance.
+    auto [r, g, b, a] = toColorTypeLossy<SRGBA<float>>().resolved();
+    auto [min, max] = std::minmax({ r, g, b });
+    return 0.5 * (max + min);
 }
 
-float Color::luminance() const
+double Color::luminance() const
 {
-    // FIXME: This can probably avoid conversion to sRGB by having per-colorspace algorithms
-    // for luminance (e.g. convertToXYZ(c).yComponent()).
-    return WebCore::luminance(toSRGBALossy<float>());
+    return callOnUnderlyingType([&] (const auto& underlyingColor) {
+        return WebCore::relativeLuminance(underlyingColor);
+    });
+}
+
+bool Color::anyComponentIsNone() const
+{
+    return callOnUnderlyingType([&] (const auto& underlyingColor) {
+        using ColorType = std::decay_t<decltype(underlyingColor)>;
+
+        if constexpr (std::is_same_v<ColorType, SRGBA<uint8_t>>) {
+            return false;
+        } else {
+            auto [c1, c2, c3, alpha] = underlyingColor.unresolved();
+            return std::isnan(c1) || std::isnan(c2) || std::isnan(c3) || std::isnan(alpha);
+        }
+    });
 }
 
 Color Color::colorWithAlpha(float alpha) const
 {
-    return callOnUnderlyingType(WTF::makeVisitor(
-        [&] (const SRGBA<uint8_t>& underlyingColor) -> Color {
-            Color result = colorWithOverridenAlpha(underlyingColor, alpha);
+    return callOnUnderlyingType([&] (const auto& underlyingColor) -> Color {
+        auto result = colorWithOverriddenAlpha(underlyingColor, alpha);
 
-            // FIXME: Why is preserving the semantic bit desired and/or correct here?
-            if (isSemantic())
-                result.tagAsSemantic();
-            return result;
-        },
-        [&] (const auto& underlyingColor) -> Color {
-            return colorWithOverridenAlpha(underlyingColor, alpha);
-        }
-    ));
+        // FIXME: Why is preserving the semantic bit desired and/or correct here?
+        if (isSemantic())
+            return { result, Flags::Semantic };
+
+        return { result };
+    });
 }
 
 Color Color::invertedColorWithAlpha(float alpha) const
 {
     return callOnUnderlyingType([&] (const auto& underlyingColor) -> Color {
-        return invertedColorWithOverridenAlpha(underlyingColor, alpha);
+        using ColorType = std::decay_t<decltype(underlyingColor)>;
+
+        // FIXME: Determine if there is a meaningful understanding of inversion that works
+        // better for non-invertible color types like Lab or consider removing this in favor
+        // of alternatives.
+        if constexpr (ColorType::Model::isInvertible)
+            return invertedColorWithOverriddenAlpha(underlyingColor, alpha);
+        else
+            return invertedColorWithOverriddenAlpha(convertColor<SRGBA<float>>(underlyingColor), alpha);
     });
 }
 
@@ -149,36 +171,59 @@ Color Color::semanticColor() const
 {
     if (isSemantic())
         return *this;
-
-    return { toSRGBALossy<uint8_t>(), Semantic };
+    
+    if (isOutOfLine())
+        return { asOutOfLineRef(), colorSpace(), Flags::Semantic };
+    return { asInline(), Flags::Semantic };
 }
 
-std::pair<ColorSpace, ColorComponents<float>> Color::colorSpaceAndComponents() const
+ColorComponents<float, 4> Color::toResolvedColorComponentsInColorSpace(ColorSpace outputColorSpace) const
 {
-    if (isExtended())
-        return { asExtended().colorSpace(), asExtended().components() };
-    return { ColorSpace::SRGB, asColorComponents(convertToComponentFloats(asInline())) };
+    auto [inputColorSpace, components] = colorSpaceAndResolvedColorComponents();
+    return convertAndResolveColorComponents(inputColorSpace, components, outputColorSpace);
+}
+
+ColorComponents<float, 4> Color::toResolvedColorComponentsInColorSpace(const DestinationColorSpace& outputColorSpace) const
+{
+    auto [inputColorSpace, components] = colorSpaceAndResolvedColorComponents();
+    return convertAndResolveColorComponents(inputColorSpace, components, outputColorSpace);
+}
+
+std::pair<ColorSpace, ColorComponents<float, 4>> Color::colorSpaceAndResolvedColorComponents() const
+{
+    if (isOutOfLine())
+        return { colorSpace(), resolveColorComponents(asOutOfLine().resolvedComponents()) };
+    return { ColorSpace::SRGB, asColorComponents(convertColor<SRGBA<float>>(asInline()).resolved()) };
+}
+
+bool Color::isBlackColor(const Color& color)
+{
+    return color.callOnUnderlyingType([] (const auto& underlyingColor) {
+        return WebCore::isBlack(underlyingColor);
+    });
+}
+
+bool Color::isWhiteColor(const Color& color)
+{
+    return color.callOnUnderlyingType([] (const auto& underlyingColor) {
+        return WebCore::isWhite(underlyingColor);
+    });
+}
+
+Color::DebugRGBA Color::debugRGBA() const
+{
+    auto [r, g, b, a] = toColorTypeLossy<SRGBA<uint8_t>>().resolved();
+    return { r, g, b, a };
+}
+
+String Color::debugDescription() const
+{
+    return serializationForRenderTreeAsText(*this);
 }
 
 TextStream& operator<<(TextStream& ts, const Color& color)
 {
     return ts << serializationForRenderTreeAsText(color);
-}
-
-TextStream& operator<<(TextStream& ts, ColorSpace colorSpace)
-{
-    switch (colorSpace) {
-    case ColorSpace::SRGB:
-        ts << "sRGB";
-        break;
-    case ColorSpace::LinearRGB:
-        ts << "LinearRGB";
-        break;
-    case ColorSpace::DisplayP3:
-        ts << "DisplayP3";
-        break;
-    }
-    return ts;
 }
 
 } // namespace WebCore

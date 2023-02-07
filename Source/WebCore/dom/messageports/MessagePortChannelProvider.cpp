@@ -29,6 +29,7 @@
 #include "Document.h"
 #include "MessagePortChannelProviderImpl.h"
 #include "WorkerGlobalScope.h"
+#include "WorkletGlobalScope.h"
 #include <wtf/MainThread.h>
 
 namespace WebCore {
@@ -56,8 +57,11 @@ void MessagePortChannelProvider::setSharedProvider(MessagePortChannelProvider& p
 
 MessagePortChannelProvider& MessagePortChannelProvider::fromContext(ScriptExecutionContext& context)
 {
-    if (is<Document>(context))
-        return downcast<Document>(context).messagePortChannelProvider();
+    if (auto document = dynamicDowncast<Document>(context))
+        return document->messagePortChannelProvider();
+
+    if (auto workletScope = dynamicDowncast<WorkletGlobalScope>(context))
+        return workletScope->messagePortChannelProvider();
 
     return downcast<WorkerGlobalScope>(context).messagePortChannelProvider();
 }

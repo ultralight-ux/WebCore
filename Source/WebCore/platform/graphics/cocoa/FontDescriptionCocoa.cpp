@@ -27,79 +27,21 @@
 #include "FontCascadeDescription.h"
 
 #include "SystemFontDatabaseCoreText.h"
-#include <mutex>
 
 namespace WebCore {
 
-#if USE(PLATFORM_SYSTEM_FALLBACK_LIST)
-
-template<typename T, typename U, std::size_t size, std::size_t... indices> std::array<T, size> convertArray(U (&array)[size], std::index_sequence<indices...>)
-{
-    return { { array[indices]... } };
-}
-
-template<typename T, typename U, std::size_t size> inline std::array<T, size> convertArray(U (&array)[size])
-{
-    return convertArray<T>(array, std::make_index_sequence<size> { });
-}
-
-static inline Optional<SystemFontKind> matchSystemFontUse(const AtomString& string)
-{
-    if (equalLettersIgnoringASCIICase(string, "-webkit-system-font")
-        || equalLettersIgnoringASCIICase(string, "-apple-system")
-        || equalLettersIgnoringASCIICase(string, "-apple-system-font")
-        || equalLettersIgnoringASCIICase(string, "system-ui")
-        || equalLettersIgnoringASCIICase(string, "ui-sans-serif"))
-        return SystemFontKind::SystemUI;
-
-#if HAVE(DESIGN_SYSTEM_UI_FONTS)
-    if (equalLettersIgnoringASCIICase(string, "ui-serif"))
-        return SystemFontKind::UISerif;
-    if (equalLettersIgnoringASCIICase(string, "ui-monospace"))
-        return SystemFontKind::UIMonospace;
-    if (equalLettersIgnoringASCIICase(string, "ui-rounded"))
-        return SystemFontKind::UIRounded;
-#endif
-
-    static const CFStringRef styles[] = {
-        kCTUIFontTextStyleHeadline,
-        kCTUIFontTextStyleBody,
-        kCTUIFontTextStyleTitle1,
-        kCTUIFontTextStyleTitle2,
-        kCTUIFontTextStyleTitle3,
-        kCTUIFontTextStyleSubhead,
-        kCTUIFontTextStyleFootnote,
-        kCTUIFontTextStyleCaption1,
-        kCTUIFontTextStyleCaption2,
-        kCTUIFontTextStyleShortHeadline,
-        kCTUIFontTextStyleShortBody,
-        kCTUIFontTextStyleShortSubhead,
-        kCTUIFontTextStyleShortFootnote,
-        kCTUIFontTextStyleShortCaption1,
-        kCTUIFontTextStyleTallBody,
-        kCTUIFontTextStyleTitle0,
-        kCTUIFontTextStyleTitle4,
-    };
-    
-    static auto strings { makeNeverDestroyed(convertArray<AtomString>(styles)) };
-    if (std::find(strings.get().begin(), strings.get().end(), string) != strings.get().end())
-        return SystemFontKind::TextStyle;
-
-    return WTF::nullopt;
-}
-
 static inline Vector<RetainPtr<CTFontDescriptorRef>> systemFontCascadeList(const FontDescription& description, const AtomString& cssFamily, SystemFontKind systemFontKind, AllowUserInstalledFonts allowUserInstalledFonts)
 {
-    return SystemFontDatabaseCoreText::singleton().cascadeList(description, cssFamily, systemFontKind, allowUserInstalledFonts);
+    return SystemFontDatabaseCoreText::forCurrentThread().cascadeList(description, cssFamily, systemFontKind, allowUserInstalledFonts);
 }
 
 unsigned FontCascadeDescription::effectiveFamilyCount() const
 {
-    // FIXME: Move all the other system font keywords from platformFontWithFamilySpecialCase() to here.
+    // FIXME: Move all the other system font keywords from fontWithFamilySpecialCase() to here.
     unsigned result = 0;
     for (unsigned i = 0; i < familyCount(); ++i) {
         const auto& cssFamily = familyAt(i);
-        if (auto use = matchSystemFontUse(cssFamily))
+        if (auto use = SystemFontDatabaseCoreText::forCurrentThread().matchSystemFontUse(cssFamily))
             result += systemFontCascadeList(*this, cssFamily, *use, shouldAllowUserInstalledFonts()).size();
         else
             ++result;
@@ -109,16 +51,15 @@ unsigned FontCascadeDescription::effectiveFamilyCount() const
 
 FontFamilySpecification FontCascadeDescription::effectiveFamilyAt(unsigned index) const
 {
-    // The special cases in this function need to match the behavior in FontCacheIOS.mm and FontCacheMac.mm. On systems
-    // where USE(PLATFORM_SYSTEM_FALLBACK_LIST) is set to true, this code is used for regular (element style) lookups,
-    // and the code in FontDescriptionCocoa.cpp is used when src:local(special-cased-name) is specified inside an
-    // @font-face block.
+    // The special cases in this function need to match the behavior in FontCacheCoreText.cpp. This code
+    // is used for regular (element style) lookups, and the code in FontDescriptionCocoa.cpp is used when
+    // src:local(special-cased-name) is specified inside an @font-face block.
     // FIXME: Currently, an @font-face block corresponds to a single item in the font-family: fallback list, which
     // means that "src:local(system-ui)" can't follow the Core Text cascade list (the way it does for regular lookups).
     // These two behaviors should be unified, which would hopefully allow us to delete this duplicate code.
     for (unsigned i = 0; i < familyCount(); ++i) {
         const auto& cssFamily = familyAt(i);
-        if (auto use = matchSystemFontUse(cssFamily)) {
+        if (auto use = SystemFontDatabaseCoreText::forCurrentThread().matchSystemFontUse(cssFamily)) {
             auto cascadeList = systemFontCascadeList(*this, cssFamily, *use, shouldAllowUserInstalledFonts());
             if (index < cascadeList.size())
                 return FontFamilySpecification(cascadeList[index].get());
@@ -133,8 +74,6 @@ FontFamilySpecification FontCascadeDescription::effectiveFamilyAt(unsigned index
     return nullAtom();
 }
 
-#endif // USE(PLATFORM_SYSTEM_FALLBACK_LIST)
-
 AtomString FontDescription::platformResolveGenericFamily(UScriptCode script, const AtomString& locale, const AtomString& familyName)
 {
     ASSERT((locale.isNull() && script == USCRIPT_COMMON) || !locale.isNull());
@@ -143,15 +82,15 @@ AtomString FontDescription::platformResolveGenericFamily(UScriptCode script, con
 
     // FIXME: Use the system font database to handle standardFamily
     if (familyName == serifFamily)
-        return SystemFontDatabaseCoreText::singleton().serifFamily(locale.string());
+        return AtomString { SystemFontDatabaseCoreText::forCurrentThread().serifFamily(locale.string()) };
     if (familyName == sansSerifFamily)
-        return SystemFontDatabaseCoreText::singleton().sansSerifFamily(locale.string());
+        return AtomString { SystemFontDatabaseCoreText::forCurrentThread().sansSerifFamily(locale.string()) };
     if (familyName == cursiveFamily)
-        return SystemFontDatabaseCoreText::singleton().cursiveFamily(locale.string());
+        return AtomString { SystemFontDatabaseCoreText::forCurrentThread().cursiveFamily(locale.string()) };
     if (familyName == fantasyFamily)
-        return SystemFontDatabaseCoreText::singleton().fantasyFamily(locale.string());
+        return AtomString { SystemFontDatabaseCoreText::forCurrentThread().fantasyFamily(locale.string()) };
     if (familyName == monospaceFamily)
-        return SystemFontDatabaseCoreText::singleton().monospaceFamily(locale.string());
+        return AtomString { SystemFontDatabaseCoreText::forCurrentThread().monospaceFamily(locale.string()) };
 
     return nullAtom();
 }

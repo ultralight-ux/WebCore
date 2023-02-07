@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2020 Apple Inc. All rights reserved.
+* Copyright (C) 2020-2021 Apple Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions
@@ -25,6 +25,9 @@
 
 #pragma once
 
+#include <optional>
+#include <wtf/Function.h>
+
 namespace WebCore {
 
 WEBCORE_EXPORT void setSystemHasBattery(bool);
@@ -33,9 +36,24 @@ WEBCORE_EXPORT bool systemHasBattery();
 WEBCORE_EXPORT void resetSystemHasAC();
 WEBCORE_EXPORT void setSystemHasAC(bool);
 WEBCORE_EXPORT bool systemHasAC();
-WEBCORE_EXPORT Optional<bool> cachedSystemHasAC();
+WEBCORE_EXPORT std::optional<bool> cachedSystemHasAC();
 
-WEBCORE_EXPORT void setOverrideSystemHasBatteryForTesting(Optional<bool>&&);
-WEBCORE_EXPORT void setOverrideSystemHasACForTesting(Optional<bool>&&);
+class WEBCORE_EXPORT SystemBatteryStatusTestingOverrides {
+public:
+    static SystemBatteryStatusTestingOverrides& singleton();
+
+    void setHasAC(std::optional<bool>&&);
+    std::optional<bool> hasAC() { return m_hasAC; }
+
+    void setHasBattery(std::optional<bool>&&);
+    std::optional<bool> hasBattery() { return  m_hasBattery; }
+
+    void setConfigurationChangedCallback(std::function<void()>&&);
+
+private:
+    std::optional<bool> m_hasBattery;
+    std::optional<bool> m_hasAC;
+    Function<void()> m_configurationChangedCallback;
+};
 
 }

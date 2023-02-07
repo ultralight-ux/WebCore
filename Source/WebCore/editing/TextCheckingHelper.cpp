@@ -94,7 +94,6 @@ static void findMisspellings(TextCheckerClient& client, StringView text, Vector<
             TextCheckingResult misspelling;
             misspelling.type = TextCheckingType::Spelling;
             misspelling.range = CharacterRange(wordStart + misspellingLocation, misspellingLength);
-            misspelling.replacement = client.getAutoCorrectSuggestionForMisspelledWord(text.substring(misspelling.range.location, misspelling.range.length).toStringWithoutCopying());
             results.append(misspelling);
         }
 
@@ -106,8 +105,8 @@ static void findMisspellings(TextCheckerClient& client, StringView text, Vector<
 
 static SimpleRange expandToParagraphBoundary(const SimpleRange& range)
 {
-    auto start = makeBoundaryPoint(startOfParagraph(createLegacyEditingPosition(range.start)));
-    auto end = makeBoundaryPoint(endOfParagraph(createLegacyEditingPosition(range.end)));
+    auto start = makeBoundaryPoint(startOfParagraph(makeDeprecatedLegacyPosition(range.start)));
+    auto end = makeBoundaryPoint(endOfParagraph(makeDeprecatedLegacyPosition(range.end)));
     if (!start || !end)
         return range;
     return { *start, *end };
@@ -119,7 +118,7 @@ TextCheckingParagraph::TextCheckingParagraph(const SimpleRange& range)
 {
 }
 
-TextCheckingParagraph::TextCheckingParagraph(const SimpleRange& checkingRange, const SimpleRange& replacementRange, const Optional<SimpleRange>& paragraphRange)
+TextCheckingParagraph::TextCheckingParagraph(const SimpleRange& checkingRange, const SimpleRange& replacementRange, const std::optional<SimpleRange>& paragraphRange)
     : m_checkingRange(checkingRange)
     , m_automaticReplacementRange(replacementRange)
     , m_paragraphRange(paragraphRange)
@@ -129,7 +128,7 @@ TextCheckingParagraph::TextCheckingParagraph(const SimpleRange& checkingRange, c
 void TextCheckingParagraph::expandRangeToNextEnd()
 {
     paragraphRange();
-    if (auto end = makeBoundaryPoint(endOfParagraph(startOfNextParagraph(createLegacyEditingPosition(m_paragraphRange->start)))))
+    if (auto end = makeBoundaryPoint(endOfParagraph(startOfNextParagraph(makeDeprecatedLegacyPosition(m_paragraphRange->start)))))
         m_paragraphRange->end = WTFMove(*end);
     invalidateParagraphRangeValues();
 }
@@ -139,7 +138,7 @@ void TextCheckingParagraph::invalidateParagraphRangeValues()
     m_checkingStart.reset();
     m_automaticReplacementStart.reset();
     m_automaticReplacementLength.reset();
-    m_offsetAsRange = WTF::nullopt;
+    m_offsetAsRange = std::nullopt;
     m_text = String();
 }
 
@@ -208,21 +207,15 @@ uint64_t TextCheckingParagraph::checkingLength() const
     return *m_checkingLength;
 }
 
-uint64_t TextCheckingParagraph::automaticReplacementStart(bool oldBehaviour) const
+uint64_t TextCheckingParagraph::automaticReplacementStart() const
 {
-    if (oldBehaviour && is_gt(documentOrder(paragraphRange().start, m_automaticReplacementRange.start)))
-        return 0;
-    
     if (!m_automaticReplacementStart)
         m_automaticReplacementStart = characterCount({ paragraphRange().start, m_automaticReplacementRange.start });
     return *m_automaticReplacementStart;
 }
 
-uint64_t TextCheckingParagraph::automaticReplacementLength(bool oldBehaviour) const
+uint64_t TextCheckingParagraph::automaticReplacementLength() const
 {
-    if (oldBehaviour && is_gt(documentOrder(paragraphRange().start, m_automaticReplacementRange.start)))
-        return characterCount({ paragraphRange().start, m_automaticReplacementRange.end });
-    
     if (!m_automaticReplacementLength)
         m_automaticReplacementLength = characterCount(m_automaticReplacementRange);
     return *m_automaticReplacementLength;
@@ -234,9 +227,9 @@ TextCheckingHelper::TextCheckingHelper(EditorClient& client, const SimpleRange& 
 {
 }
 
-auto TextCheckingHelper::findMisspelledWords(Operation operation) const -> std::pair<MisspelledWord, Optional<SimpleRange>>
+auto TextCheckingHelper::findMisspelledWords(Operation operation) const -> std::pair<MisspelledWord, std::optional<SimpleRange>>
 {
-    std::pair<MisspelledWord, Optional<SimpleRange>> first;
+    std::pair<MisspelledWord, std::optional<SimpleRange>> first;
 
     uint64_t currentChunkOffset = 0;
 
@@ -291,7 +284,7 @@ auto TextCheckingHelper::findFirstMisspelledWord() const -> MisspelledWord
     return findMisspelledWords(Operation::FindFirst).first;
 }
 
-auto TextCheckingHelper::findFirstMisspelledWordOrUngrammaticalPhrase(bool checkGrammar) const -> Variant<MisspelledWord, UngrammaticalPhrase>
+auto TextCheckingHelper::findFirstMisspelledWordOrUngrammaticalPhrase(bool checkGrammar) const -> std::variant<MisspelledWord, UngrammaticalPhrase>
 {
     if (!unifiedTextCheckerEnabled())
         return { };
@@ -299,19 +292,19 @@ auto TextCheckingHelper::findFirstMisspelledWordOrUngrammaticalPhrase(bool check
     if (platformDrivenTextCheckerEnabled())
         return { };
 
-    Variant<MisspelledWord, UngrammaticalPhrase> firstFoundItem;
+    std::variant<MisspelledWord, UngrammaticalPhrase> firstFoundItem;
     GrammarDetail grammarDetail;
 
     String misspelledWord;
-    Optional<SimpleRange> misspelledWordRange;
+    std::optional<SimpleRange> misspelledWordRange;
     String badGrammarPhrase;
     
     // Expand the search range to encompass entire paragraphs, since text checking needs that much context.
     // Determine the character offset from the start of the paragraph to the start of the original search range,
     // since we will want to ignore results in this area.
-    auto paragraphRange = *makeSimpleRange(startOfParagraph(createLegacyEditingPosition(m_range.start)), m_range.end);
+    auto paragraphRange = *makeSimpleRange(startOfParagraph(makeDeprecatedLegacyPosition(m_range.start)), m_range.end);
     auto totalRangeLength = characterCount(paragraphRange);
-    paragraphRange.end = *makeBoundaryPoint(endOfParagraph(createLegacyEditingPosition(m_range.start)));
+    paragraphRange.end = *makeBoundaryPoint(endOfParagraph(makeDeprecatedLegacyPosition(m_range.start)));
     
     auto rangeStartOffset = characterCount({ paragraphRange.start, m_range.start });
     uint64_t totalLengthProcessed = 0;
@@ -323,7 +316,7 @@ auto TextCheckingHelper::findFirstMisspelledWordOrUngrammaticalPhrase(bool check
         auto currentLength = characterCount(paragraphRange);
         uint64_t currentStartOffset = firstIteration ? rangeStartOffset : 0;
         uint64_t currentEndOffset = currentLength;
-        if (inSameParagraph(createLegacyEditingPosition(paragraphRange.start), createLegacyEditingPosition(m_range.end))) {
+        if (inSameParagraph(makeDeprecatedLegacyPosition(paragraphRange.start), makeDeprecatedLegacyPosition(m_range.end))) {
             // Determine the character offset from the end of the original search range to the end of the paragraph,
             // since we will want to ignore results in this area.
             currentEndOffset = characterCount({ paragraphRange.start, m_range.end });
@@ -343,7 +336,7 @@ auto TextCheckingHelper::findFirstMisspelledWordOrUngrammaticalPhrase(bool check
                 if (checkGrammar)
                     checkingTypes.add(TextCheckingType::Grammar);
                 VisibleSelection currentSelection;
-                if (Frame* frame = paragraphRange.start.container->document().frame())
+                if (Frame* frame = paragraphRange.start.document().frame())
                     currentSelection = frame->selection().selection();
                 checkTextOfParagraph(*m_client.textChecker(), paragraphString, checkingTypes, results, currentSelection);
 
@@ -405,7 +398,7 @@ auto TextCheckingHelper::findFirstMisspelledWordOrUngrammaticalPhrase(bool check
         if (lastIteration || totalLengthProcessed + currentLength >= totalRangeLength)
             break;
 
-        auto nextStart = startOfNextParagraph(createLegacyEditingPosition(paragraphRange.end));
+        auto nextStart = startOfNextParagraph(makeDeprecatedLegacyPosition(paragraphRange.end));
         auto nextParagraphRange = makeSimpleRange(nextStart, endOfParagraph(nextStart));
         if (!nextParagraphRange)
             break;
@@ -557,7 +550,7 @@ TextCheckingGuesses TextCheckingHelper::guessesForMisspelledWordOrUngrammaticalP
     return { };
 }
 
-Optional<SimpleRange> TextCheckingHelper::markAllMisspelledWords() const
+std::optional<SimpleRange> TextCheckingHelper::markAllMisspelledWords() const
 {
     return findMisspelledWords(Operation::MarkAll).second;
 }
@@ -589,7 +582,7 @@ void checkTextOfParagraph(TextCheckerClient& client, StringView text, OptionSet<
         unsigned grammarCheckLength = text.length();
         for (auto& misspelling : misspellings)
             grammarCheckLength = std::min<unsigned>(grammarCheckLength, misspelling.range.location);
-        findGrammaticalErrors(client, text.substring(0, grammarCheckLength), grammaticalErrors);
+        findGrammaticalErrors(client, text.left(grammarCheckLength), grammaticalErrors);
     }
 
     results = WTFMove(grammaticalErrors);

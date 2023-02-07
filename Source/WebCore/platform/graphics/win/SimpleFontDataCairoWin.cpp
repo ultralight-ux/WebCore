@@ -73,10 +73,12 @@ void Font::platformInit()
     GetTextMetrics(dc, &textMetrics);
     float ascent = textMetrics.tmAscent * metricsMultiplier;
     float descent = textMetrics.tmDescent * metricsMultiplier;
+    float capHeight = (textMetrics.tmAscent - textMetrics.tmInternalLeading) * metricsMultiplier;
     float lineGap = textMetrics.tmExternalLeading * metricsMultiplier;
 
     m_fontMetrics.setAscent(ascent);
     m_fontMetrics.setDescent(descent);
+    m_fontMetrics.setCapHeight(capHeight);
     m_fontMetrics.setLineGap(lineGap);
     m_fontMetrics.setLineSpacing(lroundf(ascent) + lroundf(descent) + lroundf(lineGap));
     m_avgCharWidth = textMetrics.tmAveCharWidth * metricsMultiplier;
@@ -95,49 +97,30 @@ void Font::platformInit()
     RestoreDC(dc, -1);
 }
 
-FloatRect Font::platformBoundsForGlyph(Glyph glyph) const
+void Font::determinePitch()
 {
-    if (m_platformData.useGDI())
-        return boundsForGDIGlyph(glyph);
+    if (origin() == Origin::Remote) {
+        m_treatAsFixedPitch = false;
+        return;
+    }
 
+    // TEXTMETRICS have this. Set m_treatAsFixedPitch based off that.
     HWndDC dc(0);
     SaveDC(dc);
-    auto scaledFont = m_platformData.scaledFont();
-    cairo_win32_scaled_font_select_font(scaledFont, dc);
+    SelectObject(dc, m_platformData.hfont());
 
-    GLYPHMETRICS gdiMetrics;
-    static const MAT2 identity = { { 0, 1 }, { 0, 0 }, { 0, 0 }, { 0, 1 } };
-    GetGlyphOutline(dc, glyph, GGO_METRICS | GGO_GLYPH_INDEX, &gdiMetrics, 0, 0, &identity);
+    // Yes, this looks backwards, but the fixed pitch bit is actually set if the font
+    // is *not* fixed pitch. Unbelievable but true!
+    TEXTMETRIC tm;
+    GetTextMetrics(dc, &tm);
+    m_treatAsFixedPitch = !(tm.tmPitchAndFamily & TMPF_FIXED_PITCH);
 
-    cairo_win32_scaled_font_done_font(scaledFont);
     RestoreDC(dc, -1);
-    return FloatRect(gdiMetrics.gmptGlyphOrigin.x, -gdiMetrics.gmptGlyphOrigin.y,
-        gdiMetrics.gmBlackBoxX + m_syntheticBoldOffset, gdiMetrics.gmBlackBoxY);
 }
-    
-float Font::platformWidthForGlyph(Glyph glyph) const
+
+bool Font::platformSupportsCodePoint(UChar32 character, std::optional<UChar32> variation) const
 {
-    if (m_platformData.useGDI())
-       return widthForGDIGlyph(glyph);
-
-    if (!m_platformData.size())
-        return 0;
-
-    HWndDC dc(0);
-    SaveDC(dc);
-
-    cairo_scaled_font_t* scaledFont = m_platformData.scaledFont();
-    cairo_win32_scaled_font_select_font(scaledFont, dc);
-
-    int width;
-    GetCharWidthI(dc, glyph, 1, 0, &width);
-
-    cairo_win32_scaled_font_done_font(scaledFont);
-
-    RestoreDC(dc, -1);
-
-    const double metricsMultiplier = cairo_win32_scaled_font_get_metrics_factor(scaledFont) * m_platformData.size();
-    return width * metricsMultiplier;
+    return variation ? false : glyphForCharacter(character);
 }
 
 }

@@ -50,8 +50,8 @@ public:
     {
     }
 
-    ResourceError(const String& domain, int errorCode, const URL& failingURL, const String& localizedDescription, Type type = Type::General)
-        : ResourceErrorBase(domain, errorCode, failingURL, localizedDescription, type)
+    ResourceError(const String& domain, int errorCode, const URL& failingURL, const String& localizedDescription, Type type = Type::General, IsSanitized isSanitized = IsSanitized::No)
+        : ResourceErrorBase(domain, errorCode, failingURL, localizedDescription, type, isSanitized)
         , m_dataIsUpToDate(true)
     {
 #if PLATFORM(COCOA)
@@ -66,14 +66,13 @@ public:
     WEBCORE_EXPORT operator CFErrorRef() const;
 
 #if USE(CFURLCONNECTION)
-    ResourceError(const String& domain, int errorCode, const URL& failingURL, const String& localizedDescription, CFDataRef certificate);
+    ResourceError(const String& domain, int errorCode, const URL& failingURL, const String& localizedDescription, CFDataRef certificate, IsSanitized = IsSanitized::No);
     PCCERT_CONTEXT certificate() const;
     void setCertificate(CFDataRef);
     ResourceError(CFStreamError error);
     CFStreamError cfStreamError() const;
     operator CFStreamError() const;
     static const void* getSSLPeerCertificateDataBytePtr(CFDictionaryRef);
-
 #endif
 
 #if PLATFORM(COCOA)
@@ -81,6 +80,8 @@ public:
     WEBCORE_EXPORT NSError *nsError() const;
     WEBCORE_EXPORT operator NSError *() const;
 #endif
+
+    bool compromisedNetworkConnectionIntegrity() const { return m_compromisedNetworkConnectionIntegrity; }
 
     static bool platformCompare(const ResourceError& a, const ResourceError& b);
 
@@ -105,6 +106,7 @@ private:
 #else
     mutable RetainPtr<NSError> m_platformError;
 #endif
+    bool m_compromisedNetworkConnectionIntegrity { false };
 };
 
 } // namespace WebCore

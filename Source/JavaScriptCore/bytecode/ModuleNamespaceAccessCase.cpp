@@ -38,25 +38,21 @@
 namespace JSC {
 
 ModuleNamespaceAccessCase::ModuleNamespaceAccessCase(VM& vm, JSCell* owner, CacheableIdentifier identifier, JSModuleNamespaceObject* moduleNamespaceObject, JSModuleEnvironment* moduleEnvironment, ScopeOffset scopeOffset)
-    : Base(vm, owner, ModuleNamespaceLoad, identifier, invalidOffset, nullptr, ObjectPropertyConditionSet(), nullptr)
+    : Base(vm, owner, AccessType::ModuleNamespaceLoad, identifier, invalidOffset, nullptr, ObjectPropertyConditionSet(), nullptr)
     , m_scopeOffset(scopeOffset)
 {
     m_moduleNamespaceObject.set(vm, owner, moduleNamespaceObject);
     m_moduleEnvironment.set(vm, owner, moduleEnvironment);
 }
 
-std::unique_ptr<AccessCase> ModuleNamespaceAccessCase::create(VM& vm, JSCell* owner, CacheableIdentifier identifier, JSModuleNamespaceObject* moduleNamespaceObject, JSModuleEnvironment* moduleEnvironment, ScopeOffset scopeOffset)
+Ref<AccessCase> ModuleNamespaceAccessCase::create(VM& vm, JSCell* owner, CacheableIdentifier identifier, JSModuleNamespaceObject* moduleNamespaceObject, JSModuleEnvironment* moduleEnvironment, ScopeOffset scopeOffset)
 {
-    return std::unique_ptr<AccessCase>(new ModuleNamespaceAccessCase(vm, owner, identifier, moduleNamespaceObject, moduleEnvironment, scopeOffset));
+    return adoptRef(*new ModuleNamespaceAccessCase(vm, owner, identifier, moduleNamespaceObject, moduleEnvironment, scopeOffset));
 }
 
-ModuleNamespaceAccessCase::~ModuleNamespaceAccessCase()
+Ref<AccessCase> ModuleNamespaceAccessCase::cloneImpl() const
 {
-}
-
-std::unique_ptr<AccessCase> ModuleNamespaceAccessCase::clone() const
-{
-    std::unique_ptr<ModuleNamespaceAccessCase> result(new ModuleNamespaceAccessCase(*this));
+    auto result = adoptRef(*new ModuleNamespaceAccessCase(*this));
     result->resetState();
     return result;
 }
@@ -64,8 +60,9 @@ std::unique_ptr<AccessCase> ModuleNamespaceAccessCase::clone() const
 void ModuleNamespaceAccessCase::emit(AccessGenerationState& state, MacroAssembler::JumpList& fallThrough)
 {
     CCallHelpers& jit = *state.jit;
-    JSValueRegs valueRegs = state.valueRegs;
-    GPRReg baseGPR = state.baseGPR;
+    StructureStubInfo& stubInfo = *state.stubInfo;
+    JSValueRegs valueRegs = stubInfo.valueRegs();
+    GPRReg baseGPR = stubInfo.m_baseGPR;
 
     fallThrough.append(
         jit.branchPtr(

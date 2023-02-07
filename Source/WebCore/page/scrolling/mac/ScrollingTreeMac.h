@@ -37,8 +37,12 @@ class ScrollingTreeMac final : public ThreadedScrollingTree {
 public:
     static Ref<ScrollingTreeMac> create(AsyncScrollingCoordinator&);
 
+    void didCompletePlatformRenderingUpdate();
+
 private:
     explicit ScrollingTreeMac(AsyncScrollingCoordinator&);
+    
+    bool isScrollingTreeMac() const final { return true; }
 
     Ref<ScrollingTreeNode> createScrollingTreeNode(ScrollingNodeType, ScrollingNodeID) final;
 
@@ -47,22 +51,14 @@ private:
     OptionSet<EventListenerRegionType> eventListenerRegionTypesForPoint(FloatPoint) const final;
 #endif
 
-    void setWheelEventTestMonitor(RefPtr<WheelEventTestMonitor>&&) final;
+    void registerForPlatformRenderingUpdateCallback();
+    void applyLayerPositionsInternal() final WTF_REQUIRES_LOCK(m_treeLock);
 
-    void receivedWheelEvent(const PlatformWheelEvent&) final;
-
-    void deferWheelEventTestCompletionForReason(WheelEventTestMonitor::ScrollableAreaIdentifier, WheelEventTestMonitor::DeferReason) final;
-    void removeWheelEventTestCompletionDeferralForReason(WheelEventTestMonitor::ScrollableAreaIdentifier, WheelEventTestMonitor::DeferReason) final;
-
-    void lockLayersForHitTesting() final;
-    void unlockLayersForHitTesting() final;
-
-    // This lock protects the CALayer/PlatformCALayer tree.
-    mutable Lock m_layerHitTestMutex;
-    
-    RefPtr<WheelEventTestMonitor> m_wheelEventTestMonitor;
+    void didCompleteRenderingUpdate() final;
 };
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_SCROLLING_TREE(WebCore::ScrollingTreeMac, isScrollingTreeMac())
 
 #endif // ENABLE(ASYNC_SCROLLING) && ENABLE(SCROLLING_THREAD)

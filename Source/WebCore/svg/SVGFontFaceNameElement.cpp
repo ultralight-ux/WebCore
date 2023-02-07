@@ -18,11 +18,10 @@
  */
 
 #include "config.h"
-
-#if ENABLE(SVG_FONTS)
 #include "SVGFontFaceNameElement.h"
 
 #include "CSSFontFaceSrcValue.h"
+#include "SVGElementInlines.h"
 #include "SVGNames.h"
 #include <wtf/IsoMallocInlines.h>
 
@@ -31,7 +30,7 @@ namespace WebCore {
 WTF_MAKE_ISO_ALLOCATED_IMPL(SVGFontFaceNameElement);
     
 inline SVGFontFaceNameElement::SVGFontFaceNameElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(SVGNames::font_face_nameTag));
 }
@@ -41,12 +40,9 @@ Ref<SVGFontFaceNameElement> SVGFontFaceNameElement::create(const QualifiedName& 
     return adoptRef(*new SVGFontFaceNameElement(tagName, document));
 }
 
-Ref<CSSFontFaceSrcValue> SVGFontFaceNameElement::srcValue() const
+Ref<CSSFontFaceSrcLocalValue> SVGFontFaceNameElement::createSrcValue() const
 {
-    return CSSFontFaceSrcValue::createLocal(attributeWithoutSynchronization(SVGNames::nameAttr));
+    return CSSFontFaceSrcLocalValue::create(attributeWithoutSynchronization(SVGNames::nameAttr));
 }
 
 }
-
-#endif // ENABLE(SVG_FONTS)
-

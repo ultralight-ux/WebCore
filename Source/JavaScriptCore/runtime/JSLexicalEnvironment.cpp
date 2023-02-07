@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,15 +34,18 @@
 
 namespace JSC {
 
-const ClassInfo JSLexicalEnvironment::s_info = { "JSLexicalEnvironment", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSLexicalEnvironment) };
+const ClassInfo JSLexicalEnvironment::s_info = { "JSLexicalEnvironment"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSLexicalEnvironment) };
 
-void JSLexicalEnvironment::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void JSLexicalEnvironment::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     auto* thisObject = jsCast<JSLexicalEnvironment*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
     visitor.appendValuesHidden(thisObject->variables(), thisObject->symbolTable()->scopeSize());
 }
+
+DEFINE_VISIT_CHILDREN(JSLexicalEnvironment);
 
 void JSLexicalEnvironment::analyzeHeap(JSCell* cell, HeapAnalyzer& analyzer)
 {
@@ -64,7 +67,7 @@ void JSLexicalEnvironment::analyzeHeap(JSCell* cell, HeapAnalyzer& analyzer)
     }
 }
 
-void JSLexicalEnvironment::getOwnNonIndexPropertyNames(JSObject* object, JSGlobalObject* globalObject, PropertyNameArray& propertyNames, EnumerationMode mode)
+void JSLexicalEnvironment::getOwnSpecialPropertyNames(JSObject* object, JSGlobalObject* globalObject, PropertyNameArray& propertyNames, DontEnumPropertiesMode mode)
 {
     JSLexicalEnvironment* thisObject = jsCast<JSLexicalEnvironment*>(object);
 
@@ -73,7 +76,7 @@ void JSLexicalEnvironment::getOwnNonIndexPropertyNames(JSObject* object, JSGloba
         SymbolTable::Map::iterator end = thisObject->symbolTable()->end(locker);
         VM& vm = globalObject->vm();
         for (SymbolTable::Map::iterator it = thisObject->symbolTable()->begin(locker); it != end; ++it) {
-            if (it->value.getAttributes() & PropertyAttribute::DontEnum && !mode.includeDontEnumProperties())
+            if (mode == DontEnumPropertiesMode::Exclude && it->value.isDontEnum())
                 continue;
             if (!thisObject->isValidScopeOffset(it->value.scopeOffset()))
                 continue;
@@ -82,8 +85,6 @@ void JSLexicalEnvironment::getOwnNonIndexPropertyNames(JSObject* object, JSGloba
             propertyNames.add(Identifier::fromUid(vm, it->key.get()));
         }
     }
-    // Skip the JSSymbolTableObject's implementation of getOwnNonIndexPropertyNames
-    JSObject::getOwnNonIndexPropertyNames(thisObject, globalObject, propertyNames, mode);
 }
 
 bool JSLexicalEnvironment::getOwnPropertySlot(JSObject* object, JSGlobalObject* globalObject, PropertyName propertyName, PropertySlot& slot)
@@ -102,8 +103,8 @@ bool JSLexicalEnvironment::getOwnPropertySlot(JSObject* object, JSGlobalObject* 
 
     // We don't call through to JSObject because there's no way to give a 
     // lexical environment object getter properties or a prototype.
-    ASSERT(!thisObject->hasGetterSetterProperties(vm));
-    ASSERT(thisObject->getPrototypeDirect(vm).isNull());
+    ASSERT(!thisObject->hasGetterSetterProperties());
+    ASSERT(thisObject->getPrototypeDirect().isNull());
     return false;
 }
 
@@ -121,7 +122,7 @@ bool JSLexicalEnvironment::put(JSCell* cell, JSGlobalObject* globalObject, Prope
     // We don't call through to JSObject because __proto__ and getter/setter 
     // properties are non-standard extensions that other implementations do not
     // expose in the lexicalEnvironment object.
-    ASSERT(!thisObject->hasGetterSetterProperties(globalObject->vm()));
+    ASSERT(!thisObject->hasGetterSetterProperties());
     return thisObject->putOwnDataProperty(globalObject->vm(), propertyName, value, slot);
 }
 

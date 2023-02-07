@@ -29,15 +29,20 @@
 #include <glib/gstdio.h>
 #include <sys/file.h>
 #include <wtf/EnumTraits.h>
-#include <wtf/FileMetadata.h>
 #include <wtf/UUID.h>
-#include <wtf/glib/GLibUtilities.h>
 #include <wtf/glib/GRefPtr.h>
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/ASCIIFastPath.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
+
+#if OS(WINDOWS)
+#include <windows.h>
+#else
+#include <limits.h>
+#include <unistd.h>
+#endif
 
 namespace WTF {
 
@@ -73,8 +78,10 @@ String stringFromFileSystemRepresentation(const char* representation)
 
 CString fileSystemRepresentation(const String& path)
 {
-    if (path.isEmpty())
+    if (path.isNull())
         return { };
+    if (path.isEmpty())
+        return CString("");
 
     CString utf8 = path.utf8();
 
@@ -118,220 +125,50 @@ String filenameForDisplay(const String& string)
 #endif
 }
 
-bool fileExists(const String& path)
-{
-    auto filename = fileSystemRepresentation(path);
-    return validRepresentation(filename) ? g_file_test(filename.data(), G_FILE_TEST_EXISTS) : false;
-}
-
-bool deleteFile(const String& path)
-{
-    auto filename = fileSystemRepresentation(path);
-    return validRepresentation(filename) ? g_remove(filename.data()) != -1 : false;
-}
-
-bool deleteEmptyDirectory(const String& path)
-{
-    auto filename = fileSystemRepresentation(path);
-    return validRepresentation(filename) ? g_rmdir(filename.data()) != -1 : false;
-}
-
-static bool getFileStat(const String& path, GStatBuf* statBuffer)
-{
-    auto filename = fileSystemRepresentation(path);
-    if (!validRepresentation(filename))
-        return false;
-
-    return g_stat(filename.data(), statBuffer) != -1;
-}
-
-static bool getFileLStat(const String& path, GStatBuf* statBuffer)
-{
-    auto filename = fileSystemRepresentation(path);
-    if (!validRepresentation(filename))
-        return false;
-
-    return g_lstat(filename.data(), statBuffer) != -1;
-}
-
-bool getFileSize(const String& path, long long& resultSize)
-{
-    GStatBuf statResult;
-    if (!getFileStat(path, &statResult))
-        return false;
-
-    resultSize = statResult.st_size;
-    return true;
-}
-
-bool getFileSize(PlatformFileHandle handle, long long& resultSize)
+std::optional<uint64_t> fileSize(PlatformFileHandle handle)
 {
     GRefPtr<GFileInfo> info = adoptGRef(g_file_io_stream_query_info(handle, G_FILE_ATTRIBUTE_STANDARD_SIZE, nullptr, nullptr));
     if (!info)
-        return false;
+        return std::nullopt;
 
-    resultSize = g_file_info_get_size(info.get());
-    return true;
+    return g_file_info_get_size(info.get());
 }
 
-Optional<WallTime> getFileCreationTime(const String&)
+std::optional<PlatformFileID> fileID(PlatformFileHandle handle)
 {
-    // FIXME: Is there a way to retrieve file creation time with Gtk on platforms that support it?
-    return WTF::nullopt;
-}
-
-Optional<WallTime> getFileModificationTime(const String& path)
-{
-    GStatBuf statResult;
-    if (!getFileStat(path, &statResult))
-        return WTF::nullopt;
-
-    return WallTime::fromRawSeconds(statResult.st_mtime);
-}
-
-static FileMetadata::Type toFileMetataType(GStatBuf statResult)
-{
-    if (S_ISDIR(statResult.st_mode))
-        return FileMetadata::Type::Directory;
-    if (S_ISLNK(statResult.st_mode))
-        return FileMetadata::Type::SymbolicLink;
-    return FileMetadata::Type::File;
-}
-
-static Optional<FileMetadata> fileMetadataUsingFunction(const String& path, bool (*statFunc)(const String&, GStatBuf*))
-{
-    GStatBuf statResult;
-    if (!statFunc(path, &statResult))
-        return WTF::nullopt;
-
-    String filename = pathGetFileName(path);
-    bool isHidden = !filename.isEmpty() && filename[0] == '.';
-
-    return FileMetadata {
-        WallTime::fromRawSeconds(statResult.st_mtime),
-        statResult.st_size,
-        isHidden,
-        toFileMetataType(statResult)
-    };
-}
-
-Optional<FileMetadata> fileMetadata(const String& path)
-{
-    return fileMetadataUsingFunction(path, &getFileLStat);
-}
-
-Optional<FileMetadata> fileMetadataFollowingSymlinks(const String& path)
-{
-    return fileMetadataUsingFunction(path, &getFileStat);
-}
-
-String pathByAppendingComponent(const String& path, const String& component)
-{
-    if (path.endsWith(G_DIR_SEPARATOR_S))
-        return path + component;
-    return path + G_DIR_SEPARATOR_S + component;
-}
-
-String pathByAppendingComponents(StringView path, const Vector<StringView>& components)
-{
-    StringBuilder builder;
-    builder.append(path);
-    for (auto& component : components) {
-        builder.append(G_DIR_SEPARATOR_S);
-        builder.append(component);
+    if (isHandleValid(handle)) {
+        auto info = adoptGRef(g_file_io_stream_query_info(handle, G_FILE_ATTRIBUTE_ID_FILE, nullptr, nullptr));
+        if (info && g_file_info_has_attribute(info.get(), G_FILE_ATTRIBUTE_ID_FILE))
+            return { g_file_info_get_attribute_string(info.get(), G_FILE_ATTRIBUTE_ID_FILE) };
     }
-    return builder.toString();
+    return std::nullopt;
 }
 
-bool makeAllDirectories(const String& path)
+bool fileIDsAreEqual(std::optional<PlatformFileID> a, std::optional<PlatformFileID> b)
 {
-    auto filename = fileSystemRepresentation(path);
-    return validRepresentation(filename) ? g_mkdir_with_parents(filename.data(), S_IRWXU) != -1 : false;
+    return a == b;
 }
 
-String homeDirectoryPath()
+std::optional<WallTime> fileCreationTime(const String& path)
 {
-    return stringFromFileSystemRepresentation(g_get_home_dir());
-}
-
-bool createSymbolicLink(const String& targetPath, const String& symbolicLinkPath)
-{
-    CString targetPathFSRep = fileSystemRepresentation(targetPath);
-    if (!validRepresentation(targetPathFSRep))
-        return false;
-
-    CString symbolicLinkPathFSRep = fileSystemRepresentation(symbolicLinkPath);
-    if (!validRepresentation(symbolicLinkPathFSRep))
-        return false;
-
-    return !symlink(targetPathFSRep.data(), symbolicLinkPathFSRep.data());
-}
-
-String pathGetFileName(const String& path)
-{
-    auto filename = fileSystemRepresentation(path);
+    const auto filename = fileSystemRepresentation(path);
     if (!validRepresentation(filename))
-        return path;
-
-    GUniquePtr<gchar> baseName(g_path_get_basename(filename.data()));
-    return String::fromUTF8(baseName.get());
-}
-
-bool getVolumeFreeSpace(const String& path, uint64_t& freeSpace)
-{
-    auto filename = fileSystemRepresentation(path);
-    if (!validRepresentation(filename))
-        return false;
+        return std::nullopt;
 
     GRefPtr<GFile> file = adoptGRef(g_file_new_for_path(filename.data()));
-    GRefPtr<GFileInfo> fileInfo = adoptGRef(g_file_query_filesystem_info(file.get(), G_FILE_ATTRIBUTE_FILESYSTEM_FREE, nullptr, nullptr));
-    if (!fileInfo)
-        return false;
+    GRefPtr<GFileInfo> info = adoptGRef(g_file_query_info(file.get(), G_FILE_ATTRIBUTE_TIME_CREATED, G_FILE_QUERY_INFO_NONE, nullptr, nullptr));
+    if (info && g_file_info_has_attribute(info.get(), G_FILE_ATTRIBUTE_TIME_CREATED))
+        return WallTime::fromRawSeconds(g_file_info_get_attribute_uint64(info.get(), G_FILE_ATTRIBUTE_TIME_CREATED));
 
-    freeSpace = g_file_info_get_attribute_uint64(fileInfo.get(), G_FILE_ATTRIBUTE_FILESYSTEM_FREE);
-    return !!freeSpace;
+    return std::nullopt;
 }
 
-String directoryName(const String& path)
-{
-    auto filename = fileSystemRepresentation(path);
-    if (!validRepresentation(filename))
-        return String();
-
-    GUniquePtr<char> dirname(g_path_get_dirname(filename.data()));
-    return String::fromUTF8(dirname.get());
-}
-
-Vector<String> listDirectory(const String& path, const String& filter)
-{
-    Vector<String> entries;
-
-    auto filename = fileSystemRepresentation(path);
-    if (!validRepresentation(filename))
-        return entries;
-
-    GUniquePtr<GDir> dir(g_dir_open(filename.data(), 0, nullptr));
-    if (!dir)
-        return entries;
-
-    GUniquePtr<GPatternSpec> pspec(g_pattern_spec_new((filter.utf8()).data()));
-    while (const char* name = g_dir_read_name(dir.get())) {
-        if (!g_pattern_match_string(pspec.get(), name))
-            continue;
-
-        GUniquePtr<gchar> entry(g_build_filename(filename.data(), name, nullptr));
-        entries.append(stringFromFileSystemRepresentation(entry.get()));
-    }
-
-    return entries;
-}
-
-String openTemporaryFile(const String& prefix, PlatformFileHandle& handle, const String& suffix)
+String openTemporaryFile(StringView prefix, PlatformFileHandle& handle, StringView suffix)
 {
     // FIXME: Suffix is not supported, but OK for now since the code using it is macOS-port-only.
     ASSERT_UNUSED(suffix, suffix.isEmpty());
 
-    GUniquePtr<gchar> filename(g_strdup_printf("%s%s", prefix.utf8().data(), createCanonicalUUIDString().utf8().data()));
+    GUniquePtr<gchar> filename(g_strdup_printf("%s%s", prefix.utf8().data(), createVersion4UUIDString().utf8().data()));
     GUniquePtr<gchar> tempPath(g_build_filename(g_get_tmp_dir(), filename.get(), nullptr));
     GRefPtr<GFile> file = adoptGRef(g_file_new_for_path(tempPath.get()));
 
@@ -405,15 +242,23 @@ bool truncateFile(PlatformFileHandle handle, long long offset)
     return g_seekable_truncate(G_SEEKABLE(g_io_stream_get_output_stream(G_IO_STREAM(handle))), offset, nullptr, nullptr);
 }
 
-int writeToFile(PlatformFileHandle handle, const char* data, int length)
+bool flushFile(PlatformFileHandle handle)
 {
+    return g_output_stream_flush(g_io_stream_get_output_stream(G_IO_STREAM(handle)), nullptr, nullptr);
+}
+
+int writeToFile(PlatformFileHandle handle, const void* data, int length)
+{
+    if (!length)
+        return 0;
+
     gsize bytesWritten;
     g_output_stream_write_all(g_io_stream_get_output_stream(G_IO_STREAM(handle)),
         data, length, &bytesWritten, nullptr, nullptr);
     return bytesWritten;
 }
 
-int readFromFile(PlatformFileHandle handle, char* data, int length)
+int readFromFile(PlatformFileHandle handle, void* data, int length)
 {
     GUniqueOutPtr<GError> error;
     do {
@@ -425,78 +270,31 @@ int readFromFile(PlatformFileHandle handle, char* data, int length)
     return -1;
 }
 
-bool moveFile(const String& oldPath, const String& newPath)
+std::optional<int32_t> getFileDeviceId(const String& path)
 {
-    auto oldFilename = fileSystemRepresentation(oldPath);
-    if (!validRepresentation(oldFilename))
-        return false;
+    auto fsFile = fileSystemRepresentation(path);
+    if (fsFile.isNull())
+        return std::nullopt;
 
-    auto newFilename = fileSystemRepresentation(newPath);
-    if (!validRepresentation(newFilename))
-        return false;
-
-    GRefPtr<GFile> oldFile = adoptGRef(g_file_new_for_path(oldFilename.data()));
-    GRefPtr<GFile> newFile = adoptGRef(g_file_new_for_path(newFilename.data()));
-
-    return g_file_move(oldFile.get(), newFile.get(), G_FILE_COPY_OVERWRITE, nullptr, nullptr, nullptr, nullptr);
-}
-
-bool hardLink(const String& source, const String& destination)
-{
-#if OS(WINDOWS)
-    return CreateHardLink(destination.wideCharacters().data(), source.wideCharacters().data(), nullptr);
-#else
-    auto sourceFilename = fileSystemRepresentation(source);
-    if (!validRepresentation(sourceFilename))
-        return false;
-
-    auto destinationFilename = fileSystemRepresentation(destination);
-    if (!validRepresentation(destinationFilename))
-        return false;
-
-    return !link(sourceFilename.data(), destinationFilename.data());
-#endif
-}
-
-bool hardLinkOrCopyFile(const String& source, const String& destination)
-{
-    if (hardLink(source, destination))
-        return true;
-
-    // Hard link failed. Perform a copy instead.
-#if OS(WINDOWS)
-    return !!::CopyFile(source.wideCharacters().data(), destination.wideCharacters().data(), TRUE);
-#else
-    auto sourceFilename = fileSystemRepresentation(source);
-    if (!validRepresentation(sourceFilename))
-        return false;
-
-    auto destinationFilename = fileSystemRepresentation(destination);
-    if (!validRepresentation(destinationFilename))
-        return false;
-
-    GRefPtr<GFile> sourceFile = adoptGRef(g_file_new_for_path(sourceFilename.data()));
-    GRefPtr<GFile> destinationFile = adoptGRef(g_file_new_for_path(destinationFilename.data()));
-    return g_file_copy(sourceFile.get(), destinationFile.get(), G_FILE_COPY_NONE, nullptr, nullptr, nullptr, nullptr);
-#endif
-}
-
-Optional<int32_t> getFileDeviceId(const CString& fsFile)
-{
     GRefPtr<GFile> file = adoptGRef(g_file_new_for_path(fsFile.data()));
     GRefPtr<GFileInfo> fileInfo = adoptGRef(g_file_query_filesystem_info(file.get(), G_FILE_ATTRIBUTE_UNIX_DEVICE, nullptr, nullptr));
     if (!fileInfo)
-        return WTF::nullopt;
+        return std::nullopt;
 
     return g_file_info_get_attribute_uint32(fileInfo.get(), G_FILE_ATTRIBUTE_UNIX_DEVICE);
+}
+
+std::optional<uint32_t> volumeFileBlockSize(const String&)
+{
+    return std::nullopt;
 }
 
 #if USE(FILE_LOCK)
 bool lockFile(PlatformFileHandle handle, OptionSet<FileLockMode> lockMode)
 {
-    COMPILE_ASSERT(LOCK_SH == WTF::enumToUnderlyingType(FileLockMode::Shared), LockSharedEncodingIsAsExpected);
-    COMPILE_ASSERT(LOCK_EX == WTF::enumToUnderlyingType(FileLockMode::Exclusive), LockExclusiveEncodingIsAsExpected);
-    COMPILE_ASSERT(LOCK_NB == WTF::enumToUnderlyingType(FileLockMode::Nonblocking), LockNonblockingEncodingIsAsExpected);
+    static_assert(LOCK_SH == WTF::enumToUnderlyingType(FileLockMode::Shared), "LockSharedEncoding is as expected");
+    static_assert(LOCK_EX == WTF::enumToUnderlyingType(FileLockMode::Exclusive), "LockExclusiveEncoding is as expected");
+    static_assert(LOCK_NB == WTF::enumToUnderlyingType(FileLockMode::Nonblocking), "LockNonblockingEncoding is as expected");
     auto* inputStream = g_io_stream_get_input_stream(G_IO_STREAM(handle));
     int result = flock(g_file_descriptor_based_get_fd(G_FILE_DESCRIPTOR_BASED(inputStream)), lockMode.toRaw());
     return result != -1;
@@ -509,6 +307,63 @@ bool unlockFile(PlatformFileHandle handle)
     return result != -1;
 }
 #endif // USE(FILE_LOCK)
+
+#if OS(LINUX)
+CString currentExecutablePath()
+{
+    static char readLinkBuffer[PATH_MAX];
+    ssize_t result = readlink("/proc/self/exe", readLinkBuffer, PATH_MAX);
+    if (result == -1)
+        return { };
+    return CString(readLinkBuffer, result);
+}
+#elif OS(HURD)
+CString currentExecutablePath()
+{
+    return { };
+}
+#elif OS(UNIX)
+CString currentExecutablePath()
+{
+    static char readLinkBuffer[PATH_MAX];
+    ssize_t result = readlink("/proc/curproc/file", readLinkBuffer, PATH_MAX);
+    if (result == -1)
+        return { };
+    return CString(readLinkBuffer, result);
+}
+#elif OS(WINDOWS)
+CString currentExecutablePath()
+{
+    static WCHAR buffer[MAX_PATH];
+    DWORD length = GetModuleFileNameW(0, buffer, MAX_PATH);
+    if (!length || (length == MAX_PATH && GetLastError() == ERROR_INSUFFICIENT_BUFFER))
+        return { };
+
+    String path(buffer, length);
+    return path.utf8();
+}
+#endif
+
+CString currentExecutableName()
+{
+    auto executablePath = currentExecutablePath();
+    if (!executablePath.isNull()) {
+        GUniquePtr<char> basename(g_path_get_basename(executablePath.data()));
+        return basename.get();
+    }
+
+    return g_get_prgname();
+}
+
+String userCacheDirectory()
+{
+    return stringFromFileSystemRepresentation(g_get_user_cache_dir());
+}
+
+String userDataDirectory()
+{
+    return stringFromFileSystemRepresentation(g_get_user_data_dir());
+}
 
 } // namespace FileSystemImpl
 } // namespace WTF

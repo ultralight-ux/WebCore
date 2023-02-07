@@ -43,6 +43,10 @@
 #include <wtf/MainThread.h>
 #include <wtf/text/StringConcatenateNumbers.h>
 
+#if PLATFORM(COCOA)
+#include <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#endif
+
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(History);
@@ -114,7 +118,7 @@ bool History::stateChanged() const
 JSValueInWrappedObject& History::cachedState()
 {
     if (m_cachedState && stateChanged())
-        m_cachedState = { };
+        m_cachedState.clear();
     return m_cachedState;
 }
 
@@ -180,7 +184,7 @@ URL History::urlForState(const String& urlString)
 
 ExceptionOr<void> History::stateObjectAdded(RefPtr<SerializedScriptValue>&& data, const String& title, const String& urlString, StateObjectType stateObjectType)
 {
-    m_cachedState = { };
+    m_cachedState.clear();
 
     // Each unique main-frame document is only allowed to send 64MB of state object payload to the UI client/process.
     static uint32_t totalStateObjectPayloadLimit = 0x4000000;
@@ -204,11 +208,19 @@ ExceptionOr<void> History::stateObjectAdded(RefPtr<SerializedScriptValue>&& data
     if (!protocolHostAndPortAreEqual(fullURL, documentURL) || fullURL.user() != documentURL.user() || fullURL.password() != documentURL.password())
         return createBlockedURLSecurityErrorWithMessageSuffix("Protocols, domains, ports, usernames, and passwords must match.");
 
+    if (fullURL.isLocalFile()
+#if PLATFORM(COCOA)
+        && linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::PushStateFilePathRestriction)
+#endif
+        && fullURL.fileSystemPath() != documentURL.fileSystemPath()) {
+        return createBlockedURLSecurityErrorWithMessageSuffix("Only differences in query and fragment are allowed for file: URLs.");
+    }
+
     const auto& documentSecurityOrigin = frame->document()->securityOrigin();
     // We allow sandboxed documents, 'data:'/'file:' URLs, etc. to use 'pushState'/'replaceState' to modify the URL query and fragments.
     // See https://bugs.webkit.org/show_bug.cgi?id=183028 for the compatibility concerns.
-    bool allowSandboxException = (documentSecurityOrigin.isLocal() || documentSecurityOrigin.isUnique())
-        && documentURL.stringWithoutQueryOrFragmentIdentifier() == fullURL.stringWithoutQueryOrFragmentIdentifier();
+    bool allowSandboxException = (documentSecurityOrigin.isLocal() || documentSecurityOrigin.isOpaque())
+        && documentURL.viewWithoutQueryOrFragmentIdentifier() == fullURL.viewWithoutQueryOrFragmentIdentifier();
 
     if (!allowSandboxException && !documentSecurityOrigin.canRequest(fullURL) && (fullURL.path() != documentURL.path() || fullURL.query() != documentURL.query()))
         return createBlockedURLSecurityErrorWithMessageSuffix("Paths and fragments must match for a sandboxed document.");
@@ -239,7 +251,7 @@ ExceptionOr<void> History::stateObjectAdded(RefPtr<SerializedScriptValue>&& data
 
     Checked<uint64_t> payloadSize = titleSize;
     payloadSize += urlSize;
-    payloadSize += data ? data->data().size() : 0;
+    payloadSize += data ? data->wireBytes().size() : 0;
 
     Checked<uint64_t> newTotalUsage = mainHistory.m_totalStateObjectUsage;
 
@@ -253,9 +265,9 @@ ExceptionOr<void> History::stateObjectAdded(RefPtr<SerializedScriptValue>&& data
         return Exception { QuotaExceededError, "Attempt to store more data than allowed using history.pushState()"_s };
     }
 
-    m_mostRecentStateObjectUsage = payloadSize.unsafeGet();
+    m_mostRecentStateObjectUsage = payloadSize;
 
-    mainHistory.m_totalStateObjectUsage = newTotalUsage.unsafeGet();
+    mainHistory.m_totalStateObjectUsage = newTotalUsage;
     ++mainHistory.m_currentStateObjectTimeSpanObjectsAdded;
 
     if (!urlString.isEmpty())

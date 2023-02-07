@@ -17,7 +17,7 @@
  */
 
 #include "config.h"
-#if ENABLE(GRAPHICS_CONTEXT_GL)
+#if ENABLE(WEBGL)
 
 #define DISABLE_SHIMS
 #include "OpenGLShims.h"
@@ -143,6 +143,7 @@ bool initializeOpenGLShims()
     ASSIGN_FUNCTION_TABLE_ENTRY(glDrawBuffers, success);
     ASSIGN_FUNCTION_TABLE_ENTRY(glDrawElementsInstanced, success);
     ASSIGN_FUNCTION_TABLE_ENTRY(glEnableVertexAttribArray, success);
+    ASSIGN_FUNCTION_TABLE_ENTRY(glEGLImageTargetTexture2DOES, success);
     ASSIGN_FUNCTION_TABLE_ENTRY(glFramebufferRenderbuffer, success);
     ASSIGN_FUNCTION_TABLE_ENTRY(glFramebufferTexture2D, success);
     ASSIGN_FUNCTION_TABLE_ENTRY(glGenBuffers, success);
@@ -230,4 +231,4 @@ bool initializeOpenGLShims()
 
 } // namespace WebCore
 
-#endif // ENABLE(GRAPHICS_CONTEXT_GL)
+#endif // ENABLE(WEBGL)

@@ -47,7 +47,7 @@ const AtomString& URLInputType::formControlType() const
 
 bool URLInputType::typeMismatchFor(const String& value) const
 {
-    return !value.isEmpty() && !URL(URL(), value).isValid();
+    return !value.isEmpty() && !URL(value).isValid();
 }
 
 bool URLInputType::typeMismatch() const
@@ -59,11 +59,6 @@ bool URLInputType::typeMismatch() const
 String URLInputType::typeMismatchText() const
 {
     return validationMessageTypeMismatchForURLText();
-}
-
-bool URLInputType::isURLField() const
-{
-    return true;
 }
 
 String URLInputType::sanitizeValue(const String& proposedValue) const

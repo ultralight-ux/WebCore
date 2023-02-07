@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 Adobe Systems Incorporated. All rights reserved.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,95 +27,37 @@
 
 #pragma once
 
-#include "CSSImageGeneratorValue.h"
-#include "CachedImageClient.h"
-#include "CachedResourceHandle.h"
-#include "FilterOperations.h"
-#include "Image.h"
+#include "CSSValue.h"
 #include <wtf/Function.h>
 
 namespace WebCore {
-
-class CachedImage;
-class FilterSubimageObserverProxy;
-class RenderElement;
-class Document;
 
 namespace Style {
 class BuilderState;
 }
 
-class CSSFilterImageValue final : public CSSImageGeneratorValue {
-    friend class FilterSubimageObserverProxy;
-public:
-    static Ref<CSSFilterImageValue> create(Ref<CSSValue>&& imageValue, Ref<CSSValue>&& filterValue)
-    {
-        return adoptRef(*new CSSFilterImageValue(WTFMove(imageValue), WTFMove(filterValue)));
-    }
+class StyleImage;
 
+class CSSFilterImageValue final : public CSSValue {
+public:
+    static Ref<CSSFilterImageValue> create(Ref<CSSValue>&& imageValueOrNone, Ref<CSSValue>&& filterValue)
+    {
+        return adoptRef(*new CSSFilterImageValue(WTFMove(imageValueOrNone), WTFMove(filterValue)));
+    }
     ~CSSFilterImageValue();
+
+    bool equals(const CSSFilterImageValue&) const;
+    bool equalInputImages(const CSSFilterImageValue&) const;
 
     String customCSSText() const;
 
-    RefPtr<Image> image(RenderElement&, const FloatSize&);
-    bool isFixedSize() const { return true; }
-    FloatSize fixedSize(const RenderElement&);
-
-    bool isPending() const;
-    bool knownToBeOpaque(const RenderElement&) const;
-
-    void loadSubimages(CachedResourceLoader&, const ResourceLoaderOptions&);
-
-    bool traverseSubresources(const WTF::Function<bool (const CachedResource&)>& handler) const;
-
-    bool equals(const CSSFilterImageValue&) const;
-
-    bool equalInputImages(const CSSFilterImageValue&) const;
-
-    void createFilterOperations(Style::BuilderState&);
-
-    const FilterOperations& filterOperations() const { return m_filterOperations; }
-    void setFilterOperations(const FilterOperations& filterOperations)
-    {
-        m_filterOperations = filterOperations;
-    }
-    CachedImage* cachedImage() const { return m_cachedImage.get(); }
+    RefPtr<StyleImage> createStyleImage(Style::BuilderState&) const;
 
 private:
-    CSSFilterImageValue(Ref<CSSValue>&& imageValue, Ref<CSSValue>&& filterValue)
-        : CSSImageGeneratorValue(FilterImageClass)
-        , m_imageValue(WTFMove(imageValue))
-        , m_filterValue(WTFMove(filterValue))
-        , m_filterSubimageObserver(this)
-    {
-    }
+    explicit CSSFilterImageValue(Ref<CSSValue>&& imageValueOrNone, Ref<CSSValue>&& filterValue);
 
-    class FilterSubimageObserverProxy final : public CachedImageClient {
-    public:
-        FilterSubimageObserverProxy(CSSFilterImageValue* ownerValue)
-            : m_ownerValue(ownerValue)
-            , m_ready(false)
-        {
-        }
-
-        virtual ~FilterSubimageObserverProxy() = default;
-        void imageChanged(CachedImage*, const IntRect* = nullptr) final;
-        void setReady(bool ready) { m_ready = ready; }
-    private:
-        CSSFilterImageValue* m_ownerValue;
-        bool m_ready;
-    };
-
-    void filterImageChanged(const IntRect&);
-
-    Ref<CSSValue> m_imageValue;
+    Ref<CSSValue> m_imageValueOrNone;
     Ref<CSSValue> m_filterValue;
-
-    FilterOperations m_filterOperations;
-
-    CachedResourceHandle<CachedImage> m_cachedImage;
-
-    FilterSubimageObserverProxy m_filterSubimageObserver;
 };
 
 } // namespace WebCore

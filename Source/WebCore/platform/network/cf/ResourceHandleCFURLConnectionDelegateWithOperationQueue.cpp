@@ -32,6 +32,7 @@
 #include "AuthenticationChallenge.h"
 #include "Logging.h"
 #include "MIMETypeRegistry.h"
+#include "NetworkLoadMetrics.h"
 #include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceResponse.h"
@@ -110,8 +111,8 @@ static CFRunLoopRef getRunLoop()
 
             // Must add a source to the run loop to prevent CFRunLoopRun() from exiting.
             CFRunLoopSourceContext ctxt = { 0, (void*)1 /*must be non-null*/, 0, 0, 0, 0, 0, 0, 0, emptyPerform };
-            CFRunLoopSourceRef bogusSource = CFRunLoopSourceCreate(0, 0, &ctxt);
-            CFRunLoopAddSource(runLoop, bogusSource, kCFRunLoopDefaultMode);
+            auto bogusSource = adoptCF(CFRunLoopSourceCreate(0, 0, &ctxt));
+            CFRunLoopAddSource(runLoop, bogusSource.get(), kCFRunLoopDefaultMode);
             sem.signal();
 
             while (true)
@@ -131,21 +132,19 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::setupConnectionSch
     CFURLConnectionScheduleDownloadWithRunLoop(connection, runLoop, kCFRunLoopDefaultMode);
 }
 
-CFURLRequestRef ResourceHandleCFURLConnectionDelegateWithOperationQueue::willSendRequest(CFURLRequestRef cfRequest, CFURLResponseRef originalRedirectResponse)
+RetainPtr<CFURLRequestRef> ResourceHandleCFURLConnectionDelegateWithOperationQueue::willSendRequest(CFURLRequestRef cfRequest, CFURLResponseRef originalRedirectResponse)
 {
     // If the protocols of the new request and the current request match, this is not an HSTS redirect and we don't need to synthesize a redirect response.
     if (!originalRedirectResponse) {
         RetainPtr<CFStringRef> newScheme = adoptCF(CFURLCopyScheme(CFURLRequestGetURL(cfRequest)));
-        if (CFStringCompare(newScheme.get(), m_originalScheme.get(), kCFCompareCaseInsensitive) == kCFCompareEqualTo) {
-            CFRetain(cfRequest);
+        if (CFStringCompare(newScheme.get(), m_originalScheme.get(), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
             return cfRequest;
-        }
     }
 
     ASSERT(!isMainThread());
 
-    auto protectedThis = makeRef(*this);
-    auto work = [this, protectedThis = makeRef(*this), cfRequest = RetainPtr<CFURLRequestRef>(cfRequest), originalRedirectResponse = RetainPtr<CFURLResponseRef>(originalRedirectResponse)] () mutable {
+    Ref protectedThis { *this };
+    auto work = [this, protectedThis = Ref { *this }, cfRequest = RetainPtr<CFURLRequestRef>(cfRequest), originalRedirectResponse = RetainPtr<CFURLResponseRef>(originalRedirectResponse)] () mutable {
         auto& handle = protectedThis->m_handle;
         auto completionHandler = [this, protectedThis = WTFMove(protectedThis)] (ResourceRequest&& request) {
             m_requestResult = request.cfURLRequest(UpdateHTTPBody);
@@ -172,13 +171,13 @@ CFURLRequestRef ResourceHandleCFURLConnectionDelegateWithOperationQueue::willSen
         callOnMainThread(WTFMove(work));
     m_semaphore.wait();
 
-    return m_requestResult.leakRef();
+    return std::exchange(m_requestResult, nullptr);
 }
 
 void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveResponse(CFURLConnectionRef connection, CFURLResponseRef cfResponse)
 {
-    auto protectedThis = makeRef(*this);
-    auto work = [this, protectedThis = makeRef(*this), cfResponse = RetainPtr<CFURLResponseRef>(cfResponse), connection = RetainPtr<CFURLConnectionRef>(connection)] () mutable {
+    Ref protectedThis { *this };
+    auto work = [this, protectedThis = Ref { *this }, cfResponse = RetainPtr<CFURLResponseRef>(cfResponse), connection = RetainPtr<CFURLConnectionRef>(connection)] () mutable {
         if (!hasHandle() || !m_handle->client() || !m_handle->connection()) {
             m_semaphore.signal();
             return;
@@ -191,7 +190,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveResponse
         int statusCode = msg ? CFHTTPMessageGetResponseStatusCode(msg) : 0;
 
         if (statusCode != 304) {
-            bool isMainResourceLoad = m_handle->firstRequest().requester() == ResourceRequest::Requester::Main;
+            bool isMainResourceLoad = m_handle->firstRequest().requester() == ResourceRequestRequester::Main;
         }
 
         if (_CFURLRequestCopyProtocolPropertyForKey(m_handle->firstRequest().cfURLRequest(DoNotUpdateHTTPBody), CFSTR("ForceHTMLMIMEType")))
@@ -213,7 +212,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveResponse
 
 void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveData(CFDataRef data, CFIndex originalLength)
 {
-    auto work = [protectedThis = makeRef(*this), data = RetainPtr<CFDataRef>(data), originalLength = originalLength] () mutable {
+    auto work = [protectedThis = Ref { *this }, data = RetainPtr<CFDataRef>(data), originalLength = originalLength] () mutable {
         auto& handle = protectedThis->m_handle;
         if (!protectedThis->hasHandle() || !handle->client() || !handle->connection())
             return;
@@ -231,7 +230,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveData(CFD
 
 void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFinishLoading()
 {
-    auto work = [protectedThis = makeRef(*this)] () mutable {
+    auto work = [protectedThis = Ref { *this }] () mutable {
         auto& handle = protectedThis->m_handle;
         if (!protectedThis->hasHandle() || !handle->client() || !handle->connection()) {
             protectedThis->m_handle->deref();
@@ -240,7 +239,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFinishLoading()
 
         LOG(Network, "CFNet - ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFinishLoading(handle=%p) (%s)", handle, handle->firstRequest().url().string().utf8().data());
 
-        handle->client()->didFinishLoading(handle);
+        handle->client()->didFinishLoading(handle, NetworkLoadMetrics { });
         if (protectedThis->m_messageQueue) {
             protectedThis->m_messageQueue->kill();
             protectedThis->m_messageQueue = nullptr;
@@ -256,7 +255,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFinishLoading()
 
 void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFail(CFErrorRef error)
 {
-    auto work = [protectedThis = makeRef(*this), error = RetainPtr<CFErrorRef>(error)] () mutable {
+    auto work = [protectedThis = Ref { *this }, error = RetainPtr<CFErrorRef>(error)] () mutable {
         auto& handle = protectedThis->m_handle;
         if (!protectedThis->hasHandle() || !handle->client() || !handle->connection()) {
             protectedThis->m_handle->deref();
@@ -291,8 +290,8 @@ CFCachedURLResponseRef ResourceHandleCFURLConnectionDelegateWithOperationQueue::
             return nullptr;
     }
 
-    auto protectedThis = makeRef(*this);
-    auto work = [protectedThis = makeRef(*this), cachedResponse = RetainPtr<CFCachedURLResponseRef>(cachedResponse)] () mutable {
+    Ref protectedThis { *this };
+    auto work = [protectedThis = Ref { *this }, cachedResponse = RetainPtr<CFCachedURLResponseRef>(cachedResponse)] () mutable {
         auto& handle = protectedThis->m_handle;
 
         auto completionHandler = [protectedThis = WTFMove(protectedThis)] (CFCachedURLResponseRef response) mutable {
@@ -318,7 +317,7 @@ CFCachedURLResponseRef ResourceHandleCFURLConnectionDelegateWithOperationQueue::
 
 void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveChallenge(CFURLAuthChallengeRef challenge)
 {
-    auto work = [protectedThis = makeRef(*this), challenge = RetainPtr<CFURLAuthChallengeRef>(challenge)] () mutable {
+    auto work = [protectedThis = Ref { *this }, challenge = RetainPtr<CFURLAuthChallengeRef>(challenge)] () mutable {
         auto& handle = protectedThis->m_handle;
         if (!protectedThis->hasHandle())
             return;
@@ -336,7 +335,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveChalleng
 
 void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didSendBodyData(CFIndex totalBytesWritten, CFIndex totalBytesExpectedToWrite)
 {
-    auto work = [protectedThis = makeRef(*this), totalBytesWritten, totalBytesExpectedToWrite] () mutable {
+    auto work = [protectedThis = Ref { *this }, totalBytesWritten, totalBytesExpectedToWrite] () mutable {
         auto& handle = protectedThis->m_handle;
         if (!protectedThis->hasHandle() || !handle->client() || !handle->connection())
             return;
@@ -360,8 +359,8 @@ Boolean ResourceHandleCFURLConnectionDelegateWithOperationQueue::shouldUseCreden
 #if USE(PROTECTION_SPACE_AUTH_CALLBACK)
 Boolean ResourceHandleCFURLConnectionDelegateWithOperationQueue::canRespondToProtectionSpace(CFURLProtectionSpaceRef protectionSpace)
 {
-    auto protectedThis = makeRef(*this);
-    auto work = [protectedThis = makeRef(*this), protectionSpace = RetainPtr<CFURLProtectionSpaceRef>(protectionSpace)] () mutable {
+    Ref protectedThis { *this };
+    auto work = [protectedThis = Ref { *this }, protectionSpace = RetainPtr<CFURLProtectionSpaceRef>(protectionSpace)] () mutable {
         auto& handle = protectedThis->m_handle;
         
         auto completionHandler = [protectedThis = WTFMove(protectedThis)] (bool result) mutable {

@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2020 Apple Inc. All rights reserved.
+* Copyright (C) 2020-2021 Apple Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions
@@ -29,11 +29,12 @@
 #if PLATFORM(IOS_FAMILY)
 
 #include <sys/utsname.h>
-#include <wtf/Optional.h>
+#include <wtf/NeverDestroyed.h>
+#include <wtf/text/ASCIILiteral.h>
 
 namespace WebCore {
 
-static Optional<bool> hasAGXCompilerService;
+static std::optional<bool> hasAGXCompilerService;
 
 void setDeviceHasAGXCompilerServiceForTesting()
 {
@@ -55,6 +56,32 @@ bool deviceHasAGXCompilerService()
             hasAGXCompilerService = false;
     }
     return *hasAGXCompilerService;
+}
+
+Span<const ASCIILiteral> agxCompilerServices()
+{
+    static constexpr std::array services {
+        "com.apple.AGXCompilerService"_s,
+        "com.apple.AGXCompilerService-S2A8"_s
+    };
+    return services;
+}
+
+Span<const ASCIILiteral> agxCompilerClasses()
+{
+    static constexpr std::array classes {
+        "AGXCommandQueue"_s,
+        "AGXDevice"_s,
+        "AGXSharedUserClient"_s,
+        "IOAccelContext"_s,
+        "IOAccelContext2"_s,
+        "IOAccelDevice"_s,
+        "IOAccelDevice2"_s,
+        "IOAccelSharedUserClient"_s,
+        "IOAccelSharedUserClient2"_s,
+        "IOAccelSubmitter2"_s,
+    };
+    return classes;
 }
 
 }

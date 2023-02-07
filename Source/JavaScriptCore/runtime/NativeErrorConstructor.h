@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2008-2018 Apple Inc. All rights reserved.
+ *  Copyright (C) 2008-2021 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -55,14 +55,14 @@ class NativeErrorConstructor final : public NativeErrorConstructorBase {
 public:
     static NativeErrorConstructor* create(VM& vm, Structure* structure, NativeErrorPrototype* prototype)
     {
-        NativeErrorConstructor* constructor = new (NotNull, allocateCell<NativeErrorConstructor>(vm.heap)) NativeErrorConstructor(vm, structure);
+        NativeErrorConstructor* constructor = new (NotNull, allocateCell<NativeErrorConstructor>(vm)) NativeErrorConstructor(vm, structure);
         constructor->finishCreation(vm, prototype, errorType);
         return constructor;
     }
-private:
-    static EncodedJSValue JSC_HOST_CALL callNativeErrorConstructor(JSGlobalObject*, CallFrame*);
-    static EncodedJSValue JSC_HOST_CALL constructNativeErrorConstructor(JSGlobalObject*, CallFrame*);
 
+    static EncodedJSValue callImpl(JSGlobalObject*, CallFrame*);
+    static EncodedJSValue constructImpl(JSGlobalObject*, CallFrame*);
+private:
     NativeErrorConstructor(VM&, Structure*);
 };
 

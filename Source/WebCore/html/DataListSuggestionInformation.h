@@ -42,84 +42,14 @@ enum class DataListSuggestionActivationType : uint8_t {
 struct DataListSuggestion {
     String value;
     String label;
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<DataListSuggestion> decode(Decoder&);
 };
-
-template<class Encoder>
-void DataListSuggestion::encode(Encoder& encoder) const
-{
-    encoder << value;
-    encoder << label;
-}
-
-template<class Decoder>
-Optional<DataListSuggestion> DataListSuggestion::decode(Decoder& decoder)
-{
-    Optional<String> value;
-    decoder >> value;
-    if (!value)
-        return WTF::nullopt;
-
-    Optional<String> label;
-    decoder >> label;
-    if (!label)
-        return WTF::nullopt;
-
-    return {{ *value, *label }};
-}
 
 struct DataListSuggestionInformation {
     DataListSuggestionActivationType activationType;
     Vector<DataListSuggestion> suggestions;
     IntRect elementRect;
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<DataListSuggestionInformation> decode(Decoder&);
 };
-
-template<class Encoder>
-void DataListSuggestionInformation::encode(Encoder& encoder) const
-{
-    encoder << activationType;
-    encoder << suggestions;
-    encoder << elementRect;
-}
-
-template<class Decoder>
-Optional<DataListSuggestionInformation> DataListSuggestionInformation::decode(Decoder& decoder)
-{
-    DataListSuggestionActivationType activationType;
-    if (!decoder.decode(activationType))
-        return WTF::nullopt;
-
-    Optional<Vector<DataListSuggestion>> suggestions;
-    decoder >> suggestions;
-    if (!suggestions)
-        return WTF::nullopt;
-
-    Optional<IntRect> elementRect;
-    decoder >> elementRect;
-    if (!elementRect)
-        return WTF::nullopt;
-
-    return {{ activationType, *suggestions, *elementRect }};
-}
 
 } // namespace WebCore
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::DataListSuggestionActivationType> {
-    using values = EnumValues<
-        WebCore::DataListSuggestionActivationType,
-        WebCore::DataListSuggestionActivationType::ControlClicked,
-        WebCore::DataListSuggestionActivationType::IndicatorClicked,
-        WebCore::DataListSuggestionActivationType::TextChanged
-    >;
-};
-
-} // namespace WTF
 
 #endif // ENABLE(DATALIST_ELEMENT)

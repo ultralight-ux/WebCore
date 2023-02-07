@@ -27,34 +27,38 @@
 
 #if USE(CG)
 
+#include "ImageBuffer.h"
 #include "ImageBufferCGBackend.h"
 #include <wtf/IsoMalloc.h>
 
 namespace WebCore {
 
-class ImageBufferCGBitmapBackend : public ImageBufferCGBackend {
+class ImageBufferCGBitmapBackend final : public ImageBufferCGBackend {
     WTF_MAKE_ISO_ALLOCATED(ImageBufferCGBitmapBackend);
     WTF_MAKE_NONCOPYABLE(ImageBufferCGBitmapBackend);
 public:
-    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const FloatSize&, float resolutionScale, ColorSpace, CGColorSpaceRef, const HostWindow*);
-    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const FloatSize&, float resolutionScale, ColorSpace, const HostWindow*);
-    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const FloatSize&, const GraphicsContext&);
+    ~ImageBufferCGBitmapBackend();
 
-    GraphicsContext& context() const override;
+    static IntSize calculateSafeBackendSize(const Parameters&);
+    static size_t calculateMemoryCost(const Parameters&);
 
-    NativeImagePtr copyNativeImage(BackingStoreCopy = CopyBackingStore) const override;
+    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const ImageBufferCreationContext&);
 
-    Vector<uint8_t> toBGRAData() const override;
+    // FIXME: Rename to createUsingColorSpaceOfGraphicsContext() (or something like that).
+    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const GraphicsContext&);
 
-    RefPtr<ImageData> getImageData(AlphaPremultiplication outputFormat, const IntRect&) const override;
-    void putImageData(AlphaPremultiplication inputFormat, const ImageData&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
+    GraphicsContext& context() const final;
 
 private:
-    ImageBufferCGBitmapBackend(const FloatSize& logicalSize, const IntSize& physicalSize, float resolutionScale, ColorSpace, void* data, RetainPtr<CGDataProviderRef>&&, std::unique_ptr<GraphicsContext>&&);
+    ImageBufferCGBitmapBackend(const Parameters&, void* data, RetainPtr<CGDataProviderRef>&&, std::unique_ptr<GraphicsContext>&&);
 
-#if PLATFORM(IOS_FAMILY)
-    ColorFormat backendColorFormat() const override { return ColorFormat::BGRA; }
-#endif
+    IntSize backendSize() const final;
+    unsigned bytesPerRow() const final;
+
+    RefPtr<NativeImage> copyNativeImage(BackingStoreCopy = CopyBackingStore) const final;
+
+    RefPtr<PixelBuffer> getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect&, const ImageBufferAllocator&) const final;
+    void putPixelBuffer(const PixelBuffer&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) final;
 
     void* m_data;
     RetainPtr<CGDataProviderRef> m_dataProvider;

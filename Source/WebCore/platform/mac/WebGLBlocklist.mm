@@ -29,7 +29,7 @@
 #if PLATFORM(MAC)
 
 #import "BlocklistUpdater.h"
-#import "OpenGLSoftLinkCocoa.h"
+#import <pal/cocoa/OpenGLSoftLinkCocoa.h>
 #import <pal/spi/cf/CFUtilitiesSPI.h>
 
 namespace WebCore {
@@ -104,14 +104,10 @@ static OSBuildInfo buildInfoFromOSBuildString(NSString *buildString)
 
 bool WebGLBlocklist::shouldBlockWebGL()
 {
-    BlocklistUpdater::initializeQueue();
-
-    __block bool shouldBlock = false;
-    dispatch_sync(BlocklistUpdater::queue(), ^{
+    bool shouldBlock = false;
+    BlocklistUpdater::queue().dispatchSync([&shouldBlock] {
         BlocklistUpdater::reloadIfNecessary();
-
-        WebGLBlocklist* webGLBlocklist = BlocklistUpdater::webGLBlocklist();
-        if (webGLBlocklist)
+        if (auto* webGLBlocklist = BlocklistUpdater::webGLBlocklist())
             shouldBlock = webGLBlocklist->shouldBlock();
     });
 
@@ -120,14 +116,10 @@ bool WebGLBlocklist::shouldBlockWebGL()
 
 bool WebGLBlocklist::shouldSuggestBlockingWebGL()
 {
-    BlocklistUpdater::initializeQueue();
-
-    __block bool shouldSuggestBlocking = false;
-    dispatch_sync(BlocklistUpdater::queue(), ^{
+    bool shouldSuggestBlocking = false;
+    BlocklistUpdater::queue().dispatchSync([&shouldSuggestBlocking] {
         BlocklistUpdater::reloadIfNecessary();
-
-        WebGLBlocklist* webGLBlocklist = BlocklistUpdater::webGLBlocklist();
-        if (webGLBlocklist)
+        if (auto* webGLBlocklist = BlocklistUpdater::webGLBlocklist())
             shouldSuggestBlocking = webGLBlocklist->shouldSuggestBlocking();
     });
 
@@ -168,10 +160,9 @@ static bool matchesBuildInfo(OSBuildInfo machineInfo, OSBuildInfo blockInfo, Web
 
 std::unique_ptr<WebGLBlocklist> WebGLBlocklist::create(NSDictionary *propertyList)
 {
-    CFDictionaryRef systemVersionDictionary = _CFCopySystemVersionDictionary();
-    CFStringRef osBuild = static_cast<CFStringRef>(CFDictionaryGetValue(systemVersionDictionary, _kCFSystemVersionBuildVersionKey));
+    auto systemVersionDictionary = adoptCF(_CFCopySystemVersionDictionary());
+    CFStringRef osBuild = static_cast<CFStringRef>(CFDictionaryGetValue(systemVersionDictionary.get(), _kCFSystemVersionBuildVersionKey));
     OSBuildInfo buildInfo = buildInfoFromOSBuildString((__bridge NSString *)osBuild);
-    CFRelease(systemVersionDictionary);
 
     if (!buildInfo.major)
         return nullptr;

@@ -80,7 +80,7 @@ private:
 
 struct SignalContext {
 private:
-    SignalContext(PlatformRegisters& registers, MacroAssemblerCodePtr<PlatformRegistersPCPtrTag> machinePC)
+    SignalContext(PlatformRegisters& registers, CodePtr<PlatformRegistersPCPtrTag> machinePC)
         : registers(registers)
         , machinePC(machinePC)
         , stackPointer(MachineContext::stackPointer(registers))
@@ -88,11 +88,11 @@ private:
     { }
 
 public:
-    static Optional<SignalContext> tryCreate(PlatformRegisters& registers)
+    static std::optional<SignalContext> tryCreate(PlatformRegisters& registers)
     {
         auto instructionPointer = MachineContext::instructionPointer(registers);
         if (!instructionPointer)
-            return WTF::nullopt;
+            return std::nullopt;
         return SignalContext(registers, *instructionPointer);
     }
 
@@ -140,16 +140,16 @@ public:
         log("x%d: %016llx fp: %016llx lr: %016llx",
             i, registers.__x[i],
             MachineContext::framePointer<uint64_t>(registers),
-            MachineContext::linkRegister(registers).untaggedExecutableAddress<uint64_t>());
+            MachineContext::linkRegister(registers).untaggedPtr<uint64_t>());
         log("sp: %016llx pc: %016llx cpsr: %08x",
             MachineContext::stackPointer<uint64_t>(registers),
-            machinePC.untaggedExecutableAddress<uint64_t>(),
+            machinePC.untaggedPtr<uint64_t>(),
             registers.__cpsr);
 #endif
     }
 
     PlatformRegisters& registers;
-    MacroAssemblerCodePtr<PlatformRegistersPCPtrTag> machinePC;
+    CodePtr<PlatformRegistersPCPtrTag> machinePC;
     void* stackPointer;
     void* framePointer;
 };
@@ -157,12 +157,14 @@ public:
 static void installCrashHandler()
 {
 #if CPU(X86_64) || CPU(ARM64)
-    addSignalHandler(Signal::IllegalInstruction, [] (Signal, SigInfo&, PlatformRegisters& registers) {
+    addSignalHandler(Signal::IllegalInstruction, [] (Signal signal, SigInfo&, PlatformRegisters& registers) {
+        RELEASE_ASSERT(signal == Signal::IllegalInstruction);
+
         auto signalContext = SignalContext::tryCreate(registers);
         if (!signalContext)
             return SignalAction::NotHandled;
             
-        void* machinePC = signalContext->machinePC.untaggedExecutableAddress();
+        void* machinePC = signalContext->machinePC.untaggedPtr();
         if (!isJITPC(machinePC))
             return SignalAction::NotHandled;
 
@@ -183,7 +185,7 @@ struct SignalContext {
 
     void dump() { }
 
-    MacroAssemblerCodePtr<PlatformRegistersPCPtrTag> machinePC;
+    CodePtr<PlatformRegistersPCPtrTag> machinePC;
     void* stackPointer;
     void* framePointer;
 };
@@ -224,20 +226,18 @@ auto SigillCrashAnalyzer::analyze(SignalContext& context) -> CrashSource
         // itself crashes.
         context.dump();
 
-        VMInspector& inspector = VMInspector::instance();
+        auto& inspector = VMInspector::instance();
 
         // Use a timeout period of 2 seconds. The client is about to crash, and we don't
         // want to turn the crash into a hang by re-trying the lock for too long.
-        auto expectedLocker = inspector.lock(Seconds(2));
-        if (!expectedLocker) {
-            ASSERT(expectedLocker.error() == VMInspector::Error::TimedOut);
+        if (!inspector.getLock().tryLockWithTimeout(2_s)) {
             log("ERROR: Unable to analyze SIGILL. Timed out while waiting to iterate VMs.");
             break;
         }
-        auto& locker = expectedLocker.value();
+        Locker locker { AdoptLock, inspector.getLock() };
 
-        void* pc = context.machinePC.untaggedExecutableAddress();
-        auto isInJITMemory = inspector.isValidExecutableMemory(locker, pc);
+        void* pc = context.machinePC.untaggedPtr();
+        auto isInJITMemory = inspector.isValidExecutableMemory(pc);
         if (!isInJITMemory) {
             log("ERROR: Timed out: not able to determine if pc %p is in valid JIT executable memory", pc);
             break;
@@ -263,7 +263,7 @@ auto SigillCrashAnalyzer::analyze(SignalContext& context) -> CrashSource
         log("instruction bits at pc %p is: 0x%08x", pc, wordAtPC);
 #endif
 
-        auto expectedCodeBlock = inspector.codeBlockForMachinePC(locker, pc);
+        auto expectedCodeBlock = inspector.codeBlockForMachinePC(pc);
         if (!expectedCodeBlock) {
             if (expectedCodeBlock.error() == VMInspector::Error::TimedOut)
                 log("ERROR: Timed out: not able to determine if pc %p is in a valid CodeBlock", pc);
@@ -277,7 +277,7 @@ auto SigillCrashAnalyzer::analyze(SignalContext& context) -> CrashSource
             break;
         }
 
-        log("pc %p belongs to CodeBlock %p of type %s", pc, codeBlock, JITCode::typeName(codeBlock->jitType()));
+        log("pc %p belongs to CodeBlock %p of type %s", pc, codeBlock, JITCode::typeName(codeBlock->jitType()).characters());
 
         dumpCodeBlock(codeBlock, pc);
     } while (false);

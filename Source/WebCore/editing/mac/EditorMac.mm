@@ -31,10 +31,15 @@
 #import "Blob.h"
 #import "CSSPrimitiveValueMappings.h"
 #import "CSSValuePool.h"
+#import "Color.h"
+#import "ColorCocoa.h"
+#import "ColorSerialization.h"
 #import "DataTransfer.h"
 #import "DocumentFragment.h"
 #import "Editing.h"
 #import "EditorClient.h"
+#import "FontAttributes.h"
+#import "FontShadow.h"
 #import "Frame.h"
 #import "FrameView.h"
 #import "HTMLConverter.h"
@@ -42,49 +47,30 @@
 #import "HTMLNames.h"
 #import "LegacyNSPasteboardTypes.h"
 #import "LegacyWebArchive.h"
+#import "MutableStyleProperties.h"
+#import "PagePasteboardContext.h"
 #import "Pasteboard.h"
 #import "PasteboardStrategy.h"
 #import "PlatformStrategies.h"
 #import "RenderBlock.h"
 #import "RenderImage.h"
 #import "RuntimeApplicationChecks.h"
-#import "RuntimeEnabledFeatures.h"
-#import "StyleProperties.h"
+#import "SharedBuffer.h"
 #import "WebContentReader.h"
 #import "WebNSAttributedStringExtras.h"
 #import "markup.h"
 #import <AppKit/AppKit.h>
+#import <wtf/RetainPtr.h>
 #import <wtf/cocoa/NSURLExtras.h>
 
 namespace WebCore {
-
-void Editor::showFontPanel()
-{
-    auto* client = this->client();
-    if (!client || !client->canShowFontPanel())
-        return;
-
-    [[NSFontManager sharedFontManager] orderFrontFontPanel:nil];
-}
-
-void Editor::showStylesPanel()
-{
-    [[NSFontManager sharedFontManager] orderFrontStylesPanel:nil];
-}
-
-void Editor::showColorPanel()
-{
-    [[NSApplication sharedApplication] orderFrontColorPanel:nil];
-}
 
 void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> options)
 {
     auto range = selectedRange();
 
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     // FIXME: How can this hard-coded pasteboard name be right, given that the passed-in pasteboard has a name?
-    client()->setInsertionPasteboard(NSGeneralPboard);
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    client()->setInsertionPasteboard(NSPasteboardNameGeneral);
 
     bool chosePlainText;
     RefPtr<DocumentFragment> fragment = webContentFromPasteboard(*pasteboard, *range, options.contains(PasteOption::AllowPlainText), chosePlainText);
@@ -94,73 +80,84 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
 
     if (fragment && shouldInsertFragment(*fragment, range, EditorInsertAction::Pasted))
         pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(*pasteboard), false, options.contains(PasteOption::IgnoreMailBlockquote) ? MailBlockquoteHandling::IgnoreBlockquote : MailBlockquoteHandling::RespectBlockquote );
-
-    client()->setInsertionPasteboard(String());
+    
+    if (auto* client = this->client())
+        client->setInsertionPasteboard(String());
 }
 
-void Editor::readSelectionFromPasteboard(const String& pasteboardName)
+void Editor::platformCopyFont()
 {
-    Pasteboard pasteboard(pasteboardName);
-    if (m_document.selection().selection().isContentRichlyEditable())
-        pasteWithPasteboard(&pasteboard, { PasteOption::AllowPlainText });
-    else
-        pasteAsPlainTextWithPasteboard(pasteboard);
+    Pasteboard pasteboard(PagePasteboardContext::create(m_document.pageID()), NSPasteboardNameFont);
+
+    auto fontSampleString = adoptNS([[NSAttributedString alloc] initWithString:@"x" attributes:fontAttributesAtSelectionStart().createDictionary().get()]);
+    auto fontData = RetainPtr([fontSampleString RTFFromRange:NSMakeRange(0, [fontSampleString length]) documentAttributes:@{ }]);
+
+    PasteboardBuffer pasteboardBuffer;
+    pasteboardBuffer.contentOrigin = m_document.originIdentifierForPasteboard();
+    pasteboardBuffer.type = legacyFontPasteboardType();
+    pasteboardBuffer.data = SharedBuffer::create(fontData.get());
+    pasteboard.write(pasteboardBuffer);
 }
 
-static void maybeCopyNodeAttributesToFragment(const Node& node, DocumentFragment& fragment)
+void Editor::platformPasteFont()
 {
-    // This is only supported for single-Node fragments.
-    Node* firstChild = fragment.firstChild();
-    if (!firstChild || firstChild != fragment.lastChild())
-        return;
+    Pasteboard pasteboard(PagePasteboardContext::create(m_document.pageID()), NSPasteboardNameFont);
 
-    // And only supported for HTML elements.
-    if (!node.isHTMLElement() || !firstChild->isHTMLElement())
-        return;
+    client()->setInsertionPasteboard(pasteboard.name());
 
-    // And only if the source Element and destination Element have the same HTML tag name.
-    const HTMLElement& oldElement = downcast<HTMLElement>(node);
-    HTMLElement& newElement = downcast<HTMLElement>(*firstChild);
-    if (oldElement.localName() != newElement.localName())
-        return;
+    RetainPtr<NSData> fontData;
+    if (auto buffer = pasteboard.readBuffer(std::nullopt, legacyFontPasteboardType()))
+        fontData = buffer->createNSData();
+    auto fontSampleString = adoptNS([[NSAttributedString alloc] initWithRTF:fontData.get() documentAttributes:nil]);
+    auto fontAttributes = RetainPtr([fontSampleString fontAttributesInRange:NSMakeRange(0, 1)]);
 
-    for (const Attribute& attribute : oldElement.attributesIterator()) {
-        if (newElement.hasAttribute(attribute.name()))
-            continue;
-        newElement.setAttribute(attribute.name(), attribute.value());
-    }
-}
+    auto style = MutableStyleProperties::create();
 
-void Editor::replaceNodeFromPasteboard(Node* node, const String& pasteboardName)
-{
-    ASSERT(node);
+    Color backgroundColor;
+    if (NSColor *nsBackgroundColor = dynamic_objc_cast<NSColor>([fontAttributes objectForKey:NSBackgroundColorAttributeName]))
+        backgroundColor = colorFromCocoaColor(nsBackgroundColor);
+    if (!backgroundColor.isValid())
+        backgroundColor = Color::transparentBlack;
+    style->setProperty(CSSPropertyBackgroundColor, CSSValuePool::singleton().createColorValue(backgroundColor));
 
-    if (node->document() != m_document)
-        return;
-
-    Ref<Document> protector(m_document);
-
-    auto range = makeRangeSelectingNodeContents(*node);
-    m_document.selection().setSelection(VisibleSelection(range), FrameSelection::DoNotSetFocus);
-
-    Pasteboard pasteboard(pasteboardName);
-
-    if (!m_document.selection().selection().isContentRichlyEditable()) {
-        pasteAsPlainTextWithPasteboard(pasteboard);
-        return;
+    if (NSFont *font = dynamic_objc_cast<NSFont>([fontAttributes objectForKey:NSFontAttributeName])) {
+        // FIXME: Need more sophisticated escaping code if we want to handle family names
+        // with characters like single quote or backslash in their names.
+        style->setProperty(CSSPropertyFontFamily, [NSString stringWithFormat:@"'%@'", [font familyName]]);
+        style->setProperty(CSSPropertyFontSize, CSSPrimitiveValue::create([font pointSize], CSSUnitType::CSS_PX));
+        // FIXME: Map to the entire range of CSS weight values.
+        style->setProperty(CSSPropertyFontWeight, ([NSFontManager.sharedFontManager weightOfFont:font] >= 7) ? CSSValueBold : CSSValueNormal);
+        style->setProperty(CSSPropertyFontStyle, ([NSFontManager.sharedFontManager traitsOfFont:font] & NSItalicFontMask) ? CSSValueItalic : CSSValueNormal);
+    } else {
+        style->setProperty(CSSPropertyFontFamily, "Helvetica"_s);
+        style->setProperty(CSSPropertyFontSize, CSSPrimitiveValue::create(12, CSSUnitType::CSS_PX));
+        style->setProperty(CSSPropertyFontWeight, CSSValueNormal);
+        style->setProperty(CSSPropertyFontStyle, CSSValueNormal);
     }
 
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    // FIXME: How can this hard-coded pasteboard name be right, given that the passed-in pasteboard has a name?
-    client()->setInsertionPasteboard(NSGeneralPboard);
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    Color foregroundColor;
+    if (NSColor *nsForegroundColor = dynamic_objc_cast<NSColor>([fontAttributes objectForKey:NSForegroundColorAttributeName])) {
+        foregroundColor = colorFromCocoaColor(nsForegroundColor);
+        if (!foregroundColor.isValid())
+            foregroundColor = Color::transparentBlack;
+    } else
+        foregroundColor = Color::black;
+    style->setProperty(CSSPropertyColor, CSSValuePool::singleton().createColorValue(foregroundColor));
 
-    bool chosePlainText;
-    if (auto fragment = webContentFromPasteboard(pasteboard, range, true, chosePlainText)) {
-        maybeCopyNodeAttributesToFragment(*node, *fragment);
-        if (shouldInsertFragment(*fragment, range, EditorInsertAction::Pasted))
-            pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(pasteboard), false, MailBlockquoteHandling::IgnoreBlockquote);
-    }
+    FontShadow fontShadow;
+    if (NSShadow *nsFontShadow = dynamic_objc_cast<NSShadow>([fontAttributes objectForKey:NSShadowAttributeName]))
+        fontShadow = fontShadowFromNSShadow(nsFontShadow);
+    style->setProperty(CSSPropertyTextShadow, serializationForCSS(fontShadow));
+
+    auto superscriptStyle = [[fontAttributes objectForKey:NSSuperscriptAttributeName] intValue];
+    style->setProperty(CSSPropertyVerticalAlign, (superscriptStyle > 0) ? CSSValueSuper : ((superscriptStyle < 0) ? CSSValueSub : CSSValueBaseline));
+
+    // FIXME: Underline wins here if we have both (see bug 3790443).
+    auto underlineStyle = [[fontAttributes objectForKey:NSUnderlineStyleAttributeName] intValue];
+    auto strikethroughStyle = [[fontAttributes objectForKey:NSStrikethroughStyleAttributeName] intValue];
+    style->setProperty(CSSPropertyWebkitTextDecorationsInEffect, (underlineStyle != NSUnderlineStyleNone) ? CSSValueUnderline : ((strikethroughStyle != NSUnderlineStyleNone) ? CSSValueLineThrough : CSSValueNone));
+
+    applyStyleToSelection(style.ptr(), EditAction::PasteFont);
 
     client()->setInsertionPasteboard(String());
 }
@@ -181,8 +178,10 @@ RefPtr<SharedBuffer> Editor::dataSelectionForPasteboard(const String& pasteboard
     if (!canCopy())
         return nullptr;
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (pasteboardType == WebArchivePboardType || pasteboardType == String(kUTTypeWebArchive))
         return selectionInWebArchiveFormat();
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     if (pasteboardType == String(legacyRTFDPasteboardType()))
         return dataInRTFDFormat(attributedString(*adjustedSelectionRange()).string.get());
@@ -217,7 +216,7 @@ static void getImage(Element& imageElement, RefPtr<Image>& image, CachedImage*& 
 
 void Editor::selectionWillChange()
 {
-    if (!hasComposition() || ignoreSelectionChanges() || m_document.selection().isNone())
+    if (!hasComposition() || ignoreSelectionChanges() || m_document.selection().isNone() || !m_document.hasLivingRenderTree())
         return;
 
     cancelComposition();
@@ -250,15 +249,14 @@ void Editor::writeImageToPasteboard(Pasteboard& pasteboard, Element& imageElemen
     if (!pasteboard.isStatic())
         pasteboardImage.dataInWebArchiveFormat = imageInWebArchiveFormat(imageElement);
 
-    if (auto imageRange = makeRangeSelectingNode(imageElement)) {
-        auto serializeComposedTree = m_document.settings().selectionAcrossShadowBoundariesEnabled() ? SerializeComposedTree::Yes : SerializeComposedTree::No;
-        pasteboardImage.dataInHTMLFormat = serializePreservingVisualAppearance(VisibleSelection { *imageRange }, ResolveURLs::YesExcludingLocalFileURLsForPrivacy, serializeComposedTree);
-    }
+    if (auto imageRange = makeRangeSelectingNode(imageElement))
+        pasteboardImage.dataInHTMLFormat = serializePreservingVisualAppearance(VisibleSelection { *imageRange }, ResolveURLs::YesExcludingURLsForPrivacy, SerializeComposedTree::Yes, IgnoreUserSelectNone::Yes);
 
     pasteboardImage.url.url = url;
     pasteboardImage.url.title = title;
     pasteboardImage.url.userVisibleForm = WTF::userVisibleString(pasteboardImage.url.url);
-    pasteboardImage.resourceData = cachedImage->resourceBuffer();
+    if (auto* buffer = cachedImage->resourceBuffer())
+        pasteboardImage.resourceData = buffer->makeContiguous();
     pasteboardImage.resourceMIMEType = cachedImage->response().mimeType();
 
     pasteboard.write(pasteboardImage);

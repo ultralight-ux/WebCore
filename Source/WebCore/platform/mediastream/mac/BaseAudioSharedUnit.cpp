@@ -33,6 +33,7 @@
 #include "DeprecatedGlobalSettings.h"
 #include "Logging.h"
 #include "PlatformMediaSessionManager.h"
+#include <wtf/FastMalloc.h>
 
 namespace WebCore {
 
@@ -43,25 +44,32 @@ BaseAudioSharedUnit::BaseAudioSharedUnit()
 
 void BaseAudioSharedUnit::addClient(CoreAudioCaptureSource& client)
 {
-    auto locker = holdLock(m_clientsLock);
+    ASSERT(isMainThread());
     m_clients.add(&client);
+    Locker locker { m_audioThreadClientsLock };
+    m_audioThreadClients = copyToVector(m_clients);
 }
 
 void BaseAudioSharedUnit::removeClient(CoreAudioCaptureSource& client)
 {
-    auto locker = holdLock(m_clientsLock);
+    ASSERT(isMainThread());
     m_clients.remove(&client);
+    Locker locker { m_audioThreadClientsLock };
+    m_audioThreadClients = copyToVector(m_clients);
+}
+
+void BaseAudioSharedUnit::clearClients()
+{
+    ASSERT(isMainThread());
+    m_clients.clear();
+    Locker locker { m_audioThreadClientsLock };
+    m_audioThreadClients.clear();
 }
 
 void BaseAudioSharedUnit::forEachClient(const Function<void(CoreAudioCaptureSource&)>& apply) const
 {
-    Vector<CoreAudioCaptureSource*> clientsCopy;
-    {
-        auto locker = holdLock(m_clientsLock);
-        clientsCopy = copyToVector(m_clients);
-    }
-    for (auto* client : clientsCopy) {
-        auto locker = holdLock(m_clientsLock);
+    ASSERT(isMainThread());
+    for (auto* client : copyToVector(m_clients)) {
         // Make sure the client has not been destroyed.
         if (!m_clients.contains(client))
             continue;
@@ -69,18 +77,16 @@ void BaseAudioSharedUnit::forEachClient(const Function<void(CoreAudioCaptureSour
     }
 }
 
-void BaseAudioSharedUnit::clearClients()
-{
-    auto locker = holdLock(m_clientsLock);
-    m_clients.clear();
-}
-
+const static OSStatus lowPriorityError1 = 560557684;
+const static OSStatus lowPriorityError2 = 561017449;
 void BaseAudioSharedUnit::startProducingData()
 {
     ASSERT(isMainThread());
 
     if (m_suspended)
         resume();
+
+    setIsProducingMicrophoneSamples(true);
 
     if (++m_producingCount != 1)
         return;
@@ -92,7 +98,14 @@ void BaseAudioSharedUnit::startProducingData()
         cleanupAudioUnit();
         ASSERT(!hasAudioUnit());
     }
-    startUnit();
+    auto error = startUnit();
+    if (error) {
+        if (error == lowPriorityError1 || error == lowPriorityError2) {
+            RELEASE_LOG_ERROR(WebRTC, "BaseAudioSharedUnit::startProducingData failed due to not high enough priority, suspending unit");
+            suspend();
+        } else
+            captureFailed();
+    }
 }
 
 OSStatus BaseAudioSharedUnit::startUnit()
@@ -100,18 +113,16 @@ OSStatus BaseAudioSharedUnit::startUnit()
     forEachClient([](auto& client) {
         client.audioUnitWillStart();
     });
-    ASSERT(!DeprecatedGlobalSettings::shouldManageAudioSessionCategory() || AudioSession::sharedSession().category() == AudioSession::PlayAndRecord);
+    ASSERT(!DeprecatedGlobalSettings::shouldManageAudioSessionCategory() || AudioSession::sharedSession().category() == AudioSession::CategoryType::PlayAndRecord);
 
-    if (auto error = startInternal()) {
-        captureFailed();
-        return error;
+#if PLATFORM(IOS_FAMILY)
+    if (AudioSession::sharedSession().category() != AudioSession::CategoryType::PlayAndRecord) {
+        RELEASE_LOG_ERROR(WebRTC, "BaseAudioSharedUnit::startUnit cannot call startInternal if category is not set to PlayAndRecord");
+        return lowPriorityError2;
     }
-    return 0;
-}
+#endif
 
-void BaseAudioSharedUnit::resetSampleRate()
-{
-    m_sampleRate = AudioSession::sharedSession().sampleRate();
+    return startInternal();
 }
 
 void BaseAudioSharedUnit::prepareForNewCapture()
@@ -126,13 +137,37 @@ void BaseAudioSharedUnit::prepareForNewCapture()
     if (!m_producingCount)
         return;
 
-    RELEASE_LOG_ERROR(WebRTC, "CoreAudioSharedUnit::prepareForNewCapture, notifying suspended sources of capture failure");
+    RELEASE_LOG_ERROR(WebRTC, "BaseAudioSharedUnit::prepareForNewCapture, notifying suspended sources of capture failure");
+    captureFailed();
+}
+
+void BaseAudioSharedUnit::setCaptureDevice(String&& persistentID, uint32_t captureDeviceID)
+{
+    bool hasChanged = this->persistentID() != persistentID || this->captureDeviceID() != captureDeviceID;
+    m_capturingDevice = { WTFMove(persistentID), captureDeviceID };
+
+    if (hasChanged)
+        captureDeviceChanged();
+}
+
+void BaseAudioSharedUnit::devicesChanged(const Vector<CaptureDevice>& devices)
+{
+    if (!m_producingCount)
+        return;
+
+    auto persistentID = this->persistentID();
+    if (WTF::anyOf(devices, [&persistentID] (auto& device) { return persistentID == device.persistentId(); })) {
+        validateOutputDevice(m_outputDeviceID);
+        return;
+    }
+
+    RELEASE_LOG_ERROR(WebRTC, "BaseAudioSharedUnit::devicesChanged - failing capture, capturing device is missing");
     captureFailed();
 }
 
 void BaseAudioSharedUnit::captureFailed()
 {
-    RELEASE_LOG_ERROR(WebRTC, "CoreAudioSharedUnit::captureFailed - capture failed");
+    RELEASE_LOG_ERROR(WebRTC, "BaseAudioSharedUnit::captureFailed");
     forEachClient([](auto& client) {
         client.captureFailed();
     });
@@ -151,6 +186,31 @@ void BaseAudioSharedUnit::stopProducingData()
     ASSERT(m_producingCount);
 
     if (m_producingCount && --m_producingCount)
+        return;
+
+    if (m_isRenderingAudio) {
+        setIsProducingMicrophoneSamples(false);
+        return;
+    }
+
+    stopInternal();
+    cleanupAudioUnit();
+
+    auto callbacks = std::exchange(m_whenNotRunningCallbacks, { });
+    for (auto& callback : callbacks)
+        callback();
+}
+
+void BaseAudioSharedUnit::setIsProducingMicrophoneSamples(bool value)
+{
+    m_isProducingMicrophoneSamples = value;
+    isProducingMicrophoneSamplesChanged();
+}
+
+void BaseAudioSharedUnit::setIsRenderingAudio(bool value)
+{
+    m_isRenderingAudio = value;
+    if (m_isRenderingAudio || m_producingCount)
         return;
 
     stopInternal();
@@ -186,8 +246,14 @@ OSStatus BaseAudioSharedUnit::resume()
 
     ASSERT(!m_producingCount);
 
-    forEachClient([](auto& client) {
-        client.setMuted(false);
+    callOnMainThread([weakThis = WeakPtr { this }] {
+        if (!weakThis || weakThis->m_suspended)
+            return;
+
+        weakThis->forEachClient([](auto& client) {
+            if (client.canResumeAfterInterruption())
+                client.setMuted(false);
+        });
     });
 
     return 0;
@@ -203,6 +269,7 @@ OSStatus BaseAudioSharedUnit::suspend()
     stopInternal();
 
     forEachClient([](auto& client) {
+        client.setCanResumeAfterInterruption(client.isProducingData());
         client.setMuted(true);
     });
 
@@ -213,9 +280,31 @@ OSStatus BaseAudioSharedUnit::suspend()
 
 void BaseAudioSharedUnit::audioSamplesAvailable(const MediaTime& time, const PlatformAudioData& data, const AudioStreamDescription& description, size_t numberOfFrames)
 {
-    forEachClient([&](auto& client) {
-        if (client.isProducingData())
-            client.audioSamplesAvailable(time, data, description, numberOfFrames);
+    // We hold the lock here since adding/removing clients can only happen in main thread.
+    Locker locker { m_audioThreadClientsLock };
+
+    // For performance reasons, we forbid heap allocations while doing rendering on the capture audio thread.
+    ForbidMallocUseForCurrentThreadScope forbidMallocUse;
+
+    for (auto* client : m_audioThreadClients) {
+        if (client->isProducingData())
+            client->audioSamplesAvailable(time, data, description, numberOfFrames);
+    }
+}
+
+void BaseAudioSharedUnit::whenAudioCaptureUnitIsNotRunning(Function<void()>&& callback)
+{
+    if (!isProducingData()) {
+        callback();
+        return;
+    }
+    m_whenNotRunningCallbacks.append(WTFMove(callback));
+}
+
+void BaseAudioSharedUnit::handleNewCurrentMicrophoneDevice(CaptureDevice&& device)
+{
+    forEachClient([&device](auto& client) {
+        client.handleNewCurrentMicrophoneDevice(device);
     });
 }
 

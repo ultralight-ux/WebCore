@@ -1,6 +1,6 @@
 /*
  * (C) 1999-2003 Lars Knoll (knoll@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,19 +21,16 @@
 #pragma once
 
 #include "CSSValue.h"
+#include "CSSValueKeywords.h"
 #include <wtf/Function.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
 
-class CSSCustomPropertyValue;
-struct CSSParserValue;
-class CSSParserValueList;
-
 class CSSValueList : public CSSValue {
 public:
-    typedef Vector<Ref<CSSValue>, 4>::iterator iterator;
-    typedef Vector<Ref<CSSValue>, 4>::const_iterator const_iterator;
+    using const_iterator = Vector<Ref<CSSValue>, 4>::const_iterator;
+    using iterator = const_iterator;
 
     static Ref<CSSValueList> createCommaSeparated()
     {
@@ -48,6 +45,8 @@ public:
         return adoptRef(*new CSSValueList(SlashSeparator));
     }
 
+    Ref<CSSValueList> copy();
+
     size_t length() const { return m_values.size(); }
     CSSValue* item(size_t index) { return index < m_values.size() ? m_values[index].ptr() : nullptr; }
     const CSSValue* item(size_t index) const { return index < m_values.size() ? m_values[index].ptr() : nullptr; }
@@ -56,28 +55,29 @@ public:
 
     const_iterator begin() const { return m_values.begin(); }
     const_iterator end() const { return m_values.end(); }
-    iterator begin() { return m_values.begin(); }
-    iterator end() { return m_values.end(); }
+    size_t size() const { return m_values.size(); }
 
     void append(Ref<CSSValue>&&);
     void prepend(Ref<CSSValue>&&);
-    bool removeAll(CSSValue*);
-    bool hasValue(CSSValue*) const;
-    Ref<CSSValueList> copy();
+    bool removeAll(CSSValue&);
+    bool removeAll(CSSValueID);
+    bool hasValue(CSSValue&) const;
+    bool hasValue(CSSValueID) const;
 
     String customCSSText() const;
     bool equals(const CSSValueList&) const;
     bool equals(const CSSValue&) const;
 
-    bool traverseSubresources(const WTF::Function<bool (const CachedResource&)>& handler) const;
+    bool customTraverseSubresources(const Function<bool(const CachedResource&)>&) const;
 
-    unsigned separator() const { return m_valueListSeparator; }
+    using CSSValue::separator;
+    using CSSValue::separatorCSSText;
 
 protected:
-    CSSValueList(ClassType, ValueListSeparator);
+    CSSValueList(ClassType, ValueSeparator);
 
 private:
-    explicit CSSValueList(ValueListSeparator);
+    explicit CSSValueList(ValueSeparator);
 
     Vector<Ref<CSSValue>, 4> m_values;
 };

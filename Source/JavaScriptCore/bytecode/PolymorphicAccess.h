@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +32,7 @@
 #include "JSFunctionInlines.h"
 #include "MacroAssembler.h"
 #include "ScratchRegisterAllocator.h"
+#include <wtf/FixedVector.h>
 #include <wtf/Vector.h>
 
 namespace JSC {
@@ -44,7 +45,6 @@ class CodeBlock;
 class PolymorphicAccess;
 class StructureStubInfo;
 class WatchpointsOnStructureStubInfo;
-class ScratchRegisterAllocator;
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(PolymorphicAccess);
 
@@ -71,7 +71,7 @@ public:
         RELEASE_ASSERT(kind != GeneratedFinalCode);
     }
     
-    AccessGenerationResult(Kind kind, MacroAssemblerCodePtr<JITStubRoutinePtrTag> code)
+    AccessGenerationResult(Kind kind, CodePtr<JITStubRoutinePtrTag> code)
         : m_kind(kind)
         , m_code(code)
     {
@@ -96,7 +96,7 @@ public:
     
     Kind kind() const { return m_kind; }
     
-    const MacroAssemblerCodePtr<JITStubRoutinePtrTag>& code() const { return m_code; }
+    const CodePtr<JITStubRoutinePtrTag>& code() const { return m_code; }
     
     bool madeNoChanges() const { return m_kind == MadeNoChanges; }
     bool gaveUp() const { return m_kind == GaveUp; }
@@ -126,7 +126,7 @@ public:
     
 private:
     Kind m_kind;
-    MacroAssemblerCodePtr<JITStubRoutinePtrTag> m_code;
+    CodePtr<JITStubRoutinePtrTag> m_code;
     Vector<std::pair<InlineWatchpointSet&, StringFireDetail>> m_watchpointsToFire;
 };
 
@@ -140,10 +140,10 @@ public:
     // When this fails (returns GaveUp), this will leave the old stub intact but you should not try
     // to call this method again for that PolymorphicAccess instance.
     AccessGenerationResult addCases(
-        const GCSafeConcurrentJSLocker&, VM&, CodeBlock*, StructureStubInfo&, Vector<std::unique_ptr<AccessCase>, 2>);
+        const GCSafeConcurrentJSLocker&, VM&, CodeBlock*, StructureStubInfo&, Vector<RefPtr<AccessCase>, 2>);
 
     AccessGenerationResult addCase(
-        const GCSafeConcurrentJSLocker&, VM&, CodeBlock*, StructureStubInfo&, std::unique_ptr<AccessCase>);
+        const GCSafeConcurrentJSLocker&, VM&, CodeBlock*, StructureStubInfo&, Ref<AccessCase>);
     
     AccessGenerationResult regenerate(const GCSafeConcurrentJSLocker&, VM&, JSGlobalObject*, CodeBlock*, ECMAMode, StructureStubInfo&);
     
@@ -152,14 +152,14 @@ public:
     const AccessCase& at(unsigned i) const { return *m_list[i]; }
     const AccessCase& operator[](unsigned i) const { return *m_list[i]; }
 
-    void visitAggregate(SlotVisitor&);
+    DECLARE_VISIT_AGGREGATE;
 
     // If this returns false then we are requesting a reset of the owning StructureStubInfo.
     bool visitWeak(VM&) const;
     
     // This returns true if it has marked everything it will ever marked. This can be used as an
     // optimization to then avoid calling this method again during the fixpoint.
-    bool propagateTransitions(SlotVisitor&) const;
+    template<typename Visitor> void propagateTransitions(Visitor&) const;
 
     void aboutToDie();
 
@@ -178,16 +178,15 @@ private:
     friend class CodeBlock;
     friend struct AccessGenerationState;
     
-    typedef Vector<std::unique_ptr<AccessCase>, 2> ListType;
+    typedef Vector<RefPtr<AccessCase>, 2> ListType;
     
     void commit(
         const GCSafeConcurrentJSLocker&, VM&, std::unique_ptr<WatchpointsOnStructureStubInfo>&, CodeBlock*, StructureStubInfo&,
         AccessCase&);
 
     ListType m_list;
-    RefPtr<JITStubRoutine> m_stubRoutine;
+    RefPtr<PolymorphicAccessJITStubRoutine> m_stubRoutine;
     std::unique_ptr<WatchpointsOnStructureStubInfo> m_watchpoints;
-    std::unique_ptr<Vector<WriteBarrier<JSCell>>> m_weakReferences;
 };
 
 struct AccessGenerationState {
@@ -195,14 +194,10 @@ struct AccessGenerationState {
         : m_vm(vm) 
         , m_globalObject(globalObject)
         , m_ecmaMode(ecmaMode)
-        , m_calculatedRegistersForCallAndExceptionHandling(false)
-        , m_needsToRestoreRegistersIfException(false)
-        , m_calculatedCallSiteIndex(false)
     {
-        u.thisGPR = InvalidGPRReg;
     }
     VM& m_vm;
-    JSGlobalObject* m_globalObject;
+    JSGlobalObject* const m_globalObject;
     CCallHelpers* jit { nullptr };
     ScratchRegisterAllocator* allocator;
     ScratchRegisterAllocator::PreservedState preservedReusedRegisterState;
@@ -211,40 +206,35 @@ struct AccessGenerationState {
     MacroAssembler::JumpList success;
     MacroAssembler::JumpList failAndRepatch;
     MacroAssembler::JumpList failAndIgnore;
-    GPRReg baseGPR { InvalidGPRReg };
-    union {
-        GPRReg thisGPR;
-        GPRReg prototypeGPR;
-        GPRReg propertyGPR;
-    } u;
-    JSValueRegs valueRegs;
     GPRReg scratchGPR { InvalidGPRReg };
     FPRReg scratchFPR { InvalidFPRReg };
-    ECMAMode m_ecmaMode { ECMAMode::sloppy() };
+    const ECMAMode m_ecmaMode { ECMAMode::sloppy() };
     std::unique_ptr<WatchpointsOnStructureStubInfo> watchpoints;
-    Vector<WriteBarrier<JSCell>> weakReferences;
-    Bag<CallLinkInfo> m_callLinkInfos;
+    Vector<StructureID> weakStructures;
+    Bag<OptimizingCallLinkInfo> m_callLinkInfos;
+    bool m_doesJSCalls : 1 { false };
+    bool m_doesCalls : 1 { false };
 
-    void installWatchpoint(const ObjectPropertyCondition&);
+    void installWatchpoint(CodeBlock*, const ObjectPropertyCondition&);
 
     void restoreScratch();
     void succeed();
 
     struct SpillState {
         SpillState() = default;
-        SpillState(RegisterSet&& regs, unsigned usedStackBytes)
+        SpillState(ScalarRegisterSet&& regs, unsigned usedStackBytes)
             : spilledRegisters(WTFMove(regs))
             , numberOfStackBytesUsedForRegisterPreservation(usedStackBytes)
         {
         }
 
-        RegisterSet spilledRegisters { };
+        ScalarRegisterSet spilledRegisters { };
         unsigned numberOfStackBytesUsedForRegisterPreservation { std::numeric_limits<unsigned>::max() };
 
         bool isEmpty() const { return numberOfStackBytesUsedForRegisterPreservation == std::numeric_limits<unsigned>::max(); }
     };
 
-    const RegisterSet& calculateLiveRegistersForCallAndExceptionHandling();
+    const ScalarRegisterSet& calculateLiveRegistersForCallAndExceptionHandling();
 
     SpillState preserveLiveRegistersToStackForCall(const RegisterSet& extra = { });
     SpillState preserveLiveRegistersToStackForCallWithoutExceptions();
@@ -252,7 +242,7 @@ struct AccessGenerationState {
     void restoreLiveRegistersFromStackForCallWithThrownException(const SpillState&);
     void restoreLiveRegistersFromStackForCall(const SpillState&, const RegisterSet& dontRestore = { });
 
-    const RegisterSet& liveRegistersForCall();
+    const ScalarRegisterSet& liveRegistersForCall();
 
     CallSiteIndex callSiteIndexForExceptionHandlingOrOriginal();
     DisposableCallSiteIndex callSiteIndexForExceptionHandling();
@@ -264,26 +254,28 @@ struct AccessGenerationState {
     
     void emitExplicitExceptionHandler();
 
-    void setSpillStateForJSGetterSetter(SpillState& spillState)
+    void setSpillStateForJSCall(SpillState& spillState)
     {
-        if (!m_spillStateForJSGetterSetter.isEmpty()) {
-            ASSERT(m_spillStateForJSGetterSetter.numberOfStackBytesUsedForRegisterPreservation == spillState.numberOfStackBytesUsedForRegisterPreservation);
-            ASSERT(m_spillStateForJSGetterSetter.spilledRegisters == spillState.spilledRegisters);
+        if (!m_spillStateForJSCall.isEmpty()) {
+            ASSERT(m_spillStateForJSCall.numberOfStackBytesUsedForRegisterPreservation == spillState.numberOfStackBytesUsedForRegisterPreservation);
+            ASSERT(m_spillStateForJSCall.spilledRegisters == spillState.spilledRegisters);
         }
-        m_spillStateForJSGetterSetter = spillState;
+        m_spillStateForJSCall = spillState;
     }
-    SpillState spillStateForJSGetterSetter() const { return m_spillStateForJSGetterSetter; }
-    
+    SpillState spillStateForJSCall() const { return m_spillStateForJSCall; }
+
+    ScratchRegisterAllocator makeDefaultScratchAllocator(GPRReg extraToLock = InvalidGPRReg);
+
 private:
-    const RegisterSet& liveRegistersToPreserveAtExceptionHandlingCallSite();
+    const ScalarRegisterSet& liveRegistersToPreserveAtExceptionHandlingCallSite();
     
-    RegisterSet m_liveRegistersToPreserveAtExceptionHandlingCallSite;
-    RegisterSet m_liveRegistersForCall;
+    ScalarRegisterSet m_liveRegistersToPreserveAtExceptionHandlingCallSite;
+    ScalarRegisterSet m_liveRegistersForCall;
     CallSiteIndex m_callSiteIndex;
-    SpillState m_spillStateForJSGetterSetter;
-    bool m_calculatedRegistersForCallAndExceptionHandling : 1;
-    bool m_needsToRestoreRegistersIfException : 1;
-    bool m_calculatedCallSiteIndex : 1;
+    SpillState m_spillStateForJSCall;
+    bool m_calculatedRegistersForCallAndExceptionHandling : 1 { false };
+    bool m_needsToRestoreRegistersIfException : 1 { false };
+    bool m_calculatedCallSiteIndex : 1 { false };
 };
 
 } // namespace JSC

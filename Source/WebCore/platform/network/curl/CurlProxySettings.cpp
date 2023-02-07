@@ -39,7 +39,7 @@ namespace WebCore {
 
 static constexpr uint16_t SocksProxyPort = 1080;
 
-static Optional<String> createProxyUrl(const URL&);
+static std::optional<String> createProxyUrl(const URL&);
 
 CurlProxySettings::CurlProxySettings(URL&& proxyUrl, String&& ignoreHosts)
     : m_mode(Mode::Custom)
@@ -47,7 +47,7 @@ CurlProxySettings::CurlProxySettings(URL&& proxyUrl, String&& ignoreHosts)
     , m_ignoreHosts(WTFMove(ignoreHosts))
 {
     if (m_url.protocol().isEmpty())
-        m_url.setProtocol("http");
+        m_url.setProtocol("http"_s);
 
     rebuildUrl();
 }
@@ -86,10 +86,10 @@ void CurlProxySettings::setAuthMethod(long authMethod)
 
 bool protocolIsInSocksFamily(const URL& url)
 {
-    return url.protocolIs("socks4") || url.protocolIs("socks4a") || url.protocolIs("socks5") || url.protocolIs("socks5h");
+    return url.protocolIs("socks4"_s) || url.protocolIs("socks4a"_s) || url.protocolIs("socks5"_s) || url.protocolIs("socks5h"_s);
 }
 
-static Optional<uint16_t> getProxyPort(const URL& url)
+static std::optional<uint16_t> getProxyPort(const URL& url)
 {
     auto port = url.port();
     if (port)
@@ -103,20 +103,20 @@ static Optional<uint16_t> getProxyPort(const URL& url)
     if (protocolIsInSocksFamily(url))
         return SocksProxyPort;
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-static Optional<String> createProxyUrl(const URL &url)
+static std::optional<String> createProxyUrl(const URL &url)
 {
     if (url.isEmpty() || url.host().isEmpty())
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!url.protocolIsInHTTPFamily() && !protocolIsInSocksFamily(url))
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto port = getProxyPort(url);
     if (!port)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto userpass = url.hasCredentials() ? makeString(url.user(), ":", url.password(), "@") : String();
     return makeString(url.protocol(), "://", userpass, url.host(), ":", *port);

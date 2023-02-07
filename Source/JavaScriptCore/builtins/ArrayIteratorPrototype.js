@@ -32,13 +32,16 @@ function next()
         @throwTypeError("%ArrayIteratorPrototype%.next requires that |this| be an Array Iterator instance");
 
     var array = @getArrayIteratorInternalField(this, @arrayIteratorFieldIteratedObject);
+    if (@isTypedArrayView(array) && @isDetached(array))
+        @throwTypeError("Underlying ArrayBuffer has been detached from the view or out-of-bounds");
+
     var kind = @getArrayIteratorInternalField(this, @arrayIteratorFieldKind);
     return @arrayIteratorNextHelper.@call(this, array, kind);
 }
 
 // FIXME: We have to have this because we can't implement this all as one function and meet our inlining heuristics.
 // Collectively, next and this have ~130 bytes of bytecodes but our limit is 120.
-@globalPrivate
+@linkTimeConstant
 function arrayIteratorNextHelper(array, kind)
 {
     "use strict";
@@ -47,7 +50,7 @@ function arrayIteratorNextHelper(array, kind)
 
     var index = @getArrayIteratorInternalField(this, @arrayIteratorFieldIndex);
     if (index !== -1) {
-        var length = array.length >>> 0;
+        var length = @isTypedArrayView(array) ? @typedArrayLength(array) : @toLength(array.length);
         if (index < length) {
             @putArrayIteratorInternalField(this, @arrayIteratorFieldIndex, index + 1);
             done = false;

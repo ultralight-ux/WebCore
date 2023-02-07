@@ -1,7 +1,7 @@
 /**
  * (C) 1999-2003 Lars Knoll (knoll@kde.org)
  * (C) 2002-2003 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2002, 2005, 2006, 2012 Apple Inc.
+ * Copyright (C) 2002-2020 Apple Inc.
  * Copyright (C) 2006 Samuel Weinig (sam@webkit.org)
  *
  * This library is free software; you can redistribute it and/or
@@ -25,54 +25,54 @@
 
 #include "CSSStyleSheet.h"
 #include "MediaList.h"
+#include "MediaQueryParser.h"
 #include "StyleRule.h"
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
 CSSMediaRule::CSSMediaRule(StyleRuleMedia& mediaRule, CSSStyleSheet* parent)
-    : CSSGroupingRule(mediaRule, parent)
+    : CSSConditionRule(mediaRule, parent)
 {
 }
 
 CSSMediaRule::~CSSMediaRule()
 {
     if (m_mediaCSSOMWrapper)
-        m_mediaCSSOMWrapper->clearParentRule();
+        m_mediaCSSOMWrapper->detachFromParent();
 }
 
-MediaQuerySet* CSSMediaRule::mediaQueries() const
+const MQ::MediaQueryList& CSSMediaRule::mediaQueries() const
 {
-    return downcast<StyleRuleMedia>(m_groupRule.get()).mediaQueries();
+    return downcast<StyleRuleMedia>(groupRule()).mediaQueries();
+}
+
+void CSSMediaRule::setMediaQueries(MQ::MediaQueryList&& queries)
+{
+    downcast<StyleRuleMedia>(groupRule()).setMediaQueries(WTFMove(queries));
 }
 
 String CSSMediaRule::cssText() const
 {
     StringBuilder result;
-    result.appendLiteral("@media ");
-    if (mediaQueries()) {
-        result.append(mediaQueries()->mediaText(), ' ');
-    }
-    result.appendLiteral("{ \n");
-    appendCssTextForItems(result);
+    result.append("@media ", conditionText(), " {\n");
+    appendCSSTextForItems(result);
     result.append('}');
     return result.toString();
 }
 
-MediaList* CSSMediaRule::media() const
+String CSSMediaRule::conditionText() const
 {
-    if (!mediaQueries())
-        return nullptr;
-    if (!m_mediaCSSOMWrapper)
-        m_mediaCSSOMWrapper = MediaList::create(mediaQueries(), const_cast<CSSMediaRule*>(this));
-    return m_mediaCSSOMWrapper.get();
+    StringBuilder builder;
+    MQ::serialize(builder, mediaQueries());
+    return builder.toString();
 }
 
-void CSSMediaRule::reattach(StyleRuleBase& rule)
+MediaList* CSSMediaRule::media() const
 {
-    CSSGroupingRule::reattach(rule);
-    if (m_mediaCSSOMWrapper && mediaQueries())
-        m_mediaCSSOMWrapper->reattach(mediaQueries());
+    if (!m_mediaCSSOMWrapper)
+        m_mediaCSSOMWrapper = MediaList::create(const_cast<CSSMediaRule*>(this));
+    return m_mediaCSSOMWrapper.get();
 }
 
 } // namespace WebCore

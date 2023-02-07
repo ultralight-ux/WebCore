@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(INDEXED_DATABASE)
-
 #include "IDBKeyRangeData.h"
 #include <wtf/EnumTraits.h>
 
@@ -46,30 +44,6 @@ struct IDBGetRecordData {
 #if !LOG_DISABLED
     String loggingString() const;
 #endif
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static WARN_UNUSED_RETURN bool decode(Decoder&, IDBGetRecordData&);
 };
 
-template<class Encoder>
-void IDBGetRecordData::encode(Encoder& encoder) const
-{
-    encoder << keyRangeData;
-    encoder << type;
-}
-
-template<class Decoder>
-bool IDBGetRecordData::decode(Decoder& decoder, IDBGetRecordData& getRecordData)
-{
-    if (!decoder.decode(getRecordData.keyRangeData))
-        return false;
-
-    if (!decoder.decode(getRecordData.type))
-        return false;
-
-    return true;
-}
-
 } // namespace WebCore
-
-#endif // ENABLE(INDEXED_DATABASE)

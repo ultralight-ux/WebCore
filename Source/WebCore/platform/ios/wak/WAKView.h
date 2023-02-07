@@ -26,16 +26,20 @@
 #ifndef WAKView_h
 #define WAKView_h
 
+#import <Foundation/Foundation.h>
+
 #if TARGET_OS_IPHONE
 
-#import "WAKAppKitStubs.h"
-#import "WAKResponder.h"
-#import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <WebCore/WAKAppKitStubs.h>
+#import <WebCore/WAKResponder.h>
 
 extern NSString *WAKViewFrameSizeDidChangeNotification;
 extern NSString *WAKViewDidScrollNotification;
 
+#if WAK_APPKIT_API_AVAILABLE_MACCATALYST
+#import <AppKit/NSView.h>
+#else
 enum {
     NSViewNotSizable = 0,
     NSViewMinXMargin = 1,
@@ -45,6 +49,7 @@ enum {
     NSViewHeightSizable = 16,
     NSViewMaxYMargin = 32
 };
+#endif
 
 @class WAKWindow;
 

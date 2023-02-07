@@ -23,17 +23,19 @@
 #include "config.h"
 #include "SVGTRefElement.h"
 
+#include "AddEventListenerOptions.h"
+#include "ElementRareData.h"
 #include "EventListener.h"
 #include "EventNames.h"
 #include "MutationEvent.h"
 #include "RenderSVGInline.h"
 #include "RenderSVGInlineText.h"
 #include "RenderSVGResource.h"
-#include "ShadowRoot.h"
-#include "SVGDocument.h"
 #include "SVGDocumentExtensions.h"
+#include "SVGElementInlines.h"
 #include "SVGNames.h"
 #include "ScriptDisallowedScope.h"
+#include "ShadowRoot.h"
 #include "StyleInheritedData.h"
 #include "Text.h"
 #include <wtf/IsoMallocInlines.h>
@@ -122,7 +124,7 @@ void SVGTRefTargetEventListener::handleEvent(ScriptExecutionContext&, Event& eve
 }
 
 inline SVGTRefElement::SVGTRefElement(const QualifiedName& tagName, Document& document)
-    : SVGTextPositioningElement(tagName, document)
+    : SVGTextPositioningElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
     , SVGURIReference(this)
     , m_targetListener(SVGTRefTargetEventListener::create(*this))
 {
@@ -144,10 +146,10 @@ void SVGTRefElement::updateReferencedText(Element* target)
     ASSERT(root);
     ScriptDisallowedScope::EventAllowedScope allowedScope(*root);
     if (!root->firstChild())
-        root->appendChild(Text::create(document(), textContent));
+        root->appendChild(Text::create(document(), WTFMove(textContent)));
     else {
         ASSERT(root->firstChild()->isTextNode());
-        root->firstChild()->setTextContent(textContent);
+        root->firstChild()->setTextContent(WTFMove(textContent));
     }
 }
 
@@ -156,12 +158,10 @@ void SVGTRefElement::detachTarget()
     // Remove active listeners and clear the text content.
     m_targetListener->detach();
 
-    String emptyContent;
-
     ASSERT(shadowRoot());
-    auto container = makeRefPtr(shadowRoot()->firstChild());
+    RefPtr container = shadowRoot()->firstChild();
     if (container)
-        container->setTextContent(emptyContent);
+        container->setTextContent(String { });
 
     if (!isConnected())
         return;
@@ -183,8 +183,7 @@ void SVGTRefElement::svgAttributeChanged(const QualifiedName& attrName)
     if (SVGURIReference::isKnownAttribute(attrName)) {
         InstanceInvalidationGuard guard(*this);
         buildPendingResource();
-        if (auto renderer = this->renderer())
-            RenderSVGResource::markForLayoutAndParentResourceInvalidation(*renderer);
+        updateSVGRendererForElementChange();
         return;
     }
 
@@ -205,9 +204,7 @@ bool SVGTRefElement::rendererIsNeeded(const RenderStyle& style)
 {
     if (parentNode()
         && (parentNode()->hasTagName(SVGNames::aTag)
-#if ENABLE(SVG_FONTS)
             || parentNode()->hasTagName(SVGNames::altGlyphTag)
-#endif
             || parentNode()->hasTagName(SVGNames::textTag)
             || parentNode()->hasTagName(SVGNames::textPathTag)
             || parentNode()->hasTagName(SVGNames::tspanTag)))

@@ -41,15 +41,15 @@ RefPtr<BitmapImage> BitmapImage::create(HBITMAP hBitmap)
 {
     DIBSECTION dibSection;
     if (!GetObject(hBitmap, sizeof(DIBSECTION), &dibSection))
-        return 0;
+        return nullptr;
 
     ASSERT(dibSection.dsBm.bmBitsPixel == 32);
     if (dibSection.dsBm.bmBitsPixel != 32)
-        return 0;
+        return nullptr;
 
     ASSERT(dibSection.dsBm.bmBits);
     if (!dibSection.dsBm.bmBits)
-        return 0;
+        return nullptr;
 
     RetainPtr<CGContextRef> bitmapContext = adoptCF(CGBitmapContextCreate(dibSection.dsBm.bmBits, dibSection.dsBm.bmWidth, dibSection.dsBm.bmHeight, 8,
         dibSection.dsBm.bmWidthBytes, sRGBColorSpaceRef(), kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst));
@@ -57,7 +57,7 @@ RefPtr<BitmapImage> BitmapImage::create(HBITMAP hBitmap)
     // The BitmapImage takes ownership of this.
     RetainPtr<CGImageRef> cgImage = adoptCF(CGBitmapContextCreateImage(bitmapContext.get()));
 
-    return adoptRef(new BitmapImage(WTFMove(cgImage)));
+    return BitmapImage::create(WTFMove(cgImage));
 }
 
 bool BitmapImage::getHBITMAPOfSize(HBITMAP bmp, const IntSize* size)
@@ -68,21 +68,21 @@ bool BitmapImage::getHBITMAPOfSize(HBITMAP bmp, const IntSize* size)
     GetObject(bmp, sizeof(BITMAP), &bmpInfo);
 
     ASSERT(bmpInfo.bmBitsPixel == 32);
+    if (bmpInfo.bmBitsPixel != 32)
+        return false;
+
     int bufferSize = bmpInfo.bmWidthBytes * bmpInfo.bmHeight;
     
-    CGContextRef cgContext = CGBitmapContextCreate(bmpInfo.bmBits, bmpInfo.bmWidth, bmpInfo.bmHeight,
-        8, bmpInfo.bmWidthBytes, sRGBColorSpaceRef(), kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+    auto cgContext = adoptCF(CGBitmapContextCreate(bmpInfo.bmBits, bmpInfo.bmWidth, bmpInfo.bmHeight,
+        8, bmpInfo.bmWidthBytes, sRGBColorSpaceRef(), kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst));
   
-    GraphicsContext gc(cgContext);
+    GraphicsContextCG gc(cgContext.get());
 
     FloatSize imageSize = BitmapImage::size();
     if (size)
         drawFrameMatchingSourceSize(gc, FloatRect(0.0f, 0.0f, bmpInfo.bmWidth, bmpInfo.bmHeight), *size, CompositeOperator::Copy);
     else
         draw(gc, FloatRect(0.0f, 0.0f, bmpInfo.bmWidth, bmpInfo.bmHeight), FloatRect(0.0f, 0.0f, imageSize.width(), imageSize.height()), { CompositeOperator::Copy });
-
-    // Do cleanup
-    CGContextRelease(cgContext);
 
     return true;
 }
@@ -91,8 +91,8 @@ void BitmapImage::drawFrameMatchingSourceSize(GraphicsContext& ctxt, const Float
 {
     size_t frames = frameCount();
     for (size_t i = 0; i < frames; ++i) {
-        CGImageRef image = frameImageAtIndex(i).get();
-        if (image && CGImageGetHeight(image) == static_cast<size_t>(srcSize.height()) && CGImageGetWidth(image) == static_cast<size_t>(srcSize.width())) {
+        auto image = frameImageAtIndex(i);
+        if (image && image->size() == srcSize) {
             size_t currentFrame = m_currentFrame;
             m_currentFrame = i;
             draw(ctxt, dstRect, FloatRect(0.0f, 0.0f, srcSize.width(), srcSize.height()), { compositeOp });

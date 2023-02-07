@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2018 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2022 Apple Inc. All rights reserved.
  *  Copyright (C) 2007 Eric Seidel <eric@webkit.org>
  *
  *  This library is free software; you can redistribute it and/or
@@ -27,6 +27,7 @@
 #include "MarkedBlockInlines.h"
 #include "MarkedSpaceInlines.h"
 #include <wtf/ListDump.h>
+#include <wtf/SimpleStats.h>
 
 namespace JSC {
 
@@ -40,7 +41,7 @@ static Vector<size_t> sizeClasses()
 
     if (UNLIKELY(Options::dumpSizeClasses())) {
         dataLog("Block size: ", MarkedBlock::blockSize, "\n");
-        dataLog("Footer size: ", sizeof(MarkedBlock::Footer), "\n");
+        dataLog("Header size: ", sizeof(MarkedBlock::Header), "\n");
     }
     
     auto add = [&] (size_t sizeClass) {
@@ -246,7 +247,7 @@ void MarkedSpace::sweepPreciseAllocations()
         allocation->setIndexInSpace(dstIndex);
         m_preciseAllocations[dstIndex++] = allocation;
     }
-    m_preciseAllocations.shrink(dstIndex);
+    m_preciseAllocations.shrinkCapacity(dstIndex);
     m_preciseAllocationsNurseryOffset = m_preciseAllocations.size();
 }
 
@@ -272,7 +273,8 @@ void MarkedSpace::enablePreciseAllocationTracking()
         m_preciseAllocationSet->add(allocation->cell());
 }
 
-void MarkedSpace::visitWeakSets(SlotVisitor& visitor)
+template<typename Visitor>
+void MarkedSpace::visitWeakSets(Visitor& visitor)
 {
     auto visit = [&] (WeakSet* weakSet) {
         weakSet->visit(visitor);
@@ -283,6 +285,9 @@ void MarkedSpace::visitWeakSets(SlotVisitor& visitor)
     if (heap().collectionScope() == CollectionScope::Full)
         m_activeWeakSets.forEach(visit);
 }
+
+template void MarkedSpace::visitWeakSets(AbstractSlotVisitor&);
+template void MarkedSpace::visitWeakSets(SlotVisitor&);
 
 void MarkedSpace::reapWeakSets()
 {
@@ -354,24 +359,23 @@ void MarkedSpace::resumeAllocating()
     // Nothing to do for PreciseAllocations.
 }
 
-bool MarkedSpace::isPagedOut(MonotonicTime deadline)
+bool MarkedSpace::isPagedOut()
 {
-    bool result = false;
+    SimpleStats pagedOutPagesStats;
+
     forEachDirectory(
         [&] (BlockDirectory& directory) -> IterationStatus {
-            if (directory.isPagedOut(deadline)) {
-                result = true;
-                return IterationStatus::Done;
-            }
+            directory.updatePercentageOfPagedOutPages(pagedOutPagesStats);
             return IterationStatus::Continue;
         });
     // FIXME: Consider taking PreciseAllocations into account here.
-    return result;
+    double maxHeapGrowthFactor = VM::isInMiniMode() ? Options::miniVMHeapGrowthFactor() : Options::largeHeapGrowthFactor();
+    double bailoutPercentage = Options::customFullGCCallbackBailThreshold() == -1.0 ? maxHeapGrowthFactor - 1 : Options::customFullGCCallbackBailThreshold();
+    return pagedOutPagesStats.mean() > pagedOutPagesStats.count() * bailoutPercentage;
 }
 
 void MarkedSpace::freeBlock(MarkedBlock::Handle* block)
 {
-    block->directory()->removeBlock(block);
     m_capacity -= MarkedBlock::blockSize;
     m_blocks.remove(&block->block());
     delete block;

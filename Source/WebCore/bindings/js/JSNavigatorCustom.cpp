@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,15 +27,19 @@
 #include "JSNavigator.h"
 
 #include "WebCoreJSClientData.h"
+#include "WebCoreOpaqueRoot.h"
 #include <JavaScriptCore/CatchScope.h>
 #include <JavaScriptCore/JSCJSValue.h>
 
 namespace WebCore {
 
-void JSNavigator::visitAdditionalChildren(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSNavigator::visitAdditionalChildren(Visitor& visitor)
 {
-    visitor.addOpaqueRoot(static_cast<NavigatorBase*>(&wrapped()));
+    addWebCoreOpaqueRoot(visitor, static_cast<NavigatorBase&>(wrapped()));
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSNavigator);
 
 #if ENABLE(MEDIA_STREAM)
 JSC::JSValue JSNavigator::getUserMedia(JSC::JSGlobalObject& lexicalGlobalObject, JSC::CallFrame& callFrame)
@@ -43,7 +47,7 @@ JSC::JSValue JSNavigator::getUserMedia(JSC::JSGlobalObject& lexicalGlobalObject,
     auto* function = globalObject()->builtinInternalFunctions().jsDOMBindingInternals().m_getUserMediaShimFunction.get();
     ASSERT(function);
 
-    auto callData = JSC::getCallData(lexicalGlobalObject.vm(), function);
+    auto callData = JSC::getCallData(function);
     ASSERT(callData.type != JSC::CallData::Type::None);
     JSC::MarkedArgumentBuffer arguments;
     for (size_t cptr = 0; cptr < callFrame.argumentCount(); ++cptr)

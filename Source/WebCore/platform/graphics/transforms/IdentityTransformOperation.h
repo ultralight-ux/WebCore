@@ -29,12 +29,11 @@
 
 namespace WebCore {
 
+struct BlendingContext;
+
 class IdentityTransformOperation final : public TransformOperation {
 public:
-    static Ref<IdentityTransformOperation> create()
-    {
-        return adoptRef(*new IdentityTransformOperation());
-    }
+    WEBCORE_EXPORT static Ref<IdentityTransformOperation> create();
 
     Ref<TransformOperation> clone() const override
     {
@@ -54,19 +53,16 @@ private:
         return false;
     }
 
-    Ref<TransformOperation> blend(const TransformOperation*, double, bool = false) override
+    Ref<TransformOperation> blend(const TransformOperation*, const BlendingContext&, bool = false) override
     {
         return *this;
     }
 
     void dump(WTF::TextStream&) const final;
 
-    IdentityTransformOperation()
-        : TransformOperation(IDENTITY)
-    {
-    }
+    IdentityTransformOperation();
 };
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_TRANSFORMOPERATION(WebCore::IdentityTransformOperation, type() == WebCore::TransformOperation::IDENTITY)
+SPECIALIZE_TYPE_TRAITS_TRANSFORMOPERATION(WebCore::IdentityTransformOperation, type() == WebCore::TransformOperation::Type::Identity)

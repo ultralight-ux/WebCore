@@ -46,7 +46,7 @@ bool WebContentReader::readFilePath(const String& path, PresentationSize, const 
         return false;
 
     auto markup = urlToMarkup(URL({ }, path), path);
-    addFragment(createFragmentFromMarkup(*frame.document(), markup, "file://", DisallowScriptingAndPluginContent));
+    addFragment(createFragmentFromMarkup(*frame.document(), markup, "file://"_s, { }));
 
     return true;
 }
@@ -56,7 +56,7 @@ bool WebContentReader::readHTML(const String& string)
     if (frame.settings().preferMIMETypeForImages() || !frame.document())
         return false;
 
-    addFragment(createFragmentFromMarkup(*frame.document(), string, emptyString(), DisallowScriptingAndPluginContent));
+    addFragment(createFragmentFromMarkup(*frame.document(), string, emptyString(), { }));
     return true;
 }
 
@@ -71,11 +71,11 @@ bool WebContentReader::readPlainText(const String& text)
     return true;
 }
 
-bool WebContentReader::readImage(Ref<SharedBuffer>&& buffer, const String& type, PresentationSize preferredPresentationSize)
+bool WebContentReader::readImage(Ref<FragmentedSharedBuffer>&& buffer, const String& type, PresentationSize preferredPresentationSize)
 {
     ASSERT(frame.document());
     auto& document = *frame.document();
-    addFragment(createFragmentForImageAndURL(document, DOMURL::createObjectURL(document, Blob::create(&document, buffer.get(), type)), preferredPresentationSize));
+    addFragment(createFragmentForImageAndURL(document, DOMURL::createObjectURL(document, Blob::create(&document, buffer->extractData(), type)), preferredPresentationSize));
 
     return fragment;
 }

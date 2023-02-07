@@ -25,7 +25,6 @@
 
 #include "CollectionType.h"
 #include "Node.h"
-#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -36,7 +35,7 @@ class RenderElement;
 const int initialNodeVectorSize = 11; // Covers 99.5%. See webkit.org/b/80706
 typedef Vector<Ref<Node>, initialNodeVectorSize> NodeVector;
 
-class ContainerNode : public CanMakeWeakPtr<ContainerNode>, public Node {
+class ContainerNode : public Node {
     WTF_MAKE_ISO_ALLOCATED(ContainerNode);
 public:
     virtual ~ContainerNode();
@@ -46,10 +45,10 @@ public:
     Node* lastChild() const { return m_lastChild; }
     static ptrdiff_t lastChildMemoryOffset() { return OBJECT_OFFSETOF(ContainerNode, m_lastChild); }
     bool hasChildNodes() const { return m_firstChild; }
-    bool hasOneChild() const { return m_firstChild && !m_firstChild->nextSibling(); }
+    bool hasOneChild() const { return m_firstChild && m_firstChild == m_lastChild; }
 
-    bool directChildNeedsStyleRecalc() const { return getFlag(DirectChildNeedsStyleRecalcFlag); }
-    void setDirectChildNeedsStyleRecalc() { setFlag(DirectChildNeedsStyleRecalcFlag); }
+    bool directChildNeedsStyleRecalc() const { return hasStyleFlag(NodeStyleFlag::DirectChildNeedsStyleResolution); }
+    void setDirectChildNeedsStyleRecalc() { setStyleFlag(NodeStyleFlag::DirectChildNeedsStyleResolution); }
 
     WEBCORE_EXPORT unsigned countChildNodes() const;
     WEBCORE_EXPORT Node* traverseToChildAt(unsigned) const;
@@ -58,8 +57,10 @@ public:
     ExceptionOr<void> replaceChild(Node& newChild, Node& oldChild);
     WEBCORE_EXPORT ExceptionOr<void> removeChild(Node& child);
     WEBCORE_EXPORT ExceptionOr<void> appendChild(Node& newChild);
-    void replaceAllChildrenWithNewText(const String&);
-    void replaceAllChildren(std::nullptr_t);
+    void stringReplaceAll(String&&);
+    void replaceAll(Node*);
+
+    ContainerNode& rootNode() const { return downcast<ContainerNode>(Node::rootNode()); }
 
     // These methods are only used during parsing.
     // They don't send DOM mutation events or handle reparenting.
@@ -74,27 +75,31 @@ public:
 
     void cloneChildNodes(ContainerNode& clone);
 
-    enum ChildChangeType { ElementInserted, ElementRemoved, TextInserted, TextRemoved, TextChanged, AllChildrenRemoved, NonContentsChildRemoved, NonContentsChildInserted, AllChildrenReplaced };
-    enum class ChildChangeSource { Parser, API };
     struct ChildChange {
-        ChildChangeType type;
+        enum class Type : uint8_t { ElementInserted, ElementRemoved, TextInserted, TextRemoved, TextChanged, AllChildrenRemoved, NonContentsChildRemoved, NonContentsChildInserted, AllChildrenReplaced };
+        enum class Source : bool { Parser, API };
+        enum class AffectsElements : uint8_t { Unknown, No, Yes };
+
+        ChildChange::Type type;
+        Element* siblingChanged;
         Element* previousSiblingElement;
         Element* nextSiblingElement;
-        ChildChangeSource source;
+        ChildChange::Source source;
+        AffectsElements affectsElements;
 
         bool isInsertion() const
         {
             switch (type) {
-            case ElementInserted:
-            case TextInserted:
-            case NonContentsChildInserted:
-            case AllChildrenReplaced:
+            case ChildChange::Type::ElementInserted:
+            case ChildChange::Type::TextInserted:
+            case ChildChange::Type::NonContentsChildInserted:
+            case ChildChange::Type::AllChildrenReplaced:
                 return true;
-            case ElementRemoved:
-            case TextRemoved:
-            case TextChanged:
-            case AllChildrenRemoved:
-            case NonContentsChildRemoved:
+            case ChildChange::Type::ElementRemoved:
+            case ChildChange::Type::TextRemoved:
+            case ChildChange::Type::TextChanged:
+            case ChildChange::Type::AllChildrenRemoved:
+            case ChildChange::Type::NonContentsChildRemoved:
                 return false;
             }
             ASSERT_NOT_REACHED();
@@ -102,6 +107,8 @@ public:
         }
     };
     virtual void childrenChanged(const ChildChange&);
+
+    ExceptionOr<void> appendChild(ChildChange::Source, Node& newChild);
 
     void disconnectDescendantFrames();
 
@@ -116,7 +123,7 @@ public:
 
     WEBCORE_EXPORT Ref<HTMLCollection> getElementsByTagName(const AtomString&);
     WEBCORE_EXPORT Ref<HTMLCollection> getElementsByTagNameNS(const AtomString& namespaceURI, const AtomString& localName);
-    WEBCORE_EXPORT Ref<NodeList> getElementsByName(const String& elementName);
+    WEBCORE_EXPORT Ref<NodeList> getElementsByName(const AtomString& elementName);
     WEBCORE_EXPORT Ref<HTMLCollection> getElementsByClassName(const AtomString& classNames);
     Ref<RadioNodeList> radioNodeList(const AtomString&);
 
@@ -125,17 +132,17 @@ public:
     WEBCORE_EXPORT Element* firstElementChild() const;
     WEBCORE_EXPORT Element* lastElementChild() const;
     WEBCORE_EXPORT unsigned childElementCount() const;
-    ExceptionOr<void> append(Vector<NodeOrString>&&);
-    ExceptionOr<void> prepend(Vector<NodeOrString>&&);
+    ExceptionOr<void> append(FixedVector<NodeOrString>&&);
+    ExceptionOr<void> prepend(FixedVector<NodeOrString>&&);
 
-    ExceptionOr<void> replaceChildren(Vector<NodeOrString>&&);
+    ExceptionOr<void> replaceChildren(FixedVector<NodeOrString>&&);
 
     ExceptionOr<void> ensurePreInsertionValidity(Node& newChild, Node* refChild);
 
 protected:
     explicit ContainerNode(Document&, ConstructionType = CreateContainer);
 
-    friend void addChildNodesToDeletionQueue(Node*& head, Node*& tail, ContainerNode&);
+    friend void removeDetachedChildrenInContainer(ContainerNode&);
 
     void removeDetachedChildren();
     void setFirstChild(Node* child) { m_firstChild = child; }
@@ -145,9 +152,11 @@ protected:
 
 private:
     void executePreparedChildrenRemoval();
-    enum class DeferChildrenChanged { Yes, No };
-    NodeVector removeAllChildrenWithScriptAssertion(ChildChangeSource, DeferChildrenChanged = DeferChildrenChanged::No);
-    bool removeNodeWithScriptAssertion(Node&, ChildChangeSource);
+    enum class DeferChildrenChanged : bool { No, Yes };
+    enum class DidRemoveElements : bool { No, Yes };
+    DidRemoveElements removeAllChildrenWithScriptAssertion(ChildChange::Source, NodeVector& children, DeferChildrenChanged = DeferChildrenChanged::No);
+    bool removeNodeWithScriptAssertion(Node&, ChildChange::Source);
+    ExceptionOr<void> removeSelfOrChildNodesForInsertion(Node&, NodeVector&);
 
     void removeBetween(Node* previousChild, Node* nextChild, Node& oldChild);
     ExceptionOr<void> appendChildWithoutPreInsertionValidityCheck(Node&);
@@ -169,30 +178,26 @@ inline ContainerNode::ContainerNode(Document& document, ConstructionType type)
 
 inline unsigned Node::countChildNodes() const
 {
-    if (!is<ContainerNode>(*this))
-        return 0;
-    return downcast<ContainerNode>(*this).countChildNodes();
+    auto* containerNode = dynamicDowncast<ContainerNode>(*this);
+    return containerNode ? containerNode->countChildNodes() : 0;
 }
 
 inline Node* Node::traverseToChildAt(unsigned index) const
 {
-    if (!is<ContainerNode>(*this))
-        return nullptr;
-    return downcast<ContainerNode>(*this).traverseToChildAt(index);
+    auto* containerNode = dynamicDowncast<ContainerNode>(*this);
+    return containerNode ? containerNode->traverseToChildAt(index) : nullptr;
 }
 
 inline Node* Node::firstChild() const
 {
-    if (!is<ContainerNode>(*this))
-        return nullptr;
-    return downcast<ContainerNode>(*this).firstChild();
+    auto* containerNode = dynamicDowncast<ContainerNode>(*this);
+    return containerNode ? containerNode->firstChild() : nullptr;
 }
 
 inline Node* Node::lastChild() const
 {
-    if (!is<ContainerNode>(*this))
-        return nullptr;
-    return downcast<ContainerNode>(*this).lastChild();
+    auto* containerNode = dynamicDowncast<ContainerNode>(*this);
+    return containerNode ? containerNode->lastChild() : nullptr;
 }
 
 inline Node& Node::rootNode() const
@@ -202,12 +207,10 @@ inline Node& Node::rootNode() const
     return traverseToRootNode();
 }
 
-inline NodeVector collectChildNodes(Node& node)
+inline void collectChildNodes(Node& node, NodeVector& children)
 {
-    NodeVector children;
     for (Node* child = node.firstChild(); child; child = child->nextSibling())
         children.append(*child);
-    return children;
 }
 
 class ChildNodesLazySnapshot {

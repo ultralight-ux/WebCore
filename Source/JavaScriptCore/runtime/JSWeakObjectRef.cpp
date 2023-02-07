@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple, Inc. All rights reserved.
+ * Copyright (C) 2019-2021 Apple, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,16 +30,17 @@
 
 namespace JSC {
 
-const ClassInfo JSWeakObjectRef::s_info = { "WeakRef", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSWeakObjectRef) };
+const ClassInfo JSWeakObjectRef::s_info = { "WeakRef"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSWeakObjectRef) };
 
-void JSWeakObjectRef::finishCreation(VM& vm, JSObject* value)
+void JSWeakObjectRef::finishCreation(VM& vm, JSCell* value)
 {
     m_lastAccessVersion = vm.currentWeakRefVersion();
     m_value.set(vm, this, value);
     Base::finishCreation(vm);
 }
 
-void JSWeakObjectRef::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void JSWeakObjectRef::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     auto* thisObject = jsCast<JSWeakObjectRef*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
@@ -50,6 +51,8 @@ void JSWeakObjectRef::visitChildren(JSCell* cell, SlotVisitor& visitor)
         visitor.append(thisObject->m_value);
     }
 }
+
+DEFINE_VISIT_CHILDREN(JSWeakObjectRef);
 
 void JSWeakObjectRef::finalizeUnconditionally(VM& vm)
 {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006, 2008, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2022 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Google Inc. All rights reserved.
  * Copyright (C) 2012 Digia Plc. and/or its subsidiary(-ies)
  *
@@ -28,31 +28,27 @@
 #include "DOMFormData.h"
 #include "File.h"
 #include "FormDataBuilder.h"
+#include "MIMETypeRegistry.h"
 #include "Page.h"
 #include "SharedBuffer.h"
-#include "TextEncoding.h"
+#include <pal/text/TextEncoding.h>
 #include "ThreadableBlobRegistry.h"
 #include <wtf/FileSystem.h>
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/text/LineEnding.h>
 
 namespace WebCore {
 
-inline FormData::FormData()
-{
-}
+WTF_MAKE_ISO_ALLOCATED_IMPL(FormData);
 
 inline FormData::FormData(const FormData& data)
     : RefCounted<FormData>()
     , m_elements(data.m_elements)
     , m_identifier(data.m_identifier)
-    , m_alwaysStream(false)
-    , m_containsPasswordData(data.m_containsPasswordData)
 {
 }
 
-FormData::~FormData()
-{
-}
+FormData::~FormData() = default;
 
 Ref<FormData> FormData::create()
 {
@@ -76,7 +72,7 @@ Ref<FormData> FormData::create(const Vector<char>& vector)
     return create(vector.data(), vector.size());
 }
 
-Ref<FormData> FormData::create(Vector<char>&& vector)
+Ref<FormData> FormData::create(Vector<uint8_t>&& vector)
 {
     auto data = create();
     data->m_elements.append(WTFMove(vector));
@@ -92,6 +88,16 @@ Ref<FormData> FormData::create(const DOMFormData& formData, EncodingType encodin
 {
     auto result = create();
     result->appendNonMultiPartKeyValuePairItems(formData, encodingType);
+    return result;
+}
+
+Ref<FormData> FormData::create(bool alwaysStream, Vector<char>&& boundary, Vector<WebCore::FormDataElement>&& elements, int64_t identifier)
+{
+    auto result = create();
+    result->setAlwaysStream(alwaysStream);
+    result->m_boundary = WTFMove(boundary);
+    result->m_elements = WTFMove(elements);
+    result->setIdentifier(identifier);
     return result;
 }
 
@@ -111,30 +117,36 @@ Ref<FormData> FormData::isolatedCopy() const
 {
     // FIXME: isolatedCopy() does not copy m_identifier, m_boundary, or m_containsPasswordData.
     // Is all of that correct and intentional?
-
     auto formData = create();
-
     formData->m_alwaysStream = m_alwaysStream;
-
-    formData->m_elements.reserveInitialCapacity(m_elements.size());
-    for (auto& element : m_elements)
-        formData->m_elements.uncheckedAppend(element.isolatedCopy());
-
+    formData->m_elements = crossThreadCopy(m_elements);
     return formData;
+}
+
+unsigned FormData::imageOrMediaFilesCount() const
+{
+    unsigned imageOrMediaFilesCount = 0;
+    for (auto& element : m_elements) {
+        auto* encodedFileData = std::get_if<FormDataElement::EncodedFileData>(&element.data);
+        if (!encodedFileData)
+            continue;
+
+        auto mimeType = MIMETypeRegistry::mimeTypeForPath(encodedFileData->filename);
+        if (MIMETypeRegistry::isSupportedImageMIMEType(mimeType) || MIMETypeRegistry::isSupportedMediaMIMEType(mimeType))
+            ++imageOrMediaFilesCount;
+    }
+    return imageOrMediaFilesCount;
 }
 
 uint64_t FormDataElement::lengthInBytes(const Function<uint64_t(const URL&)>& blobSize) const
 {
-    return switchOn(data,
-        [] (const Vector<char>& bytes) {
+    return WTF::switchOn(data,
+        [] (const Vector<uint8_t>& bytes) {
             return static_cast<uint64_t>(bytes.size());
         }, [] (const FormDataElement::EncodedFileData& fileData) {
             if (fileData.fileLength != BlobDataItem::toEndOfFile)
                 return static_cast<uint64_t>(fileData.fileLength);
-            long long fileSize;
-            if (FileSystem::getFileSize(fileData.filename, fileSize))
-                return static_cast<uint64_t>(fileSize);
-            return static_cast<uint64_t>(0);
+            return FileSystem::fileSize(fileData.filename).value_or(0);
         }, [&blobSize] (const FormDataElement::EncodedBlobData& blobData) {
             return blobSize(blobData.url);
         }
@@ -150,11 +162,9 @@ uint64_t FormDataElement::lengthInBytes() const
 
 FormDataElement FormDataElement::isolatedCopy() const
 {
-    return switchOn(data,
-        [] (const Vector<char>& bytes) {
-            Vector<char> copy;
-            copy.append(bytes.data(), bytes.size());
-            return FormDataElement(WTFMove(copy));
+    return WTF::switchOn(data,
+        [] (const Vector<uint8_t>& bytes) {
+            return FormDataElement(Vector { bytes.data(), bytes.size() });
         }, [] (const FormDataElement::EncodedFileData& fileData) {
             return FormDataElement(fileData.isolatedCopy());
         }, [] (const FormDataElement::EncodedBlobData& blobData) {
@@ -165,42 +175,40 @@ FormDataElement FormDataElement::isolatedCopy() const
 
 void FormData::appendData(const void* data, size_t size)
 {
-    m_lengthInBytes = WTF::nullopt;
+    m_lengthInBytes = std::nullopt;
     if (!m_elements.isEmpty()) {
-        if (auto* vector = WTF::get_if<Vector<char>>(m_elements.last().data)) {
-            vector->append(reinterpret_cast<const char*>(data), size);
+        if (auto* vector = std::get_if<Vector<uint8_t>>(&m_elements.last().data)) {
+            vector->append(static_cast<const uint8_t*>(data), size);
             return;
         }
     }
-    Vector<char> vector;
-    vector.append(reinterpret_cast<const char*>(data), size);
-    m_elements.append(WTFMove(vector));
+    m_elements.append(Vector { static_cast<const uint8_t*>(data), size });
 }
 
 void FormData::appendFile(const String& filename)
 {
-    m_elements.append(FormDataElement(filename, 0, BlobDataItem::toEndOfFile, WTF::nullopt));
-    m_lengthInBytes = WTF::nullopt;
+    m_elements.append(FormDataElement(filename, 0, BlobDataItem::toEndOfFile, std::nullopt));
+    m_lengthInBytes = std::nullopt;
 }
 
-void FormData::appendFileRange(const String& filename, long long start, long long length, Optional<WallTime> expectedModificationTime)
+void FormData::appendFileRange(const String& filename, long long start, long long length, std::optional<WallTime> expectedModificationTime)
 {
     m_elements.append(FormDataElement(filename, start, length, expectedModificationTime));
-    m_lengthInBytes = WTF::nullopt;
+    m_lengthInBytes = std::nullopt;
 }
 
 void FormData::appendBlob(const URL& blobURL)
 {
     m_elements.append(FormDataElement(blobURL));
-    m_lengthInBytes = WTF::nullopt;
+    m_lengthInBytes = std::nullopt;
 }
 
-static Vector<uint8_t> normalizeStringData(TextEncoding& encoding, const String& value)
+static Vector<uint8_t> normalizeStringData(PAL::TextEncoding& encoding, const String& value)
 {
-    return normalizeLineEndingsToCRLF(encoding.encode(value, UnencodableHandling::Entities));
+    return normalizeLineEndingsToCRLF(encoding.encode(value, PAL::UnencodableHandling::Entities, PAL::NFCNormalize::No));
 }
 
-void FormData::appendMultiPartFileValue(const File& file, Vector<char>& header, TextEncoding& encoding)
+void FormData::appendMultiPartFileValue(const File& file, Vector<char>& header, PAL::TextEncoding& encoding)
 {
     auto name = file.name();
 
@@ -224,7 +232,7 @@ void FormData::appendMultiPartFileValue(const File& file, Vector<char>& header, 
         appendBlob(file.url());
 }
 
-void FormData::appendMultiPartStringValue(const String& string, Vector<char>& header, TextEncoding& encoding)
+void FormData::appendMultiPartStringValue(const String& string, Vector<char>& header, PAL::TextEncoding& encoding)
 {
     FormDataBuilder::finishMultiPartHeader(header);
     appendData(header.data(), header.size());
@@ -246,10 +254,10 @@ void FormData::appendMultiPartKeyValuePairItems(const DOMFormData& formData)
         Vector<char> header;
         FormDataBuilder::beginMultiPartHeader(header, m_boundary.data(), normalizedName);
 
-        if (WTF::holds_alternative<RefPtr<File>>(item.data))
-            appendMultiPartFileValue(*WTF::get<RefPtr<File>>(item.data), header, encoding);
+        if (std::holds_alternative<RefPtr<File>>(item.data))
+            appendMultiPartFileValue(*std::get<RefPtr<File>>(item.data), header, encoding);
         else
-            appendMultiPartStringValue(WTF::get<String>(item.data), header, encoding);
+            appendMultiPartStringValue(std::get<String>(item.data), header, encoding);
 
         appendData("\r\n", 2);
     }
@@ -265,22 +273,28 @@ void FormData::appendNonMultiPartKeyValuePairItems(const DOMFormData& formData, 
 
     Vector<char> encodedData;
     for (auto& item : formData.items()) {
-        ASSERT(WTF::holds_alternative<String>(item.data));
+        String stringValue = WTF::switchOn(item.data,
+            [](const String& string) {
+                return string;
+            }, [](const RefPtr<File>& file) {
+                return file->name();
+            }
+        );
 
         auto normalizedName = normalizeStringData(encoding, item.name);
-        auto normalizedStringData = normalizeStringData(encoding, WTF::get<String>(item.data));
+        auto normalizedStringData = normalizeStringData(encoding, stringValue);
         FormDataBuilder::addKeyValuePairAsFormData(encodedData, normalizedName, normalizedStringData, encodingType);
     }
 
     appendData(encodedData.data(), encodedData.size());
 }
 
-Vector<char> FormData::flatten() const
+Vector<uint8_t> FormData::flatten() const
 {
     // Concatenate all the byte arrays, but omit any files.
-    Vector<char> data;
+    Vector<uint8_t> data;
     for (auto& element : m_elements) {
-        if (auto* vector = WTF::get_if<Vector<char>>(element.data))
+        if (auto* vector = std::get_if<Vector<uint8_t>>(&element.data))
             data.append(vector->data(), vector->size());
     }
     return data;
@@ -289,7 +303,7 @@ Vector<char> FormData::flatten() const
 String FormData::flattenToString() const
 {
     auto bytes = flatten();
-    return Latin1Encoding().decode(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    return PAL::Latin1Encoding().decode(bytes.data(), bytes.size());
 }
 
 static void appendBlobResolved(BlobRegistryImpl* blobRegistry, FormData& formData, const URL& url)
@@ -307,8 +321,8 @@ static void appendBlobResolved(BlobRegistryImpl* blobRegistry, FormData& formDat
 
     for (const auto& blobItem : blobData->items()) {
         if (blobItem.type() == BlobDataItem::Type::Data) {
-            ASSERT(blobItem.data().data());
-            formData.appendData(blobItem.data().data()->data() + static_cast<int>(blobItem.offset()), static_cast<int>(blobItem.length()));
+            ASSERT(blobItem.data());
+            formData.appendData(blobItem.data()->data() + static_cast<int>(blobItem.offset()), static_cast<int>(blobItem.length()));
         } else if (blobItem.type() == BlobDataItem::Type::File)
             formData.appendFileRange(blobItem.file()->path(), blobItem.offset(), blobItem.length(), blobItem.file()->expectedModificationTime());
         else
@@ -316,18 +330,19 @@ static void appendBlobResolved(BlobRegistryImpl* blobRegistry, FormData& formDat
     }
 }
 
+bool FormData::containsBlobElement() const
+{
+    for (auto& element : m_elements) {
+        if (std::holds_alternative<FormDataElement::EncodedBlobData>(element.data))
+            return true;
+    }
+    return false;
+}
+
 Ref<FormData> FormData::resolveBlobReferences(BlobRegistryImpl* blobRegistryImpl)
 {
     // First check if any blobs needs to be resolved, or we can take the fast path.
-    bool hasBlob = false;
-    for (auto& element : m_elements) {
-        if (WTF::holds_alternative<FormDataElement::EncodedBlobData>(element.data)) {
-            hasBlob = true;
-            break;
-        }
-    }
-
-    if (!hasBlob)
+    if (!containsBlobElement())
         return *this;
 
     // Create a copy to append the result into.
@@ -337,7 +352,7 @@ Ref<FormData> FormData::resolveBlobReferences(BlobRegistryImpl* blobRegistryImpl
 
     for (auto& element : m_elements) {
         switchOn(element.data,
-            [&] (const Vector<char>& bytes) {
+            [&] (const Vector<uint8_t>& bytes) {
                 newFormData->appendData(bytes.data(), bytes.size());
             }, [&] (const FormDataElement::EncodedFileData& fileData) {
                 newFormData->appendFileRange(fileData.filename, fileData.fileStart, fileData.fileLength, fileData.expectedFileModificationTime);
@@ -353,10 +368,10 @@ FormDataForUpload FormData::prepareForUpload()
 {
     Vector<String> generatedFiles;
     for (auto& element : m_elements) {
-        auto* fileData = WTF::get_if<FormDataElement::EncodedFileData>(element.data);
+        auto* fileData = std::get_if<FormDataElement::EncodedFileData>(&element.data);
         if (!fileData)
             continue;
-        if (!FileSystem::fileIsDirectory(fileData->filename, FileSystem::ShouldFollowSymbolicLinks::Yes))
+        if (FileSystem::fileTypeFollowingSymlinks(fileData->filename) != FileSystem::FileType::Directory)
             continue;
         if (fileData->fileStart || fileData->fileLength != BlobDataItem::toEndOfFile)
             continue;
@@ -400,7 +415,7 @@ uint64_t FormData::lengthInBytes() const
 RefPtr<SharedBuffer> FormData::asSharedBuffer() const
 {
     for (auto& element : m_elements) {
-        if (!WTF::holds_alternative<Vector<char>>(element.data))
+        if (!std::holds_alternative<Vector<uint8_t>>(element.data))
             return nullptr;
     }
     return SharedBuffer::create(flatten());
@@ -411,7 +426,7 @@ URL FormData::asBlobURL() const
     if (m_elements.size() != 1)
         return { };
 
-    if (auto* blobData = WTF::get_if<FormDataElement::EncodedBlobData>(m_elements.first().data))
+    if (auto* blobData = std::get_if<FormDataElement::EncodedBlobData>(&m_elements.first().data))
         return blobData->url;
     return { };
 }
@@ -421,7 +436,7 @@ bool FormDataElement::EncodedFileData::fileModificationTimeMatchesExpectation() 
     if (!expectedFileModificationTime)
         return true;
 
-    auto fileModificationTime = FileSystem::getFileModificationTime(filename);
+    auto fileModificationTime = FileSystem::fileModificationTime(filename);
     if (!fileModificationTime)
         return false;
 

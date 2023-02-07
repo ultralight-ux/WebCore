@@ -26,12 +26,18 @@
 #pragma once
 
 #include "GUniquePtrSoup.h"
+#include <wtf/glib/GRefPtr.h>
 
 namespace WTF {
 class URL;
 }
 
 namespace WebCore {
-WTF::URL soupURIToURL(SoupURI*);
-GUniquePtr<SoupURI> urlToSoupURI(const WTF::URL&);
+#if USE(SOUP2)
+URL soupURIToURL(SoupURI*);
+GUniquePtr<SoupURI> urlToSoupURI(const URL&);
+#else
+URL soupURIToURL(GUri*);
+GRefPtr<GUri> urlToSoupURI(const URL&);
+#endif
 } // namespace WebCore

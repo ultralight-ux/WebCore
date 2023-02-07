@@ -28,6 +28,7 @@
 
 #include "Document.h"
 #include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
 #include "FrameLoader.h"
 #include "ScriptController.h"
 #include "Settings.h"
@@ -45,7 +46,7 @@ HTMLParserOptions::HTMLParserOptions()
 HTMLParserOptions::HTMLParserOptions(Document& document)
 {
     RefPtr<Frame> frame = document.frame();
-    if (document.settings().parserScriptingFlagPolicy() == SettingsBase::ParserScriptingFlagPolicy::Enabled)
+    if (document.settings().htmlParserScriptingFlagPolicy() == HTMLParserScriptingFlagPolicy::Enabled)
         scriptingFlag = true;
     else
         scriptingFlag = frame && frame->script().canExecuteScripts(NotAboutToExecuteScript);

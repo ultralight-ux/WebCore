@@ -25,11 +25,11 @@
 
 #pragma once
 
-#include "ScrollingTreeScrollingNodeDelegate.h"
-
 #if ENABLE(ASYNC_SCROLLING) && PLATFORM(MAC)
 
-#include "ScrollController.h"
+#include "ScrollingEffectsController.h"
+#include "ThreadedScrollingTreeScrollingNodeDelegate.h"
+#include <wtf/RunLoop.h>
 
 OBJC_CLASS NSScrollerImp;
 
@@ -41,8 +41,9 @@ class IntPoint;
 class ScrollingStateScrollingNode;
 class ScrollingTreeScrollingNode;
 class ScrollingTree;
+class ScrollerPairMac;
 
-class ScrollingTreeScrollingNodeDelegateMac : public ScrollingTreeScrollingNodeDelegate, private ScrollControllerClient {
+class ScrollingTreeScrollingNodeDelegateMac final : public ThreadedScrollingTreeScrollingNodeDelegate {
 public:
     explicit ScrollingTreeScrollingNodeDelegateMac(ScrollingTreeScrollingNode&);
     virtual ~ScrollingTreeScrollingNodeDelegateMac();
@@ -50,61 +51,35 @@ public:
     void nodeWillBeDestroyed();
 
     bool handleWheelEvent(const PlatformWheelEvent&);
-    
-    void currentScrollPositionChanged();
 
-#if ENABLE(CSS_SCROLL_SNAP)
-    void updateScrollSnapPoints(ScrollEventAxis, const Vector<LayoutUnit>&, const Vector<ScrollOffsetRange<LayoutUnit>>&);
-    void setActiveScrollSnapIndexForAxis(ScrollEventAxis, unsigned);
-    bool activeScrollSnapIndexDidChange() const;
-    unsigned activeScrollSnapIndexForAxis(ScrollEventAxis) const;
-    bool isScrollSnapInProgress() const;
-#endif
+    void willDoProgrammaticScroll(const FloatPoint&);
+    void currentScrollPositionChanged();
 
     bool isRubberBandInProgress() const;
 
-    void updateFromStateNode(const ScrollingStateScrollingNode&);
     void updateScrollbarPainters();
 
-    void deferWheelEventTestCompletionForReason(WheelEventTestMonitor::ScrollableAreaIdentifier, WheelEventTestMonitor::DeferReason) const override;
-    void removeWheelEventTestCompletionDeferralForReason(WheelEventTestMonitor::ScrollableAreaIdentifier, WheelEventTestMonitor::DeferReason) const override;
-
 private:
-    bool isAlreadyPinnedInDirectionOfGesture(const PlatformWheelEvent&, ScrollEventAxis) const;
+    void updateFromStateNode(const ScrollingStateScrollingNode&) final;
 
-    // ScrollControllerClient.
-    std::unique_ptr<ScrollControllerTimer> createTimer(Function<void()>&&) final;
+    // ScrollingEffectsControllerClient.
     bool allowsHorizontalStretching(const PlatformWheelEvent&) const final;
     bool allowsVerticalStretching(const PlatformWheelEvent&) const final;
     IntSize stretchAmount() const final;
-    bool pinnedInDirection(const FloatSize&) const final;
-    bool canScrollHorizontally() const final;
-    bool canScrollVertically() const final;
-    bool shouldRubberBandInDirection(ScrollDirection) const final;
-    void immediateScrollBy(const FloatSize&) final;
-    void immediateScrollByWithoutContentEdgeConstraints(const FloatSize&) final;
-    void didStopRubberbandSnapAnimation() final;
-    void rubberBandingStateChanged(bool) final;
-    void adjustScrollPositionToBoundsIfNecessary() final;
+    bool isPinnedOnSide(BoxSide) const final;
+    RectEdges<bool> edgePinnedState() const final;
 
-#if ENABLE(CSS_SCROLL_SNAP)
-    FloatPoint scrollOffset() const override;
-    void immediateScrollOnAxis(ScrollEventAxis, float delta) override;
-    float pageScaleFactor() const override;
-    void willStartScrollSnapAnimation() final;
-    void didStopScrollSnapAnimation() final;
-    LayoutSize scrollExtent() const override;
-    FloatSize viewportSize() const override;
-#endif
+    bool shouldRubberBandOnSide(BoxSide) const final;
+    void didStopRubberBandAnimation() final;
+    void rubberBandingStateChanged(bool) final;
+    bool scrollPositionIsNotRubberbandingEdge(const FloatPoint&) const;
 
     void releaseReferencesToScrollerImpsOnTheMainThread();
 
-    ScrollController m_scrollController;
-    
-    bool m_inMomentumPhase { false };
-
     RetainPtr<NSScrollerImp> m_verticalScrollerImp;
     RetainPtr<NSScrollerImp> m_horizontalScrollerImp;
+
+    bool m_inMomentumPhase { false };
 };
 
 } // namespace WebCore

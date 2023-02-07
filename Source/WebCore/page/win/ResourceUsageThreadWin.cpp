@@ -118,7 +118,7 @@ void ResourceUsageThread::platformCollectCPUData(JSC::VM*, ResourceUsageData& da
 
 void ResourceUsageThread::platformCollectMemoryData(JSC::VM* vm, ResourceUsageData& data)
 {
-    data.totalDirtySize = memoryUsage();
+    auto usage = data.totalDirtySize = memoryUsage();
 
     size_t currentGCHeapCapacity = vm->heap.blockBytesAllocated();
     size_t currentGCOwnedExtra = vm->heap.extraMemorySize();
@@ -129,10 +129,18 @@ void ResourceUsageThread::platformCollectMemoryData(JSC::VM* vm, ResourceUsageDa
     data.categories[MemoryCategory::GCOwned].dirtySize = currentGCOwnedExtra - currentGCOwnedExternal;
     data.categories[MemoryCategory::GCOwned].externalSize = currentGCOwnedExternal;
 
+    usage -= currentGCHeapCapacity;
+    // Following ResourceUsageThreadCocoa implementation
+    auto currentGCOwnedGenerallyInMalloc = currentGCOwnedExtra - currentGCOwnedExternal;
+    if (currentGCOwnedGenerallyInMalloc < usage)
+        usage -= currentGCOwnedGenerallyInMalloc;
+
+    data.categories[MemoryCategory::LibcMalloc].dirtySize = usage;
+
     data.totalExternalSize = currentGCOwnedExternal;
 
-    data.timeOfNextEdenCollection = data.timestamp + vm->heap.edenActivityCallback()->timeUntilFire().valueOr(Seconds(std::numeric_limits<double>::infinity()));
-    data.timeOfNextFullCollection = data.timestamp + vm->heap.fullActivityCallback()->timeUntilFire().valueOr(Seconds(std::numeric_limits<double>::infinity()));
+    data.timeOfNextEdenCollection = data.timestamp + vm->heap.edenActivityCallback()->timeUntilFire().value_or(Seconds(std::numeric_limits<double>::infinity()));
+    data.timeOfNextFullCollection = data.timestamp + vm->heap.fullActivityCallback()->timeUntilFire().value_or(Seconds(std::numeric_limits<double>::infinity()));
 }
 
 }

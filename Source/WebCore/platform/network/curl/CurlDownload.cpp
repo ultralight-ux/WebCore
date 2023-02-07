@@ -103,7 +103,7 @@ void CurlDownload::curlDidReceiveResponse(CurlRequest& request, CurlResponse&& r
 }
 
 
-void CurlDownload::curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&& buffer)
+void CurlDownload::curlDidReceiveData(CurlRequest&, const SharedBuffer& buffer)
 {
     ASSERT(isMainThread());
 
@@ -111,7 +111,7 @@ void CurlDownload::curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&& buffer
         return;
 
     if (m_listener)
-        m_listener->didReceiveDataOfLength(buffer->size());
+        m_listener->didReceiveDataOfLength(buffer.size());
 }
 
 void CurlDownload::curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&)
@@ -146,7 +146,7 @@ void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&, C
 
 bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool crossOrigin)
 {
-    if ((request.httpMethod() == "GET") || (request.httpMethod() == "HEAD"))
+    if ((request.httpMethod() == "GET"_s) || (request.httpMethod() == "HEAD"_s))
         return false;
 
     if (!request.url().protocolIsInHTTPFamily())
@@ -155,10 +155,10 @@ bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool cros
     if (m_response.isSeeOther())
         return true;
 
-    if ((m_response.isMovedPermanently() || m_response.isFound()) && (request.httpMethod() == "POST"))
+    if ((m_response.isMovedPermanently() || m_response.isFound()) && (request.httpMethod() == "POST"_s))
         return true;
 
-    if (crossOrigin && (request.httpMethod() == "DELETE"))
+    if (crossOrigin && (request.httpMethod() == "DELETE"_s))
         return true;
 
     return false;
@@ -184,7 +184,7 @@ void CurlDownload::willSendRequest()
     newRequest.setURL(newURL);
 
     if (shouldRedirectAsGET(newRequest, crossOrigin)) {
-        newRequest.setHTTPMethod("GET");
+        newRequest.setHTTPMethod("GET"_s);
         newRequest.setHTTPBody(nullptr);
         newRequest.clearHTTPContentType();
     }

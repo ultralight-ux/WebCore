@@ -23,16 +23,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef AudioSourceProviderAVFObjC_h
-#define AudioSourceProviderAVFObjC_h
+#pragma once
 
 #if ENABLE(WEB_AUDIO) && USE(MEDIATOOLBOX)
 
 #include "AudioSourceProvider.h"
-#include <atomic>
 #include <wtf/MediaTime.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/TypeCasts.h>
+#include <wtf/UniqueRef.h>
+#include <wtf/WeakPtr.h>
 
 OBJC_CLASS AVAssetTrack;
 OBJC_CLASS AVPlayerItem;
@@ -47,25 +48,35 @@ typedef signed long CMItemCount;
 
 namespace WebCore {
 
+class AudioStreamDescription;
+class CAAudioStreamDescription;
 class CARingBuffer;
+class PlatformAudioData;
 
 class AudioSourceProviderAVFObjC : public ThreadSafeRefCounted<AudioSourceProviderAVFObjC>, public AudioSourceProvider {
 public:
+    using WeakValueType = AudioSourceProviderAVFObjC;
     static RefPtr<AudioSourceProviderAVFObjC> create(AVPlayerItem*);
     virtual ~AudioSourceProviderAVFObjC();
 
     void setPlayerItem(AVPlayerItem *);
     void setAudioTrack(AVAssetTrack *);
 
+    using AudioCallback = Function<void(uint64_t startFrame, uint64_t numberOfFrames)>;
+    WEBCORE_EXPORT void setAudioCallback(AudioCallback&&);
+    using ConfigureAudioStorageCallback = Function<std::unique_ptr<CARingBuffer>(const CAAudioStreamDescription&, size_t frameCount)>;
+    WEBCORE_EXPORT void setConfigureAudioStorageCallback(ConfigureAudioStorageCallback&&);
+
 private:
     AudioSourceProviderAVFObjC(AVPlayerItem *);
 
-    void destroyMix();
-    void createMix();
+    void destroyMixIfNeeded();
+    void createMixIfNeeded();
 
     // AudioSourceProvider
     void provideInput(AudioBus*, size_t framesToProcess) override;
-    void setClient(AudioSourceProviderClient*) override;
+    void setClient(WeakPtr<AudioSourceProviderClient>&&) override;
+    bool isHandlingAVPlayer() const final { return true; }
 
     static void initCallback(MTAudioProcessingTapRef, void*, void**);
     static void finalizeCallback(MTAudioProcessingTapRef);
@@ -73,8 +84,6 @@ private:
     static void unprepareCallback(MTAudioProcessingTapRef);
     static void processCallback(MTAudioProcessingTapRef, CMItemCount, MTAudioProcessingTapFlags, AudioBufferList*, CMItemCount*, MTAudioProcessingTapFlags*);
 
-    void init(void* clientInfo, void** tapStorageOut);
-    void finalize();
     void prepare(CMItemCount maxFrames, const AudioStreamBasicDescription *processingFormat);
     void unprepare();
     void process(MTAudioProcessingTapRef, CMItemCount numberFrames, MTAudioProcessingTapFlags flagsIn, AudioBufferList *bufferListInOut, CMItemCount *numberFramesOut, MTAudioProcessingTapFlags *flagsOut);
@@ -91,19 +100,24 @@ private:
 
     MediaTime m_startTimeAtLastProcess;
     MediaTime m_endTimeAtLastProcess;
-    std::atomic<uint64_t> m_writeAheadCount { 0 };
+    uint64_t m_writeAheadCount { 0 };
     uint64_t m_readCount { 0 };
     enum { NoSeek = std::numeric_limits<uint64_t>::max() };
-    std::atomic<uint64_t> m_seekTo { NoSeek };
+    uint64_t m_seekTo { NoSeek };
     bool m_paused { true };
-    AudioSourceProviderClient* m_client { nullptr };
+    WeakPtr<AudioSourceProviderClient> m_client;
+    WeakPtrFactory<AudioSourceProviderAVFObjC> m_weakFactory;
 
     class TapStorage;
     RefPtr<TapStorage> m_tapStorage;
+    AudioCallback m_audioCallback;
+    ConfigureAudioStorageCallback m_configureAudioStorageCallback;
 };
-    
+
 }
 
-#endif
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::AudioSourceProviderAVFObjC)
+    static bool isType(const WebCore::AudioSourceProvider& provider) { return provider.isHandlingAVPlayer(); }
+SPECIALIZE_TYPE_TRAITS_END()
 
-#endif
+#endif // ENABLE(WEB_AUDIO) && USE(MEDIATOOLBOX)

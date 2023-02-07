@@ -1,4 +1,4 @@
-# Copyright (C) 2012-2018 Apple Inc. All rights reserved.
+# Copyright (C) 2012-2021 Apple Inc. All rights reserved.
 # Copyright (C) 2012 MIPS Technologies, Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -62,12 +62,6 @@ require 'risc'
 # $f14 =>        fa1
 # $f16 =>            (scratch)
 # $f18 =>            (scratch)
-
-class Assembler
-    def putStr(str)
-        @outp.puts str
-    end
-end
 
 class Node
     def mipsSingleHi
@@ -681,17 +675,7 @@ def mipsAddPICCode(list)
         | node |
         myList << node
         if node.is_a? Label
-            # FIXME: [JSC] checkpoint_osr_exit_from_inlined_call_trampoline is a return location
-            # and we should name it properly.
-            # https://bugs.webkit.org/show_bug.cgi?id=208236
-            if node.name =~ /^.*_return_location(?:_(?:wide16|wide32))?$/ or node.name.start_with?("_checkpoint_osr_exit_from_inlined_call_trampoline") or node.name.start_with?("_fuzzer_return_early_from_loop_hint")
-                # We need to have a special case for return location labels because they are always
-                # reached from a `ret` instruction. In this case, we need to proper reconfigure `$gp`
-                # using `$ra` instead of using `$t9`.
-                myList << Instruction.new(node.codeOrigin, "pichdr", [MIPS_RETURN_ADDRESS_REG])
-            else
-                myList << Instruction.new(node.codeOrigin, "pichdr", [MIPS_CALL_REG])
-            end
+            myList << Instruction.new(node.codeOrigin, "pichdr", [MIPS_CALL_REG])
         end
     }
     myList
@@ -814,6 +798,16 @@ def emitMIPS(opcode, operands)
     else
         raise unless operands.size == 2
         $asm.puts "#{opcode} #{operands[1].mipsOperand}, #{operands[1].mipsOperand}, #{operands[0].mipsOperand}"
+    end
+end
+
+def emitMIPSDoubleCompare(branchOpcode, neg, operands)
+    mipsMoveImmediate(1, operands[2])
+    $asm.puts "c.#{branchOpcode}.d $fcc0, #{mipsOperands(operands[0..1])}"
+    if (!neg)
+        $asm.puts "movf #{operands[2].mipsOperand}, $zero, $fcc0"
+    else
+        $asm.puts "movt #{operands[2].mipsOperand}, $zero, $fcc0"
     end
 end
 
@@ -1021,6 +1015,14 @@ class Instruction
         when "cilteq", "cplteq", "cblteq"
             $asm.puts "slt #{operands[2].mipsOperand}, #{operands[1].mipsOperand}, #{operands[0].mipsOperand}"
             $asm.puts "xori #{operands[2].mipsOperand}, 1"
+        when "cdgt"
+            emitMIPSDoubleCompare("ule", true, operands)
+        when "cdgteq"
+            emitMIPSDoubleCompare("ult", true, operands)
+        when "cdlt"
+            emitMIPSDoubleCompare("olt", false, operands)
+        when "cdlteq"
+            emitMIPSDoubleCompare("ole", false, operands)
         when "peek"
             $asm.puts "lw #{operands[1].mipsOperand}, #{operands[0].value * 4}($sp)"
         when "poke"
@@ -1050,8 +1052,10 @@ class Instruction
         when "leai", "leap"
             if operands[0].is_a? LabelReference
                 labelRef = operands[0]
-                raise unless labelRef.offset == 0
                 $asm.puts "lw #{operands[1].mipsOperand}, %got(#{labelRef.asmLabel})($gp)"
+                if labelRef.offset > 0
+                    $asm.puts "addu #{operands[1].mipsOperand}, #{operands[1].mipsOperand}, #{labelRef.offset}"
+                end
             else
                 operands[0].mipsEmitLea(operands[1])
             end

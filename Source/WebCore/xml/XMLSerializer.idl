@@ -19,7 +19,7 @@
  */
 
 [
-    ImplementationLacksVTable,
+    Exposed=Window
 ] interface XMLSerializer {
     constructor();
 

@@ -34,7 +34,6 @@ bool JSValue::equalSlowCase(JSGlobalObject* globalObject, JSValue v1, JSValue v2
 
 NEVER_INLINE JSValue jsAddSlowCase(JSGlobalObject* globalObject, JSValue v1, JSValue v2)
 {
-    // exception for the Date exception in defaultValue()
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSValue p1 = v1.toPrimitive(globalObject);
@@ -75,7 +74,7 @@ NEVER_INLINE JSValue jsAddSlowCase(JSGlobalObject* globalObject, JSValue v1, JSV
     RELEASE_AND_RETURN(scope, arithmeticBinaryOp(globalObject, p1, p2, doubleOp, bigIntOp, "Invalid mix of BigInt and other type in addition."_s));
 }
 
-JSValue jsTypeStringForValue(VM& vm, JSGlobalObject* globalObject, JSValue v)
+JSString* jsTypeStringForValueWithConcurrency(VM& vm, JSGlobalObject* globalObject, JSValue v, Concurrency concurrency)
 {
     if (v.isUndefined())
         return vm.smallStrings.undefinedString();
@@ -93,36 +92,24 @@ JSValue jsTypeStringForValue(VM& vm, JSGlobalObject* globalObject, JSValue v)
         JSObject* object = asObject(v);
         // Return "undefined" for objects that should be treated
         // as null when doing comparisons.
-        if (object->structure(vm)->masqueradesAsUndefined(globalObject))
+        if (object->structure()->masqueradesAsUndefined(globalObject))
             return vm.smallStrings.undefinedString();
-        if (object->isCallable(vm))
+        if (LIKELY(concurrency == Concurrency::MainThread)) {
+            if (object->isCallable())
+                return vm.smallStrings.functionString();
+            return vm.smallStrings.objectString();
+        }
+
+        switch (object->isCallableWithConcurrency<Concurrency::ConcurrentThread>()) {
+        case TriState::True:
             return vm.smallStrings.functionString();
+        case TriState::False:
+            return vm.smallStrings.objectString();
+        case TriState::Indeterminate:
+            return nullptr;
+        }
     }
     return vm.smallStrings.objectString();
-}
-
-JSValue jsTypeStringForValue(JSGlobalObject* globalObject, JSValue v)
-{
-    return jsTypeStringForValue(globalObject->vm(), globalObject, v);
-}
-
-bool jsTypeofIsObject(JSGlobalObject* globalObject, JSValue v)
-{
-    VM& vm = globalObject->vm();
-    if (!v.isCell())
-        return v.isNull();
-
-    JSType type = v.asCell()->type();
-    if (type == StringType || type == SymbolType || type == HeapBigIntType)
-        return false;
-    if (type >= ObjectType) {
-        if (asObject(v)->structure(vm)->masqueradesAsUndefined(globalObject))
-            return false;
-        JSObject* object = asObject(v);
-        if (object->isCallable(vm))
-            return false;
-    }
-    return true;
 }
 
 size_t normalizePrototypeChain(JSGlobalObject* globalObject, JSCell* base, bool& sawPolyProto)
@@ -132,7 +119,7 @@ size_t normalizePrototypeChain(JSGlobalObject* globalObject, JSCell* base, bool&
     sawPolyProto = false;
     JSCell* current = base;
     while (1) {
-        Structure* structure = current->structure(vm);
+        Structure* structure = current->structure();
         if (structure->isProxy())
             return InvalidPrototypeChain;
 
@@ -143,7 +130,7 @@ size_t normalizePrototypeChain(JSGlobalObject* globalObject, JSCell* base, bool&
             return count;
 
         current = prototype.asCell();
-        structure = current->structure(vm);
+        structure = current->structure();
         if (structure->isDictionary()) {
             if (structure->hasBeenFlattenedBefore())
                 return InvalidPrototypeChain;

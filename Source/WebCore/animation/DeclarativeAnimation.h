@@ -27,6 +27,8 @@
 
 #include "AnimationEffect.h"
 #include "AnimationEffectPhase.h"
+#include "RenderStyleConstants.h"
+#include "Styleable.h"
 #include "WebAnimation.h"
 #include <wtf/Ref.h>
 #include <wtf/WeakPtr.h>
@@ -34,7 +36,7 @@
 namespace WebCore {
 
 class Animation;
-class AnimationEventBase;
+class DeclarativeAnimationEvent;
 class Element;
 class RenderStyle;
 
@@ -45,15 +47,13 @@ public:
 
     bool isDeclarativeAnimation() const final { return true; }
 
-    Element* owningElement() const;
+    const std::optional<const Styleable> owningElement() const;
     const Animation& backingAnimation() const { return m_backingAnimation; }
     void setBackingAnimation(const Animation&);
     void cancelFromStyle();
 
-    Optional<double> bindingsStartTime() const final;
-    void setBindingsStartTime(Optional<double>) override;
-    Optional<double> bindingsCurrentTime() const final;
-    ExceptionOr<void> setBindingsCurrentTime(Optional<double>) final;
+    std::optional<double> bindingsStartTime() const final;
+    std::optional<double> bindingsCurrentTime() const final;
     WebAnimation::PlayState bindingsPlayState() const final;
     WebAnimation::ReplaceState bindingsReplaceState() const final;
     bool bindingsPending() const final;
@@ -63,7 +63,7 @@ public:
     ExceptionOr<void> bindingsPause() override;
 
     void setTimeline(RefPtr<AnimationTimeline>&&) final;
-    void cancel(Silently = Silently::No) final;
+    void cancel() final;
 
     void tick() override;
 
@@ -72,24 +72,27 @@ public:
     void flushPendingStyleChanges() const;
 
 protected:
-    DeclarativeAnimation(Element&, const Animation&);
+    DeclarativeAnimation(const Styleable&, const Animation&);
 
-    virtual void initialize(const RenderStyle* oldStyle, const RenderStyle& newStyle);
+    void initialize(const RenderStyle* oldStyle, const RenderStyle& newStyle, const Style::ResolutionContext&);
     virtual void syncPropertiesWithBackingAnimation();
-    // elapsedTime is the animation's current time at the time the event is added and is exposed through the DOM API, timelineTime is the animations'
-    // timeline current time and is not exposed through the DOM API but used by the DocumentTimeline for sorting events before dispatch. 
-    virtual Ref<AnimationEventBase> createEvent(const AtomString& eventType, double elapsedTime, const String& pseudoId, Optional<Seconds> timelineTime) = 0;
+    virtual Ref<DeclarativeAnimationEvent> createEvent(const AtomString& eventType, std::optional<Seconds> scheduledTime, double elapsedTime, PseudoId) = 0;
     void invalidateDOMEvents(Seconds elapsedTime = 0_s);
 
 private:
     void disassociateFromOwningElement();
     AnimationEffectPhase phaseWithoutEffect() const;
-    void enqueueDOMEvent(const AtomString&, Seconds);
+    void enqueueDOMEvent(const AtomString&, Seconds elapsedTime, Seconds scheduledEffectTime);
+
+    Seconds effectTimeAtStart() const;
+    Seconds effectTimeAtIteration(double) const;
+    Seconds effectTimeAtEnd() const;
 
     bool m_wasPending { false };
     AnimationEffectPhase m_previousPhase { AnimationEffectPhase::Idle };
 
-    WeakPtr<Element> m_owningElement;
+    WeakPtr<Element, WeakPtrImplWithEventTargetData> m_owningElement;
+    PseudoId m_owningPseudoId;
     Ref<Animation> m_backingAnimation;
     double m_previousIteration;
 };

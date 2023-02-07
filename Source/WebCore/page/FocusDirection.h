@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,14 +27,14 @@
 
 namespace WebCore {
 
-enum FocusDirection {
-    FocusDirectionNone = 0,
-    FocusDirectionForward,
-    FocusDirectionBackward,
-    FocusDirectionUp,
-    FocusDirectionDown,
-    FocusDirectionLeft,
-    FocusDirectionRight
+enum class FocusDirection : uint8_t {
+    None = 0,
+    Forward,
+    Backward,
+    Up,
+    Down,
+    Left,
+    Right
 };
 
 } // namespace WebCore

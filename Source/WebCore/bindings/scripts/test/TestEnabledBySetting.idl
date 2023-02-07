@@ -23,10 +23,18 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-interface TestEnabledBySetting {
-    [EnabledBySetting=TestSetting] attribute TestSubObjConstructor TestSubObjEnabledBySetting;
+[
+    Exposed=Window
+] interface TestEnabledBySetting {
+    [EnabledBySetting=TestSettingEnabled] attribute TestSubObjConstructor TestSubObjEnabledBySetting;
+    [EnabledBySetting=TestSettingEnabled, PrivateIdentifier] attribute TestSubObjConstructor TestSubObjEnabledBySettingPrivate;
+    [EnabledBySetting=TestSettingEnabled, PrivateIdentifier, PublicIdentifier] attribute TestSubObjConstructor TestSubObjEnabledBySettingPrivatePublic;
 
     // [EnabledBySetting] attributes and operations.
-    [Conditional=TEST_FEATURE, EnabledBySetting=TestSetting] attribute DOMString enabledBySettingAttribute;
-    [Conditional=TEST_FEATURE, EnabledBySetting=TestSetting] void enabledBySettingOperation(DOMString testParam);
+    [Conditional=TEST_FEATURE, EnabledBySetting=TestSettingEnabled] attribute DOMString enabledBySettingAttribute;
+    [Conditional=TEST_FEATURE, EnabledBySetting=TestSettingEnabled] undefined enabledBySettingOperation(DOMString testParam);
+
+    [Conditional=TEST_FEATURE, EnabledBySetting=TestSettingEnabled&OtherTestSettingEnabled] attribute DOMString enabledByTwoSettingsAttribute;
+
+    [EnabledBySetting=TestSettingEnabled] const unsigned short enabledBySettingConstant = 0;
 };

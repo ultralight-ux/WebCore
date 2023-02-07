@@ -30,33 +30,21 @@
 #if ENABLE(MEDIA_STREAM)
 
 #include "MediaConstraints.h"
+#include "PageIdentifier.h"
 
 namespace WebCore {
 
 struct MediaStreamRequest {
-    enum class Type { UserMedia, DisplayMedia };
+    enum class Type : uint8_t {
+        UserMedia,
+        DisplayMedia,
+        DisplayMediaWithAudio
+    };
     Type type { Type::UserMedia };
     MediaConstraints audioConstraints;
     MediaConstraints videoConstraints;
     bool isUserGesturePriviledged { false };
-
-    template<class Encoder>
-    void encode(Encoder& encoder) const
-    {
-        encoder << type;
-        encoder << audioConstraints;
-        encoder << videoConstraints;
-        encoder << isUserGesturePriviledged;
-    }
-
-    template <class Decoder> static Optional<MediaStreamRequest> decode(Decoder& decoder)
-    {
-        MediaStreamRequest request;
-        if (decoder.decode(request.type) && decoder.decode(request.audioConstraints) && decoder.decode(request.videoConstraints) && decoder.decode(request.isUserGesturePriviledged))
-            return request;
-
-        return WTF::nullopt;
-    }
+    PageIdentifier pageIdentifier;
 };
 
 } // namespace WebCore
@@ -66,22 +54,14 @@ struct MediaStreamRequest {
 namespace WebCore {
 
 struct MediaStreamRequest {
-    enum class Type { UserMedia, DisplayMedia };
+    enum class Type : uint8_t {
+        UserMedia,
+        DisplayMedia,
+        DisplayMediaWithAudio
+    };
     Type type;
 };
 
 } // namespace WebCore
 
 #endif // ENABLE(MEDIA_STREAM)
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::MediaStreamRequest::Type> {
-    using values = EnumValues<
-        WebCore::MediaStreamRequest::Type,
-        WebCore::MediaStreamRequest::Type::UserMedia,
-        WebCore::MediaStreamRequest::Type::DisplayMedia
-    >;
-};
-
-} // namespace WTF

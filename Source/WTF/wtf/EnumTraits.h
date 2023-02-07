@@ -30,6 +30,7 @@
 namespace WTF {
 
 template<typename> struct EnumTraits;
+template<typename> struct EnumTraitsForPersistence;
 
 template<typename E, E...> struct EnumValues;
 
@@ -51,21 +52,30 @@ struct EnumValueChecker<T, EnumValues<E>> {
     }
 };
 
-template<typename U> class HasCustomIsValidEnum : public std::false_type { };
-
-template<typename E, typename T, std::enable_if_t<std::is_enum<E>::value && !std::is_same<std::underlying_type_t<E>, bool>::value && !HasCustomIsValidEnum<E>::value>* = nullptr>
-constexpr bool isValidEnum(T t)
+template<typename E, typename = std::enable_if_t<!std::is_same_v<std::underlying_type_t<E>, bool>>>
+bool isValidEnum(std::underlying_type_t<E> t)
 {
-    static_assert(sizeof(T) >= sizeof(std::underlying_type_t<E>), "Integral type must be at least the size of the underlying enum type");
-
-    return EnumValueChecker<T, typename EnumTraits<E>::values>::isValidEnum(t);
+    return EnumValueChecker<std::underlying_type_t<E>, typename EnumTraits<E>::values>::isValidEnum(t);
 }
 
-template<typename E, typename T, std::enable_if_t<std::is_same<std::underlying_type_t<E>, bool>::value>* = nullptr>
-constexpr bool isValidEnum(T t)
+template<typename E, typename = std::enable_if_t<std::is_same_v<std::underlying_type_t<E>, bool>>>
+constexpr bool isValidEnum(bool t)
 {
     return !t || t == 1;
 }
+
+template<typename E, typename = std::enable_if_t<!std::is_same_v<std::underlying_type_t<E>, bool>>>
+bool isValidEnumForPersistence(std::underlying_type_t<E> t)
+{
+    return EnumValueChecker<std::underlying_type_t<E>, typename EnumTraitsForPersistence<E>::values>::isValidEnum(t);
+}
+
+template<typename E, typename = std::enable_if_t<std::is_same_v<std::underlying_type_t<E>, bool>>>
+constexpr bool isValidEnumForPersistence(bool t)
+{
+    return !t || t == 1;
+}
+
 
 template<typename E>
 constexpr auto enumToUnderlyingType(E e)
@@ -75,4 +85,5 @@ constexpr auto enumToUnderlyingType(E e)
 
 }
 
+using WTF::enumToUnderlyingType;
 using WTF::isValidEnum;

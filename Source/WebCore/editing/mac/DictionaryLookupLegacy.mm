@@ -68,18 +68,15 @@ static bool selectionContainsPosition(const VisiblePosition& position, const Vis
     if (!selection.isRange())
         return false;
 
-    auto selectedRange = selection.toNormalizedRange();
-    if (!selectedRange)
-        return false;
-
-    return createLiveRange(*selectedRange)->contains(position);
+    auto selectedRange = selection.firstRange();
+    return selectedRange && contains<ComposedTree>(*selectedRange, makeBoundaryPoint(position));
 }
 
-Optional<std::tuple<SimpleRange, NSDictionary *>> DictionaryLookup::rangeForSelection(const VisibleSelection& selection)
+std::optional<std::tuple<SimpleRange, NSDictionary *>> DictionaryLookup::rangeForSelection(const VisibleSelection& selection)
 {
     auto selectedRange = selection.toNormalizedRange();
     if (!selectedRange)
-        return WTF::nullopt;
+        return std::nullopt;
 
     // Since we already have the range we want, we just need to grab the returned options.
     auto selectionStart = selection.visibleStart();
@@ -88,7 +85,7 @@ Optional<std::tuple<SimpleRange, NSDictionary *>> DictionaryLookup::rangeForSele
     // As context, we are going to use the surrounding paragraphs of text.
     auto paragraphRange = makeSimpleRange(startOfParagraph(selectionStart), endOfParagraph(selectionEnd));
     if (!paragraphRange)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto selectionRange = *makeSimpleRange(selectionStart, selectionEnd);
 
@@ -98,20 +95,20 @@ Optional<std::tuple<SimpleRange, NSDictionary *>> DictionaryLookup::rangeForSele
     return { { *selectedRange, options } };
 }
 
-Optional<std::tuple<SimpleRange, NSDictionary *>> DictionaryLookup::rangeAtHitTestResult(const HitTestResult& hitTestResult)
+std::optional<std::tuple<SimpleRange, NSDictionary *>> DictionaryLookup::rangeAtHitTestResult(const HitTestResult& hitTestResult)
 {
     auto* node = hitTestResult.innerNonSharedNode();
     if (!node || !node->renderer())
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto* frame = node->document().frame();
     if (!frame)
-        return WTF::nullopt;
+        return std::nullopt;
 
     // Don't do anything if there is no character at the point.
     auto framePoint = hitTestResult.roundedPointInInnerNodeFrame();
     if (!frame->rangeForPoint(framePoint))
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto position = frame->visiblePositionForPoint(framePoint);
     if (position.isNull())
@@ -129,11 +126,11 @@ Optional<std::tuple<SimpleRange, NSDictionary *>> DictionaryLookup::rangeAtHitTe
     // As context, we are going to use 250 characters of text before and after the point.
     auto fullCharacterRange = rangeExpandedAroundPositionByCharacters(position, 250);
     if (!fullCharacterRange)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto rangeToPosition = makeSimpleRange(fullCharacterRange->start, position);
     if (!rangeToPosition)
-        return WTF::nullopt;
+        return std::nullopt;
 
     NSRange rangeToPass = NSMakeRange(characterCount(*rangeToPosition), 0);
     NSDictionary *options = nil;
@@ -142,7 +139,7 @@ Optional<std::tuple<SimpleRange, NSDictionary *>> DictionaryLookup::rangeAtHitTe
     // tokenRange sometimes returns {NSNotFound, 0} if it was unable to determine a good string.
     // FIXME (159063): We shouldn't need to check for zero length here.
     if (extractedRange.location == NSNotFound || !extractedRange.length)
-        return WTF::nullopt;
+        return std::nullopt;
 
     return { { resolveCharacterRange(*fullCharacterRange, extractedRange), options } };
 }
@@ -210,7 +207,7 @@ static id <NSImmediateActionAnimationController> showPopupOrCreateAnimationContr
         return nil;
 
     RetainPtr<NSMutableDictionary> mutableOptions = adoptNS([[NSMutableDictionary alloc] init]);
-    if (NSDictionary *options = dictionaryPopupInfo.options.get())
+    if (NSDictionary *options = dictionaryPopupInfo.platformData.options.get())
         [mutableOptions addEntriesFromDictionary:options];
 
     auto textIndicator = TextIndicator::create(dictionaryPopupInfo.textIndicator);
@@ -225,9 +222,9 @@ static id <NSImmediateActionAnimationController> showPopupOrCreateAnimationContr
             textBoundingRectInViewCoordinates = rootViewToViewConversionCallback(textBoundingRectInViewCoordinates);
         firstTextRectInViewCoordinates.moveBy(textBoundingRectInViewCoordinates.location());
         if (createAnimationController)
-            return [PAL::getLULookupDefinitionModuleClass() lookupAnimationControllerForTerm:dictionaryPopupInfo.attributedString.get() relativeToRect:firstTextRectInViewCoordinates ofView:view options:mutableOptions.get()];
+            return [PAL::getLULookupDefinitionModuleClass() lookupAnimationControllerForTerm:dictionaryPopupInfo.platformData.attributedString.get() relativeToRect:firstTextRectInViewCoordinates ofView:view options:mutableOptions.get()];
 
-        [PAL::getLULookupDefinitionModuleClass() showDefinitionForTerm:dictionaryPopupInfo.attributedString.get() relativeToRect:firstTextRectInViewCoordinates ofView:view options:mutableOptions.get()];
+        [PAL::getLULookupDefinitionModuleClass() showDefinitionForTerm:dictionaryPopupInfo.platformData.attributedString.get() relativeToRect:firstTextRectInViewCoordinates ofView:view options:mutableOptions.get()];
         return nil;
     }
 
@@ -238,9 +235,9 @@ static id <NSImmediateActionAnimationController> showPopupOrCreateAnimationContr
     textBaselineOrigin = [view.window convertRectToScreen:NSMakeRect(textBaselineOrigin.x, textBaselineOrigin.y, 0, 0)].origin;
 
     if (createAnimationController)
-        return [PAL::getLULookupDefinitionModuleClass() lookupAnimationControllerForTerm:dictionaryPopupInfo.attributedString.get() atLocation:textBaselineOrigin options:mutableOptions.get()];
+        return [PAL::getLULookupDefinitionModuleClass() lookupAnimationControllerForTerm:dictionaryPopupInfo.platformData.attributedString.get() atLocation:textBaselineOrigin options:mutableOptions.get()];
 
-    [PAL::getLULookupDefinitionModuleClass() showDefinitionForTerm:dictionaryPopupInfo.attributedString.get() atLocation:textBaselineOrigin options:mutableOptions.get()];
+    [PAL::getLULookupDefinitionModuleClass() showDefinitionForTerm:dictionaryPopupInfo.platformData.attributedString.get() atLocation:textBaselineOrigin options:mutableOptions.get()];
     return nil;
 
     END_BLOCK_OBJC_EXCEPTIONS

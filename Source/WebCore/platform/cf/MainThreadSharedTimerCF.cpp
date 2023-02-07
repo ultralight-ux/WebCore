@@ -37,27 +37,38 @@
 
 namespace WebCore {
 
-static CFRunLoopTimerRef sharedTimer;
+static RetainPtr<CFRunLoopTimerRef>& sharedTimer()
+{
+    static NeverDestroyed<RetainPtr<CFRunLoopTimerRef>> sharedTimer;
+    return sharedTimer;
+}
 static void timerFired(CFRunLoopTimerRef, void*);
-static void restartSharedTimer();
 
 static const CFTimeInterval kCFTimeIntervalDistantFuture = std::numeric_limits<CFTimeInterval>::max();
+
+bool& MainThreadSharedTimer::shouldSetupPowerObserver()
+{
+    static bool setup = true;
+    return setup;
+}
 
 #if PLATFORM(IOS_FAMILY)
 static void applicationDidBecomeActive(CFNotificationCenterRef, void*, CFStringRef, const void*, CFDictionaryRef)
 {
     WebThreadRun(^{
-        restartSharedTimer();
+        MainThreadSharedTimer::restartSharedTimer();
     });
 }
 #endif
 
 static void setupPowerObserver()
 {
+    if (!MainThreadSharedTimer::shouldSetupPowerObserver())
+        return;
 #if PLATFORM(MAC)
     static PowerObserver* powerObserver;
     if (!powerObserver)
-        powerObserver = makeUnique<PowerObserver>(restartSharedTimer).release();
+        powerObserver = makeUnique<PowerObserver>(MainThreadSharedTimer::restartSharedTimer).release();
 #elif PLATFORM(IOS_FAMILY)
     static bool registeredForApplicationNotification = false;
     if (!registeredForApplicationNotification) {
@@ -74,9 +85,9 @@ static void timerFired(CFRunLoopTimerRef, void*)
     MainThreadSharedTimer::singleton().fired();
 }
 
-static void restartSharedTimer()
+void MainThreadSharedTimer::restartSharedTimer()
 {
-    if (!sharedTimer)
+    if (!sharedTimer())
         return;
 
     MainThreadSharedTimer::singleton().stop();
@@ -85,12 +96,11 @@ static void restartSharedTimer()
 
 void MainThreadSharedTimer::invalidate()
 {
-    if (!sharedTimer)
+    if (!sharedTimer())
         return;
 
-    CFRunLoopTimerInvalidate(sharedTimer);
-    CFRelease(sharedTimer);
-    sharedTimer = nullptr;
+    CFRunLoopTimerInvalidate(sharedTimer().get());
+    sharedTimer() = nullptr;
 }
 
 void MainThreadSharedTimer::setFireInterval(Seconds interval)
@@ -98,12 +108,12 @@ void MainThreadSharedTimer::setFireInterval(Seconds interval)
     ASSERT(m_firedFunction);
 
     CFAbsoluteTime fireDate = CFAbsoluteTimeGetCurrent() + interval.value();
-    if (!sharedTimer) {
-        sharedTimer = CFRunLoopTimerCreate(nullptr, fireDate, kCFTimeIntervalDistantFuture, 0, 0, timerFired, nullptr);
+    if (!sharedTimer()) {
+        sharedTimer() = adoptCF(CFRunLoopTimerCreate(nullptr, fireDate, kCFTimeIntervalDistantFuture, 0, 0, timerFired, nullptr));
 #if PLATFORM(IOS_FAMILY)
-        CFRunLoopAddTimer(WebThreadRunLoop(), sharedTimer, kCFRunLoopCommonModes);
+        CFRunLoopAddTimer(WebThreadRunLoop(), sharedTimer().get(), kCFRunLoopCommonModes);
 #else
-        CFRunLoopAddTimer(CFRunLoopGetCurrent(), sharedTimer, kCFRunLoopCommonModes);
+        CFRunLoopAddTimer(CFRunLoopGetCurrent(), sharedTimer().get(), kCFRunLoopCommonModes);
 #endif
 
         setupPowerObserver();
@@ -111,15 +121,15 @@ void MainThreadSharedTimer::setFireInterval(Seconds interval)
         return;
     }
 
-    CFRunLoopTimerSetNextFireDate(sharedTimer, fireDate);
+    CFRunLoopTimerSetNextFireDate(sharedTimer().get(), fireDate);
 }
 
 void MainThreadSharedTimer::stop()
 {
-    if (!sharedTimer)
+    if (!sharedTimer())
         return;
 
-    CFRunLoopTimerSetNextFireDate(sharedTimer, kCFTimeIntervalDistantFuture);
+    CFRunLoopTimerSetNextFireDate(sharedTimer().get(), kCFTimeIntervalDistantFuture);
 }
 
 } // namespace WebCore

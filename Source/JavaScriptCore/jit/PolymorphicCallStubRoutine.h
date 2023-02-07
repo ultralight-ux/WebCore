@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -77,17 +77,17 @@ public:
     
 private:
     CallVariant m_variant;
-    CodeBlock* m_codeBlock;
+    CodeBlock* const m_codeBlock;
 };
 
 class PolymorphicCallStubRoutine final : public GCAwareJITStubRoutine {
 public:
+    friend class JITStubRoutine;
+
     PolymorphicCallStubRoutine(
         const MacroAssemblerCodeRef<JITStubRoutinePtrTag>&, VM&, const JSCell* owner,
         CallFrame* callerFrame, CallLinkInfo&, const Vector<PolymorphicCallCase>&,
         UniqueArray<uint32_t>&& fastCounts);
-    
-    ~PolymorphicCallStubRoutine() final;
     
     CallVariantList variants() const;
     bool hasEdges() const;
@@ -102,12 +102,14 @@ public:
             functor(variant.get());
     }
 
-    bool visitWeak(VM&) final;
-
 private:
-    void markRequiredObjectsInternal(SlotVisitor&) final;
+    template<typename Visitor> void markRequiredObjectsInternalImpl(Visitor&);
+    void markRequiredObjectsImpl(AbstractSlotVisitor&);
+    void markRequiredObjectsImpl(SlotVisitor&);
 
-    Vector<WriteBarrier<JSCell>, 2> m_variants;
+    bool visitWeakImpl(VM&);
+
+    FixedVector<WriteBarrier<JSCell>> m_variants;
     UniqueArray<uint32_t> m_fastCounts;
     Bag<PolymorphicCallNode> m_callNodes;
 };

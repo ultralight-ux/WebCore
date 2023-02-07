@@ -42,7 +42,7 @@ public:
 private:
     bool isRenderMathMLScripts() const final { return false; }
     bool isRenderMathMLUnderOver() const final { return true; }
-    const char* renderName() const final { return "RenderMathMLUnderOver"; }
+    ASCIILiteral renderName() const final { return "RenderMathMLUnderOver"_s; }
     MathMLUnderOverElement& element() const;
 
     void computePreferredLogicalWidths() final;
@@ -50,7 +50,7 @@ private:
 
     void stretchHorizontalOperatorsAndLayoutChildren();
     bool isValid() const;
-    bool shouldMoveLimits();
+    bool shouldMoveLimits() const;
     RenderBox& base() const;
     RenderBox& under() const;
     RenderBox& over() const;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,9 +41,10 @@ namespace JSC {
 
 using namespace Bindings;
 
-WEBCORE_EXPORT const ClassInfo RuntimeMethod::s_info = { "RuntimeMethod", &InternalFunction::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(RuntimeMethod) };
+WEBCORE_EXPORT const ClassInfo RuntimeMethod::s_info = { "RuntimeMethod"_s, &InternalFunction::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(RuntimeMethod) };
 
-static EncodedJSValue JSC_HOST_CALL callRuntimeMethod(JSGlobalObject*, CallFrame*);
+static JSC_DECLARE_HOST_FUNCTION(callRuntimeMethod);
+static JSC_DECLARE_CUSTOM_GETTER(methodLengthGetter);
 
 RuntimeMethod::RuntimeMethod(VM& vm, Structure* structure, Method* method)
     // Callers will need to pass in the right global object corresponding to this native object "method".
@@ -54,19 +55,19 @@ RuntimeMethod::RuntimeMethod(VM& vm, Structure* structure, Method* method)
 
 void RuntimeMethod::finishCreation(VM& vm, const String& ident)
 {
-    Base::finishCreation(vm, ident);
-    ASSERT(inherits(vm, info()));
+    Base::finishCreation(vm, 0, ident);
+    ASSERT(inherits(info()));
 }
 
-EncodedJSValue RuntimeMethod::lengthGetter(JSGlobalObject* exec, EncodedJSValue thisValue, PropertyName)
+JSC_DEFINE_CUSTOM_GETTER(methodLengthGetter, (JSGlobalObject* exec, EncodedJSValue thisValue, PropertyName))
 {
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    RuntimeMethod* thisObject = jsDynamicCast<RuntimeMethod*>(vm, JSValue::decode(thisValue));
+    RuntimeMethod* thisObject = jsDynamicCast<RuntimeMethod*>(JSValue::decode(thisValue));
     if (!thisObject)
         return throwVMTypeError(exec, scope);
-    return JSValue::encode(jsNumber(thisObject->m_method->numParameters()));
+    return JSValue::encode(jsNumber(thisObject->method()->numParameters()));
 }
 
 bool RuntimeMethod::getOwnPropertySlot(JSObject* object, JSGlobalObject* exec, PropertyName propertyName, PropertySlot &slot)
@@ -74,19 +75,19 @@ bool RuntimeMethod::getOwnPropertySlot(JSObject* object, JSGlobalObject* exec, P
     VM& vm = exec->vm();
     RuntimeMethod* thisObject = jsCast<RuntimeMethod*>(object);
     if (propertyName == vm.propertyNames->length) {
-        slot.setCacheableCustom(thisObject, PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly | PropertyAttribute::DontEnum, thisObject->lengthGetter);
+        slot.setCacheableCustom(thisObject, PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly | PropertyAttribute::DontEnum, methodLengthGetter);
         return true;
     }
     
     return InternalFunction::getOwnPropertySlot(thisObject, exec, propertyName, slot);
 }
 
-IsoSubspace* RuntimeMethod::subspaceForImpl(VM& vm)
+GCClient::IsoSubspace* RuntimeMethod::subspaceForImpl(VM& vm)
 {
     return &static_cast<JSVMClientData*>(vm.clientData)->runtimeMethodSpace();
 }
 
-static EncodedJSValue JSC_HOST_CALL callRuntimeMethod(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_HOST_FUNCTION(callRuntimeMethod, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -99,14 +100,14 @@ static EncodedJSValue JSC_HOST_CALL callRuntimeMethod(JSGlobalObject* globalObje
     RefPtr<Instance> instance;
 
     JSValue thisValue = callFrame->thisValue();
-    if (thisValue.inherits<RuntimeObject>(vm)) {
+    if (thisValue.inherits<RuntimeObject>()) {
         RuntimeObject* runtimeObject = static_cast<RuntimeObject*>(asObject(thisValue));
         instance = runtimeObject->getInternalInstance();
         if (!instance) 
-            return JSValue::encode(RuntimeObject::throwInvalidAccessError(globalObject, scope));
+            return JSValue::encode(throwRuntimeObjectInvalidAccessError(globalObject, scope));
     } else {
         // Calling a runtime object of a plugin element?
-        if (thisValue.inherits<JSHTMLElement>(vm))
+        if (thisValue.inherits<JSHTMLElement>())
             instance = pluginInstance(jsCast<JSHTMLElement*>(asObject(thisValue))->wrapped());
         if (!instance)
             return throwVMTypeError(globalObject, scope);

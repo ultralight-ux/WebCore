@@ -65,6 +65,11 @@ public:
         *this = WTFMove(other);
     }
 
+    SVGPathByteStream(Data&& data)
+        : m_data(WTFMove(data))
+    {
+    }
+
     SVGPathByteStream& operator=(const SVGPathByteStream& other)
     {
         if (*this == other)
@@ -97,6 +102,9 @@ public:
     void clear() { m_data.clear(); }
     bool isEmpty() const { return m_data.isEmpty(); }
     unsigned size() const { return m_data.size(); }
+    void shrinkToFit() { m_data.shrinkToFit(); }
+
+    const Data& data() const { return m_data; }
 
 private:
     Data m_data;

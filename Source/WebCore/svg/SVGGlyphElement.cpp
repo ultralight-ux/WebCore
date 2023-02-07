@@ -21,7 +21,6 @@
 
 #include "config.h"
 
-#if ENABLE(SVG_FONTS)
 #include "SVGGlyphElement.h"
 
 #include "SVGFontElement.h"
@@ -35,7 +34,7 @@ namespace WebCore {
 WTF_MAKE_ISO_ALLOCATED_IMPL(SVGGlyphElement);
 
 inline SVGGlyphElement::SVGGlyphElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(SVGNames::glyphTag));
 }
@@ -46,5 +45,3 @@ Ref<SVGGlyphElement> SVGGlyphElement::create(const QualifiedName& tagName, Docum
 }
 
 }
-
-#endif // ENABLE(SVG_FONTS)

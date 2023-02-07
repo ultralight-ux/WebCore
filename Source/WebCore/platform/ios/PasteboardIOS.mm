@@ -27,17 +27,18 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#import "DeprecatedGlobalSettings.h"
 #import "DragData.h"
 #import "Image.h"
 #import "NotImplemented.h"
 #import "PasteboardStrategy.h"
 #import "PlatformPasteboard.h"
 #import "PlatformStrategies.h"
-#import "RuntimeEnabledFeatures.h"
 #import "SharedBuffer.h"
 #import "UTIUtilities.h"
 #import "WebNSAttributedStringExtras.h"
 #import <MobileCoreServices/MobileCoreServices.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <pal/ios/UIKitSoftLink.h>
 #import <wtf/URL.h>
 #import <wtf/text/StringHash.h>
@@ -52,9 +53,10 @@
 
 namespace WebCore {
 
-Pasteboard::Pasteboard(const String& pasteboardName)
-    : m_pasteboardName(pasteboardName)
-    , m_changeCount(platformStrategies()->pasteboardStrategy()->changeCount(pasteboardName))
+Pasteboard::Pasteboard(std::unique_ptr<PasteboardContext>&& context, const String& pasteboardName)
+    : m_context(WTFMove(context))
+    , m_pasteboardName(pasteboardName)
+    , m_changeCount(platformStrategies()->pasteboardStrategy()->changeCount(pasteboardName, m_context.get()))
 {
 }
 
@@ -67,37 +69,39 @@ void Pasteboard::setDragImage(DragImage, const IntPoint&)
 
 String Pasteboard::nameOfDragPasteboard()
 {
-    return "drag and drop pasteboard";
+    return "drag and drop pasteboard"_s;
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop()
+std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(std::unique_ptr<PasteboardContext>&& context)
 {
-    return makeUnique<Pasteboard>(Pasteboard::nameOfDragPasteboard());
+    return makeUnique<Pasteboard>(WTFMove(context), Pasteboard::nameOfDragPasteboard());
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(const DragData& dragData)
+std::unique_ptr<Pasteboard> Pasteboard::create(const DragData& dragData)
 {
-    return makeUnique<Pasteboard>(dragData.pasteboardName());
+    return makeUnique<Pasteboard>(dragData.createPasteboardContext(), dragData.pasteboardName());
 }
 
 #endif // ENABLE(DRAG_SUPPORT)
 
-static int64_t changeCountForPasteboard(const String& pasteboardName = { })
+static int64_t changeCountForPasteboard(const String& pasteboardName = { }, const PasteboardContext* context = nullptr)
 {
-    return platformStrategies()->pasteboardStrategy()->changeCount(pasteboardName);
+    return platformStrategies()->pasteboardStrategy()->changeCount(pasteboardName, context);
 }
 
 // FIXME: Does this need to be declared in the header file?
 WEBCORE_EXPORT NSString *WebArchivePboardType = @"Apple Web Archive pasteboard type";
 NSString *UIColorPboardType = @"com.apple.uikit.color";
 
-Pasteboard::Pasteboard()
-    : m_changeCount(0)
+Pasteboard::Pasteboard(std::unique_ptr<PasteboardContext>&& context)
+    : m_context(WTFMove(context))
+    , m_changeCount(0)
 {
 }
 
-Pasteboard::Pasteboard(int64_t changeCount)
-    : m_changeCount(changeCount)
+Pasteboard::Pasteboard(std::unique_ptr<PasteboardContext>&& context, int64_t changeCount)
+    : m_context(WTFMove(context))
+    , m_changeCount(changeCount)
 {
 }
 
@@ -105,14 +109,14 @@ void Pasteboard::writeMarkup(const String&)
 {
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste()
+std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste(std::unique_ptr<PasteboardContext>&& context)
 {
-    return makeUnique<Pasteboard>(PAL::get_UIKit_UIPasteboardNameGeneral());
+    return makeUnique<Pasteboard>(WTFMove(context), PAL::get_UIKit_UIPasteboardNameGeneral());
 }
 
 void Pasteboard::write(const PasteboardWebContent& content)
 {
-    platformStrategies()->pasteboardStrategy()->writeToPasteboard(content, m_pasteboardName);
+    platformStrategies()->pasteboardStrategy()->writeToPasteboard(content, m_pasteboardName, context());
 }
 
 String Pasteboard::resourceMIMEType(NSString *mimeType)
@@ -122,19 +126,25 @@ String Pasteboard::resourceMIMEType(NSString *mimeType)
 
 void Pasteboard::write(const PasteboardImage& pasteboardImage)
 {
-    platformStrategies()->pasteboardStrategy()->writeToPasteboard(pasteboardImage, m_pasteboardName);
+    platformStrategies()->pasteboardStrategy()->writeToPasteboard(pasteboardImage, m_pasteboardName, context());
+}
+
+void Pasteboard::write(const PasteboardBuffer&)
+{
 }
 
 void Pasteboard::writePlainText(const String& text, SmartReplaceOption)
 {
     // FIXME: We vend "public.text" here for backwards compatibility with pre-iOS 11 apps. In the future, we should stop vending this UTI,
     // and instead set data for concrete plain text types. See <https://bugs.webkit.org/show_bug.cgi?id=173317>.
-    platformStrategies()->pasteboardStrategy()->writeToPasteboard(kUTTypeText, text, m_pasteboardName);
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    platformStrategies()->pasteboardStrategy()->writeToPasteboard(kUTTypeText, text, m_pasteboardName, context());
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 void Pasteboard::write(const PasteboardURL& pasteboardURL)
 {
-    platformStrategies()->pasteboardStrategy()->writeToPasteboard(pasteboardURL, m_pasteboardName);
+    platformStrategies()->pasteboardStrategy()->writeToPasteboard(pasteboardURL, m_pasteboardName, context());
 }
 
 void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
@@ -148,7 +158,7 @@ void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
 
 void Pasteboard::write(const Color& color)
 {
-    platformStrategies()->pasteboardStrategy()->setColor(color, m_pasteboardName);
+    platformStrategies()->pasteboardStrategy()->setColor(color, m_pasteboardName, context());
 }
 
 bool Pasteboard::canSmartReplace()
@@ -156,14 +166,16 @@ bool Pasteboard::canSmartReplace()
     return true;
 }
 
-void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy allowURL, Optional<size_t> itemIndex)
+void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy allowURL, std::optional<size_t> itemIndex)
 {
-    auto itemIndexToQuery = itemIndex.valueOr(0);
+    auto itemIndexToQuery = itemIndex.value_or(0);
 
     PasteboardStrategy& strategy = *platformStrategies()->pasteboardStrategy();
 
     if (allowURL == PlainTextURLReadingPolicy::AllowURL) {
-        text.text = strategy.readStringFromPasteboard(itemIndexToQuery, kUTTypeURL, m_pasteboardName);
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        text.text = strategy.readStringFromPasteboard(itemIndexToQuery, kUTTypeURL, m_pasteboardName, context());
+        ALLOW_DEPRECATED_DECLARATIONS_END
         if (!text.text.isEmpty()) {
             text.isURL = true;
             return;
@@ -174,39 +186,46 @@ void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy allow
     // plain text for this abstract UTI. In almost all cases, the more correct choice would be to write to
     // one of the concrete "public.plain-text" representations (e.g. kUTTypeUTF8PlainText). In the future, we
     // should consider removing support for reading plain text from "public.text".
-    text.text = strategy.readStringFromPasteboard(itemIndexToQuery, kUTTypePlainText, m_pasteboardName);
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    text.text = strategy.readStringFromPasteboard(itemIndexToQuery, kUTTypePlainText, m_pasteboardName, context());
     if (text.text.isEmpty())
-        text.text = strategy.readStringFromPasteboard(itemIndexToQuery, kUTTypeText, m_pasteboardName);
+        text.text = strategy.readStringFromPasteboard(itemIndexToQuery, kUTTypeText, m_pasteboardName, context());
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     text.isURL = false;
 }
 
 static NSArray* supportedImageTypes()
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return @[(__bridge NSString *)kUTTypePNG, (__bridge NSString *)kUTTypeTIFF, (__bridge NSString *)kUTTypeJPEG, (__bridge NSString *)kUTTypeGIF];
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 static bool isTypeAllowedByReadingPolicy(NSString *type, WebContentReadingPolicy policy)
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return policy == WebContentReadingPolicy::AnyType
         || [type isEqualToString:WebArchivePboardType]
         || [type isEqualToString:(__bridge NSString *)kUTTypeWebArchive]
         || [type isEqualToString:(__bridge NSString *)kUTTypeHTML]
         || [type isEqualToString:(__bridge NSString *)kUTTypeRTF]
         || [type isEqualToString:(__bridge NSString *)kUTTypeFlatRTFD];
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 Pasteboard::ReaderResult Pasteboard::readPasteboardWebContentDataForType(PasteboardWebContentReader& reader, PasteboardStrategy& strategy, NSString *type, const PasteboardItemInfo& itemInfo, int itemIndex)
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if ([type isEqualToString:WebArchivePboardType] || [type isEqualToString:(__bridge NSString *)kUTTypeWebArchive]) {
-        auto buffer = strategy.readBufferFromPasteboard(itemIndex, type, m_pasteboardName);
+        auto buffer = strategy.readBufferFromPasteboard(itemIndex, type, m_pasteboardName, context());
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return buffer && reader.readWebArchive(*buffer) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
     }
 
     if ([type isEqualToString:(__bridge NSString *)kUTTypeHTML]) {
-        String htmlString = strategy.readStringFromPasteboard(itemIndex, kUTTypeHTML, m_pasteboardName);
+        String htmlString = strategy.readStringFromPasteboard(itemIndex, kUTTypeHTML, m_pasteboardName, context());
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return !htmlString.isNull() && reader.readHTML(htmlString) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
@@ -222,14 +241,14 @@ Pasteboard::ReaderResult Pasteboard::readPasteboardWebContentDataForType(Pastebo
 
 #if !PLATFORM(MACCATALYST)
     if ([type isEqualToString:(__bridge NSString *)kUTTypeFlatRTFD]) {
-        RefPtr<SharedBuffer> buffer = strategy.readBufferFromPasteboard(itemIndex, kUTTypeFlatRTFD, m_pasteboardName);
+        RefPtr<SharedBuffer> buffer = strategy.readBufferFromPasteboard(itemIndex, kUTTypeFlatRTFD, m_pasteboardName, context());
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return buffer && reader.readRTFD(*buffer) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
     }
 
     if ([type isEqualToString:(__bridge NSString *)kUTTypeRTF]) {
-        RefPtr<SharedBuffer> buffer = strategy.readBufferFromPasteboard(itemIndex, kUTTypeRTF, m_pasteboardName);
+        RefPtr<SharedBuffer> buffer = strategy.readBufferFromPasteboard(itemIndex, kUTTypeRTF, m_pasteboardName, context());
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return buffer && reader.readRTF(*buffer) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
@@ -237,7 +256,7 @@ Pasteboard::ReaderResult Pasteboard::readPasteboardWebContentDataForType(Pastebo
 #endif // !PLATFORM(MACCATALYST)
 
     if ([supportedImageTypes() containsObject:type]) {
-        RefPtr<SharedBuffer> buffer = strategy.readBufferFromPasteboard(itemIndex, type, m_pasteboardName);
+        RefPtr<SharedBuffer> buffer = strategy.readBufferFromPasteboard(itemIndex, type, m_pasteboardName, context());
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return buffer && reader.readImage(buffer.releaseNonNull(), type, itemInfo.preferredPresentationSize) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
@@ -245,38 +264,47 @@ Pasteboard::ReaderResult Pasteboard::readPasteboardWebContentDataForType(Pastebo
 
     if ([type isEqualToString:(__bridge NSString *)kUTTypeURL]) {
         String title;
-        URL url = strategy.readURLFromPasteboard(itemIndex, m_pasteboardName, title);
+        URL url = strategy.readURLFromPasteboard(itemIndex, m_pasteboardName, title, context());
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return !url.isNull() && reader.readURL(url, title) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
     }
 
     if (UTTypeConformsTo((__bridge CFStringRef)type, kUTTypePlainText)) {
-        String string = strategy.readStringFromPasteboard(itemIndex, kUTTypePlainText, m_pasteboardName);
+        String string = strategy.readStringFromPasteboard(itemIndex, kUTTypePlainText, m_pasteboardName, context());
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return !string.isNull() && reader.readPlainText(string) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
     }
 
     if (UTTypeConformsTo((__bridge CFStringRef)type, kUTTypeText)) {
-        String string = strategy.readStringFromPasteboard(itemIndex, kUTTypeText, m_pasteboardName);
+        String string = strategy.readStringFromPasteboard(itemIndex, kUTTypeText, m_pasteboardName, context());
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return !string.isNull() && reader.readPlainText(string) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
     }
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     return ReaderResult::DidNotReadType;
 }
 
-static void readURLAlongsideAttachmentIfNecessary(PasteboardWebContentReader& reader, PasteboardStrategy& strategy, const String& typeIdentifier, const String& pasteboardName, int itemIndex)
+static void readURLAlongsideAttachmentIfNecessary(PasteboardWebContentReader& reader, PasteboardStrategy& strategy, const String& typeIdentifier, const String& pasteboardName, int itemIndex, const PasteboardContext* context)
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (!UTTypeConformsTo(typeIdentifier.createCFString().get(), kUTTypeVCard))
         return;
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     String title;
-    auto url = strategy.readURLFromPasteboard(itemIndex, pasteboardName, title);
+    auto url = strategy.readURLFromPasteboard(itemIndex, pasteboardName, title, context);
     if (!url.isEmpty())
         reader.readURL(url, title);
+}
+
+static bool shouldTreatAsAttachmentByDefault(const String& typeIdentifier)
+{
+    auto type = [UTType typeWithIdentifier:typeIdentifier];
+    return [type conformsToType:UTTypeVCard] || [type conformsToType:UTTypePDF];
 }
 
 static bool prefersAttachmentRepresentation(const PasteboardItemInfo& info)
@@ -288,10 +316,10 @@ static bool prefersAttachmentRepresentation(const PasteboardItemInfo& info)
     if (info.preferredPresentationStyle == PasteboardItemPresentationStyle::Inline)
         return false;
 
-    return info.canBeTreatedAsAttachmentOrFile() || UTTypeConformsTo(contentTypeForHighestFidelityItem.createCFString().get(), kUTTypeVCard);
+    return info.canBeTreatedAsAttachmentOrFile() || shouldTreatAsAttachmentByDefault(contentTypeForHighestFidelityItem);
 }
 
-void Pasteboard::read(PasteboardWebContentReader& reader, WebContentReadingPolicy policy, Optional<size_t> itemIndex)
+void Pasteboard::read(PasteboardWebContentReader& reader, WebContentReadingPolicy policy, std::optional<size_t> itemIndex)
 {
     reader.contentOrigin = readOrigin();
     if (respectsUTIFidelities()) {
@@ -301,7 +329,7 @@ void Pasteboard::read(PasteboardWebContentReader& reader, WebContentReadingPolic
 
     PasteboardStrategy& strategy = *platformStrategies()->pasteboardStrategy();
 
-    size_t numberOfItems = strategy.getPasteboardItemsCount(m_pasteboardName);
+    size_t numberOfItems = strategy.getPasteboardItemsCount(m_pasteboardName, context());
 
     if (!numberOfItems)
         return;
@@ -310,7 +338,7 @@ void Pasteboard::read(PasteboardWebContentReader& reader, WebContentReadingPolic
     int numberOfTypes = [types count];
 
 #if ENABLE(ATTACHMENT_ELEMENT)
-    bool canReadAttachment = policy == WebContentReadingPolicy::AnyType && RuntimeEnabledFeatures::sharedFeatures().attachmentElementEnabled();
+    bool canReadAttachment = policy == WebContentReadingPolicy::AnyType && DeprecatedGlobalSettings::attachmentElementEnabled();
 #else
     bool canReadAttachment = false;
 #endif
@@ -319,16 +347,16 @@ void Pasteboard::read(PasteboardWebContentReader& reader, WebContentReadingPolic
         if (itemIndex && i != *itemIndex)
             continue;
 
-        auto info = strategy.informationForItemAtIndex(i, m_pasteboardName, m_changeCount);
+        auto info = strategy.informationForItemAtIndex(i, m_pasteboardName, m_changeCount, context());
         if (!info)
             return;
 
 #if ENABLE(ATTACHMENT_ELEMENT)
         if (canReadAttachment && prefersAttachmentRepresentation(*info)) {
             auto typeForFileUpload = info->contentTypeForHighestFidelityItem();
-            if (auto buffer = strategy.readBufferFromPasteboard(i, typeForFileUpload, m_pasteboardName)) {
-                readURLAlongsideAttachmentIfNecessary(reader, strategy, typeForFileUpload, m_pasteboardName, i);
-                reader.readDataBuffer(*buffer, typeForFileUpload, info->suggestedFileName, info->preferredPresentationSize);
+            if (auto buffer = strategy.readBufferFromPasteboard(i, typeForFileUpload, m_pasteboardName, context())) {
+                readURLAlongsideAttachmentIfNecessary(reader, strategy, typeForFileUpload, m_pasteboardName, i, context());
+                reader.readDataBuffer(*buffer, typeForFileUpload, AtomString { info->suggestedFileName }, info->preferredPresentationSize);
                 continue;
             }
         }
@@ -359,24 +387,24 @@ bool Pasteboard::respectsUTIFidelities() const
 #endif
 }
 
-void Pasteboard::readRespectingUTIFidelities(PasteboardWebContentReader& reader, WebContentReadingPolicy policy, Optional<size_t> itemIndex)
+void Pasteboard::readRespectingUTIFidelities(PasteboardWebContentReader& reader, WebContentReadingPolicy policy, std::optional<size_t> itemIndex)
 {
     ASSERT(respectsUTIFidelities());
     auto& strategy = *platformStrategies()->pasteboardStrategy();
-    for (NSUInteger index = 0, numberOfItems = strategy.getPasteboardItemsCount(m_pasteboardName); index < numberOfItems; ++index) {
+    for (NSUInteger index = 0, numberOfItems = strategy.getPasteboardItemsCount(m_pasteboardName, context()); index < numberOfItems; ++index) {
         if (itemIndex && index != *itemIndex)
             continue;
 
 #if ENABLE(ATTACHMENT_ELEMENT)
-        auto info = strategy.informationForItemAtIndex(index, m_pasteboardName, m_changeCount);
+        auto info = strategy.informationForItemAtIndex(index, m_pasteboardName, m_changeCount, context());
         if (!info)
             return;
 
         auto attachmentFilePath = info->pathForHighestFidelityItem();
-        bool canReadAttachment = policy == WebContentReadingPolicy::AnyType && RuntimeEnabledFeatures::sharedFeatures().attachmentElementEnabled() && !attachmentFilePath.isEmpty();
+        bool canReadAttachment = policy == WebContentReadingPolicy::AnyType && DeprecatedGlobalSettings::attachmentElementEnabled() && !attachmentFilePath.isEmpty();
         auto contentType = info->contentTypeForHighestFidelityItem();
         if (canReadAttachment && prefersAttachmentRepresentation(*info)) {
-            readURLAlongsideAttachmentIfNecessary(reader, strategy, contentType, m_pasteboardName, index);
+            readURLAlongsideAttachmentIfNecessary(reader, strategy, contentType, m_pasteboardName, index, context());
             reader.readFilePath(WTFMove(attachmentFilePath), info->preferredPresentationSize, contentType);
             continue;
         }
@@ -403,6 +431,7 @@ void Pasteboard::readRespectingUTIFidelities(PasteboardWebContentReader& reader,
 
 NSArray *Pasteboard::supportedWebContentPasteboardTypes()
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return @[
 #if !PLATFORM(MACCATALYST)
         WebArchivePboardType,
@@ -420,24 +449,29 @@ NSArray *Pasteboard::supportedWebContentPasteboardTypes()
         (__bridge NSString *)kUTTypeURL,
         (__bridge NSString *)kUTTypeText
     ];
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 NSArray *Pasteboard::supportedFileUploadPasteboardTypes()
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return @[ (__bridge NSString *)kUTTypeItem, (__bridge NSString *)kUTTypeContent, (__bridge NSString *)kUTTypeZipArchive ];
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 bool Pasteboard::hasData()
 {
-    return !!platformStrategies()->pasteboardStrategy()->getPasteboardItemsCount(m_pasteboardName);
+    return !!platformStrategies()->pasteboardStrategy()->getPasteboardItemsCount(m_pasteboardName, context());
 }
 
 static String utiTypeFromCocoaType(NSString *type)
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     RetainPtr<CFStringRef> utiType = adoptCF(UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, (CFStringRef)type, NULL));
     if (!utiType)
         return String();
     return String(adoptCF(UTTypeCopyPreferredTagWithClass(utiType.get(), kUTTagClassMIMEType)).get());
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 static RetainPtr<NSString> cocoaTypeFromHTMLClipboardType(const String& type)
@@ -463,12 +497,12 @@ void Pasteboard::clear(const String& type)
     if (!cocoaType)
         return;
 
-    platformStrategies()->pasteboardStrategy()->writeToPasteboard(cocoaType.get(), String(), m_pasteboardName);
+    platformStrategies()->pasteboardStrategy()->writeToPasteboard(cocoaType.get(), String(), m_pasteboardName, context());
 }
 
 void Pasteboard::clear()
 {
-    platformStrategies()->pasteboardStrategy()->writeToPasteboard(String(), String(), m_pasteboardName);
+    platformStrategies()->pasteboardStrategy()->writeToPasteboard(String(), String(), m_pasteboardName, context());
 }
 
 Vector<String> Pasteboard::readPlatformValuesAsStrings(const String& domType, int64_t changeCount, const String& pasteboardName)
@@ -480,12 +514,14 @@ Vector<String> Pasteboard::readPlatformValuesAsStrings(const String& domType, in
     if (!cocoaType)
         return { };
 
-    auto values = strategy.allStringsForType(cocoaType.get(), pasteboardName);
+    auto values = strategy.allStringsForType(cocoaType.get(), pasteboardName, context());
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if ([cocoaType isEqualToString:(__bridge NSString *)kUTTypePlainText]) {
         values = values.map([&] (auto& value) -> String {
             return [value precomposedStringWithCanonicalMapping];
         });
     }
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     // Enforce changeCount ourselves for security. We check after reading instead of before to be
     // sure it doesn't change between our testing the change count and accessing the data.
@@ -497,6 +533,7 @@ Vector<String> Pasteboard::readPlatformValuesAsStrings(const String& domType, in
 
 void Pasteboard::addHTMLClipboardTypesForCocoaType(ListHashSet<String>& resultTypes, const String& cocoaType)
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     // UTI may not do these right, so make sure we get the right, predictable result.
     if ([cocoaType isEqualToString:(NSString *)kUTTypePlainText]
         || [cocoaType isEqualToString:(NSString *)kUTTypeUTF8PlainText]
@@ -512,6 +549,7 @@ void Pasteboard::addHTMLClipboardTypesForCocoaType(ListHashSet<String>& resultTy
         resultTypes.add("text/html"_s);
         // We don't return here for App compatibility.
     }
+ALLOW_DEPRECATED_DECLARATIONS_END
     if (Pasteboard::shouldTreatCocoaTypeAsFile(cocoaType))
         return;
     String utiType = utiTypeFromCocoaType(cocoaType);
@@ -529,16 +567,16 @@ void Pasteboard::writeString(const String& type, const String& data)
     if (!cocoaType)
         return;
 
-    platformStrategies()->pasteboardStrategy()->writeToPasteboard(cocoaType.get(), data, m_pasteboardName);
+    platformStrategies()->pasteboardStrategy()->writeToPasteboard(cocoaType.get(), data, m_pasteboardName, context());
 }
 
 Vector<String> Pasteboard::readFilePaths()
 {
     Vector<String> filePaths;
     auto& strategy = *platformStrategies()->pasteboardStrategy();
-    for (NSUInteger index = 0, numberOfItems = strategy.getPasteboardItemsCount(m_pasteboardName); index < numberOfItems; ++index) {
+    for (NSUInteger index = 0, numberOfItems = strategy.getPasteboardItemsCount(m_pasteboardName, context()); index < numberOfItems; ++index) {
         // Currently, drag and drop is the only case on iOS where the "pasteboard" may contain file paths.
-        auto info = strategy.informationForItemAtIndex(index, m_pasteboardName, m_changeCount);
+        auto info = strategy.informationForItemAtIndex(index, m_pasteboardName, m_changeCount, context());
         if (!info)
             return { };
 

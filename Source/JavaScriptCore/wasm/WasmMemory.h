@@ -27,16 +27,17 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "WasmMemoryMode.h"
-#include "WasmPageCount.h"
+#include "ArrayBuffer.h"
+#include "MemoryMode.h"
+#include "PageCount.h"
 
 #include <wtf/CagedPtr.h>
 #include <wtf/Expected.h>
 #include <wtf/Function.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 #include <wtf/Vector.h>
-#include <wtf/WeakPtr.h>
 
 namespace WTF {
 class PrintStream;
@@ -44,70 +45,73 @@ class PrintStream;
 
 namespace JSC {
 
+class LLIntOffsetsExtractor;
+
 namespace Wasm {
 
 class Instance;
 
-class Memory : public RefCounted<Memory> {
+class Memory final : public RefCounted<Memory> {
     WTF_MAKE_NONCOPYABLE(Memory);
     WTF_MAKE_FAST_ALLOCATED;
+    friend LLIntOffsetsExtractor;
 public:
     void dump(WTF::PrintStream&) const;
 
-    explicit operator bool() const { return !!m_memory; }
-    
     enum NotifyPressure { NotifyPressureTag };
     enum SyncTryToReclaim { SyncTryToReclaimTag };
     enum GrowSuccess { GrowSuccessTag };
 
     static Ref<Memory> create();
-    static RefPtr<Memory> tryCreate(PageCount initial, PageCount maximum, WTF::Function<void(NotifyPressure)>&& notifyMemoryPressure, WTF::Function<void(SyncTryToReclaim)>&& syncTryToReclaimMemory, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+    JS_EXPORT_PRIVATE static Ref<Memory> create(Ref<BufferMemoryHandle>&&, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+    JS_EXPORT_PRIVATE static Ref<Memory> create(Ref<SharedArrayBufferContents>&&, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+    JS_EXPORT_PRIVATE static Ref<Memory> createZeroSized(MemorySharingMode, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+    static RefPtr<Memory> tryCreate(VM&, PageCount initial, PageCount maximum, MemorySharingMode, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
 
-    ~Memory();
+    JS_EXPORT_PRIVATE ~Memory();
 
-    static size_t fastMappedRedzoneBytes();
-    static size_t fastMappedBytes(); // Includes redzone.
-    static bool addressIsInActiveFastMemory(void*);
+#if ENABLE(WEBASSEMBLY_SIGNALING_MEMORY)
+    static size_t fastMappedRedzoneBytes() { return BufferMemoryHandle::fastMappedRedzoneBytes(); }
+    static size_t fastMappedBytes() { return BufferMemoryHandle::fastMappedBytes(); } // Includes redzone.
+#else
+#endif
+    static bool addressIsInGrowableOrFastMemory(void*);
 
-    void* memory() const { ASSERT(m_memory.getMayBeNull(size()) == m_memory.getUnsafe()); return m_memory.getMayBeNull(size()); }
-    size_t size() const { return m_size; }
-    PageCount sizeInPages() const { return PageCount::fromBytes(m_size); }
+    void* basePointer() const { return m_handle->memory(); }
+    size_t size() const { return m_handle->size(); }
+    size_t mappedCapacity() const { return m_handle->mappedCapacity(); }
+    PageCount initial() const { return m_handle->initial(); }
+    PageCount maximum() const { return m_handle->maximum(); }
+    BufferMemoryHandle& handle() { return m_handle.get(); }
 
-    PageCount initial() const { return m_initial; }
-    PageCount maximum() const { return m_maximum; }
+    MemorySharingMode sharingMode() const { return m_handle->sharingMode(); }
+    MemoryMode mode() const { return m_handle->mode(); }
 
-    MemoryMode mode() const { return m_mode; }
+    Expected<PageCount, GrowFailReason> grow(VM&, PageCount);
+    bool fill(uint32_t, uint8_t, uint32_t);
+    bool copy(uint32_t, uint32_t, uint32_t);
+    bool init(uint32_t, const uint8_t*, uint32_t);
 
-    enum class GrowFailReason {
-        InvalidDelta,
-        InvalidGrowSize,
-        WouldExceedMaximum,
-        OutOfMemory,
-    };
-    Expected<PageCount, GrowFailReason> grow(PageCount);
-    void registerInstance(Instance*);
+    void registerInstance(Instance&);
 
     void check() {  ASSERT(!deletionHasBegun()); }
 
-    static ptrdiff_t offsetOfMemory() { return OBJECT_OFFSETOF(Memory, m_memory); }
-    static ptrdiff_t offsetOfSize() { return OBJECT_OFFSETOF(Memory, m_size); }
+    static ptrdiff_t offsetOfHandle() { return OBJECT_OFFSETOF(Memory, m_handle); }
+
+    SharedArrayBufferContents* shared() const { return m_shared.get(); }
 
 private:
     Memory();
-    Memory(void* memory, PageCount initial, PageCount maximum, size_t mappedCapacity, MemoryMode, WTF::Function<void(NotifyPressure)>&& notifyMemoryPressure, WTF::Function<void(SyncTryToReclaim)>&& syncTryToReclaimMemory, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
-    Memory(PageCount initial, PageCount maximum, WTF::Function<void(NotifyPressure)>&& notifyMemoryPressure, WTF::Function<void(SyncTryToReclaim)>&& syncTryToReclaimMemory, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+    Memory(Ref<BufferMemoryHandle>&&, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+    Memory(Ref<BufferMemoryHandle>&&, Ref<SharedArrayBufferContents>&&, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
+    Memory(PageCount initial, PageCount maximum, MemorySharingMode, WTF::Function<void(GrowSuccess, PageCount, PageCount)>&& growSuccessCallback);
 
-    using CagedMemory = CagedPtr<Gigacage::Primitive, void, tagCagedPtr>;
-    CagedMemory m_memory;
-    size_t m_size { 0 };
-    PageCount m_initial;
-    PageCount m_maximum;
-    size_t m_mappedCapacity { 0 };
-    MemoryMode m_mode { MemoryMode::BoundsChecking };
-    WTF::Function<void(NotifyPressure)> m_notifyMemoryPressure;
-    WTF::Function<void(SyncTryToReclaim)> m_syncTryToReclaimMemory;
+    Expected<PageCount, GrowFailReason> growShared(VM&, PageCount);
+
+    Ref<BufferMemoryHandle> m_handle;
+    RefPtr<SharedArrayBufferContents> m_shared;
     WTF::Function<void(GrowSuccess, PageCount, PageCount)> m_growSuccessCallback;
-    Vector<WeakPtr<Instance>> m_instances;
+    Vector<ThreadSafeWeakPtr<Instance>> m_instances;
 };
 
 } } // namespace JSC::Wasm
@@ -118,8 +122,7 @@ namespace JSC { namespace Wasm {
 
 class Memory {
 public:
-    static size_t maxFastMemoryCount() { return 0; }
-    static bool addressIsInActiveFastMemory(void*) { return false; }
+    static bool addressIsInGrowableOrFastMemory(void*) { return false; }
 };
 
 } } // namespace JSC::Wasm

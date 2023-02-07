@@ -33,7 +33,7 @@
 namespace WebCore {
 
 // Must not grow beyond 3 bits, due to packing in StyleProperties.
-enum CSSParserMode {
+enum CSSParserMode : uint8_t {
     HTMLStandardMode,
     HTMLQuirksMode,
     // SVG attributes are parsed in quirks mode but rules differ slightly.
@@ -57,7 +57,7 @@ inline bool isUASheetBehavior(CSSParserMode mode)
     return mode == UASheetMode;
 }
 
-inline bool isUnitLessValueParsingEnabledForMode(CSSParserMode mode)
+inline bool isUnitlessValueParsingEnabledForMode(CSSParserMode mode)
 {
     return mode == SVGAttributeMode;
 }

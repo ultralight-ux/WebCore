@@ -29,14 +29,18 @@
 #include "ClipRect.h"
 #include "ColorSerialization.h"
 #include "Document.h"
+#include "ElementInlines.h"
 #include "Frame.h"
 #include "FrameSelection.h"
 #include "FrameView.h"
 #include "HTMLElement.h"
 #include "HTMLNames.h"
 #include "HTMLSpanElement.h"
-#include "InlineTextBox.h"
-#include "LineLayoutTraversal.h"
+#include "InlineIteratorTextBox.h"
+#include "LegacyRenderSVGContainer.h"
+#include "LegacyRenderSVGImage.h"
+#include "LegacyRenderSVGRoot.h"
+#include "LegacyRenderSVGShape.h"
 #include "Logging.h"
 #include "PrintContext.h"
 #include "PseudoElement.h"
@@ -49,23 +53,25 @@
 #include "RenderIterator.h"
 #include "RenderLayer.h"
 #include "RenderLayerBacking.h"
+#include "RenderLayerScrollableArea.h"
 #include "RenderLineBreak.h"
 #include "RenderListItem.h"
 #include "RenderListMarker.h"
+#include "RenderQuote.h"
+#include "RenderRuby.h"
 #include "RenderSVGContainer.h"
 #include "RenderSVGGradientStop.h"
-#include "RenderSVGImage.h"
 #include "RenderSVGInlineText.h"
-#include "RenderSVGPath.h"
 #include "RenderSVGResourceContainer.h"
 #include "RenderSVGRoot.h"
+#include "RenderSVGShapeInlines.h"
 #include "RenderSVGText.h"
 #include "RenderTableCell.h"
 #include "RenderView.h"
 #include "RenderWidget.h"
 #include "SVGRenderTreeAsText.h"
 #include "ShadowRoot.h"
-#include "StyleProperties.h"
+#include "StylePropertiesInlines.h"
 #include <wtf/HexNumber.h>
 #include <wtf/Vector.h>
 #include <wtf/text/TextStream.h>
@@ -122,9 +128,9 @@ static void printBorderStyle(TextStream& ts, const BorderStyle borderStyle)
 static String getTagName(Node* n)
 {
     if (n->isDocumentNode())
-        return "";
+        return ""_s;
     if (n->nodeType() == Node::COMMENT_NODE)
-        return "COMMENT";
+        return "COMMENT"_s;
     return n->nodeName();
 }
 
@@ -134,7 +140,7 @@ static bool isEmptyOrUnstyledAppleStyleSpan(const Node* node)
         return false;
 
     const HTMLElement& element = downcast<HTMLSpanElement>(*node);
-    if (element.getAttribute(classAttr) != "Apple-style-span")
+    if (element.getAttribute(classAttr) != "Apple-style-span"_s)
         return false;
 
     if (!node->hasChildNodes())
@@ -151,31 +157,78 @@ String quoteAndEscapeNonPrintables(StringView s)
     for (unsigned i = 0; i != s.length(); ++i) {
         UChar c = s[i];
         if (c == '\\') {
-            result.appendLiteral("\\\\");
+            result.append("\\\\");
         } else if (c == '"') {
-            result.appendLiteral("\\\"");
+            result.append("\\\"");
         } else if (c == '\n' || c == noBreakSpace)
             result.append(' ');
         else {
             if (c >= 0x20 && c < 0x7F)
                 result.append(c);
-            else {
-                result.appendLiteral("\\x{");
-                result.append(hex(c));
-                result.append('}');
-            }
+            else
+                result.append("\\x{", hex(c), '}');
         }
     }
     result.append('"');
     return result.toString();
 }
 
+static inline bool isRenderInlineEmpty(const RenderInline& inlineRenderer)
+{
+    if (isEmptyInline(inlineRenderer))
+        return true;
+
+    for (auto& child : childrenOfType<RenderObject>(inlineRenderer)) {
+        if (child.isFloatingOrOutOfFlowPositioned())
+            continue;
+        auto isChildEmpty = false;
+        if (is<RenderInline>(child))
+            isChildEmpty = isRenderInlineEmpty(downcast<RenderInline>(child));
+        else if (is<RenderText>(child))
+            isChildEmpty = !downcast<RenderText>(child).linesBoundingBox().height();
+        if (!isChildEmpty)
+            return false;
+    }
+    return true;
+}
+
+static inline bool hasNonEmptySibling(const RenderInline& inlineRenderer)
+{
+    auto* parent = inlineRenderer.parent();
+    if (!parent)
+        return false;
+
+    for (auto& sibling : childrenOfType<RenderObject>(*parent)) {
+        if (&sibling == &inlineRenderer || sibling.isFloatingOrOutOfFlowPositioned())
+            continue;
+        if (!is<RenderInline>(sibling))
+            return true;
+        auto& siblingRendererInline = downcast<RenderInline>(sibling);
+        if (siblingRendererInline.mayAffectLayout() || !isRenderInlineEmpty(siblingRendererInline))
+            return true;
+    }
+    return false;
+}
+
+inline bool shouldEnableSubpixelPrecisionForTextDump(const Document& document)
+{
+#if ENABLE(LAYER_BASED_SVG_ENGINE)
+    // If LBSE is activated and the document contains outermost <svg> elements, generate the text
+    // representation with subpixel precision. It would be awkward to only see the SVG part of a
+    // compound document with subpixel precision in the render tree dumps, and not the surrounding content.
+    return document.settings().layerBasedSVGEngineEnabled() && document.mayHaveRenderedSVGRootElements();
+#else
+    UNUSED_PARAM(document);
+    return false;
+#endif
+}
+
 void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> behavior)
 {
-    ts << o.renderName();
+    ts << o.renderName().characters();
 
     if (behavior.contains(RenderAsTextFlag::ShowAddresses))
-        ts << " " << static_cast<const void*>(&o);
+        ts << " " << &o;
 
     if (o.style().usedZIndex()) // FIXME: This should use !hasAutoUsedZIndex().
         ts << " zI: " << o.style().usedZIndex();
@@ -197,24 +250,43 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
     RenderBlock* cb = o.containingBlock();
     bool adjustForTableCells = cb ? cb->isTableCell() : false;
 
+    bool enableSubpixelPrecisionForTextDump = shouldEnableSubpixelPrecisionForTextDump(o.document());
     LayoutRect r;
     if (is<RenderText>(o)) {
         // FIXME: Would be better to dump the bounding box x and y rather than the first run's x and y, but that would involve updating
         // many test results.
         const RenderText& text = downcast<RenderText>(o);
         r = IntRect(text.firstRunLocation(), text.linesBoundingBox().size());
-        if (!LineLayoutTraversal::firstTextBoxFor(text))
+        if (!InlineIterator::firstTextBoxFor(text))
             adjustForTableCells = false;
     } else if (o.isBR()) {
         const RenderLineBreak& br = downcast<RenderLineBreak>(o);
-        IntRect linesBox = br.boundingBoxForRenderTreeDump();
+        IntRect linesBox = br.linesBoundingBox();
         r = IntRect(linesBox.x(), linesBox.y(), linesBox.width(), linesBox.height());
-        if (!br.inlineBoxWrapper())
+        if (!br.inlineBoxWrapper() && !InlineIterator::boxFor(br))
             adjustForTableCells = false;
     } else if (is<RenderInline>(o)) {
         const RenderInline& inlineFlow = downcast<RenderInline>(o);
         // FIXME: Would be better not to just dump 0, 0 as the x and y here.
-        r = IntRect(0, 0, inlineFlow.linesBoundingBox().width(), inlineFlow.linesBoundingBox().height());
+        auto width = inlineFlow.linesBoundingBox().width();
+        auto inlineHeight = [&] {
+            // Let's match legacy line layout's RenderInline behavior and report 0 height when the inline box is "empty".
+            // FIXME: Remove and rebaseline when LFC inline boxes are enabled (see webkit.org/b/220722) 
+            auto height = inlineFlow.linesBoundingBox().height();
+            if (width)
+                return height;
+            if (is<RenderQuote>(inlineFlow) || is<RenderRubyAsInline>(inlineFlow))
+                return height;
+            if (inlineFlow.marginStart() || inlineFlow.marginEnd())
+                return height;
+            // This is mostly pre/post continuation content. Also see webkit.org/b/220735
+            if (hasNonEmptySibling(inlineFlow))
+                return height;
+            if (isRenderInlineEmpty(inlineFlow))
+                return 0;
+            return height;
+        };
+        r = IntRect(0, 0, width, inlineHeight());
         adjustForTableCells = false;
     } else if (is<RenderTableCell>(o)) {
         // FIXME: Deliberately dump the "inner" box of table cells, since that is what current results reflect.  We'd like
@@ -224,6 +296,12 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
         r = LayoutRect(cell.x(), cell.y() + cell.intrinsicPaddingBefore(), cell.width(), cell.height() - cell.intrinsicPaddingBefore() - cell.intrinsicPaddingAfter());
     } else if (is<RenderBox>(o))
         r = downcast<RenderBox>(o).frameRect();
+#if ENABLE(LAYER_BASED_SVG_ENGINE)
+    else if (auto* svgModelObject = dynamicDowncast<RenderSVGModelObject>(o)) {
+        r = svgModelObject->frameRectEquivalent();
+        ASSERT(r.location() == svgModelObject->currentSVGLayoutLocation());
+    }
+#endif
 
     // FIXME: Temporary in order to ensure compatibility with existing layout test results.
     if (adjustForTableCells)
@@ -231,7 +309,22 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
 
     // FIXME: Convert layout test results to report sub-pixel values, in the meantime using enclosingIntRect
     // for consistency with old results.
-    ts << " " << enclosingIntRect(r);
+    if (enableSubpixelPrecisionForTextDump)
+        ts << " " << r;
+    else
+        ts << " " << enclosingIntRect(r);
+
+#if ENABLE(LAYER_BASED_SVG_ENGINE)
+    if (is<RenderSVGModelObject>(o)) {
+        writeSVGPaintingFeatures(ts, downcast<RenderSVGModelObject>(o), behavior);
+
+        if (is<RenderSVGShape>(o))
+            writeSVGGraphicsElement(ts, downcast<RenderSVGShape>(o).graphicsElement());
+
+        writeDebugInfo(ts, o, behavior);
+        return;
+    }
+#endif
 
     if (!is<RenderText>(o)) {
         if (is<RenderFileUploadControl>(o))
@@ -270,75 +363,51 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
         LayoutUnit borderRight = box.borderRight();
         LayoutUnit borderBottom = box.borderBottom();
         LayoutUnit borderLeft = box.borderLeft();
+        bool overridden = o.style().borderImage().overridesBorderWidths();
         if (box.isFieldset()) {
             const auto& block = downcast<RenderBlock>(box);
-            if (o.style().writingMode() == TopToBottomWritingMode)
+            if (o.style().writingMode() == WritingMode::TopToBottom)
                 borderTop -= block.intrinsicBorderForFieldset();
-            else if (o.style().writingMode() == BottomToTopWritingMode)
+            else if (o.style().writingMode() == WritingMode::BottomToTop)
                 borderBottom -= block.intrinsicBorderForFieldset();
-            else if (o.style().writingMode() == LeftToRightWritingMode)
+            else if (o.style().writingMode() == WritingMode::LeftToRight)
                 borderLeft -= block.intrinsicBorderForFieldset();
-            else if (o.style().writingMode() == RightToLeftWritingMode)
+            else if (o.style().writingMode() == WritingMode::RightToLeft)
                 borderRight -= block.intrinsicBorderForFieldset();
             
         }
         if (borderTop || borderRight || borderBottom || borderLeft) {
             ts << " [border:";
 
+            auto printBorder = [&ts, &o] (const LayoutUnit& width, const BorderStyle& style, const StyleColor& color) {
+                if (!width)
+                    ts << " none";
+                else {
+                    ts << " (" << width << "px ";
+                    printBorderStyle(ts, style);
+                    auto resolvedColor = o.style().colorResolvingCurrentColor(color);
+                    ts << serializationForRenderTreeAsText(resolvedColor) << ")";
+                }
+
+            };
+
             BorderValue prevBorder = o.style().borderTop();
-            if (!borderTop)
-                ts << " none";
-            else {
-                ts << " (" << borderTop << "px ";
-                printBorderStyle(ts, o.style().borderTopStyle());
-                auto color = o.style().borderTopColor();
-                if (!color.isValid())
-                    color = o.style().color();
-                ts << serializationForRenderTreeAsText(color) << ")";
-            }
+            printBorder(borderTop, o.style().borderTopStyle(), o.style().borderTopColor());
 
-            if (o.style().borderRight() != prevBorder) {
+            if (o.style().borderRight() != prevBorder || (overridden && borderRight != borderTop)) {
                 prevBorder = o.style().borderRight();
-                if (!borderRight)
-                    ts << " none";
-                else {
-                    ts << " (" << borderRight << "px ";
-                    printBorderStyle(ts, o.style().borderRightStyle());
-                    auto color = o.style().borderRightColor();
-                    if (!color.isValid())
-                        color = o.style().color();
-                    ts << serializationForRenderTreeAsText(color) << ")";
-                }
+                printBorder(borderRight, o.style().borderRightStyle(), o.style().borderRightColor());
             }
 
-            if (o.style().borderBottom() != prevBorder) {
-                prevBorder = box.style().borderBottom();
-                if (!borderBottom)
-                    ts << " none";
-                else {
-                    ts << " (" << borderBottom << "px ";
-                    printBorderStyle(ts, o.style().borderBottomStyle());
-                    auto color = o.style().borderBottomColor();
-                    if (!color.isValid())
-                        color = o.style().color();
-                    ts << serializationForRenderTreeAsText(color) << ")";
-                }
+            if (o.style().borderBottom() != prevBorder || (overridden && borderBottom != borderRight)) {
+                prevBorder = o.style().borderBottom();
+                printBorder(borderBottom, o.style().borderBottomStyle(), o.style().borderBottomColor());
             }
 
-            if (o.style().borderLeft() != prevBorder) {
+            if (o.style().borderLeft() != prevBorder || (overridden && borderLeft != borderBottom)) {
                 prevBorder = o.style().borderLeft();
-                if (!borderLeft)
-                    ts << " none";
-                else {
-                    ts << " (" << borderLeft << "px ";
-                    printBorderStyle(ts, o.style().borderLeftStyle());
-                    auto color = o.style().borderLeftColor();
-                    if (!color.isValid())
-                        color = o.style().color();
-                    ts << serializationForRenderTreeAsText(color) << ")";
-                }
+                printBorder(borderLeft, o.style().borderLeftStyle(), o.style().borderLeftColor());
             }
-
             ts << "]";
         }
 
@@ -384,20 +453,20 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
     }
 
     if (is<RenderListMarker>(o)) {
-        String text = downcast<RenderListMarker>(o).text();
+        String text = downcast<RenderListMarker>(o).textWithoutSuffix().toString();
         if (!text.isEmpty()) {
             if (text.length() != 1)
                 text = quoteAndEscapeNonPrintables(text);
             else {
                 switch (text[0]) {
                     case bullet:
-                        text = "bullet";
+                        text = "bullet"_s;
                         break;
                     case blackSquare:
-                        text = "black square";
+                        text = "black square"_s;
                         break;
                     case whiteBullet:
-                        text = "white bullet";
+                        text = "white bullet"_s;
                         break;
                     default:
                         text = quoteAndEscapeNonPrintables(text);
@@ -413,9 +482,9 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
 void writeDebugInfo(TextStream& ts, const RenderObject& object, OptionSet<RenderAsTextFlag> behavior)
 {
     if (behavior.contains(RenderAsTextFlag::ShowIDAndClass)) {
-        if (Element* element = is<Element>(object.node()) ? downcast<Element>(object.node()) : nullptr) {
+        if (auto* element = dynamicDowncast<Element>(object.node())) {
             if (element->hasID())
-                ts << " id=\"" + element->getIdAttribute() + "\"";
+                ts << " id=\"" << element->getIdAttribute() << "\"";
 
             if (element->hasClass()) {
                 ts << " class=\"";
@@ -464,48 +533,57 @@ void writeDebugInfo(TextStream& ts, const RenderObject& object, OptionSet<Render
             ts << ")";
     }
 
-    if (behavior.contains(RenderAsTextFlag::ShowOverflow) && is<RenderBox>(object)) {
-        const auto& box = downcast<RenderBox>(object);
-        if (box.hasRenderOverflow()) {
-            LayoutRect layoutOverflow = box.layoutOverflowRect();
-            ts << " (layout overflow " << layoutOverflow.x().toInt() << "," << layoutOverflow.y().toInt() << " " << layoutOverflow.width().toInt() << "x" << layoutOverflow.height().toInt() << ")";
-            
-            if (box.hasVisualOverflow()) {
-                LayoutRect visualOverflow = box.visualOverflowRect();
-                ts << " (visual overflow " << visualOverflow.x().toInt() << "," << visualOverflow.y().toInt() << " " << visualOverflow.width().toInt() << "x" << visualOverflow.height().toInt() << ")";
+    if (behavior.contains(RenderAsTextFlag::ShowOverflow)) {
+        if (is<RenderBox>(object)) {
+            const auto& box = downcast<RenderBox>(object);
+            if (box.hasRenderOverflow()) {
+                LayoutRect layoutOverflow = box.layoutOverflowRect();
+                ts << " (layout overflow " << layoutOverflow.x().toInt() << "," << layoutOverflow.y().toInt() << " " << layoutOverflow.width().toInt() << "x" << layoutOverflow.height().toInt() << ")";
+
+                if (box.hasVisualOverflow()) {
+                    LayoutRect visualOverflow = box.visualOverflowRect();
+                    ts << " (visual overflow " << visualOverflow.x().toInt() << "," << visualOverflow.y().toInt() << " " << visualOverflow.width().toInt() << "x" << visualOverflow.height().toInt() << ")";
+                }
             }
         }
-    }
-}
 
-static void writeTextBox(TextStream& ts, const RenderText& o, const LineLayoutTraversal::TextBox& textBox)
-{
-    auto rect = textBox.rect();
-    int x = rect.x();
-    int y = rect.y();
-    // FIXME: Use non-logical width. webkit.org/b/206809.
-    int logicalWidth = ceilf(rect.x() + (textBox.isHorizontal() ? rect.width() : rect.height())) - x;
-    // FIXME: Table cell adjustment is temporary until results can be updated.
-    if (is<RenderTableCell>(*o.containingBlock()))
-        y -= floorToInt(downcast<RenderTableCell>(*o.containingBlock()).intrinsicPaddingBefore());
-        
-    ts << "text run at (" << x << "," << y << ") width " << logicalWidth;
-    if (!textBox.isLeftToRightDirection() || textBox.dirOverride()) {
-        ts << (!textBox.isLeftToRightDirection() ? " RTL" : " LTR");
-        if (textBox.dirOverride())
-            ts << " override";
+#if ENABLE(LAYER_BASED_SVG_ENGINE)
+        if (is<RenderSVGModelObject>(object)) {
+            if (const auto& renderSVGModelObject = downcast<RenderSVGModelObject>(object); renderSVGModelObject.hasVisualOverflow()) {
+                auto visualOverflow = renderSVGModelObject.visualOverflowRectEquivalent();
+                ts << " (visual overflow " << visualOverflow.x() << "," << visualOverflow.y() << " " << visualOverflow.width() << "x" << visualOverflow.height() << ")";
+            }
+        }
+#endif
+
     }
-    ts << ": "
-        << quoteAndEscapeNonPrintables(textBox.text());
-    if (textBox.hasHyphen())
-        ts << " + hyphen string " << quoteAndEscapeNonPrintables(o.style().hyphenString().string());
-    ts << "\n";
 }
 
 void write(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> behavior)
 {
-    if (is<RenderSVGShape>(o)) {
-        write(ts, downcast<RenderSVGShape>(o), behavior);
+    auto writeTextRun = [&] (auto& textRenderer, auto& textRun) {
+        auto rect = textRun.visualRectIgnoringBlockDirection();
+        int x = rect.x();
+        int y = rect.y();
+        // FIXME: Use non-logical width. webkit.org/b/206809.
+        int logicalWidth = ceilf(rect.x() + (textRun.isHorizontal() ? rect.width() : rect.height())) - x;
+        // FIXME: Table cell adjustment is temporary until results can be updated.
+        if (is<RenderTableCell>(*o.containingBlock()))
+            y -= floorToInt(downcast<RenderTableCell>(*o.containingBlock()).intrinsicPaddingBefore());
+
+        ts << "text run at (" << x << "," << y << ") width " << logicalWidth;
+        if (!textRun.isLeftToRightDirection())
+            ts << " RTL";
+        ts << ": "
+            << quoteAndEscapeNonPrintables(textRun.originalText());
+        if (textRun.hasHyphen())
+            ts << " + hyphen string " << quoteAndEscapeNonPrintables(textRenderer.style().hyphenString().string());
+        ts << "\n";
+    };
+
+
+    if (is<LegacyRenderSVGShape>(o)) {
+        write(ts, downcast<LegacyRenderSVGShape>(o), behavior);
         return;
     }
     if (is<RenderSVGGradientStop>(o)) {
@@ -516,12 +594,12 @@ void write(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> be
         writeSVGResourceContainer(ts, downcast<RenderSVGResourceContainer>(o), behavior);
         return;
     }
-    if (is<RenderSVGContainer>(o)) {
-        writeSVGContainer(ts, downcast<RenderSVGContainer>(o), behavior);
+    if (is<LegacyRenderSVGContainer>(o)) {
+        writeSVGContainer(ts, downcast<LegacyRenderSVGContainer>(o), behavior);
         return;
     }
-    if (is<RenderSVGRoot>(o)) {
-        write(ts, downcast<RenderSVGRoot>(o), behavior);
+    if (is<LegacyRenderSVGRoot>(o)) {
+        write(ts, downcast<LegacyRenderSVGRoot>(o), behavior);
         return;
     }
     if (is<RenderSVGText>(o)) {
@@ -532,8 +610,8 @@ void write(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> be
         writeSVGInlineText(ts, downcast<RenderSVGInlineText>(o), behavior);
         return;
     }
-    if (is<RenderSVGImage>(o)) {
-        writeSVGImage(ts, downcast<RenderSVGImage>(o), behavior);
+    if (is<LegacyRenderSVGImage>(o)) {
+        writeSVGImage(ts, downcast<LegacyRenderSVGImage>(o), behavior);
         return;
     }
 
@@ -546,9 +624,9 @@ void write(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> be
 
     if (is<RenderText>(o)) {
         auto& text = downcast<RenderText>(o);
-        for (auto& textBox : LineLayoutTraversal::textBoxesFor(text)) {
+        for (auto& run : InlineIterator::textBoxesFor(text)) {
             ts << indent;
-            writeTextBox(ts, text, textBox);
+            writeTextRun(text, run);
         }
     } else {
         for (auto& child : childrenOfType<RenderObject>(downcast<RenderElement>(o))) {
@@ -562,7 +640,8 @@ void write(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> be
         Widget* widget = downcast<RenderWidget>(o).widget();
         if (is<FrameView>(widget)) {
             FrameView& view = downcast<FrameView>(*widget);
-            if (RenderView* root = view.frame().contentRenderer()) {
+            auto* localFrame = dynamicDowncast<LocalFrame>(view.frame());
+            if (RenderView* root = localFrame ? localFrame->contentRenderer() : nullptr) {
                 if (!(behavior.contains(RenderAsTextFlag::DontUpdateLayout)))
                     view.layoutContext().layout();
                 if (RenderLayer* layer = root->layer())
@@ -570,6 +649,11 @@ void write(TextStream& ts, const RenderObject& o, OptionSet<RenderAsTextFlag> be
             }
         }
     }
+
+#if ENABLE(LAYER_BASED_SVG_ENGINE)
+    if  (is<RenderSVGModelObject>(o) || is<RenderSVGRoot>(o))
+        writeResources(ts, o, behavior);
+#endif
 }
 
 enum LayerPaintPhase {
@@ -578,41 +662,43 @@ enum LayerPaintPhase {
     LayerPaintPhaseForeground = 1
 };
 
-static void writeLayer(TextStream& ts, const RenderLayer& layer, const LayoutRect& layerBounds, const LayoutRect& backgroundClipRect, const LayoutRect& clipRect,
-    LayerPaintPhase paintPhase = LayerPaintPhaseAll, OptionSet<RenderAsTextFlag> behavior = { })
+template<typename DumpRectType>
+inline void writeLayerUsingGeometryType(TextStream& ts, const RenderLayer& layer, const DumpRectType& layerBounds, const DumpRectType& backgroundClipRect, const DumpRectType& clipRect,
+    LayerPaintPhase paintPhase, OptionSet<RenderAsTextFlag> behavior)
 {
-    IntRect adjustedLayoutBounds = snappedIntRect(layerBounds);
-    IntRect adjustedBackgroundClipRect = snappedIntRect(backgroundClipRect);
-    IntRect adjustedClipRect = snappedIntRect(clipRect);
-
     ts << indent << "layer ";
     
-    if (behavior.contains(RenderAsTextFlag::ShowAddresses))
-        ts << static_cast<const void*>(&layer) << " ";
-      
-    ts << adjustedLayoutBounds;
-
-    if (!adjustedLayoutBounds.isEmpty()) {
-        if (!adjustedBackgroundClipRect.contains(adjustedLayoutBounds))
-            ts << " backgroundClip " << adjustedBackgroundClipRect;
-        if (!adjustedClipRect.contains(adjustedLayoutBounds))
-            ts << " clip " << adjustedClipRect;
+    if (behavior.contains(RenderAsTextFlag::ShowAddresses)) {
+        ts << &layer << " ";
+        if (auto* scrollableArea = layer.scrollableArea())
+            ts << "scrollableArea " << scrollableArea << " ";
     }
 
-    if (layer.renderer().hasOverflowClip()) {
-        if (layer.scrollOffset().x())
-            ts << " scrollX " << layer.scrollOffset().x();
-        if (layer.scrollOffset().y())
-            ts << " scrollY " << layer.scrollOffset().y();
-        if (layer.renderBox() && roundToInt(layer.renderBox()->clientWidth()) != layer.scrollWidth())
-            ts << " scrollWidth " << layer.scrollWidth();
-        if (layer.renderBox() && roundToInt(layer.renderBox()->clientHeight()) != layer.scrollHeight())
-            ts << " scrollHeight " << layer.scrollHeight();
+    ts << layerBounds;
+
+    if (!layerBounds.isEmpty()) {
+        if (!backgroundClipRect.contains(layerBounds))
+            ts << " backgroundClip " << backgroundClipRect;
+        if (!clipRect.contains(layerBounds))
+            ts << " clip " << clipRect;
+    }
+
+    if (layer.renderer().hasNonVisibleOverflow()) {
+        if (auto* scrollableArea = layer.scrollableArea()) {
+            if (scrollableArea->scrollOffset().x())
+                ts << " scrollX " << scrollableArea->scrollOffset().x();
+            if (scrollableArea->scrollOffset().y())
+                ts << " scrollY " << scrollableArea->scrollOffset().y();
+            if (layer.renderBox() && roundToInt(layer.renderBox()->clientWidth()) != scrollableArea->scrollWidth())
+                ts << " scrollWidth " << scrollableArea->scrollWidth();
+            if (layer.renderBox() && roundToInt(layer.renderBox()->clientHeight()) != scrollableArea->scrollHeight())
+                ts << " scrollHeight " << scrollableArea->scrollHeight();
+        }
 #if PLATFORM(MAC)
         ScrollbarTheme& scrollbarTheme = ScrollbarTheme::theme();
-        if (!scrollbarTheme.isMockTheme() && layer.hasVerticalScrollbar()) {
+        if (!scrollbarTheme.isMockTheme() && layer.scrollableArea() && layer.scrollableArea()->hasVerticalScrollbar()) {
             ScrollbarThemeMac& macTheme = *static_cast<ScrollbarThemeMac*>(&scrollbarTheme);
-            if (macTheme.isLayoutDirectionRTL(*layer.verticalScrollbar()))
+            if (macTheme.isLayoutDirectionRTL(*layer.scrollableArea()->verticalScrollbar()))
                 ts << " scrollbarHasRTLLayoutDirection";
         }
 #endif
@@ -625,7 +711,9 @@ static void writeLayer(TextStream& ts, const RenderLayer& layer, const LayoutRec
 
     if (behavior.contains(RenderAsTextFlag::ShowCompositedLayers)) {
         if (layer.isComposited()) {
-            ts << " (composited, bounds=" << layer.backing()->compositedBounds() << ", drawsContent=" << layer.backing()->graphicsLayer()->drawsContent()
+            ts << " (composited " << layer.compositor().reasonsForCompositing(layer)
+                << ", bounds=" << layer.backing()->compositedBounds()
+                << ", drawsContent=" << layer.backing()->graphicsLayer()->drawsContent()
                 << ", paints into ancestor=" << layer.backing()->paintsIntoCompositedAncestor() << ")";
         } else if (layer.paintsIntoProvidedBacking())
             ts << " (shared backing of " << layer.backingProviderLayer() << ")";
@@ -639,6 +727,17 @@ static void writeLayer(TextStream& ts, const RenderLayer& layer, const LayoutRec
 #endif
     
     ts << "\n";
+}
+
+static void writeLayer(TextStream& ts, const RenderLayer& layer, const LayoutRect& layerBounds, const LayoutRect& backgroundClipRect, const LayoutRect& clipRect,
+    LayerPaintPhase paintPhase = LayerPaintPhaseAll, OptionSet<RenderAsTextFlag> behavior = { })
+{
+    if (shouldEnableSubpixelPrecisionForTextDump(layer.renderer().document())) {
+        writeLayerUsingGeometryType<LayoutRect>(ts, layer, layerBounds, backgroundClipRect, clipRect, paintPhase, behavior);
+        return;
+    }
+
+    writeLayerUsingGeometryType<IntRect>(ts, layer, snappedIntRect(layerBounds), snappedIntRect(backgroundClipRect), snappedIntRect(clipRect), paintPhase, behavior);
 }
 
 static void writeLayerRenderers(TextStream& ts, const RenderLayer& layer, LayerPaintPhase paintPhase, OptionSet<RenderAsTextFlag> behavior)
@@ -702,7 +801,7 @@ static void writeLayers(TextStream& ts, const RenderLayer& rootLayer, RenderLaye
         
         if (behavior.contains(RenderAsTextFlag::ShowLayerFragments)) {
             LayerFragments layerFragments;
-            layer.collectFragments(layerFragments, &rootLayer, paintDirtyRect, RenderLayer::PaginationInclusionMode::ExcludeCompositedPaginatedLayers, TemporaryClipRects, IgnoreOverlayScrollbarSize, RespectOverflowClip, offsetFromRoot);
+            layer.collectFragments(layerFragments, &rootLayer, paintDirtyRect, RenderLayer::PaginationInclusionMode::ExcludeCompositedPaginatedLayers, TemporaryClipRects, { RenderLayer::ClipRectsOption::RespectOverflowClip }, offsetFromRoot);
             
             if (layerFragments.size() > 1) {
                 TextStream::IndentScope indentScope(ts, 2);
@@ -758,26 +857,19 @@ static String nodePosition(Node* node)
     for (Node* n = node; n; n = parent) {
         parent = n->parentOrShadowHostNode();
         if (n != node)
-            result.appendLiteral(" of ");
+            result.append(" of ");
         if (parent) {
             if (body && n == body) {
                 // We don't care what offset body may be in the document.
-                result.appendLiteral("body");
+                result.append("body");
                 break;
             }
-            if (n->isShadowRoot()) {
-                result.append('{');
-                result.append(getTagName(n));
-                result.append('}');
-            } else {
-                result.appendLiteral("child ");
-                result.appendNumber(n->computeNodeIndex());
-                result.appendLiteral(" {");
-                result.append(getTagName(n));
-                result.append('}');
-            }
+            if (n->isShadowRoot())
+                result.append('{', getTagName(n), '}');
+            else
+                result.append("child ", n->computeNodeIndex(), " {", getTagName(n), '}');
         } else
-            result.appendLiteral("document");
+            result.append("document");
     }
 
     return result.toString();
@@ -795,7 +887,7 @@ static void writeSelection(TextStream& ts, const RenderBox& renderer)
     VisibleSelection selection = frame->selection().selection();
     if (selection.isCaret()) {
         ts << "caret: position " << selection.start().deprecatedEditingOffset() << " of " << nodePosition(selection.start().deprecatedNode());
-        if (selection.affinity() == UPSTREAM)
+        if (selection.affinity() == Affinity::Upstream)
             ts << " (upstream affinity)";
         ts << "\n";
     } else if (selection.isRange())
@@ -803,9 +895,20 @@ static void writeSelection(TextStream& ts, const RenderBox& renderer)
            << "selection end:   position " << selection.end().deprecatedEditingOffset() << " of " << nodePosition(selection.end().deprecatedNode()) << "\n";
 }
 
+static TextStream createTextStream(const Document& document)
+{
+    auto formattingFlags = [&document]() -> OptionSet<TextStream::Formatting> {
+        if (shouldEnableSubpixelPrecisionForTextDump(document))
+            return { TextStream::Formatting::SVGStyleRect };
+        return { TextStream::Formatting::SVGStyleRect, TextStream::Formatting::LayoutUnitsAsIntegers };
+    };
+
+    return { TextStream::LineMode::MultipleLine, formattingFlags() };
+}
+
 static String externalRepresentation(RenderBox& renderer, OptionSet<RenderAsTextFlag> behavior)
 {
-    TextStream ts(TextStream::LineMode::MultipleLine, TextStream::Formatting::SVGStyleRect | TextStream::Formatting::LayoutUnitsAsIntegers);
+    auto ts = createTextStream(renderer.document());
     if (!renderer.hasLayer())
         return ts.release();
 
@@ -821,8 +924,11 @@ static void updateLayoutIgnoringPendingStylesheetsIncludingSubframes(Document& d
 {
     document.updateLayoutIgnorePendingStylesheets();
     auto* frame = document.frame();
-    for (auto* subframe = frame; subframe; subframe = subframe->tree().traverseNext(frame)) {
-        if (auto* document = subframe->document())
+    for (AbstractFrame* subframe = frame; subframe; subframe = subframe->tree().traverseNext(frame)) {
+        auto* localFrame = dynamicDowncast<LocalFrame>(subframe);
+        if (!localFrame)
+            continue;
+        if (auto* document = localFrame->document())
             document->updateLayoutIgnorePendingStylesheets();
     }
 }
@@ -881,7 +987,7 @@ String counterValueForElement(Element* element)
     // Make sure the element is not freed during the layout.
     RefPtr<Element> elementRef(element);
     element->document().updateLayout();
-    TextStream stream(TextStream::LineMode::MultipleLine, TextStream::Formatting::SVGStyleRect | TextStream::Formatting::LayoutUnitsAsIntegers);
+    auto stream = createTextStream(element->document());
     bool isFirstCounter = true;
     // The counter renderers should be children of :before or :after pseudo-elements.
     if (PseudoElement* before = element->beforePseudoElement())
@@ -901,7 +1007,7 @@ String markerTextForListItem(Element* element)
     if (!is<RenderListItem>(renderer))
         return String();
 
-    return downcast<RenderListItem>(*renderer).markerText();
+    return downcast<RenderListItem>(*renderer).markerTextWithoutSuffix().toString();
 }
 
 } // namespace WebCore

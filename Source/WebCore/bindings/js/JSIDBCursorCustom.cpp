@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,11 +26,10 @@
 #include "config.h"
 #include "JSIDBCursor.h"
 
-#if ENABLE(INDEXED_DATABASE)
-
 #include "IDBBindingUtilities.h"
 #include "JSDOMBinding.h"
 #include "JSIDBCursorWithValue.h"
+#include "WebCoreOpaqueRoot.h"
 
 
 namespace WebCore {
@@ -38,26 +37,31 @@ using namespace JSC;
 
 JSC::JSValue JSIDBCursor::key(JSC::JSGlobalObject& lexicalGlobalObject) const
 {
-    return cachedPropertyValue(lexicalGlobalObject, *this, wrapped().keyWrapper(), [&] {
+    auto throwScope = DECLARE_THROW_SCOPE(lexicalGlobalObject.vm());
+    return cachedPropertyValue(throwScope, lexicalGlobalObject, *this, wrapped().keyWrapper(), [&](JSC::ThrowScope&) {
         return toJS(lexicalGlobalObject, lexicalGlobalObject, wrapped().key());
     });
 }
 
 JSC::JSValue JSIDBCursor::primaryKey(JSC::JSGlobalObject& lexicalGlobalObject) const
 {
-    return cachedPropertyValue(lexicalGlobalObject, *this, wrapped().primaryKeyWrapper(), [&] {
+    auto throwScope = DECLARE_THROW_SCOPE(lexicalGlobalObject.vm());
+    return cachedPropertyValue(throwScope, lexicalGlobalObject, *this, wrapped().primaryKeyWrapper(), [&](JSC::ThrowScope&) {
         return toJS(lexicalGlobalObject, lexicalGlobalObject, wrapped().primaryKey());
     });
 }
 
-void JSIDBCursor::visitAdditionalChildren(SlotVisitor& visitor)
+template<typename Visitor>
+void JSIDBCursor::visitAdditionalChildren(Visitor& visitor)
 {
     auto& cursor = wrapped();
     if (auto* request = cursor.request())
-        visitor.addOpaqueRoot(request);
+        addWebCoreOpaqueRoot(visitor, *request);
     cursor.keyWrapper().visit(visitor);
     cursor.primaryKeyWrapper().visit(visitor);
 }
+
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSIDBCursor);
 
 JSValue toJSNewlyCreated(JSC::JSGlobalObject*, JSDOMGlobalObject* globalObject, Ref<IDBCursor>&& cursor)
 {
@@ -72,5 +76,3 @@ JSValue toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSDOMGlobalObject* global
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(INDEXED_DATABASE)

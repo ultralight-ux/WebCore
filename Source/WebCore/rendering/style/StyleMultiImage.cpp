@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2005-2008, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2021 Apple Inc. All rights reserved.
  * Copyright (C) 2020 Noam Rosenthal (noam@webkit.org)
  *
  * This library is free software; you can redistribute it and/or
@@ -22,19 +22,32 @@
 #include "config.h"
 #include "StyleMultiImage.h"
 
-#include "CSSImageGeneratorValue.h"
+#include "CSSCanvasValue.h"
+#include "CSSCrossfadeValue.h"
+#include "CSSFilterImageValue.h"
+#include "CSSGradientValue.h"
 #include "CSSImageSetValue.h"
 #include "CSSImageValue.h"
+#include "CSSNamedImageValue.h"
+#include "CSSPaintImageValue.h"
 #include "CachedImage.h"
 #include "CachedResourceLoader.h"
 #include "RenderElement.h"
 #include "RenderView.h"
 #include "StyleCachedImage.h"
-#include "StyleGeneratedImage.h"
+#include "StyleCanvasImage.h"
+#include "StyleCrossfadeImage.h"
+#include "StyleFilterImage.h"
+#include "StyleGradientImage.h"
+#include "StyleNamedImage.h"
+#include "StylePaintImage.h"
 
 namespace WebCore {
 
-StyleMultiImage::StyleMultiImage() = default;
+StyleMultiImage::StyleMultiImage(Type type)
+    : StyleImage { type }
+{
+}
 
 StyleMultiImage::~StyleMultiImage() = default;
 
@@ -49,18 +62,25 @@ void StyleMultiImage::load(CachedResourceLoader& loader, const ResourceLoaderOpt
     ASSERT(loader.document());
 
     m_isPending = false;
-    auto imageWithScale = selectBestFitImage(*loader.document());
-    ASSERT(is<CSSImageValue>(imageWithScale.value) || is<CSSImageGeneratorValue>(imageWithScale.value));
 
-    if (is<CSSImageGeneratorValue>(imageWithScale.value)) {
-        m_selectedImage = StyleGeneratedImage::create(downcast<CSSImageGeneratorValue>(*imageWithScale.value.get()));
+    auto bestFitImage = selectBestFitImage(*loader.document());
+    ASSERT(is<StyleCachedImage>(bestFitImage.image) || is<StyleGeneratedImage>(bestFitImage.image));
+
+    if (is<StyleGeneratedImage>(bestFitImage.image)) {
+        m_selectedImage = bestFitImage.image;
         m_selectedImage->load(loader, options);
+        return;
     }
     
-    if (is<CSSImageValue>(imageWithScale.value)) {
-        m_selectedImage = StyleCachedImage::create(downcast<CSSImageValue>(*imageWithScale.value.get()), imageWithScale.scaleFactor);
+    if (is<StyleCachedImage>(bestFitImage.image)) {
+        if (downcast<StyleCachedImage>(*bestFitImage.image).imageScaleFactor() == bestFitImage.scaleFactor)
+            m_selectedImage = bestFitImage.image;
+        else
+            m_selectedImage = StyleCachedImage::copyOverridingScaleFactor(downcast<StyleCachedImage>(*bestFitImage.image), bestFitImage.scaleFactor);
+
         if (m_selectedImage->isPending())
             m_selectedImage->load(loader, options);
+        return;
     }
 }
 
@@ -134,21 +154,28 @@ void StyleMultiImage::setContainerContextForRenderer(const RenderElement& render
     m_selectedImage->setContainerContextForRenderer(renderer, containerSize, containerZoom);
 }
 
-void StyleMultiImage::addClient(RenderElement* renderer)
+void StyleMultiImage::addClient(RenderElement& renderer)
 {
     if (!m_selectedImage)
         return;
     m_selectedImage->addClient(renderer);
 }
 
-void StyleMultiImage::removeClient(RenderElement* renderer)
+void StyleMultiImage::removeClient(RenderElement& renderer)
 {
     if (!m_selectedImage)
         return;
     m_selectedImage->removeClient(renderer);
 }
 
-RefPtr<Image> StyleMultiImage::image(RenderElement* renderer, const FloatSize& size) const
+bool StyleMultiImage::hasClient(RenderElement& renderer) const
+{
+    if (!m_selectedImage)
+        return false;
+    return m_selectedImage->hasClient(renderer);
+}
+
+RefPtr<Image> StyleMultiImage::image(const RenderElement* renderer, const FloatSize& size) const
 {
     if (!m_selectedImage)
         return nullptr;
@@ -162,9 +189,9 @@ float StyleMultiImage::imageScaleFactor() const
     return m_selectedImage->imageScaleFactor();
 }
 
-bool StyleMultiImage::knownToBeOpaque(const RenderElement* renderer) const
+bool StyleMultiImage::knownToBeOpaque(const RenderElement& renderer) const
 {
     return m_selectedImage && m_selectedImage->knownToBeOpaque(renderer);
 }
 
-}
+} // namespace WebCore

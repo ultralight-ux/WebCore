@@ -53,13 +53,18 @@ ErrorEvent::ErrorEvent(const AtomString& type, const Init& initializer, IsTruste
 {
 }
 
-ErrorEvent::ErrorEvent(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, JSC::Strong<JSC::Unknown> error)
-    : Event(eventNames().errorEvent, CanBubble::No, IsCancelable::Yes)
+ErrorEvent::ErrorEvent(const AtomString& type, const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, JSC::Strong<JSC::Unknown> error)
+    : Event(type, CanBubble::No, IsCancelable::Yes)
     , m_message(message)
     , m_fileName(fileName)
     , m_lineNumber(lineNumber)
     , m_columnNumber(columnNumber)
     , m_error(error.get())
+{
+}
+
+ErrorEvent::ErrorEvent(const String& message, const String& fileName, unsigned lineNumber, unsigned columnNumber, JSC::Strong<JSC::Unknown> error)
+    : ErrorEvent(eventNames().errorEvent, message, fileName, lineNumber, columnNumber, error)
 {
 }
 
@@ -72,10 +77,10 @@ EventInterface ErrorEvent::eventInterface() const
 
 JSValue ErrorEvent::error(JSGlobalObject& globalObject)
 {    
-    JSValue error = m_error;
-    if (!error)
+    if (!m_error)
         return jsNull();
 
+    JSValue error = m_error.getValue();
     if (!isWorldCompatible(globalObject, error)) {
         // We need to make sure ErrorEvents do not leak their error property across isolated DOM worlds.
         // Ideally, we would check that the worlds have different privileges but that's not possible yet.
@@ -91,7 +96,7 @@ JSValue ErrorEvent::error(JSGlobalObject& globalObject)
 RefPtr<SerializedScriptValue> ErrorEvent::trySerializeError(JSGlobalObject& exec)
 {
     if (!m_serializedError && !m_triedToSerialize) {
-        m_serializedError = SerializedScriptValue::create(exec, m_error, SerializationErrorMode::NonThrowing);
+        m_serializedError = SerializedScriptValue::create(exec, m_error.getValue(), SerializationForStorage::No, SerializationErrorMode::NonThrowing);
         m_triedToSerialize = true;
     }
     return m_serializedError;

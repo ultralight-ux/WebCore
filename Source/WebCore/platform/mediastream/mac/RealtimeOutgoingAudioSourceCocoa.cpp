@@ -59,8 +59,8 @@ Ref<RealtimeOutgoingAudioSource> RealtimeOutgoingAudioSource::create(Ref<MediaSt
 
 bool RealtimeOutgoingAudioSourceCocoa::isReachingBufferedAudioDataHighLimit()
 {
-    auto writtenAudioDuration = m_writeCount / m_inputStreamDescription.sampleRate();
-    auto readAudioDuration = m_readCount / m_outputStreamDescription.sampleRate();
+    auto writtenAudioDuration = m_writeCount / m_inputStreamDescription->sampleRate();
+    auto readAudioDuration = m_readCount / m_outputStreamDescription->sampleRate();
 
     ASSERT(writtenAudioDuration >= readAudioDuration);
     return writtenAudioDuration > readAudioDuration + 0.5;
@@ -68,8 +68,8 @@ bool RealtimeOutgoingAudioSourceCocoa::isReachingBufferedAudioDataHighLimit()
 
 bool RealtimeOutgoingAudioSourceCocoa::isReachingBufferedAudioDataLowLimit()
 {
-    auto writtenAudioDuration = m_writeCount / m_inputStreamDescription.sampleRate();
-    auto readAudioDuration = m_readCount / m_outputStreamDescription.sampleRate();
+    auto writtenAudioDuration = m_writeCount / m_inputStreamDescription->sampleRate();
+    auto readAudioDuration = m_readCount / m_outputStreamDescription->sampleRate();
 
     ASSERT(writtenAudioDuration >= readAudioDuration);
     return writtenAudioDuration < readAudioDuration + 0.1;
@@ -77,8 +77,8 @@ bool RealtimeOutgoingAudioSourceCocoa::isReachingBufferedAudioDataLowLimit()
 
 bool RealtimeOutgoingAudioSourceCocoa::hasBufferedEnoughData()
 {
-    auto writtenAudioDuration = m_writeCount / m_inputStreamDescription.sampleRate();
-    auto readAudioDuration = m_readCount / m_outputStreamDescription.sampleRate();
+    auto writtenAudioDuration = m_writeCount / m_inputStreamDescription->sampleRate();
+    auto readAudioDuration = m_readCount / m_outputStreamDescription->sampleRate();
 
     ASSERT(writtenAudioDuration >= readAudioDuration);
     return writtenAudioDuration >= readAudioDuration + 0.01;
@@ -88,17 +88,17 @@ bool RealtimeOutgoingAudioSourceCocoa::hasBufferedEnoughData()
 void RealtimeOutgoingAudioSourceCocoa::audioSamplesAvailable(const MediaTime&, const PlatformAudioData& audioData, const AudioStreamDescription& streamDescription, size_t sampleCount)
 {
     if (m_inputStreamDescription != streamDescription) {
-        if (m_writeCount && m_inputStreamDescription.sampleRate()) {
+        if (m_writeCount && m_inputStreamDescription->sampleRate()) {
             // Update m_writeCount to be valid according the new sampleRate.
-            m_writeCount = (m_writeCount * streamDescription.sampleRate()) / m_inputStreamDescription.sampleRate();
+            m_writeCount = (m_writeCount * streamDescription.sampleRate()) / m_inputStreamDescription->sampleRate();
         }
 
         m_inputStreamDescription = toCAAudioStreamDescription(streamDescription);
-        auto status  = m_sampleConverter->setInputFormat(m_inputStreamDescription);
+        auto status  = m_sampleConverter->setInputFormat(*m_inputStreamDescription);
         ASSERT_UNUSED(status, !status);
 
         m_outputStreamDescription = libwebrtcAudioFormat(LibWebRTCAudioFormat::sampleRate, streamDescription.numberOfChannels());
-        status = m_sampleConverter->setOutputFormat(m_outputStreamDescription.streamDescription());
+        status = m_sampleConverter->setOutputFormat(m_outputStreamDescription->streamDescription());
         ASSERT(!status);
     }
 
@@ -112,13 +112,16 @@ void RealtimeOutgoingAudioSourceCocoa::audioSamplesAvailable(const MediaTime&, c
         return;
     }
 
-    m_sampleConverter->pushSamples(MediaTime(m_writeCount, static_cast<uint32_t>(m_inputStreamDescription.sampleRate())), audioData, sampleCount);
+    m_sampleConverter->pushSamples(MediaTime(m_writeCount, static_cast<uint32_t>(m_inputStreamDescription->sampleRate())), audioData, sampleCount);
     m_writeCount += sampleCount;
 
     if (!hasBufferedEnoughData())
         return;
 
-    LibWebRTCProvider::callOnWebRTCSignalingThread([protectedThis = makeRef(*this)] {
+    // Heap allocations are forbidden on the audio thread for performance reasons so we need to
+    // explicitly allow the following allocation(s).
+    DisableMallocRestrictionsForCurrentThreadScope disableMallocRestrictions;
+    LibWebRTCProvider::callOnWebRTCSignalingThread([protectedThis = Ref { *this }] {
         protectedThis->pullAudioData();
     });
 }
@@ -126,22 +129,22 @@ void RealtimeOutgoingAudioSourceCocoa::audioSamplesAvailable(const MediaTime&, c
 void RealtimeOutgoingAudioSourceCocoa::pullAudioData()
 {
     // libwebrtc expects 10 ms chunks.
-    size_t chunkSampleCount = m_outputStreamDescription.sampleRate() / 100;
-    size_t bufferSize = chunkSampleCount * LibWebRTCAudioFormat::sampleByteSize * m_outputStreamDescription.numberOfChannels();
+    size_t chunkSampleCount = m_outputStreamDescription->sampleRate() / 100;
+    size_t bufferSize = chunkSampleCount * LibWebRTCAudioFormat::sampleByteSize * m_outputStreamDescription->numberOfChannels();
     m_audioBuffer.grow(bufferSize);
 
     AudioBufferList bufferList;
     bufferList.mNumberBuffers = 1;
-    bufferList.mBuffers[0].mNumberChannels = m_outputStreamDescription.numberOfChannels();
+    bufferList.mBuffers[0].mNumberChannels = m_outputStreamDescription->numberOfChannels();
     bufferList.mBuffers[0].mDataByteSize = bufferSize;
     bufferList.mBuffers[0].mData = m_audioBuffer.data();
 
     if (isSilenced() !=  m_sampleConverter->muted())
         m_sampleConverter->setMuted(isSilenced());
 
-    m_sampleConverter->pullAvalaibleSamplesAsChunks(bufferList, chunkSampleCount, m_readCount, [this, chunkSampleCount] {
+    m_sampleConverter->pullAvailableSamplesAsChunks(bufferList, chunkSampleCount, m_readCount, [this, chunkSampleCount] {
         m_readCount += chunkSampleCount;
-        sendAudioFrames(m_audioBuffer.data(), LibWebRTCAudioFormat::sampleSize, m_outputStreamDescription.sampleRate(), m_outputStreamDescription.numberOfChannels(), chunkSampleCount);
+        sendAudioFrames(m_audioBuffer.data(), LibWebRTCAudioFormat::sampleSize, m_outputStreamDescription->sampleRate(), m_outputStreamDescription->numberOfChannels(), chunkSampleCount);
     });
 }
 

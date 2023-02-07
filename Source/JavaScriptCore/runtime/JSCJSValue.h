@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 1999-2001 Harri Porten (porten@kde.org)
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2003-2020 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2021 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "Concurrency.h"
 #include "ECMAMode.h"
 #include "JSExportMacros.h"
 #include "PureNaN.h"
@@ -36,6 +37,7 @@
 #include <wtf/MathExtras.h>
 #include <wtf/MediaTime.h>
 #include <wtf/Nonmovable.h>
+#include <wtf/StdIntExtras.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/TriState.h>
 
@@ -71,14 +73,13 @@ class CLoop;
 
 struct ClassInfo;
 struct DumpContext;
-struct Instruction;
 struct MethodTable;
 enum class Unknown { };
 
 template <class T, typename Traits> class WriteBarrierBase;
 template<class T>
 using WriteBarrierTraitsSelect = typename std::conditional<std::is_same<T, Unknown>::value,
-    DumbValueTraits<T>, DumbPtrTraits<T>
+    RawValueTraits<T>, RawPtrTraits<T>
 >::type;
 
 enum PreferredPrimitiveType : uint8_t { NoPreference, PreferNumber, PreferString };
@@ -132,6 +133,8 @@ enum class SourceCodeRepresentation : uint8_t {
     LinkTimeConstant,
 };
 
+extern JS_EXPORT_PRIVATE const ASCIILiteral SymbolCoercionError;
+
 class JSValue {
     friend struct EncodedJSValueHashTraits;
     friend struct EncodedJSValueWithRepresentationHashTraits;
@@ -154,16 +157,16 @@ class JSValue {
 
 public:
 #if USE(JSVALUE32_64)
-    enum { Int32Tag =        0xffffffff };
-    enum { BooleanTag =      0xfffffffe };
-    enum { NullTag =         0xfffffffd };
-    enum { UndefinedTag =    0xfffffffc };
-    enum { CellTag =         0xfffffffb };
-    enum { EmptyValueTag =   0xfffffffa };
-    enum { DeletedValueTag = 0xfffffff9 };
+    static constexpr uint32_t Int32Tag =        0xffffffff;
+    static constexpr uint32_t BooleanTag =      0xfffffffe;
+    static constexpr uint32_t NullTag =         0xfffffffd;
+    static constexpr uint32_t UndefinedTag =    0xfffffffc;
+    static constexpr uint32_t CellTag =         0xfffffffb;
+    static constexpr uint32_t WasmTag =         0xfffffffa;
+    static constexpr uint32_t EmptyValueTag =   0xfffffff9;
+    static constexpr uint32_t DeletedValueTag = 0xfffffff8;
 
-    enum { LowestTag =  DeletedValueTag };
-
+    static constexpr uint32_t LowestTag =  DeletedValueTag;
 #endif
 
     static EncodedJSValue encode(JSValue);
@@ -178,6 +181,9 @@ public:
     enum EncodeAsBigInt32Tag { EncodeAsBigInt32 };
 #endif
     enum EncodeAsDoubleTag { EncodeAsDouble };
+#if ENABLE(WEBASSEMBLY) && USE(JSVALUE32_64)
+    enum EncodeAsUnboxedFloatTag { EncodeAsUnboxedFloat };
+#endif
 
     JSValue();
     JSValue(JSNullTag);
@@ -188,6 +194,9 @@ public:
     JSValue(const JSCell* ptr);
 #if USE(BIGINT32)
     JSValue(EncodeAsBigInt32Tag, int32_t);
+#endif
+#if ENABLE(WEBASSEMBLY) && USE(JSVALUE32_64)
+    JSValue(EncodeAsUnboxedFloatTag, float);
 #endif
 
     // Numbers
@@ -216,8 +225,8 @@ public:
 
     int32_t asInt32() const;
     uint32_t asUInt32() const;
-    Optional<uint32_t> tryGetAsUint32Index();
-    Optional<int32_t> tryGetAsInt32();
+    std::optional<uint32_t> tryGetAsUint32Index();
+    std::optional<int32_t> tryGetAsInt32();
     int64_t asAnyInt() const;
     uint32_t asUInt32AsAnyInt() const;
     int32_t asInt32AsAnyInt() const;
@@ -232,8 +241,10 @@ public:
 
     // Querying the type.
     bool isEmpty() const;
-    bool isCallable(VM&) const;
-    bool isConstructor(VM&) const;
+    bool isCallable() const;
+    template<Concurrency> TriState isCallableWithConcurrency() const;
+    bool isConstructor() const;
+    template<Concurrency> TriState isConstructorWithConcurrency() const;
     bool isUndefined() const;
     bool isNull() const;
     bool isUndefinedOrNull() const;
@@ -251,9 +262,9 @@ public:
     bool isGetterSetter() const;
     bool isCustomGetterSetter() const;
     bool isObject() const;
-    bool inherits(VM&, const ClassInfo*) const;
-    template<typename Target> bool inherits(VM&) const;
-    const ClassInfo* classInfoOrNull(VM&) const;
+    bool inherits(const ClassInfo*) const;
+    template<typename Target> bool inherits() const;
+    const ClassInfo* classInfoOrNull() const;
 
     // Extracting the value.
     bool getString(JSGlobalObject*, WTF::String&) const;
@@ -265,8 +276,6 @@ public:
         
     // Basic conversions.
     JSValue toPrimitive(JSGlobalObject*, PreferredPrimitiveType = NoPreference) const;
-    bool getPrimitiveNumber(JSGlobalObject*, double& number, JSValue&);
-
     bool toBoolean(JSGlobalObject*) const;
     TriState pureToBoolean() const;
 
@@ -279,24 +288,31 @@ public:
     JSBigInt* asHeapBigInt() const;
 
     // toNumber conversion if it can be done without side effects.
-    Optional<double> toNumberFromPrimitive() const;
+    std::optional<double> toNumberFromPrimitive() const;
 
     JSString* toString(JSGlobalObject*) const; // On exception, this returns the empty string.
     JSString* toStringOrNull(JSGlobalObject*) const; // On exception, this returns null, to make exception checks faster.
     Identifier toPropertyKey(JSGlobalObject*) const;
     JSValue toPropertyKeyValue(JSGlobalObject*) const;
     WTF::String toWTFString(JSGlobalObject*) const;
+    JS_EXPORT_PRIVATE WTF::String toWTFStringForConsole(JSGlobalObject*) const;
     JSObject* toObject(JSGlobalObject*) const;
 
     // Integer conversions.
-    JS_EXPORT_PRIVATE double toInteger(JSGlobalObject*) const;
     JS_EXPORT_PRIVATE double toIntegerPreserveNaN(JSGlobalObject*) const;
+    double toIntegerWithoutRounding(JSGlobalObject*) const;
+    double toIntegerOrInfinity(JSGlobalObject*) const;
     int32_t toInt32(JSGlobalObject*) const;
     uint32_t toUInt32(JSGlobalObject*) const;
     uint32_t toIndex(JSGlobalObject*, const char* errorName) const;
-    double toLength(JSGlobalObject*) const;
+    size_t toTypedArrayIndex(JSGlobalObject*, ASCIILiteral) const;
+    uint64_t toLength(JSGlobalObject*) const;
 
-    Optional<uint32_t> toUInt32AfterToNumeric(JSGlobalObject*) const;
+    JS_EXPORT_PRIVATE JSValue toBigInt(JSGlobalObject*) const;
+    int64_t toBigInt64(JSGlobalObject*) const;
+    JS_EXPORT_PRIVATE uint64_t toBigUInt64(JSGlobalObject*) const;
+
+    std::optional<uint32_t> toUInt32AfterToNumeric(JSGlobalObject*) const;
 
     // Floating point conversions (this is a convenience function for WebCore;
     // single precision float is not a representation used in JS or JSC).
@@ -309,9 +325,12 @@ public:
     JSValue get(JSGlobalObject*, unsigned propertyName, PropertySlot&) const;
     JSValue get(JSGlobalObject*, uint64_t propertyName) const;
 
+    template<typename T, typename PropertyNameType>
+    T getAs(JSGlobalObject*, PropertyNameType) const;
+
     bool getPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&) const;
-    template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(JSGlobalObject*, PropertyName, CallbackWhenNoException) const;
-    template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&, CallbackWhenNoException) const;
+    template<typename CallbackWhenNoException> typename std::invoke_result<CallbackWhenNoException, bool, PropertySlot&>::type getPropertySlot(JSGlobalObject*, PropertyName, CallbackWhenNoException) const;
+    template<typename CallbackWhenNoException> typename std::invoke_result<CallbackWhenNoException, bool, PropertySlot&>::type getPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&, CallbackWhenNoException) const;
 
     bool getOwnPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&) const;
 
@@ -333,10 +352,8 @@ public:
 
     bool isCell() const;
     JSCell* asCell() const;
-    JS_EXPORT_PRIVATE bool isValidCallee();
 
     Structure* structureOrNull() const;
-    JSValue structureOrUndefined() const;
 
     JS_EXPORT_PRIVATE void dump(PrintStream&) const;
     void dumpInContext(PrintStream&, DumpContext*) const;
@@ -513,7 +530,7 @@ private:
     JS_EXPORT_PRIVATE JSString* toStringSlowCase(JSGlobalObject*, bool returnEmptyStringOnError) const;
     JS_EXPORT_PRIVATE WTF::String toWTFStringSlowCase(JSGlobalObject*) const;
     JS_EXPORT_PRIVATE JSObject* toObjectSlowCase(JSGlobalObject*) const;
-    JS_EXPORT_PRIVATE JSValue toThisSlowCase(JSGlobalObject*, ECMAMode) const;
+    JS_EXPORT_PRIVATE JSValue toThisSloppySlowCase(JSGlobalObject*) const;
 
     EncodedValueDescriptor u;
 };
@@ -580,6 +597,13 @@ inline JSValue jsBoolean(bool b)
 ALWAYS_INLINE JSValue jsBigInt32(int32_t intValue)
 {
     return JSValue(JSValue::EncodeAsBigInt32, intValue);
+}
+#endif
+
+#if ENABLE(WEBASSEMBLY) && USE(JSVALUE32_64)
+ALWAYS_INLINE JSValue wasmUnboxedFloat(float f)
+{
+    return JSValue(JSValue::EncodeAsUnboxedFloat, f);
 }
 #endif
 

@@ -30,7 +30,8 @@
 
 namespace WebCore {
 
-class SharedBuffer;
+class Document;
+class FragmentedSharedBuffer;
 
 struct ClipboardImageReader : PasteboardFileReader {
     ClipboardImageReader(Document* document, const String& mimeType)

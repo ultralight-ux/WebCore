@@ -39,12 +39,14 @@
 #include "CurlRequest.h"
 #include "HTTPParsers.h"
 #include "Logging.h"
+#include "NetworkLoadMetrics.h"
 #include "NetworkStorageSession.h"
 #include "ResourceHandleInternal.h"
 #include "SameSiteInfo.h"
+#include "SecurityOrigin.h"
 #include "SharedBuffer.h"
 #include "SynchronousLoaderClient.h"
-#include "TextEncoding.h"
+#include <pal/text/TextEncoding.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/FileSystem.h>
 #include <wtf/text/Base64.h>
@@ -75,21 +77,18 @@ bool ResourceHandle::start()
 
     // Only allow the POST and GET methods for non-HTTP requests.
     auto request = firstRequest();
-    if (!request.url().protocolIsInHTTPFamily() && request.httpMethod() != "GET" && request.httpMethod() != "POST") {
+    if (!request.url().protocolIsInHTTPFamily() && request.httpMethod() != "GET"_s && request.httpMethod() != "POST"_s) {
         scheduleFailure(InvalidURLFailure); // Error must not be reported immediately
         return true;
     }
-
-    d->m_startTime = MonotonicTime::now();
 
     d->m_curlRequest = createCurlRequest(WTFMove(request));
 
     if (auto credential = getCredential(d->m_firstRequest, false)) {
         d->m_curlRequest->setUserPass(credential->user(), credential->password());
-        d->m_curlRequest->setAuthenticationScheme(ProtectionSpaceAuthenticationSchemeHTTPBasic);
+        d->m_curlRequest->setAuthenticationScheme(ProtectionSpace::AuthenticationScheme::HTTPBasic);
     }
 
-    d->m_curlRequest->setStartTime(d->m_startTime);
     d->m_curlRequest->start();
 
     return true;
@@ -144,8 +143,8 @@ Ref<CurlRequest> ResourceHandle::createCurlRequest(ResourceRequest&& request, Re
     if (status == RequestStatus::NewRequest) {
         addCacheValidationHeaders(request);
 
-        auto includeSecureCookies = request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
-        String cookieHeaderField = d->m_context->storageSession()->cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies, ShouldAskITP::Yes, ShouldRelaxThirdPartyCookieBlocking::No).first;
+        auto includeSecureCookies = request.url().protocolIs("https"_s) ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
+        String cookieHeaderField = d->m_context->storageSession()->cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), std::nullopt, std::nullopt, includeSecureCookies, ApplyTrackingPrevention::Yes, ShouldRelaxThirdPartyCookieBlocking::No).first;
         if (!cookieHeaderField.isEmpty())
             request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
     }
@@ -256,7 +255,7 @@ void ResourceHandle::didReceiveAuthenticationChallenge(const AuthenticationChall
     d->m_currentWebChallenge = challenge;
 
     if (client()) {
-        auto protectedThis = makeRef(*this);
+        Ref protectedThis { *this };
         client()->didReceiveAuthenticationChallenge(this, d->m_currentWebChallenge);
     }
 }
@@ -265,7 +264,7 @@ void ResourceHandle::receivedCredential(const AuthenticationChallenge& challenge
 {
     ASSERT(isMainThread());
 
-    if (challenge != d->m_currentWebChallenge)
+    if (!AuthenticationChallengeBase::equalForWebKitLegacyChallengeComparison(challenge, d->m_currentWebChallenge))
         return;
 
     if (credential.isEmpty()) {
@@ -291,12 +290,12 @@ void ResourceHandle::receivedRequestToContinueWithoutCredential(const Authentica
 {
     ASSERT(isMainThread());
 
-    if (challenge != d->m_currentWebChallenge)
+    if (!AuthenticationChallengeBase::equalForWebKitLegacyChallengeComparison(challenge, d->m_currentWebChallenge))
         return;
 
     clearAuthentication();
 
-    didReceiveResponse(ResourceResponse(delegate()->response()), [this, protectedThis = makeRef(*this)] {
+    didReceiveResponse(ResourceResponse(delegate()->response()), [this, protectedThis = Ref { *this }] {
         continueAfterDidReceiveResponse();
     });
 }
@@ -305,11 +304,11 @@ void ResourceHandle::receivedCancellation(const AuthenticationChallenge& challen
 {
     ASSERT(isMainThread());
 
-    if (challenge != d->m_currentWebChallenge)
+    if (!AuthenticationChallengeBase::equalForWebKitLegacyChallengeComparison(challenge, d->m_currentWebChallenge))
         return;
 
     if (client()) {
-        auto protectedThis = makeRef(*this);
+        Ref protectedThis { *this };
         client()->receivedCancellation(this, challenge);
     }
 }
@@ -324,7 +323,7 @@ void ResourceHandle::receivedChallengeRejection(const AuthenticationChallenge&)
     ASSERT_NOT_REACHED();
 }
 
-Optional<Credential> ResourceHandle::getCredential(const ResourceRequest& request, bool redirect)
+std::optional<Credential> ResourceHandle::getCredential(const ResourceRequest& request, bool redirect)
 {
     // m_user/m_pass are credentials given manually, for instance, by the arguments passed to XMLHttpRequest.open().
     Credential credential { d->m_user, d->m_password, CredentialPersistenceNone };
@@ -348,7 +347,7 @@ Optional<Credential> ResourceHandle::getCredential(const ResourceRequest& reques
     if (!d->m_initialCredential.isEmpty())
         return d->m_initialCredential;
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 void ResourceHandle::restartRequestWithCredential(const ProtectionSpace& protectionSpace, const Credential& credential)
@@ -364,11 +363,10 @@ void ResourceHandle::restartRequestWithCredential(const ProtectionSpace& protect
     d->m_curlRequest = createCurlRequest(WTFMove(previousRequest), RequestStatus::ReusedRequest);
     d->m_curlRequest->setAuthenticationScheme(protectionSpace.authenticationScheme());
     d->m_curlRequest->setUserPass(credential.user(), credential.password());
-    d->m_curlRequest->setStartTime(d->m_startTime);
     d->m_curlRequest->start();
 }
 
-void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* context, const ResourceRequest& request, StoredCredentialsPolicy storedCredentialsPolicy, ResourceError& error, ResourceResponse& response, Vector<char>& data)
+void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* context, const ResourceRequest& request, StoredCredentialsPolicy storedCredentialsPolicy, SecurityOrigin*, ResourceError& error, ResourceResponse& response, Vector<uint8_t>& data)
 {
     ASSERT(isMainThread());
     ASSERT(!request.isEmpty());
@@ -378,10 +376,8 @@ void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* contex
 
     bool defersLoading = false;
     bool shouldContentSniff = true;
-    bool shouldContentEncodingSniff = true;
-    RefPtr<ResourceHandle> handle = adoptRef(new ResourceHandle(context, request, &client, defersLoading, shouldContentSniff, shouldContentEncodingSniff));
+    RefPtr<ResourceHandle> handle = adoptRef(new ResourceHandle(context, request, &client, defersLoading, shouldContentSniff, ContentEncodingSniffingPolicy::Default, nullptr, false));
     handle->d->m_messageQueue = &client.messageQueue();
-    handle->d->m_startTime = MonotonicTime::now();
 
     if (request.url().protocolIsData()) {
         handle->handleDataURL();
@@ -393,10 +389,9 @@ void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* contex
 
     if (auto credential = handle->getCredential(handle->d->m_firstRequest, false)) {
         handle->d->m_curlRequest->setUserPass(credential->user(), credential->password());
-        handle->d->m_curlRequest->setAuthenticationScheme(ProtectionSpaceAuthenticationSchemeHTTPBasic);
+        handle->d->m_curlRequest->setAuthenticationScheme(ProtectionSpace::AuthenticationScheme::HTTPBasic);
     }
 
-    handle->d->m_curlRequest->setStartTime(handle->d->m_startTime);
     handle->d->m_curlRequest->start();
 
     do {
@@ -429,7 +424,7 @@ void ResourceHandle::continueAfterDidReceiveResponse()
 
 bool ResourceHandle::shouldRedirectAsGET(const ResourceRequest& request, bool crossOrigin)
 {
-    if (request.httpMethod() == "GET" || request.httpMethod() == "HEAD")
+    if (request.httpMethod() == "GET"_s || request.httpMethod() == "HEAD"_s)
         return false;
 
     if (!request.url().protocolIsInHTTPFamily())
@@ -438,10 +433,10 @@ bool ResourceHandle::shouldRedirectAsGET(const ResourceRequest& request, bool cr
     if (delegate()->response().isSeeOther())
         return true;
 
-    if ((delegate()->response().isMovedPermanently() || delegate()->response().isFound()) && (request.httpMethod() == "POST"))
+    if ((delegate()->response().isMovedPermanently() || delegate()->response().isFound()) && (request.httpMethod() == "POST"_s))
         return true;
 
-    if (crossOrigin && (request.httpMethod() == "DELETE"))
+    if (crossOrigin && (request.httpMethod() == "DELETE"_s))
         return true;
 
     return false;
@@ -454,7 +449,7 @@ void ResourceHandle::willSendRequest()
     static const int maxRedirects = 20;
 
     if (d->m_redirectCount++ > maxRedirects) {
-        client()->didFail(this, ResourceError::httpError(CURLE_TOO_MANY_REDIRECTS, delegate()->response().url()));
+        client()->didFail(this, ResourceError(CURLE_TOO_MANY_REDIRECTS, delegate()->response().url()));
         return;
     }
 
@@ -466,13 +461,13 @@ void ResourceHandle::willSendRequest()
     newRequest.setURL(newURL);
 
     if (shouldRedirectAsGET(newRequest, crossOrigin)) {
-        newRequest.setHTTPMethod("GET");
+        newRequest.setHTTPMethod("GET"_s);
         newRequest.setHTTPBody(nullptr);
         newRequest.clearHTTPContentType();
     }
 
     // Should not set Referer after a redirect from a secure resource to non-secure one.
-    if (!newURL.protocolIs("https") && protocolIs(newRequest.httpReferrer(), "https") && context()->shouldClearReferrerOnHTTPSToHTTPRedirect())
+    if (!newURL.protocolIs("https"_s) && protocolIs(newRequest.httpReferrer(), "https"_s) && context()->shouldClearReferrerOnHTTPSToHTTPRedirect())
         newRequest.clearHTTPReferrer();
 
     d->m_user = newURL.user();
@@ -484,11 +479,16 @@ void ResourceHandle::willSendRequest()
         // in a cross-origin redirect, we want to clear those headers here. 
         newRequest.clearHTTPAuthorization();
         newRequest.clearHTTPOrigin();
-        d->m_startTime = WTF::MonotonicTime::now();
     }
 
+    // Check if the redirected url is allowed to access the redirecting url's timing information.
+    if (!hasCrossOriginRedirect() && !WebCore::SecurityOrigin::create(newRequest.url())->canRequest(delegate()->response().url()))
+        markAsHavingCrossOriginRedirect();
+
+    incrementRedirectCount();
+
     ResourceResponse responseCopy = delegate()->response();
-    client()->willSendRequestAsync(this, WTFMove(newRequest), WTFMove(responseCopy), [this, protectedThis = makeRef(*this)] (ResourceRequest&& request) {
+    client()->willSendRequestAsync(this, WTFMove(newRequest), WTFMove(responseCopy), [this, protectedThis = Ref { *this }] (ResourceRequest&& request) {
         continueAfterWillSendRequest(WTFMove(request));
     });
 }
@@ -515,7 +515,6 @@ void ResourceHandle::continueAfterWillSendRequest(ResourceRequest&& request)
     if (shouldForwardCredential && credential)
         d->m_curlRequest->setUserPass(credential->user(), credential->password());
 
-    d->m_curlRequest->setStartTime(d->m_startTime);
     d->m_curlRequest->start();
 }
 
@@ -536,53 +535,53 @@ void ResourceHandle::handleDataURL()
     String data = url.substring(index + 1);
     auto originalSize = data.length();
 
-    bool base64 = mediaType.endsWithIgnoringASCIICase(";base64");
+    bool base64 = mediaType.endsWithIgnoringASCIICase(";base64"_s);
     if (base64)
         mediaType = mediaType.left(mediaType.length() - 7);
 
     if (mediaType.isEmpty())
         mediaType = "text/plain"_s;
 
-    String mimeType = extractMIMETypeFromMediaType(mediaType);
-    String charset = extractCharsetFromMediaType(mediaType);
+    auto mimeType = extractMIMETypeFromMediaType(mediaType);
+    auto charset = extractCharsetFromMediaType(mediaType);
 
     if (charset.isEmpty())
         charset = "US-ASCII"_s;
 
     ResourceResponse response;
-    response.setMimeType(mimeType);
-    response.setTextEncodingName(charset);
+    response.setMimeType(AtomString { mimeType });
+    response.setTextEncodingName(charset.toAtomString());
     response.setURL(d->m_firstRequest.url());
 
     if (base64) {
-        data = decodeURLEscapeSequences(data);
-        didReceiveResponse(WTFMove(response), [this, protectedThis = makeRef(*this)] {
+        data = PAL::decodeURLEscapeSequences(data);
+        didReceiveResponse(WTFMove(response), [this, protectedThis = Ref { *this }] {
             continueAfterDidReceiveResponse();
         });
 
         // didReceiveResponse might cause the client to be deleted.
         if (client()) {
-            Vector<char> out;
-            if (base64Decode(data, out, Base64IgnoreSpacesAndNewLines) && out.size() > 0)
-                client()->didReceiveBuffer(this, SharedBuffer::create(out.data(), out.size()), originalSize);
+            auto decodedData = base64Decode(data, Base64DecodeOptions::IgnoreSpacesAndNewLines);
+            if (decodedData && decodedData->size() > 0)
+                client()->didReceiveBuffer(this, SharedBuffer::create(decodedData->data(), decodedData->size()), originalSize);
         }
     } else {
-        TextEncoding encoding(charset);
-        data = decodeURLEscapeSequences(data, encoding);
-        didReceiveResponse(WTFMove(response), [this, protectedThis = makeRef(*this)] {
+        PAL::TextEncoding encoding(charset);
+        data = PAL::decodeURLEscapeSequences(data, encoding);
+        didReceiveResponse(WTFMove(response), [this, protectedThis = Ref { *this }] {
             continueAfterDidReceiveResponse();
         });
 
         // didReceiveResponse might cause the client to be deleted.
         if (client()) {
-            auto encodedData = encoding.encode(data, UnencodableHandling::URLEncodedEntities);
+            auto encodedData = encoding.encode(data, PAL::UnencodableHandling::URLEncodedEntities);
             if (encodedData.size())
                 client()->didReceiveBuffer(this, SharedBuffer::create(WTFMove(encodedData)), originalSize);
         }
     }
 
     if (client())
-        client()->didFinishLoading(this);
+        client()->didFinishLoading(this, { });
 }
 
 } // namespace WebCore

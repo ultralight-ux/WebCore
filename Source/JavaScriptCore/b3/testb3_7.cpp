@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,17 +26,17 @@
 #include "config.h"
 #include "testb3.h"
 
-#if ENABLE(B3_JIT)
+#if ENABLE(B3_JIT) && !CPU(ARM)
 
 void testPinRegisters()
 {
     auto go = [&] (bool pin) {
         Procedure proc;
-        RegisterSet csrs;
-        csrs.merge(RegisterSet::calleeSaveRegisters());
-        csrs.exclude(RegisterSet::stackRegisters());
+        RegisterSetBuilder csrs;
+        csrs.merge(RegisterSetBuilder::calleeSaveRegisters());
+        csrs.exclude(RegisterSetBuilder::stackRegisters());
         if (pin) {
-            csrs.forEach(
+            csrs.buildAndValidate().forEach(
                 [&] (Reg reg) {
                     proc.pinRegister(reg);
                 });
@@ -71,7 +71,7 @@ void testPinRegisters()
                 inst.forEachTmpFast(
                     [&] (Air::Tmp tmp) {
                         if (tmp.isReg())
-                            usesCSRs |= csrs.get(tmp.reg());
+                            usesCSRs |= csrs.buildAndValidate().contains(tmp.reg(), IgnoreVectors);
                     });
             }
         }
@@ -81,7 +81,7 @@ void testPinRegisters()
             usesCSRs = false;
         }
         for (const RegisterAtOffset& regAtOffset : proc.calleeSaveRegisterAtOffsetList())
-            usesCSRs |= csrs.get(regAtOffset.reg());
+            usesCSRs |= csrs.buildAndValidate().contains(regAtOffset.reg(), IgnoreVectors);
         CHECK_EQ(usesCSRs, !pin);
     };
 
@@ -159,10 +159,10 @@ void testX86LeaAddAdd()
         checkDisassembly(
             *code,
             [&] (const char* disassembly) -> bool {
-                return strstr(disassembly, "lea 0x64(%rdi,%rsi), %rax")
-                    || strstr(disassembly, "lea 0x64(%rsi,%rdi), %rax");
+                return strstr(disassembly, "lea 0x64(%rdi,%rsi,1), %rax")
+                    || strstr(disassembly, "lea 0x64(%rsi,%rdi,1), %rax");
             },
-            "Expected to find something like lea 0x64(%rdi,%rsi), %rax but didn't!");
+            "Expected to find something like lea 0x64(%rdi,%rsi,1), %rax but didn't!");
     }
 }
 
@@ -208,10 +208,10 @@ void testX86LeaAddShlLeftScale1()
         checkDisassembly(
             *code,
             [&] (const char* disassembly) -> bool {
-                return strstr(disassembly, "lea (%rdi,%rsi), %rax")
-                    || strstr(disassembly, "lea (%rsi,%rdi), %rax");
+                return strstr(disassembly, "lea (%rdi,%rsi,1), %rax")
+                    || strstr(disassembly, "lea (%rsi,%rdi,1), %rax");
             },
-            "Expected to find something like lea (%rdi,%rsi), %rax but didn't!");
+            "Expected to find something like lea (%rdi,%rsi,1), %rax but didn't!");
     }
 }
 
@@ -359,14 +359,14 @@ void testReduceStrengthReassociation(bool flip)
 
     proc.resetReachability();
 
-    if (shouldBeVerbose()) {
+    if (shouldBeVerbose(proc)) {
         dataLog("IR before reduceStrength:\n");
         dataLog(proc);
     }
 
     reduceStrength(proc);
 
-    if (shouldBeVerbose()) {
+    if (shouldBeVerbose(proc)) {
         dataLog("IR after reduceStrength:\n");
         dataLog(proc);
     }
@@ -549,13 +549,19 @@ void generateLoopNotBackwardsDominant(Procedure& proc, std::array<int, 100>& arr
     end->appendNew<Value>(proc, Return, Origin());
 }
 
-static int oneFunction(int* callCount)
+extern "C" {
+static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(oneFunction, int, (int* callCount));
+}
+JSC_DEFINE_JIT_OPERATION(oneFunction, int, (int* callCount))
 {
     (*callCount)++;
     return 1;
 }
 
-static void noOpFunction()
+extern "C" {
+static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(noOpFunction, void, ());
+}
+JSC_DEFINE_JIT_OPERATION(noOpFunction, void, ())
 {
 }
 
@@ -571,7 +577,7 @@ void testLICMPure()
         [&] (BasicBlock* loop, Value*) -> Value* {
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), Effects::none(),
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -590,13 +596,14 @@ void testLICMPureSideExits()
         [&] (BasicBlock* loop, Value*) -> Value* {
             Effects effects = Effects::none();
             effects.exitsSideways = true;
+            effects.reads = HeapRange::top();
             loop->appendNew<CCallValue>(
                 proc, Void, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(noOpFunction)));
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(noOpFunction)));
 
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), Effects::none(),
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -617,11 +624,11 @@ void testLICMPureWritesPinned()
             effects.writesPinned = true;
             loop->appendNew<CCallValue>(
                 proc, Void, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(noOpFunction)));
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(noOpFunction)));
 
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), Effects::none(),
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -642,11 +649,11 @@ void testLICMPureWrites()
             effects.writes = HeapRange(63479);
             loop->appendNew<CCallValue>(
                 proc, Void, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(noOpFunction)));
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(noOpFunction)));
 
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), Effects::none(),
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -665,7 +672,7 @@ void testLICMReadsLocalState()
             effects.readsLocalState = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -686,7 +693,7 @@ void testLICMReadsPinned()
             effects.readsPinned = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -707,7 +714,7 @@ void testLICMReads()
             effects.reads = HeapRange::top();
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -727,7 +734,7 @@ void testLICMPureNotBackwardsDominant()
         [&] (BasicBlock* loop, Value*) -> Value* {
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), Effects::none(),
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -744,7 +751,7 @@ void testLICMPureFoiledByChild()
         [&] (BasicBlock* loop, Value* index) -> Value* {
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), Effects::none(),
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0),
                 index);
         });
@@ -765,7 +772,7 @@ void testLICMPureNotBackwardsDominantFoiledByChild()
         [&] (BasicBlock* loop, Value* index) -> Value* {
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), Effects::none(),
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0),
                 index);
         });
@@ -783,9 +790,10 @@ void testLICMExitsSideways()
         [&] (BasicBlock* loop, Value*) -> Value* {
             Effects effects = Effects::none();
             effects.exitsSideways = true;
+            effects.reads = HeapRange::top();
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -804,7 +812,7 @@ void testLICMWritesLocalState()
             effects.writesLocalState = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -823,7 +831,7 @@ void testLICMWrites()
             effects.writes = HeapRange(666);
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -842,7 +850,7 @@ void testLICMFence()
             effects.fence = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -861,7 +869,7 @@ void testLICMWritesPinned()
             effects.writesPinned = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -882,7 +890,7 @@ void testLICMControlDependent()
             effects.controlDependent = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -904,7 +912,7 @@ void testLICMControlDependentNotBackwardsDominant()
             effects.controlDependent = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -921,15 +929,16 @@ void testLICMControlDependentSideExits()
         [&] (BasicBlock* loop, Value*) -> Value* {
             Effects effects = Effects::none();
             effects.exitsSideways = true;
+            effects.reads = HeapRange::top();
             loop->appendNew<CCallValue>(
                 proc, Void, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(noOpFunction)));
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(noOpFunction)));
         
             effects = Effects::none();
             effects.controlDependent = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -948,13 +957,13 @@ void testLICMReadsPinnedWritesPinned()
             effects.writesPinned = true;
             loop->appendNew<CCallValue>(
                 proc, Void, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(noOpFunction)));
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(noOpFunction)));
         
             effects = Effects::none();
             effects.readsPinned = true;
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -975,13 +984,13 @@ void testLICMReadsWritesDifferentHeaps()
             effects.writes = HeapRange(6436);
             loop->appendNew<CCallValue>(
                 proc, Void, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(noOpFunction)));
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(noOpFunction)));
         
             effects = Effects::none();
             effects.reads = HeapRange(4886);
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -1000,13 +1009,13 @@ void testLICMReadsWritesOverlappingHeaps()
             effects.writes = HeapRange(6436, 74458);
             loop->appendNew<CCallValue>(
                 proc, Void, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(noOpFunction)));
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(noOpFunction)));
         
             effects = Effects::none();
             effects.reads = HeapRange(48864, 78239);
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(), effects,
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -1023,7 +1032,7 @@ void testLICMDefaultCall()
         [&] (BasicBlock* loop, Value*) -> Value* {
             return loop->appendNew<CCallValue>(
                 proc, Int32, Origin(),
-                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(oneFunction)),
+                loop->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(oneFunction)),
                 loop->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
         });
 
@@ -1182,6 +1191,34 @@ void testWasmAddress()
         CHECK_EQ(numToStore, value);
 }
 
+void testWasmAddressWithOffset()
+{
+    Procedure proc;
+    GPRReg pinnedGPR = GPRInfo::argumentGPR2;
+    proc.pinRegister(pinnedGPR);
+
+    Vector<uint8_t> values(3);
+    values[0] = 20;
+    values[1] = 21;
+    values[2] = 22;
+    uint8_t numToStore = 42;
+
+    BasicBlock* root = proc.addBlock();
+
+    // Root
+    Value* offset = root->appendNew<Value>(proc, Trunc, Origin(), root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0));
+    Value* valueToStore = root->appendNew<Value>(proc, Trunc, Origin(), root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR1));
+    Value* pointer = root->appendNew<Value>(proc, ZExt32, Origin(), offset);
+    root->appendNew<MemoryValue>(proc, Store8, Origin(), valueToStore, root->appendNew<WasmAddressValue>(proc, Origin(), pointer, pinnedGPR), 1);
+    root->appendNewControlValue(proc, Return, Origin());
+
+    auto code = compileProc(proc);
+    invoke<void>(*code, 1, numToStore, values.data());
+    CHECK_EQ(20U, values[0]);
+    CHECK_EQ(21U, values[1]);
+    CHECK_EQ(42U, values[2]);
+}
+
 void testFastTLSLoad()
 {
 #if ENABLE(FAST_TLS_JIT)
@@ -1191,7 +1228,7 @@ void testFastTLSLoad()
     BasicBlock* root = proc.addBlock();
 
     PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, pointerType(), Origin());
-    patchpoint->clobber(RegisterSet::macroScratchRegisters());
+    patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
     patchpoint->setGenerator(
         [&] (CCallHelpers& jit, const StackmapGenerationParams& params) {
             AllowMacroScratchRegisterUsage allowScratch(jit);
@@ -1211,7 +1248,7 @@ void testFastTLSStore()
     BasicBlock* root = proc.addBlock();
 
     PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, Void, Origin());
-    patchpoint->clobber(RegisterSet::macroScratchRegisters());
+    patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
     patchpoint->numGPScratchRegisters = 1;
     patchpoint->setGenerator(
         [&] (CCallHelpers& jit, const StackmapGenerationParams& params) {
@@ -1340,7 +1377,12 @@ void testFloatEqualOrUnorderedDontFold()
     }
 }
 
-static void functionNineArgs(int32_t, void*, void*, void*, void*, void*, void*, void*, void*) { }
+extern "C" {
+static JSC_DECLARE_JIT_OPERATION_WITHOUT_WTF_INTERNAL(functionNineArgs, void, (int32_t, void*, void*, void*, void*, void*, void*, void*, void*));
+}
+JSC_DEFINE_JIT_OPERATION(functionNineArgs, void, (int32_t, void*, void*, void*, void*, void*, void*, void*, void*))
+{
+}
 
 void testShuffleDoesntTrashCalleeSaves()
 {
@@ -1350,19 +1392,16 @@ void testShuffleDoesntTrashCalleeSaves()
     BasicBlock* likely = proc.addBlock();
     BasicBlock* unlikely = proc.addBlock();
 
-    RegisterSet regs = RegisterSet::allGPRs();
-    regs.exclude(RegisterSet::stackRegisters());
-    regs.exclude(RegisterSet::reservedHardwareRegisters());
-    regs.exclude(RegisterSet::calleeSaveRegisters());
-    regs.exclude(RegisterSet::argumentGPRS());
+    auto regs = RegisterSetBuilder::registersToSaveForCCall(RegisterSetBuilder::allScalarRegisters());
 
     unsigned i = 0;
     Vector<Value*> patches;
-    for (Reg reg : regs) {
+    for (Reg reg : regs.buildAndValidate()) {
+        if (RegisterSetBuilder::argumentGPRS().contains(reg, IgnoreVectors) || !reg.isGPR())
+            continue;
         ++i;
         PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, Int32, Origin());
-        patchpoint->clobber(RegisterSet::macroScratchRegisters());
-        RELEASE_ASSERT(reg.isGPR());
+        patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
         patchpoint->resultConstraints = { ValueRep::reg(reg.gpr()) };
         patchpoint->setGenerator(
             [=] (CCallHelpers& jit, const StackmapGenerationParams& params) {
@@ -1382,7 +1421,7 @@ void testShuffleDoesntTrashCalleeSaves()
     Value* arg8 = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::toArgumentRegister(7 % GPRInfo::numberOfArgumentRegisters));
 
     PatchpointValue* ptr = root->appendNew<PatchpointValue>(proc, Int64, Origin());
-    ptr->clobber(RegisterSet::macroScratchRegisters());
+    ptr->clobber(RegisterSetBuilder::macroClobberedRegisters());
     ptr->resultConstraints = { ValueRep::reg(GPRInfo::regCS0) };
     ptr->appendSomeRegister(arg1);
     ptr->setGenerator(
@@ -1410,11 +1449,11 @@ void testShuffleDoesntTrashCalleeSaves()
 
     unlikely->appendNew<CCallValue>(
         proc, Void, Origin(),
-        unlikely->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<B3CCallPtrTag>(functionNineArgs)),
+        unlikely->appendNew<ConstPtrValue>(proc, Origin(), tagCFunction<OperationPtrTag>(functionNineArgs)),
         constNumber, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 
     PatchpointValue* voidPatch = unlikely->appendNew<PatchpointValue>(proc, Void, Origin());
-    voidPatch->clobber(RegisterSet::macroScratchRegisters());
+    voidPatch->clobber(RegisterSetBuilder::macroClobberedRegisters());
     for (Value* v : patches)
         voidPatch->appendSomeRegister(v);
     voidPatch->appendSomeRegister(arg1);
@@ -1462,15 +1501,15 @@ void testReportUsedRegistersLateUseFollowedByEarlyDefDoesNotMarkUseAsDead()
         return;
     BasicBlock* root = proc.addBlock();
 
-    RegisterSet allRegs = RegisterSet::allGPRs();
-    allRegs.exclude(RegisterSet::stackRegisters());
-    allRegs.exclude(RegisterSet::reservedHardwareRegisters());
+    RegisterSetBuilder allRegs = RegisterSetBuilder::allGPRs();
+    allRegs.exclude(RegisterSetBuilder::stackRegisters());
+    allRegs.exclude(RegisterSetBuilder::reservedHardwareRegisters());
 
     {
         // Make every reg 42 (just needs to be a value other than 10).
         Value* const42 = root->appendNew<Const32Value>(proc, Origin(), 42);
         PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, Void, Origin());
-        for (Reg reg : allRegs)
+        for (Reg reg : allRegs.buildAndValidate())
             patchpoint->append(const42, ValueRep::reg(reg));
         patchpoint->setGenerator([&] (CCallHelpers&, const StackmapGenerationParams&) { });
     }
@@ -1478,10 +1517,10 @@ void testReportUsedRegistersLateUseFollowedByEarlyDefDoesNotMarkUseAsDead()
     {
         Value* const10 = root->appendNew<Const32Value>(proc, Origin(), 10);
         PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, Void, Origin());
-        for (Reg reg : allRegs)
+        for (Reg reg : allRegs.buildAndValidate())
             patchpoint->append(const10, ValueRep::lateReg(reg));
         patchpoint->setGenerator([&] (CCallHelpers& jit, const StackmapGenerationParams&) {
-            for (Reg reg : allRegs) {
+            for (Reg reg : allRegs.buildAndValidate()) {
                 auto done = jit.branch32(CCallHelpers::Equal, reg.gpr(), CCallHelpers::TrustedImm32(10));
                 jit.breakpoint();
                 done.link(&jit);
@@ -1493,7 +1532,7 @@ void testReportUsedRegistersLateUseFollowedByEarlyDefDoesNotMarkUseAsDead()
         PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, Int32, Origin());
         patchpoint->resultConstraints = { ValueRep::SomeEarlyRegister };
         patchpoint->setGenerator([&] (CCallHelpers&, const StackmapGenerationParams& params) {
-            RELEASE_ASSERT(allRegs.contains(params[0].gpr()));
+            RELEASE_ASSERT(allRegs.buildAndValidate().contains(params[0].gpr(), IgnoreVectors));
         });
     }
 
@@ -1543,7 +1582,7 @@ void testInfiniteLoopDoesntCauseBadHoisting()
 
     // The patchpoint early ret() works because we don't have callee saves.
     auto code = compileProc(proc);
-    RELEASE_ASSERT(!proc.calleeSaveRegisterAtOffsetList().size()); 
+    RELEASE_ASSERT(!proc.calleeSaveRegisterAtOffsetList().registerCount());
     invoke<void>(*code, static_cast<uint64_t>(55)); // Shouldn't crash dereferncing 55.
 }
 
@@ -1553,7 +1592,7 @@ static void testSimpleTuplePair(unsigned first, int64_t second)
     BasicBlock* root = proc.addBlock();
 
     PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, proc.addTuple({ Int32, Int64 }), Origin());
-    patchpoint->clobber(RegisterSet::macroScratchRegisters());
+    patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
     patchpoint->resultConstraints = { ValueRep::SomeRegister, ValueRep::SomeRegister };
     patchpoint->setGenerator([&] (CCallHelpers& jit, const StackmapGenerationParams& params) {
         AllowMacroScratchRegisterUsage allowScratch(jit);
@@ -1574,7 +1613,7 @@ static void testSimpleTuplePairUnused(unsigned first, int64_t second)
     BasicBlock* root = proc.addBlock();
 
     PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, proc.addTuple({ Int32, Int64, Double }), Origin());
-    patchpoint->clobber(RegisterSet::macroScratchRegisters());
+    patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
     patchpoint->resultConstraints = { ValueRep::SomeRegister, ValueRep::SomeRegister, ValueRep::SomeRegister };
     patchpoint->setGenerator([&] (CCallHelpers& jit, const StackmapGenerationParams& params) {
         AllowMacroScratchRegisterUsage allowScratch(jit);
@@ -1596,7 +1635,7 @@ static void testSimpleTuplePairStack(unsigned first, int64_t second)
     BasicBlock* root = proc.addBlock();
 
     PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, proc.addTuple({ Int32, Int64 }), Origin());
-    patchpoint->clobber(RegisterSet::macroScratchRegisters());
+    patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
     patchpoint->resultConstraints = { ValueRep::SomeRegister, ValueRep::stackArgument(0) };
     patchpoint->setGenerator([&] (CCallHelpers& jit, const StackmapGenerationParams& params) {
         AllowMacroScratchRegisterUsage allowScratch(jit);
@@ -1673,7 +1712,7 @@ static void tailDupedTuplePair(unsigned first, double second)
 
     Value* test = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
     PatchpointValue* patchpoint = root->appendNew<PatchpointValue>(proc, tupleType, Origin());
-    patchpoint->clobber(RegisterSet::macroScratchRegisters());
+    patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
     patchpoint->resultConstraints = { ValueRep::SomeRegister, ValueRep::stackArgument(0) };
     patchpoint->setGenerator([&] (CCallHelpers& jit, const StackmapGenerationParams& params) {
         AllowMacroScratchRegisterUsage allowScratch(jit);
@@ -1732,7 +1771,7 @@ static void tuplePairVariableLoop(unsigned first, uint64_t second)
         Value* first = body->appendNew<ExtractValue>(proc, Origin(), Int32, tuple, 0);
         Value* second = body->appendNew<ExtractValue>(proc, Origin(), Int64, tuple, 1);
         PatchpointValue* patchpoint = body->appendNew<PatchpointValue>(proc, tupleType, Origin());
-        patchpoint->clobber(RegisterSet::macroScratchRegisters());
+        patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
         patchpoint->append({ first, ValueRep::SomeRegister });
         patchpoint->append({ second, ValueRep::SomeRegister });
         patchpoint->resultConstraints = { ValueRep::SomeEarlyRegister, ValueRep::stackArgument(0) };
@@ -1801,7 +1840,7 @@ static void tupleNestedLoop(int32_t first, double second)
         Value* second = outerLoop->appendNew<ExtractValue>(proc, Origin(), Double, tuple, 1);
         Value* third = outerLoop->appendNew<VariableValue>(proc, B3::Get, Origin(), tookInner);
         PatchpointValue* patchpoint = outerLoop->appendNew<PatchpointValue>(proc, tupleType, Origin());
-        patchpoint->clobber(RegisterSet::macroScratchRegisters());
+        patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
         patchpoint->append({ first, ValueRep::SomeRegisterWithClobber });
         patchpoint->append({ second, ValueRep::SomeRegisterWithClobber });
         patchpoint->append({ third, ValueRep::SomeRegisterWithClobber });
@@ -1823,7 +1862,7 @@ static void tupleNestedLoop(int32_t first, double second)
         Value* first = innerLoop->appendNew<ExtractValue>(proc, Origin(), Int32, tuple, 0);
         Value* second = innerLoop->appendNew<ExtractValue>(proc, Origin(), Double, tuple, 1);
         PatchpointValue* patchpoint = innerLoop->appendNew<PatchpointValue>(proc, tupleType, Origin());
-        patchpoint->clobber(RegisterSet::macroScratchRegisters());
+        patchpoint->clobber(RegisterSetBuilder::macroClobberedRegisters());
         patchpoint->append({ first, ValueRep::SomeRegisterWithClobber });
         patchpoint->append({ second, ValueRep::SomeRegisterWithClobber });
         patchpoint->resultConstraints = { ValueRep::SomeRegister, ValueRep::SomeRegister, ValueRep::SomeEarlyRegister };
@@ -1875,6 +1914,443 @@ void addTupleTests(const char* filter, Deque<RefPtr<SharedTask<void()>>>& tasks)
     RUN_BINARY(tuplePairVariableLoop<false>, int32Operands(), int64Operands());
     RUN_BINARY(tupleNestedLoop<true>, int32Operands(), int64Operands());
     RUN_BINARY(tupleNestedLoop<false>, int32Operands(), int64Operands());
+}
+
+template <typename FloatType>
+static void testFMaxMin()
+{
+    auto checkResult = [&] (FloatType result, FloatType expected) {
+        CHECK_EQ(std::isnan(result), std::isnan(expected));
+        if (!std::isnan(expected)) {
+            CHECK_EQ(result, expected);
+            CHECK_EQ(std::signbit(result), std::signbit(expected));
+        }
+    };
+
+    auto runArgTest = [&] (bool max, FloatType arg1, FloatType arg2) {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+        Value* a = root->appendNew<ArgumentRegValue>(proc, Origin(), FPRInfo::argumentFPR0);
+        Value* b = root->appendNew<ArgumentRegValue>(proc, Origin(), FPRInfo::argumentFPR1);
+        if (std::is_same_v<FloatType, float>) {
+            a = root->appendNew<Value>(proc, Trunc, Origin(), a);
+            b = root->appendNew<Value>(proc, Trunc, Origin(), b);
+        }
+        Value* result = root->appendNew<Value>(proc, max ? FMax : FMin, Origin(), a, b);
+        root->appendNewControlValue(proc, Return, Origin(), result);
+        auto code = compileProc(proc);
+        return invoke<FloatType>(*code, arg1, arg2);
+    };
+
+    auto runConstTest = [&] (bool max, FloatType arg1, FloatType arg2) {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+        Value* a;
+        Value* b;
+        if (std::is_same_v<FloatType, float>) {
+            a = root->appendNew<ConstFloatValue>(proc, Origin(), arg1);
+            b = root->appendNew<ConstFloatValue>(proc, Origin(), arg2);
+        } else {
+            a = root->appendNew<ConstDoubleValue>(proc, Origin(), arg1);
+            b = root->appendNew<ConstDoubleValue>(proc, Origin(), arg2);
+        }
+        Value* result = root->appendNew<Value>(proc, max ? FMax : FMin, Origin(), a, b);
+        root->appendNewControlValue(proc, Return, Origin(), result);
+        auto code = compileProc(proc);
+        return invoke<FloatType>(*code, arg1, arg2);
+    };
+
+    auto runMinTest = [&] (FloatType a, FloatType b, FloatType expected) {
+        checkResult(runArgTest(false, a, b), expected);
+        checkResult(runArgTest(false, b, a), expected);
+        checkResult(runConstTest(false, a, b), expected);
+        checkResult(runConstTest(false, b, a), expected);
+    };
+
+    auto runMaxTest = [&] (FloatType a, FloatType b, FloatType expected) {
+        checkResult(runArgTest(true, a, b), expected);
+        checkResult(runConstTest(true, a, b), expected);
+        checkResult(runArgTest(true, b, a), expected);
+        checkResult(runConstTest(true, b, a), expected);
+    };
+
+    auto inf = std::numeric_limits<FloatType>::infinity();
+
+    runMinTest(10.0, 0.0, 0.0);
+    runMinTest(-10.0, 4.0, -10.0);
+    runMinTest(4.1, 4.2, 4.1);
+    runMinTest(-4.1, -4.2, -4.2);
+    runMinTest(0.0, -0.0, -0.0);
+    runMinTest(-0.0, -0.0, -0.0);
+    runMinTest(0.0, 0.0, 0.0);
+    runMinTest(-inf, 0, -inf);
+    runMinTest(-inf, inf, -inf);
+    runMinTest(inf, 42.0, 42.0);
+    if constexpr (std::is_same_v<FloatType, float>) {
+        runMinTest(0.0, std::nanf(""), std::nanf(""));
+        runMinTest(std::nanf(""), 42.0, std::nanf(""));
+    } else if constexpr (std::is_same_v<FloatType, double>) {
+        runMinTest(0.0, std::nan(""), std::nan(""));
+        runMinTest(std::nan(""), 42.0, std::nan(""));
+    }
+
+
+    runMaxTest(0.0, 10.0, 10.0);
+    runMaxTest(-10.0, 4.0, 4.0);
+    runMaxTest(4.1, 4.2, 4.2);
+    runMaxTest(-4.1, -4.2, -4.1);
+    runMaxTest(0.0, -0.0, 0.0);
+    runMaxTest(-0.0, -0.0, -0.0);
+    runMaxTest(0.0, 0.0, 0.0);
+    runMaxTest(-inf, 0, 0);
+    runMaxTest(-inf, inf, inf);
+    runMaxTest(inf, 42.0, inf);
+    if constexpr (std::is_same_v<FloatType, float>) {
+        runMaxTest(0.0, std::nanf(""), std::nanf(""));
+        runMaxTest(std::nanf(""), 42.0, std::nanf(""));
+    } else if constexpr (std::is_same_v<FloatType, double>) {
+        runMaxTest(0.0, std::nan(""), std::nan(""));
+        runMaxTest(std::nan(""), 42.0, std::nan(""));
+    }
+}
+
+void testFloatMaxMin()
+{
+    testFMaxMin<float>();
+}
+
+void testDoubleMaxMin()
+{
+    testFMaxMin<double>();
+}
+
+void testVectorOrConstants(v128_t lhs, v128_t rhs)
+{
+    alignas(16) v128_t vector;
+    {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+
+        Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+        Value* lhsConstant = root->appendNew<Const128Value>(proc, Origin(), lhs);
+        Value* rhsConstant = root->appendNew<Const128Value>(proc, Origin(), rhs);
+        Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorOr, B3::V128, SIMDLane::v128, SIMDSignMode::None, lhsConstant, rhsConstant);
+        root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+        root->appendNewControlValue(proc, Return, Origin());
+
+        compileAndRun<void>(proc, &vector);
+        CHECK(bitEquals(vector, vectorOr(lhs, rhs)));
+    }
+    {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+
+        Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+        Value* lhsConstant = root->appendNew<Const128Value>(proc, Origin(), lhs);
+        Value* rhsConstant = root->appendNew<Const128Value>(proc, Origin(), rhs);
+        Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+        Value* first = root->appendNew<SIMDValue>(proc, Origin(), VectorOr, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, lhsConstant);
+        Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorOr, B3::V128, SIMDLane::v128, SIMDSignMode::None, first, rhsConstant);
+        root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+        root->appendNewControlValue(proc, Return, Origin());
+        auto code = compileProc(proc);
+
+        for (auto& operand : v128Operands()) {
+            vector = operand.value;
+            invoke<void>(*code, &vector);
+            CHECK(bitEquals(vector, vectorOr(vectorOr(lhs, operand.value), rhs)));
+        }
+    }
+}
+
+void testVectorOrSelf()
+{
+    alignas(16) v128_t vector;
+    Procedure proc;
+    BasicBlock* root = proc.addBlock();
+
+    Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+    Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+    Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorOr, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, input);
+    root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+    root->appendNewControlValue(proc, Return, Origin());
+
+    auto code = compileProc(proc);
+
+    for (auto& operand : v128Operands()) {
+        vector = operand.value;
+        invoke<void>(*code, &vector);
+        CHECK(bitEquals(vector, vectorOr(operand.value, operand.value)));
+    }
+}
+
+void testVectorXorOrAllOnesToVectorAndXor()
+{
+    alignas(16) v128_t vectors[2];
+    Procedure proc;
+    BasicBlock* root = proc.addBlock();
+
+    Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+    Value* constant = root->appendNew<Const128Value>(proc, Origin(), vectorAllOnes());
+    Value* input0 = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+    Value* input1 = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address, sizeof(v128_t));
+    Value* result0 = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input0, constant);
+    Value* result1 = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input1, constant);
+    Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorOr, B3::V128, SIMDLane::v128, SIMDSignMode::None, result0, result1);
+    root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+    root->appendNewControlValue(proc, Return, Origin());
+
+    auto code = compileProc(proc);
+
+    for (auto& operand0 : v128Operands()) {
+        for (auto& operand1 : v128Operands()) {
+            vectors[0] = operand0.value;
+            vectors[1] = operand1.value;
+            invoke<void>(*code, vectors);
+            CHECK(bitEquals(vectors[0], vectorOr(vectorXor(operand0.value, vectorAllOnes()), vectorXor(operand1.value, vectorAllOnes()))));
+        }
+    }
+}
+
+void testVectorXorAndAllOnesToVectorOrXor()
+{
+    alignas(16) v128_t vectors[2];
+    Procedure proc;
+    BasicBlock* root = proc.addBlock();
+
+    Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+    Value* constant = root->appendNew<Const128Value>(proc, Origin(), vectorAllOnes());
+    Value* input0 = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+    Value* input1 = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address, sizeof(v128_t));
+    Value* result0 = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input0, constant);
+    Value* result1 = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input1, constant);
+    Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorAnd, B3::V128, SIMDLane::v128, SIMDSignMode::None, result0, result1);
+    root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+    root->appendNewControlValue(proc, Return, Origin());
+
+    auto code = compileProc(proc);
+
+    for (auto& operand0 : v128Operands()) {
+        for (auto& operand1 : v128Operands()) {
+            vectors[0] = operand0.value;
+            vectors[1] = operand1.value;
+            invoke<void>(*code, vectors);
+            CHECK(bitEquals(vectors[0], vectorAnd(vectorXor(operand0.value, vectorAllOnes()), vectorXor(operand1.value, vectorAllOnes()))));
+        }
+    }
+}
+
+void testVectorXorOrAllOnesConstantToVectorAndXor(v128_t constant)
+{
+    alignas(16) v128_t vector;
+    Procedure proc;
+    BasicBlock* root = proc.addBlock();
+
+    Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+    Value* allOnes = root->appendNew<Const128Value>(proc, Origin(), vectorAllOnes());
+    Value* constant0 = root->appendNew<Const128Value>(proc, Origin(), constant);
+    Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+    Value* result0 = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, allOnes);
+    Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorOr, B3::V128, SIMDLane::v128, SIMDSignMode::None, result0, constant0);
+    root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+    root->appendNewControlValue(proc, Return, Origin());
+
+    auto code = compileProc(proc);
+
+    for (auto& operand : v128Operands()) {
+        vector = operand.value;
+        invoke<void>(*code, &vector);
+        CHECK(bitEquals(vector, vectorOr(vectorXor(operand.value, vectorAllOnes()), constant)));
+    }
+}
+
+void testVectorXorAndAllOnesConstantToVectorOrXor(v128_t constant)
+{
+    alignas(16) v128_t vector;
+    Procedure proc;
+    BasicBlock* root = proc.addBlock();
+
+    Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+    Value* allOnes = root->appendNew<Const128Value>(proc, Origin(), vectorAllOnes());
+    Value* constant0 = root->appendNew<Const128Value>(proc, Origin(), constant);
+    Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+    Value* result0 = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, allOnes);
+    Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorAnd, B3::V128, SIMDLane::v128, SIMDSignMode::None, result0, constant0);
+    root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+    root->appendNewControlValue(proc, Return, Origin());
+
+    auto code = compileProc(proc);
+
+    for (auto& operand : v128Operands()) {
+        vector = operand.value;
+        invoke<void>(*code, &vector);
+        CHECK(bitEquals(vector, vectorAnd(vectorXor(operand.value, vectorAllOnes()), constant)));
+    }
+}
+
+void testVectorAndConstants(v128_t lhs, v128_t rhs)
+{
+    alignas(16) v128_t vector;
+    {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+
+        Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+        Value* lhsConstant = root->appendNew<Const128Value>(proc, Origin(), lhs);
+        Value* rhsConstant = root->appendNew<Const128Value>(proc, Origin(), rhs);
+        Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorAnd, B3::V128, SIMDLane::v128, SIMDSignMode::None, lhsConstant, rhsConstant);
+        root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+        root->appendNewControlValue(proc, Return, Origin());
+
+        compileAndRun<void>(proc, &vector);
+        CHECK(bitEquals(vector, vectorAnd(lhs, rhs)));
+    }
+    {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+
+        Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+        Value* lhsConstant = root->appendNew<Const128Value>(proc, Origin(), lhs);
+        Value* rhsConstant = root->appendNew<Const128Value>(proc, Origin(), rhs);
+        Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+        Value* first = root->appendNew<SIMDValue>(proc, Origin(), VectorAnd, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, lhsConstant);
+        Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorAnd, B3::V128, SIMDLane::v128, SIMDSignMode::None, first, rhsConstant);
+        root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+        root->appendNewControlValue(proc, Return, Origin());
+        auto code = compileProc(proc);
+
+        for (auto& operand : v128Operands()) {
+            vector = operand.value;
+            invoke<void>(*code, &vector);
+            CHECK(bitEquals(vector, vectorAnd(vectorAnd(lhs, operand.value), rhs)));
+        }
+    }
+}
+
+void testVectorAndSelf()
+{
+    alignas(16) v128_t vector;
+    Procedure proc;
+    BasicBlock* root = proc.addBlock();
+
+    Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+    Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+    Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorAnd, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, input);
+    root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+    root->appendNewControlValue(proc, Return, Origin());
+
+    auto code = compileProc(proc);
+
+    for (auto& operand : v128Operands()) {
+        vector = operand.value;
+        invoke<void>(*code, &vector);
+        CHECK(bitEquals(vector, vectorAnd(operand.value, operand.value)));
+    }
+}
+
+void testVectorXorConstants(v128_t lhs, v128_t rhs)
+{
+    alignas(16) v128_t vector;
+    {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+
+        Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+        Value* lhsConstant = root->appendNew<Const128Value>(proc, Origin(), lhs);
+        Value* rhsConstant = root->appendNew<Const128Value>(proc, Origin(), rhs);
+        Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, lhsConstant, rhsConstant);
+        root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+        root->appendNewControlValue(proc, Return, Origin());
+
+        compileAndRun<void>(proc, &vector);
+        CHECK(bitEquals(vector, vectorXor(lhs, rhs)));
+    }
+    {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+
+        Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+        Value* lhsConstant = root->appendNew<Const128Value>(proc, Origin(), lhs);
+        Value* rhsConstant = root->appendNew<Const128Value>(proc, Origin(), rhs);
+        Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+        Value* first = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, lhsConstant);
+        Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, first, rhsConstant);
+        root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+        root->appendNewControlValue(proc, Return, Origin());
+        auto code = compileProc(proc);
+
+        for (auto& operand : v128Operands()) {
+            vector = operand.value;
+            invoke<void>(*code, &vector);
+            CHECK(bitEquals(vector, vectorXor(vectorXor(lhs, operand.value), rhs)));
+        }
+    }
+}
+
+void testVectorXorSelf()
+{
+    alignas(16) v128_t vector;
+    Procedure proc;
+    BasicBlock* root = proc.addBlock();
+
+    Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+    Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+    Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, input);
+    root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+    root->appendNewControlValue(proc, Return, Origin());
+
+    auto code = compileProc(proc);
+
+    for (auto& operand : v128Operands()) {
+        vector = operand.value;
+        invoke<void>(*code, &vector);
+        CHECK(bitEquals(vector, vectorXor(operand.value, operand.value)));
+    }
+}
+
+void testVectorAndConstantConstant(v128_t lhs, v128_t rhs)
+{
+    alignas(16) v128_t vector;
+    {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+
+        Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+        Value* firstConstant = root->appendNew<Const128Value>(proc, Origin(), lhs);
+        Value* secondConstant = root->appendNew<Const128Value>(proc, Origin(), rhs);
+        Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+        Value* first = root->appendNew<SIMDValue>(proc, Origin(), VectorXor, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, firstConstant);
+        Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorAnd, B3::V128, SIMDLane::v128, SIMDSignMode::None, first, secondConstant);
+        root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+        root->appendNewControlValue(proc, Return, Origin());
+        auto code = compileProc(proc);
+
+        for (auto& operand : v128Operands()) {
+            vector = operand.value;
+            invoke<void>(*code, &vector);
+            CHECK(bitEquals(vector, vectorAnd(vectorXor(operand.value, lhs), rhs)));
+        }
+    }
+    {
+        Procedure proc;
+        BasicBlock* root = proc.addBlock();
+
+        Value* address = root->appendNew<ArgumentRegValue>(proc, Origin(), GPRInfo::argumentGPR0);
+        Value* firstConstant = root->appendNew<Const128Value>(proc, Origin(), lhs);
+        Value* secondConstant = root->appendNew<Const128Value>(proc, Origin(), rhs);
+        Value* input = root->appendNew<MemoryValue>(proc, Load, V128, Origin(), address);
+        Value* first = root->appendNew<SIMDValue>(proc, Origin(), VectorOr, B3::V128, SIMDLane::v128, SIMDSignMode::None, input, firstConstant);
+        Value* result = root->appendNew<SIMDValue>(proc, Origin(), VectorAnd, B3::V128, SIMDLane::v128, SIMDSignMode::None, first, secondConstant);
+        root->appendNew<MemoryValue>(proc, Store, Origin(), result, address);
+        root->appendNewControlValue(proc, Return, Origin());
+        auto code = compileProc(proc);
+
+        for (auto& operand : v128Operands()) {
+            vector = operand.value;
+            invoke<void>(*code, &vector);
+            CHECK(bitEquals(vector, vectorAnd(vectorOr(operand.value, lhs), rhs)));
+        }
+    }
 }
 
 #endif // ENABLE(B3_JIT)

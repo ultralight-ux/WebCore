@@ -31,7 +31,6 @@
 #if ENABLE(ASYNC_SCROLLING) && USE(NICOSIA)
 
 #include "ScrollingTreeFrameScrollingNode.h"
-
 #include <wtf/RefPtr.h>
 
 namespace Nicosia {
@@ -39,27 +38,25 @@ class CompositionLayer;
 }
 
 namespace WebCore {
-class ScrollAnimationKinetic;
+
+class ScrollingTreeScrollingNodeDelegateNicosia;
 
 class ScrollingTreeFrameScrollingNodeNicosia final : public ScrollingTreeFrameScrollingNode {
 public:
     static Ref<ScrollingTreeFrameScrollingNode> create(ScrollingTree&, ScrollingNodeType, ScrollingNodeID);
     virtual ~ScrollingTreeFrameScrollingNodeNicosia();
 
+    RefPtr<Nicosia::CompositionLayer> rootContentsLayer() const { return m_rootContentsLayer; }
+
 private:
     ScrollingTreeFrameScrollingNodeNicosia(ScrollingTree&, ScrollingNodeType, ScrollingNodeID);
 
+    ScrollingTreeScrollingNodeDelegateNicosia& delegate() const;
+
     void commitStateBeforeChildren(const ScrollingStateNode&) override;
-    void commitStateAfterChildren(const ScrollingStateNode&) override;
 
-    WheelEventHandlingResult handleWheelEvent(const PlatformWheelEvent&) override;
-
-    void stopScrollAnimations() override;
-
-    FloatPoint adjustedScrollPosition(const FloatPoint&, ScrollClamping) const override;
-
-    void currentScrollPositionChanged(ScrollingLayerPositionAction) override;
-
+    WheelEventHandlingResult handleWheelEvent(const PlatformWheelEvent&, EventTargeting) override;
+    void currentScrollPositionChanged(ScrollType, ScrollingLayerPositionAction) override;
     void repositionScrollingLayers() override;
     void repositionRelatedLayers() override;
 
@@ -69,10 +66,6 @@ private:
     RefPtr<Nicosia::CompositionLayer> m_contentShadowLayer;
     RefPtr<Nicosia::CompositionLayer> m_headerLayer;
     RefPtr<Nicosia::CompositionLayer> m_footerLayer;
-
-#if ENABLE(KINETIC_SCROLLING)
-    std::unique_ptr<ScrollAnimationKinetic> m_kineticAnimation;
-#endif
 };
 
 } // namespace WebCore

@@ -31,6 +31,7 @@
 #include "config.h"
 #include "PlatformLocale.h"
 
+#include "DateComponents.h"
 #include "DateTimeFormat.h"
 #include "LocalizedStrings.h"
 #include <wtf/text/StringBuilder.h>
@@ -52,7 +53,7 @@ public:
 private:
     // DateTimeFormat::TokenHandler functions.
     void visitField(DateTimeFormat::FieldType, int) final;
-    void visitLiteral(const String&) final;
+    void visitLiteral(String&&) final;
 
     String zeroPadString(const String&, size_t width);
     void appendNumber(int number, size_t width);
@@ -167,10 +168,10 @@ void DateTimeStringBuilder::visitField(DateTimeFormat::FieldType fieldType, int 
     }
 }
 
-void DateTimeStringBuilder::visitLiteral(const String& text)
+void DateTimeStringBuilder::visitLiteral(String&& text)
 {
     ASSERT(text.length());
-    m_builder.append(text);
+    m_builder.append(WTFMove(text));
 }
 
 String DateTimeStringBuilder::toString()
@@ -327,31 +328,37 @@ String Locale::convertFromLocalizedNumber(const String& localized)
 #if ENABLE(DATE_AND_TIME_INPUT_TYPES)
 String Locale::formatDateTime(const DateComponents& date, FormatType formatType)
 {
-    if (date.type() == DateComponents::Invalid)
+    if (date.type() == DateComponentsType::Invalid)
         return String();
 
     DateTimeStringBuilder builder(*this, date);
     switch (date.type()) {
-    case DateComponents::Time:
+    case DateComponentsType::Time:
         builder.build(formatType == FormatTypeShort ? shortTimeFormat() : timeFormat());
         break;
-    case DateComponents::Date:
+    case DateComponentsType::Date:
         builder.build(dateFormat());
         break;
-    case DateComponents::Month:
+    case DateComponentsType::Month:
         builder.build(formatType == FormatTypeShort ? shortMonthFormat() : monthFormat());
         break;
-    case DateComponents::Week:    
+    case DateComponentsType::Week:    
         // FIXME: Add support for formatting weeks.
         break;
-    case DateComponents::DateTimeLocal:
+    case DateComponentsType::DateTimeLocal:
         builder.build(formatType == FormatTypeShort ? dateTimeFormatWithoutSeconds() : dateTimeFormatWithSeconds());
         break;
-    case DateComponents::Invalid:
+    case DateComponentsType::Invalid:
         ASSERT_NOT_REACHED();
         break;
     }
     return builder.toString();
+}
+
+String Locale::localizedDecimalSeparator()
+{
+    initializeLocaleData();
+    return m_decimalSymbols[DecimalSeparatorIndex];
 }
 #endif
 

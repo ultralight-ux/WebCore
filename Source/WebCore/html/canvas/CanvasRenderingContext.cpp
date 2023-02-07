@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,11 +28,14 @@
 
 #include "CachedImage.h"
 #include "CanvasPattern.h"
+#include "DestinationColorSpace.h"
+#include "GraphicsLayerContentsDisplayDelegate.h"
 #include "HTMLCanvasElement.h"
 #include "HTMLImageElement.h"
 #include "HTMLVideoElement.h"
 #include "Image.h"
 #include "ImageBitmap.h"
+#include "PixelFormat.h"
 #include "SecurityOrigin.h"
 #include <wtf/HashSet.h>
 #include <wtf/IsoMallocInlines.h>
@@ -44,30 +47,31 @@ namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(CanvasRenderingContext);
 
-HashSet<CanvasRenderingContext*>& CanvasRenderingContext::instances(const LockHolder&)
+Lock CanvasRenderingContext::s_instancesLock;
+
+HashSet<CanvasRenderingContext*>& CanvasRenderingContext::instances()
 {
     static NeverDestroyed<HashSet<CanvasRenderingContext*>> instances;
     return instances;
 }
 
-Lock& CanvasRenderingContext::instancesMutex()
+Lock& CanvasRenderingContext::instancesLock()
 {
-    static Lock mutex;
-    return mutex;
+    return s_instancesLock;
 }
 
 CanvasRenderingContext::CanvasRenderingContext(CanvasBase& canvas)
     : m_canvas(canvas)
 {
-    LockHolder lock(instancesMutex());
-    instances(lock).add(this);
+    Locker locker { instancesLock() };
+    instances().add(this);
 }
 
 CanvasRenderingContext::~CanvasRenderingContext()
 {
-    LockHolder lock(instancesMutex());
-    ASSERT(instances(lock).contains(this));
-    instances(lock).remove(this);
+    Locker locker { instancesLock() };
+    ASSERT(instances().contains(this));
+    instances().remove(this);
 }
 
 void CanvasRenderingContext::ref()
@@ -80,21 +84,41 @@ void CanvasRenderingContext::deref()
     m_canvas.derefCanvasBase();
 }
 
-bool CanvasRenderingContext::wouldTaintOrigin(const CanvasPattern* pattern)
+RefPtr<GraphicsLayerContentsDisplayDelegate> CanvasRenderingContext::layerContentsDisplayDelegate()
+{
+    return nullptr;
+}
+
+void CanvasRenderingContext::setContentsToLayer(GraphicsLayer& layer)
+{
+    layer.setContentsDisplayDelegate(layerContentsDisplayDelegate(), GraphicsLayer::ContentsLayerPurpose::Canvas);
+}
+
+PixelFormat CanvasRenderingContext::pixelFormat() const
+{
+    return PixelFormat::BGRA8;
+}
+
+DestinationColorSpace CanvasRenderingContext::colorSpace() const
+{
+    return DestinationColorSpace::SRGB();
+}
+
+bool CanvasRenderingContext::taintsOrigin(const CanvasPattern* pattern)
 {
     if (m_canvas.originClean() && pattern && !pattern->originClean())
         return true;
     return false;
 }
 
-bool CanvasRenderingContext::wouldTaintOrigin(const CanvasBase* sourceCanvas)
+bool CanvasRenderingContext::taintsOrigin(const CanvasBase* sourceCanvas)
 {
     if (m_canvas.originClean() && sourceCanvas && !sourceCanvas->originClean())
         return true;
     return false;
 }
 
-bool CanvasRenderingContext::wouldTaintOrigin(const HTMLImageElement* element)
+bool CanvasRenderingContext::taintsOrigin(const HTMLImageElement* element)
 {
     if (!element || !m_canvas.originClean())
         return false;
@@ -103,17 +127,17 @@ bool CanvasRenderingContext::wouldTaintOrigin(const HTMLImageElement* element)
     if (!cachedImage)
         return false;
 
-    auto image = makeRefPtr(cachedImage->image());
+    RefPtr image = cachedImage->image();
     if (!image)
         return false;
 
     if (image->sourceURL().protocolIsData())
         return false;
-    
-    if (!image->hasSingleSecurityOrigin())
+
+    if (image->renderingTaintsOrigin())
         return true;
 
-    if (!cachedImage->isCORSSameOrigin())
+    if (cachedImage->isCORSCrossOrigin())
         return true;
 
     ASSERT(m_canvas.securityOrigin());
@@ -122,30 +146,20 @@ bool CanvasRenderingContext::wouldTaintOrigin(const HTMLImageElement* element)
     return false;
 }
 
-bool CanvasRenderingContext::wouldTaintOrigin(const HTMLVideoElement* video)
+bool CanvasRenderingContext::taintsOrigin(const HTMLVideoElement* video)
 {
 #if ENABLE(VIDEO)
-    // FIXME: This check is likely wrong when a redirect is involved. We need
-    // to test the finalURL. Please be careful when fixing this issue not to
-    // make currentSrc be the final URL because then the
-    // HTMLMediaElement.currentSrc DOM API would leak redirect destinations!
     if (!video || !m_canvas.originClean())
         return false;
 
-    if (!video->hasSingleSecurityOrigin())
-        return true;
-
-    if (!(video->player() && video->player()->didPassCORSAccessCheck()) && video->wouldTaintOrigin(*m_canvas.securityOrigin()))
-        return true;
-
+    return video->taintsOrigin(*m_canvas.securityOrigin());
 #else
     UNUSED_PARAM(video);
-#endif
-
     return false;
+#endif
 }
 
-bool CanvasRenderingContext::wouldTaintOrigin(const ImageBitmap* imageBitmap)
+bool CanvasRenderingContext::taintsOrigin(const ImageBitmap* imageBitmap)
 {
     if (!imageBitmap || !m_canvas.originClean())
         return false;
@@ -153,7 +167,7 @@ bool CanvasRenderingContext::wouldTaintOrigin(const ImageBitmap* imageBitmap)
     return !imageBitmap->originClean();
 }
 
-bool CanvasRenderingContext::wouldTaintOrigin(const URL& url)
+bool CanvasRenderingContext::taintsOrigin(const URL& url)
 {
     if (!m_canvas.originClean())
         return false;
@@ -166,11 +180,11 @@ bool CanvasRenderingContext::wouldTaintOrigin(const URL& url)
 
 void CanvasRenderingContext::checkOrigin(const URL& url)
 {
-    if (wouldTaintOrigin(url))
+    if (taintsOrigin(url))
         m_canvas.setOriginTainted();
 }
 
-void CanvasRenderingContext::checkOrigin(const TypedOMCSSImageValue&)
+void CanvasRenderingContext::checkOrigin(const CSSStyleImageValue&)
 {
     m_canvas.setOriginTainted();
 }

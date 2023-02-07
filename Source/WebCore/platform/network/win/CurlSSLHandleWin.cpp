@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2022 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,42 +26,37 @@
 #include "config.h"
 #include "CurlSSLHandle.h"
 
-#if USE(CF)
-#if OS(WINDOWS)
-#include "WebCoreBundleWin.h"
-#endif
-
-#include <wtf/RetainPtr.h>
-#endif
-
 namespace WebCore {
-
-static String getCACertPathEnv()
-{
-    char* envPath = getenv("CURL_CA_BUNDLE_PATH");
-    if (envPath)
-        return String(envPath);
-
-#if USE(CF)
-    CFBundleRef webKitBundleRef = webKitBundle();
-    if (webKitBundleRef) {
-        RetainPtr<CFURLRef> certURLRef = adoptCF(CFBundleCopyResourceURL(webKitBundleRef, CFSTR("cacert"), CFSTR("pem"), CFSTR("certificates")));
-        if (certURLRef) {
-            char path[MAX_PATH];
-            if (CFURLGetFileSystemRepresentation(certURLRef.get(), false, reinterpret_cast<UInt8*>(path), MAX_PATH) && *path)
-                return String(path);
-        }
-    }
-#endif
-
-    return String();
-}
 
 void CurlSSLHandle::platformInitialize()
 {
-    auto caCertPath = getCACertPathEnv();
-    if (!caCertPath.isEmpty())
-        setCACertPath(WTFMove(caCertPath));
+    constexpr auto cipherList =
+        "TLS_AES_128_GCM_SHA256:"
+        "TLS_CHACHA20_POLY1305_SHA256:"
+        "TLS_AES_256_GCM_SHA384:"
+        "ECDHE-ECDSA-AES128-GCM-SHA256:"
+        "ECDHE-RSA-AES128-GCM-SHA256:"
+        "ECDHE-ECDSA-CHACHA20-POLY1305:"
+        "ECDHE-RSA-CHACHA20-POLY1305:"
+        "ECDHE-ECDSA-AES256-GCM-SHA384:"
+        "ECDHE-RSA-AES256-GCM-SHA384:"
+        "ECDHE-ECDSA-AES256-SHA:"
+        "ECDHE-ECDSA-AES128-SHA:"
+        "ECDHE-RSA-AES128-SHA:"
+        "ECDHE-RSA-AES256-SHA:"
+        "AES128-GCM-SHA256:"
+        "AES256-GCM-SHA384:"
+        "AES128-SHA:"
+        "AES256-SHA";
+
+    constexpr auto ecCurves =
+        "X25519:"
+        "P-256:"
+        "P-384:"
+        "P-521";
+
+    setCipherList(cipherList);
+    setECCurves(ecCurves);
 }
 
 }

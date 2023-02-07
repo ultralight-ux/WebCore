@@ -28,47 +28,11 @@
 
 #if PLATFORM(IOS_FAMILY)
 
-#import "BitmapImage.h"
-#import "GraphicsContext.h"
-
 namespace WebCore {
-    
-Icon::Icon(const NativeImagePtr& image)
-    : m_cgImage(image)
-{
-}
-
-Icon::~Icon()
-{
-}
 
 RefPtr<Icon> Icon::createIconForFiles(const Vector<String>& /*filenames*/)
 {
     return nullptr;
-}
-
-RefPtr<Icon> Icon::createIconForImage(const RetainPtr<CGImageRef>& image)
-{
-    if (!image)
-        return nullptr;
-
-    return adoptRef(new Icon(image));
-}
-
-void Icon::paint(GraphicsContext& context, const FloatRect& destRect)
-{
-    if (context.paintingDisabled())
-        return;
-
-    GraphicsContextStateSaver stateSaver(context);
-
-    float width = CGImageGetWidth(m_cgImage.get());
-    float height = CGImageGetHeight(m_cgImage.get());
-    FloatSize size(width, height);
-    FloatRect srcRect(FloatPoint(), size);
-
-    context.setImageInterpolationQuality(InterpolationQuality::High);
-    context.drawNativeImage(m_cgImage.get(), size, destRect, srcRect);
 }
 
 }

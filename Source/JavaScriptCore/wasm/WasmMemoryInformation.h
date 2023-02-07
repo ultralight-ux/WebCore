@@ -28,9 +28,9 @@
 #if ENABLE(WEBASSEMBLY)
 
 #include "GPRInfo.h"
+#include "PageCount.h"
 #include "RegisterSet.h"
 #include "WasmMemory.h"
-#include "WasmPageCount.h"
 
 #include <wtf/Forward.h>
 #include <wtf/Ref.h>
@@ -39,30 +39,8 @@
 namespace JSC { namespace Wasm {
 
 struct PinnedSizeRegisterInfo {
-    GPRReg sizeRegister;
+    GPRReg boundsCheckingSizeRegister;
     unsigned sizeOffset;
-};
-
-class PinnedRegisterInfo {
-public:
-    PinnedRegisterInfo(GPRReg, GPRReg, GPRReg);
-
-    static const PinnedRegisterInfo& get();
-
-    RegisterSet toSave(MemoryMode mode) const
-    {
-        RegisterSet result;
-        result.set(baseMemoryPointer);
-        if (wasmContextInstancePointer != InvalidGPRReg)
-            result.set(wasmContextInstancePointer);
-        if (mode != MemoryMode::Signaling)
-            result.set(sizeRegister);
-        return result;
-    }
-
-    GPRReg sizeRegister;
-    GPRReg baseMemoryPointer;
-    GPRReg wasmContextInstancePointer;
 };
 
 class MemoryInformation {
@@ -72,10 +50,11 @@ public:
         ASSERT(!*this);
     }
 
-    MemoryInformation(PageCount initial, PageCount maximum, bool isImport);
+    MemoryInformation(PageCount initial, PageCount maximum, bool isShared, bool isImport);
 
     PageCount initial() const { return m_initial; }
     PageCount maximum() const { return m_maximum; }
+    bool isShared() const { return m_isShared; }
     bool isImport() const { return m_isImport; }
 
     explicit operator bool() const { return !!m_initial; }
@@ -83,6 +62,7 @@ public:
 private:
     PageCount m_initial { };
     PageCount m_maximum { };
+    bool m_isShared { false };
     bool m_isImport { false };
 };
 

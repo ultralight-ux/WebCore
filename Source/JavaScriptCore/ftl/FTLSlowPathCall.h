@@ -54,35 +54,37 @@ private:
 // This will be an RAII thingy that will set up the necessary stack sizes and offsets and such.
 class SlowPathCallContext {
 public:
-    SlowPathCallContext(RegisterSet usedRegisters, CCallHelpers&, unsigned numArgs, GPRReg returnRegister);
+    SlowPathCallContext(ScalarRegisterSet usedRegisters, CCallHelpers&, unsigned numArgs, GPRReg returnRegister, GPRReg indirectCallTargetRegister);
     ~SlowPathCallContext();
 
     // NOTE: The call that this returns is already going to be linked by the JIT using addLinkTask(),
     // so there is no need for you to link it yourself.
-    SlowPathCall makeCall(VM&, FunctionPtr<CFunctionPtrTag> callTarget);
+    SlowPathCall makeCall(VM&, CodePtr<CFunctionPtrTag> callTarget);
+    SlowPathCall makeCall(VM&, CCallHelpers::Address);
 
 private:
-    SlowPathCallKey keyWithTarget(FunctionPtr<CFunctionPtrTag> callTarget) const;
+    SlowPathCallKey keyWithTarget(CodePtr<CFunctionPtrTag> callTarget) const;
+    SlowPathCallKey keyWithTarget(CCallHelpers::Address) const;
     
-    RegisterSet m_argumentRegisters;
-    RegisterSet m_callingConventionRegisters;
+    ScalarRegisterSet m_argumentRegisters;
+    ScalarRegisterSet m_callingConventionRegisters;
     CCallHelpers& m_jit;
     unsigned m_numArgs;
     GPRReg m_returnRegister;
     size_t m_offsetToSavingArea;
     size_t m_stackBytesNeeded;
-    RegisterSet m_thunkSaveSet;
-    ptrdiff_t m_offset;
+    ScalarRegisterSet m_thunkSaveSet;
+    size_t m_offset;
 };
 
 template<typename... ArgumentTypes>
 SlowPathCall callOperation(
-    VM& vm, const RegisterSet& usedRegisters, CCallHelpers& jit, CCallHelpers::JumpList* exceptionTarget,
-    FunctionPtr<CFunctionPtrTag> function, GPRReg resultGPR, ArgumentTypes... arguments)
+    VM& vm, const ScalarRegisterSet& usedRegisters, CCallHelpers& jit, CCallHelpers::JumpList* exceptionTarget,
+    CodePtr<CFunctionPtrTag> function, GPRReg resultGPR, ArgumentTypes... arguments)
 {
     SlowPathCall call;
     {
-        SlowPathCallContext context(usedRegisters, jit, sizeof...(ArgumentTypes) + 1, resultGPR);
+        SlowPathCallContext context(usedRegisters, jit, sizeof...(ArgumentTypes) + 1, resultGPR, InvalidGPRReg);
         jit.setupArguments<void(ArgumentTypes...)>(arguments...);
         call = context.makeCall(vm, function);
     }
@@ -93,8 +95,17 @@ SlowPathCall callOperation(
 
 template<typename... ArgumentTypes>
 SlowPathCall callOperation(
-    VM& vm, const RegisterSet& usedRegisters, CCallHelpers& jit, CallSiteIndex callSiteIndex,
-    CCallHelpers::JumpList* exceptionTarget, FunctionPtr<CFunctionPtrTag> function, GPRReg resultGPR,
+    VM& vm, const RegisterSetBuilder& usedRegisters, CCallHelpers& jit, CCallHelpers::JumpList* exceptionTarget,
+    CodePtr<CFunctionPtrTag> function, GPRReg resultGPR, ArgumentTypes... arguments)
+{
+    auto regs = usedRegisters.buildScalarRegisterSet();
+    return callOperation(vm, regs, jit, exceptionTarget, function, resultGPR, arguments...);
+}
+
+template<typename RS, typename... ArgumentTypes>
+SlowPathCall callOperation(
+    VM& vm, const RS& usedRegisters, CCallHelpers& jit, CallSiteIndex callSiteIndex,
+    CCallHelpers::JumpList* exceptionTarget, CodePtr<CFunctionPtrTag> function, GPRReg resultGPR,
     ArgumentTypes... arguments)
 {
     if (callSiteIndex) {
@@ -107,10 +118,61 @@ SlowPathCall callOperation(
 
 CallSiteIndex callSiteIndexForCodeOrigin(State&, CodeOrigin);
 
+template<typename RS, typename... ArgumentTypes>
+SlowPathCall callOperation(
+    State& state, const RS& usedRegisters, CCallHelpers& jit, CodeOrigin codeOrigin,
+    CCallHelpers::JumpList* exceptionTarget, CodePtr<CFunctionPtrTag> function, GPRReg result, ArgumentTypes... arguments)
+{
+    return callOperation(
+        state.vm(), usedRegisters, jit, callSiteIndexForCodeOrigin(state, codeOrigin), exceptionTarget, function,
+        result, arguments...);
+}
+
 template<typename... ArgumentTypes>
 SlowPathCall callOperation(
-    State& state, const RegisterSet& usedRegisters, CCallHelpers& jit, CodeOrigin codeOrigin,
-    CCallHelpers::JumpList* exceptionTarget, FunctionPtr<CFunctionPtrTag> function, GPRReg result, ArgumentTypes... arguments)
+    VM& vm, const ScalarRegisterSet& usedRegisters, CCallHelpers& jit, CCallHelpers::JumpList* exceptionTarget,
+    CCallHelpers::Address function, GPRReg resultGPR, ArgumentTypes... arguments)
+{
+    SlowPathCall call;
+    {
+        SlowPathCallContext context(usedRegisters, jit, sizeof...(ArgumentTypes) + 1, resultGPR, GPRInfo::nonArgGPR0);
+        jit.setupArgumentsForIndirectCall<void(ArgumentTypes...)>(function, arguments...);
+        call = context.makeCall(vm, CCallHelpers::Address(GPRInfo::nonArgGPR0, function.offset));
+    }
+    if (exceptionTarget)
+        exceptionTarget->append(jit.emitExceptionCheck(vm));
+    return call;
+}
+
+template<typename... ArgumentTypes>
+SlowPathCall callOperation(
+    VM& vm, const RegisterSetBuilder& usedRegisters, CCallHelpers& jit, CCallHelpers::JumpList* exceptionTarget,
+    CCallHelpers::Address function, GPRReg resultGPR, ArgumentTypes... arguments)
+{
+    auto regs = usedRegisters.buildScalarRegisterSet();
+    return callOperation(vm, regs, jit, exceptionTarget, function, resultGPR, arguments...);
+}
+
+template<typename RS, typename... ArgumentTypes>
+SlowPathCall callOperation(
+    VM& vm, const RS& usedRegisters, CCallHelpers& jit, CallSiteIndex callSiteIndex,
+    CCallHelpers::JumpList* exceptionTarget, CCallHelpers::Address function, GPRReg resultGPR,
+    ArgumentTypes... arguments)
+{
+    if (callSiteIndex) {
+        jit.store32(
+            CCallHelpers::TrustedImm32(callSiteIndex.bits()),
+            CCallHelpers::tagFor(VirtualRegister(CallFrameSlot::argumentCountIncludingThis)));
+    }
+    return callOperation(vm, usedRegisters, jit, exceptionTarget, function, resultGPR, arguments...);
+}
+
+CallSiteIndex callSiteIndexForCodeOrigin(State&, CodeOrigin);
+
+template<typename RS, typename... ArgumentTypes>
+SlowPathCall callOperation(
+    State& state, const RS& usedRegisters, CCallHelpers& jit, CodeOrigin codeOrigin,
+    CCallHelpers::JumpList* exceptionTarget, CCallHelpers::Address function, GPRReg result, ArgumentTypes... arguments)
 {
     return callOperation(
         state.vm(), usedRegisters, jit, callSiteIndexForCodeOrigin(state, codeOrigin), exceptionTarget, function,

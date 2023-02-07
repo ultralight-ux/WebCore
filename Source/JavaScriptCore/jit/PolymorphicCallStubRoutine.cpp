@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 
 #if ENABLE(JIT)
 
+#include "AccessCase.h"
 #include "CallLinkInfo.h"
 #include "CodeBlock.h"
 #include "FullCodeOrigin.h"
@@ -45,7 +46,7 @@ PolymorphicCallNode::~PolymorphicCallNode()
 void PolymorphicCallNode::unlink(VM& vm)
 {
     if (m_callLinkInfo) {
-        dataLogLnIf(Options::dumpDisassembly(), "Unlinking polymorphic call at ", m_callLinkInfo->callReturnLocation(), ", ", m_callLinkInfo->codeOrigin());
+        dataLogLnIf(Options::dumpDisassembly(), "Unlinking polymorphic call at ", m_callLinkInfo->doneLocation(), ", bc#", m_callLinkInfo->codeOrigin().bytecodeIndex());
         m_callLinkInfo->unlink(vm);
     }
 
@@ -67,22 +68,23 @@ PolymorphicCallStubRoutine::PolymorphicCallStubRoutine(
     const MacroAssemblerCodeRef<JITStubRoutinePtrTag>& codeRef, VM& vm, const JSCell* owner, CallFrame* callerFrame,
     CallLinkInfo& info, const Vector<PolymorphicCallCase>& cases,
     UniqueArray<uint32_t>&& fastCounts)
-    : GCAwareJITStubRoutine(codeRef, vm)
+    : GCAwareJITStubRoutine(Type::PolymorphicCallStubRoutineType, codeRef)
     , m_variants(cases.size())
     , m_fastCounts(WTFMove(fastCounts))
 {
     for (unsigned index = 0; index < cases.size(); ++index) {
         const PolymorphicCallCase& callCase = cases[index];
         m_variants[index].set(vm, owner, callCase.variant().rawCalleeCell());
-        if (shouldDumpDisassemblyFor(callerFrame->codeBlock()))
-            dataLog("Linking polymorphic call in ", FullCodeOrigin(callerFrame->codeBlock(), callerFrame->codeOrigin()), " to ", callCase.variant(), ", codeBlock = ", pointerDump(callCase.codeBlock()), "\n");
+        if (!callerFrame->isWasmFrame()) {
+            if (shouldDumpDisassemblyFor(callerFrame->codeBlock()))
+                dataLog("Linking polymorphic call in ", FullCodeOrigin(callerFrame->codeBlock(), callerFrame->codeOrigin()), " to ", callCase.variant(), ", codeBlock = ", pointerDump(callCase.codeBlock()), "\n");
+        }
         if (CodeBlock* codeBlock = callCase.codeBlock())
             codeBlock->linkIncomingPolymorphicCall(callerFrame, m_callNodes.add(&info));
     }
     WTF::storeStoreFence();
+    makeGCAware(vm);
 }
-
-PolymorphicCallStubRoutine::~PolymorphicCallStubRoutine() { }
 
 CallVariantList PolymorphicCallStubRoutine::variants() const
 {
@@ -126,7 +128,7 @@ void PolymorphicCallStubRoutine::clearCallNodesFor(CallLinkInfo* info)
     }
 }
 
-bool PolymorphicCallStubRoutine::visitWeak(VM& vm)
+bool PolymorphicCallStubRoutine::visitWeakImpl(VM& vm)
 {
     bool isStillLive = true;
     forEachDependentCell([&](JSCell* cell) {
@@ -135,10 +137,20 @@ bool PolymorphicCallStubRoutine::visitWeak(VM& vm)
     return isStillLive;
 }
 
-void PolymorphicCallStubRoutine::markRequiredObjectsInternal(SlotVisitor& visitor)
+template<typename Visitor>
+ALWAYS_INLINE void PolymorphicCallStubRoutine::markRequiredObjectsInternalImpl(Visitor& visitor)
 {
     for (auto& variant : m_variants)
         visitor.append(variant);
+}
+
+void PolymorphicCallStubRoutine::markRequiredObjectsImpl(AbstractSlotVisitor& visitor)
+{
+    markRequiredObjectsInternalImpl(visitor);
+}
+void PolymorphicCallStubRoutine::markRequiredObjectsImpl(SlotVisitor& visitor)
+{
+    markRequiredObjectsInternalImpl(visitor);
 }
 
 } // namespace JSC

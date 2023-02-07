@@ -18,12 +18,11 @@
  */
 
 #include "config.h"
-
-#if ENABLE(SVG_FONTS)
 #include "SVGAltGlyphDefElement.h"
 
 #include "ElementIterator.h"
 #include "SVGAltGlyphItemElement.h"
+#include "SVGElementTypeHelpers.h"
 #include "SVGGlyphRefElement.h"
 #include "SVGNames.h"
 #include <wtf/IsoMallocInlines.h>
@@ -33,7 +32,7 @@ namespace WebCore {
 WTF_MAKE_ISO_ALLOCATED_IMPL(SVGAltGlyphDefElement);
 
 inline SVGAltGlyphDefElement::SVGAltGlyphDefElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(SVGNames::altGlyphDefTag));
 }
@@ -120,5 +119,3 @@ bool SVGAltGlyphDefElement::hasValidGlyphElements(Vector<String>& glyphNames) co
 }
 
 }
-
-#endif

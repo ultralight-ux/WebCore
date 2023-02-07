@@ -30,7 +30,6 @@
 #include "StyleChange.h"
 #include "StyleTreeResolver.h"
 #include "StyleUpdate.h"
-#include <wtf/HashSet.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
@@ -50,6 +49,7 @@ public:
     void commit(std::unique_ptr<const Style::Update>);
 
     static void tearDownRenderers(Element&);
+    static void tearDownRenderersAfterSlotChange(Element& host);
     static void tearDownRenderer(Text&);
 
 private:
@@ -59,23 +59,25 @@ private:
     void updateTextRenderer(Text&, const Style::TextUpdate*);
     void createTextRenderer(Text&, const Style::TextUpdate*);
     void updateElementRenderer(Element&, const Style::ElementUpdate&);
+    void updateSVGRenderer(Element&);
     void updateRendererStyle(RenderElement&, RenderStyle&&, StyleDifference);
+    void updateRenderViewStyle();
     void createRenderer(Element&, RenderStyle&&);
-    void updateBeforeDescendants(Element&, const Style::ElementUpdates*);
-    void updateAfterDescendants(Element&, const Style::ElementUpdates*);
+    void updateBeforeDescendants(Element&, const Style::ElementUpdate*);
+    void updateAfterDescendants(Element&, const Style::ElementUpdate*);
     bool textRendererIsNeeded(const Text& textNode);
     void storePreviousRenderer(Node&);
 
     struct Parent {
         Element* element { nullptr };
-        const Style::ElementUpdates* updates { nullptr };
-        Optional<RenderTreePosition> renderTreePosition;
+        const Style::ElementUpdate* update { nullptr };
+        std::optional<RenderTreePosition> renderTreePosition;
 
         bool didCreateOrDestroyChildRenderer { false };
         RenderObject* previousChildRenderer { nullptr };
 
         Parent(ContainerNode& root);
-        Parent(Element&, const Style::ElementUpdates*);
+        Parent(Element&, const Style::ElementUpdate*);
     };
     Parent& parent() { return m_parentStack.last(); }
     Parent& renderingParent();
@@ -83,14 +85,15 @@ private:
 
     GeneratedContent& generatedContent() { return *m_generatedContent; }
 
-    void pushParent(Element&, const Style::ElementUpdates*);
+    void pushParent(Element&, const Style::ElementUpdate*);
     void popParent();
     void popParentsToDepth(unsigned depth);
 
-    enum class TeardownType { Full, RendererUpdate, RendererUpdateCancelingAnimations };
+    // FIXME: Use OptionSet.
+    enum class TeardownType { Full, FullAfterSlotChange, RendererUpdate, RendererUpdateCancelingAnimations };
     static void tearDownRenderers(Element&, TeardownType, RenderTreeBuilder&);
     static void tearDownTextRenderer(Text&, RenderTreeBuilder&);
-    static void tearDownLeftoverShadowHostChildren(Element&, RenderTreeBuilder&);
+    static void tearDownLeftoverChildrenOfComposedTree(Element&, RenderTreeBuilder&);
     static void tearDownLeftoverPaginationRenderersIfNeeded(Element&, RenderTreeBuilder&);
 
     RenderView& renderView();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 
 #include "CodeBlock.h"
 #include "ShadowChickenInlines.h"
+#include "VMTrapsInlines.h"
 #include <wtf/ListDump.h>
 
 namespace JSC {
@@ -45,7 +46,7 @@ void ShadowChicken::Packet::dump(PrintStream& out) const
     
     if (isPrologue()) {
         String name = "?"_s;
-        if (auto* function = jsDynamicCast<JSFunction*>(callee->vm(), callee)) {
+        if (auto* function = jsDynamicCast<JSFunction*>(callee)) {
             name = function->name(callee->vm());
             if (name.isEmpty())
                 name = "?"_s;
@@ -69,7 +70,7 @@ void ShadowChicken::Packet::dump(PrintStream& out) const
 void ShadowChicken::Frame::dump(PrintStream& out) const
 {
     String name = "?"_s;
-    if (auto* function = jsDynamicCast<JSFunction*>(callee->vm(), callee)) {
+    if (auto* function = jsDynamicCast<JSFunction*>(callee)) {
         name = function->name(callee->vm());
         if (name.isEmpty())
             name = "?"_s;
@@ -172,20 +173,20 @@ void ShadowChicken::update(VM& vm, CallFrame* callFrame)
     if (!m_stack.isEmpty()) {
         Vector<Frame> stackRightNow;
         StackVisitor::visit(
-            callFrame, vm, [&] (StackVisitor& visitor) -> StackVisitor::Status {
+            callFrame, vm, [&] (StackVisitor& visitor) -> IterationStatus {
                 if (visitor->isInlinedFrame())
-                    return StackVisitor::Continue;
+                    return IterationStatus::Continue;
                 if (visitor->isWasmFrame()) {
                     // FIXME: Make shadow chicken work with Wasm.
                     // https://bugs.webkit.org/show_bug.cgi?id=165441
-                    return StackVisitor::Continue;
+                    return IterationStatus::Continue;
                 }
 
                 bool isTailDeleted = false;
                 // FIXME: Make shadow chicken work with Wasm.
                 // https://bugs.webkit.org/show_bug.cgi?id=165441
                 stackRightNow.append(Frame(jsCast<JSObject*>(visitor->callee().asCell()), visitor->callFrame(), isTailDeleted));
-                return StackVisitor::Continue;
+                return IterationStatus::Continue;
             });
         stackRightNow.reverse();
         
@@ -293,23 +294,23 @@ void ShadowChicken::update(VM& vm, CallFrame* callFrame)
     
     Vector<Frame> toPush;
     StackVisitor::visit(
-        callFrame, vm, [&] (StackVisitor& visitor) -> StackVisitor::Status {
+        callFrame, vm, [&] (StackVisitor& visitor) -> IterationStatus {
             if (visitor->isInlinedFrame()) {
                 // FIXME: Handle inlining.
                 // https://bugs.webkit.org/show_bug.cgi?id=155686
-                return StackVisitor::Continue;
+                return IterationStatus::Continue;
             }
 
             if (visitor->isWasmFrame()) {
                 // FIXME: Make shadow chicken work with Wasm.
-                return StackVisitor::Continue;
+                return IterationStatus::Continue;
             }
 
             CallFrame* callFrame = visitor->callFrame();
             if (ShadowChickenInternal::verbose) {
                 dataLog("    Examining callFrame:", RawPointer(callFrame), ", callee:", RawPointer(callFrame->jsCallee()), ", callerFrame:", RawPointer(callFrame->callerFrame()), "\n");
                 JSObject* callee = callFrame->jsCallee();
-                if (auto* function = jsDynamicCast<JSFunction*>(callee->vm(), callee))
+                if (auto* function = jsDynamicCast<JSFunction*>(callee))
                     dataLog("      Function = ", function->name(callee->vm()), "\n");
             }
 
@@ -321,23 +322,23 @@ void ShadowChicken::update(VM& vm, CallFrame* callFrame)
                 // that do not run into the current call frame but are left in the shadow stack.
                 // Those tail deleted frames should be validated somehow.
 
-                return StackVisitor::Done;
+                return IterationStatus::Done;
             }
 
             bool foundFrame = advanceIndexInLogTo(callFrame, callFrame->jsCallee(), callFrame->callerFrame());
             bool isTailDeleted = false;
             JSScope* scope = nullptr;
-            CodeBlock* codeBlock = callFrame->codeBlock();
+            CodeBlock* codeBlock = callFrame->isWasmFrame() ? nullptr : callFrame->codeBlock();
             JSValue scopeValue = callFrame->bytecodeIndex() && codeBlock && codeBlock->scopeRegister().isValid()
                 ? callFrame->registers()[codeBlock->scopeRegister().offset()].jsValue()
                 : jsUndefined();
             if (!scopeValue.isUndefined() && codeBlock->wasCompiledWithDebuggingOpcodes()) {
                 scope = jsCast<JSScope*>(scopeValue.asCell());
-                RELEASE_ASSERT(scope->inherits<JSScope>(vm));
+                RELEASE_ASSERT(scope->inherits<JSScope>());
             } else if (foundFrame) {
                 scope = m_log[indexInLog].scope;
                 if (scope)
-                    RELEASE_ASSERT(scope->inherits<JSScope>(vm));
+                    RELEASE_ASSERT(scope->inherits<JSScope>());
             }
             toPush.append(Frame(jsCast<JSObject*>(visitor->callee().asCell()), callFrame, isTailDeleted, callFrame->thisValue(), scope, codeBlock, callFrame->callSiteIndex()));
 
@@ -386,12 +387,12 @@ void ShadowChicken::update(VM& vm, CallFrame* callFrame)
                     }
                     Packet packet = m_log[indexInLog];
                     bool isTailDeleted = true;
-                    RELEASE_ASSERT(tailPacket.scope->inherits<JSScope>(vm));
+                    RELEASE_ASSERT(tailPacket.scope->inherits<JSScope>());
                     toPush.append(Frame(packet.callee, packet.frame, isTailDeleted, tailPacket.thisValue, tailPacket.scope, tailPacket.codeBlock, tailPacket.callSiteIndex));
                 }
             }
 
-            return StackVisitor::Continue;
+            return IterationStatus::Continue;
         });
 
     if (ShadowChickenInternal::verbose)
@@ -440,7 +441,9 @@ void ShadowChicken::update(VM& vm, CallFrame* callFrame)
         dataLog("    After clean-up: ", *this, "\n");
 }
 
-void ShadowChicken::visitChildren(SlotVisitor& visitor)
+// We don't need a SlotVisitor version of this because ShadowChicken is only used by the
+// Debugger, and is therefore not on the critical path for performance.
+void ShadowChicken::visitChildren(AbstractSlotVisitor& visitor)
 {
     for (unsigned i = m_logCursor - m_log; i--;) {
         JSObject* callee = m_log[i].callee;
@@ -486,6 +489,7 @@ void ShadowChicken::dump(PrintStream& out) const
 JSArray* ShadowChicken::functionsOnStack(JSGlobalObject* globalObject, CallFrame* callFrame)
 {
     VM& vm = globalObject->vm();
+    DeferTermination deferScope(vm);
     auto scope = DECLARE_THROW_SCOPE(vm);
     JSArray* result = constructEmptyArray(globalObject, nullptr);
     RETURN_IF_EXCEPTION(scope, nullptr);

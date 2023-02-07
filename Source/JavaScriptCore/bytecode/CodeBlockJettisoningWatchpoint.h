@@ -33,16 +33,21 @@ namespace JSC {
 
 class CodeBlockJettisoningWatchpoint final : public Watchpoint {
 public:
-    CodeBlockJettisoningWatchpoint(CodeBlock* codeBlock)
+    CodeBlockJettisoningWatchpoint(CodeBlock* codeBlock = nullptr)
         : Watchpoint(Watchpoint::Type::CodeBlockJettisoning)
         , m_codeBlock(codeBlock)
     {
+    }
+
+    void initialize(CodeBlock* codeBlock)
+    {
+        m_codeBlock = codeBlock;
     }
     
     void fireInternal(VM&, const FireDetail&);
 
 private:
-    JSC_WATCHPOINT_FIELD(PackedCellPtr<CodeBlock>, m_codeBlock);
+    PackedCellPtr<CodeBlock> m_codeBlock;
 };
 
 } // namespace JSC

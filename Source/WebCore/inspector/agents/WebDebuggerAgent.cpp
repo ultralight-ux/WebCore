@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,18 +49,18 @@ bool WebDebuggerAgent::enabled() const
     return m_instrumentingAgents.enabledWebDebuggerAgent() == this && InspectorDebuggerAgent::enabled();
 }
 
-void WebDebuggerAgent::enable()
+void WebDebuggerAgent::internalEnable()
 {
     m_instrumentingAgents.setEnabledWebDebuggerAgent(this);
 
-    InspectorDebuggerAgent::enable();
+    InspectorDebuggerAgent::internalEnable();
 }
 
-void WebDebuggerAgent::disable(bool isBeingDestroyed)
+void WebDebuggerAgent::internalDisable(bool isBeingDestroyed)
 {
     m_instrumentingAgents.setEnabledWebDebuggerAgent(nullptr);
 
-    InspectorDebuggerAgent::disable(isBeingDestroyed);
+    InspectorDebuggerAgent::internalDisable(isBeingDestroyed);
 }
 
 void WebDebuggerAgent::didAddEventListener(EventTarget& target, const AtomString& eventType, EventListener& listener, bool capture)
@@ -69,7 +69,7 @@ void WebDebuggerAgent::didAddEventListener(EventTarget& target, const AtomString
         return;
 
     auto& eventListeners = target.eventListeners(eventType);
-    auto position = eventListeners.findMatching([&](auto& registeredListener) {
+    auto position = eventListeners.findIf([&](auto& registeredListener) {
         return &registeredListener->callback() == &listener && registeredListener->useCapture() == capture;
     });
     if (position == notFound)
@@ -79,20 +79,20 @@ void WebDebuggerAgent::didAddEventListener(EventTarget& target, const AtomString
     if (m_registeredEventListeners.contains(registeredListener.get()))
         return;
 
-    JSC::JSGlobalObject* scriptState = target.scriptExecutionContext()->execState();
-    if (!scriptState)
+    auto* globalObject = target.scriptExecutionContext()->globalObject();
+    if (!globalObject)
         return;
 
     int identifier = m_nextEventListenerIdentifier++;
     m_registeredEventListeners.set(registeredListener.get(), identifier);
 
-    didScheduleAsyncCall(scriptState, InspectorDebuggerAgent::AsyncCallType::EventListener, identifier, registeredListener->isOnce());
+    didScheduleAsyncCall(globalObject, InspectorDebuggerAgent::AsyncCallType::EventListener, identifier, registeredListener->isOnce());
 }
 
 void WebDebuggerAgent::willRemoveEventListener(EventTarget& target, const AtomString& eventType, EventListener& listener, bool capture)
 {
     auto& eventListeners = target.eventListeners(eventType);
-    size_t listenerIndex = eventListeners.findMatching([&](auto& registeredListener) {
+    size_t listenerIndex = eventListeners.findIf([&](auto& registeredListener) {
         return &registeredListener->callback() == &listener && registeredListener->useCapture() == capture;
     });
 
@@ -109,7 +109,21 @@ void WebDebuggerAgent::willHandleEvent(const RegisteredEventListener& listener)
     if (it == m_registeredEventListeners.end())
         return;
 
+    // Save the identifier for the listener we're about to dispatch an event to in case it's removed.
+    m_dispatchedEventListeners.set(&listener, it->value);
+
     willDispatchAsyncCall(InspectorDebuggerAgent::AsyncCallType::EventListener, it->value);
+}
+
+void WebDebuggerAgent::didHandleEvent(const RegisteredEventListener& listener)
+{
+    auto it = m_dispatchedEventListeners.find(&listener);
+    if (it == m_dispatchedEventListeners.end())
+        return;
+
+    didDispatchAsyncCall(InspectorDebuggerAgent::AsyncCallType::EventListener, it->value);
+
+    m_dispatchedEventListeners.remove(it);
 }
 
 int WebDebuggerAgent::willPostMessage()
@@ -164,14 +178,17 @@ void WebDebuggerAgent::didDispatchPostMessage(int postMessageIdentifier)
     if (it == m_postMessageTasks.end())
         return;
 
-    didDispatchAsyncCall();
+    didDispatchAsyncCall(InspectorDebuggerAgent::AsyncCallType::PostMessage, postMessageIdentifier);
 
     m_postMessageTasks.remove(it);
 }
 
 void WebDebuggerAgent::didClearAsyncStackTraceData()
 {
+    InspectorDebuggerAgent::didClearAsyncStackTraceData();
+
     m_registeredEventListeners.clear();
+    m_dispatchedEventListeners.clear();
     m_postMessageTasks.clear();
     m_nextEventListenerIdentifier = 1;
     m_nextPostMessageIdentifier = 1;

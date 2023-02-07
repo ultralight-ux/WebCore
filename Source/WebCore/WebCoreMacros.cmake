@@ -36,7 +36,7 @@ macro(MAKE_JS_FILE_ARRAYS _output_cpp _output_h _namespace _scripts _scripts_dep
     add_custom_command(
         OUTPUT ${_output_h} ${_output_cpp}
         DEPENDS ${JavaScriptCore_SCRIPTS_DIR}/make-js-file-arrays.py ${${_scripts}}
-        COMMAND ${PYTHON_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/make-js-file-arrays.py -n ${_namespace} ${_output_h} ${_output_cpp} ${${_scripts}}
+        COMMAND ${PYTHON_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/make-js-file-arrays.py --fail-if-non-ascii -n ${_namespace} ${_output_h} ${_output_cpp} ${${_scripts}}
         VERBATIM)
     WEBKIT_ADD_SOURCE_DEPENDENCIES(${${_scripts_dependencies}} ${_output_h} ${_output_cpp})
 endmacro()
@@ -185,60 +185,33 @@ macro(GENERATE_EVENT_FACTORY _infile _namespace)
 endmacro()
 
 
-macro(GENERATE_SETTINGS_MACROS _infile _outfile)
-    set(NAMES_GENERATOR ${WEBCORE_DIR}/Scripts/GenerateSettings.rb)
-
-    set(_extra_output
-        ${WebCore_DERIVED_SOURCES_DIR}/Settings.cpp
-        ${WebCore_DERIVED_SOURCES_DIR}/InternalSettingsGenerated.h
-        ${WebCore_DERIVED_SOURCES_DIR}/InternalSettingsGenerated.cpp
-        ${WebCore_DERIVED_SOURCES_DIR}/InternalSettingsGenerated.idl
-    )
-
-    set(GENERATE_SETTINGS_SCRIPTS
-        ${WEBCORE_DIR}/Scripts/SettingsTemplates/InternalSettingsGenerated.cpp.erb
-        ${WEBCORE_DIR}/Scripts/SettingsTemplates/InternalSettingsGenerated.idl.erb
-        ${WEBCORE_DIR}/Scripts/SettingsTemplates/InternalSettingsGenerated.h.erb
-        ${WEBCORE_DIR}/Scripts/SettingsTemplates/Settings.cpp.erb
-        ${WEBCORE_DIR}/Scripts/SettingsTemplates/Settings.h.erb
-    )
-
-    add_custom_command(
-        OUTPUT ${WebCore_DERIVED_SOURCES_DIR}/${_outfile} ${_extra_output}
-        MAIN_DEPENDENCY ${_infile}
-        DEPENDS ${NAMES_GENERATOR} ${GENERATE_SETTINGS_SCRIPTS} ${SCRIPTS_BINDINGS}
-        COMMAND ${RUBY_EXECUTABLE} ${NAMES_GENERATOR} --input ${_infile} --outputDir ${WebCore_DERIVED_SOURCES_DIR}
-        VERBATIM ${_args})
-endmacro()
-
-
-macro(GENERATE_DOM_NAMES _namespace _attrs)
+function(GENERATE_DOM_NAMES _namespace _attrs)
+    if (ARGN)
+        list(GET ARGN 0 _elements)
+        list(REMOVE_AT ARGN 0)
+    endif ()
     set(NAMES_GENERATOR ${WEBCORE_DIR}/dom/make_names.pl)
     set(_arguments  --attrs ${_attrs})
     set(_outputfiles ${WebCore_DERIVED_SOURCES_DIR}/${_namespace}Names.cpp ${WebCore_DERIVED_SOURCES_DIR}/${_namespace}Names.h)
-    set(_extradef)
-    set(_tags)
 
-    foreach (f ${ARGN})
-        if (_tags)
-            set(_extradef "${_extradef} ${f}")
-        else ()
-            set(_tags ${f})
-        endif ()
-    endforeach ()
-
-    if (_tags)
-        set(_arguments "${_arguments}" --tags ${_tags} --factory --wrapperFactory)
+    if (_elements)
+        set(_arguments "${_arguments}" --elements ${_elements} --factory --wrapperFactory)
         set(_outputfiles "${_outputfiles}" ${WebCore_DERIVED_SOURCES_DIR}/${_namespace}ElementFactory.cpp ${WebCore_DERIVED_SOURCES_DIR}/${_namespace}ElementFactory.h ${WebCore_DERIVED_SOURCES_DIR}/${_namespace}ElementTypeHelpers.h ${WebCore_DERIVED_SOURCES_DIR}/JS${_namespace}ElementWrapperFactory.cpp ${WebCore_DERIVED_SOURCES_DIR}/JS${_namespace}ElementWrapperFactory.h)
-    endif ()
-
-    if (_extradef)
-        set(_additionArguments "${_additionArguments}" --extraDefines=${_extradef})
     endif ()
 
     add_custom_command(
         OUTPUT  ${_outputfiles}
-        DEPENDS ${MAKE_NAMES_DEPENDENCIES} ${NAMES_GENERATOR} ${SCRIPTS_BINDINGS} ${_attrs} ${_tags}
-        COMMAND ${PERL_EXECUTABLE} ${NAMES_GENERATOR} --preprocessor "${CODE_GENERATOR_PREPROCESSOR_WITH_LINEMARKERS}" --outputDir ${WebCore_DERIVED_SOURCES_DIR} ${_arguments} ${_additionArguments}
+        DEPENDS ${MAKE_NAMES_DEPENDENCIES} ${NAMES_GENERATOR} ${SCRIPTS_BINDINGS} ${_attrs} ${_elements}
+        COMMAND ${PERL_EXECUTABLE} ${NAMES_GENERATOR} --outputDir ${WebCore_DERIVED_SOURCES_DIR} ${_arguments} ${_additionArguments}
         VERBATIM)
-endmacro()
+endfunction()
+
+
+function(GENERATE_DOM_NAME_ENUM _enum)
+    add_custom_command(
+        OUTPUT ${WebCore_DERIVED_SOURCES_DIR}/${_enum}.cpp ${WebCore_DERIVED_SOURCES_DIR}/${_enum}.h
+        MAIN_DEPENDENCY ${WEBCORE_DIR}/html/HTMLTagNames.in ${WEBCORE_DIR}/svg/svgtags.in ${WEBCORE_DIR}/mathml/mathtags.in ${WEBCORE_DIR}/html/HTMLAttributeNames.in ${WEBCORE_DIR}/mathml/mathatrs.in ${WEBCORE_DIR}/svg/svgattrs.in ${WEBCORE_DIR}/svg/xlinkattrs.in ${WEBCORE_DIR}/xml/xmlattrs.in ${WEBCORE_DIR}/xml/xmlnsattrs.in
+        DEPENDS ${MAKE_NAMES_DEPENDENCIES} ${WEBCORE_DIR}/dom/make_names.pl  ${SCRIPTS_BINDINGS}
+        COMMAND ${PERL_EXECUTABLE} ${WEBCORE_DIR}/dom/make_names.pl --outputDir ${WebCore_DERIVED_SOURCES_DIR} --enum ${_enum} --elements ${WEBCORE_DIR}/html/HTMLTagNames.in --elements ${WEBCORE_DIR}/svg/svgtags.in --elements ${WEBCORE_DIR}/mathml/mathtags.in --attrs ${WEBCORE_DIR}/html/HTMLAttributeNames.in --attrs ${WEBCORE_DIR}/mathml/mathattrs.in --attrs ${WEBCORE_DIR}/svg/svgattrs.in --attrs ${WEBCORE_DIR}/svg/xlinkattrs.in --attrs ${WEBCORE_DIR}/xml/xmlattrs.in --attrs ${WEBCORE_DIR}/xml/xmlnsattrs.in
+        VERBATIM)
+endfunction()

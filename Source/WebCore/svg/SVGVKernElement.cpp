@@ -18,10 +18,9 @@
  */
 
 #include "config.h"
-
-#if ENABLE(SVG_FONTS)
 #include "SVGVKernElement.h"
 
+#include "SVGElementInlines.h"
 #include "SVGFontElement.h"
 #include "SVGFontFaceElement.h"
 #include "SVGNames.h"
@@ -33,7 +32,7 @@ namespace WebCore {
 WTF_MAKE_ISO_ALLOCATED_IMPL(SVGVKernElement);
 
 inline SVGVKernElement::SVGVKernElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(SVGNames::vkernTag));
 }
@@ -43,37 +42,37 @@ Ref<SVGVKernElement> SVGVKernElement::create(const QualifiedName& tagName, Docum
     return adoptRef(*new SVGVKernElement(tagName, document));
 }
 
-Optional<SVGKerningPair> SVGVKernElement::buildVerticalKerningPair() const
+std::optional<SVGKerningPair> SVGVKernElement::buildVerticalKerningPair() const
 {
     // FIXME: Can this be shared with SVGHKernElement::buildVerticalKerningPair?
 
     auto& u1 = attributeWithoutSynchronization(SVGNames::u1Attr);
     auto& g1 = attributeWithoutSynchronization(SVGNames::g1Attr);
     if (u1.isEmpty() && g1.isEmpty())
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto& u2 = attributeWithoutSynchronization(SVGNames::u2Attr);
     auto& g2 = attributeWithoutSynchronization(SVGNames::g2Attr);
     if (u2.isEmpty() && g2.isEmpty())
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto glyphName1 = parseGlyphName(g1);
     if (!glyphName1)
-        return WTF::nullopt;
+        return std::nullopt;
     auto glyphName2 = parseGlyphName(g2);
     if (!glyphName2)
-        return WTF::nullopt;
+        return std::nullopt;
     auto unicodeString1 = parseKerningUnicodeString(u1);
     if (!unicodeString1)
-        return WTF::nullopt;
+        return std::nullopt;
     auto unicodeString2 = parseKerningUnicodeString(u2);
     if (!unicodeString2)
-        return WTF::nullopt;
+        return std::nullopt;
 
     bool ok = false;
     auto kerning = attributeWithoutSynchronization(SVGNames::kAttr).string().toFloat(&ok);
     if (!ok)
-        return WTF::nullopt;
+        return std::nullopt;
 
     return SVGKerningPair {
         WTFMove(unicodeString1->first),
@@ -87,5 +86,3 @@ Optional<SVGKerningPair> SVGVKernElement::buildVerticalKerningPair() const
 }
 
 }
-
-#endif // ENABLE(SVG_FONTS)

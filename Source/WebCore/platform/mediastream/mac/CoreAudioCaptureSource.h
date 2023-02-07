@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,16 +27,13 @@
 
 #if ENABLE(MEDIA_STREAM)
 
+#include "AudioSession.h"
 #include "CAAudioStreamDescription.h"
 #include "CaptureDevice.h"
 #include "RealtimeMediaSource.h"
 #include "RealtimeMediaSourceFactory.h"
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudio/CoreAudioTypes.h>
-#include <wtf/HashMap.h>
-#include <wtf/Lock.h>
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
 typedef struct OpaqueCMClock* CMClockRef;
@@ -55,18 +52,23 @@ class WebAudioSourceProviderAVFObjC;
 
 class CoreAudioCaptureSource : public RealtimeMediaSource {
 public:
-    static CaptureSourceOrError create(String&& deviceID, String&& hashSalt, const MediaConstraints*);
-    static CaptureSourceOrError createForTesting(String&& deviceID, String&& label, String&& hashSalt, const MediaConstraints*, BaseAudioSharedUnit& overrideUnit);
+    WEBCORE_EXPORT static CaptureSourceOrError create(String&& deviceID, MediaDeviceHashSalts&&, const MediaConstraints*, PageIdentifier);
+    static CaptureSourceOrError createForTesting(String&& deviceID, AtomString&& label, MediaDeviceHashSalts&&, const MediaConstraints*, BaseAudioSharedUnit& overrideUnit, PageIdentifier);
 
     WEBCORE_EXPORT static AudioCaptureFactory& factory();
 
     CMClockRef timebaseClock();
 
+    void handleNewCurrentMicrophoneDevice(const CaptureDevice&);
+
 protected:
-    CoreAudioCaptureSource(String&& deviceID, String&& label, String&& hashSalt, uint32_t persistentID, BaseAudioSharedUnit* = nullptr);
+    CoreAudioCaptureSource(const CaptureDevice&, uint32_t, MediaDeviceHashSalts&&, BaseAudioSharedUnit*, PageIdentifier);
     virtual ~CoreAudioCaptureSource();
     BaseAudioSharedUnit& unit();
     const BaseAudioSharedUnit& unit() const;
+
+    bool canResumeAfterInterruption() const { return m_canResumeAfterInterruption; }
+    void setCanResumeAfterInterruption(bool value) { m_canResumeAfterInterruption = value; }
 
 private:
     friend class BaseAudioSharedUnit;
@@ -78,9 +80,11 @@ private:
     void stopProducingData() final;
 
     void delaySamples(Seconds) final;
-    void setInterruptedForTesting(bool) final;
+#if PLATFORM(IOS_FAMILY)
+    void setIsInBackground(bool) final;
+#endif
 
-    Optional<Vector<int>> discreteSampleRates() const final { return { { 8000, 16000, 32000, 44100, 48000, 96000 } }; }
+    std::optional<Vector<int>> discreteSampleRates() const final { return { { 8000, 16000, 32000, 44100, 48000, 96000 } }; }
 
     const RealtimeMediaSourceCapabilities& capabilities() final;
     const RealtimeMediaSourceSettings& settings() final;
@@ -98,32 +102,66 @@ private:
 
     uint32_t m_captureDeviceID { 0 };
 
-    Optional<RealtimeMediaSourceCapabilities> m_capabilities;
-    Optional<RealtimeMediaSourceSettings> m_currentSettings;
+    std::optional<RealtimeMediaSourceCapabilities> m_capabilities;
+    std::optional<RealtimeMediaSourceSettings> m_currentSettings;
 
+    bool m_canResumeAfterInterruption { true };
     bool m_isReadyToStart { false };
     
     BaseAudioSharedUnit* m_overrideUnit { nullptr };
 };
 
-class CoreAudioCaptureSourceFactory : public AudioCaptureFactory {
+class CoreAudioSpeakerSamplesProducer {
 public:
-    static CoreAudioCaptureSourceFactory& singleton();
+    virtual ~CoreAudioSpeakerSamplesProducer() = default;
+    // Main thread
+    virtual const CAAudioStreamDescription& format() = 0;
+    virtual void captureUnitIsStarting() = 0;
+    virtual void captureUnitHasStopped() = 0;
+    // Background thread.
+    virtual OSStatus produceSpeakerSamples(size_t sampleCount, AudioBufferList&, uint64_t sampleTime, double hostTime, AudioUnitRenderActionFlags&) = 0;
+};
 
-    void beginInterruption();
-    void endInterruption();
+class CoreAudioCaptureSourceFactory : public AudioCaptureFactory, public AudioSession::InterruptionObserver {
+public:
+    WEBCORE_EXPORT static CoreAudioCaptureSourceFactory& singleton();
+
+    CoreAudioCaptureSourceFactory();
+    ~CoreAudioCaptureSourceFactory();
+
     void scheduleReconfiguration();
 
     void devicesChanged(const Vector<CaptureDevice>&);
 
-private:
-    CaptureSourceOrError createAudioCaptureSource(const CaptureDevice& device, String&& hashSalt, const MediaConstraints* constraints) final
-    {
-        return CoreAudioCaptureSource::create(String { device.persistentId() }, WTFMove(hashSalt), constraints);
-    }
+    WEBCORE_EXPORT void registerSpeakerSamplesProducer(CoreAudioSpeakerSamplesProducer&);
+    WEBCORE_EXPORT void unregisterSpeakerSamplesProducer(CoreAudioSpeakerSamplesProducer&);
+    WEBCORE_EXPORT bool isAudioCaptureUnitRunning();
+    WEBCORE_EXPORT void whenAudioCaptureUnitIsNotRunning(Function<void()>&&);
+    WEBCORE_EXPORT bool shouldAudioCaptureUnitRenderAudio();
 
+    void setOverrideUnit(BaseAudioSharedUnit* unit) { m_overrideUnit = unit; }
+    BaseAudioSharedUnit& unit();
+
+private:
+    // AudioSession::InterruptionObserver.
+    void beginAudioSessionInterruption() final { beginInterruption(); }
+    void endAudioSessionInterruption(AudioSession::MayResume) final { endInterruption(); }
+
+    // AudioCaptureFactory
+    CaptureSourceOrError createAudioCaptureSource(const CaptureDevice&, MediaDeviceHashSalts&&, const MediaConstraints*, PageIdentifier) override;
     CaptureDeviceManager& audioCaptureDeviceManager() final;
+    const Vector<CaptureDevice>& speakerDevices() const final;
+
+    void beginInterruption();
+    void endInterruption();
+
+    BaseAudioSharedUnit* m_overrideUnit { nullptr };
 };
+
+inline CaptureSourceOrError CoreAudioCaptureSourceFactory::createAudioCaptureSource(const CaptureDevice& device, MediaDeviceHashSalts&& hashSalts, const MediaConstraints* constraints, PageIdentifier pageIdentifier)
+{
+    return CoreAudioCaptureSource::create(String { device.persistentId() }, WTFMove(hashSalts), constraints, pageIdentifier);
+}
 
 } // namespace WebCore
 

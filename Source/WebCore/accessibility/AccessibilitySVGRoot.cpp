@@ -29,25 +29,31 @@
 #include "config.h"
 #include "AccessibilitySVGRoot.h"
 
+#include "AXObjectCache.h"
+#include "ElementInlines.h"
 #include "RenderObject.h"
+#include "SVGDescElement.h"
+#include "SVGElementTypeHelpers.h"
+#include "SVGTitleElement.h"
+#include "TypedElementDescendantIterator.h"
 
 namespace WebCore {
 
-AccessibilitySVGRoot::AccessibilitySVGRoot(RenderObject* renderer)
-    : AccessibilitySVGElement(renderer)
+AccessibilitySVGRoot::AccessibilitySVGRoot(RenderObject* renderer, AXObjectCache* cache)
+    : AccessibilitySVGElement(renderer, cache)
 {
 }
 
 AccessibilitySVGRoot::~AccessibilitySVGRoot() = default;
 
-Ref<AccessibilitySVGRoot> AccessibilitySVGRoot::create(RenderObject* renderer)
+Ref<AccessibilitySVGRoot> AccessibilitySVGRoot::create(RenderObject* renderer, AXObjectCache* cache)
 {
-    return adoptRef(*new AccessibilitySVGRoot(renderer));
+    return adoptRef(*new AccessibilitySVGRoot(renderer, cache));
 }
 
 void AccessibilitySVGRoot::setParent(AccessibilityRenderObject* parent)
 {
-    m_parent = makeWeakPtr(parent);
+    m_parent = parent;
 }
     
 AccessibilityObject* AccessibilitySVGRoot::parentObject() const
@@ -68,5 +74,44 @@ AccessibilityRole AccessibilitySVGRoot::roleValue() const
 
     return AccessibilityRole::Group;
 }
-    
+
+bool AccessibilitySVGRoot::hasAccessibleContent() const
+{
+    auto* rootElement = this->element();
+    if (!rootElement)
+        return false;
+
+    auto isAccessibleSVGElement = [] (const Element& element) -> bool {
+        if (!is<SVGElement>(element))
+            return false;
+
+        // The presence of an SVGTitle or SVGDesc element is enough to deem the SVG hierarchy as accessible.
+        if (is<SVGTitleElement>(element)
+            || is<SVGDescElement>(element))
+            return true;
+
+        // Text content is accessible.
+        if (downcast<SVGElement>(element).isTextContent())
+            return true;
+
+        // If the role or aria-label attributes are specified, this is accessible.
+        if (!element.attributeWithoutSynchronization(HTMLNames::roleAttr).isEmpty()
+            || !element.attributeWithoutSynchronization(HTMLNames::aria_labelAttr).isEmpty())
+            return true;
+
+        return false;
+    };
+
+    if (isAccessibleSVGElement(*rootElement))
+        return true;
+
+    // This SVG hierarchy is accessible if any of its descendants is accessible.
+    for (const auto& descendant : descendantsOfType<SVGElement>(*rootElement)) {
+        if (isAccessibleSVGElement(descendant))
+            return true;
+    }
+
+    return false;
+}
+
 } // namespace WebCore

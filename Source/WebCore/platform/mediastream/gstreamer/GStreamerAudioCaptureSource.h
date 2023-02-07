@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 Metrological Group B.V.
+ * Copyright (C) 2020 Igalia S.L.
  * Author: Thibault Saunier <tsaunier@igalia.com>
  * Author: Alejandro G. Castro  <alex@igalia.com>
  *
@@ -21,7 +22,7 @@
 
 #pragma once
 
-#if ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC) && USE(GSTREAMER)
+#if ENABLE(MEDIA_STREAM) && USE(GSTREAMER)
 #include "CaptureDevice.h"
 #include "GStreamerAudioCapturer.h"
 #include "GStreamerCaptureDevice.h"
@@ -31,7 +32,7 @@ namespace WebCore {
 
 class GStreamerAudioCaptureSource : public RealtimeMediaSource {
 public:
-    static CaptureSourceOrError create(String&& deviceID, String&& hashSalt, const MediaConstraints*);
+    static CaptureSourceOrError create(String&& deviceID, MediaDeviceHashSalts&&, const MediaConstraints*);
     WEBCORE_EXPORT static AudioCaptureFactory& factory();
 
     const RealtimeMediaSourceCapabilities& capabilities() override;
@@ -41,17 +42,19 @@ public:
     GStreamerCapturer* capturer() { return m_capturer.get(); }
 
 protected:
-    GStreamerAudioCaptureSource(GStreamerCaptureDevice, String&& hashSalt);
-    GStreamerAudioCaptureSource(String&& deviceID, String&& name, String&& hashSalt);
+    GStreamerAudioCaptureSource(GStreamerCaptureDevice, MediaDeviceHashSalts&&);
     virtual ~GStreamerAudioCaptureSource();
     void startProducingData() override;
     void stopProducingData() override;
     CaptureDevice::DeviceType deviceType() const override { return CaptureDevice::DeviceType::Microphone; }
 
-    mutable Optional<RealtimeMediaSourceCapabilities> m_capabilities;
-    mutable Optional<RealtimeMediaSourceSettings> m_currentSettings;
+    mutable std::optional<RealtimeMediaSourceCapabilities> m_capabilities;
+    mutable std::optional<RealtimeMediaSourceSettings> m_currentSettings;
 
 private:
+    bool interrupted() const final;
+    void setInterruptedForTesting(bool) final;
+
     bool isCaptureSource() const final { return true; }
     void settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag>) final;
 
@@ -63,4 +66,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC) && USE(GSTREAMER)
+#endif // ENABLE(MEDIA_STREAM) && USE(GSTREAMER)

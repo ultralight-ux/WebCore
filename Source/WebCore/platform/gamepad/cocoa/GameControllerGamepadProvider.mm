@@ -33,7 +33,8 @@
 #import "KnownGamepads.h"
 #import "Logging.h"
 #import <GameController/GameController.h>
-#import <pal/spi/mac/IOKitSPIMac.h>
+#import <pal/spi/cocoa/IOKitSPI.h>
+#import <wtf/CompletionHandler.h>
 #import <wtf/NeverDestroyed.h>
 
 #import "GameControllerSoftLink.h"
@@ -41,36 +42,34 @@
 namespace WebCore {
 
 #if !HAVE(GCCONTROLLER_HID_DEVICE_CHECK)
+
 bool GameControllerGamepadProvider::willHandleVendorAndProduct(uint16_t vendorID, uint16_t productID)
 {
-    // Check the vendor/product IDs agains a hard coded list of controllers we expect to work well with
-    // GameController.framework on 10.15.
-    static NeverDestroyed<HashSet<uint32_t>> gameControllerCompatibleGamepads;
-
-    static std::once_flag onceFlag;
-    std::call_once(onceFlag, [] {
-        gameControllerCompatibleGamepads->add(Nimbus1);
-        gameControllerCompatibleGamepads->add(Nimbus2);
-        gameControllerCompatibleGamepads->add(StratusXL1);
-        gameControllerCompatibleGamepads->add(StratusXL2);
-        gameControllerCompatibleGamepads->add(StratusXL3);
-        gameControllerCompatibleGamepads->add(StratusXL4);
-        gameControllerCompatibleGamepads->add(HoripadUltimate);
-        gameControllerCompatibleGamepads->add(GamesirM2);
-        gameControllerCompatibleGamepads->add(XboxOne1);
-        gameControllerCompatibleGamepads->add(XboxOne2);
-        gameControllerCompatibleGamepads->add(XboxOne3);
-        gameControllerCompatibleGamepads->add(Dualshock4_1);
-        gameControllerCompatibleGamepads->add(Dualshock4_2);
-    });
-
-    uint32_t fullProductID = (((uint32_t)vendorID) << 16) | productID;
-    return gameControllerCompatibleGamepads->contains(fullProductID);
+    // Check the vendor/product ID pair against a hard coded list of controllers we expect to work
+    // well with GameController.framework on macOS 10.15.
+    switch ((static_cast<uint32_t>(vendorID) << 16) | productID) {
+    case Dualshock4_1:
+    case Dualshock4_2:
+    case GamesirM2:
+    case HoripadUltimate:
+    case Nimbus1:
+    case Nimbus2:
+    case StratusXL1:
+    case StratusXL2:
+    case StratusXL3:
+    case StratusXL4:
+    case XboxOne1:
+    case XboxOne2:
+    case XboxOne3:
+        return true;
+    default:
+        return false;
+    }
 }
+
 #endif // !HAVE(GCCONTROLLER_HID_DEVICE_CHECK)
 
-
-static const Seconds inputNotificationDelay { 16_ms };
+static const Seconds inputNotificationDelay { 1_ms };
 
 GameControllerGamepadProvider& GameControllerGamepadProvider::singleton()
 {
@@ -80,7 +79,6 @@ GameControllerGamepadProvider& GameControllerGamepadProvider::singleton()
 
 GameControllerGamepadProvider::GameControllerGamepadProvider()
     : m_inputNotificationTimer(RunLoop::current(), this, &GameControllerGamepadProvider::inputNotificationTimerFired)
-
 {
 }
 
@@ -162,6 +160,24 @@ void GameControllerGamepadProvider::prewarmGameControllerDevicesIfNecessary()
 
     LOG(Gamepad, "GameControllerGamepadProvider explicitly starting GameController framework monitoring");
     [getGCControllerClass() __openXPC_and_CBApplicationDidBecomeActive__];
+
+    init_GameController_GCInputButtonA();
+    init_GameController_GCInputButtonB();
+    init_GameController_GCInputButtonX();
+    init_GameController_GCInputButtonY();
+    init_GameController_GCInputButtonHome();
+    init_GameController_GCInputButtonMenu();
+    init_GameController_GCInputButtonOptions();
+    init_GameController_GCInputDirectionPad();
+    init_GameController_GCInputLeftShoulder();
+    init_GameController_GCInputLeftTrigger();
+    init_GameController_GCInputLeftThumbstick();
+    init_GameController_GCInputLeftThumbstickButton();
+    init_GameController_GCInputRightShoulder();
+    init_GameController_GCInputRightTrigger();
+    init_GameController_GCInputRightThumbstick();
+    init_GameController_GCInputRightThumbstickButton();
+    
     prewarmed = true;
 }
 
@@ -209,6 +225,9 @@ void GameControllerGamepadProvider::stopMonitoringGamepads(GamepadProviderClient
 
     [[NSNotificationCenter defaultCenter] removeObserver:m_connectObserver.get()];
     [[NSNotificationCenter defaultCenter] removeObserver:m_disconnectObserver.get()];
+
+    for (auto& gamepad : m_gamepadMap.values())
+        gamepad->noLongerHasAnyClient();
 }
 
 unsigned GameControllerGamepadProvider::indexForNewlyConnectedDevice()
@@ -249,6 +268,28 @@ void GameControllerGamepadProvider::inputNotificationTimerFired()
     m_shouldMakeInvisibleGamepadsVisible = false;
 
     dispatchPlatformGamepadInputActivity();
+}
+
+void GameControllerGamepadProvider::playEffect(unsigned gamepadIndex, const String& gamepadID, GamepadHapticEffectType type, const GamepadEffectParameters& parameters, CompletionHandler<void(bool)>&& completionHandler)
+{
+    if (gamepadIndex >= m_gamepadVector.size())
+        return completionHandler(false);
+    auto* gamepad = m_gamepadVector[gamepadIndex];
+    if (!gamepad || gamepad->id() != gamepadID)
+        return completionHandler(false);
+
+    gamepad->playEffect(type, parameters, WTFMove(completionHandler));
+}
+
+void GameControllerGamepadProvider::stopEffects(unsigned gamepadIndex, const String& gamepadID, CompletionHandler<void()>&& completionHandler)
+{
+    if (gamepadIndex >= m_gamepadVector.size())
+        return completionHandler();
+    auto* gamepad = m_gamepadVector[gamepadIndex];
+    if (!gamepad || gamepad->id() != gamepadID)
+        return completionHandler();
+
+    gamepad->stopEffects(WTFMove(completionHandler));
 }
 
 } // namespace WebCore

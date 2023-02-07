@@ -27,17 +27,27 @@
 
 #if ENABLE(APPLE_PAY)
 
+#include "ApplePayDateComponentsRange.h"
+#include <optional>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-struct ApplePayShippingMethod {
+struct ApplePayShippingMethod final {
     String label;
     String detail;
     String amount;
     String identifier;
+
+#if ENABLE(APPLE_PAY_SHIPPING_METHOD_DATE_COMPONENTS_RANGE)
+    std::optional<ApplePayDateComponentsRange> dateComponentsRange;
+#endif
+
+#if ENABLE(APPLE_PAY_SELECTED_SHIPPING_METHOD)
+    bool selected { false };
+#endif
 };
 
-}
+} // namespace WebCore
 
 #endif

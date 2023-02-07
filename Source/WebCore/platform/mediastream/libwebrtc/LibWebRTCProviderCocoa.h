@@ -42,12 +42,13 @@ public:
     ~LibWebRTCProviderCocoa();
 
     std::unique_ptr<webrtc::VideoDecoderFactory> createDecoderFactory() override;
+    std::unique_ptr<webrtc::VideoEncoderFactory> createEncoderFactory() override;
+
+    void setActive(bool) final;
 
 private:
-    void setActive(bool) final;
-    std::unique_ptr<webrtc::VideoEncoderFactory> createEncoderFactory() final;
-
-    void setH264HardwareEncoderAllowed(bool allowed) final;
+    std::optional<MediaCapabilitiesInfo> computeVPParameters(const VideoConfiguration&) final;
+    bool isVPSoftwareDecoderSmooth(const VideoConfiguration&) final;
 };
 
 } // namespace WebCore

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,16 +31,14 @@
 #include "MediaProducer.h"
 #include "MediaUsageInfo.h"
 #include "PlatformMediaSession.h"
-#include "SuccessOr.h"
 #include "Timer.h"
+#include <memory>
 #include <wtf/TypeCasts.h>
 
 namespace WebCore {
 
-enum class MediaSessionMainContentPurpose {
-    MediaControls,
-    Autoplay
-};
+enum class MediaSessionMainContentPurpose { MediaControls, Autoplay };
+enum class MediaPlaybackState { Playing, Paused };
 
 enum class MediaPlaybackDenialReason {
     UserGestureRequired,
@@ -51,10 +49,16 @@ enum class MediaPlaybackDenialReason {
 
 class Document;
 class HTMLMediaElement;
+class MediaMetadata;
+class MediaSession;
+class MediaSessionObserver;
 class SourceBuffer;
 
-class MediaElementSession final : public PlatformMediaSession
-{
+struct MediaPositionState;
+
+enum class MediaSessionPlaybackState : uint8_t;
+
+class MediaElementSession final : public PlatformMediaSession {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit MediaElementSession(HTMLMediaElement&);
@@ -66,12 +70,13 @@ public:
     void clientWillBeginAutoplaying() final;
     bool clientWillBeginPlayback() final;
     bool clientWillPausePlayback() final;
+    void clientCharacteristicsChanged(bool) final;
 
     void visibilityChanged();
     void isVisibleInViewportChanged();
     void inActiveDocumentChanged();
 
-    SuccessOr<MediaPlaybackDenialReason> playbackPermitted() const;
+    Expected<void, MediaPlaybackDenialReason> playbackStateChangePermitted(MediaPlaybackState) const;
     bool autoplayPermitted() const;
     bool dataLoadingPermitted() const;
     MediaPlayer::BufferingPolicy preferredBufferingPolicy() const;
@@ -90,7 +95,7 @@ public:
 
     bool isPlayingToWirelessPlaybackTarget() const override;
 
-    void mediaStateDidChange(MediaProducer::MediaStateFlags);
+    void mediaStateDidChange(MediaProducerMediaStateFlags);
 #endif
 
     bool requiresFullscreenForVideoPlayback() const;
@@ -125,6 +130,7 @@ public:
         RequireUserGestureToControlControlsManager = 1 << 13,
         RequirePlaybackToControlControlsManager = 1 << 14,
         RequireUserGestureForVideoDueToLowPowerMode = 1 << 15,
+        RequirePageVisibilityToPlayAudio = 1 << 16,
         AllRestrictions = ~NoRestrictions,
     };
     typedef unsigned BehaviorRestrictions;
@@ -143,7 +149,7 @@ public:
     bool wantsToObserveViewportVisibilityForMediaControls() const;
     bool wantsToObserveViewportVisibilityForAutoplay() const;
 
-    enum class PlaybackControlsPurpose { ControlsManager, NowPlaying };
+    enum class PlaybackControlsPurpose { ControlsManager, NowPlaying, MediaSession };
     bool canShowControlsManager(PlaybackControlsPurpose) const;
     bool isLargeEnoughForMainContent(MediaSessionMainContentPurpose) const;
     bool isMainContentForPurposesOfAutoplayEvents() const;
@@ -158,15 +164,25 @@ public:
             || type == MediaType::VideoAudio;
     }
 
-    Optional<NowPlayingInfo> nowPlayingInfo() const final;
+    std::optional<NowPlayingInfo> nowPlayingInfo() const final;
 
     WEBCORE_EXPORT void updateMediaUsageIfChanged() final;
-    Optional<MediaUsageInfo> mediaUsageInfo() const { return m_mediaUsageInfo; }
+    std::optional<MediaUsageInfo> mediaUsageInfo() const { return m_mediaUsageInfo; }
 
 #if !RELEASE_LOG_DISABLED
     const void* logIdentifier() const final { return m_logIdentifier; }
     const char* logClassName() const final { return "MediaElementSession"; }
 #endif
+
+#if ENABLE(MEDIA_SESSION)
+    void didReceiveRemoteControlCommand(RemoteControlCommandType, const RemoteCommandArgument&) final;
+#endif
+    void metadataChanged(const RefPtr<MediaMetadata>&);
+    void positionStateChanged(const std::optional<MediaPositionState>&);
+    void playbackStateChanged(MediaSessionPlaybackState);
+    void actionHandlersChanged();
+
+    MediaSession* mediaSession() const;
 
 private:
 
@@ -182,6 +198,8 @@ private:
 #if PLATFORM(IOS_FAMILY)
     bool requiresPlaybackTargetRouteMonitoring() const override;
 #endif
+    void ensureIsObservingMediaSession();
+
     bool updateIsMainContent() const;
     void mainContentCheckTimerFired();
 
@@ -189,12 +207,12 @@ private:
     void clientDataBufferingTimerFired();
     void updateClientDataBuffering();
 
-    void addedMediaUsageManagerSessionIfNecessary();
+    void addMediaUsageManagerSessionIfNecessary();
 
     HTMLMediaElement& m_element;
     BehaviorRestrictions m_restrictions;
 
-    Optional<MediaUsageInfo> m_mediaUsageInfo;
+    std::optional<MediaUsageInfo> m_mediaUsageInfo;
 
     bool m_elementIsHiddenUntilVisibleInViewport { false };
     bool m_elementIsHiddenBecauseItWasRemovedFromDOM { false };
@@ -221,6 +239,11 @@ private:
 
 #if ENABLE(MEDIA_USAGE)
     bool m_haveAddedMediaUsageManagerSession { false };
+#endif
+    
+#if ENABLE(MEDIA_SESSION)
+    bool m_isScrubbing { false };
+    std::unique_ptr<MediaSessionObserver> m_observer;
 #endif
 };
 

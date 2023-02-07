@@ -40,6 +40,8 @@ typedef struct __DDResult *DDResultRef;
 
 #else // !USE(APPLE_INTERNAL_SDK)
 
+#import <Foundation/Foundation.h>
+
 typedef enum {
     DDScannerTypeStandard = 0,
     DDScannerType1 = 1,
@@ -145,7 +147,7 @@ void *DDScanQueryGetFragmentMetaData(DDScanQueryRef, CFIndex queryIndex);
 bool DDResultHasProperties(DDResultRef, CFIndex propertySet);
 CFArrayRef DDResultGetSubResults(DDResultRef);
 DDQueryRange DDResultGetQueryRangeForURLification(DDResultRef);
-
+void DDResultDisableURLSchemeChecking();
 WTF_EXTERN_C_END
 
 #endif

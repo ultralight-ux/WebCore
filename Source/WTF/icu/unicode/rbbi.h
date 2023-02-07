@@ -18,6 +18,8 @@
 
 #include "unicode/utypes.h"
 
+#if U_SHOW_CPLUSPLUS_API
+
 /**
  * \file
  * \brief C++ API: Rule Based Break Iterator
@@ -99,7 +101,7 @@ private:
      * If present, UStack of LanguageBreakEngine objects that might handle
      * dictionary characters. Searched from top to bottom to find an object to
      * handle a given character.
-     * @internal
+     * @internal (private)
      */
     UStack              *fLanguageBreakEngines;
 
@@ -107,15 +109,15 @@ private:
      *
      * If present, the special LanguageBreakEngine used for handling
      * characters that are in the dictionary set, but not handled by any
-     * LangugageBreakEngine.
-     * @internal
+     * LanguageBreakEngine.
+     * @internal (private)
      */
     UnhandledEngine     *fUnhandledBreakEngine;
 
     /**
      * Counter for the number of characters encountered with the "dictionary"
      *   flag set.
-     * @internal
+     * @internal (private)
      */
     uint32_t            fDictionaryCharCount;
 
@@ -150,7 +152,7 @@ private:
      *
      *             The break iterator adopts the memory, and will
      *             free it when done.
-     * @internal
+     * @internal (private)
      */
     RuleBasedBreakIterator(RBBIDataHeader* data, UErrorCode &status);
 
@@ -260,7 +262,7 @@ public:
      * @return TRUE if both BreakIterators are not same.
      *  @stable ICU 2.0
      */
-    UBool operator!=(const BreakIterator& that) const;
+    inline UBool operator!=(const BreakIterator& that) const;
 
     /**
      * Returns a newly-constructed RuleBasedBreakIterator with the same
@@ -272,7 +274,7 @@ public:
      * @return a newly-constructed RuleBasedBreakIterator
      * @stable ICU 2.0
      */
-    virtual BreakIterator* clone() const;
+    virtual RuleBasedBreakIterator* clone() const;
 
     /**
      * Compute a hash code for this BreakIterator
@@ -536,6 +538,7 @@ public:
      */
     static UClassID U_EXPORT2 getStaticClassID(void);
 
+#ifndef U_FORCE_HIDE_DEPRECATED_API
     /**
      * Deprecated functionality. Use clone() instead.
      *
@@ -562,10 +565,10 @@ public:
      *          or if the stackBuffer was too small to hold the clone.
      * @deprecated ICU 52. Use clone() instead.
      */
-    virtual BreakIterator *  createBufferClone(void *stackBuffer,
-                                               int32_t &BufferSize,
-                                               UErrorCode &status);
-
+    virtual RuleBasedBreakIterator *createBufferClone(void *stackBuffer,
+                                                      int32_t &BufferSize,
+                                                      UErrorCode &status);
+#endif  // U_FORCE_HIDE_DEPRECATED_API
 
     /**
      * Return the binary form of compiled break rules,
@@ -695,5 +698,7 @@ inline UBool RuleBasedBreakIterator::operator!=(const BreakIterator& that) const
 U_NAMESPACE_END
 
 #endif /* #if !UCONFIG_NO_BREAK_ITERATION */
+
+#endif /* U_SHOW_CPLUSPLUS_API */
 
 #endif

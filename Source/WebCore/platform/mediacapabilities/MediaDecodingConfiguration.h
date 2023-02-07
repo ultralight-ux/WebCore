@@ -32,6 +32,16 @@ namespace WebCore {
 
 struct MediaDecodingConfiguration : MediaConfiguration {
     MediaDecodingType type;
+
+    bool canExposeVP9 { true };
+
+    MediaDecodingConfiguration isolatedCopy() const;
 };
 
+inline MediaDecodingConfiguration MediaDecodingConfiguration::isolatedCopy() const
+{
+    return { MediaConfiguration::isolatedCopy(), type, canExposeVP9 };
 }
+
+} // namespace WebCore
+

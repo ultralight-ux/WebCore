@@ -29,10 +29,15 @@
 #include "JSCustomElementInterface.h"
 
 #include "DOMWrapperWorld.h"
+#include "ElementRareData.h"
+#include "EventLoop.h"
+#include "HTMLFormElement.h"
+#include "HTMLMaybeFormAssociatedCustomElement.h"
 #include "HTMLUnknownElement.h"
 #include "JSDOMBinding.h"
 #include "JSDOMConvertNullable.h"
 #include "JSDOMConvertStrings.h"
+#include "JSDOMFormData.h"
 #include "JSDOMWindow.h"
 #include "JSElement.h"
 #include "JSExecState.h"
@@ -50,28 +55,31 @@ JSCustomElementInterface::JSCustomElementInterface(const QualifiedName& name, JS
     , m_name(name)
     , m_constructor(constructor)
     , m_isolatedWorld(globalObject->world())
+    , m_isElementInternalsDisabled(false)
+    , m_isShadowDisabled(false)
+    , m_isFormAssociated(false)
 {
 }
 
 JSCustomElementInterface::~JSCustomElementInterface() = default;
 
-static RefPtr<Element> constructCustomElementSynchronously(Document&, VM&, JSGlobalObject&, JSObject* constructor, const AtomString& localName);
+static RefPtr<Element> constructCustomElementSynchronously(Document&, VM&, JSGlobalObject&, JSObject* constructor, const AtomString& localName, ParserConstructElementWithEmptyStack);
 
-Ref<Element> JSCustomElementInterface::constructElementWithFallback(Document& document, const AtomString& localName)
+Ref<Element> JSCustomElementInterface::constructElementWithFallback(Document& document, const AtomString& localName, ParserConstructElementWithEmptyStack parserConstructElementWithEmptyStack)
 {
-    if (auto element = tryToConstructCustomElement(document, localName))
+    if (auto element = tryToConstructCustomElement(document, localName, parserConstructElementWithEmptyStack))
         return element.releaseNonNull();
 
     auto element = HTMLUnknownElement::create(QualifiedName(nullAtom(), localName, HTMLNames::xhtmlNamespaceURI), document);
     element->setIsCustomElementUpgradeCandidate();
-    element->setIsFailedCustomElement(*this);
+    element->setIsFailedCustomElement();
 
     return element;
 }
 
 Ref<Element> JSCustomElementInterface::constructElementWithFallback(Document& document, const QualifiedName& name)
 {
-    if (auto element = tryToConstructCustomElement(document, name.localName())) {
+    if (auto element = tryToConstructCustomElement(document, name.localName(), ParserConstructElementWithEmptyStack::No)) {
         if (!name.prefix().isNull())
             element->setPrefix(name.prefix());
         return element.releaseNonNull();
@@ -79,12 +87,23 @@ Ref<Element> JSCustomElementInterface::constructElementWithFallback(Document& do
 
     auto element = HTMLUnknownElement::create(name, document);
     element->setIsCustomElementUpgradeCandidate();
-    element->setIsFailedCustomElement(*this);
+    element->setIsFailedCustomElement();
 
     return element;
 }
 
-RefPtr<Element> JSCustomElementInterface::tryToConstructCustomElement(Document& document, const AtomString& localName)
+Ref<HTMLElement> JSCustomElementInterface::createElement(Document& document)
+{
+    if (m_isFormAssociated) {
+        auto element = HTMLMaybeFormAssociatedCustomElement::create(m_name, document);
+        element->setInterfaceIsFormAssociated();
+        return element;
+    }
+
+    return HTMLElement::create(m_name, document);
+}
+
+RefPtr<Element> JSCustomElementInterface::tryToConstructCustomElement(Document& document, const AtomString& localName, ParserConstructElementWithEmptyStack parserConstructElementWithEmptyStack)
 {
     if (!canInvokeCallback())
         return nullptr;
@@ -99,13 +118,16 @@ RefPtr<Element> JSCustomElementInterface::tryToConstructCustomElement(Document& 
         return nullptr;
 
     ASSERT(&document == scriptExecutionContext());
-    auto& lexicalGlobalObject = *document.execState();
-    auto element = constructCustomElementSynchronously(document, vm, lexicalGlobalObject, m_constructor.get(), localName);
+    auto* lexicalGlobalObject = document.globalObject();
+    ASSERT(lexicalGlobalObject);
+    if (!lexicalGlobalObject)
+        return nullptr;
+    auto element = constructCustomElementSynchronously(document, vm, *lexicalGlobalObject, m_constructor.get(), localName, parserConstructElementWithEmptyStack);
     EXCEPTION_ASSERT(!!scope.exception() == !element);
     if (!element) {
         auto* exception = scope.exception();
         scope.clearException();
-        reportException(&lexicalGlobalObject, exception);
+        reportException(m_constructor->globalObject(), exception);
         return nullptr;
     }
 
@@ -114,10 +136,10 @@ RefPtr<Element> JSCustomElementInterface::tryToConstructCustomElement(Document& 
 
 // https://dom.spec.whatwg.org/#concept-create-element
 // 6. 1. If the synchronous custom elements flag is set
-static RefPtr<Element> constructCustomElementSynchronously(Document& document, VM& vm, JSGlobalObject& lexicalGlobalObject, JSObject* constructor, const AtomString& localName)
+static RefPtr<Element> constructCustomElementSynchronously(Document& document, VM& vm, JSGlobalObject& lexicalGlobalObject, JSObject* constructor, const AtomString& localName, ParserConstructElementWithEmptyStack parserConstructElementWithEmptyStack)
 {
     auto scope = DECLARE_THROW_SCOPE(vm);
-    auto constructData = getConstructData(vm, constructor);
+    auto constructData = JSC::getConstructData(constructor);
     if (constructData.type == CallData::Type::None) {
         ASSERT_NOT_REACHED();
         return nullptr;
@@ -129,6 +151,9 @@ static RefPtr<Element> constructCustomElementSynchronously(Document& document, V
     JSValue newElement = construct(&lexicalGlobalObject, constructor, constructData, args);
     InspectorInstrumentation::didCallFunction(&document);
     RETURN_IF_EXCEPTION(scope, nullptr);
+
+    if (parserConstructElementWithEmptyStack == ParserConstructElementWithEmptyStack::Yes)
+        document.eventLoop().performMicrotaskCheckpoint();
 
     ASSERT(!newElement.isEmpty());
     HTMLElement* wrappedElement = JSHTMLElement::toWrapped(vm, newElement);
@@ -162,10 +187,18 @@ static RefPtr<Element> constructCustomElementSynchronously(Document& document, V
     return wrappedElement;
 }
 
+// https://html.spec.whatwg.org/multipage/custom-elements.html#concept-upgrade-an-element
 void JSCustomElementInterface::upgradeElement(Element& element)
 {
-    ASSERT(element.tagQName() == name());
+    ASSERT(element.tagQName().matches(name()));
+
+    if (!element.isCustomElementUpgradeCandidate() && !element.isUncustomizedCustomElement())
+        return;
+
+    // FIXME: This assertion always seem to pass, even though the check above is more allowable.
+    // It would be great to figure out why: a spec bug, lack of test coverage, or the fact we don't support customized built-ins.
     ASSERT(element.isCustomElementUpgradeCandidate());
+
     if (!canInvokeCallback())
         return;
 
@@ -185,7 +218,7 @@ void JSCustomElementInterface::upgradeElement(Element& element)
         return;
     JSGlobalObject* lexicalGlobalObject = globalObject;
 
-    auto constructData = getConstructData(vm, m_constructor.get());
+    auto constructData = JSC::getConstructData(m_constructor.get());
     if (constructData.type == CallData::Type::None) {
         ASSERT_NOT_REACHED();
         return;
@@ -193,7 +226,22 @@ void JSCustomElementInterface::upgradeElement(Element& element)
 
     CustomElementReactionQueue::enqueuePostUpgradeReactions(element);
 
+    // Unlike spec, set element's custom element state to "failed" / "precustomized" after enqueueing post-upgrade reactions
+    // to avoid hitting debug assertions in enqueuePostUpgradeReactions.
+    element.setIsFailedOrPrecustomizedCustomElementWithoutClearingReactionQueue();
+
     m_constructionStack.append(&element);
+
+    if (m_isShadowDisabled && element.shadowRoot()) {
+        element.clearReactionQueueFromFailedCustomElement();
+        reportException(lexicalGlobalObject, createDOMException(lexicalGlobalObject, NotSupportedError, "Failed to upgrade an element with shadow root: the custom element definition disallows shadow roots."_s));
+        return;
+    }
+
+    if (m_isFormAssociated) {
+        ASSERT(is<HTMLMaybeFormAssociatedCustomElement>(element));
+        downcast<HTMLMaybeFormAssociatedCustomElement>(element).willUpgradeFormAssociated();
+    }
 
     MarkedArgumentBuffer args;
     ASSERT(!args.hasOverflowed());
@@ -204,21 +252,27 @@ void JSCustomElementInterface::upgradeElement(Element& element)
     m_constructionStack.removeLast();
 
     if (UNLIKELY(scope.exception())) {
-        element.setIsFailedCustomElement(*this);
+        element.clearReactionQueueFromFailedCustomElement();
         reportException(lexicalGlobalObject, scope.exception());
         return;
     }
 
     Element* wrappedElement = JSElement::toWrapped(vm, returnedElement);
     if (!wrappedElement || wrappedElement != &element) {
-        element.setIsFailedCustomElement(*this);
-        reportException(lexicalGlobalObject, createDOMException(lexicalGlobalObject, TypeError, "Custom element constructor returned a wrong element"));
+        element.clearReactionQueueFromFailedCustomElement();
+        reportException(lexicalGlobalObject, createDOMException(lexicalGlobalObject, TypeError, "Custom element constructor returned a wrong element"_s));
         return;
     }
+
     element.setIsDefinedCustomElement(*this);
+
+    if (m_isFormAssociated) {
+        CustomElementReactionStack customElementReactionStack(lexicalGlobalObject);
+        downcast<HTMLMaybeFormAssociatedCustomElement>(element).didUpgradeFormAssociated();
+    }
 }
 
-void JSCustomElementInterface::invokeCallback(Element& element, JSObject* callback, const WTF::Function<void(JSGlobalObject*, JSDOMGlobalObject*, MarkedArgumentBuffer&)>& addArguments)
+void JSCustomElementInterface::invokeCallback(Element& element, JSObject* callback, const Function<void(JSGlobalObject*, JSDOMGlobalObject*, MarkedArgumentBuffer&)>& addArguments)
 {
     if (!canInvokeCallback())
         return;
@@ -238,7 +292,7 @@ void JSCustomElementInterface::invokeCallback(Element& element, JSObject* callba
 
     JSObject* jsElement = asObject(toJS(lexicalGlobalObject, globalObject, element));
 
-    auto callData = getCallData(vm, callback);
+    auto callData = JSC::getCallData(callback);
     ASSERT(callData.type != CallData::Type::None);
 
     MarkedArgumentBuffer args;
@@ -253,7 +307,7 @@ void JSCustomElementInterface::invokeCallback(Element& element, JSObject* callba
     InspectorInstrumentation::didCallFunction(context);
 
     if (exception)
-        reportException(lexicalGlobalObject, exception);
+        reportException(callback->globalObject(), exception);
 }
 
 void JSCustomElementInterface::setConnectedCallback(JSC::JSObject* callback)
@@ -289,12 +343,12 @@ void JSCustomElementInterface::invokeAdoptedCallback(Element& element, Document&
     });
 }
 
-void JSCustomElementInterface::setAttributeChangedCallback(JSC::JSObject* callback, const Vector<String>& observedAttributes)
+void JSCustomElementInterface::setAttributeChangedCallback(JSC::JSObject* callback, Vector<AtomString>&& observedAttributes)
 {
     m_attributeChangedCallback = callback;
     m_observedAttributes.clear();
-    for (auto& name : observedAttributes)
-        m_observedAttributes.add(name);
+    for (auto&& name : WTFMove(observedAttributes))
+        m_observedAttributes.add(WTFMove(name));
 }
 
 void JSCustomElementInterface::invokeAttributeChangedCallback(Element& element, const QualifiedName& attributeName, const AtomString& oldValue, const AtomString& newValue)
@@ -307,9 +361,82 @@ void JSCustomElementInterface::invokeAttributeChangedCallback(Element& element, 
     });
 }
 
+void JSCustomElementInterface::invokeFormAssociatedCallback(Element& element, HTMLFormElement* associatedForm)
+{
+    invokeCallback(element, m_formAssociatedCallback.get(), [&](JSGlobalObject* lexicalGlobalObject, JSDOMGlobalObject* globalObject, MarkedArgumentBuffer& args) {
+        args.append(toJS(lexicalGlobalObject, globalObject, associatedForm));
+    });
+}
+
+void JSCustomElementInterface::invokeFormResetCallback(Element& element)
+{
+    invokeCallback(element, m_formResetCallback.get());
+}
+
+void JSCustomElementInterface::invokeFormDisabledCallback(Element& element, bool isDisabled)
+{
+    invokeCallback(element, m_formDisabledCallback.get(), [&](JSGlobalObject*, JSDOMGlobalObject*, MarkedArgumentBuffer& args) {
+        args.append(jsBoolean(isDisabled));
+    });
+}
+
+void JSCustomElementInterface::invokeFormStateRestoreCallback(Element& element, CustomElementFormValue restoredState)
+{
+    invokeCallback(element, m_formStateRestoreCallback.get(), [&](JSGlobalObject* lexicalGlobalObject, JSDOMGlobalObject* globalObject, MarkedArgumentBuffer& args) {
+        auto& vm = lexicalGlobalObject->vm();
+
+        WTF::switchOn(restoredState, [&](RefPtr<DOMFormData> state) {
+            args.append(toJS(lexicalGlobalObject, globalObject, *state));
+        }, [&](const String& state) {
+            args.append(jsString(vm, state));
+        }, [&](RefPtr<File>) {
+            ASSERT_NOT_REACHED();
+        });
+
+        args.append(jsNontrivialString(vm, "restore"_s));
+    });
+}
+
+void JSCustomElementInterface::setFormAssociatedCallback(JSObject* callback)
+{
+    m_formAssociatedCallback = callback;
+}
+
+void JSCustomElementInterface::setFormResetCallback(JSObject* callback)
+{
+    m_formResetCallback = callback;
+}
+
+void JSCustomElementInterface::setFormDisabledCallback(JSObject* callback)
+{
+    m_formDisabledCallback = callback;
+}
+
+void JSCustomElementInterface::setFormStateRestoreCallback(JSObject* callback)
+{
+    m_formStateRestoreCallback = callback;
+}
+
 void JSCustomElementInterface::didUpgradeLastElementInConstructionStack()
 {
     m_constructionStack.last() = nullptr;
 }
+
+template<typename Visitor>
+void JSCustomElementInterface::visitJSFunctions(Visitor& visitor) const
+{
+    visitor.append(m_constructor);
+    visitor.append(m_connectedCallback);
+    visitor.append(m_disconnectedCallback);
+    visitor.append(m_adoptedCallback);
+    visitor.append(m_attributeChangedCallback);
+    visitor.append(m_formAssociatedCallback);
+    visitor.append(m_formResetCallback);
+    visitor.append(m_formDisabledCallback);
+    visitor.append(m_formStateRestoreCallback);
+}
+
+template void JSCustomElementInterface::visitJSFunctions(JSC::AbstractSlotVisitor&) const;
+template void JSCustomElementInterface::visitJSFunctions(JSC::SlotVisitor&) const;
 
 } // namespace WebCore

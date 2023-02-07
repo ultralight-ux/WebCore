@@ -27,6 +27,7 @@
 #include "config.h"
 #include "ScriptRunner.h"
 
+#include "Document.h"
 #include "Element.h"
 #include "PendingScript.h"
 #include "ScriptElement.h"
@@ -96,10 +97,8 @@ void ScriptRunner::notifyFinished(PendingScript& pendingScript)
 {
     if (pendingScript.element().willExecuteInOrder())
         ASSERT(!m_scriptsToExecuteInOrder.isEmpty());
-    else {
-        ASSERT(m_pendingAsyncScripts.contains(pendingScript));
-        m_scriptsToExecuteSoon.append(m_pendingAsyncScripts.take(pendingScript)->ptr());
-    }
+    else
+        m_scriptsToExecuteSoon.append(m_pendingAsyncScripts.take(pendingScript).releaseNonNull());
     pendingScript.clearClient();
 
     if (!m_document.hasActiveParserYieldToken())
@@ -142,4 +141,11 @@ void ScriptRunner::timerFired()
     }
 }
 
+void ScriptRunner::clearPendingScripts()
+{
+    m_scriptsToExecuteInOrder.clear();
+    m_scriptsToExecuteSoon.clear();
+    m_pendingAsyncScripts.clear();
 }
+
+} // namespace WebCore

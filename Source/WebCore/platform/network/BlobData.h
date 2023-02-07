@@ -32,7 +32,8 @@
 #define BlobData_h
 
 #include "BlobDataFileReference.h"
-#include "ThreadSafeDataBuffer.h"
+#include "PolicyContainer.h"
+#include "SharedBuffer.h"
 #include <wtf/Forward.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/text/WTFString.h>
@@ -51,7 +52,7 @@ public:
     Type type() const { return m_type; }
 
     // For Data type.
-    const ThreadSafeDataBuffer& data() const { return m_data; }
+    DataSegment* data() const { return m_data.get(); }
 
     // For File type.
     BlobDataFileReference* file() const { return m_file.get(); }
@@ -70,9 +71,9 @@ private:
     {
     }
 
-    BlobDataItem(ThreadSafeDataBuffer data, long long offset, long long length)
+    BlobDataItem(Ref<DataSegment>&& data, long long offset, long long length)
         : m_type(Type::Data)
-        , m_data(data)
+        , m_data(WTFMove(data))
         , m_offset(offset)
         , m_length(length)
     {
@@ -87,7 +88,7 @@ private:
     }
 
     Type m_type;
-    ThreadSafeDataBuffer m_data;
+    RefPtr<DataSegment> m_data;
     RefPtr<BlobDataFileReference> m_file;
 
     long long m_offset;
@@ -105,20 +106,27 @@ public:
 
     const String& contentType() const { return m_contentType; }
 
+    const PolicyContainer& policyContainer() const { return m_policyContainer; }
+    void setPolicyContainer(const PolicyContainer& policyContainer) { m_policyContainer = policyContainer; }
+
     const BlobDataItemList& items() const { return m_items; }
     void swapItems(BlobDataItemList&);
 
-    void appendData(const ThreadSafeDataBuffer&);
+    void replaceData(const DataSegment& oldData, Ref<DataSegment>&& newData);
+    void appendData(Ref<DataSegment>&&);
     void appendFile(Ref<BlobDataFileReference>&&);
+
+    Ref<BlobData> clone() const;
 
 private:
     friend class BlobRegistryImpl;
     BlobData(const String& contentType);
 
-    void appendData(const ThreadSafeDataBuffer&, long long offset, long long length);
+    void appendData(Ref<DataSegment>&&, long long offset, long long length);
     void appendFile(BlobDataFileReference*, long long offset, long long length);
 
     String m_contentType;
+    PolicyContainer m_policyContainer;
     BlobDataItemList m_items;
 };
 

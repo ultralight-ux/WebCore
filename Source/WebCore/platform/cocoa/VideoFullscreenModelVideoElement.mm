@@ -28,6 +28,7 @@
 
 #if ENABLE(VIDEO_PRESENTATION_MODE)
 
+#import "AddEventListenerOptions.h"
 #import "DOMWindow.h"
 #import "Event.h"
 #import "EventListener.h"
@@ -102,6 +103,26 @@ void VideoFullscreenModelVideoElement::updateForEventName(const WTF::AtomString&
         setHasVideo(m_videoElement);
         setVideoDimensions(m_videoElement ? FloatSize(m_videoElement->videoWidth(), m_videoElement->videoHeight()) : FloatSize());
     }
+
+    if (all
+        || eventName == eventNames().loadedmetadataEvent || eventName == eventNames().loadstartEvent) {
+        setPlayerIdentifier([&]() -> std::optional<MediaPlayerIdentifier> {
+            if (eventName == eventNames().loadstartEvent)
+                return std::nullopt;
+
+            if (!m_videoElement)
+                return std::nullopt;
+
+            auto player = m_videoElement->player();
+            if (!player)
+                return std::nullopt;
+
+            if (auto identifier = player->identifier())
+                return identifier;
+
+            return std::nullopt;
+        }());
+    }
 }
 
 void VideoFullscreenModelVideoElement::willExitFullscreen()
@@ -152,8 +173,8 @@ void VideoFullscreenModelVideoElement::waitForPreparedForInlineThen(WTF::Functio
 
 void VideoFullscreenModelVideoElement::requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenMode mode, bool finishedWithMedia)
 {
-    if (m_videoElement && m_videoElement->fullscreenMode() != mode)
-        m_videoElement->setFullscreenMode(mode);
+    if (m_videoElement)
+        m_videoElement->setPresentationMode(HTMLVideoElement::toPresentationMode(mode));
 
     if (m_videoElement && finishedWithMedia && mode == MediaPlayer::VideoFullscreenModeNone) {
         if (m_videoElement->document().isMediaDocument()) {
@@ -173,25 +194,28 @@ void VideoFullscreenModelVideoElement::setVideoLayerFrame(FloatRect rect)
 
 void VideoFullscreenModelVideoElement::setVideoLayerGravity(MediaPlayer::VideoGravity gravity)
 {
-    m_videoElement->setVideoFullscreenGravity(gravity);
+    if (m_videoElement)
+        m_videoElement->setVideoFullscreenGravity(gravity);
 }
 
-const Vector<AtomString>& VideoFullscreenModelVideoElement::observedEventNames()
+Span<const AtomString> VideoFullscreenModelVideoElement::observedEventNames()
 {
-    static const auto names = makeNeverDestroyed(Vector<AtomString> { eventNames().resizeEvent });
-    return names;
+    static NeverDestroyed names = std::array { eventNames().resizeEvent, eventNames().loadstartEvent, eventNames().loadedmetadataEvent };
+    return names.get();
 }
 
 const AtomString& VideoFullscreenModelVideoElement::eventNameAll()
 {
-    static MainThreadNeverDestroyed<const AtomString> sEventNameAll = "allEvents";
+    static MainThreadNeverDestroyed<const AtomString> sEventNameAll = "allEvents"_s;
     return sEventNameAll;
 }
 
 void VideoFullscreenModelVideoElement::fullscreenModeChanged(HTMLMediaElementEnums::VideoFullscreenMode videoFullscreenMode)
 {
-    if (m_videoElement)
-        m_videoElement->fullscreenModeChanged(videoFullscreenMode);
+    if (m_videoElement) {
+        UserGestureIndicator gestureIndicator(ProcessingUserGesture, &m_videoElement->document());
+        m_videoElement->setPresentationMode(HTMLVideoElement::toPresentationMode(videoFullscreenMode));
+    }
 }
 
 void VideoFullscreenModelVideoElement::requestRouteSharingPolicyAndContextUID(CompletionHandler<void(RouteSharingPolicy, String)>&& completionHandler)
@@ -219,7 +243,7 @@ void VideoFullscreenModelVideoElement::setHasVideo(bool hasVideo)
 
     m_hasVideo = hasVideo;
 
-    for (auto& client : m_clients)
+    for (auto& client : copyToVector(m_clients))
         client->hasVideoChanged(m_hasVideo);
 }
 
@@ -230,37 +254,48 @@ void VideoFullscreenModelVideoElement::setVideoDimensions(const FloatSize& video
 
     m_videoDimensions = videoDimensions;
 
-    for (auto& client : m_clients)
+    for (auto& client : copyToVector(m_clients))
         client->videoDimensionsChanged(m_videoDimensions);
+}
+
+void VideoFullscreenModelVideoElement::setPlayerIdentifier(std::optional<MediaPlayerIdentifier> identifier)
+{
+    if (m_playerIdentifier == identifier)
+        return;
+
+    m_playerIdentifier = identifier;
+
+    for (auto* client : copyToVector(m_clients))
+        client->setPlayerIdentifier(identifier);
 }
 
 void VideoFullscreenModelVideoElement::willEnterPictureInPicture()
 {
-    for (auto& client : m_clients)
+    for (auto& client : copyToVector(m_clients))
         client->willEnterPictureInPicture();
 }
 
 void VideoFullscreenModelVideoElement::didEnterPictureInPicture()
 {
-    for (auto& client : m_clients)
+    for (auto& client : copyToVector(m_clients))
         client->didEnterPictureInPicture();
 }
 
 void VideoFullscreenModelVideoElement::failedToEnterPictureInPicture()
 {
-    for (auto& client : m_clients)
+    for (auto& client : copyToVector(m_clients))
         client->failedToEnterPictureInPicture();
 }
 
 void VideoFullscreenModelVideoElement::willExitPictureInPicture()
 {
-    for (auto& client : m_clients)
+    for (auto& client : copyToVector(m_clients))
         client->willExitPictureInPicture();
 }
 
 void VideoFullscreenModelVideoElement::didExitPictureInPicture()
 {
-    for (auto& client : m_clients)
+    for (auto& client : copyToVector(m_clients))
         client->didExitPictureInPicture();
 }
 

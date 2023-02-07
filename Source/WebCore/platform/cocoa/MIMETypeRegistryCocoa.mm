@@ -29,17 +29,19 @@
 
 #import <pal/spi/cocoa/CoreServicesSPI.h>
 #import <pal/spi/cocoa/NSURLFileTypeMappingsSPI.h>
+#import <wtf/RobinHoodHashMap.h>
+#import <wtf/RobinHoodHashSet.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
 namespace WebCore {
 
-static HashMap<String, HashSet<String>>& extensionsForMIMETypeMap()
+static MemoryCompactLookupOnlyRobinHoodHashMap<String, MemoryCompactLookupOnlyRobinHoodHashSet<String>>& extensionsForMIMETypeMap()
 {
-    static auto extensionsForMIMETypeMap = makeNeverDestroyed([] {
-        HashMap<String, HashSet<String>> map;
+    static NeverDestroyed extensionsForMIMETypeMap = [] {
+        MemoryCompactLookupOnlyRobinHoodHashMap<String, MemoryCompactLookupOnlyRobinHoodHashSet<String>> map;
 
         auto addExtension = [&](const String& type, const String& extension) {
-            map.add(type, HashSet<String>()).iterator->value.add(extension);
+            map.add(type, MemoryCompactLookupOnlyRobinHoodHashSet<String>()).iterator->value.add(extension);
         };
 
         auto addExtensions = [&](const String& type, NSArray<NSString *> *extensions) {
@@ -58,6 +60,7 @@ static HashMap<String, HashSet<String>>& extensionsForMIMETypeMap()
 
         auto allUTIs = adoptCF(_UTCopyDeclaredTypeIdentifiers());
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         for (NSString *uti in (__bridge NSArray<NSString *> *)allUTIs.get()) {
             auto type = adoptCF(UTTypeCopyPreferredTagWithClass((__bridge CFStringRef)uti, kUTTagClassMIMEType));
             if (!type)
@@ -67,9 +70,10 @@ static HashMap<String, HashSet<String>>& extensionsForMIMETypeMap()
                 continue;
             addExtensions(type.get(), (__bridge NSArray<NSString *> *)extensions.get());
         }
+ALLOW_DEPRECATED_DECLARATIONS_END
 
         return map;
-    }());
+    }();
 
     return extensionsForMIMETypeMap;
 }
@@ -85,9 +89,10 @@ static Vector<String> extensionsForWildcardMIMEType(const String& type)
     return extensions;
 }
 
-String MIMETypeRegistry::mimeTypeForExtension(const String& extension)
+String MIMETypeRegistry::mimeTypeForExtension(StringView extension)
 {
-    return [[NSURLFileTypeMappings sharedMappings] MIMETypeForExtension:(NSString *)extension];
+    auto string = extension.createNSStringWithoutCopying();
+    return [[NSURLFileTypeMappings sharedMappings] MIMETypeForExtension:string.get()];
 }
 
 Vector<String> MIMETypeRegistry::extensionsForMIMEType(const String& type)
@@ -99,9 +104,9 @@ Vector<String> MIMETypeRegistry::extensionsForMIMEType(const String& type)
 
 String MIMETypeRegistry::preferredExtensionForMIMEType(const String& type)
 {
-    // System Previews accept some non-standard MIMETypes, so we can't rely on
+    // We accept some non-standard USD MIMETypes, so we can't rely on
     // the file type mappings.
-    if (isSystemPreviewMIMEType(type))
+    if (isUSDMIMEType(type))
         return "usdz"_s;
 
     return [[NSURLFileTypeMappings sharedMappings] preferredExtensionForMIMEType:(NSString *)type];

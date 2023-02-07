@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple, Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,44 +28,41 @@
 
 #include "IteratorOperations.h"
 #include "JSCInlines.h"
-#include "JSWeakMap.h"
+#include "JSWeakMapInlines.h"
 #include "WeakMapPrototype.h"
 
 namespace JSC {
 
-const ClassInfo WeakMapConstructor::s_info = { "Function", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(WeakMapConstructor) };
+const ClassInfo WeakMapConstructor::s_info = { "Function"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(WeakMapConstructor) };
 
 void WeakMapConstructor::finishCreation(VM& vm, WeakMapPrototype* prototype)
 {
-    Base::finishCreation(vm, "WeakMap"_s, NameAdditionMode::WithoutStructureTransition);
+    Base::finishCreation(vm, 0, "WeakMap"_s, PropertyAdditionMode::WithoutStructureTransition);
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, prototype, PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly);
-    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(0), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
 }
 
-static EncodedJSValue JSC_HOST_CALL callWeakMap(JSGlobalObject*, CallFrame*);
-static EncodedJSValue JSC_HOST_CALL constructWeakMap(JSGlobalObject*, CallFrame*);
+static JSC_DECLARE_HOST_FUNCTION(callWeakMap);
+static JSC_DECLARE_HOST_FUNCTION(constructWeakMap);
 
 WeakMapConstructor::WeakMapConstructor(VM& vm, Structure* structure)
     : Base(vm, structure, callWeakMap, constructWeakMap)
 {
 }
 
-static EncodedJSValue JSC_HOST_CALL callWeakMap(JSGlobalObject* globalObject, CallFrame*)
+JSC_DEFINE_HOST_FUNCTION(callWeakMap, (JSGlobalObject* globalObject, CallFrame*))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(globalObject, scope, "WeakMap"));
 }
 
-static EncodedJSValue JSC_HOST_CALL constructWeakMap(JSGlobalObject* globalObject, CallFrame* callFrame)
+JSC_DEFINE_HOST_FUNCTION(constructWeakMap, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     JSObject* newTarget = asObject(callFrame->newTarget());
-    Structure* weakMapStructure = newTarget == callFrame->jsCallee()
-        ? globalObject->weakMapStructure()
-        : InternalFunction::createSubclassStructure(globalObject, newTarget, getFunctionRealm(vm, newTarget)->weakMapStructure());
+    Structure* weakMapStructure = JSC_GET_DERIVED_STRUCTURE(vm, weakMapStructure, newTarget, callFrame->jsCallee());
     RETURN_IF_EXCEPTION(scope, { });
 
     JSWeakMap* weakMap = JSWeakMap::create(vm, weakMapStructure);
@@ -76,9 +73,11 @@ static EncodedJSValue JSC_HOST_CALL constructWeakMap(JSGlobalObject* globalObjec
     JSValue adderFunction = weakMap->JSObject::get(globalObject, vm.propertyNames->set);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
-    auto adderFunctionCallData = getCallData(vm, adderFunction);
+    auto adderFunctionCallData = JSC::getCallData(adderFunction);
     if (adderFunctionCallData.type == CallData::Type::None)
-        return JSValue::encode(throwTypeError(globalObject, scope));
+        return throwVMTypeError(globalObject, scope, "'set' property of a WeakMap should be callable."_s);
+
+    bool canPerformFastSet = adderFunctionCallData.type == CallData::Type::Native && adderFunctionCallData.native.function == protoFuncWeakMapSet;
 
     scope.release();
     forEachInIterable(globalObject, iterable, [&](VM& vm, JSGlobalObject* globalObject, JSValue nextItem) {
@@ -88,11 +87,22 @@ static EncodedJSValue JSC_HOST_CALL constructWeakMap(JSGlobalObject* globalObjec
             return;
         }
 
-        JSValue key = nextItem.get(globalObject, static_cast<unsigned>(0));
+        JSObject* nextObject = asObject(nextItem);
+
+        JSValue key = nextObject->getIndex(globalObject, static_cast<unsigned>(0));
         RETURN_IF_EXCEPTION(scope, void());
 
-        JSValue value = nextItem.get(globalObject, static_cast<unsigned>(1));
+        JSValue value = nextObject->getIndex(globalObject, static_cast<unsigned>(1));
         RETURN_IF_EXCEPTION(scope, void());
+
+        if (canPerformFastSet) {
+            if (UNLIKELY(!canBeHeldWeakly(key))) {
+                throwTypeError(asObject(adderFunction)->globalObject(), scope, WeakMapInvalidKeyError);
+                return;
+            }
+            weakMap->set(vm, key.asCell(), value);
+            return;
+        }
 
         MarkedArgumentBuffer arguments;
         arguments.append(key);

@@ -27,6 +27,7 @@
 #include "RenderSVGResource.h"
 #include "RenderSVGText.h"
 #include "SVGAltGlyphElement.h"
+#include "SVGElementTypeHelpers.h"
 #include "SVGNames.h"
 #include "SVGTRefElement.h"
 #include "SVGTSpanElement.h"
@@ -37,8 +38,8 @@ namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(SVGTextPositioningElement);
 
-SVGTextPositioningElement::SVGTextPositioningElement(const QualifiedName& tagName, Document& document)
-    : SVGTextContentElement(tagName, document)
+SVGTextPositioningElement::SVGTextPositioningElement(const QualifiedName& tagName, Document& document, UniqueRef<SVGPropertyRegistry>&& propertyRegistry)
+    : SVGTextContentElement(tagName, document, WTFMove(propertyRegistry))
 {
     static std::once_flag onceFlag;
     std::call_once(onceFlag, [] {
@@ -80,18 +81,18 @@ void SVGTextPositioningElement::parseAttribute(const QualifiedName& name, const 
     SVGTextContentElement::parseAttribute(name, value);
 }
 
-void SVGTextPositioningElement::collectStyleForPresentationAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
+void SVGTextPositioningElement::collectPresentationalHintsForAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == SVGNames::xAttr || name == SVGNames::yAttr)
         return;
-    SVGTextContentElement::collectStyleForPresentationAttribute(name, value, style);
+    SVGTextContentElement::collectPresentationalHintsForAttribute(name, value, style);
 }
 
-bool SVGTextPositioningElement::isPresentationAttribute(const QualifiedName& name) const
+bool SVGTextPositioningElement::hasPresentationalHintsForAttribute(const QualifiedName& name) const
 {
     if (name == SVGNames::xAttr || name == SVGNames::yAttr)
         return false;
-    return SVGTextContentElement::isPresentationAttribute(name);
+    return SVGTextContentElement::hasPresentationalHintsForAttribute(name);
 }
 
 void SVGTextPositioningElement::svgAttributeChanged(const QualifiedName& attrName)
@@ -105,9 +106,8 @@ void SVGTextPositioningElement::svgAttributeChanged(const QualifiedName& attrNam
         if (auto renderer = this->renderer()) {
             if (auto* textAncestor = RenderSVGText::locateRenderSVGTextAncestor(*renderer))
                 textAncestor->setNeedsPositioningValuesUpdate();
-            RenderSVGResource::markForLayoutAndParentResourceInvalidation(*renderer);
         }
-
+        updateSVGRendererForElementChange();
         return;
     }
 
@@ -124,9 +124,7 @@ SVGTextPositioningElement* SVGTextPositioningElement::elementFromRenderer(Render
 
     if (!is<SVGTextElement>(element)
         && !is<SVGTSpanElement>(element)
-#if ENABLE(SVG_FONTS)
         && !is<SVGAltGlyphElement>(element)
-#endif
         && !is<SVGTRefElement>(element))
         return nullptr;
 

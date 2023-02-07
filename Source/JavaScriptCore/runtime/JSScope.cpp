@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2020 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2021 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,19 +27,22 @@
 #include "JSScope.h"
 
 #include "AbstractModuleRecord.h"
+#include "DeferTermination.h"
 #include "JSCInlines.h"
 #include "JSLexicalEnvironment.h"
 #include "JSModuleEnvironment.h"
 #include "JSWithScope.h"
+#include "VMTrapsInlines.h"
 #include "VariableEnvironment.h"
 
 namespace JSC {
 
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(JSScope);
 
-const ClassInfo JSScope::s_info = { "Scope", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSScope) };
+const ClassInfo JSScope::s_info = { "Scope"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSScope) };
 
-void JSScope::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void JSScope::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     JSScope* thisObject = jsCast<JSScope*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
@@ -47,11 +50,13 @@ void JSScope::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(thisObject->m_next);
 }
 
+DEFINE_VISIT_CHILDREN(JSScope);
+
 // Returns true if we found enough information to terminate optimization.
 static inline bool abstractAccess(JSGlobalObject* globalObject, JSScope* scope, const Identifier& ident, GetOrPut getOrPut, size_t depth, bool& needsVarInjectionChecks, ResolveOp& op, InitializationMode initializationMode)
 {
     VM& vm = globalObject->vm();
-    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    DeferTerminationForAWhile deferScope(vm);
 
     if (scope->isJSLexicalEnvironment()) {
         JSLexicalEnvironment* lexicalEnvironment = jsCast<JSLexicalEnvironment*>(scope);
@@ -77,8 +82,9 @@ static inline bool abstractAccess(JSGlobalObject* globalObject, JSScope* scope, 
         if (scope->type() == ModuleEnvironmentType) {
             JSModuleEnvironment* moduleEnvironment = jsCast<JSModuleEnvironment*>(scope);
             AbstractModuleRecord* moduleRecord = moduleEnvironment->moduleRecord();
+            auto catchScope = DECLARE_CATCH_SCOPE(vm);
             AbstractModuleRecord::Resolution resolution = moduleRecord->resolveImport(globalObject, ident);
-            RETURN_IF_EXCEPTION(throwScope, false);
+            catchScope.releaseAssertNoException();
             if (resolution.type == AbstractModuleRecord::Resolution::Type::Resolved) {
                 AbstractModuleRecord* importedRecord = resolution.moduleRecord;
                 JSModuleEnvironment* importedEnvironment = importedRecord->moduleEnvironment();
@@ -160,7 +166,7 @@ static inline bool abstractAccess(JSGlobalObject* globalObject, JSScope* scope, 
             return true;
         }
 
-        Structure* structure = globalObject->structure(vm);
+        Structure* structure = globalObject->structure();
         if (!slot.isCacheableValue()
             || !structure->propertyAccessesAreCacheable()
             || (structure->hasReadOnlyOrGetterSetterPropertiesExcludingProto() && getOrPut == Put)) {
@@ -230,7 +236,7 @@ ALWAYS_INLINE JSObject* JSScope::resolve(JSGlobalObject* globalObject, JSScope* 
 
         // Global scope.
         if (++it == end) {
-            JSScope* globalScopeExtension = scope->globalObject(vm)->globalScopeExtension();
+            JSScope* globalScopeExtension = scope->globalObject()->globalScopeExtension();
             if (UNLIKELY(globalScopeExtension)) {
                 bool hasProperty = object->hasProperty(globalObject, ident);
                 RETURN_IF_EXCEPTION(throwScope, nullptr);
@@ -277,8 +283,8 @@ JSValue JSScope::resolveScopeForHoistingFuncDeclInEval(JSGlobalObject* globalObj
     RETURN_IF_EXCEPTION(throwScope, { });
 
     bool result = false;
-    if (JSScope* scope = jsDynamicCast<JSScope*>(vm, object)) {
-        if (SymbolTable* scopeSymbolTable = scope->symbolTable(vm)) {
+    if (JSScope* scope = jsDynamicCast<JSScope*>(object)) {
+        if (SymbolTable* scopeSymbolTable = scope->symbolTable()) {
             result = scope->isGlobalObject()
                 ? JSObject::isExtensible(object, globalObject)
                 : scopeSymbolTable->scopeType() == SymbolTable::ScopeType::VarScope;
@@ -301,9 +307,6 @@ JSObject* JSScope::resolve(JSGlobalObject* globalObject, JSScope* scope, const I
 
 ResolveOp JSScope::abstractResolve(JSGlobalObject* globalObject, size_t depthOffset, JSScope* scope, const Identifier& ident, GetOrPut getOrPut, ResolveType unlinkedType, InitializationMode initializationMode)
 {
-    VM& vm = globalObject->vm();
-    auto throwScope = DECLARE_THROW_SCOPE(vm);
-
     ResolveOp op(Dynamic, 0, nullptr, nullptr, nullptr, 0);
     if (unlinkedType == Dynamic)
         return op;
@@ -312,7 +315,6 @@ ResolveOp JSScope::abstractResolve(JSGlobalObject* globalObject, size_t depthOff
     size_t depth = depthOffset;
     for (; scope; scope = scope->next()) {
         bool success = abstractAccess(globalObject, scope, ident, getOrPut, depth, needsVarInjectionChecks, op, initializationMode);
-        RETURN_IF_EXCEPTION(throwScope, ResolveOp(Dynamic, 0, nullptr, nullptr, nullptr, 0));
         if (success)
             break;
         ++depth;
@@ -321,7 +323,7 @@ ResolveOp JSScope::abstractResolve(JSGlobalObject* globalObject, size_t depthOff
     return op;
 }
 
-void JSScope::collectClosureVariablesUnderTDZ(JSScope* scope, VariableEnvironment& result)
+void JSScope::collectClosureVariablesUnderTDZ(JSScope* scope, TDZEnvironment& result, PrivateNameEnvironment& privateNameEnvironment)
 {
     for (; scope; scope = scope->next()) {
         if (!scope->isLexicalScope() && !scope->isCatchScope())
@@ -338,9 +340,11 @@ void JSScope::collectClosureVariablesUnderTDZ(JSScope* scope, VariableEnvironmen
         ConcurrentJSLocker locker(symbolTable->m_lock);
         for (auto end = symbolTable->end(locker), iter = symbolTable->begin(locker); iter != end; ++iter)
             result.add(iter->key);
+
         if (symbolTable->hasPrivateNames()) {
-            for (auto name : symbolTable->privateNames())
-                result.usePrivateName(name);    
+            auto privateNames = symbolTable->privateNames();
+            for (auto end = privateNames.end(), iter = privateNames.begin(); iter != end; ++iter)
+                privateNameEnvironment.add(iter->key, iter->value);
         }
     }
 }
@@ -404,19 +408,12 @@ JSScope* JSScope::constantScopeForCodeBlock(ResolveType type, CodeBlock* codeBlo
     return nullptr;
 }
 
-SymbolTable* JSScope::symbolTable(VM& vm)
+SymbolTable* JSScope::symbolTable()
 {
-    if (JSSymbolTableObject* symbolTableObject = jsDynamicCast<JSSymbolTableObject*>(vm, this))
+    if (JSSymbolTableObject* symbolTableObject = jsDynamicCast<JSSymbolTableObject*>(this))
         return symbolTableObject->symbolTable();
 
     return nullptr;
-}
-
-JSValue JSScope::toThis(JSCell*, JSGlobalObject* globalObject, ECMAMode ecmaMode)
-{
-    if (ecmaMode.isStrict())
-        return jsUndefined();
-    return globalObject->globalThis();
 }
 
 } // namespace JSC

@@ -50,12 +50,23 @@ public:
     void* memalignLarge(size_t alignment, size_t);
     void freeLarge(void* base);
 
+#if BENABLE(MALLOC_SIZE)
+    size_t mallocSize(const void* object) { return malloc_size(object); }
+#endif
+
+#if BENABLE(MALLOC_GOOD_SIZE)
+    size_t mallocGoodSize(size_t size) { return malloc_good_size(size); }
+#endif
+
     void scavenge();
     void dump();
 
     static DebugHeap* tryGet();
+    static DebugHeap* getExisting();
 
 private:
+    static DebugHeap* tryGetSlow();
+    
 #if BOS(DARWIN)
     malloc_zone_t* m_zone;
 #endif
@@ -67,15 +78,27 @@ private:
 DECLARE_STATIC_PER_PROCESS_STORAGE(DebugHeap);
 
 extern BEXPORT DebugHeap* debugHeapCache;
+
+BINLINE DebugHeap* debugHeapDisabled()
+{
+    return reinterpret_cast<DebugHeap*>(static_cast<uintptr_t>(1));
+}
+
 BINLINE DebugHeap* DebugHeap::tryGet()
 {
-    if (debugHeapCache)
-        return debugHeapCache;
-    if (Environment::get()->isDebugHeapEnabled()) {
-        debugHeapCache = DebugHeap::get();
-        return debugHeapCache;
-    }
-    return nullptr;
+    DebugHeap* result = debugHeapCache;
+    if (result == debugHeapDisabled())
+        return nullptr;
+    if (result)
+        return result;
+    return tryGetSlow();
+}
+
+BINLINE DebugHeap* DebugHeap::getExisting()
+{
+    DebugHeap* result = tryGet();
+    RELEASE_BASSERT(result);
+    return result;
 }
 
 } // namespace bmalloc

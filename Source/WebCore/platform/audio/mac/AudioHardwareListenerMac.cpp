@@ -41,7 +41,13 @@ static AudioHardwareActivityType isAudioHardwareProcessRunning()
     AudioObjectPropertyAddress propertyAddress = {
         kAudioHardwarePropertyProcessIsRunning,
         kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
     };
     
     if (!AudioObjectHasProperty(kAudioObjectSystemObject, &propertyAddress))
@@ -59,40 +65,59 @@ static AudioHardwareActivityType isAudioHardwareProcessRunning()
         return AudioHardwareActivityType::IsInactive;
 }
 
-static bool currentDeviceSupportsLowPowerBufferSize()
+static AudioHardwareListener::BufferSizeRange currentDeviceSupportedBufferSizes()
 {
     AudioDeviceID deviceID = kAudioDeviceUnknown;
     UInt32 descriptorSize = sizeof(deviceID);
     AudioObjectPropertyAddress defaultOutputDeviceDescriptor = {
         kAudioHardwarePropertyDefaultOutputDevice,
         kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMaster };
-
-    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &defaultOutputDeviceDescriptor, 0, 0, &descriptorSize, (void*)&deviceID))
-        return false;
-
-    UInt32 transportType = kAudioDeviceTransportTypeUnknown;
-    descriptorSize = sizeof(transportType);
-    AudioObjectPropertyAddress tranportTypeDescriptor = {
-        kAudioDevicePropertyTransportType,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMaster,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
     };
 
-    if (AudioObjectGetPropertyData(deviceID, &tranportTypeDescriptor, 0, 0, &descriptorSize, &transportType))
-        return false;
+    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &defaultOutputDeviceDescriptor, 0, 0, &descriptorSize, (void*)&deviceID))
+        return { };
 
-    // Only allow low-power buffer size when using built-in output device, many external devices perform
-    // poorly with a large output buffer.
-    return kAudioDeviceTransportTypeBuiltIn == transportType;
+    AudioValueRange bufferSizes;
+    descriptorSize = sizeof(bufferSizes);
+
+    AudioObjectPropertyAddress bufferSizeDescriptor = {
+        kAudioDevicePropertyBufferFrameSizeRange,
+        kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        kAudioObjectPropertyElementMaster,
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+    };
+
+    if (AudioObjectGetPropertyData(deviceID, &bufferSizeDescriptor, 0, 0, &descriptorSize, &bufferSizes))
+        return { };
+
+    return { static_cast<size_t>(bufferSizes.mMinimum), static_cast<size_t>(bufferSizes.mMaximum) };
 }
+
 
 static const AudioObjectPropertyAddress& processIsRunningPropertyDescriptor()
 {
     static const AudioObjectPropertyAddress processIsRunningProperty = {
         kAudioHardwarePropertyProcessIsRunning,
         kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
     };
 
     return processIsRunningProperty;
@@ -103,15 +128,16 @@ static const AudioObjectPropertyAddress& outputDevicePropertyDescriptor()
     static const AudioObjectPropertyAddress outputDeviceProperty = {
         kAudioHardwarePropertyDefaultOutputDevice,
         kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
     };
 
     return outputDeviceProperty;
-}
-
-Ref<AudioHardwareListener> AudioHardwareListener::create(Client& client)
-{
-    return AudioHardwareListenerMac::create(client);
 }
 
 Ref<AudioHardwareListenerMac> AudioHardwareListenerMac::create(Client& client)
@@ -123,9 +149,9 @@ AudioHardwareListenerMac::AudioHardwareListenerMac(Client& client)
     : AudioHardwareListener(client)
 {
     setHardwareActivity(isAudioHardwareProcessRunning());
-    setOutputDeviceSupportsLowPowerMode(currentDeviceSupportsLowPowerBufferSize());
+    setSupportedBufferSizes(currentDeviceSupportedBufferSizes());
 
-    auto weakThis = makeWeakPtr(*this);
+    WeakPtr weakThis { *this };
     m_block = Block_copy(^(UInt32 count, const AudioObjectPropertyAddress properties[]) {
         if (weakThis)
             weakThis->propertyChanged(count, properties);
@@ -172,7 +198,7 @@ void AudioHardwareListenerMac::processIsRunningChanged()
 
 void AudioHardwareListenerMac::outputDeviceChanged()
 {
-    setOutputDeviceSupportsLowPowerMode(currentDeviceSupportsLowPowerBufferSize());
+    setSupportedBufferSizes(currentDeviceSupportedBufferSizes());
     m_client.audioOutputDeviceChanged();
 }
 

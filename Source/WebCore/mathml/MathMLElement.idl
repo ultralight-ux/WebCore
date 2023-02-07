@@ -25,10 +25,13 @@
 
 [
     Conditional=MATHML,
+    EnabledBySetting=MathMLEnabled,
     JSGenerateToNativeObject,
-] interface MathMLElement : Element { };
+    Exposed=Window
+] interface MathMLElement : Element {
+};
 
-MathMLElement implements ElementCSSInlineStyle;
-MathMLElement implements GlobalEventHandlers;
-MathMLElement implements DocumentAndElementEventHandlers;
-MathMLElement implements HTMLOrForeignElement;
+MathMLElement includes GlobalEventHandlers;
+MathMLElement includes DocumentAndElementEventHandlers;
+MathMLElement includes HTMLOrForeignElement;
+MathMLElement includes ElementCSSInlineStyle;

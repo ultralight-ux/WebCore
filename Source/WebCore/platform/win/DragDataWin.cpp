@@ -29,8 +29,8 @@
 
 #include "COMPtr.h"
 #include "ClipboardUtilitiesWin.h"
-#include "TextEncoding.h"
 #include <objidl.h>
+#include <pal/text/TextEncoding.h>
 #include <shlwapi.h>
 #include <wininet.h>
 #include <wtf/Forward.h>
@@ -40,13 +40,13 @@
 
 namespace WebCore {
 
-DragData::DragData(const DragDataMap& data, const IntPoint& clientPosition, const IntPoint& globalPosition,
-    OptionSet<DragOperation> sourceOperationMask, OptionSet<DragApplicationFlags> flags)
+DragData::DragData(const DragDataMap& data, const IntPoint& clientPosition, const IntPoint& globalPosition, OptionSet<DragOperation> sourceOperationMask, OptionSet<DragApplicationFlags> flags, std::optional<PageIdentifier> pageID)
     : m_clientPosition(clientPosition)
     , m_globalPosition(globalPosition)
     , m_platformDragData(0)
     , m_draggingSourceOperationMask(sourceOperationMask)
     , m_applicationFlags(flags)
+    , m_pageID(pageID)
     , m_dragDataMap(data)
 {
 }
@@ -103,16 +103,11 @@ String DragData::asURL(FilenameConversionPolicy filenamePolicy, String* title) c
 
 bool DragData::containsFiles() const
 {
-#if USE(CF)
     return (m_platformDragData) ? SUCCEEDED(m_platformDragData->QueryGetData(cfHDropFormat())) : m_dragDataMap.contains(cfHDropFormat()->cfFormat);
-#else
-    return false;
-#endif
 }
 
 unsigned DragData::numberOfFiles() const
 {
-#if USE(CF)
     if (!m_platformDragData)
         return 0;
 
@@ -131,16 +126,12 @@ unsigned DragData::numberOfFiles() const
     GlobalUnlock(medium.hGlobal);
 
     return numFiles;
-#else
-    return 0;
-#endif
 }
 
 Vector<String> DragData::asFilenames() const
 {
     Vector<String> result;
 
-#if USE(CF)
     if (m_platformDragData) {
         WCHAR filename[MAX_PATH];
 
@@ -155,7 +146,7 @@ Vector<String> DragData::asFilenames() const
 
         const unsigned numFiles = DragQueryFileW(hdrop, 0xFFFFFFFF, 0, 0);
         for (unsigned i = 0; i < numFiles; i++) {
-            if (!DragQueryFileW(hdrop, i, filename, WTF_ARRAY_LENGTH(filename)))
+            if (!DragQueryFileW(hdrop, i, filename, std::size(filename)))
                 continue;
             result.append(filename);
         }
@@ -167,7 +158,6 @@ Vector<String> DragData::asFilenames() const
         return result;
     }
     result = m_dragDataMap.get(cfHDropFormat()->cfFormat);
-#endif
 
     return result;
 }

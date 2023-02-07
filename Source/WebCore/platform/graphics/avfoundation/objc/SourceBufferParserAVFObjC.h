@@ -27,8 +27,12 @@
 
 #if ENABLE(MEDIA_SOURCE)
 
+#include "Logging.h"
 #include "SourceBufferParser.h"
+#include <wtf/Box.h>
+#include <wtf/LoggerHelper.h>
 #include <wtf/TypeCasts.h>
+#include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
 
 OBJC_CLASS AVAsset;
@@ -41,24 +45,27 @@ typedef struct opaqueCMSampleBuffer *CMSampleBufferRef;
 
 namespace WebCore {
 
-class SourceBufferParserAVFObjC final : public SourceBufferParser, public CanMakeWeakPtr<SourceBufferParserAVFObjC> {
+class SourceBufferParserAVFObjC final
+    : public SourceBufferParser
+    , public CanMakeWeakPtr<SourceBufferParserAVFObjC>
+    , private LoggerHelper {
 public:
     static MediaPlayerEnums::SupportsType isContentTypeSupported(const ContentType&);
 
     SourceBufferParserAVFObjC();
     virtual ~SourceBufferParserAVFObjC();
 
-    AVStreamDataParser* parser() const { return m_parser.get(); }
+    AVStreamDataParser* streamDataParser() const { return m_parser.get(); }
 
     Type type() const { return Type::AVFObjC; }
-    void appendData(Vector<unsigned char>&&, AppendFlags = AppendFlags::None) final;
+    void appendData(Segment&&, CompletionHandler<void()>&&, AppendFlags = AppendFlags::None) final;
     void flushPendingMediaData() final;
     void setShouldProvideMediaDataForTrackID(bool, uint64_t) final;
     bool shouldProvideMediadataForTrackID(uint64_t) final;
     void resetParserState() final;
     void invalidate() final;
 #if !RELEASE_LOG_DISABLED
-    void setLogger(const WTF::Logger&, const void* identifier) final;
+    void setLogger(const Logger&, const void* identifier) final;
 #endif
 
     void didParseStreamDataAsAsset(AVAsset*);
@@ -66,24 +73,26 @@ public:
     void didProvideMediaDataForTrackID(uint64_t trackID, CMSampleBufferRef, const String& mediaType, unsigned flags);
     void willProvideContentKeyRequestInitializationDataForTrackID(uint64_t trackID);
     void didProvideContentKeyRequestInitializationDataForTrackID(NSData*, uint64_t trackID);
+    void didProvideContentKeyRequestSpecifierForTrackID(NSData*, uint64_t trackID);
 
 private:
 #if !RELEASE_LOG_DISABLED
-    const WTF::Logger* loggerPtr() const { return m_logger.get(); }
-    const void* logIdentifier() const { return m_logIdentifier; }
+    const Logger* loggerPtr() const { return m_logger.get(); }
+    const Logger& logger() const final { ASSERT(m_logger); return *m_logger.get(); }
+    const void* logIdentifier() const final { return m_logIdentifier; }
+    const char* logClassName() const final { return "SourceBufferParserAVFObjC"; }
+    WTFLogChannel& logChannel() const final { return LogMedia; }
 #endif
 
     RetainPtr<AVStreamDataParser> m_parser;
     RetainPtr<WebAVStreamDataParserListener> m_delegate;
-    bool m_discardSamplesUntilNextInitializationSegment { false };
     bool m_parserStateWasReset { false };
 
 #if !RELEASE_LOG_DISABLED
-    RefPtr<const WTF::Logger> m_logger;
+    RefPtr<const Logger> m_logger;
     const void* m_logIdentifier { nullptr };
 #endif
 };
-
 }
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::SourceBufferParserAVFObjC)

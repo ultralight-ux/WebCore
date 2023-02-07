@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,10 +26,21 @@
 #import "config.h"
 #import "RenderThemeCocoa.h"
 
+#import "ApplePayLogoSystemImage.h"
+#import "AttachmentLayout.h"
+#import "DrawGlyphsRecorder.h"
+#import "FloatRoundedRect.h"
+#import "FontCacheCoreText.h"
 #import "GraphicsContextCG.h"
 #import "HTMLInputElement.h"
+#import "ImageBuffer.h"
 #import "RenderText.h"
-#import <pal/spi/cocoa/CoreTextSPI.h>
+#import "UserAgentScripts.h"
+#import "UserAgentStyleSheets.h"
+#import <CoreGraphics/CoreGraphics.h>
+#import <algorithm>
+#import <pal/spi/cf/CoreTextSPI.h>
+#import <wtf/Language.h>
 
 #if ENABLE(VIDEO)
 #import "LocalizedStrings.h"
@@ -47,21 +58,77 @@
 #import <pal/cocoa/PassKitSoftLink.h>
 #endif
 
+@interface WebCoreRenderThemeBundle : NSObject
+@end
+
+@implementation WebCoreRenderThemeBundle
+@end
+
 namespace WebCore {
+
+constexpr int kThumbnailBorderStrokeWidth = 1;
+constexpr int kThumbnailBorderCornerRadius = 1;
+constexpr int kVisibleBackgroundImageWidth = 1;
+constexpr int kMultipleThumbnailShrinkSize = 2;
 
 RenderThemeCocoa& RenderThemeCocoa::singleton()
 {
     return static_cast<RenderThemeCocoa&>(RenderTheme::singleton());
 }
 
-bool RenderThemeCocoa::canPaint(const PaintInfo& paintInfo) const
+void RenderThemeCocoa::purgeCaches()
 {
-    return paintInfo.context().hasPlatformContext();
+#if ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
+    m_mediaControlsLocalizedStringsScript.clearImplIfNotShared();
+    m_mediaControlsScript.clearImplIfNotShared();
+    m_mediaControlsStyleSheet.clearImplIfNotShared();
+#endif // ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
+
+    RenderTheme::purgeCaches();
 }
 
 bool RenderThemeCocoa::shouldHaveCapsLockIndicator(const HTMLInputElement& element) const
 {
     return element.isPasswordField();
+}
+
+Color RenderThemeCocoa::pictureFrameColor(const RenderObject& buttonRenderer)
+{
+    return systemColor(CSSValueAppleSystemControlBackground, buttonRenderer.styleColorOptions());
+}
+
+void RenderThemeCocoa::paintFileUploadIconDecorations(const RenderObject&, const RenderObject& buttonRenderer, const PaintInfo& paintInfo, const IntRect& rect, Icon* icon, FileUploadDecorations fileUploadDecorations)
+{
+    GraphicsContextStateSaver stateSaver(paintInfo.context());
+
+    IntSize cornerSize(kThumbnailBorderCornerRadius, kThumbnailBorderCornerRadius);
+
+    auto pictureFrameColor = this->pictureFrameColor(buttonRenderer);
+
+    auto thumbnailPictureFrameRect = rect;
+    auto thumbnailRect = rect;
+    thumbnailRect.contract(2 * kThumbnailBorderStrokeWidth, 2 * kThumbnailBorderStrokeWidth);
+    thumbnailRect.move(kThumbnailBorderStrokeWidth, kThumbnailBorderStrokeWidth);
+
+    if (fileUploadDecorations == MultipleFiles) {
+        // Smaller thumbnails for multiple selection appearance.
+        thumbnailPictureFrameRect.contract(kMultipleThumbnailShrinkSize, kMultipleThumbnailShrinkSize);
+        thumbnailRect.contract(kMultipleThumbnailShrinkSize, kMultipleThumbnailShrinkSize);
+
+        // Background picture frame and simple background icon with a gradient matching the button.
+        auto backgroundImageColor = buttonRenderer.style().visitedDependentColor(CSSPropertyBackgroundColor);
+        paintInfo.context().fillRoundedRect(FloatRoundedRect(thumbnailPictureFrameRect, cornerSize, cornerSize, cornerSize, cornerSize), pictureFrameColor);
+        paintInfo.context().fillRect(thumbnailRect, backgroundImageColor);
+
+        // Move the rects for the Foreground picture frame and icon.
+        auto inset = kVisibleBackgroundImageWidth + kThumbnailBorderStrokeWidth;
+        thumbnailPictureFrameRect.move(inset, inset);
+        thumbnailRect.move(inset, inset);
+    }
+
+    // Foreground picture frame and icon.
+    paintInfo.context().fillRoundedRect(FloatRoundedRect(thumbnailPictureFrameRect, cornerSize, cornerSize, cornerSize, cornerSize), pictureFrameColor);
+    icon->paint(paintInfo.context(), thumbnailRect);
 }
 
 #if ENABLE(APPLE_PAY)
@@ -73,74 +140,19 @@ static const auto applePayButtonMinimumHeight = 30;
 void RenderThemeCocoa::adjustApplePayButtonStyle(RenderStyle& style, const Element*) const
 {
     if (style.applePayButtonType() == ApplePayButtonType::Plain)
-        style.setMinWidth(Length(applePayButtonPlainMinimumWidth, Fixed));
+        style.setMinWidth(Length(applePayButtonPlainMinimumWidth, LengthType::Fixed));
     else
-        style.setMinWidth(Length(applePayButtonMinimumWidth, Fixed));
-    style.setMinHeight(Length(applePayButtonMinimumHeight, Fixed));
+        style.setMinWidth(Length(applePayButtonMinimumWidth, LengthType::Fixed));
+    style.setMinHeight(Length(applePayButtonMinimumHeight, LengthType::Fixed));
 
     if (!style.hasExplicitlySetBorderRadius()) {
-        auto cornerRadius = PAL::get_PassKit_PKApplePayButtonDefaultCornerRadius();
-        style.setBorderRadius({ { cornerRadius, Fixed }, { cornerRadius, Fixed } });
-    }
-}
-
-static PKPaymentButtonStyle toPKPaymentButtonStyle(ApplePayButtonStyle style)
-{
-    switch (style) {
-    case ApplePayButtonStyle::White:
-        return PKPaymentButtonStyleWhite;
-    case ApplePayButtonStyle::WhiteOutline:
-        return PKPaymentButtonStyleWhiteOutline;
-    case ApplePayButtonStyle::Black:
-        return PKPaymentButtonStyleBlack;
-    }
-}
-
-static PKPaymentButtonType toPKPaymentButtonType(ApplePayButtonType type)
-{
-    switch (type) {
-    case ApplePayButtonType::Plain:
-        return PKPaymentButtonTypePlain;
-    case ApplePayButtonType::Buy:
-        return PKPaymentButtonTypeBuy;
-    case ApplePayButtonType::SetUp:
-        return PKPaymentButtonTypeSetUp;
-    case ApplePayButtonType::Donate:
-        return PKPaymentButtonTypeDonate;
-    case ApplePayButtonType::CheckOut:
-        return PKPaymentButtonTypeCheckout;
-    case ApplePayButtonType::Book:
-        return PKPaymentButtonTypeBook;
-    case ApplePayButtonType::Subscribe:
-        return PKPaymentButtonTypeSubscribe;
-#if HAVE(PASSKIT_NEW_BUTTON_TYPES)
-    case ApplePayButtonType::Reload:
-        return PKPaymentButtonTypeReload;
-    case ApplePayButtonType::AddMoney:
-        return PKPaymentButtonTypeAddMoney;
-    case ApplePayButtonType::TopUp:
-        return PKPaymentButtonTypeTopUp;
-    case ApplePayButtonType::Order:
-        return PKPaymentButtonTypeOrder;
-    case ApplePayButtonType::Rent:
-        return PKPaymentButtonTypeRent;
-    case ApplePayButtonType::Support:
-        return PKPaymentButtonTypeSupport;
-    case ApplePayButtonType::Contribute:
-        return PKPaymentButtonTypeContribute;
-    case ApplePayButtonType::Tip:
-        return PKPaymentButtonTypeTip;
-#endif
+        auto cornerRadius = PKApplePayButtonDefaultCornerRadius;
+        style.setBorderRadius({ { cornerRadius, LengthType::Fixed }, { cornerRadius, LengthType::Fixed } });
     }
 }
 
 bool RenderThemeCocoa::paintApplePayButton(const RenderObject& renderer, const PaintInfo& paintInfo, const IntRect& paintRect)
 {
-    GraphicsContextStateSaver stateSaver(paintInfo.context());
-
-    paintInfo.context().setShouldSmoothFonts(true);
-    paintInfo.context().scale(FloatSize(1, -1));
-
     auto& style = renderer.style();
     auto largestCornerRadius = std::max<CGFloat>({
         floatValueForLength(style.borderTopLeftRadius().height, paintRect.height()),
@@ -152,12 +164,47 @@ bool RenderThemeCocoa::paintApplePayButton(const RenderObject& renderer, const P
         floatValueForLength(style.borderBottomRightRadius().height, paintRect.height()),
         floatValueForLength(style.borderBottomRightRadius().width, paintRect.width())
     });
-
-    PKDrawApplePayButtonWithCornerRadius(paintInfo.context().platformContext(), CGRectMake(paintRect.x(), -paintRect.maxY(), paintRect.width(), paintRect.height()), 1.0, largestCornerRadius, toPKPaymentButtonType(style.applePayButtonType()), toPKPaymentButtonStyle(style.applePayButtonStyle()), style.computedLocale());
+    String locale = style.computedLocale();
+    if (locale.isEmpty())
+        locale = defaultLanguage(ShouldMinimizeLanguages::No);
+    paintInfo.context().drawSystemImage(ApplePayButtonSystemImage::create(style.applePayButtonType(), style.applePayButtonStyle(), locale, largestCornerRadius), paintRect);
     return false;
 }
 
 #endif // ENABLE(APPLE_PAY)
+
+#if ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
+
+String RenderThemeCocoa::mediaControlsStyleSheet()
+{
+    if (m_mediaControlsStyleSheet.isEmpty())
+        m_mediaControlsStyleSheet = StringImpl::createWithoutCopying(ModernMediaControlsUserAgentStyleSheet, sizeof(ModernMediaControlsUserAgentStyleSheet));
+    return m_mediaControlsStyleSheet;
+}
+
+Vector<String, 2> RenderThemeCocoa::mediaControlsScripts()
+{
+    // FIXME: Localized strings are not worth having a script. We should make it JSON data etc. instead.
+    if (m_mediaControlsLocalizedStringsScript.isEmpty()) {
+        NSBundle *bundle = [NSBundle bundleForClass:[WebCoreRenderThemeBundle class]];
+        m_mediaControlsLocalizedStringsScript = [NSString stringWithContentsOfFile:[bundle pathForResource:@"modern-media-controls-localized-strings" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil];
+    }
+
+    if (m_mediaControlsScript.isEmpty())
+        m_mediaControlsScript = StringImpl::createWithoutCopying(ModernMediaControlsJavaScript, sizeof(ModernMediaControlsJavaScript));
+
+    return {
+        m_mediaControlsLocalizedStringsScript,
+        m_mediaControlsScript,
+    };
+}
+
+String RenderThemeCocoa::mediaControlsBase64StringForIconNameAndType(const String& iconName, const String& iconType)
+{
+    NSString *directory = @"modern-media-controls/images";
+    NSBundle *bundle = [NSBundle bundleForClass:[WebCoreRenderThemeBundle class]];
+    return [[NSData dataWithContentsOfFile:[bundle pathForResource:iconName ofType:iconType inDirectory:directory]] base64EncodedStringWithOptions:0];
+}
 
 String RenderThemeCocoa::mediaControlsFormattedStringForDuration(const double durationInSeconds)
 {
@@ -172,249 +219,47 @@ String RenderThemeCocoa::mediaControlsFormattedStringForDuration(const double du
         m_durationFormatter.get().formattingContext = NSFormattingContextStandalone;
         m_durationFormatter.get().maximumUnitCount = 2;
     }
-    return [m_durationFormatter.get() stringFromTimeInterval:durationInSeconds];
+    return [m_durationFormatter stringFromTimeInterval:durationInSeconds];
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
-FontCascadeDescription& RenderThemeCocoa::cachedSystemFontDescription(CSSValueID valueID) const
-{
-    static NeverDestroyed<FontCascadeDescription> systemFont;
-    static NeverDestroyed<FontCascadeDescription> headlineFont;
-    static NeverDestroyed<FontCascadeDescription> bodyFont;
-    static NeverDestroyed<FontCascadeDescription> subheadlineFont;
-    static NeverDestroyed<FontCascadeDescription> footnoteFont;
-    static NeverDestroyed<FontCascadeDescription> caption1Font;
-    static NeverDestroyed<FontCascadeDescription> caption2Font;
-    static NeverDestroyed<FontCascadeDescription> shortHeadlineFont;
-    static NeverDestroyed<FontCascadeDescription> shortBodyFont;
-    static NeverDestroyed<FontCascadeDescription> shortSubheadlineFont;
-    static NeverDestroyed<FontCascadeDescription> shortFootnoteFont;
-    static NeverDestroyed<FontCascadeDescription> shortCaption1Font;
-    static NeverDestroyed<FontCascadeDescription> tallBodyFont;
-    static NeverDestroyed<FontCascadeDescription> title0Font;
-    static NeverDestroyed<FontCascadeDescription> title1Font;
-    static NeverDestroyed<FontCascadeDescription> title2Font;
-    static NeverDestroyed<FontCascadeDescription> title3Font;
-    static NeverDestroyed<FontCascadeDescription> title4Font;
-
-    static CFStringRef userTextSize = contentSizeCategory();
-
-    if (userTextSize != contentSizeCategory()) {
-        userTextSize = contentSizeCategory();
-
-        headlineFont.get().setIsAbsoluteSize(false);
-        bodyFont.get().setIsAbsoluteSize(false);
-        subheadlineFont.get().setIsAbsoluteSize(false);
-        footnoteFont.get().setIsAbsoluteSize(false);
-        caption1Font.get().setIsAbsoluteSize(false);
-        caption2Font.get().setIsAbsoluteSize(false);
-        shortHeadlineFont.get().setIsAbsoluteSize(false);
-        shortBodyFont.get().setIsAbsoluteSize(false);
-        shortSubheadlineFont.get().setIsAbsoluteSize(false);
-        shortFootnoteFont.get().setIsAbsoluteSize(false);
-        shortCaption1Font.get().setIsAbsoluteSize(false);
-        tallBodyFont.get().setIsAbsoluteSize(false);
-    }
-
-    switch (valueID) {
-    case CSSValueAppleSystemHeadline:
-        return headlineFont;
-    case CSSValueAppleSystemBody:
-        return bodyFont;
-    case CSSValueAppleSystemTitle0:
-        return title0Font;
-    case CSSValueAppleSystemTitle1:
-        return title1Font;
-    case CSSValueAppleSystemTitle2:
-        return title2Font;
-    case CSSValueAppleSystemTitle3:
-        return title3Font;
-    case CSSValueAppleSystemTitle4:
-        return title4Font;
-    case CSSValueAppleSystemSubheadline:
-        return subheadlineFont;
-    case CSSValueAppleSystemFootnote:
-        return footnoteFont;
-    case CSSValueAppleSystemCaption1:
-        return caption1Font;
-    case CSSValueAppleSystemCaption2:
-        return caption2Font;
-        // Short version.
-    case CSSValueAppleSystemShortHeadline:
-        return shortHeadlineFont;
-    case CSSValueAppleSystemShortBody:
-        return shortBodyFont;
-    case CSSValueAppleSystemShortSubheadline:
-        return shortSubheadlineFont;
-    case CSSValueAppleSystemShortFootnote:
-        return shortFootnoteFont;
-    case CSSValueAppleSystemShortCaption1:
-        return shortCaption1Font;
-        // Tall version.
-    case CSSValueAppleSystemTallBody:
-        return tallBodyFont;
-    default:
-        return RenderTheme::cachedSystemFontDescription(valueID);
-    }
-}
+#endif // ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
 
 static inline FontSelectionValue cssWeightOfSystemFont(CTFontRef font)
 {
-    auto traits = adoptCF(CTFontCopyTraits(font));
-    CFNumberRef resultRef = (CFNumberRef)CFDictionaryGetValue(traits.get(), kCTFontWeightTrait);
+    auto resultRef = adoptCF(static_cast<CFNumberRef>(CTFontCopyAttribute(font, kCTFontCSSWeightAttribute)));
     float result = 0;
-    CFNumberGetValue(resultRef, kCFNumberFloatType, &result);
+    if (resultRef && CFNumberGetValue(resultRef.get(), kCFNumberFloatType, &result))
+        return FontSelectionValue(result);
+
+    auto traits = adoptCF(CTFontCopyTraits(font));
+    resultRef = static_cast<CFNumberRef>(CFDictionaryGetValue(traits.get(), kCTFontWeightTrait));
+    CFNumberGetValue(resultRef.get(), kCFNumberFloatType, &result);
     // These numbers were experimentally gathered from weights of the system font.
-    static constexpr const float weightThresholds[] = { -0.6, -0.365, -0.115, 0.130, 0.235, 0.350, 0.5, 0.7 };
-    for (unsigned i = 0; i < WTF_ARRAY_LENGTH(weightThresholds); ++i) {
+    static constexpr float weightThresholds[] = { -0.6, -0.365, -0.115, 0.130, 0.235, 0.350, 0.5, 0.7 };
+    for (unsigned i = 0; i < std::size(weightThresholds); ++i) {
         if (result < weightThresholds[i])
             return FontSelectionValue((static_cast<int>(i) + 1) * 100);
     }
     return FontSelectionValue(900);
 }
 
-void RenderThemeCocoa::updateCachedSystemFontDescription(CSSValueID valueID, FontCascadeDescription& fontDescription) const
+#if ENABLE(ATTACHMENT_ELEMENT)
+
+int RenderThemeCocoa::attachmentBaseline(const RenderAttachment& attachment) const
 {
-    auto cocoaFontClass = [] {
-#if PLATFORM(IOS_FAMILY)
-        return PAL::getUIFontClass();
-#else
-        return NSFont.class;
-#endif
-    };
-    // FIXME: Hook up locale strings.
-    RetainPtr<CTFontDescriptorRef> fontDescriptor;
-    CFStringRef textStyle = nullptr;
-    AtomString style;
-    switch (valueID) {
-    case CSSValueAppleSystemHeadline:
-        textStyle = kCTUIFontTextStyleHeadline;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemBody:
-        textStyle = kCTUIFontTextStyleBody;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemTitle0:
-        textStyle = kCTUIFontTextStyleTitle0;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemTitle1:
-        textStyle = kCTUIFontTextStyleTitle1;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemTitle2:
-        textStyle = kCTUIFontTextStyleTitle2;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemTitle3:
-        textStyle = kCTUIFontTextStyleTitle3;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemTitle4:
-        textStyle = kCTUIFontTextStyleTitle4;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemSubheadline:
-        textStyle = kCTUIFontTextStyleSubhead;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemFootnote:
-        textStyle = kCTUIFontTextStyleFootnote;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemCaption1:
-        textStyle = kCTUIFontTextStyleCaption1;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemCaption2:
-        textStyle = kCTUIFontTextStyleCaption2;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemShortHeadline:
-        textStyle = kCTUIFontTextStyleShortHeadline;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemShortBody:
-        textStyle = kCTUIFontTextStyleShortBody;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemShortSubheadline:
-        textStyle = kCTUIFontTextStyleShortSubhead;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemShortFootnote:
-        textStyle = kCTUIFontTextStyleShortFootnote;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemShortCaption1:
-        textStyle = kCTUIFontTextStyleShortCaption1;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueAppleSystemTallBody:
-        textStyle = kCTUIFontTextStyleTallBody;
-        fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
-        break;
-    case CSSValueSmallCaption: {
-        style = AtomString("system-ui", AtomString::ConstructFromLiteral);
-        auto font = [cocoaFontClass() systemFontOfSize:[cocoaFontClass() smallSystemFontSize]];
-        fontDescriptor = static_cast<CTFontDescriptorRef>(font.fontDescriptor);
-        break;
-    }
-    case CSSValueMenu:
-        style = AtomString("-apple-menu", AtomString::ConstructFromLiteral);
-        fontDescriptor = adoptCF(CTFontDescriptorCreateForUIType(kCTFontUIFontMenuItem, [cocoaFontClass() systemFontSize], nullptr));
-        break;
-    case CSSValueStatusBar: {
-        style = AtomString("-apple-status-bar", AtomString::ConstructFromLiteral);
-        fontDescriptor = adoptCF(CTFontDescriptorCreateForUIType(kCTFontUIFontSystem, [cocoaFontClass() labelFontSize], nullptr));
-        break;
-    }
-    case CSSValueWebkitMiniControl: {
-        style = AtomString("system-ui", AtomString::ConstructFromLiteral);
-#if PLATFORM(IOS_FAMILY)
-        fontDescriptor = adoptCF(CTFontDescriptorCreateForUIType(kCTFontUIFontMiniSystem, 0, nullptr));
-#else
-        auto font = [cocoaFontClass() systemFontOfSize:[cocoaFontClass() systemFontSizeForControlSize:NSControlSizeMini]];
-        fontDescriptor = static_cast<CTFontDescriptorRef>(font.fontDescriptor);
-#endif
-        break;
-    }
-    case CSSValueWebkitSmallControl: {
-        style = AtomString("system-ui", AtomString::ConstructFromLiteral);
-#if PLATFORM(IOS_FAMILY)
-        fontDescriptor = adoptCF(CTFontDescriptorCreateForUIType(kCTFontUIFontSmallSystem, 0, nullptr));
-#else
-        auto font = [cocoaFontClass() systemFontOfSize:[cocoaFontClass() systemFontSizeForControlSize:NSControlSizeSmall]];
-        fontDescriptor = static_cast<CTFontDescriptorRef>(font.fontDescriptor);
-#endif
-        break;
-    }
-    case CSSValueWebkitControl: {
-        style = AtomString("system-ui", AtomString::ConstructFromLiteral);
-#if PLATFORM(IOS_FAMILY)
-        fontDescriptor = adoptCF(CTFontDescriptorCreateForUIType(kCTFontUIFontSystem, 0, nullptr));
-#else
-        auto font = [cocoaFontClass() systemFontOfSize:[cocoaFontClass() systemFontSizeForControlSize:NSControlSizeRegular]];
-        fontDescriptor = static_cast<CTFontDescriptorRef>(font.fontDescriptor);
-#endif
-        break;
-    }
-    default:
-        style = AtomString("system-ui", AtomString::ConstructFromLiteral);
-        fontDescriptor = adoptCF(CTFontDescriptorCreateForUIType(kCTFontUIFontSystem, 0, nullptr));
-    }
-
-    if (style.isNull())
-        style = textStyle;
-
-    ASSERT(fontDescriptor);
-    RetainPtr<CTFontRef> font = adoptCF(CTFontCreateWithFontDescriptor(fontDescriptor.get(), 0, nullptr));
-    fontDescription.setIsAbsoluteSize(true);
-    fontDescription.setOneFamily(style);
-    fontDescription.setSpecifiedSize(CTFontGetSize(font.get()));
-    fontDescription.setWeight(cssWeightOfSystemFont(font.get()));
-    fontDescription.setItalic(normalItalicValue());
+    AttachmentLayout layout(attachment, AttachmentLayoutStyle::NonSelected);
+    return layout.baseline;
 }
+
+void RenderThemeCocoa::paintAttachmentText(GraphicsContext& context, AttachmentLayout* layout)
+{
+    DrawGlyphsRecorder recorder(context, 1, DrawGlyphsRecorder::DeriveFontFromContext::Yes);
+
+    for (const auto& line : layout->lines)
+        recorder.drawNativeText(line.font.get(), CTFontGetSize(line.font.get()), line.line.get(), line.rect);
+}
+
+#endif
 
 }

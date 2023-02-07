@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "JSGlobalObjectInlines.h"
 #include "JSString.h"
 
 namespace JSC {
@@ -41,6 +42,25 @@ bool JSString::equal(JSGlobalObject* globalObject, JSString* other) const
     if (isRope() || other->isRope())
         return equalSlowCase(globalObject, other);
     return WTF::equal(*valueInternal().impl(), *other->valueInternal().impl());
+}
+
+ALWAYS_INLINE bool JSString::equalInline(JSGlobalObject* globalObject, JSString* other) const
+{
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    unsigned length = this->length();
+    if (length != other->length())
+        return false;
+
+    auto str1 = unsafeView(globalObject);
+    RETURN_IF_EXCEPTION(scope, false);
+    auto str2 = other->unsafeView(globalObject);
+    RETURN_IF_EXCEPTION(scope, false);
+
+    ensureStillAliveHere(this);
+    ensureStillAliveHere(other);
+    return WTF::equal(str1, str2, length);
 }
 
 template<typename StringType>
@@ -76,7 +96,7 @@ inline JSString* repeatCharacter(JSGlobalObject* globalObject, CharacterType cha
 
     std::fill_n(buffer, repeatCount, character);
 
-    RELEASE_AND_RETURN(scope, jsString(vm, WTFMove(impl)));
+    RELEASE_AND_RETURN(scope, jsString(vm, impl.releaseNonNull()));
 }
 
 } // namespace JSC

@@ -47,7 +47,7 @@ static ManetteGamepad::StandardGamepadAxis toStandardGamepadAxis(uint16_t axis)
     case ABS_RY:
         return ManetteGamepad::StandardGamepadAxis::RightStickY;
     default:
-        ASSERT_NOT_REACHED();
+        break;
     }
     return ManetteGamepad::StandardGamepadAxis::Unknown;
 }
@@ -98,7 +98,7 @@ static ManetteGamepad::StandardGamepadButton toStandardGamepadButton(uint16_t ma
     case BTN_DPAD_RIGHT:
         return ManetteGamepad::StandardGamepadButton::DPadRight;
     default:
-        ASSERT_NOT_REACHED();
+        break;
     }
     return ManetteGamepad::StandardGamepadButton::Unknown;
 }
@@ -132,8 +132,13 @@ ManetteGamepad::ManetteGamepad(ManetteDevice* device, unsigned index)
     m_id = String::fromUTF8(manette_device_get_name(m_device.get()));
     m_mapping = String::fromUTF8("standard");
 
-    m_axisValues.fill(0, static_cast<size_t>(StandardGamepadAxis::Count));
-    m_buttonValues.fill(0, static_cast<size_t>(StandardGamepadButton::Count));
+    m_axisValues.resize(static_cast<size_t>(StandardGamepadAxis::Count));
+    for (auto& value : m_axisValues)
+        value.setValue(0.0);
+
+    m_buttonValues.resize(static_cast<size_t>(StandardGamepadButton::Count));
+    for (auto& value : m_buttonValues)
+        value.setValue(0.0);
 
     g_signal_connect(device, "button-press-event", G_CALLBACK(onButtonPressEvent), this);
     g_signal_connect(device, "button-release-event", G_CALLBACK(onButtonReleaseEvent), this);
@@ -151,7 +156,7 @@ void ManetteGamepad::buttonPressedOrReleased(ManetteDevice*, StandardGamepadButt
         return;
 
     m_lastUpdateTime = MonotonicTime::now();
-    m_buttonValues[static_cast<int>(button)] = pressed ? 1.0 : 0.0;
+    m_buttonValues[static_cast<int>(button)].setValue(pressed ? 1.0 : 0.0);
 
     ManetteGamepadProvider::singleton().gamepadHadInput(*this, pressed ? ManetteGamepadProvider::ShouldMakeGamepadsVisible::Yes : ManetteGamepadProvider::ShouldMakeGamepadsVisible::No);
 }
@@ -162,7 +167,7 @@ void ManetteGamepad::absoluteAxisChanged(ManetteDevice*, StandardGamepadAxis axi
         return;
 
     m_lastUpdateTime = MonotonicTime::now();
-    m_axisValues[static_cast<int>(axis)] = value;
+    m_axisValues[static_cast<int>(axis)].setValue(value);
 
     ManetteGamepadProvider::singleton().gamepadHadInput(*this, ManetteGamepadProvider::ShouldMakeGamepadsVisible::No);
 }

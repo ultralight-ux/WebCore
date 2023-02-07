@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,8 +49,8 @@ public:
     template<typename CellType, SubspaceAccess>
     static CompleteSubspace* subspaceFor(VM& vm)
     {
-        static_assert(!CellType::needsDestruction, "");
-        return &vm.variableSizedCellSpace;
+        static_assert(!CellType::needsDestruction);
+        return &vm.variableSizedCellSpace();
     }
 
     // Creates an arguments object but leaves it uninitialized. This is dangerous if we GC right
@@ -65,7 +65,7 @@ public:
     static DirectArguments* createByCopying(JSGlobalObject*, CallFrame*);
 
     static size_t estimatedSize(JSCell*, VM&);
-    static void visitChildren(JSCell*, SlotVisitor&);
+    DECLARE_VISIT_CHILDREN;
     
     uint32_t internalLength() const
     {
@@ -74,11 +74,11 @@ public:
     
     uint32_t length(JSGlobalObject* globalObject) const
     {
+        VM& vm = getVM(globalObject);
+        auto scope = DECLARE_THROW_SCOPE(vm);
         if (UNLIKELY(m_mappedArguments)) {
-            VM& vm = getVM(globalObject);
-            auto scope = DECLARE_THROW_SCOPE(vm);
             JSValue value = get(globalObject, vm.propertyNames->length);
-            RETURN_IF_EXCEPTION(scope, 0);
+            RETURN_IF_EXCEPTION(scope, { });
             RELEASE_AND_RETURN(scope, value.toUInt32(globalObject));
         }
         return m_length;
@@ -146,6 +146,10 @@ public:
 
     void copyToArguments(JSGlobalObject*, JSValue* firstElementDest, unsigned offset, unsigned length);
 
+    static JSArray* fastSlice(JSGlobalObject*, DirectArguments*, uint64_t startIndex, uint64_t count);
+
+    JS_EXPORT_PRIVATE bool isIteratorProtocolFastAndNonObservable();
+
     DECLARE_INFO;
     
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue prototype);
@@ -163,7 +167,7 @@ public:
     
     static size_t offsetOfSlot(Checked<size_t> index)
     {
-        return (storageOffset() + sizeof(WriteBarrier<Unknown>) * index).unsafeGet();
+        return storageOffset() + sizeof(WriteBarrier<Unknown>) * index;
     }
     
     static size_t allocationSize(Checked<size_t> capacity)
@@ -185,7 +189,7 @@ private:
     using MappedArguments = CagedBarrierPtr<Gigacage::Primitive, bool>;
     MappedArguments m_mappedArguments; // If non-null, it means that length, callee, and caller are fully materialized properties.
 
-    friend size_t cellSize(VM&, JSCell*);
+    friend size_t cellSize(JSCell*);
 };
 
 } // namespace JSC

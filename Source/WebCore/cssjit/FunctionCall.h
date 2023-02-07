@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,17 +27,17 @@
 
 #if ENABLE(CSS_SELECTOR_JIT)
 
-#include "CSSPtrTag.h"
 #include "RegisterAllocator.h"
 #include "StackAllocator.h"
 #include <JavaScriptCore/GPRInfo.h>
+#include <JavaScriptCore/JSCPtrTag.h>
 #include <JavaScriptCore/MacroAssembler.h>
 
 namespace WebCore {
 
 class FunctionCall {
 public:
-    FunctionCall(JSC::MacroAssembler& assembler, RegisterAllocator& registerAllocator, StackAllocator& stackAllocator, Vector<std::pair<JSC::MacroAssembler::Call, JSC::FunctionPtr<CSSOperationPtrTag>>, 32>& callRegistry)
+    FunctionCall(JSC::MacroAssembler& assembler, RegisterAllocator& registerAllocator, StackAllocator& stackAllocator, Vector<std::pair<JSC::MacroAssembler::Call, CodePtr<JSC::OperationPtrTag>>, 32>& callRegistry)
         : m_assembler(assembler)
         , m_registerAllocator(registerAllocator)
         , m_stackAllocator(stackAllocator)
@@ -48,7 +48,7 @@ public:
     {
     }
 
-    void setFunctionAddress(JSC::FunctionPtr<CSSOperationPtrTag> functionAddress)
+    void setFunctionAddress(CodePtr<JSC::OperationPtrTag> functionAddress)
     {
         m_functionAddress = functionAddress;
     }
@@ -110,7 +110,7 @@ private:
 
     void prepareAndCall()
     {
-        ASSERT(m_functionAddress.executableAddress());
+        ASSERT(m_functionAddress.taggedPtr());
         ASSERT(!m_firstArgument || (m_firstArgument && !m_secondArgument) || (m_firstArgument && m_secondArgument));
 
         saveAllocatedCallerSavedRegisters();
@@ -148,7 +148,7 @@ private:
                 m_assembler.move(m_firstArgument, JSC::GPRInfo::argumentGPR0);
         }
 
-        JSC::MacroAssembler::Call call = m_assembler.call(CSSOperationPtrTag);
+        JSC::MacroAssembler::Call call = m_assembler.call(JSC::OperationPtrTag);
         m_callRegistry.append(std::make_pair(call, m_functionAddress));
     }
 
@@ -179,12 +179,12 @@ private:
     JSC::MacroAssembler& m_assembler;
     RegisterAllocator& m_registerAllocator;
     StackAllocator& m_stackAllocator;
-    Vector<std::pair<JSC::MacroAssembler::Call, JSC::FunctionPtr<CSSOperationPtrTag>>, 32>& m_callRegistry;
+    Vector<std::pair<JSC::MacroAssembler::Call, CodePtr<JSC::OperationPtrTag>>, 32>& m_callRegistry;
 
     RegisterVector m_savedRegisters;
     StackAllocator::StackReferenceVector m_savedRegisterStackReferences;
     
-    JSC::FunctionPtr<CSSOperationPtrTag> m_functionAddress;
+    CodePtr<JSC::OperationPtrTag> m_functionAddress;
     unsigned m_argumentCount;
     JSC::MacroAssembler::RegisterID m_firstArgument;
     JSC::MacroAssembler::RegisterID m_secondArgument;

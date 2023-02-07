@@ -44,15 +44,11 @@ void AccessibilityObjectWrapper::accessibilityAttributeValue(const AtomString& a
     m_object->updateBackingStore();
 
     // Not a real concept on Windows, but used heavily in WebKit accessibility testing.
-    if (attributeName == "AXTitleUIElementAttribute") {
-        if (!m_object->exposesTitleUIElement())
-            return;
-
-        AccessibilityObject* obj = m_object->titleUIElement();
-        if (obj) {
+    if (attributeName == "AXTitleUIElementAttribute"_s) {
+        if (auto* object = m_object->titleUIElement()) {
             ASSERT(V_VT(result) == VT_EMPTY);
             V_VT(result) = VT_UNKNOWN;
-            AccessibilityObjectWrapper* wrapper = obj->wrapper();
+            AccessibilityObjectWrapper* wrapper = object->wrapper();
             V_UNKNOWN(result) = wrapper;
             if (wrapper)
                 wrapper->AddRef();
@@ -60,8 +56,8 @@ void AccessibilityObjectWrapper::accessibilityAttributeValue(const AtomString& a
         return;
     }
 
-    // Used by DRT to find an accessible node by its element id.
-    if (attributeName == "AXDRTElementIdAttribute") {
+    // Used to find an accessible node by its element id.
+    if (attributeName == "AXDOMIdentifier"_s) {
         ASSERT(V_VT(result) == VT_EMPTY);
 
         V_VT(result) = VT_BSTR;
@@ -69,7 +65,7 @@ void AccessibilityObjectWrapper::accessibilityAttributeValue(const AtomString& a
         return;
     }
 
-    if (attributeName == "AXSelectedTextRangeAttribute") {
+    if (attributeName == "AXSelectedTextRangeAttribute"_s) {
         ASSERT(V_VT(result) == VT_EMPTY);
         V_VT(result) = VT_BSTR;
         PlainTextRange textRange = m_object->selectedTextRange();

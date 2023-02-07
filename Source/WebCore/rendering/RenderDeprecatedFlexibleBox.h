@@ -36,7 +36,7 @@ public:
 
     Element& element() const { return downcast<Element>(nodeForNonAnonymous()); }
 
-    const char* renderName() const override;
+    ASCIILiteral renderName() const override;
 
     void styleWillChange(StyleDifference, const RenderStyle& newStyle) override;
 
@@ -63,6 +63,7 @@ private:
     bool isHorizontal() const { return style().boxOrient() == BoxOrient::Horizontal; }
 
     void applyLineClamp(FlexBoxIterator&, bool relayoutChildren);
+    bool applyModernLineClamp(FlexBoxIterator&);
     void clearLineClamp();
 
     bool m_stretchingChildren;

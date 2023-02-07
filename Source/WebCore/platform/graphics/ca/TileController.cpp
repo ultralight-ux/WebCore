@@ -103,14 +103,16 @@ void TileController::setNeedsDisplayInRect(const IntRect& rect)
     updateTileCoverageMap();
 }
 
-void TileController::setContentsScale(float scale)
+void TileController::setContentsScale(float contentsScale)
 {
     ASSERT(owningGraphicsLayer()->isCommittingChanges());
 
     float deviceScaleFactor = owningGraphicsLayer()->platformCALayerDeviceScaleFactor();
     // The scale we get is the product of the page scale factor and device scale factor.
     // Divide by the device scale factor so we'll get the page scale factor.
-    scale /= deviceScaleFactor;
+    float scale = contentsScale / deviceScaleFactor;
+    
+    LOG_WITH_STREAM(Tiling, stream << "TileController " << this << " setContentsScale " << contentsScale << " computed scale " << scale << " (deviceScaleFactor " << deviceScaleFactor << ")");
 
     if (tileGrid().scale() == scale && m_deviceScaleFactor == deviceScaleFactor && !m_hasTilesWithTemporaryScaleFactor)
         return;
@@ -184,15 +186,6 @@ void TileController::setWantsDeepColorBackingStore(bool wantsDeepColorBackingSto
     tileGrid().updateTileLayerProperties();
 }
 
-void TileController::setSupportsSubpixelAntialiasedText(bool supportsSubpixelAntialiasedText)
-{
-    if (m_supportsSubpixelAntialiasedText == supportsSubpixelAntialiasedText)
-        return;
-
-    m_supportsSubpixelAntialiasedText = supportsSubpixelAntialiasedText;
-    tileGrid().updateTileLayerProperties();
-}
-
 void TileController::setTilesOpaque(bool opaque)
 {
     if (opaque == m_tilesAreOpaque)
@@ -211,7 +204,7 @@ void TileController::setVisibleRect(const FloatRect& rect)
     updateTileCoverageMap();
 }
 
-void TileController::setLayoutViewportRect(Optional<FloatRect> rect)
+void TileController::setLayoutViewportRect(std::optional<FloatRect> rect)
 {
     if (rect == m_layoutViewportRect)
         return;
@@ -307,11 +300,6 @@ void TileController::revalidateTiles()
 {
     ASSERT(owningGraphicsLayer()->isCommittingChanges());
     tileGrid().revalidateTiles();
-}
-
-void TileController::forceRepaint()
-{
-    setNeedsDisplay();
 }
 
 void TileController::setTileDebugBorderWidth(float borderWidth)
@@ -421,7 +409,7 @@ FloatRect TileController::adjustTileCoverageForDesktopPageScrolling(const FloatR
     };
 
     FloatRect coverage = expandRectWithinRect(visibleRect, coverageSize, coverageBounds);
-    LOG_WITH_STREAM(Tiling, stream << "TileController::adjustTileCoverageForDesktopPageScrolling newSize=" << newSize << " mode " << m_tileCoverage << " expanded to " << coverageSize << " bounds with margin " << coverageBounds << " coverage " << coverage);
+    LOG_WITH_STREAM(Tiling, stream << "TileController " << this << " adjustTileCoverageForDesktopPageScrolling newSize=" << newSize << " mode " << m_tileCoverage << " expanded to " << coverageSize << " bounds with margin " << coverageBounds << " coverage " << coverage);
     return unionRect(coverageRect, coverage);
 }
 #endif
@@ -615,14 +603,16 @@ void TileController::tileRevalidationTimerFired()
     // If we are not visible get rid of the zoomed-out tiles.
     clearZoomedOutTileGrid();
 
-    TileGrid::TileValidationPolicy validationPolicy = (shouldAggressivelyRetainTiles() ? 0 : TileGrid::PruneSecondaryTiles) | TileGrid::UnparentAllTiles;
-
-    tileGrid().revalidateTiles(validationPolicy);
+    tileGrid().revalidateTiles(shouldAggressivelyRetainTiles()
+        ? OptionSet { TileGrid::PruneSecondaryTiles, TileGrid::UnparentAllTiles }
+        : OptionSet { TileGrid::UnparentAllTiles });
 }
 
 void TileController::didRevalidateTiles()
 {
     m_boundsAtLastRevalidate = bounds();
+
+    LOG_WITH_STREAM(Tiling, stream << "TileController " << this << " (bounds " << bounds() << ") didRevalidateTiles - tileCoverageRect " << tileCoverageRect() << " grid extent " << tileGridExtent() << " memory use " << (retainedTileBackingStoreMemory() / (1024 * 1024)) << "MB");
 
     updateTileCoverageMap();
 }
@@ -756,32 +746,21 @@ int TileController::rightMarginWidth() const
 
 Ref<PlatformCALayer> TileController::createTileLayer(const IntRect& tileRect, TileGrid& grid)
 {
-    auto layer = m_tileCacheLayer->createCompatibleLayerOrTakeFromPool(PlatformCALayer::LayerTypeTiledBackingTileLayer, &grid, tileRect.size());
+    float temporaryScaleFactor = owningGraphicsLayer()->platformCALayerContentsScaleMultiplierForNewTiles(m_tileCacheLayer);
+    m_hasTilesWithTemporaryScaleFactor |= temporaryScaleFactor != 1;
 
+    auto layer = m_tileCacheLayer->createCompatibleLayerOrTakeFromPool(PlatformCALayer::LayerTypeTiledBackingTileLayer, &grid, tileRect.size());
     layer->setAnchorPoint(FloatPoint3D());
     layer->setPosition(tileRect.location());
     layer->setBorderColor(m_tileDebugBorderColor);
     layer->setBorderWidth(m_tileDebugBorderWidth);
-    layer->setEdgeAntialiasingMask(0);
+    layer->setAntialiasesEdges(false);
     layer->setOpaque(m_tilesAreOpaque);
-
-    StringBuilder nameBuilder;
-    nameBuilder.append("tile at ");
-    nameBuilder.appendNumber(tileRect.location().x());
-    nameBuilder.append(',');
-    nameBuilder.appendNumber(tileRect.location().y());
-    layer->setName(nameBuilder.toString());
-
-    float temporaryScaleFactor = owningGraphicsLayer()->platformCALayerContentsScaleMultiplierForNewTiles(m_tileCacheLayer);
-    m_hasTilesWithTemporaryScaleFactor |= temporaryScaleFactor != 1;
-
+    layer->setName(makeString("tile at ", tileRect.location().x(), ',', tileRect.location().y()));
     layer->setContentsScale(m_deviceScaleFactor * temporaryScaleFactor);
     layer->setAcceleratesDrawing(m_acceleratesDrawing);
     layer->setWantsDeepColorBackingStore(m_wantsDeepColorBackingStore);
-    layer->setSupportsSubpixelAntialiasedText(m_supportsSubpixelAntialiasedText);
-
     layer->setNeedsDisplay();
-
     return layer;
 }
 

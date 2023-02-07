@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2016 Metrological Group B.V.
  * Copyright (C) 2016, 2017, 2018 Igalia S.L
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,9 +23,7 @@
 #include "MediaSampleGStreamer.h"
 
 #include "GStreamerCommon.h"
-
-#include <JavaScriptCore/JSCInlines.h>
-#include <JavaScriptCore/TypedArrayInlines.h>
+#include "VideoFrameMetadataGStreamer.h"
 #include <algorithm>
 
 #if ENABLE(VIDEO) && USE(GSTREAMER)
@@ -38,38 +37,33 @@ MediaSampleGStreamer::MediaSampleGStreamer(GRefPtr<GstSample>&& sample, const Fl
     , m_trackId(trackId)
     , m_presentationSize(presentationSize)
 {
-    const GstClockTime minimumDuration = 1000; // 1 us
     ASSERT(sample);
-    GstBuffer* buffer = gst_sample_get_buffer(sample.get());
+    m_sample = sample;
+    const GstClockTime minimumDuration = 1000; // 1 us
+    auto* buffer = gst_sample_get_buffer(m_sample.get());
     RELEASE_ASSERT(buffer);
 
-    auto createMediaTime =
-        [](GstClockTime time) -> MediaTime {
-            return MediaTime(GST_TIME_AS_USECONDS(time), G_USEC_PER_SEC);
-        };
-
     if (GST_BUFFER_PTS_IS_VALID(buffer))
-        m_pts = createMediaTime(GST_BUFFER_PTS(buffer));
+        m_pts = fromGstClockTime(GST_BUFFER_PTS(buffer));
     if (GST_BUFFER_DTS_IS_VALID(buffer) || GST_BUFFER_PTS_IS_VALID(buffer))
-        m_dts = createMediaTime(GST_BUFFER_DTS_OR_PTS(buffer));
+        m_dts = fromGstClockTime(GST_BUFFER_DTS_OR_PTS(buffer));
     if (GST_BUFFER_DURATION_IS_VALID(buffer)) {
         // Sometimes (albeit rarely, so far seen only at the end of a track)
         // frames have very small durations, so small that may be under the
         // precision we are working with and be truncated to zero.
         // SourceBuffer algorithms are not expecting frames with zero-duration,
         // so let's use something very small instead in those fringe cases.
-        m_duration = createMediaTime(std::max(GST_BUFFER_DURATION(buffer), minimumDuration));
+        m_duration = fromGstClockTime(std::max(GST_BUFFER_DURATION(buffer), minimumDuration));
     } else {
         // Unfortunately, sometimes samples don't provide a duration. This can never happen in MP4 because of the way
         // the format is laid out, but it's pretty common in WebM.
         // The good part is that durations don't matter for playback, just for buffered ranges and coded frame deletion.
         // We want to pick something small enough to not cause unwanted frame deletion, but big enough to never be
         // mistaken for a rounding artifact.
-        m_duration = createMediaTime(16666667); // 1/60 seconds
+        m_duration = fromGstClockTime(16666667); // 1/60 seconds
     }
 
     m_size = gst_buffer_get_size(buffer);
-    m_sample = sample;
 
     if (GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT))
         m_flags = MediaSample::None;
@@ -87,7 +81,7 @@ MediaSampleGStreamer::MediaSampleGStreamer(const FloatSize& presentationSize, co
 {
 }
 
-Ref<MediaSampleGStreamer> MediaSampleGStreamer::createFakeSample(GstCaps*, MediaTime pts, MediaTime dts, MediaTime duration, const FloatSize& presentationSize, const AtomString& trackId)
+Ref<MediaSampleGStreamer> MediaSampleGStreamer::createFakeSample(GstCaps*, const MediaTime& pts, const MediaTime& dts, const MediaTime& duration, const FloatSize& presentationSize, const AtomString& trackId)
 {
     MediaSampleGStreamer* gstreamerMediaSample = new MediaSampleGStreamer(presentationSize, trackId);
     gstreamerMediaSample->m_pts = pts;
@@ -97,53 +91,6 @@ Ref<MediaSampleGStreamer> MediaSampleGStreamer::createFakeSample(GstCaps*, Media
     return adoptRef(*gstreamerMediaSample);
 }
 
-Ref<MediaSampleGStreamer> MediaSampleGStreamer::createImageSample(Vector<uint8_t>&& bgraData, unsigned width, unsigned height)
-{
-    size_t size = bgraData.sizeInBytes();
-    auto* data = bgraData.releaseBuffer().leakPtr();
-    auto buffer = adoptGRef(gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY, data, size, 0, size, data, [](gpointer data) {
-        WTF::VectorMalloc::free(data);
-    }));
-    gst_buffer_add_video_meta(buffer.get(), GST_VIDEO_FRAME_FLAG_NONE, GST_VIDEO_FORMAT_BGRA, width, height);
-    auto caps = adoptGRef(gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGRA", "width", G_TYPE_INT, width, "height", G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION, 1, 1, nullptr));
-    auto sample = adoptGRef(gst_sample_new(buffer.get(), caps.get(), nullptr, nullptr));
-    return create(WTFMove(sample), FloatSize(width, height), { });
-}
-
-RefPtr<JSC::Uint8ClampedArray> MediaSampleGStreamer::getRGBAImageData() const
-{
-    auto* caps = gst_sample_get_caps(m_sample.get());
-    GstVideoInfo inputInfo;
-    if (!gst_video_info_from_caps(&inputInfo, caps))
-        return nullptr;
-
-    // We could check the input format is RGBA before attempting a conversion, but it is very
-    // unlikely to pay off. The input format is likely to be BGRA (when the samples are created as a
-    // result of mediastream captureStream) or some YUV format if the sample is from a video capture
-    // device. This method is called only by internals during layout tests, it is thus not critical
-    // to optimize this code path.
-
-    auto outputCaps = adoptGRef(gst_caps_copy(caps));
-    gst_caps_set_simple(outputCaps.get(), "format", G_TYPE_STRING, "RGBA", nullptr);
-
-    GstVideoInfo outputInfo;
-    if (!gst_video_info_from_caps(&outputInfo, outputCaps.get()))
-        return nullptr;
-
-    int width = GST_VIDEO_INFO_WIDTH(&inputInfo);
-    int height = GST_VIDEO_INFO_HEIGHT(&inputInfo);
-    unsigned byteLength = GST_VIDEO_INFO_SIZE(&inputInfo);
-    auto bufferStorage = JSC::ArrayBuffer::create(width * height, 4);
-    auto outputBuffer = adoptGRef(gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_NO_SHARE, bufferStorage->data(), byteLength, 0, byteLength, nullptr, [](gpointer) { }));
-    gst_buffer_add_video_meta(outputBuffer.get(), GST_VIDEO_FRAME_FLAG_NONE, GST_VIDEO_FORMAT_RGBA, width, height);
-    GstMappedFrame outputFrame(outputBuffer.get(), outputInfo, GST_MAP_WRITE);
-
-    GUniquePtr<GstVideoConverter> converter(gst_video_converter_new(&inputInfo, &outputInfo, nullptr));
-    GstMappedFrame inputFrame(gst_sample_get_buffer(m_sample.get()), inputInfo, GST_MAP_READ);
-    gst_video_converter_frame(converter.get(), inputFrame.get(), outputFrame.get());
-    return JSC::Uint8ClampedArray::tryCreate(WTFMove(bufferStorage), 0, byteLength);
-}
-
 void MediaSampleGStreamer::extendToTheBeginning()
 {
     // Only to be used with the first sample, as a hack for lack of support for edit lists.
@@ -151,6 +98,16 @@ void MediaSampleGStreamer::extendToTheBeginning()
     ASSERT(m_dts == MediaTime::zeroTime());
     m_duration += m_pts;
     m_pts = MediaTime::zeroTime();
+}
+
+void MediaSampleGStreamer::setTimestamps(const MediaTime& presentationTime, const MediaTime& decodeTime)
+{
+    m_pts = presentationTime;
+    m_dts = decodeTime;
+    if (auto* buffer = gst_sample_get_buffer(m_sample.get())) {
+        GST_BUFFER_PTS(buffer) = toGstClockTime(m_pts);
+        GST_BUFFER_DTS(buffer) = toGstClockTime(m_dts);
+    }
 }
 
 void MediaSampleGStreamer::offsetTimestampsBy(const MediaTime& timestampOffset)
@@ -165,7 +122,7 @@ void MediaSampleGStreamer::offsetTimestampsBy(const MediaTime& timestampOffset)
     }
 }
 
-PlatformSample MediaSampleGStreamer::platformSample()
+PlatformSample MediaSampleGStreamer::platformSample() const
 {
     PlatformSample sample = { PlatformSample::GStreamerSampleType, { .gstSample = m_sample.get() } };
     return sample;

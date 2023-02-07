@@ -24,7 +24,6 @@
 
 #pragma once
 
-#include "NativeImage.h"
 #include "SecurityOriginHash.h"
 #include "Timer.h"
 #include <pal/SessionID.h>
@@ -46,6 +45,7 @@ class ResourceRequest;
 class ResourceResponse;
 class ScriptExecutionContext;
 class SecurityOrigin;
+struct ClientOrigin;
 
 // This cache holds subresources used by Web pages: images, scripts, stylesheets, etc.
 
@@ -103,8 +103,8 @@ public:
     void revalidationSucceeded(CachedResource& revalidatingResource, const ResourceResponse&);
     void revalidationFailed(CachedResource& revalidatingResource);
 
-    void forEachResource(const WTF::Function<void(CachedResource&)>&);
-    void forEachSessionResource(PAL::SessionID, const WTF::Function<void(CachedResource&)>&);
+    void forEachResource(const Function<void(CachedResource&)>&);
+    void forEachSessionResource(PAL::SessionID, const Function<void(CachedResource&)>&);
     WEBCORE_EXPORT void destroyDecodedDataForAllImages();
 
     // Sets the cache's memory capacities, in bytes. These will hold only approximately,
@@ -152,7 +152,9 @@ public:
     bool inLiveDecodedResourcesList(CachedResource& resource) const { return m_liveDecodedResources.contains(&resource); }
 
     typedef HashSet<RefPtr<SecurityOrigin>> SecurityOriginSet;
-    WEBCORE_EXPORT void removeResourcesWithOrigin(SecurityOrigin&);
+    WEBCORE_EXPORT void removeResourcesWithOrigin(const SecurityOrigin&);
+    void removeResourcesWithOrigin(const SecurityOrigin&, const String& cachePartition);
+    WEBCORE_EXPORT void removeResourcesWithOrigin(const ClientOrigin&);
     WEBCORE_EXPORT void removeResourcesWithOrigins(PAL::SessionID, const HashSet<RefPtr<SecurityOrigin>>&);
     WEBCORE_EXPORT void getOriginsWithCache(SecurityOriginSet& origins);
     WEBCORE_EXPORT HashSet<RefPtr<SecurityOrigin>> originsWithCache(PAL::SessionID) const;

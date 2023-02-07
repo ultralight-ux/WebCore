@@ -37,20 +37,13 @@ namespace WebCore {
 
 class ImageBufferCairoBackend : public ImageBufferBackend {
 public:
-    RefPtr<Image> copyImage(BackingStoreCopy = CopyBackingStore, PreserveResolution = PreserveResolution::No) const override;
+    WEBCORE_EXPORT void clipToMask(GraphicsContext&, const FloatRect& destRect) override;
 
-    void draw(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions&) override;
-    void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions&) override;
-
-    void transformColorSpace(ColorSpace srcColorSpace, ColorSpace destColorSpace) override;
-
-    String toDataURL(const String& mimeType, Optional<double> quality, PreserveResolution) const override;
-    Vector<uint8_t> toData(const String& mimeType, Optional<double> quality) const override;
+    WEBCORE_EXPORT void transformToColorSpace(const DestinationColorSpace&) override;
 
 protected:
     using ImageBufferBackend::ImageBufferBackend;
 
-    ColorFormat backendColorFormat() const override { return ColorFormat::BGRA; }
     virtual void platformTransformColorSpace(const std::array<uint8_t, 256>&) { }
 };
 

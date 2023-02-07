@@ -31,6 +31,11 @@
 
 namespace JSC {
 
+#define CHECK_MEMOPSIZE_OF(size) static_assert(size == 8 || size == 16 || size == 32 || size == 64 || size == 128);
+#define MEMOPSIZE_OF(datasize) ((datasize == 8 || datasize == 128) ? MemOpSize_8_or_128 : (datasize == 16) ? MemOpSize_16 : (datasize == 32) ? MemOpSize_32 : MemOpSize_64)
+#define CHECK_MEMOPSIZE() CHECK_MEMOPSIZE_OF(datasize)
+#define MEMOPSIZE MEMOPSIZE_OF(datasize)
+
 class ARM64EAssembler : public ARM64Assembler {
 protected:
     static constexpr RegisterID unusedID = static_cast<RegisterID>(0b11111);
@@ -370,6 +375,11 @@ public:
     static constexpr ptrdiff_t BITS_ENCODEABLE_PER_INSTRUCTION = 16;
     static constexpr ptrdiff_t NUMBER_OF_ADDRESS_ENCODING_INSTRUCTIONS = MAX_POINTER_BITS / BITS_ENCODEABLE_PER_INSTRUCTION;
 };
+
+#undef CHECK_MEMOPSIZE_OF
+#undef MEMOPSIZE_OF
+#undef CHECK_MEMOPSIZE
+#undef MEMOPSIZE
 
 } // namespace JSC
 

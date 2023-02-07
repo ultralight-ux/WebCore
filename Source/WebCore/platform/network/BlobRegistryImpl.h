@@ -33,7 +33,8 @@
 
 #include "BlobData.h"
 #include "BlobRegistry.h"
-#include <wtf/HashMap.h>
+#include <wtf/HashCountedSet.h>
+#include <wtf/RobinHoodHashMap.h>
 #include <wtf/URLHash.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
@@ -44,6 +45,7 @@ class ResourceHandle;
 class ResourceHandleClient;
 class ResourceRequest;
 class ThreadSafeDataBuffer;
+struct PolicyContainer;
 
 // BlobRegistryImpl is not thread-safe. It should only be called from main thread.
 class WEBCORE_EXPORT BlobRegistryImpl {
@@ -60,25 +62,40 @@ public:
 
     void registerFileBlobURL(const URL&, Ref<BlobDataFileReference>&&, const String& contentType);
     void registerBlobURL(const URL&, Vector<BlobPart>&&, const String& contentType);
-    void registerBlobURL(const URL&, const URL& srcURL);
-    void registerBlobURLOptionallyFileBacked(const URL&, const URL& srcURL, RefPtr<BlobDataFileReference>&&, const String& contentType);
-    void registerBlobURLForSlice(const URL&, const URL& srcURL, long long start, long long end);
+    void registerBlobURL(const URL&, const URL& srcURL, const PolicyContainer&);
+    void registerBlobURLOptionallyFileBacked(const URL&, const URL& srcURL, RefPtr<BlobDataFileReference>&&, const String& contentType, const PolicyContainer&);
+    void registerBlobURLForSlice(const URL&, const URL& srcURL, long long start, long long end, const String& contentType);
     void unregisterBlobURL(const URL&);
+
+    void registerBlobURLHandle(const URL&);
+    void unregisterBlobURLHandle(const URL&);
 
     unsigned long long blobSize(const URL&);
 
-    void writeBlobsToTemporaryFiles(const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&&);
+    void writeBlobsToTemporaryFilesForIndexedDB(const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&&);
 
     struct BlobForFileWriting {
         String blobURL;
-        Vector<std::pair<String, ThreadSafeDataBuffer>> filePathsOrDataBuffers;
+        Vector<std::pair<String, RefPtr<DataSegment>>> filePathsOrDataBuffers;
     };
 
     bool populateBlobsForFileWriting(const Vector<String>& blobURLs, Vector<BlobForFileWriting>&);
     Vector<RefPtr<BlobDataFileReference>> filesInBlob(const URL&) const;
 
+    void setFileDirectory(String&&);
+
 private:
-    HashMap<String, RefPtr<BlobData>> m_blobs;
+    void addBlobData(const String& url, RefPtr<BlobData>&&);
+    Ref<DataSegment> createDataSegment(Vector<uint8_t>&&, BlobData&);
+
+    HashCountedSet<String> m_blobReferences;
+    MemoryCompactRobinHoodHashMap<String, RefPtr<BlobData>> m_blobs;
+    String m_fileDirectory;
 };
+
+inline void BlobRegistryImpl::setFileDirectory(String&& filePath)
+{
+    m_fileDirectory = WTFMove(filePath);
+}
 
 } // namespace WebCore

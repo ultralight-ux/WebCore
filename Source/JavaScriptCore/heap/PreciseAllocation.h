@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,7 +45,7 @@ public:
 
     static PreciseAllocation* tryCreate(Heap&, size_t, Subspace*, unsigned indexInSpace);
 
-    static PreciseAllocation* createForLowerTier(Heap&, size_t, Subspace*, uint8_t lowerTierIndex);
+    static PreciseAllocation* tryCreateForLowerTier(Heap&, size_t, Subspace*, uint8_t lowerTierIndex);
     PreciseAllocation* reuseForLowerTier();
 
     PreciseAllocation* tryReallocate(size_t, Subspace*);
@@ -75,13 +75,10 @@ public:
     VM& vm() const { return m_weakSet.vm(); }
     WeakSet& weakSet() { return m_weakSet; }
 
+    static ptrdiff_t offsetOfWeakSet() { return OBJECT_OFFSETOF(PreciseAllocation, m_weakSet); }
+
     unsigned indexInSpace() { return m_indexInSpace; }
     void setIndexInSpace(unsigned indexInSpace) { m_indexInSpace = indexInSpace; }
-    
-    void shrink();
-    
-    void visitWeakSet(SlotVisitor&);
-    void reapWeakSet();
     
     void clearNewlyAllocated() { m_isNewlyAllocated = false; }
     void flip();
@@ -123,9 +120,9 @@ public:
     {
         return aboveLowerBound(rawPtr) && belowUpperBound(rawPtr);
     }
-    
-    const CellAttributes& attributes() const { return m_attributes; }
-    
+
+    CellAttributes attributes() const { return m_attributes; }
+
     Dependency aboutToMark(HeapVersion) { return Dependency(); }
     
     ALWAYS_INLINE bool testAndSetMarked()

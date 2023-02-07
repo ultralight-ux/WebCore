@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,36 +25,45 @@
 
 #pragma once
 
-#include "ConcreteImageBuffer.h"
 #include "DisplayListDrawingContext.h"
+#include "ImageBuffer.h"
+#include "InMemoryDisplayList.h"
 
 namespace WebCore {
 namespace DisplayList {
 
-template<typename BackendType>
-class ImageBuffer : public ConcreteImageBuffer<BackendType>, public Recorder::Observer {
-    using BaseConcreteImageBuffer = ConcreteImageBuffer<BackendType>;
-
+class ImageBuffer final : public WebCore::ImageBuffer {
 public:
-    static auto create(const FloatSize& size, float resolutionScale, ColorSpace colorSpace, const HostWindow* hostWindow)
+    template<typename BackendType>
+    static auto create(const FloatSize& size, float resolutionScale, const DestinationColorSpace& colorSpace, PixelFormat pixelFormat, RenderingPurpose purpose, const WebCore::ImageBufferCreationContext& creationContext)
     {
-        return BaseConcreteImageBuffer::template create<ImageBuffer>(size, resolutionScale, colorSpace, hostWindow, size);
+        return WebCore::ImageBuffer::create<BackendType, ImageBuffer>(size, resolutionScale, colorSpace, pixelFormat, purpose, creationContext);
     }
 
-    static auto create(const FloatSize& size, const GraphicsContext& context)
+    template<typename BackendType>
+    static auto create(const FloatSize& size, const GraphicsContext& context, RenderingPurpose purpose)
     {
-        return BaseConcreteImageBuffer::template create<ImageBuffer>(size, context, size);
+        return WebCore::ImageBuffer::create<BackendType, ImageBuffer>(size, context, purpose);
     }
 
-    ImageBuffer(std::unique_ptr<BackendType>&& dataBackend, const FloatSize& size)
-        : BaseConcreteImageBuffer(WTFMove(dataBackend))
-        , m_drawingContext(size, this)
+    ImageBuffer(const ImageBufferBackend::Parameters& parameters, const ImageBufferBackend::Info& info, std::unique_ptr<ImageBufferBackend>&& backend)
+        : WebCore::ImageBuffer(parameters, info, WTFMove(backend))
+        , m_drawingContext(logicalSize(), baseTransform())
+        , m_writingClient(makeUnique<InMemoryDisplayList::WritingClient>())
+        , m_readingClient(makeUnique<InMemoryDisplayList::ReadingClient>())
     {
+        m_drawingContext.displayList().setItemBufferWritingClient(m_writingClient.get());
+        m_drawingContext.displayList().setItemBufferReadingClient(m_readingClient.get());
     }
 
-    ImageBuffer(const FloatSize& size)
-        : m_drawingContext(size, this)
+    ImageBuffer(const ImageBufferBackend::Parameters& parameters, const ImageBufferBackend::Info& info)
+        : WebCore::ImageBuffer(parameters, info)
+        , m_drawingContext(logicalSize(), baseTransform())
+        , m_writingClient(makeUnique<InMemoryDisplayList::WritingClient>())
+        , m_readingClient(makeUnique<InMemoryDisplayList::ReadingClient>())
     {
+        m_drawingContext.displayList().setItemBufferWritingClient(m_writingClient.get());
+        m_drawingContext.displayList().setItemBufferReadingClient(m_readingClient.get());
     }
 
     ~ImageBuffer()
@@ -62,19 +71,21 @@ public:
         flushDrawingContext();
     }
 
-    GraphicsContext& context() const override
+    GraphicsContext& context() const final
     {
         return m_drawingContext.context();
     }
 
-    DrawingContext* drawingContext() override { return &m_drawingContext; }
-
-    void flushDrawingContext() override
+    void flushDrawingContext() final
     {
-        m_drawingContext.replayDisplayList(BaseConcreteImageBuffer::context());
+        if (!m_drawingContext.displayList().isEmpty())
+            m_drawingContext.replayDisplayList(WebCore::ImageBuffer::context());
     }
 
+protected:
     DrawingContext m_drawingContext;
+    std::unique_ptr<ItemBufferWritingClient> m_writingClient;
+    std::unique_ptr<ItemBufferReadingClient> m_readingClient;
 };
 
 } // DisplayList

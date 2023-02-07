@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,24 +24,29 @@
  */
 
 #include "config.h"
+#include "JSNodeCustom.h"
 #include "JSUndoItem.h"
+#include "WebCoreOpaqueRoot.h"
 #include <JavaScriptCore/JSCJSValueInlines.h>
 
 namespace WebCore {
 
-void JSUndoItem::visitAdditionalChildren(JSC::SlotVisitor& visitor)
+template<typename Visitor>
+void JSUndoItem::visitAdditionalChildren(Visitor& visitor)
 {
     wrapped().undoHandler().visitJSFunction(visitor);
     wrapped().redoHandler().visitJSFunction(visitor);
 }
 
-bool JSUndoItemOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, JSC::SlotVisitor& visitor, const char** reason)
+DEFINE_VISIT_ADDITIONAL_CHILDREN(JSUndoItem);
+
+bool JSUndoItemOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, JSC::AbstractSlotVisitor& visitor, const char** reason)
 {
     if (UNLIKELY(reason))
         *reason = "Document is an opaque root.";
 
     auto* documentForUndoItem = JSC::jsCast<JSUndoItem*>(handle.slot()->asCell())->wrapped().document();
-    return documentForUndoItem && visitor.containsOpaqueRoot(documentForUndoItem);
+    return containsWebCoreOpaqueRoot(visitor, documentForUndoItem);
 }
 
 } // namespace WebCore

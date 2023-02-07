@@ -73,6 +73,28 @@ ValueProfile* valueProfileForImpl(BytecodeMetadata& metadata, unsigned checkpoin
         return &metadata.m_profile;
 }
 
+template <typename Bytecode>
+uintptr_t valueProfileOffsetFor(unsigned checkpointIndex)
+{
+    UNUSED_PARAM(checkpointIndex);
+    if constexpr (Bytecode::opcodeID == op_iterator_open) {
+        switch (checkpointIndex) {
+        case OpIteratorOpen::symbolCall: return Bytecode::Metadata::offsetOfIteratorProfile();
+        case OpIteratorOpen::getNext: return Bytecode::Metadata::offsetOfNextProfile();
+        default: RELEASE_ASSERT_NOT_REACHED();
+        }
+
+    } else if constexpr (Bytecode::opcodeID == op_iterator_next) {
+        switch (checkpointIndex) {
+        case OpIteratorNext::computeNext: return Bytecode::Metadata::offsetOfNextResultProfile();
+        case OpIteratorNext::getDone: return Bytecode::Metadata::offsetOfDoneProfile();
+        case OpIteratorNext::getValue: return Bytecode::Metadata::offsetOfValueProfile();
+        default: RELEASE_ASSERT_NOT_REACHED();
+        }
+    } else 
+        return Bytecode::Metadata::offsetOfProfile();
+}
+
 template<typename BytecodeMetadata>
 bool hasValueProfileFor(BytecodeMetadata& metadata, unsigned checkpointIndex)
 {
@@ -100,7 +122,7 @@ Operand destinationFor(const Bytecode& bytecode, unsigned checkpointIndex, JITTy
     } else if constexpr (Bytecode::opcodeID == op_iterator_next) {
         switch (checkpointIndex) {
         case OpIteratorNext::computeNext: {
-            if (type == JITType::DFGJIT || type == JITType::DFGJIT)
+            if (type == JITType::DFGJIT || type == JITType::FTLJIT)
                 return Operand::tmp(OpIteratorNext::nextResult);
             return bytecode.m_value; // We reuse value as a temp because its either not used in subsequent bytecodes or written as the temp object .
         }
@@ -158,7 +180,7 @@ ptrdiff_t stackOffsetInRegistersForCall(const Bytecode& bytecode, unsigned check
 }
 
 template<typename BytecodeMetadata>
-LLIntCallLinkInfo& callLinkInfoFor(BytecodeMetadata& metadata, unsigned checkpointIndex)
+CallLinkInfo& callLinkInfoFor(BytecodeMetadata& metadata, unsigned checkpointIndex)
 {
     UNUSED_PARAM(checkpointIndex);
     return metadata.m_callLinkInfo;

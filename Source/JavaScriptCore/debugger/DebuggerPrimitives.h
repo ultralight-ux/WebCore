@@ -25,14 +25,17 @@
 
 #pragma once
 
+#include "SourceID.h"
 #include <stddef.h>
 
 namespace JSC {
 
-typedef size_t SourceID;
-static constexpr SourceID noSourceID = 0;
+constexpr SourceID noSourceID = 0;
 
-typedef size_t BreakpointID;
-static constexpr BreakpointID noBreakpointID = 0;
+using BreakpointID = size_t;
+constexpr BreakpointID noBreakpointID = 0;
+
+using BreakpointActionID = int;
+constexpr BreakpointActionID noBreakpointActionID = 0;
 
 } // namespace JSC

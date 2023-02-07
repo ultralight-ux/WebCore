@@ -50,7 +50,7 @@ bool ISOFairPlayStreamingKeyRequestInfoBox::parse(JSC::DataView& view, unsigned&
     if (!ISOBox::parse(view, localOffset))
         return false;
 
-    Checked<uint64_t, RecordOverflow> remaining = m_size;
+    CheckedUint64 remaining = m_size;
     remaining -= (localOffset - offset);
     if (remaining.hasOverflowed())
         return false;
@@ -247,5 +247,20 @@ bool ISOFairPlayStreamingPsshBox::parse(JSC::DataView& view, unsigned& offset)
 
     return m_initDataBox.read(view, offset);
 }
+
+ISOFairPlayStreamingInfoBox::ISOFairPlayStreamingInfoBox() = default;
+ISOFairPlayStreamingInfoBox::ISOFairPlayStreamingInfoBox(const ISOFairPlayStreamingInfoBox&) = default;
+ISOFairPlayStreamingKeyAssetIdBox::ISOFairPlayStreamingKeyAssetIdBox(const ISOFairPlayStreamingKeyAssetIdBox&) = default;
+ISOFairPlayStreamingKeyAssetIdBox::~ISOFairPlayStreamingKeyAssetIdBox() = default;
+ISOFairPlayStreamingKeyContextBox::ISOFairPlayStreamingKeyContextBox(const ISOFairPlayStreamingKeyContextBox&) = default;
+ISOFairPlayStreamingKeyContextBox::~ISOFairPlayStreamingKeyContextBox() = default;
+ISOFairPlayStreamingKeyVersionListBox::ISOFairPlayStreamingKeyVersionListBox(const ISOFairPlayStreamingKeyVersionListBox&) = default;
+ISOFairPlayStreamingKeyVersionListBox::~ISOFairPlayStreamingKeyVersionListBox() = default;
+ISOFairPlayStreamingKeyRequestBox::ISOFairPlayStreamingKeyRequestBox(const ISOFairPlayStreamingKeyRequestBox&) = default;
+ISOFairPlayStreamingKeyRequestBox::~ISOFairPlayStreamingKeyRequestBox() = default;
+ISOFairPlayStreamingInitDataBox::ISOFairPlayStreamingInitDataBox() = default;
+ISOFairPlayStreamingInitDataBox::~ISOFairPlayStreamingInitDataBox() = default;
+ISOFairPlayStreamingPsshBox::ISOFairPlayStreamingPsshBox() = default;
+ISOFairPlayStreamingPsshBox::~ISOFairPlayStreamingPsshBox() = default;
 
 }

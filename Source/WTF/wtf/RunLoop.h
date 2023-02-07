@@ -27,14 +27,21 @@
 
 #pragma once
 
+#include <functional>
 #include <wtf/Condition.h>
 #include <wtf/Deque.h>
 #include <wtf/Forward.h>
 #include <wtf/FunctionDispatcher.h>
 #include <wtf/HashMap.h>
+#include <wtf/Lock.h>
+#include <wtf/Observer.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Seconds.h>
+#include <wtf/ThreadSafetyAnalysis.h>
+#include <wtf/ThreadSpecific.h>
+#include <wtf/Threading.h>
 #include <wtf/ThreadingPrimitives.h>
+#include <wtf/WeakHashSet.h>
 #include <wtf/text/WTFString.h>
 
 #if USE(CF)
@@ -43,6 +50,10 @@
 
 #if USE(GLIB_EVENT_LOOP)
 #include <wtf/glib/GRefPtr.h>
+#endif
+
+#if USE(GENERIC_EVENT_LOOP)
+#include <wtf/RedBlackTree.h>
 #endif
 
 namespace WTF {
@@ -61,7 +72,7 @@ using RunLoopMode = unsigned;
 #define DefaultRunLoopMode 0
 #endif
 
-class RunLoop final : public FunctionDispatcher {
+class WTF_CAPABILITY("is current") RunLoop final : public SerialFunctionDispatcher, public ThreadSafeRefCounted<RunLoop> {
     WTF_MAKE_NONCOPYABLE(RunLoop);
 public:
     // Must be called from the main thread.
@@ -76,11 +87,13 @@ public:
     WTF_EXPORT_PRIVATE static RunLoop& web();
     WTF_EXPORT_PRIVATE static RunLoop* webIfExists();
 #endif
-    WTF_EXPORT_PRIVATE static bool isMain();
-    ~RunLoop() final;
+    WTF_EXPORT_PRIVATE static Ref<RunLoop> create(const char* threadName, ThreadType = ThreadType::Unknown, Thread::QOS = Thread::QOS::UserInitiated);
 
-    WTF_EXPORT_PRIVATE void dispatch(Function<void()>&&);
-    WTF_EXPORT_PRIVATE void dispatchAfter(Seconds, Function<void()>&&);
+    static bool isMain() { return main().isCurrent(); }
+    WTF_EXPORT_PRIVATE bool isCurrent() const;
+    WTF_EXPORT_PRIVATE ~RunLoop() final;
+
+    WTF_EXPORT_PRIVATE void dispatch(Function<void()>&&) final;
 #if USE(COCOA_EVENT_LOOP)
     WTF_EXPORT_PRIVATE static void dispatch(const SchedulePairHashSet&, Function<void()>&&);
 #endif
@@ -94,13 +107,20 @@ public:
     enum class CycleResult { Continue, Stop };
     WTF_EXPORT_PRIVATE CycleResult static cycle(RunLoopMode = DefaultRunLoopMode);
 
+    WTF_EXPORT_PRIVATE void threadWillExit();
+
+#if ASSERT_ENABLED
+    void assertIsCurrent() const final;
+#endif
+
 #if USE(GLIB_EVENT_LOOP)
     WTF_EXPORT_PRIVATE GMainContext* mainContext() const { return m_mainContext.get(); }
+    enum class Event { WillDispatch, DidDispatch };
+    using Observer = WTF::Observer<void(Event, const String&)>;
+    WTF_EXPORT_PRIVATE void observe(const Observer&);
 #endif
 
 #if USE(GENERIC_EVENT_LOOP) || USE(WINDOWS_EVENT_LOOP)
-    // Run the single iteration of the RunLoop. It consumes the pending tasks and expired timers, but it won't be blocked.
-    WTF_EXPORT_PRIVATE static void iterate();
     WTF_EXPORT_PRIVATE static void setWakeUpCallback(WTF::Function<void()>&&);
 #endif
 
@@ -109,7 +129,6 @@ public:
 #endif
 
     class TimerBase {
-        WTF_MAKE_FAST_ALLOCATED;
         friend class RunLoop;
     public:
         WTF_EXPORT_PRIVATE explicit TimerBase(RunLoop&);
@@ -135,7 +154,7 @@ public:
         Ref<RunLoop> m_runLoop;
 
 #if USE(WINDOWS_EVENT_LOOP)
-        bool isActive(const AbstractLocker&) const;
+        bool isActiveWithLock() const WTF_REQUIRES_LOCK(m_runLoop->m_loopLock);
         void timerFired();
         MonotonicTime m_nextFireDate;
         Seconds m_interval;
@@ -149,39 +168,37 @@ public:
         bool m_isRepeating { false };
         Seconds m_interval { 0 };
 #elif USE(GENERIC_EVENT_LOOP)
-        bool isActive(const AbstractLocker&) const;
-        void stop(const AbstractLocker&);
+        bool isActiveWithLock() const WTF_REQUIRES_LOCK(m_runLoop->m_loopLock);
+        void stopWithLock() WTF_REQUIRES_LOCK(m_runLoop->m_loopLock);
 
         class ScheduledTask;
-        RefPtr<ScheduledTask> m_scheduledTask;
+        Ref<ScheduledTask> m_scheduledTask;
 #endif
     };
 
-    template <typename TimerFiredClass>
     class Timer : public TimerBase {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
-        typedef void (TimerFiredClass::*TimerFiredFunction)();
+        template <typename TimerFiredClass>
+        Timer(RunLoop& runLoop, TimerFiredClass* o, void (TimerFiredClass::*f)())
+            : Timer(runLoop, std::bind(f, o))
+        {
+        }
 
-        Timer(RunLoop& runLoop, TimerFiredClass* o, TimerFiredFunction f)
+        Timer(RunLoop& runLoop, Function<void ()>&& function)
             : TimerBase(runLoop)
-            , m_function(f)
-            , m_object(o)
+            , m_function(WTFMove(function))
         {
         }
 
     private:
-        void fired() override { (m_object->*m_function)(); }
+        void fired() override { m_function(); }
 
-        // This order should be maintained due to MSVC bug.
-        // http://computer-programming-forum.com/7-vc.net/6fbc30265f860ad1.htm
-        TimerFiredFunction m_function;
-        TimerFiredClass* m_object;
+        Function<void()> m_function;
     };
 
-private:
-    class Holder;
-
-    class DispatchTimer final : public TimerBase {
+    class DispatchTimer final : public TimerBase, public ThreadSafeRefCounted<DispatchTimer> {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         DispatchTimer(RunLoop& runLoop)
             : TimerBase(runLoop)
@@ -198,6 +215,12 @@ private:
         Function<void()> m_function;
     };
 
+    WTF_EXPORT_PRIVATE Ref<RunLoop::DispatchTimer> dispatchAfter(Seconds, Function<void()>&&);
+
+private:
+    class Holder;
+    static ThreadSpecific<Holder>& runLoopHolder();
+
     RunLoop();
 
     void performWork();
@@ -205,7 +228,7 @@ private:
     Deque<Function<void()>> m_currentIteration;
 
     Lock m_nextIterationLock;
-    Deque<Function<void()>> m_nextIteration;
+    Deque<Function<void()>> m_nextIteration WTF_GUARDED_BY_LOCK(m_nextIterationLock);
 
     bool m_isFunctionDispatchSuspended { false };
     bool m_hasSuspendedFunctions { false };
@@ -221,14 +244,17 @@ private:
     RetainPtr<CFRunLoopRef> m_runLoop;
     RetainPtr<CFRunLoopSourceRef> m_runLoopSource;
 #elif USE(GLIB_EVENT_LOOP)
+    void notify(Event, const char*);
+
+    static GSourceFuncs s_runLoopSourceFunctions;
     GRefPtr<GMainContext> m_mainContext;
     Vector<GRefPtr<GMainLoop>> m_mainLoops;
     GRefPtr<GSource> m_source;
+    WeakHashSet<Observer> m_observers;
 #elif USE(GENERIC_EVENT_LOOP)
-    void schedule(Ref<TimerBase::ScheduledTask>&&);
-    void schedule(const AbstractLocker&, Ref<TimerBase::ScheduledTask>&&);
-    void wakeUp(const AbstractLocker&);
-    void scheduleAndWakeUp(const AbstractLocker&, Ref<TimerBase::ScheduledTask>&&);
+    void scheduleWithLock(TimerBase::ScheduledTask&) WTF_REQUIRES_LOCK(m_loopLock);
+    void unscheduleWithLock(TimerBase::ScheduledTask&) WTF_REQUIRES_LOCK(m_loopLock);
+    void wakeUpWithLock() WTF_REQUIRES_LOCK(m_loopLock);
 
     enum class RunMode {
         Iterate,
@@ -240,14 +266,14 @@ private:
         Stopping,
     };
     void runImpl(RunMode);
-    bool populateTasks(RunMode, Status&, Deque<RefPtr<TimerBase::ScheduledTask>>&);
+    bool populateTasks(RunMode, Status&, Deque<Ref<TimerBase::ScheduledTask>>&);
 
     friend class TimerBase;
 
     Lock m_loopLock;
     Condition m_readyToRun;
     Condition m_stopCondition;
-    Vector<RefPtr<TimerBase::ScheduledTask>> m_schedules;
+    RedBlackTree<TimerBase::ScheduledTask, MonotonicTime> m_schedules;
     Vector<Status*> m_mainLoops;
     bool m_shutdown { false };
     bool m_pendingTasks { false };
@@ -258,7 +284,13 @@ private:
 #endif
 };
 
+inline void assertIsCurrent(const RunLoop& runLoop) WTF_ASSERTS_ACQUIRED_CAPABILITY(runLoop)
+{
+    ASSERT_UNUSED(runLoop, runLoop.isCurrent());
+}
+
 } // namespace WTF
 
 using WTF::RunLoop;
 using WTF::RunLoopMode;
+using WTF::assertIsCurrent;

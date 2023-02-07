@@ -89,7 +89,7 @@ bool isSpatialNavigationEnabled(const Frame*);
 // "Totally Aligned" elements are preferable candidates to move
 // focus to over "Partially Aligned" ones, that on its turns are
 // more preferable than "Not Aligned".
-enum RectsAlignment {
+enum class RectsAlignment {
     None = 0,
     Partial,
     Full
@@ -101,7 +101,7 @@ struct FocusCandidate {
         , focusableNode(nullptr)
         , enclosingScrollableBox(nullptr)
         , distance(maxDistance())
-        , alignment(None)
+        , alignment(RectsAlignment::None)
         , isOffscreen(true)
         , isOffscreenAfterScrolling(true)
     {
@@ -127,7 +127,7 @@ struct FocusCandidate {
     bool isOffscreenAfterScrolling;
 };
 
-bool hasOffscreenRect(Node*, FocusDirection direction = FocusDirectionNone);
+bool hasOffscreenRect(Node*, FocusDirection = FocusDirection::None);
 bool scrollInDirection(Frame*, FocusDirection);
 bool scrollInDirection(Node* container, FocusDirection);
 bool canScrollInDirection(const Node* container, FocusDirection);

@@ -27,11 +27,20 @@
 
 #if ENABLE(APPLE_PAY)
 
-#include "ApplePaySessionPaymentRequest.h"
+#include <wtf/Forward.h>
 
 namespace WebCore {
 
-using ApplePayErrorCode = PaymentError::Code;
+enum class ApplePayErrorCode : uint8_t {
+    Unknown,
+    ShippingContactInvalid,
+    BillingContactInvalid,
+    AddressUnserviceable,
+#if ENABLE(APPLE_PAY_COUPON_CODE)
+    CouponCodeInvalid,
+    CouponCodeExpired,
+#endif
+};
 
 } // namespace WebCore
 

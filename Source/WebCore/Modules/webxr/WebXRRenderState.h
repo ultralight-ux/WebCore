@@ -49,16 +49,20 @@ public:
     double depthFar() const { return m_depth.far; }
     void setDepthFar(double far) { m_depth.far = far; };
 
-    Optional<double> inlineVerticalFieldOfView() const { return m_inlineVerticalFieldOfView; }
+    std::optional<double> inlineVerticalFieldOfView() const { return m_inlineVerticalFieldOfView; }
     void setInlineVerticalFieldOfView(double fieldOfView) { m_inlineVerticalFieldOfView = fieldOfView; }
 
     RefPtr<WebXRWebGLLayer> baseLayer() const { return m_baseLayer; }
     void setBaseLayer(WebXRWebGLLayer* baseLayer) { m_baseLayer = baseLayer; }
 
     HTMLCanvasElement* outputCanvas() const { return m_outputCanvas.get(); }
+    void setOutputCanvas(HTMLCanvasElement* canvas) { m_outputCanvas = canvas; }
+
+    bool isCompositionEnabled() const { return m_compositionEnabled; }
+    void setCompositionEnabled(bool compositionEnabled) { m_compositionEnabled = compositionEnabled; }
 
 private:
-    explicit WebXRRenderState(Optional<double> fieldOfView);
+    explicit WebXRRenderState(std::optional<double> fieldOfView);
     explicit WebXRRenderState(const WebXRRenderState&);
 
     // https://immersive-web.github.io/webxr/#initialize-the-render-state
@@ -66,9 +70,10 @@ private:
         double near { 0.1 }; // in meters
         double far { 1000 }; // in meters
     } m_depth;
-    Optional<double> m_inlineVerticalFieldOfView; // in radians
+    std::optional<double> m_inlineVerticalFieldOfView; // in radians
     RefPtr<WebXRWebGLLayer> m_baseLayer;
-    WeakPtr<HTMLCanvasElement> m_outputCanvas;
+    WeakPtr<HTMLCanvasElement, WeakPtrImplWithEventTargetData> m_outputCanvas;
+    bool m_compositionEnabled { true };
 };
 
 } // namespace WebCore

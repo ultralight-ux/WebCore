@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,34 +21,41 @@
 #include "config.h"
 #include "FontCustomPlatformData.h"
 
+#include "Font.h"
 #include "FontCache.h"
 #include "FontCacheCoreText.h"
+#include "FontCreationContext.h"
 #include "FontDescription.h"
 #include "FontPlatformData.h"
 #include "SharedBuffer.h"
+#include "StyleFontSizeFunctions.h"
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreText/CoreText.h>
-#include <pal/spi/cocoa/CoreTextSPI.h>
+#include <pal/spi/cf/CoreTextSPI.h>
 
 namespace WebCore {
 
 FontCustomPlatformData::~FontCustomPlatformData() = default;
 
-FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic, const FontFeatureSettings& fontFaceFeatures, FontSelectionSpecifiedCapabilities fontFaceCapabilities)
+FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic, const FontCreationContext& fontCreationContext)
 {
     auto attributes = adoptCF(CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
     addAttributesForWebFonts(attributes.get(), fontDescription.shouldAllowUserInstalledFonts());
-    auto modifiedFontDescriptor = adoptCF(CTFontDescriptorCreateCopyWithAttributes(m_fontDescriptor.get(), attributes.get()));
+    auto modifiedFontDescriptor = adoptCF(CTFontDescriptorCreateCopyWithAttributes(fontDescriptor.get(), attributes.get()));
     ASSERT(modifiedFontDescriptor);
 
     int size = fontDescription.computedPixelSize();
     FontOrientation orientation = fontDescription.orientation();
     FontWidthVariant widthVariant = fontDescription.widthVariant();
-    RetainPtr<CTFontRef> font = adoptCF(CTFontCreateWithFontDescriptor(modifiedFontDescriptor.get(), size, nullptr));
-    font = preparePlatformFont(font.get(), fontDescription, &fontFaceFeatures, fontFaceCapabilities);
+
+    auto font = adoptCF(CTFontCreateWithFontDescriptor(modifiedFontDescriptor.get(), size, nullptr));
+    font = preparePlatformFont(font.get(), fontDescription, fontCreationContext);
     ASSERT(font);
-    return FontPlatformData(font.get(), size, bold, italic, orientation, widthVariant, fontDescription.textRenderingMode());
+    FontPlatformData platformData(font.get(), size, bold, italic, orientation, widthVariant, fontDescription.textRenderingMode(), &creationData);
+
+    platformData.updateSizeWithFontSizeAdjust(fontDescription.fontSizeAdjust());
+    return platformData;
 }
 
 std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String& itemInCollection)
@@ -56,8 +63,6 @@ std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffe
     RetainPtr<CFDataRef> bufferData = buffer.createCFData();
 
     RetainPtr<CTFontDescriptorRef> fontDescriptor;
-// FIXME: Likely we can remove this special case for watchOS and tvOS.
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
     auto array = adoptCF(CTFontManagerCreateFontDescriptorsFromData(bufferData.get()));
     if (!array)
         return nullptr;
@@ -78,30 +83,21 @@ std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffe
     }
     if (!fontDescriptor)
         fontDescriptor = static_cast<CTFontDescriptorRef>(CFArrayGetValueAtIndex(array.get(), 0));
-#else
-    UNUSED_PARAM(itemInCollection);
-    fontDescriptor = adoptCF(CTFontManagerCreateFontDescriptorFromData(bufferData.get()));
-    if (!fontDescriptor)
-        return nullptr;
-#endif
 
-    return makeUnique<FontCustomPlatformData>(fontDescriptor.get());
+    FontPlatformData::CreationData creationData = { buffer, itemInCollection };
+    return makeUnique<FontCustomPlatformData>(fontDescriptor.get(), WTFMove(creationData));
 }
 
 bool FontCustomPlatformData::supportsFormat(const String& format)
 {
-    return equalLettersIgnoringASCIICase(format, "truetype")
-        || equalLettersIgnoringASCIICase(format, "opentype")
-        || equalLettersIgnoringASCIICase(format, "woff2")
-#if ENABLE(VARIATION_FONTS)
-        || equalLettersIgnoringASCIICase(format, "woff2-variations")
-#endif
-#if ENABLE(VARIATION_FONTS)
-        || equalLettersIgnoringASCIICase(format, "woff-variations")
-        || equalLettersIgnoringASCIICase(format, "truetype-variations")
-        || equalLettersIgnoringASCIICase(format, "opentype-variations")
-#endif
-        || equalLettersIgnoringASCIICase(format, "woff");
+    return equalLettersIgnoringASCIICase(format, "truetype"_s)
+        || equalLettersIgnoringASCIICase(format, "opentype"_s)
+        || equalLettersIgnoringASCIICase(format, "woff2"_s)
+        || equalLettersIgnoringASCIICase(format, "woff2-variations"_s)
+        || equalLettersIgnoringASCIICase(format, "woff-variations"_s)
+        || equalLettersIgnoringASCIICase(format, "truetype-variations"_s)
+        || equalLettersIgnoringASCIICase(format, "opentype-variations"_s)
+        || equalLettersIgnoringASCIICase(format, "woff"_s);
 }
 
 }

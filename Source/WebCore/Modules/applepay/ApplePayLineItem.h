@@ -27,18 +27,42 @@
 
 #if ENABLE(APPLE_PAY)
 
-#include "ApplePaySessionPaymentRequest.h"
+#include "ApplePayPaymentTiming.h"
+#include "ApplePayRecurringPaymentDateUnit.h"
+#include <optional>
+#include <wtf/WallTime.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
-struct ApplePayLineItem {
-    using Type = ApplePaySessionPaymentRequest::LineItem::Type;
+struct ApplePayLineItem final {
+    enum class Type : bool {
+        Pending,
+        Final,
+    };
 
     Type type { Type::Final };
     String label;
     String amount;
+
+    ApplePayPaymentTiming paymentTiming { ApplePayPaymentTiming::Immediate };
+
+#if ENABLE(APPLE_PAY_RECURRING_LINE_ITEM)
+    WallTime recurringPaymentStartDate { WallTime::nan() };
+    ApplePayRecurringPaymentDateUnit recurringPaymentIntervalUnit { ApplePayRecurringPaymentDateUnit::Month };
+    unsigned recurringPaymentIntervalCount = 1;
+    WallTime recurringPaymentEndDate { WallTime::nan() };
+#endif
+
+#if ENABLE(APPLE_PAY_DEFERRED_LINE_ITEM)
+    WallTime deferredPaymentDate { WallTime::nan() };
+#endif
+
+#if ENABLE(APPLE_PAY_AUTOMATIC_RELOAD_LINE_ITEM)
+    String automaticReloadPaymentThresholdAmount; /* required */
+#endif
 };
 
-}
+} // namespace WebCore
 
 #endif

@@ -46,8 +46,6 @@ public:
     WEBCORE_EXPORT explicit HitTestResult(const LayoutPoint&);
 
     WEBCORE_EXPORT explicit HitTestResult(const LayoutRect&);
-    WEBCORE_EXPORT HitTestResult(const LayoutPoint& centerPoint, unsigned topPadding, unsigned rightPadding, unsigned bottomPadding, unsigned leftPadding);
-
     WEBCORE_EXPORT explicit HitTestResult(const HitTestLocation&);
     WEBCORE_EXPORT HitTestResult(const HitTestResult&);
     WEBCORE_EXPORT ~HitTestResult();
@@ -89,7 +87,7 @@ public:
     const LayoutPoint& localPoint() const { return m_localPoint; }
     void setLocalPoint(const LayoutPoint& p) { m_localPoint = p; }
 
-    void setToNonUserAgentShadowAncestor();
+    WEBCORE_EXPORT void setToNonUserAgentShadowAncestor();
 
     const HitTestLocation& hitTestLocation() const { return m_hitTestLocation; }
 
@@ -99,7 +97,7 @@ public:
     WEBCORE_EXPORT String spellingToolTip(TextDirection&) const;
     String replacedString() const;
     WEBCORE_EXPORT String title(TextDirection&) const;
-    String innerTextIfTruncated(TextDirection&) const;
+    WEBCORE_EXPORT String innerTextIfTruncated(TextDirection&) const;
     WEBCORE_EXPORT String altDisplayString() const;
     WEBCORE_EXPORT String titleDisplayString() const;
     WEBCORE_EXPORT Image* image() const;
@@ -113,11 +111,13 @@ public:
     WEBCORE_EXPORT bool isContentEditable() const;
     void toggleMediaControlsDisplay() const;
     void toggleMediaLoopPlayback() const;
+    void toggleShowMediaStats() const;
     WEBCORE_EXPORT bool mediaIsInFullscreen() const;
     void toggleMediaFullscreenState() const;
     void enterFullscreenForVideo() const;
     bool mediaControlsEnabled() const;
     bool mediaLoopEnabled() const;
+    bool mediaStatsShowing() const;
     bool mediaPlaying() const;
     bool mediaSupportsFullscreen() const;
     void toggleMediaPlayState() const;
@@ -150,6 +150,8 @@ private:
     NodeSet& mutableListBasedTestResult(); // See above.
 
     template<typename RectType> HitTestProgress addNodeToListBasedTestResultCommon(Node*, const HitTestRequest&, const HitTestLocation&, const RectType&);
+
+    RefPtr<Node> nodeForImageData() const;
 
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement() const;

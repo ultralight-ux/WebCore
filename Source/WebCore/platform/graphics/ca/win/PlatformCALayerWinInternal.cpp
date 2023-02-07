@@ -30,7 +30,7 @@
 #if USE(CA)
 
 #include "FontCascade.h"
-#include "GraphicsContext.h"
+#include "GraphicsContextCG.h"
 #include "PlatformCALayer.h"
 #include "TileController.h"
 #include "TiledBacking.h"
@@ -94,7 +94,7 @@ void PlatformCALayerWinInternal::displayCallback(CACFLayerRef caLayer, CGContext
 
     PlatformCALayer::flipContext(context, layerBounds.size.height);
 
-    GraphicsContext graphicsContext(context);
+    GraphicsContextCG graphicsContext(context);
 
     // It's important to get the clip from the context, because it may be significantly
     // smaller than the layer bounds (e.g. tiled layers)
@@ -120,7 +120,7 @@ void PlatformCALayerWinInternal::drawRepaintCounters(CACFLayerRef caLayer, CGCon
     if (!owner() || owner()->usesTiledBackingLayer())
         return;
 
-    CGColorRef backgroundColor = nullptr;
+    RetainPtr<CGColorRef> backgroundColor;
     // Make the background of the counter the same as the border color,
     // unless there is no border, then make it red
     float borderWidth = CACFLayerGetBorderWidth(caLayer);
@@ -129,8 +129,8 @@ void PlatformCALayerWinInternal::drawRepaintCounters(CACFLayerRef caLayer, CGCon
     else
         backgroundColor = cachedCGColor(Color::red);
 
-    GraphicsContext graphicsContext(context);
-    PlatformCALayer::drawRepaintIndicator(graphicsContext, owner(), drawCount, backgroundColor);
+    GraphicsContextCG graphicsContext(context);
+    PlatformCALayer::drawRepaintIndicator(graphicsContext, owner(), drawCount, roundAndClampToSRGBALossy(backgroundColor.get()));
 }
 
 void PlatformCALayerWinInternal::internalSetNeedsDisplay(const FloatRect* dirtyRect)
@@ -312,7 +312,7 @@ void PlatformCALayerWinInternal::setBorderWidth(float value)
 
 void PlatformCALayerWinInternal::setBorderColor(const Color& value)
 {
-    CACFLayerSetBorderColor(owner()->platformLayer(), cachedCGColor(value));
+    CACFLayerSetBorderColor(owner()->platformLayer(), cachedCGColor(value).get());
 }
 
 #endif

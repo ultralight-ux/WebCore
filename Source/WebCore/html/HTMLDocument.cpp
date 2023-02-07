@@ -74,9 +74,11 @@
 #include "HTMLHtmlElement.h"
 #include "HTMLIFrameElement.h"
 #include "HTMLNames.h"
+#include "Quirks.h"
 #include "ScriptController.h"
 #include "StyleResolver.h"
 #include <wtf/IsoMallocInlines.h>
+#include <wtf/RobinHoodHashSet.h>
 #include <wtf/text/CString.h>
 
 namespace WebCore {
@@ -87,11 +89,13 @@ using namespace HTMLNames;
 
 Ref<HTMLDocument> HTMLDocument::createSynthesizedDocument(Frame& frame, const URL& url)
 {
-    return adoptRef(*new HTMLDocument(&frame, url, HTMLDocumentClass, Synthesized));
+    auto document = adoptRef(*new HTMLDocument(&frame, frame.settings(), url, { }, { DocumentClass::HTML }, Synthesized));
+    document->addToContextsMap();
+    return document;
 }
 
-HTMLDocument::HTMLDocument(Frame* frame, const URL& url, DocumentClassFlags documentClasses, unsigned constructionFlags)
-    : Document(frame, url, documentClasses | HTMLDocumentClass, constructionFlags)
+HTMLDocument::HTMLDocument(Frame* frame, const Settings& settings, const URL& url, ScriptExecutionContextIdentifier documentIdentifier, DocumentClasses documentClasses, unsigned constructionFlags)
+    : Document(frame, settings, url, documentClasses | DocumentClasses(DocumentClass::HTML), constructionFlags, documentIdentifier)
 {
     clearXMLVersion();
 }
@@ -114,48 +118,41 @@ int HTMLDocument::height()
 
 Ref<DocumentParser> HTMLDocument::createParser()
 {
-    return HTMLDocumentParser::create(*this);
+    return HTMLDocumentParser::create(*this, parserContentPolicy());
 }
 
 // https://html.spec.whatwg.org/multipage/dom.html#dom-document-nameditem
-Optional<Variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>>> HTMLDocument::namedItem(const AtomString& name)
+std::optional<std::variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>>> HTMLDocument::namedItem(const AtomString& name)
 {
     if (name.isNull() || !hasDocumentNamedItem(*name.impl()))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (UNLIKELY(documentNamedItemContainsMultipleElements(*name.impl()))) {
         auto collection = documentNamedItems(name);
         ASSERT(collection->length() > 1);
-        return Variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>> { RefPtr<HTMLCollection> { WTFMove(collection) } };
+        return std::variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>> { RefPtr<HTMLCollection> { WTFMove(collection) } };
     }
 
     auto& element = *documentNamedItem(*name.impl());
     if (UNLIKELY(is<HTMLIFrameElement>(element))) {
-        if (auto domWindow = makeRefPtr(downcast<HTMLIFrameElement>(element).contentWindow()))
-            return Variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>> { WTFMove(domWindow) };
+        if (RefPtr domWindow = downcast<HTMLIFrameElement>(element).contentWindow())
+            return std::variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>> { WTFMove(domWindow) };
     }
 
-    return Variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>> { RefPtr<Element> { &element } };
+    return std::variant<RefPtr<WindowProxy>, RefPtr<Element>, RefPtr<HTMLCollection>> { RefPtr<Element> { &element } };
 }
 
 Vector<AtomString> HTMLDocument::supportedPropertyNames() const
 {
-    // https://html.spec.whatwg.org/multipage/dom.html#dom-document-namedItem-which
-    //
-    // ... The supported property names of a Document object document at any moment consist of the following, in
-    // tree order according to the element that contributed them, ignoring later duplicates, and with values from
-    // id attributes coming before values from name attributes when the same element contributes both:
-    //
-    // - the value of the name content attribute for all applet, exposed embed, form, iframe, img, and exposed
-    //   object elements that have a non-empty name content attribute and are in a document tree with document
-    //   as their root;
-    // - the value of the id content attribute for all applet and exposed object elements that have a non-empty
-    //   id content attribute and are in a document tree with document as their root; and
-    // - the value of the id content attribute for all img elements that have both a non-empty id content attribute
-    //   and a non-empty name content attribute, and are in a document tree with document as their root.
+    if (Quirks::shouldOmitHTMLDocumentSupportedPropertyNames())
+        return { };
 
-    // FIXME: Implement.
-    return { };
+    auto properties = m_documentNamedItem.keys();
+    // The specification says these should be sorted in document order but this would be expensive
+    // and other browser engines do not comply with this part of the specification. For now, just
+    // do an alphabetical sort to get consistent results.
+    std::sort(properties.begin(), properties.end(), WTF::codePointCompareLessThan);
+    return properties;
 }
 
 void HTMLDocument::addDocumentNamedItem(const AtomStringImpl& name, Element& item)
@@ -181,64 +178,64 @@ void HTMLDocument::removeWindowNamedItem(const AtomStringImpl& name, Element& it
 
 bool HTMLDocument::isCaseSensitiveAttribute(const QualifiedName& attributeName)
 {
-    static const auto caseInsensitiveAttributeSet = makeNeverDestroyed([] {
+    static NeverDestroyed set = [] {
         // This is the list of attributes in HTML 4.01 with values marked as "[CI]" or case-insensitive
         // Mozilla treats all other values as case-sensitive, thus so do we.
-        static const QualifiedName* const names[] = {
-            &accept_charsetAttr.get(),
-            &acceptAttr.get(),
-            &alignAttr.get(),
-            &alinkAttr.get(),
-            &axisAttr.get(),
-            &bgcolorAttr.get(),
-            &charsetAttr.get(),
-            &checkedAttr.get(),
-            &clearAttr.get(),
-            &codetypeAttr.get(),
-            &colorAttr.get(),
-            &compactAttr.get(),
-            &declareAttr.get(),
-            &deferAttr.get(),
-            &dirAttr.get(),
-            &disabledAttr.get(),
-            &enctypeAttr.get(),
-            &faceAttr.get(),
-            &frameAttr.get(),
-            &hreflangAttr.get(),
-            &http_equivAttr.get(),
-            &langAttr.get(),
-            &languageAttr.get(),
-            &linkAttr.get(),
-            &mediaAttr.get(),
-            &methodAttr.get(),
-            &multipleAttr.get(),
-            &nohrefAttr.get(),
-            &noresizeAttr.get(),
-            &noshadeAttr.get(),
-            &nowrapAttr.get(),
-            &readonlyAttr.get(),
-            &relAttr.get(),
-            &revAttr.get(),
-            &rulesAttr.get(),
-            &scopeAttr.get(),
-            &scrollingAttr.get(),
-            &selectedAttr.get(),
-            &shapeAttr.get(),
-            &targetAttr.get(),
-            &textAttr.get(),
-            &typeAttr.get(),
-            &valignAttr.get(),
-            &valuetypeAttr.get(),
-            &vlinkAttr.get(),
+        static constexpr std::array names {
+            &accept_charsetAttr,
+            &acceptAttr,
+            &alignAttr,
+            &alinkAttr,
+            &axisAttr,
+            &bgcolorAttr,
+            &charsetAttr,
+            &checkedAttr,
+            &clearAttr,
+            &codetypeAttr,
+            &colorAttr,
+            &compactAttr,
+            &declareAttr,
+            &deferAttr,
+            &dirAttr,
+            &disabledAttr,
+            &enctypeAttr,
+            &faceAttr,
+            &frameAttr,
+            &hreflangAttr,
+            &http_equivAttr,
+            &langAttr,
+            &languageAttr,
+            &linkAttr,
+            &mediaAttr,
+            &methodAttr,
+            &multipleAttr,
+            &nohrefAttr,
+            &noresizeAttr,
+            &noshadeAttr,
+            &nowrapAttr,
+            &readonlyAttr,
+            &relAttr,
+            &revAttr,
+            &rulesAttr,
+            &scopeAttr,
+            &scrollingAttr,
+            &selectedAttr,
+            &shapeAttr,
+            &targetAttr,
+            &textAttr,
+            &typeAttr,
+            &valignAttr,
+            &valuetypeAttr,
+            &vlinkAttr,
         };
-        HashSet<AtomString> set;
+        MemoryCompactLookupOnlyRobinHoodHashSet<AtomString> set;
+        set.reserveInitialCapacity(std::size(names));
         for (auto* name : names)
-            set.add(name->localName());
+            set.add(name->get().localName());
         return set;
-    }());
-
+    }();
     bool isPossibleHTMLAttr = !attributeName.hasPrefix() && attributeName.namespaceURI().isNull();
-    return !isPossibleHTMLAttr || !caseInsensitiveAttributeSet.get().contains(attributeName.localName());
+    return !isPossibleHTMLAttr || !set.get().contains(attributeName.localName());
 }
 
 bool HTMLDocument::isFrameSet() const
@@ -250,7 +247,7 @@ bool HTMLDocument::isFrameSet() const
 
 Ref<Document> HTMLDocument::cloneDocumentWithoutChildren() const
 {
-    return create(nullptr, url());
+    return create(nullptr, settings(), url());
 }
 
 }

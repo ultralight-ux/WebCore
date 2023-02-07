@@ -38,6 +38,10 @@ GPRS =
      "a1",
      "a2",
      "a3",
+     "a4",
+     "a5",
+     "a6",
+     "a7",
      "r0",
      "r1",
      "sp",
@@ -53,7 +57,9 @@ GPRS =
      "csr6",
      "csr7",
      "csr8",
-     "csr9"
+     "csr9",
+     "csr10",
+     "invalidGPR"
     ]
 
 FPRS =
@@ -76,6 +82,10 @@ FPRS =
      "csfr5",
      "csfr6",
      "csfr7",
+     "csfr8",
+     "csfr9",
+     "csfr10",
+     "csfr11",
      "fr"
     ]
 
@@ -107,6 +117,9 @@ WASM_SCRATCHS =
     [
      "ws0",
      "ws1",
+     # archtecture specific registers:
+     "ws2",
+     "ws3",
     ]
 
 REGISTERS = GPRS + FPRS + WASM_GPRS + WASM_FPRS + WASM_SCRATCHS

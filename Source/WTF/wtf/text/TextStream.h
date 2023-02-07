@@ -27,7 +27,9 @@
 
 #include <wtf/Forward.h>
 #include <wtf/Markable.h>
-#include <wtf/Optional.h>
+#include <wtf/OptionSet.h>
+#include <wtf/Ref.h>
+#include <wtf/RefPtr.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -44,18 +46,17 @@ public:
         double value;
     };
     
-    enum Formatting {
+    enum class Formatting : uint8_t {
         SVGStyleRect                = 1 << 0, // "at (0,0) size 10x10"
         NumberRespectingIntegers    = 1 << 1,
         LayoutUnitsAsIntegers       = 1 << 2,
     };
-    
-    using FormattingFlags = unsigned;
-    
+
     enum class LineMode { SingleLine, MultipleLine };
-    TextStream(LineMode lineMode = LineMode::MultipleLine, FormattingFlags formattingFlags = 0)
+    TextStream(LineMode lineMode = LineMode::MultipleLine, OptionSet<Formatting> formattingFlags = { }, unsigned containerSizeLimit = 0)
         : m_formattingFlags(formattingFlags)
         , m_multiLineMode(lineMode == LineMode::MultipleLine)
+        , m_containerSizeLimit(containerSizeLimit)
     {
     }
 
@@ -72,21 +73,36 @@ public:
     WTF_EXPORT_PRIVATE TextStream& operator<<(double);
     WTF_EXPORT_PRIVATE TextStream& operator<<(const char*);
     WTF_EXPORT_PRIVATE TextStream& operator<<(const void*);
+    WTF_EXPORT_PRIVATE TextStream& operator<<(const AtomString&);
     WTF_EXPORT_PRIVATE TextStream& operator<<(const String&);
+    WTF_EXPORT_PRIVATE TextStream& operator<<(ASCIILiteral);
+    WTF_EXPORT_PRIVATE TextStream& operator<<(StringView);
     // Deprecated. Use the NumberRespectingIntegers FormattingFlag instead.
     WTF_EXPORT_PRIVATE TextStream& operator<<(const FormatNumberRespectingIntegers&);
 
+#if PLATFORM(COCOA)
+    WTF_EXPORT_PRIVATE TextStream& operator<<(id);
 #ifdef __OBJC__
-    WTF_EXPORT_PRIVATE TextStream& operator<<(id<NSObject>);
+    WTF_EXPORT_PRIVATE TextStream& operator<<(NSArray *);
+#endif
 #endif
 
-    FormattingFlags formattingFlags() const { return m_formattingFlags; }
-    void setFormattingFlags(FormattingFlags flags) { m_formattingFlags = flags; }
+    OptionSet<Formatting> formattingFlags() const { return m_formattingFlags; }
+    void setFormattingFlags(OptionSet<Formatting> flags) { m_formattingFlags = flags; }
 
-    bool hasFormattingFlag(Formatting flag) const { return m_formattingFlags & flag; }
+    bool hasFormattingFlag(Formatting flag) const { return m_formattingFlags.contains(flag); }
 
     template<typename T>
     void dumpProperty(const String& name, const T& value)
+    {
+        TextStream& ts = *this;
+        ts.startGroup();
+        ts << name << " " << value;
+        ts.endGroup();
+    }
+
+    template<typename T>
+    void dumpProperty(const char* name, const T& value)
     {
         TextStream& ts = *this;
         ts.startGroup();
@@ -106,6 +122,8 @@ public:
     void decreaseIndent(int amount = 1) { m_indent -= amount; ASSERT(m_indent >= 0); }
 
     WTF_EXPORT_PRIVATE void writeIndent();
+
+    unsigned containerSizeLimit() const { return m_containerSizeLimit; }
 
     // Stream manipulators.
     TextStream& operator<<(TextStream& (*func)(TextStream&))
@@ -166,9 +184,10 @@ public:
 
 private:
     StringBuilder m_text;
-    FormattingFlags m_formattingFlags { 0 };
     int m_indent { 0 };
+    OptionSet<Formatting> m_formattingFlags;
     bool m_multiLineMode { true };
+    unsigned m_containerSizeLimit { 0 };
 };
 
 inline TextStream& indent(TextStream& ts)
@@ -196,7 +215,7 @@ TextStream& operator<<(TextStream& ts, ValueOrNull<T> item)
 }
 
 template<typename Item>
-TextStream& operator<<(TextStream& ts, const Optional<Item>& item)
+TextStream& operator<<(TextStream& ts, const std::optional<Item>& item)
 {
     if (item)
         return ts << item.value();
@@ -213,23 +232,28 @@ TextStream& operator<<(TextStream& ts, const Markable<T, Traits>& item)
     return ts << "unset";
 }
 
-template<typename Item>
-TextStream& operator<<(TextStream& ts, const Vector<Item>& vector)
+template<typename ItemType, size_t inlineCapacity>
+TextStream& operator<<(TextStream& ts, const Vector<ItemType, inlineCapacity>& vector)
 {
     ts << "[";
 
-    unsigned size = vector.size();
-    for (unsigned i = 0; i < size; ++i) {
-        ts << vector[i];
-        if (i < size - 1)
+    unsigned count = 0;
+    for (const auto& value : vector) {
+        if (count)
             ts << ", ";
+        ts << value;
+        if (++count == ts.containerSizeLimit())
+            break;
     }
+
+    if (count != vector.size())
+        ts << ", ...";
 
     return ts << "]";
 }
 
-template<typename T>
-TextStream& operator<<(TextStream& ts, const WeakPtr<T>& item)
+template<typename T, typename Counter>
+TextStream& operator<<(TextStream& ts, const WeakPtr<T, Counter>& item)
 {
     if (item)
         return ts << *item;
@@ -237,18 +261,37 @@ TextStream& operator<<(TextStream& ts, const WeakPtr<T>& item)
     return ts << "null";
 }
 
+template<typename T>
+TextStream& operator<<(TextStream& ts, const RefPtr<T>& item)
+{
+    if (item)
+        return ts << *item;
+    
+    return ts << "null";
+}
+
+template<typename T>
+TextStream& operator<<(TextStream& ts, const Ref<T>& item)
+{
+    return ts << item.get();
+}
+
 template<typename KeyArg, typename MappedArg, typename HashArg, typename KeyTraitsArg, typename MappedTraitsArg>
 TextStream& operator<<(TextStream& ts, const HashMap<KeyArg, MappedArg, HashArg, KeyTraitsArg, MappedTraitsArg>& map)
 {
     ts << "{";
 
-    bool first = true;
+    unsigned count = 0;
     for (const auto& keyValuePair : map) {
-        ts << keyValuePair.key << ": " << keyValuePair.value;
-        if (!first)
+        if (count)
             ts << ", ";
-        first = false;
+        ts << keyValuePair.key << ": " << keyValuePair.value;
+        if (++count == ts.containerSizeLimit())
+            break;
     }
+
+    if (count != map.size())
+        ts << ", ...";
 
     return ts << "}";
 }
@@ -258,13 +301,17 @@ TextStream& operator<<(TextStream& ts, const HashSet<ValueArg, HashArg, TraitsAr
 {
     ts << "[";
 
-    bool first = true;
+    unsigned count = 0;
     for (const auto& item : set) {
-        ts << item;
-        if (!first)
+        if (count)
             ts << ", ";
-        first = false;
+        ts << item;
+        if (++count == ts.containerSizeLimit())
+            break;
     }
+
+    if (count != set.size())
+        ts << ", ...";
 
     return ts << "]";
 }
@@ -283,11 +330,86 @@ TextStream& operator<<(TextStream& ts, const OptionSet<Option>& options)
     return ts << "]";
 }
 
+template<typename T, size_t size>
+TextStream& operator<<(TextStream& ts, const std::array<T, size>& array)
+{
+    ts << "[";
+
+    unsigned count = 0;
+    for (const auto& value : array) {
+        if (count)
+            ts << ", ";
+        ts << value;
+        if (++count == ts.containerSizeLimit())
+            break;
+    }
+
+    if (count != array.size())
+        ts << ", ...";
+
+    return ts << "]";
+}
+
+template<typename, typename = void, typename = void, typename = void, typename = void, size_t = 0>
+struct supports_text_stream_insertion : std::false_type { };
+
+template<typename T>
+struct supports_text_stream_insertion<T, std::void_t<decltype(std::declval<TextStream&>() << std::declval<T>())>> : std::true_type { };
+
+template<typename ItemType, size_t inlineCapacity>
+struct supports_text_stream_insertion<Vector<ItemType, inlineCapacity>> : supports_text_stream_insertion<ItemType> { };
+
+template<typename ValueArg, typename HashArg, typename TraitsArg>
+struct supports_text_stream_insertion<HashSet<ValueArg, HashArg, TraitsArg>> : supports_text_stream_insertion<ValueArg> { };
+
+template<typename KeyArg, typename MappedArg, typename HashArg, typename KeyTraitsArg, typename MappedTraitsArg>
+struct supports_text_stream_insertion<HashMap<KeyArg, MappedArg, HashArg, KeyTraitsArg, MappedTraitsArg>> : std::conjunction<supports_text_stream_insertion<KeyArg>, supports_text_stream_insertion<MappedArg>> { };
+
+template<typename T, typename Traits>
+struct supports_text_stream_insertion<Markable<T, Traits>> : supports_text_stream_insertion<T> { };
+
+template<typename T>
+struct supports_text_stream_insertion<OptionSet<T>> : supports_text_stream_insertion<T> { };
+
+template<typename T>
+struct supports_text_stream_insertion<std::optional<T>> : supports_text_stream_insertion<T> { };
+
+template<typename T, typename Counter>
+struct supports_text_stream_insertion<WeakPtr<T, Counter>> : supports_text_stream_insertion<T> { };
+
+template<typename T>
+struct supports_text_stream_insertion<RefPtr<T>> : supports_text_stream_insertion<T> { };
+
+template<typename T>
+struct supports_text_stream_insertion<Ref<T>> : supports_text_stream_insertion<T> { };
+
+template<typename T, size_t size>
+struct supports_text_stream_insertion<std::array<T, size>> : supports_text_stream_insertion<T> { };
+
+template<typename T>
+struct ValueOrEllipsis {
+    explicit ValueOrEllipsis(const T& value)
+        : value(value)
+    { }
+    const T& value;
+};
+
+template<typename T>
+TextStream& operator<<(TextStream& ts, ValueOrEllipsis<T> item)
+{
+    if constexpr (supports_text_stream_insertion<T>::value)
+        ts << item.value;
+    else
+        ts << "...";
+    return ts;
+}
+
 // Deprecated. Use TextStream::writeIndent() instead.
 WTF_EXPORT_PRIVATE void writeIndent(TextStream&, int indent);
 
 } // namespace WTF
 
 using WTF::TextStream;
+using WTF::ValueOrEllipsis;
 using WTF::ValueOrNull;
 using WTF::indent;

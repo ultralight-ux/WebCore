@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,7 +42,7 @@ namespace WebCore {
 class InbandMetadataTextTrackPrivateAVF;
 class InbandTextTrackPrivateAVF;
 
-// Use eager initialization for the WeakPtrFactory since we call makeWeakPtr() from another thread.
+// Use eager initialization for the WeakPtrFactory since we construct WeakPtrs on another thread.
 class MediaPlayerPrivateAVFoundation : public CanMakeWeakPtr<MediaPlayerPrivateAVFoundation, WeakPtrFactoryInitialization::Eager>, public MediaPlayerPrivateInterface, public AVFInbandTrackParent
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
@@ -64,6 +64,8 @@ public:
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     void playbackTargetIsWirelessChanged();
 #endif
+
+    void queueTaskOnEventLoop(Function<void()>&&);
     
     class Notification {
     public:
@@ -114,7 +116,7 @@ public:
         {
         }
 
-        Notification(WTF::Function<void ()>&& function)
+        Notification(Function<void()>&& function)
             : m_type(FunctionType)
             , m_finished(false)
             , m_function(WTFMove(function))
@@ -125,13 +127,13 @@ public:
         bool isValid() { return m_type != None; }
         MediaTime time() { return m_time; }
         bool finished() { return m_finished; }
-        WTF::Function<void ()>& function() { return m_function; }
+        Function<void ()>& function() { return m_function; }
         
     private:
         Type m_type;
         MediaTime m_time;
         bool m_finished;
-        WTF::Function<void ()> m_function;
+        Function<void()> m_function;
     };
 
     void scheduleMainThreadNotification(Notification&&);
@@ -151,6 +153,12 @@ public:
     WTFLogChannel& logChannel() const final;
 #endif
 
+    enum class MediaRenderingMode : uint8_t {
+        MediaRenderingNone,
+        MediaRenderingToContext,
+        MediaRenderingToLayer
+    };
+
 protected:
     explicit MediaPlayerPrivateAVFoundation(MediaPlayer*);
     virtual ~MediaPlayerPrivateAVFoundation();
@@ -158,7 +166,7 @@ protected:
     // MediaPlayerPrivatePrivateInterface overrides.
     void load(const String& url) override;
 #if ENABLE(MEDIA_SOURCE)
-    void load(const String&, MediaSourcePrivateClient*) override;
+    void load(const URL&, const ContentType&, MediaSourcePrivateClient&) override;
 #endif
 #if ENABLE(MEDIA_STREAM)
     void load(MediaStreamPrivate&) override { setNetworkState(MediaPlayer::NetworkState::FormatError); }
@@ -173,7 +181,7 @@ protected:
     FloatSize naturalSize() const override;
     bool hasVideo() const override { return m_cachedHasVideo; }
     bool hasAudio() const override { return m_cachedHasAudio; }
-    void setVisible(bool) override;
+    void setPageIsVisible(bool) final;
     MediaTime durationMediaTime() const override;
     MediaTime currentMediaTime() const override = 0;
     void seek(const MediaTime&) override;
@@ -189,6 +197,7 @@ protected:
     std::unique_ptr<PlatformTimeRanges> buffered() const override;
     bool didLoadingProgress() const override;
     void paint(GraphicsContext&, const FloatRect&) override = 0;
+    DestinationColorSpace colorSpace() override = 0;
     void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&) override = 0;
     void setPreload(MediaPlayer::Preload) override;
     PlatformLayer* platformLayer() const override { return 0; }
@@ -205,8 +214,6 @@ protected:
     bool supportsFullscreen() const override;
     bool supportsScanning() const override { return true; }
     unsigned long long fileSize() const override { return totalBytes(); }
-
-    bool hasSingleSecurityOrigin() const override;
 
     // Required interfaces for concrete derived classes.
     virtual void createAVAssetForURL(const URL&) = 0;
@@ -240,7 +247,6 @@ protected:
     virtual void platformPlay() = 0;
     virtual void platformPause() = 0;
     virtual bool platformPaused() const { return !rate(); }
-    virtual void checkPlayability() = 0;
     virtual void seekToTime(const MediaTime&, const MediaTime& negativeTolerance, const MediaTime& positiveTolerance) = 0;
     unsigned long long totalBytes() const override = 0;
     virtual std::unique_ptr<PlatformTimeRanges> platformBufferedTimeRanges() const = 0;
@@ -269,7 +275,6 @@ protected:
     static bool isUnsupportedMIMEType(const String&);
     static const HashSet<String, ASCIICaseInsensitiveHash>& staticMIMETypeList();
 
-protected:
     void updateStates();
 
     void setHasVideo(bool);
@@ -284,7 +289,6 @@ protected:
     void setNetworkState(MediaPlayer::NetworkState);
     void setReadyState(MediaPlayer::ReadyState);
 
-    enum MediaRenderingMode { MediaRenderingNone, MediaRenderingToContext, MediaRenderingToLayer };
     MediaRenderingMode currentRenderingMode() const;
     MediaRenderingMode preferredRenderingMode() const;
 
@@ -293,6 +297,7 @@ protected:
     bool isReadyForVideoSetup() const;
     virtual void setUpVideoRendering();
     virtual void tearDownVideoRendering();
+    virtual bool haveBeenAskedToPaint() const { return false; }
     bool hasSetUpVideoRendering() const;
 
     void mainThreadCallback();
@@ -304,7 +309,7 @@ protected:
     MediaPlayer* player() { return m_player; }
     const MediaPlayer* player() const { return m_player; }
 
-    String engineDescription() const override { return "AVFoundation"; }
+    String engineDescription() const override { return "AVFoundation"_s; }
     long platformErrorCode() const override { return assetErrorCode(); }
 
     void trackModeChanged() override;
@@ -319,13 +324,20 @@ protected:
     void setResolvedURL(URL&&);
     const URL& resolvedURL() const { return m_resolvedURL; }
 
+    void setNeedsRenderingModeChanged();
+    void renderingModeChanged();
+
+    bool loadingMetadata() const { return m_loadingMetadata; }
+
+    bool shouldEnableInheritURIQueryComponent() const;
+
 private:
     MediaPlayer* m_player;
 
-    WTF::Function<void()> m_pendingSeek;
+    Function<void()> m_pendingSeek;
 
-    Deque<Notification> m_queuedNotifications;
-    mutable Lock m_queueMutex;
+    mutable Lock m_queuedNotificationsLock;
+    Deque<Notification> m_queuedNotifications WTF_GUARDED_BY_LOCK(m_queuedNotificationsLock);
 
     mutable std::unique_ptr<PlatformTimeRanges> m_cachedLoadedTimeRanges;
 
@@ -367,8 +379,27 @@ private:
     bool m_characteristicsChanged;
     bool m_shouldMaintainAspectRatio;
     bool m_seeking;
+    bool m_needsRenderingModeChanged { false };
 };
 
+String convertEnumerationToString(MediaPlayerPrivateAVFoundation::MediaRenderingMode);
+
 } // namespace WebCore
+
+namespace WTF {
+
+template<typename Type>
+struct LogArgument;
+
+template<> struct EnumTraits<WebCore::MediaPlayerPrivateAVFoundation::MediaRenderingMode> {
+using values = EnumValues<
+    WebCore::MediaPlayerPrivateAVFoundation::MediaRenderingMode,
+    WebCore::MediaPlayerPrivateAVFoundation::MediaRenderingMode::MediaRenderingNone,
+    WebCore::MediaPlayerPrivateAVFoundation::MediaRenderingMode::MediaRenderingToContext,
+    WebCore::MediaPlayerPrivateAVFoundation::MediaRenderingMode::MediaRenderingToLayer
+    >;
+};
+
+}; // namespace WTF
 
 #endif // ENABLE(VIDEO) && USE(AVFOUNDATION)

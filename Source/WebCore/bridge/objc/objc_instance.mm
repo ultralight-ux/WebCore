@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,11 +52,22 @@
 }
 #endif
 
-using namespace JSC::Bindings;
-using namespace JSC;
+@interface NSObject (WebDescriptionCategory)
+- (NSString *)_web_description;
+@end
 
-static NSString *s_exception;
-static JSGlobalObject* s_exceptionEnvironment; // No need to protect this value, since we just use it for a pointer comparison.
+namespace JSC {
+namespace Bindings {
+
+static RetainPtr<NSString>& globalException()
+{
+    static NeverDestroyed<RetainPtr<NSString>> exception;
+    return exception;
+}
+
+// No need to protect this value, since we just use it for a pointer comparison.
+// FIXME: A new object can happen to be equal to the old one, so even pointer comparison is not safe. Maybe we can use NeverDestroyed<JSC::Weak>?
+static JSGlobalObject* s_exceptionEnvironment;
 
 static HashMap<CFTypeRef, ObjcInstance*>& wrapperCache()
 {
@@ -70,12 +81,9 @@ RuntimeObject* ObjcInstance::newRuntimeObject(JSGlobalObject* lexicalGlobalObjec
     return ObjCRuntimeObject::create(lexicalGlobalObject->vm(), WebCore::deprecatedGetDOMStructure<ObjCRuntimeObject>(lexicalGlobalObject), this);
 }
 
-void ObjcInstance::setGlobalException(NSString* exception, JSGlobalObject* exceptionEnvironment)
+void ObjcInstance::setGlobalException(NSString *exception, JSGlobalObject* exceptionEnvironment)
 {
-    NSString *oldException = s_exception;
-    s_exception = [exception copy];
-    [oldException release];
-
+    globalException() = adoptNS([exception copy]);
     s_exceptionEnvironment = exceptionEnvironment;
 }
 
@@ -84,19 +92,18 @@ void ObjcInstance::moveGlobalExceptionToExecState(JSGlobalObject* lexicalGlobalO
     VM& vm = lexicalGlobalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (!s_exception) {
+    if (!globalException()) {
         ASSERT(!s_exceptionEnvironment);
         return;
     }
 
     if (!s_exceptionEnvironment || s_exceptionEnvironment == vm.deprecatedVMEntryGlobalObject(lexicalGlobalObject)) {
         JSLockHolder lock(vm);
-        throwError(lexicalGlobalObject, scope, s_exception);
+        throwError(lexicalGlobalObject, scope, globalException().get());
     }
 
-    [s_exception release];
-    s_exception = nil;
-    s_exceptionEnvironment = 0;
+    globalException() = nil;
+    s_exceptionEnvironment = nullptr;
 }
 
 ObjcInstance::ObjcInstance(id instance, RefPtr<RootObject>&& rootObject) 
@@ -125,8 +132,8 @@ ObjcInstance::~ObjcInstance()
         ASSERT(_instance);
         wrapperCache().remove((__bridge CFTypeRef)_instance.get());
 
-        if ([_instance.get() respondsToSelector:@selector(finalizeForWebScript)])
-            [_instance.get() performSelector:@selector(finalizeForWebScript)];
+        if ([_instance respondsToSelector:@selector(finalizeForWebScript)])
+            [_instance performSelector:@selector(finalizeForWebScript)];
         _instance = 0;
     }
 }
@@ -160,7 +167,7 @@ Bindings::Class* ObjcInstance::getClass() const
 
 bool ObjcInstance::supportsInvokeDefaultMethod() const
 {
-    return [_instance.get() respondsToSelector:@selector(invokeDefaultMethodWithArguments:)];
+    return [_instance respondsToSelector:@selector(invokeDefaultMethodWithArguments:)];
 }
 
 class ObjCRuntimeMethod final : public RuntimeMethod {
@@ -171,7 +178,7 @@ public:
         // FIXME: deprecatedGetDOMStructure uses the prototype off of the wrong global object
         // We need to pass in the right global object for "i".
         Structure* domStructure = WebCore::deprecatedGetDOMStructure<ObjCRuntimeMethod>(lexicalGlobalObject);
-        ObjCRuntimeMethod* runtimeMethod = new (NotNull, allocateCell<ObjCRuntimeMethod>(vm.heap)) ObjCRuntimeMethod(vm, domStructure, method);
+        ObjCRuntimeMethod* runtimeMethod = new (NotNull, allocateCell<ObjCRuntimeMethod>(vm)) ObjCRuntimeMethod(vm, domStructure, method);
         runtimeMethod->finishCreation(vm, name);
         return runtimeMethod;
     }
@@ -194,11 +201,11 @@ private:
     void finishCreation(VM& vm, const String& name)
     {
         Base::finishCreation(vm, name);
-        ASSERT(inherits(vm, info()));
+        ASSERT(inherits(info()));
     }
 };
 
-const ClassInfo ObjCRuntimeMethod::s_info = { "ObjCRuntimeMethod", &RuntimeMethod::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(ObjCRuntimeMethod) };
+const ClassInfo ObjCRuntimeMethod::s_info = { "ObjCRuntimeMethod"_s, &RuntimeMethod::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(ObjCRuntimeMethod) };
 
 JSC::JSValue ObjcInstance::getMethod(JSGlobalObject* lexicalGlobalObject, PropertyName propertyName)
 {
@@ -211,7 +218,7 @@ JSC::JSValue ObjcInstance::invokeMethod(JSGlobalObject* lexicalGlobalObject, Cal
     JSC::VM& vm = lexicalGlobalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (!asObject(runtimeMethod)->inherits<ObjCRuntimeMethod>(vm))
+    if (!asObject(runtimeMethod)->inherits<ObjCRuntimeMethod>())
         return throwTypeError(lexicalGlobalObject, scope, "Attempt to invoke non-plug-in method on plug-in object."_s);
 
     ObjcMethod *method = static_cast<ObjcMethod*>(runtimeMethod->method());
@@ -346,10 +353,10 @@ JSC::JSValue ObjcInstance::invokeDefaultMethod(JSGlobalObject* lexicalGlobalObje
     setGlobalException(nil);
     
 @try {
-    if (![_instance.get() respondsToSelector:@selector(invokeDefaultMethodWithArguments:)])
+    if (![_instance respondsToSelector:@selector(invokeDefaultMethodWithArguments:)])
         return result;
 
-    NSMethodSignature* signature = [_instance.get() methodSignatureForSelector:@selector(invokeDefaultMethodWithArguments:)];
+    NSMethodSignature* signature = [_instance methodSignatureForSelector:@selector(invokeDefaultMethodWithArguments:)];
     NSInvocation* invocation = [NSInvocation invocationWithMethodSignature:signature];
     [invocation setSelector:@selector(invokeDefaultMethodWithArguments:)];
     [invocation setTarget:_instance.get()];
@@ -460,39 +467,20 @@ JSC::JSValue ObjcInstance::defaultValue(JSGlobalObject* lexicalGlobalObject, Pre
         return stringValue(lexicalGlobalObject);
     if (hint == PreferNumber)
         return numberValue(lexicalGlobalObject);
-    if ([_instance.get() isKindOfClass:[NSString class]])
+    if ([_instance isKindOfClass:[NSString class]])
         return stringValue(lexicalGlobalObject);
-    if ([_instance.get() isKindOfClass:[NSNumber class]])
+    if ([_instance isKindOfClass:[NSNumber class]])
         return numberValue(lexicalGlobalObject);
     return valueOf(lexicalGlobalObject);
 }
 
-static WTF::ThreadSpecific<uint32_t>* s_descriptionDepth;
-
-@interface NSObject (WebDescriptionCategory)
-- (NSString *)_web_description;
-@end
-
-@implementation NSObject (WebDescriptionCategory)
-
-- (NSString *)_web_description
-{
-    ASSERT(s_descriptionDepth);
-    if (s_descriptionDepth->isSet() && **s_descriptionDepth)
-        return [NSString stringWithFormat:@"<%@>", NSStringFromClass([self class])];
-    // We call _web_description here since this method should only be called
-    // once we have already swizzled this method with the one on NSObject.
-    // Thus, _web_description is actually the original description method.
-    return [self _web_description];
-}
-
-@end
+static ThreadSpecific<uint32_t>* s_descriptionDepth;
 
 JSC::JSValue ObjcInstance::stringValue(JSGlobalObject* lexicalGlobalObject) const
 {
     static std::once_flag initializeDescriptionDepthOnceFlag;
     std::call_once(initializeDescriptionDepthOnceFlag, [] {
-        s_descriptionDepth = new WTF::ThreadSpecific<uint32_t>();
+        s_descriptionDepth = new ThreadSpecific<uint32_t>();
         **s_descriptionDepth = 0;
 
         auto descriptionMethod = class_getInstanceMethod([NSObject class], @selector(description));
@@ -504,6 +492,11 @@ JSC::JSValue ObjcInstance::stringValue(JSGlobalObject* lexicalGlobalObject) cons
     JSC::JSValue result = convertNSStringToString(lexicalGlobalObject, [getObject() description]);
     (**s_descriptionDepth)--;
     return result;
+}
+
+bool ObjcInstance::isInStringValue()
+{
+    return s_descriptionDepth && s_descriptionDepth->isSet() && **s_descriptionDepth;
 }
 
 JSC::JSValue ObjcInstance::numberValue(JSGlobalObject*) const
@@ -520,3 +513,20 @@ JSC::JSValue ObjcInstance::valueOf(JSGlobalObject* lexicalGlobalObject) const
 {
     return stringValue(lexicalGlobalObject);
 }
+
+}
+}
+
+@implementation NSObject (WebDescriptionCategory)
+
+- (NSString *)_web_description
+{
+    if (JSC::Bindings::ObjcInstance::isInStringValue())
+        return [NSString stringWithFormat:@"<%@>", NSStringFromClass([self class])];
+
+    // Calling _web_description here invokes the implementation of the original description
+    // method from NSObject, because we have already swapped implementations.
+    return [self _web_description];
+}
+
+@end

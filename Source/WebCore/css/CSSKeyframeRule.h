@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2012, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,20 +26,22 @@
 #pragma once
 
 #include "CSSRule.h"
-#include "StyleProperties.h"
 #include "StyleRule.h"
 
 namespace WebCore {
 
 class CSSStyleDeclaration;
-class StyleRuleCSSStyleDeclaration;
 class CSSKeyframesRule;
+class StyleProperties;
+class StyleRuleCSSStyleDeclaration;
 
 class StyleRuleKeyframe final : public StyleRuleBase {
 public:
     static Ref<StyleRuleKeyframe> create(Ref<StyleProperties>&&);
     static Ref<StyleRuleKeyframe> create(Vector<double>&& keys, Ref<StyleProperties>&&);
     ~StyleRuleKeyframe();
+
+    Ref<StyleRuleKeyframe> copy() const { RELEASE_ASSERT_NOT_REACHED(); }
 
     String keyText() const;
     bool setKeyText(const String&);
@@ -56,6 +58,8 @@ public:
     MutableStyleProperties& mutableProperties();
 
     String cssText() const;
+
+    bool containsCSSVariableReferences() const;
 
 private:
     explicit StyleRuleKeyframe(Ref<StyleProperties>&&);
@@ -80,7 +84,7 @@ public:
 private:
     CSSKeyframeRule(StyleRuleKeyframe&, CSSKeyframesRule* parent);
 
-    CSSRule::Type type() const final { return KEYFRAME_RULE; }
+    StyleRuleType styleRuleType() const final { return StyleRuleType::Keyframe; }
 
     Ref<StyleRuleKeyframe> m_keyframe;
     mutable RefPtr<StyleRuleCSSStyleDeclaration> m_propertiesCSSOMWrapper;

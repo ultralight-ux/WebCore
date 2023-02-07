@@ -30,7 +30,6 @@
 #include "ActiveDOMObject.h"
 #include "ContextDestructionObserver.h"
 #include "EventTarget.h"
-#include "PostMessageOptions.h"
 #include "ServiceWorkerData.h"
 #include <JavaScriptCore/Strong.h>
 #include <wtf/RefCounted.h>
@@ -46,7 +45,9 @@ namespace WebCore {
 class Frame;
 class SWClientConnection;
 
-class ServiceWorker final : public RefCounted<ServiceWorker>, public EventTargetWithInlineData, public ActiveDOMObject {
+struct StructuredSerializeOptions;
+
+class ServiceWorker final : public RefCounted<ServiceWorker>, public EventTarget, public ActiveDOMObject {
     WTF_MAKE_ISO_ALLOCATED(ServiceWorker);
 public:
     using State = ServiceWorkerState;
@@ -60,13 +61,16 @@ public:
     
     void updateState(State);
 
-    ExceptionOr<void> postMessage(JSC::JSGlobalObject&, JSC::JSValue message, PostMessageOptions&&);
+    ExceptionOr<void> postMessage(JSC::JSGlobalObject&, JSC::JSValue message, StructuredSerializeOptions&&);
 
     ServiceWorkerIdentifier identifier() const { return m_data.identifier; }
     ServiceWorkerRegistrationIdentifier registrationIdentifier() const { return m_data.registrationIdentifier; }
+    WorkerType workerType() const { return m_data.type; }
 
     using RefCounted::ref;
     using RefCounted::deref;
+
+    const ServiceWorkerData& data() const { return m_data; }
 
 private:
     ServiceWorker(ScriptExecutionContext&, ServiceWorkerData&&);
@@ -80,8 +84,6 @@ private:
     // ActiveDOMObject.
     const char* activeDOMObjectName() const final;
     void stop() final;
-
-    bool isAlwaysOnLoggingAllowed() const;
 
     SWClientConnection& swConnection();
 

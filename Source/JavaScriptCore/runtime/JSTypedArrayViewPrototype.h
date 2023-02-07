@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,10 +34,10 @@ public:
     using Base = JSNonFinalObject;
 
     template<typename CellType, SubspaceAccess>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTypedArrayViewPrototype, Base);
-        return &vm.plainObjectSpace;
+        return &vm.plainObjectSpace();
     }
 
     static JSTypedArrayViewPrototype* create(VM&, JSGlobalObject*, Structure*);
@@ -51,10 +51,16 @@ private:
     void finishCreation(VM&, JSGlobalObject*);
 };
 
-EncodedJSValue JSC_HOST_CALL typedArrayViewPrivateFuncIsTypedArrayView(JSGlobalObject*, CallFrame*);
-EncodedJSValue JSC_HOST_CALL typedArrayViewPrivateFuncSort(JSGlobalObject*, CallFrame*);
-EncodedJSValue JSC_HOST_CALL typedArrayViewPrivateFuncLength(JSGlobalObject*, CallFrame*);
-EncodedJSValue JSC_HOST_CALL typedArrayViewPrivateFuncGetOriginalConstructor(JSGlobalObject*, CallFrame*);
-EncodedJSValue JSC_HOST_CALL typedArrayViewPrivateFuncSubarrayCreate(JSGlobalObject*, CallFrame*);
-    
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncIsTypedArrayView);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncIsSharedTypedArrayView);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncIsResizableOrGrowableSharedTypedArrayView);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncTypedArrayFromFast);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncIsDetached);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncDefaultComparator);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncSort);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncLength);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncClone);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncContentType);
+JSC_DECLARE_HOST_FUNCTION(typedArrayViewPrivateFuncGetOriginalConstructor);
+
 } // namespace JSC

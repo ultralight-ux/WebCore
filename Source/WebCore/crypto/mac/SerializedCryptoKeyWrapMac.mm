@@ -35,6 +35,7 @@
 #import <wtf/CryptographicUtilities.h>
 #import <wtf/ProcessPrivilege.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/spi/cocoa/SecuritySPI.h>
 #import <wtf/text/Base64.h>
 #import <wtf/text/CString.h>
@@ -47,7 +48,9 @@
 
 #if USE(KEYCHAIN_ACCESS_CONTROL_LISTS)
 #import <wtf/cf/TypeCastsCF.h>
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 WTF_DECLARE_CF_TYPE_TRAIT(SecACL);
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
 
 namespace WebCore {
@@ -61,13 +64,6 @@ const NSString* tagKey = @"tag";
 
 const size_t masterKeySizeInBytes = 16;
 
-inline Vector<uint8_t> vectorFromNSData(NSData* data)
-{
-    Vector<uint8_t> result;
-    result.append((const uint8_t*)[data bytes], [data length]);
-    return result;
-}
-
 static NSString* masterKeyAccountNameForCurrentApplication()
 {
 #if PLATFORM(IOS_FAMILY)
@@ -80,11 +76,11 @@ static NSString* masterKeyAccountNameForCurrentApplication()
     return [NSString stringWithFormat:@"com.apple.WebKit.WebCrypto.master+%@", bundleIdentifier];
 }
 
-static bool createAndStoreMasterKey(Vector<uint8_t>& masterKeyData)
+static std::optional<Vector<uint8_t>> createAndStoreMasterKey()
 {
     RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
 
-    masterKeyData.resize(masterKeySizeInBytes);
+    Vector<uint8_t> masterKeyData(masterKeySizeInBytes);
     auto rc = CCRandomGenerateBytes(masterKeyData.data(), masterKeyData.size());
     RELEASE_ASSERT(rc == kCCSuccess);
 
@@ -104,14 +100,18 @@ static bool createAndStoreMasterKey(Vector<uint8_t>& masterKeyData)
 
 #if USE(KEYCHAIN_ACCESS_CONTROL_LISTS)
     SecAccessRef accessRef;
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     status = SecAccessCreate((__bridge CFStringRef)localizedItemName, nullptr, &accessRef);
+ALLOW_DEPRECATED_DECLARATIONS_END
     if (status) {
         WTFLogAlways("Cannot create a security access object for storing WebCrypto master key, error %d", (int)status);
-        return false;
+        return std::nullopt;
     }
     RetainPtr<SecAccessRef> access = adoptCF(accessRef);
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     RetainPtr<CFArrayRef> acls = adoptCF(SecAccessCopyMatchingACLList(accessRef, kSecACLAuthorizationExportClear));
+ALLOW_DEPRECATED_DECLARATIONS_END
     SecACLRef acl = checked_cf_cast<SecACLRef>(CFArrayGetValueAtIndex(acls.get(), 0));
 
     SecTrustedApplicationRef trustedAppRef;
@@ -120,19 +120,20 @@ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 ALLOW_DEPRECATED_DECLARATIONS_END
     if (status) {
         WTFLogAlways("Cannot create a trusted application object for storing WebCrypto master key, error %d", (int)status);
-        return false;
+        return std::nullopt;
     }
     RetainPtr<SecTrustedApplicationRef> trustedApp = adoptCF(trustedAppRef);
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     status = SecACLSetContents(acl, (__bridge CFArrayRef)@[ (__bridge id)trustedApp.get() ], (__bridge CFStringRef)localizedItemName, kSecKeychainPromptRequirePassphase);
+ALLOW_DEPRECATED_DECLARATIONS_END
     if (status) {
         WTFLogAlways("Cannot set ACL for WebCrypto master key, error %d", (int)status);
-        return false;
+        return std::nullopt;
     }
 #endif
 
-    Vector<char> base64EncodedMasterKeyData;
-    base64Encode(masterKeyData, base64EncodedMasterKeyData);
+    auto base64EncodedMasterKeyData = base64EncodeToVector(masterKeyData);
 
     // Cannot use kSecClassKey because of <rdar://problem/16068207>.
     NSDictionary *attributes = @{
@@ -150,12 +151,13 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     status = SecItemAdd((CFDictionaryRef)attributes, nullptr);
     if (status) {
         WTFLogAlways("Cannot store WebCrypto master key, error %d", (int)status);
-        return false;
+        return std::nullopt;
     }
-    return true;
+
+    return masterKeyData;
 }
 
-static bool findMasterKey(Vector<uint8_t>& masterKeyData)
+static std::optional<Vector<uint8_t>> findMasterKey()
 {
     RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
 
@@ -170,20 +172,25 @@ static bool findMasterKey(Vector<uint8_t>& masterKeyData)
     if (status) {
         if (status != errSecItemNotFound && status != errSecUserCanceled)
             WTFLogAlways("Could not find WebCrypto master key in Keychain, error %d", (int)status);
-        return false;
+        return std::nullopt;
     }
     RetainPtr<CFDataRef> keyData = adoptCF(keyDataRef);
-
-    Vector<uint8_t> base64EncodedMasterKeyData = vectorFromNSData((__bridge NSData *)keyData.get());
-    return base64Decode((const char*)base64EncodedMasterKeyData.data(), base64EncodedMasterKeyData.size(), masterKeyData);
+    return base64Decode(CFDataGetBytePtr(keyData.get()), CFDataGetLength(keyData.get()));
 }
 
-bool getDefaultWebCryptoMasterKey(Vector<uint8_t>& masterKey)
+std::optional<Vector<uint8_t>> defaultWebCryptoMasterKey()
 {
-    if (!findMasterKey(masterKey) && !createAndStoreMasterKey(masterKey))
-        return false;
-    RELEASE_ASSERT(masterKey.size() == masterKeySizeInBytes);
-    return true;
+    if (auto masterKey = findMasterKey()) {
+        RELEASE_ASSERT(masterKey->size() == masterKeySizeInBytes);
+        return masterKey;
+    }
+
+    if (auto masterKey = createAndStoreMasterKey()) {
+        RELEASE_ASSERT(masterKey->size() == masterKeySizeInBytes);
+        return masterKey;
+    }
+
+    return std::nullopt;
 }
 
 bool deleteDefaultWebCryptoMasterKey()

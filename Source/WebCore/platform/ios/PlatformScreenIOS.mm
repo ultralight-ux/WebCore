@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2014 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2021 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,6 @@
 
 #if PLATFORM(IOS_FAMILY)
 
-#import "DeprecatedGlobalSettings.h"
 #import "Device.h"
 #import "FloatRect.h"
 #import "FloatSize.h"
@@ -88,9 +87,9 @@ bool screenSupportsHighDynamicRange(Widget*)
     return false;
 }
 
-CGColorSpaceRef screenColorSpace(Widget* widget)
+DestinationColorSpace screenColorSpace(Widget* widget)
 {
-    return screenSupportsExtendedColor(widget) ? extendedSRGBColorSpaceRef() : sRGBColorSpaceRef();
+    return screenSupportsExtendedColor(widget) ? DestinationColorSpace { extendedSRGBColorSpaceRef() } : DestinationColorSpace::SRGB();
 }
 
 // These functions scale between screen and page coordinates because JavaScript/DOM operations
@@ -187,22 +186,26 @@ ScreenProperties collectScreenProperties()
 {
     ScreenProperties screenProperties;
 
+    // FIXME: This displayID doesn't match the synthetic displayIDs we use in iOS WebKit (see WebPageProxy::generateDisplayIDFromPageID()).
     PlatformDisplayID displayID = 0;
 
     for (UIScreen *screen in [PAL::getUIScreenClass() screens]) {
-        FloatRect screenAvailableRect = screen.bounds;
-        screenAvailableRect.setY(NSMaxY(screen.bounds) - (screenAvailableRect.y() + screenAvailableRect.height())); // flip
-        FloatRect screenRect = screen._referenceBounds;
-        
-        RetainPtr<CGColorSpaceRef> colorSpace = screenColorSpace(nullptr);
-        
-        int screenDepth = WebCore::screenDepth(nullptr);
-        int screenDepthPerComponent = WebCore::screenDepthPerComponent(nullptr);
-        bool screenSupportsExtendedColor = WebCore::screenSupportsExtendedColor(nullptr);
-        bool screenHasInvertedColors = WebCore::screenHasInvertedColors();
-        float scaleFactor = WebCore::screenPPIFactor();
+        ScreenData screenData;
 
-        screenProperties.screenDataMap.set(++displayID, ScreenData { screenAvailableRect, screenRect, colorSpace, screenDepth, screenDepthPerComponent, screenSupportsExtendedColor, screenHasInvertedColors, false, scaleFactor });
+        auto screenAvailableRect = FloatRect { screen.bounds };
+        screenAvailableRect.setY(NSMaxY(screen.bounds) - (screenAvailableRect.y() + screenAvailableRect.height())); // flip
+        screenData.screenAvailableRect = screenAvailableRect;
+        
+        screenData.screenRect = screen._referenceBounds;
+        screenData.colorSpace = { screenColorSpace(nullptr) };
+        screenData.screenDepth = WebCore::screenDepth(nullptr);
+        screenData.screenDepthPerComponent = WebCore::screenDepthPerComponent(nullptr);
+        screenData.screenSupportsExtendedColor = WebCore::screenSupportsExtendedColor(nullptr);
+        screenData.screenHasInvertedColors = WebCore::screenHasInvertedColors();
+        screenData.screenSupportsHighDynamicRange = false; // FIXME: Some iOS devices do have HDR displays.
+        screenData.scaleFactor = WebCore::screenPPIFactor();
+
+        screenProperties.screenDataMap.set(++displayID, WTFMove(screenData));
         
         if (screen == [PAL::getUIScreenClass() mainScreen])
             screenProperties.primaryDisplayID = displayID;

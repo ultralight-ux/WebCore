@@ -26,43 +26,55 @@
 #include "config.h"
 #include "Theme.h"
 
+#include "Color.h"
 #include "GraphicsContext.h"
 #include "LengthBox.h"
 #include "LengthSize.h"
-#include <wtf/Optional.h>
 
 namespace WebCore {
 
-int Theme::baselinePositionAdjustment(ControlPart) const
+int Theme::baselinePositionAdjustment(StyleAppearance) const
 {
     return 0;
 }
 
-Optional<FontCascadeDescription> Theme::controlFont(ControlPart, const FontCascade&, float) const
+std::optional<FontCascadeDescription> Theme::controlFont(StyleAppearance, const FontCascade&, float) const
 {
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-LengthSize Theme::controlSize(ControlPart, const FontCascade&, const LengthSize& zoomedSize, float) const
+LengthSize Theme::controlSize(StyleAppearance, const FontCascade&, const LengthSize& zoomedSize, float) const
 {
     return zoomedSize;
 }
 
-LengthSize Theme::minimumControlSize(ControlPart, const FontCascade&, const LengthSize&, float) const
+LengthSize Theme::minimumControlSize(StyleAppearance appearance, const FontCascade& fontCascade, const LengthSize& zoomedSize, const LengthSize& nonShrinkableZoomedSize, float zoom) const
 {
-    return { { 0, Fixed }, { 0, Fixed } };
+    auto minSize = minimumControlSize(appearance, fontCascade, zoomedSize, zoom);
+    if (appearance == StyleAppearance::Radio) {
+        if (zoomedSize.width.isIntrinsicOrAuto())
+            minSize.width = nonShrinkableZoomedSize.width;
+        if (zoomedSize.height.isIntrinsicOrAuto())
+            minSize.height = nonShrinkableZoomedSize.height;
+    }
+    return minSize;
 }
 
-bool Theme::controlRequiresPreWhiteSpace(ControlPart) const
+LengthSize Theme::minimumControlSize(StyleAppearance, const FontCascade&, const LengthSize&, float) const
+{
+    return { { 0, LengthType::Fixed }, { 0, LengthType::Fixed } };
+}
+
+bool Theme::controlRequiresPreWhiteSpace(StyleAppearance) const
 {
     return false;
 }
 
-void Theme::paint(ControlPart, ControlStates&, GraphicsContext&, const FloatRect&, float, ScrollView*, float, float, bool, bool)
+void Theme::paint(StyleAppearance, ControlStates&, GraphicsContext&, const FloatRect&, float, ScrollView*, float, float, bool, bool, const Color&)
 {
 }
 
-void Theme::inflateControlPaintRect(ControlPart, const ControlStates&, FloatRect&, float) const
+void Theme::inflateControlPaintRect(StyleAppearance, const ControlStates&, FloatRect&, float) const
 {
 }
 
@@ -71,37 +83,43 @@ bool Theme::userPrefersReducedMotion() const
     return false;
 }
 
-LengthBox Theme::controlBorder(ControlPart part, const FontCascade&, const LengthBox& zoomedBox, float) const
+bool Theme::userPrefersContrast() const
 {
-    switch (part) {
-    case PushButtonPart:
-    case MenulistPart:
-    case SearchFieldPart:
-    case CheckboxPart:
-    case RadioPart:
+    return false;
+}
+
+
+LengthBox Theme::controlBorder(StyleAppearance appearance, const FontCascade&, const LengthBox& zoomedBox, float) const
+{
+    switch (appearance) {
+    case StyleAppearance::PushButton:
+    case StyleAppearance::Menulist:
+    case StyleAppearance::SearchField:
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio:
         return LengthBox(0);
     default:
         return zoomedBox;
     }
 }
 
-LengthBox Theme::controlPadding(ControlPart part, const FontCascade&, const LengthBox& zoomedBox, float) const
+LengthBox Theme::controlPadding(StyleAppearance appearance, const FontCascade&, const LengthBox& zoomedBox, float) const
 {
-    switch (part) {
-    case MenulistPart:
-    case MenulistButtonPart:
-    case CheckboxPart:
-    case RadioPart:
+    switch (appearance) {
+    case StyleAppearance::Menulist:
+    case StyleAppearance::MenulistButton:
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio:
         return LengthBox(0);
     default:
         return zoomedBox;
     }
 }
 
-void Theme::drawNamedImage(const String& name, GraphicsContext& context, const FloatRect& rect) const
+void Theme::drawNamedImage(const String& name, GraphicsContext& context, const FloatSize& size) const
 {
     // We only handle one icon at the moment.
-    if (name != "wireless-playback")
+    if (name != "wireless-playback"_s)
         return;
 
     GraphicsContextStateSaver stateSaver(context);
@@ -109,7 +127,7 @@ void Theme::drawNamedImage(const String& name, GraphicsContext& context, const F
 
     // Draw a generic Wireless Playback icon.
 
-    context.scale(rect.size() / 100);
+    context.scale(size / 100);
     context.translate(8, 1);
 
     Path outline;

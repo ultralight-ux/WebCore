@@ -44,6 +44,9 @@ SOFTLINK_AVKIT_FRAMEWORK()
 SOFT_LINK_CLASS_OPTIONAL(AVKit, AVPlayerController)
 SOFT_LINK_CLASS_OPTIONAL(AVKit, AVValueTiming)
 
+OBJC_CLASS AVAssetTrack;
+OBJC_CLASS AVMetadataItem;
+
 using namespace WebCore;
 
 static void * WebAVPlayerControllerSeekableTimeRangesObserverContext = &WebAVPlayerControllerSeekableTimeRangesObserverContext;
@@ -54,22 +57,167 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeDurationHysteresis
 static double WebAVPlayerControllerLiveStreamMinimumTargetDuration = 1.0; // Minimum segment duration to be considered valid.
 static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 30.0;
 
-@implementation WebAVPlayerController {
-    BOOL _liveStreamEventModePossible;
-    BOOL _isScrubbing;
-    BOOL _allowsPictureInPicture;
+@interface WebAVPlayerControllerForwarder : NSObject
+@end
+
+@implementation WebAVPlayerControllerForwarder {
+    RetainPtr<WebAVPlayerController> _playerController;
 }
 
 - (instancetype)init
 {
-    if (!getAVPlayerControllerClass())
+    self = [super init];
+    if (!self)
         return nil;
+
+    _playerController = adoptNS([[WebAVPlayerController alloc] init]);
+
+    return self;
+}
+
+- (BOOL)respondsToSelector:(SEL)aSelector
+{
+    return [_playerController respondsToSelector:aSelector];
+}
+
+- (id)forwardingTargetForSelector:(SEL)aSelector
+{
+    return _playerController.get();
+}
+
+- (id)valueForKey:(NSString *)key
+{
+    return [[self _forwardingTargetForKeyPath:key] valueForKey:key];
+}
+
+- (id)valueForKeyPath:(NSString *)keyPath
+{
+    return [[self _forwardingTargetForKeyPath:keyPath] valueForKeyPath:keyPath];
+}
+
+- (id)valueForUndefinedKey:(NSString *)key
+{
+    return [[self _forwardingTargetForKeyPath:key] valueForUndefinedKey:key];
+}
+
+- (void)addObserver:(NSObject *)observer forKeyPath:(NSString *)keyPath options:(NSKeyValueObservingOptions)options context:(void *)context
+{
+    [[self _forwardingTargetForKeyPath:keyPath] addObserver:observer forKeyPath:keyPath options:options context:context];
+}
+
+- (void)removeObserver:(NSObject *)observer forKeyPath:(NSString *)keyPath context:(void *)context
+{
+    [[self _forwardingTargetForKeyPath:keyPath] removeObserver:observer forKeyPath:keyPath context:context];
+}
+
+- (void)removeObserver:(NSObject *)observer forKeyPath:(NSString *)keyPath
+{
+    [[self _forwardingTargetForKeyPath:keyPath] removeObserver:observer forKeyPath:keyPath];
+}
+
+- (NSObject *)_forwardingTargetForKeyPath:(NSString *)keyPath
+{
+    // Only use the proxy object for key paths identifying undefined properties on WebAVPlayerController.
+
+    NSObject *target = [_playerController playerControllerProxy];
+
+    NSString *propertyNameFromKeyPath = [[keyPath componentsSeparatedByString:@"."] firstObject];
+    if (!propertyNameFromKeyPath.length)
+        return target;
+
+    unsigned count;
+    objc_property_t *properties = class_copyPropertyList([_playerController class], &count);
+
+    for (unsigned i = 0; i < count; i++) {
+        objc_property_t property = properties[i];
+        NSString *propertyName = [NSString stringWithUTF8String:property_getName(property)];
+        if ([propertyNameFromKeyPath isEqualToString:propertyName]) {
+            target = _playerController.get();
+            break;
+        }
+    }
+
+    free(properties);
+    return target;
+}
+
+@end
+
+static Class createWebAVPlayerControllerForwarderClass()
+{
+    // Re-parent WebAVPlayerControllerForwarder methods under a subclass of AVPlayerController,
+    // so that the resulting type can be safely cast to AVPlayerController via Swift's `as!`,
+    // which strictly requires the castee to derive from the destination type.
+
+    Class superClass = getAVPlayerControllerClass();
+    Class implClass = [WebAVPlayerControllerForwarder class];
+    Class newClass = objc_allocateClassPair(superClass, "WebAVPlayerControllerForwarder_AVKitCompatible", 0);
+    objc_registerClassPair(newClass);
+
+    // Remove all of AVPlayerController's methods.
+    unsigned methodCount = 0;
+    Method *methods = class_copyMethodList(superClass, &methodCount);
+    IMP unknownMethodImp = class_getMethodImplementation(superClass, NSSelectorFromString(@"_web_unknownMethod"));
+    for (unsigned i = 0; i < methodCount; i++)
+        class_addMethod(newClass, method_getName(methods[i]), unknownMethodImp, method_getTypeEncoding(methods[i]));
+    free(methods);
+
+    // Copy methods from WebAVPlayerControllerForwarder.
+    methods = class_copyMethodList(implClass, &methodCount);
+    for (unsigned i = 0; i < methodCount; i++) {
+        SEL selector = method_getName(methods[i]);
+        if ([NSStringFromSelector(selector) hasPrefix:@"."])
+            continue;
+        class_replaceMethod(newClass, selector, method_getImplementation(methods[i]), method_getTypeEncoding(methods[i]));
+    }
+    free(methods);
+
+    class_addIvar(newClass, "_playerController", sizeof(RetainPtr<WebAVPlayerController>), log2(sizeof(RetainPtr<WebAVPlayerController>)), @encode(RetainPtr<WebAVPlayerController>));
+
+    return newClass;
+}
+
+RetainPtr<WebAVPlayerController> createWebAVPlayerController()
+{
+    return adoptNS((WebAVPlayerController *)[[webAVPlayerControllerClass() alloc] init]);
+}
+
+Class webAVPlayerControllerClass()
+{
+    ASSERT(isMainThread());
+    static Class webAVPlayerControllerForwarderClass;
+    if (!webAVPlayerControllerForwarderClass)
+        webAVPlayerControllerForwarderClass = createWebAVPlayerControllerForwarderClass();
+    return webAVPlayerControllerForwarderClass;
+}
+
+@implementation WebAVPlayerController {
+    WeakPtr<WebCore::PlaybackSessionModel> _delegate;
+    WeakPtr<WebCore::PlaybackSessionInterfaceAVKit> _playbackSessionInterface;
+    double _defaultPlaybackRate;
+    double _rate;
+    BOOL _liveStreamEventModePossible;
+    BOOL _isScrubbing;
+    BOOL _allowsPictureInPicture;
+    BOOL _pictureInPictureInterrupted;
+    BOOL _muted;
+    NSTimeInterval _seekToTime;
+    WebAVMediaSelectionOption *_currentAudioMediaSelectionOption;
+    WebAVMediaSelectionOption *_currentLegibleMediaSelectionOption;
+}
+
+- (instancetype)init
+{
+    if (!getAVPlayerControllerClass()) {
+        [self release];
+        return nil;
+    }
 
     if (!(self = [super init]))
         return self;
 
     initAVPlayerController();
-    self.playerControllerProxy = [[allocAVPlayerControllerInstance() init] autorelease];
+    self.playerControllerProxy = adoptNS([allocAVPlayerControllerInstance() init]).get();
     _liveStreamEventModePossible = YES;
 
     [self addObserver:self forKeyPath:@"seekableTimeRanges" options:(NSKeyValueObservingOptionOld | NSKeyValueObservingOptionNew | NSKeyValueObservingOptionInitial) context:WebAVPlayerControllerSeekableTimeRangesObserverContext];
@@ -156,6 +304,89 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
         self.delegate->pause();
 }
 
+- (WebCore::PlaybackSessionModel*)delegate
+{
+    return _delegate.get();
+}
+
+- (void)setDelegate:(WebCore::PlaybackSessionModel*)delegate
+{
+    _delegate = WeakPtr { delegate };
+}
+
+- (WebCore::PlaybackSessionInterfaceAVKit*)playbackSessionInterface
+{
+    return _playbackSessionInterface.get();
+}
+
+- (void)setPlaybackSessionInterface:(WebCore::PlaybackSessionInterfaceAVKit*)playbackSessionInterface
+{
+    _playbackSessionInterface = WeakPtr { playbackSessionInterface };
+}
+
+- (double)defaultPlaybackRate
+{
+    return _defaultPlaybackRate;
+}
+
+- (void)setDefaultPlaybackRate:(double)defaultPlaybackRate
+{
+    [self setDefaultPlaybackRate:defaultPlaybackRate fromJavaScript:NO];
+}
+
+- (void)setDefaultPlaybackRate:(double)defaultPlaybackRate fromJavaScript:(BOOL)fromJavaScript
+{
+    if (defaultPlaybackRate == _defaultPlaybackRate)
+        return;
+
+    [self willChangeValueForKey:@"defaultPlaybackRate"];
+    _defaultPlaybackRate = defaultPlaybackRate;
+    [self didChangeValueForKey:@"defaultPlaybackRate"];
+
+    if (!fromJavaScript && self.delegate && self.delegate->defaultPlaybackRate() != _defaultPlaybackRate)
+        self.delegate->setDefaultPlaybackRate(_defaultPlaybackRate);
+
+    if ([self isPlaying])
+        [self setRate:_defaultPlaybackRate fromJavaScript:fromJavaScript];
+}
+
+- (double)rate
+{
+    return _rate;
+}
+
+- (void)setRate:(double)rate
+{
+    [self setRate:rate fromJavaScript:NO];
+}
+
+- (void)setRate:(double)rate fromJavaScript:(BOOL)fromJavaScript
+{
+    if (rate == _rate)
+        return;
+
+    [self willChangeValueForKey:@"rate"];
+    _rate = rate;
+    [self didChangeValueForKey:@"rate"];
+
+    // AVKit doesn't have a separate variable for "paused", instead representing it by a `rate` of
+    // `0`. Unfortunately, `HTMLMediaElement::play` doesn't call `HTMLMediaElement::setPlaybackRate`
+    // so if we propagate a `rate` of `0` along to the `HTMLMediaElement` then any attempt to
+    // `HTMLMediaElement::play` will effectively be a no-op since the `playbackRate` will be `0`.
+    if (!_rate)
+        return;
+
+    // In AVKit, the `defaultPlaybackRate` is used when playback starts, such as resuming after
+    // pausing. In WebKit, however, `defaultPlaybackRate` is only used when first loading and after
+    // ending scanning, with the `playbackRate` being used in all other cases, including when
+    // resuming after pausing. As such, WebKit should return the `playbackRate` instead of the
+    // `defaultPlaybackRate` in these cases when communicating with AVKit.
+    [self setDefaultPlaybackRate:_rate fromJavaScript:fromJavaScript];
+
+    if (!fromJavaScript && self.delegate && self.delegate->playbackRate() != _rate)
+        self.delegate->setPlaybackRate(_rate);
+}
+
 + (NSSet *)keyPathsForValuesAffectingPlaying
 {
     return [NSSet setWithObject:@"rate"];
@@ -179,12 +410,14 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 
 - (void)seekToTime:(NSTimeInterval)time
 {
+    _seekToTime = time;
     if (self.delegate)
         self.delegate->seekToTime(time);
 }
 
 - (void)seekToTime:(NSTimeInterval)time toleranceBefore:(NSTimeInterval)before toleranceAfter:(NSTimeInterval)after
 {
+    _seekToTime = time;
     if (self.delegate)
         self.delegate->seekToTime(time, before, after);
 }
@@ -303,6 +536,16 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
     return _isScrubbing;
 }
 
+- (BOOL)isSeeking
+{
+    return _isScrubbing;
+}
+
+- (NSTimeInterval)seekToTime
+{
+    return _seekToTime;
+}
+
 - (BOOL)canScanForward
 {
     return [self canPlay];
@@ -401,12 +644,12 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 
 - (BOOL)canSeekFrameBackward
 {
-    return YES;
+    return NO;
 }
 
 - (BOOL)canSeekFrameForward
 {
-    return YES;
+    return NO;
 }
 
 - (BOOL)hasMediaSelectionOptions
@@ -588,12 +831,21 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
                 [self updateMinMaxTiming];
             }
         }
-    } else if (WebAVPlayerControllerHasLiveStreamingContentObserverContext == context)
+        return;
+    }
+
+    if (WebAVPlayerControllerHasLiveStreamingContentObserverContext == context) {
         [self updateMinMaxTiming];
-    else if (WebAVPlayerControllerIsPlayingOnSecondScreenObserverContext == context) {
+        return;
+    }
+
+    if (WebAVPlayerControllerIsPlayingOnSecondScreenObserverContext == context) {
         if (auto* delegate = self.delegate)
             delegate->setPlayingOnSecondScreen(_playingOnSecondScreen);
+        return;
     }
+
+    ASSERT_NOT_REACHED();
 }
 
 - (void)updateMinMaxTiming
@@ -662,12 +914,144 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 
 @end
 
-@implementation WebAVMediaSelectionOption
+@implementation WebAVMediaSelectionOption {
+    RetainPtr<NSString> _localizedDisplayName;
+}
 
-- (void)dealloc
+- (instancetype)initWithMediaType:(AVMediaType)mediaType displayName:(NSString *)displayName
 {
-    [_localizedDisplayName release];
-    [super dealloc];
+    self = [super init];
+    if (!self)
+        return nil;
+
+    _mediaType = mediaType;
+    _localizedDisplayName = displayName;
+
+    return self;
+}
+
+- (NSString *)localizedDisplayName
+{
+    return _localizedDisplayName.get();
+}
+
+- (NSArray<NSNumber *> *)mediaSubTypes
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption mediaSubTypes] unimplemented");
+    return @[];
+}
+
+- (BOOL)hasMediaCharacteristic:(AVMediaCharacteristic)mediaCharacteristic
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption hasMediaCharacteristic:] unimplemented");
+    return NO;
+}
+
+- (BOOL) isPlayable
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption isPlayable:] unimplemented");
+    return YES;
+}
+
+- (NSString *)extendedLanguageTag
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption extendedLanguageTag] unimplemented");
+    return nil;
+}
+
+- (NSLocale *)locale
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption locale] unimplemented");
+    return nil;
+}
+
+- (NSArray<AVMetadataItem *> *)commonMetadata
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption commonMetadata] unimplemented");
+    return @[];
+}
+
+- (NSArray<NSString *> *)availableMetadataFormats
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption availableMetadataFormats] unimplemented");
+    return @[];
+}
+
+- (NSArray<AVMetadataItem *> *)metadataForFormat:(NSString *)format
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption metadataForFormat:] unimplemented");
+    return @[];
+}
+
+- (AVMediaSelectionOption *)associatedMediaSelectionOptionInMediaSelectionGroup:(AVMediaSelectionGroup *)mediaSelectionGroup
+{
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption associatedMediaSelectionOptionInMediaSelectionGroup] unimplemented");
+    ASSERT_NOT_REACHED();
+    return nil;
+}
+
+- (id)propertyList
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption propertyList] unimplemented");
+    return @[];
+}
+
+- (NSString *)displayNameWithLocale:(NSLocale *)locale
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption displayNameWithLocale:] unimplemented");
+    return nil;
+}
+
+- (NSArray<NSString *> *)mediaCharacteristics
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption mediaCharacteristics] unimplemented");
+    return @[];
+}
+
+- (NSString *)outOfBandSource
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption outOfBandSource] unimplemented");
+    return nil;
+}
+
+- (NSString *)outOfBandIdentifier
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption outOfBandIdentifier] unimplemented");
+    return nil;
+}
+
+- (BOOL)_isDesignatedDefault
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption _isDesignatedDefault] unimplemented");
+    return NO;
+}
+
+- (NSString *)languageCode
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption languageCode] unimplemented");
+    return nil;
+}
+
+- (AVAssetTrack *)track
+{
+    ASSERT_NOT_REACHED();
+    WTFLogAlways("ERROR: -[WebAVMediaSelectionOption track:] unimplemented");
+    return nil;
 }
 
 @end

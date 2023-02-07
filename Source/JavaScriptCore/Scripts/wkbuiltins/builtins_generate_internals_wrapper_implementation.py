@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
-# Copyright (c) 2016 Apple Inc. All rights reserved.
+# Copyright (c) 2016-2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -120,13 +120,16 @@ class BuiltinsInternalsWrapperImplementationGenerator(BuiltinsGenerator):
         return '\n'.join(lines)
 
     def generate_visit_method(self):
-        lines = ["void JSBuiltinInternalFunctions::visit(JSC::SlotVisitor& visitor)",
+        lines = ["template<typename Visitor>",
+                 "void JSBuiltinInternalFunctions::visit(Visitor& visitor)",
                  "{"]
         for object in self.internals:
             visit = "    %s.visit(visitor);" % self.member_name(object)
             lines.append(BuiltinsGenerator.wrap_with_guard(object.annotations.get('conditional'), visit))
         lines.append("    UNUSED_PARAM(visitor);")
         lines.append("}\n")
+        lines.append("template void JSBuiltinInternalFunctions::visit(AbstractSlotVisitor&);")
+        lines.append("template void JSBuiltinInternalFunctions::visit(SlotVisitor&);\n")
         return '\n'.join(lines)
 
     def _generate_initialize_static_globals(self):
@@ -135,12 +138,12 @@ class BuiltinsInternalsWrapperImplementationGenerator(BuiltinsGenerator):
         for object in self.internals:
             lines.append(BuiltinsGenerator.wrap_with_guard(object.annotations.get('conditional'), self.property_macro(object)))
         lines.append("    };")
-        lines.append("    globalObject.addStaticGlobals(staticGlobals, WTF_ARRAY_LENGTH(staticGlobals));")
+        lines.append("    globalObject.addStaticGlobals(staticGlobals, std::size(staticGlobals));")
         lines.append("    UNUSED_PARAM(clientData);")
         return '\n'.join(lines)
 
     def generate_initialize_method(self):
-        lines = ["void JSBuiltinInternalFunctions::initialize(JSDOMGlobalObject& globalObject)",
+        lines = ["SUPPRESS_ASAN void JSBuiltinInternalFunctions::initialize(JSDOMGlobalObject& globalObject)",
                 "{",
                 "    UNUSED_PARAM(globalObject);"]
 

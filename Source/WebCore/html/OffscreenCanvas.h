@@ -34,29 +34,43 @@
 #include "ExceptionOr.h"
 #include "IDLTypes.h"
 #include "ImageBuffer.h"
+#include "ImageBufferPipe.h"
 #include "IntSize.h"
 #include "ScriptWrappable.h"
+#include <wtf/FixedVector.h>
 #include <wtf/Forward.h>
 #include <wtf/RefCounted.h>
+#include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
+
+#if ENABLE(WEBGL)
+#include "WebGLContextAttributes.h"
+#endif
 
 namespace WebCore {
 
 class CanvasRenderingContext;
-class CSSValuePool;
 class DeferredPromise;
 class HTMLCanvasElement;
 class ImageBitmap;
+class ImageBitmapRenderingContext;
 class ImageData;
 class OffscreenCanvasRenderingContext2D;
+class WebGL2RenderingContext;
 class WebGLRenderingContext;
+class WebGLRenderingContextBase;
 
+using OffscreenRenderingContext = std::variant<
 #if ENABLE(WEBGL)
-using OffscreenRenderingContext = Variant<RefPtr<OffscreenCanvasRenderingContext2D>, RefPtr<WebGLRenderingContext>>;
-#else
-using OffscreenRenderingContext = Variant<RefPtr<OffscreenCanvasRenderingContext2D>>;
+    RefPtr<WebGLRenderingContext>,
 #endif
+#if ENABLE(WEBGL2)
+    RefPtr<WebGL2RenderingContext>,
+#endif
+    RefPtr<ImageBitmapRenderingContext>,
+    RefPtr<OffscreenCanvasRenderingContext2D>
+>;
 
 class DetachedOffscreenCanvas {
     WTF_MAKE_NONCOPYABLE(DetachedOffscreenCanvas);
@@ -64,9 +78,9 @@ class DetachedOffscreenCanvas {
     friend class OffscreenCanvas;
 
 public:
-    DetachedOffscreenCanvas(std::unique_ptr<ImageBuffer>&&, const IntSize&, bool originClean);
+    DetachedOffscreenCanvas(std::unique_ptr<SerializedImageBuffer>, const IntSize&, bool originClean);
 
-    std::unique_ptr<ImageBuffer> takeImageBuffer();
+    RefPtr<ImageBuffer> takeImageBuffer(ScriptExecutionContext&);
     const IntSize& size() const { return m_size; }
     bool originClean() const { return m_originClean; }
     size_t memoryCost() const
@@ -76,28 +90,32 @@ public:
             return buffer->memoryCost();
         return 0;
     }
-    WeakPtr<HTMLCanvasElement> takePlaceholderCanvas();
+    WeakPtr<HTMLCanvasElement, WeakPtrImplWithEventTargetData> takePlaceholderCanvas();
 
 private:
-    std::unique_ptr<ImageBuffer> m_buffer;
+    std::unique_ptr<SerializedImageBuffer> m_buffer;
     IntSize m_size;
     bool m_originClean;
-    WeakPtr<HTMLCanvasElement> m_placeholderCanvas;
+    WeakPtr<HTMLCanvasElement, WeakPtrImplWithEventTargetData> m_placeholderCanvas;
 };
 
-class OffscreenCanvas final : public RefCounted<OffscreenCanvas>, public CanvasBase, public EventTargetWithInlineData, private ContextDestructionObserver {
+class OffscreenCanvas final : public RefCounted<OffscreenCanvas>, public CanvasBase, public EventTarget, private ContextDestructionObserver {
     WTF_MAKE_ISO_ALLOCATED(OffscreenCanvas);
 public:
 
     struct ImageEncodeOptions {
-        String type = "image/png";
+        String type = "image/png"_s;
         double quality = 1.0;
     };
 
     enum class RenderingContextType {
         _2d,
-        Webgl
+        Webgl,
+        Webgl2,
+        Bitmaprenderer
     };
+
+    static bool enabledForContext(ScriptExecutionContext&);
 
     static Ref<OffscreenCanvas> create(ScriptExecutionContext&, unsigned width, unsigned height);
     static Ref<OffscreenCanvas> create(ScriptExecutionContext&, std::unique_ptr<DetachedOffscreenCanvas>&&);
@@ -109,15 +127,19 @@ public:
     void setWidth(unsigned);
     void setHeight(unsigned);
 
+    void setImageBufferAndMarkDirty(RefPtr<ImageBuffer>&&) final;
+
     CanvasRenderingContext* renderingContext() const final { return m_context.get(); }
 
-    ExceptionOr<Optional<OffscreenRenderingContext>> getContext(JSC::JSGlobalObject&, RenderingContextType, Vector<JSC::Strong<JSC::Unknown>>&& arguments);
+    ExceptionOr<std::optional<OffscreenRenderingContext>> getContext(JSC::JSGlobalObject&, RenderingContextType, FixedVector<JSC::Strong<JSC::Unknown>>&& arguments);
     ExceptionOr<RefPtr<ImageBitmap>> transferToImageBitmap();
     void convertToBlob(ImageEncodeOptions&&, Ref<DeferredPromise>&&);
 
-    void didDraw(const FloatRect&) final;
+    void didDraw(const std::optional<FloatRect>&) final;
 
     Image* copiedImage() const final;
+    void clearCopiedImage() const final;
+
     bool hasCreatedImageBuffer() const final { return m_hasCreatedImageBuffer; }
 
     SecurityOrigin* securityOrigin() const final;
@@ -127,13 +149,10 @@ public:
 
     void commitToPlaceholderCanvas();
 
-    CSSValuePool& cssValuePool();
-
     using RefCounted::ref;
     using RefCounted::deref;
 
 private:
-
     OffscreenCanvas(ScriptExecutionContext&, unsigned width, unsigned height);
 
     bool isOffscreenCanvas() const final { return true; }
@@ -149,12 +168,15 @@ private:
     void derefCanvasBase() final { deref(); }
 
     void setSize(const IntSize&) final;
+
+#if ENABLE(WEBGL)
+    void createContextWebGL(RenderingContextType, WebGLContextAttributes&& = { });
+#endif
+
     void createImageBuffer() const final;
-    std::unique_ptr<ImageBuffer> takeImageBuffer() const;
+    std::unique_ptr<SerializedImageBuffer> takeImageBuffer() const;
 
     void reset();
-
-    void clearCopiedImage() const;
 
     void setPlaceholderCanvas(HTMLCanvasElement&);
     void pushBufferToPlaceholder();
@@ -170,11 +192,21 @@ private:
     mutable RefPtr<Image> m_copiedImage;
 
     bool m_hasScheduledCommit { false };
-    WeakPtr<HTMLCanvasElement> m_placeholderCanvas;
 
-    mutable Lock m_commitLock;
-    bool m_hasPendingCommitData { false };
-    RefPtr<ImageData> m_pendingCommitData;
+    class PlaceholderData : public ThreadSafeRefCounted<PlaceholderData> {
+    public:
+        static Ref<PlaceholderData> create()
+        {
+            return adoptRef(*new PlaceholderData);
+        }
+
+        WeakPtr<HTMLCanvasElement, WeakPtrImplWithEventTargetData> canvas;
+        RefPtr<ImageBufferPipe::Source> bufferPipeSource;
+        std::unique_ptr<SerializedImageBuffer> pendingCommitBuffer;
+        mutable Lock bufferLock;
+    };
+
+    RefPtr<PlaceholderData> m_placeholderData;
 };
 
 }

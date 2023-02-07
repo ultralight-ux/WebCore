@@ -21,11 +21,11 @@
 
 #include "config.h"
 
-#if ENABLE(SVG_FONTS)
 #include "SVGFontFaceElement.h"
 
 #include "CSSFontFaceSrcValue.h"
 #include "CSSParser.h"
+#include "CSSParserIdioms.h"
 #include "CSSPropertyNames.h"
 #include "CSSStyleSheet.h"
 #include "CSSValueKeywords.h"
@@ -34,12 +34,13 @@
 #include "ElementIterator.h"
 #include "FontCascade.h"
 #include "Logging.h"
+#include "MutableStyleProperties.h"
 #include "SVGDocumentExtensions.h"
+#include "SVGElementTypeHelpers.h"
 #include "SVGFontElement.h"
 #include "SVGFontFaceSrcElement.h"
 #include "SVGGlyphElement.h"
 #include "SVGNames.h"
-#include "StyleProperties.h"
 #include "StyleResolver.h"
 #include "StyleRule.h"
 #include "StyleScope.h"
@@ -53,9 +54,8 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(SVGFontFaceElement);
 using namespace SVGNames;
 
 inline SVGFontFaceElement::SVGFontFaceElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
     , m_fontFaceRule(StyleRuleFontFace::create(MutableStyleProperties::create(HTMLStandardMode)))
-    , m_fontElement(nullptr)
 {
     LOG(Fonts, "SVGFontFaceElement %p ctor", this);
     ASSERT(hasTagName(font_faceTag));
@@ -83,8 +83,8 @@ void SVGFontFaceElement::parseAttribute(const QualifiedName& name, const AtomStr
             // The above parser is designed for the font-face properties, not descriptors, and the properties accept the global keywords, but descriptors don't.
             // Rather than invasively modifying the parser for the properties to have a special mode, we can simply detect the error condition after-the-fact and
             // avoid it explicitly.
-            if (auto parsedValue = properties.getPropertyCSSValue(propertyId)) {
-                if (parsedValue->isGlobalKeyword())
+            if (auto parsedValue = properties.propertyAsValueID(propertyId)) {
+                if (isCSSWideKeyword(*parsedValue))
                     properties.removeProperty(propertyId);
             }
         }
@@ -121,46 +121,50 @@ int SVGFontFaceElement::capHeight() const
 
 float SVGFontFaceElement::horizontalOriginX() const
 {
-    if (!m_fontElement)
+    RefPtr fontElement = m_fontElement.get();
+    if (!fontElement)
         return 0.0f;
 
     // Spec: The X-coordinate in the font coordinate system of the origin of a glyph to be used when
     // drawing horizontally oriented text. (Note that the origin applies to all glyphs in the font.)
     // If the attribute is not specified, the effect is as if a value of "0" were specified.
-    return m_fontElement->attributeWithoutSynchronization(horiz_origin_xAttr).toFloat();
+    return fontElement->attributeWithoutSynchronization(horiz_origin_xAttr).toFloat();
 }
 
 float SVGFontFaceElement::horizontalOriginY() const
 {
-    if (!m_fontElement)
+    RefPtr fontElement = m_fontElement.get();
+    if (!fontElement)
         return 0.0f;
 
     // Spec: The Y-coordinate in the font coordinate system of the origin of a glyph to be used when
     // drawing horizontally oriented text. (Note that the origin applies to all glyphs in the font.)
     // If the attribute is not specified, the effect is as if a value of "0" were specified.
-    return m_fontElement->attributeWithoutSynchronization(horiz_origin_yAttr).toFloat();
+    return fontElement->attributeWithoutSynchronization(horiz_origin_yAttr).toFloat();
 }
 
 float SVGFontFaceElement::horizontalAdvanceX() const
 {
-    if (!m_fontElement)
+    RefPtr fontElement = m_fontElement.get();
+    if (!fontElement)
         return 0.0f;
 
     // Spec: The default horizontal advance after rendering a glyph in horizontal orientation. Glyph
     // widths are required to be non-negative, even if the glyph is typically rendered right-to-left,
     // as in Hebrew and Arabic scripts.
-    return m_fontElement->attributeWithoutSynchronization(horiz_adv_xAttr).toFloat();
+    return fontElement->attributeWithoutSynchronization(horiz_adv_xAttr).toFloat();
 }
 
 float SVGFontFaceElement::verticalOriginX() const
 {
-    if (!m_fontElement)
+    RefPtr fontElement = m_fontElement.get();
+    if (!fontElement)
         return 0.0f;
 
     // Spec: The default X-coordinate in the font coordinate system of the origin of a glyph to be used when
     // drawing vertically oriented text. If the attribute is not specified, the effect is as if the attribute
     // were set to half of the effective value of attribute horiz-adv-x.
-    const AtomString& value = m_fontElement->attributeWithoutSynchronization(vert_origin_xAttr);
+    const AtomString& value = fontElement->attributeWithoutSynchronization(vert_origin_xAttr);
     if (value.isEmpty())
         return horizontalAdvanceX() / 2.0f;
 
@@ -169,13 +173,14 @@ float SVGFontFaceElement::verticalOriginX() const
 
 float SVGFontFaceElement::verticalOriginY() const
 {
-    if (!m_fontElement)
+    RefPtr fontElement = m_fontElement.get();
+    if (!fontElement)
         return 0.0f;
 
     // Spec: The default Y-coordinate in the font coordinate system of the origin of a glyph to be used when
     // drawing vertically oriented text. If the attribute is not specified, the effect is as if the attribute
     // were set to the position specified by the font's ascent attribute.             
-    const AtomString& value = m_fontElement->attributeWithoutSynchronization(vert_origin_yAttr);
+    const AtomString& value = fontElement->attributeWithoutSynchronization(vert_origin_yAttr);
     if (value.isEmpty())
         return ascent();
 
@@ -184,12 +189,13 @@ float SVGFontFaceElement::verticalOriginY() const
 
 float SVGFontFaceElement::verticalAdvanceY() const
 {
-    if (!m_fontElement)
+    RefPtr fontElement = m_fontElement.get();
+    if (!fontElement)
         return 0.0f;
 
     // Spec: The default vertical advance after rendering a glyph in vertical orientation. If the attribute is
     // not specified, the effect is as if a value equivalent of one em were specified (see units-per-em).                    
-    const AtomString& value = m_fontElement->attributeWithoutSynchronization(vert_adv_yAttr);
+    const AtomString& value = fontElement->attributeWithoutSynchronization(vert_adv_yAttr);
        if (value.isEmpty())
         return 1.0f;
 
@@ -206,8 +212,8 @@ int SVGFontFaceElement::ascent() const
     if (!ascentValue.isEmpty())
         return static_cast<int>(ceilf(ascentValue.toFloat()));
 
-    if (m_fontElement) {
-        const AtomString& vertOriginY = m_fontElement->attributeWithoutSynchronization(vert_origin_yAttr);
+    if (RefPtr fontElement = m_fontElement.get()) {
+        const AtomString& vertOriginY = fontElement->attributeWithoutSynchronization(vert_origin_yAttr);
         if (!vertOriginY.isEmpty())
             return static_cast<int>(unitsPerEm()) - static_cast<int>(ceilf(vertOriginY.toFloat()));
     }
@@ -230,8 +236,8 @@ int SVGFontFaceElement::descent() const
         return descent < 0 ? -descent : descent;
     }
 
-    if (m_fontElement) {
-        const AtomString& vertOriginY = m_fontElement->attributeWithoutSynchronization(vert_origin_yAttr);
+    if (RefPtr fontElement = m_fontElement.get()) {
+        const AtomString& vertOriginY = fontElement->attributeWithoutSynchronization(vert_origin_yAttr);
         if (!vertOriginY.isEmpty())
             return static_cast<int>(ceilf(vertOriginY.toFloat()));
     }
@@ -249,7 +255,7 @@ SVGFontElement* SVGFontFaceElement::associatedFontElement() const
 {
     ASSERT(parentNode() == m_fontElement);
     ASSERT(!parentNode() || is<SVGFontElement>(*parentNode()));
-    return m_fontElement;
+    return m_fontElement.get();
 }
 
 void SVGFontFaceElement::rebuildFontFace()
@@ -269,11 +275,11 @@ void SVGFontFaceElement::rebuildFontFace()
         m_fontElement = downcast<SVGFontElement>(parentNode());
 
         list = CSSValueList::createCommaSeparated();
-        list->append(CSSFontFaceSrcValue::createLocal(fontFamily()));
+        list->append(CSSFontFaceSrcLocalValue::create(AtomString { fontFamily() }));
     } else {
         m_fontElement = nullptr;
         if (srcElement)
-            list = srcElement->srcValue();
+            list = srcElement->createSrcValue();
     }
 
     if (!list || !list->length())
@@ -283,14 +289,10 @@ void SVGFontFaceElement::rebuildFontFace()
     m_fontFaceRule->mutableProperties().addParsedProperty(CSSProperty(CSSPropertySrc, list));
 
     if (describesParentFont) {    
-        // Traverse parsed CSS values and associate CSSFontFaceSrcValue elements with ourselves.
-        RefPtr<CSSValue> src = m_fontFaceRule->properties().getPropertyCSSValue(CSSPropertySrc);
-        CSSValueList* srcList = downcast<CSSValueList>(src.get());
-
-        unsigned srcLength = srcList ? srcList->length() : 0;
-        for (unsigned i = 0; i < srcLength; ++i) {
-            if (auto item = makeRefPtr(downcast<CSSFontFaceSrcValue>(srcList->itemWithoutBoundsCheck(i))))
-                item->setSVGFontFaceElement(this);
+        // Traverse parsed CSS values and associate CSSFontFaceSrcLocalValue elements with ourselves.
+        if (auto* srcList = downcast<CSSValueList>(m_fontFaceRule->properties().getPropertyCSSValue(CSSPropertySrc).get())) {
+            for (auto& item : *srcList)
+                downcast<CSSFontFaceSrcLocalValue>(item.get()).setSVGFontFaceElement(*this);
         }
     }
 
@@ -331,5 +333,3 @@ void SVGFontFaceElement::childrenChanged(const ChildChange& change)
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(SVG_FONTS)

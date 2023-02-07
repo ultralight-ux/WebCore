@@ -29,6 +29,7 @@
 #include "CustomElementReactionQueue.h"
 #include "DOMWindow.h"
 #include "Document.h"
+#include "ElementRareData.h"
 #include "JSCustomElementInterface.h"
 #include "JSDOMPromiseDeferred.h"
 #include "MathMLNames.h"
@@ -53,11 +54,16 @@ CustomElementRegistry::CustomElementRegistry(DOMWindow& window, ScriptExecutionC
 
 CustomElementRegistry::~CustomElementRegistry() = default;
 
+Document* CustomElementRegistry::document() const
+{
+    return m_window.document();
+}
+
 // https://dom.spec.whatwg.org/#concept-shadow-including-tree-order
 static void enqueueUpgradeInShadowIncludingTreeOrder(ContainerNode& node, JSCustomElementInterface& elementInterface)
 {
     for (Element* element = ElementTraversal::firstWithin(node); element; element = ElementTraversal::next(*element)) {
-        if (element->isCustomElementUpgradeCandidate() && element->tagQName() == elementInterface.name())
+        if (element->isCustomElementUpgradeCandidate() && element->tagQName().matches(elementInterface.name()))
             element->enqueueToUpgrade(elementInterface);
         if (auto* shadowRoot = element->shadowRoot()) {
             if (shadowRoot->mode() != ShadowRootMode::UserAgent)
@@ -66,18 +72,23 @@ static void enqueueUpgradeInShadowIncludingTreeOrder(ContainerNode& node, JSCust
     }
 }
 
-void CustomElementRegistry::addElementDefinition(Ref<JSCustomElementInterface>&& elementInterface)
+RefPtr<DeferredPromise> CustomElementRegistry::addElementDefinition(Ref<JSCustomElementInterface>&& elementInterface)
 {
     AtomString localName = elementInterface->name().localName();
     ASSERT(!m_nameMap.contains(localName));
-    m_constructorMap.add(elementInterface->constructor(), elementInterface.ptr());
     m_nameMap.add(localName, elementInterface.copyRef());
+    {
+        Locker locker { m_constructorMapLock };
+        m_constructorMap.add(elementInterface->constructor(), elementInterface.ptr());
+    }
+
+    if (elementInterface->isShadowDisabled())
+        m_disabledShadowSet.add(localName);
 
     if (auto* document = m_window.document())
         enqueueUpgradeInShadowIncludingTreeOrder(*document, elementInterface.get());
 
-    if (auto promise = m_promiseMap.take(localName))
-        promise.value()->resolve();
+    return m_promiseMap.take(localName);
 }
 
 JSCustomElementInterface* CustomElementRegistry::findInterface(const Element& element) const
@@ -99,11 +110,13 @@ JSCustomElementInterface* CustomElementRegistry::findInterface(const AtomString&
 
 JSCustomElementInterface* CustomElementRegistry::findInterface(const JSC::JSObject* constructor) const
 {
+    Locker locker { m_constructorMapLock };
     return m_constructorMap.get(constructor);
 }
 
 bool CustomElementRegistry::containsConstructor(const JSC::JSObject* constructor) const
 {
+    Locker locker { m_constructorMapLock };
     return m_constructorMap.contains(constructor);
 }
 
@@ -118,7 +131,7 @@ static void upgradeElementsInShadowIncludingDescendants(ContainerNode& root)
 {
     for (auto& element : descendantsOfType<Element>(root)) {
         if (element.isCustomElementUpgradeCandidate())
-            CustomElementReactionQueue::enqueueElementUpgradeIfDefined(element);
+            CustomElementReactionQueue::tryToUpgradeElement(element);
         if (auto* shadowRoot = element.shadowRoot())
             upgradeElementsInShadowIncludingDescendants(*shadowRoot);
     }
@@ -130,9 +143,20 @@ void CustomElementRegistry::upgrade(Node& root)
         return;
 
     if (is<Element>(root) && downcast<Element>(root).isCustomElementUpgradeCandidate())
-        CustomElementReactionQueue::enqueueElementUpgradeIfDefined(downcast<Element>(root));
+        CustomElementReactionQueue::tryToUpgradeElement(downcast<Element>(root));
 
     upgradeElementsInShadowIncludingDescendants(downcast<ContainerNode>(root));
 }
+
+template<typename Visitor>
+void CustomElementRegistry::visitJSCustomElementInterfaces(Visitor& visitor) const
+{
+    Locker locker { m_constructorMapLock };
+    for (const auto& iterator : m_constructorMap)
+        iterator.value->visitJSFunctions(visitor);
+}
+
+template void CustomElementRegistry::visitJSCustomElementInterfaces(JSC::AbstractSlotVisitor&) const;
+template void CustomElementRegistry::visitJSCustomElementInterfaces(JSC::SlotVisitor&) const;
 
 }

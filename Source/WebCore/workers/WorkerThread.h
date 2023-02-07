@@ -26,21 +26,28 @@
 #pragma once
 
 #include "ContentSecurityPolicyResponseHeaders.h"
+#include "CrossOriginEmbedderPolicy.h"
+#include "FetchRequestCredentials.h"
+#include "NotificationPermission.h"
+#include "ScriptExecutionContextIdentifier.h"
+#include "ServiceWorkerRegistrationData.h"
+#include "WorkerClient.h"
+#include "WorkerOrWorkletThread.h"
 #include "WorkerRunLoop.h"
+#include "WorkerType.h"
 #include <JavaScriptCore/RuntimeFlags.h>
 #include <memory>
-#include <wtf/Forward.h>
-#include <wtf/Function.h>
-#include <wtf/RefCounted.h>
+#include <pal/SessionID.h>
 #include <wtf/URL.h>
-#include <wtf/threads/BinarySemaphore.h>
 
 namespace WebCore {
 
-class ContentSecurityPolicyResponseHeaders;
 class NotificationClient;
+class Page;
+class ScriptBuffer;
 class SecurityOrigin;
 class SocketProvider;
+class WorkerBadgeProxy;
 class WorkerGlobalScope;
 class WorkerLoaderProxy;
 class WorkerDebuggerProxy;
@@ -60,103 +67,89 @@ struct WorkerThreadStartupData;
 struct WorkerParameters {
 public:
     URL scriptURL;
+    URL ownerURL;
     String name;
-    String identifier;
+    String inspectorIdentifier;
     String userAgent;
     bool isOnline;
     ContentSecurityPolicyResponseHeaders contentSecurityPolicyResponseHeaders;
     bool shouldBypassMainWorldContentSecurityPolicy;
+    CrossOriginEmbedderPolicy crossOriginEmbedderPolicy;
     MonotonicTime timeOrigin;
     ReferrerPolicy referrerPolicy;
-    bool requestAnimationFrameEnabled;
+    WorkerType workerType;
+    FetchRequestCredentials credentials;
+    Settings::Values settingsValues;
+    WorkerThreadMode workerThreadMode { WorkerThreadMode::CreateNewThread };
+    PAL::SessionID sessionID;
+#if ENABLE(SERVICE_WORKER)
+    std::optional<ServiceWorkerData> serviceWorkerData;
+#endif
+    ScriptExecutionContextIdentifier clientIdentifier;
 
     WorkerParameters isolatedCopy() const;
 };
 
-class WorkerThread : public ThreadSafeRefCounted<WorkerThread> {
+class WorkerThread : public WorkerOrWorkletThread {
 public:
     virtual ~WorkerThread();
 
-    static HashSet<WorkerThread*>& workerThreads(const LockHolder&);
-    static Lock& workerThreadsMutex();
-
-    void stop(WTF::Function<void()>&& terminatedCallback);
-
-    void suspend();
-    void resume();
-
-    Thread* thread() const { return m_thread.get(); }
-    WorkerRunLoop& runLoop() { return m_runLoop; }
-    WorkerLoaderProxy& workerLoaderProxy() const { return m_workerLoaderProxy; }
-    WorkerDebuggerProxy& workerDebuggerProxy() const { return m_workerDebuggerProxy; }
+    WorkerBadgeProxy& workerBadgeProxy() const { return m_workerBadgeProxy; }
+    WorkerDebuggerProxy* workerDebuggerProxy() const final { return &m_workerDebuggerProxy; }
+    WorkerLoaderProxy& workerLoaderProxy() final { return m_workerLoaderProxy; }
     WorkerReportingProxy& workerReportingProxy() const { return m_workerReportingProxy; }
 
     // Number of active worker threads.
     WEBCORE_EXPORT static unsigned workerThreadCount();
-    static void releaseFastMallocFreeMemoryInAllThreads();
 
 #if ENABLE(NOTIFICATIONS)
     NotificationClient* getNotificationClient() { return m_notificationClient; }
     void setNotificationClient(NotificationClient* client) { m_notificationClient = client; }
 #endif
-
-    void startRunningDebuggerTasks();
-    void stopRunningDebuggerTasks();
     
     JSC::RuntimeFlags runtimeFlags() const { return m_runtimeFlags; }
+    bool isInStaticScriptEvaluation() const { return m_isInStaticScriptEvaluation; }
 
-    String identifier() const { return m_identifier; }
-
+    void setWorkerClient(std::unique_ptr<WorkerClient>&& client) { m_workerClient = WTFMove(client); }
+    WorkerClient* workerClient() { return m_workerClient.get(); }
 protected:
-    WorkerThread(const WorkerParameters&, const String& sourceCode, WorkerLoaderProxy&, WorkerDebuggerProxy&, WorkerReportingProxy&, WorkerThreadStartMode, const SecurityOrigin& topOrigin, IDBClient::IDBConnectionProxy*, SocketProvider*, JSC::RuntimeFlags);
+    WorkerThread(const WorkerParameters&, const ScriptBuffer& sourceCode, WorkerLoaderProxy&, WorkerDebuggerProxy&, WorkerReportingProxy&, WorkerBadgeProxy&, WorkerThreadStartMode, const SecurityOrigin& topOrigin, IDBClient::IDBConnectionProxy*, SocketProvider*, JSC::RuntimeFlags);
 
     // Factory method for creating a new worker context for the thread.
     virtual Ref<WorkerGlobalScope> createWorkerGlobalScope(const WorkerParameters&, Ref<SecurityOrigin>&&, Ref<SecurityOrigin>&& topOrigin) = 0;
 
-    // Executes the event loop for the worker thread. Derived classes can override to perform actions before/after entering the event loop.
-    virtual void runEventLoop();
-
-    WorkerGlobalScope* workerGlobalScope() { return m_workerGlobalScope.get(); }
+    WorkerGlobalScope* globalScope();
 
     IDBClient::IDBConnectionProxy* idbConnectionProxy();
     SocketProvider* socketProvider();
 
-    void start(Function<void(const String&)>&& evaluateCallback);
-
+    std::unique_ptr<WorkerClient> m_workerClient;
 private:
-    void workerThread();
-    virtual bool isServiceWorkerThread() const { return false; }
+    virtual ASCIILiteral threadName() const = 0;
 
     virtual void finishedEvaluatingScript() { }
 
-    RefPtr<Thread> m_thread;
-    String m_identifier;
-    WorkerRunLoop m_runLoop;
+    // WorkerOrWorkletThread.
+    Ref<Thread> createThread() final;
+    RefPtr<WorkerOrWorkletGlobalScope> createGlobalScope() final;
+    void evaluateScriptIfNecessary(String& exceptionMessage) final;
+    bool shouldWaitForWebInspectorOnStartup() const final;
+
     WorkerLoaderProxy& m_workerLoaderProxy;
     WorkerDebuggerProxy& m_workerDebuggerProxy;
     WorkerReportingProxy& m_workerReportingProxy;
+    WorkerBadgeProxy& m_workerBadgeProxy;
     JSC::RuntimeFlags m_runtimeFlags;
-    bool m_pausedForDebugger { false };
-
-    RefPtr<WorkerGlobalScope> m_workerGlobalScope;
-    Lock m_threadCreationAndWorkerGlobalScopeMutex;
 
     std::unique_ptr<WorkerThreadStartupData> m_startupData;
-    
-    WTF::Function<void(const String&)> m_evaluateCallback;
 
 #if ENABLE(NOTIFICATIONS)
     NotificationClient* m_notificationClient { nullptr };
 #endif
 
-#if ENABLE(INDEXED_DATABASE)
     RefPtr<IDBClient::IDBConnectionProxy> m_idbConnectionProxy;
-#endif
     RefPtr<SocketProvider> m_socketProvider;
-
-    WTF::Function<void()> m_stoppedCallback;
-    BinarySemaphore m_suspensionSemaphore;
-    bool m_isSuspended { false };
+    bool m_isInStaticScriptEvaluation { false };
 };
 
 } // namespace WebCore

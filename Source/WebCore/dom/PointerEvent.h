@@ -27,7 +27,7 @@
 
 #include "EventNames.h"
 #include "MouseEvent.h"
-#include "Node.h"
+#include "PointerEventTypeNames.h"
 #include "PointerID.h"
 #include <wtf/text/WTFString.h>
 
@@ -36,6 +36,8 @@
 #endif
 
 namespace WebCore {
+
+class Node;
 
 class PointerEvent final : public MouseEvent {
     WTF_MAKE_ISO_ALLOCATED(PointerEvent);
@@ -49,7 +51,7 @@ public:
         long tiltX { 0 };
         long tiltY { 0 };
         long twist { 0 };
-        String pointerType { PointerEvent::mousePointerType() };
+        String pointerType { mousePointerEventType() };
         bool isPrimary { false };
     };
 
@@ -75,18 +77,14 @@ public:
         return adoptRef(*new PointerEvent);
     }
 
-    static RefPtr<PointerEvent> create(short button, const MouseEvent&);
-    static Ref<PointerEvent> create(const String& type, short button, const MouseEvent&);
-    static Ref<PointerEvent> create(const String& type, PointerID, const String& pointerType, IsPrimary = IsPrimary::No);
+    static RefPtr<PointerEvent> create(short button, const MouseEvent&, PointerID, const String& pointerType);
+    static Ref<PointerEvent> create(const AtomString& type, short button, const MouseEvent&, PointerID, const String& pointerType);
+    static Ref<PointerEvent> create(const AtomString& type, PointerID, const String& pointerType, IsPrimary = IsPrimary::No);
 
 #if ENABLE(TOUCH_EVENTS) && PLATFORM(IOS_FAMILY)
     static Ref<PointerEvent> create(const PlatformTouchEvent&, unsigned touchIndex, bool isPrimary, Ref<WindowProxy>&&);
-    static Ref<PointerEvent> create(const String& type, const PlatformTouchEvent&, unsigned touchIndex, bool isPrimary, Ref<WindowProxy>&&);
+    static Ref<PointerEvent> create(const AtomString& type, const PlatformTouchEvent&, unsigned touchIndex, bool isPrimary, Ref<WindowProxy>&&);
 #endif
-
-    static const String& mousePointerType();
-    static const String& penPointerType();
-    static const String& touchPointerType();
 
     virtual ~PointerEvent();
 
@@ -114,14 +112,14 @@ public:
     EventInterface eventInterface() const override;
 
 private:
-    static bool typeIsEnterOrLeave(const AtomString& type) { return type == eventNames().pointerenterEvent || type == eventNames().pointerleaveEvent; }
+    static bool typeIsEnterOrLeave(const AtomString& type);
     static CanBubble typeCanBubble(const AtomString& type) { return typeIsEnterOrLeave(type) ? CanBubble::No : CanBubble::Yes; }
     static IsCancelable typeIsCancelable(const AtomString& type) { return typeIsEnterOrLeave(type) ? IsCancelable::No : IsCancelable::Yes; }
     static IsComposed typeIsComposed(const AtomString& type) { return typeIsEnterOrLeave(type) ? IsComposed::No : IsComposed::Yes; }
 
     PointerEvent();
     PointerEvent(const AtomString&, Init&&);
-    PointerEvent(const AtomString& type, short button, const MouseEvent&);
+    PointerEvent(const AtomString& type, short button, const MouseEvent&, PointerID, const String& pointerType);
     PointerEvent(const AtomString& type, PointerID, const String& pointerType, IsPrimary);
 #if ENABLE(TOUCH_EVENTS) && PLATFORM(IOS_FAMILY)
     PointerEvent(const AtomString& type, const PlatformTouchEvent&, IsCancelable isCancelable, unsigned touchIndex, bool isPrimary, Ref<WindowProxy>&&);
@@ -135,9 +133,15 @@ private:
     long m_tiltX { 0 };
     long m_tiltY { 0 };
     long m_twist { 0 };
-    String m_pointerType { PointerEvent::mousePointerType() };
+    String m_pointerType { mousePointerEventType() };
     bool m_isPrimary { false };
 };
+
+inline bool PointerEvent::typeIsEnterOrLeave(const AtomString& type)
+{
+    auto& eventNames = WebCore::eventNames();
+    return type == eventNames.pointerenterEvent || type == eventNames.pointerleaveEvent;
+}
 
 } // namespace WebCore
 

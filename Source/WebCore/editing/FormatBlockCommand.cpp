@@ -29,10 +29,12 @@
 #include "Document.h"
 #include "Editing.h"
 #include "Element.h"
+#include "ElementName.h"
 #include "HTMLElement.h"
 #include "HTMLNames.h"
 #include "VisibleUnits.h"
 #include <wtf/NeverDestroyed.h>
+#include <wtf/RobinHoodHashSet.h>
 
 namespace WebCore {
 
@@ -65,6 +67,9 @@ void FormatBlockCommand::formatRange(const Position& start, const Position& end,
     Node* nodeToSplitTo = enclosingBlockToSplitTreeTo(start.deprecatedNode());
     ASSERT(nodeToSplitTo);
     RefPtr<Node> outerBlock = (start.deprecatedNode() == nodeToSplitTo) ? start.deprecatedNode() : splitTreeToNode(*start.deprecatedNode(), *nodeToSplitTo);
+    if (!outerBlock)
+        return;
+
     RefPtr<Node> nodeAfterInsertionPosition = outerBlock;
 
     auto range = makeSimpleRange(start, endOfSelection);
@@ -94,17 +99,18 @@ void FormatBlockCommand::formatRange(const Position& start, const Position& end,
 
     moveParagraphWithClones(start, end, blockNode.get(), outerBlock.get());
 
-    if (wasEndOfParagraph && !isEndOfParagraph(lastParagraphInBlockNode) && !isStartOfParagraph(lastParagraphInBlockNode))
+    if (wasEndOfParagraph && lastParagraphInBlockNode.anchorNode()->isConnected()
+        && !isEndOfParagraph(lastParagraphInBlockNode) && !isStartOfParagraph(lastParagraphInBlockNode))
         insertBlockPlaceholder(lastParagraphInBlockNode);
 }
     
-Element* FormatBlockCommand::elementForFormatBlockCommand(const Optional<SimpleRange>& range)
+Element* FormatBlockCommand::elementForFormatBlockCommand(const std::optional<SimpleRange>& range)
 {
     if (!range)
         return nullptr;
 
-    auto commonAncestor = commonInclusiveAncestor(*range);
-    while (commonAncestor && !isElementForFormatBlock(commonAncestor.get()))
+    auto commonAncestor = commonInclusiveAncestor<ComposedTree>(*range);
+    while (commonAncestor && !isElementForFormatBlock(commonAncestor))
         commonAncestor = commonAncestor->parentNode();
     if (!is<Element>(commonAncestor))
         return nullptr;
@@ -118,31 +124,36 @@ Element* FormatBlockCommand::elementForFormatBlockCommand(const Optional<SimpleR
 
 bool isElementForFormatBlock(const QualifiedName& tagName)
 {
-    static const auto blockTags = makeNeverDestroyed(HashSet<QualifiedName> {
-        addressTag,
-        articleTag,
-        asideTag,
-        blockquoteTag,
-        ddTag,
-        divTag,
-        dlTag,
-        dtTag,
-        footerTag,
-        h1Tag,
-        h2Tag,
-        h3Tag,
-        h4Tag,
-        h5Tag,
-        h6Tag,
-        headerTag,
-        hgroupTag,
-        mainTag,
-        navTag,
-        pTag,
-        preTag,
-        sectionTag,
-    });
-    return blockTags.get().contains(tagName);
+    using namespace ElementNames;
+
+    switch (tagName.elementName()) {
+    case HTML::address:
+    case HTML::article:
+    case HTML::aside:
+    case HTML::blockquote:
+    case HTML::dd:
+    case HTML::div:
+    case HTML::dl:
+    case HTML::dt:
+    case HTML::footer:
+    case HTML::h1:
+    case HTML::h2:
+    case HTML::h3:
+    case HTML::h4:
+    case HTML::h5:
+    case HTML::h6:
+    case HTML::header:
+    case HTML::hgroup:
+    case HTML::main:
+    case HTML::nav:
+    case HTML::p:
+    case HTML::pre:
+    case HTML::section:
+        return true;
+    default:
+        break;
+    }
+    return false;
 }
 
 Node* enclosingBlockToSplitTreeTo(Node* startNode)

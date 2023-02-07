@@ -25,7 +25,7 @@
  */
 
 [
-    Exposed=(Window,Worker),
+    Exposed=*,
     JSBuiltin,
     PrivateIdentifier
 ] interface ReadableStreamBYOBReader {
@@ -33,7 +33,7 @@
 
     [NotEnumerable] Promise<any> read(optional any view);
     [NotEnumerable] Promise<any> cancel(optional any reason);
-    [NotEnumerable] void releaseLock();
+    [NotEnumerable] undefined releaseLock();
 
     [NotEnumerable] readonly attribute Promise<boolean> closed;
 };

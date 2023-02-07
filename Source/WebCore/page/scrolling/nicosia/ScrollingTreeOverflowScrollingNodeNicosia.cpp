@@ -32,11 +32,8 @@
 #if ENABLE(ASYNC_SCROLLING) && USE(NICOSIA)
 
 #include "NicosiaPlatformLayer.h"
-#if ENABLE(KINETIC_SCROLLING)
-#include "ScrollAnimationKinetic.h"
-#endif
-#include "ScrollingStateOverflowScrollingNode.h"
-#include "ScrollingTree.h"
+#include "ScrollingTreeScrollingNodeDelegateNicosia.h"
+#include "ThreadedScrollingTree.h"
 
 namespace WebCore {
 
@@ -48,96 +45,46 @@ Ref<ScrollingTreeOverflowScrollingNode> ScrollingTreeOverflowScrollingNodeNicosi
 ScrollingTreeOverflowScrollingNodeNicosia::ScrollingTreeOverflowScrollingNodeNicosia(ScrollingTree& scrollingTree, ScrollingNodeID nodeID)
     : ScrollingTreeOverflowScrollingNode(scrollingTree, nodeID)
 {
-#if ENABLE(KINETIC_SCROLLING)
-    m_kineticAnimation = makeUnique<ScrollAnimationKinetic>(
-        [this]() -> ScrollAnimationKinetic::ScrollExtents {
-            return { IntPoint(minimumScrollPosition()), IntPoint(maximumScrollPosition()) };
-        },
-        [this](FloatPoint&& position) {
-            auto* scrollLayer = static_cast<Nicosia::PlatformLayer*>(scrolledContentsLayer());
-            ASSERT(scrollLayer);
-            auto& compositionLayer = downcast<Nicosia::CompositionLayer>(*scrollLayer);
-
-            auto updateScope = compositionLayer.createUpdateScope();
-            scrollTo(position);
-        });
-#endif
+    m_delegate = makeUnique<ScrollingTreeScrollingNodeDelegateNicosia>(*this, downcast<ThreadedScrollingTree>(scrollingTree).scrollAnimatorEnabled());
 }
 
 ScrollingTreeOverflowScrollingNodeNicosia::~ScrollingTreeOverflowScrollingNodeNicosia() = default;
 
-void ScrollingTreeOverflowScrollingNodeNicosia::commitStateAfterChildren(const ScrollingStateNode& stateNode)
+ScrollingTreeScrollingNodeDelegateNicosia& ScrollingTreeOverflowScrollingNodeNicosia::delegate() const
 {
-    ScrollingTreeOverflowScrollingNode::commitStateAfterChildren(stateNode);
-
-    const auto& overflowStateNode = downcast<ScrollingStateOverflowScrollingNode>(stateNode);
-    if (overflowStateNode.hasChangedProperty(ScrollingStateScrollingNode::RequestedScrollPosition)) {
-        const auto& requestedScrollData = overflowStateNode.requestedScrollData();
-        scrollTo(requestedScrollData.scrollPosition, requestedScrollData.scrollType, requestedScrollData.clamping);
-    }
+    return *static_cast<ScrollingTreeScrollingNodeDelegateNicosia*>(m_delegate.get());
 }
 
-FloatPoint ScrollingTreeOverflowScrollingNodeNicosia::adjustedScrollPosition(const FloatPoint& position, ScrollClamping clamping) const
+void ScrollingTreeOverflowScrollingNodeNicosia::commitStateBeforeChildren(const ScrollingStateNode& stateNode)
 {
-    FloatPoint scrollPosition(roundf(position.x()), roundf(position.y()));
-    return ScrollingTreeOverflowScrollingNode::adjustedScrollPosition(scrollPosition, clamping);
+    ScrollingTreeOverflowScrollingNode::commitStateBeforeChildren(stateNode);
+    m_delegate->updateFromStateNode(downcast<ScrollingStateScrollingNode>(stateNode));
 }
 
 void ScrollingTreeOverflowScrollingNodeNicosia::repositionScrollingLayers()
 {
-    auto* scrollLayer = static_cast<Nicosia::PlatformLayer*>(scrolledContentsLayer());
+    auto* scrollLayer = static_cast<Nicosia::PlatformLayer*>(scrollContainerLayer());
     ASSERT(scrollLayer);
     auto& compositionLayer = downcast<Nicosia::CompositionLayer>(*scrollLayer);
 
     auto scrollOffset = currentScrollOffset();
 
-    compositionLayer.updateState(
+    compositionLayer.accessPending(
         [&scrollOffset](Nicosia::CompositionLayer::LayerState& state)
         {
             state.boundsOrigin = scrollOffset;
             state.delta.boundsOriginChanged = true;
         });
+
+    delegate().updateVisibleLengths();
 }
 
-WheelEventHandlingResult ScrollingTreeOverflowScrollingNodeNicosia::handleWheelEvent(const PlatformWheelEvent& wheelEvent)
+WheelEventHandlingResult ScrollingTreeOverflowScrollingNodeNicosia::handleWheelEvent(const PlatformWheelEvent& wheelEvent, EventTargeting eventTargeting)
 {
-    if (!canHandleWheelEvent(wheelEvent))
+    if (!canHandleWheelEvent(wheelEvent, eventTargeting))
         return WheelEventHandlingResult::unhandled();
 
-    if (wheelEvent.deltaX() || wheelEvent.deltaY()) {
-        auto* scrollLayer = static_cast<Nicosia::PlatformLayer*>(scrollContainerLayer());
-        ASSERT(scrollLayer);
-        auto& compositionLayer = downcast<Nicosia::CompositionLayer>(*scrollLayer);
-
-        auto updateScope = compositionLayer.createUpdateScope();
-        scrollBy({ -wheelEvent.deltaX(), -wheelEvent.deltaY() });
-    }
-
-#if ENABLE(KINETIC_SCROLLING)
-    m_kineticAnimation->appendToScrollHistory(wheelEvent);
-#endif
-
-#if ENABLE(KINETIC_SCROLLING)
-    m_kineticAnimation->stop();
-    if (wheelEvent.isEndOfNonMomentumScroll()) {
-        m_kineticAnimation->start(currentScrollPosition(), m_kineticAnimation->computeVelocity(), canHaveHorizontalScrollbar(), canHaveVerticalScrollbar());
-        m_kineticAnimation->clearScrollHistory();
-    }
-    if (wheelEvent.isTransitioningToMomentumScroll()) {
-        m_kineticAnimation->start(currentScrollPosition(), wheelEvent.swipeVelocity(), canHaveHorizontalScrollbar(), canHaveVerticalScrollbar());
-        m_kineticAnimation->clearScrollHistory();
-    }
-#endif
-
-    return WheelEventHandlingResult::handled();
-}
-
-void ScrollingTreeOverflowScrollingNodeNicosia::stopScrollAnimations()
-{
-#if ENABLE(KINETIC_SCROLLING)
-    m_kineticAnimation->stop();
-    m_kineticAnimation->clearScrollHistory();
-#endif
+    return WheelEventHandlingResult::result(delegate().handleWheelEvent(wheelEvent));
 }
 
 } // namespace WebCore

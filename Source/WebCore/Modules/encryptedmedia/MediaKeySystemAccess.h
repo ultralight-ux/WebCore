@@ -30,9 +30,10 @@
 
 #if ENABLE(ENCRYPTED_MEDIA)
 
-#include "GenericTaskQueue.h"
+#include "ActiveDOMObject.h"
 #include "MediaKeySystemConfiguration.h"
 #include <wtf/RefCounted.h>
+#include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -42,9 +43,9 @@ class DeferredPromise;
 class Document;
 class MediaKeys;
 
-class MediaKeySystemAccess : public RefCounted<MediaKeySystemAccess> {
+class MediaKeySystemAccess : public RefCounted<MediaKeySystemAccess>, public CanMakeWeakPtr<MediaKeySystemAccess>, public ActiveDOMObject {
 public:
-    static Ref<MediaKeySystemAccess> create(const String& keySystem, MediaKeySystemConfiguration&&, Ref<CDM>&&);
+    static Ref<MediaKeySystemAccess> create(Document&, const String& keySystem, MediaKeySystemConfiguration&&, Ref<CDM>&&);
     ~MediaKeySystemAccess();
 
     const String& keySystem() const { return m_keySystem; }
@@ -52,12 +53,14 @@ public:
     void createMediaKeys(Document&, Ref<DeferredPromise>&&);
 
 private:
-    MediaKeySystemAccess(const String& keySystem, MediaKeySystemConfiguration&&, Ref<CDM>&&);
+    MediaKeySystemAccess(Document&, const String& keySystem, MediaKeySystemConfiguration&&, Ref<CDM>&&);
+
+    // ActiveDOMObject
+    const char *activeDOMObjectName() const final { return "MediaKeySystemAccess"; }
 
     String m_keySystem;
     std::unique_ptr<MediaKeySystemConfiguration> m_configuration;
     Ref<CDM> m_implementation;
-    GenericTaskQueue<Timer> m_taskQueue;
 };
 
 } // namespace WebCore

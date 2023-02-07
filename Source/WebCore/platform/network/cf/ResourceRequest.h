@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2003-2022 Apple Inc.  All rights reserved.
  * Copyright (C) 2006 Samuel Weinig <sam.weinig@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,6 +39,16 @@ typedef const struct __CFURLStorageSession* CFURLStorageSessionRef;
 
 namespace WebCore {
 
+struct ResourceRequestPlatformData {
+#if PLATFORM(COCOA)
+    RetainPtr<NSURLRequest> m_urlRequest;
+    std::optional<bool> m_isAppInitiated;
+    std::optional<ResourceRequestRequester> m_requester;
+#endif
+};
+
+using ResourceRequestData = std::variant<ResourceRequestBase::RequestData, ResourceRequestPlatformData>;
+
 class ResourceRequest : public ResourceRequestBase {
 public:
     explicit ResourceRequest(const String& url) 
@@ -69,21 +79,49 @@ public:
     {
     }
 #else
-    ResourceRequest(NSURLRequest *nsRequest)
-        : ResourceRequestBase()
-        , m_nsRequest(nsRequest)
-    {
-    }
+    WEBCORE_EXPORT ResourceRequest(NSURLRequest *);
 #endif
+    
+
+    ResourceRequest(ResourceRequestBase&& base
+    , const String& cachePartition
+    , bool hiddenFromInspector
+#if USE(SYSTEM_PREVIEW)
+    , const std::optional<SystemPreviewInfo>& systemPreviewInfo
+#endif
+    )
+        : ResourceRequestBase(WTFMove(base))
+    {
+        m_cachePartition = cachePartition;
+        m_hiddenFromInspector = hiddenFromInspector;
+#if USE(SYSTEM_PREVIEW)
+        m_systemPreviewInfo = systemPreviewInfo;
+#endif
+    }
+
+    ResourceRequest(ResourceRequestPlatformData&&, const String& cachePartition, bool hiddenFromInspector
+#if USE(SYSTEM_PREVIEW)
+    , const std::optional<SystemPreviewInfo>&
+#endif
+    );
+
+    WEBCORE_EXPORT static ResourceRequest fromResourceRequestData(ResourceRequestData, const String& cachePartition, bool hiddenFromInspector
+#if USE(SYSTEM_PREVIEW)
+    , const std::optional<SystemPreviewInfo>&
+#endif
+    );
 
     WEBCORE_EXPORT void updateFromDelegatePreservingOldProperties(const ResourceRequest&);
-
+    
 #if PLATFORM(COCOA)
     bool encodingRequiresPlatformData() const { return m_httpBody || m_nsRequest; }
     WEBCORE_EXPORT NSURLRequest *nsURLRequest(HTTPBodyUpdatePolicy) const;
 
     WEBCORE_EXPORT static CFStringRef isUserInitiatedKey();
+    WEBCORE_EXPORT ResourceRequestPlatformData getResourceRequestPlatformData() const;
 #endif
+    
+    WEBCORE_EXPORT ResourceRequestData getRequestDataToSerialize() const;
 
 #if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     WEBCORE_EXPORT CFURLRequestRef cfURLRequest(HTTPBodyUpdatePolicy) const;
@@ -94,6 +132,8 @@ public:
     WEBCORE_EXPORT static void setHTTPPipeliningEnabled(bool);
 
     static bool resourcePrioritiesEnabled();
+
+    WEBCORE_EXPORT void replacePlatformRequest(HTTPBodyUpdatePolicy);
 
 private:
     friend class ResourceRequestBase;
@@ -127,7 +167,7 @@ inline bool ResourceRequest::resourcePrioritiesEnabled()
 }
 
 #if PLATFORM(COCOA)
-NSURLRequest *copyRequestWithStorageSession(CFURLStorageSessionRef, NSURLRequest *);
+RetainPtr<NSURLRequest> copyRequestWithStorageSession(CFURLStorageSessionRef, NSURLRequest *);
 WEBCORE_EXPORT NSCachedURLResponse *cachedResponseForRequest(CFURLStorageSessionRef, NSURLRequest *);
 #endif
 

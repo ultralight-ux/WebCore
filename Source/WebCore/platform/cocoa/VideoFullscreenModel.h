@@ -32,6 +32,7 @@
 #include "FloatRect.h"
 #include "HTMLMediaElementEnums.h"
 #include "MediaPlayerEnums.h"
+#include "MediaPlayerIdentifier.h"
 #include "PlaybackSessionModel.h"
 #include <wtf/CompletionHandler.h>
 #include <wtf/WeakPtr.h>
@@ -69,7 +70,7 @@ public:
 
 #if PLATFORM(IOS_FAMILY)
     virtual UIViewController *presentingViewController() { return nullptr; }
-    virtual UIViewController *createVideoFullscreenViewController(AVPlayerViewController *) { return nullptr; }
+    virtual RetainPtr<UIViewController> createVideoFullscreenViewController(AVPlayerViewController *) { return nullptr; }
 #endif
 };
 
@@ -81,10 +82,10 @@ public:
     virtual void willEnterPictureInPicture() { }
     virtual void didEnterPictureInPicture() { }
     virtual void failedToEnterPictureInPicture() { }
-    virtual void prepareToExitPictureInPicture() { }
     virtual void willExitPictureInPicture() { }
     virtual void didExitPictureInPicture() { }
     virtual void modelDestroyed() { }
+    virtual void setPlayerIdentifier(std::optional<MediaPlayerIdentifier>) { }
 };
     
 }

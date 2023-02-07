@@ -28,41 +28,15 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "WasmContextInlines.h"
+#include "WasmContext.h"
 #include <wtf/NeverDestroyed.h>
 
 namespace JSC { namespace Wasm {
 
-const PinnedRegisterInfo& PinnedRegisterInfo::get()
-{
-    static LazyNeverDestroyed<PinnedRegisterInfo> staticPinnedRegisterInfo;
-    static std::once_flag staticPinnedRegisterInfoFlag;
-    std::call_once(staticPinnedRegisterInfoFlag, [] () {
-        unsigned numberOfPinnedRegisters = 2;
-        if (!Context::useFastTLS())
-            ++numberOfPinnedRegisters;
-        GPRReg baseMemoryPointer = GPRInfo::regCS3;
-        GPRReg sizeRegister = GPRInfo::regCS4;
-        GPRReg wasmContextInstancePointer = InvalidGPRReg;
-        if (!Context::useFastTLS())
-            wasmContextInstancePointer = GPRInfo::regCS0;
-
-        staticPinnedRegisterInfo.construct(sizeRegister, baseMemoryPointer, wasmContextInstancePointer);
-    });
-
-    return staticPinnedRegisterInfo.get();
-}
-
-PinnedRegisterInfo::PinnedRegisterInfo(GPRReg sizeRegister, GPRReg baseMemoryPointer, GPRReg wasmContextInstancePointer)
-    : sizeRegister(sizeRegister)
-    , baseMemoryPointer(baseMemoryPointer)
-    , wasmContextInstancePointer(wasmContextInstancePointer)
-{
-}
-
-MemoryInformation::MemoryInformation(PageCount initial, PageCount maximum, bool isImport)
+MemoryInformation::MemoryInformation(PageCount initial, PageCount maximum, bool isShared, bool isImport)
     : m_initial(initial)
     , m_maximum(maximum)
+    , m_isShared(isShared)
     , m_isImport(isImport)
 {
     RELEASE_ASSERT(!!m_initial);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,13 +28,14 @@
 
 #include "ClonedArguments.h"
 #include "DebuggerPrimitives.h"
+#include "ExecutableBaseInlines.h"
 #include "InlineCallFrame.h"
 #include "JSCInlines.h"
 #include "RegisterAtOffsetList.h"
 #include "WasmCallee.h"
 #include "WasmIndexOrName.h"
 #include "WebAssemblyFunction.h"
-#include <wtf/text/StringBuilder.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace JSC {
 
@@ -110,7 +111,7 @@ void StackVisitor::readFrame(CallFrame* callFrame)
         return;
     }
 
-    if (callFrame->isAnyWasmCallee()) {
+    if (callFrame->isWasmFrame()) {
         readNonInlinedFrame(callFrame);
         return;
     }
@@ -161,29 +162,24 @@ void StackVisitor::readNonInlinedFrame(CallFrame* callFrame, CodeOrigin* codeOri
     m_frame.m_callerFrame = callFrame->callerFrame(m_frame.m_callerEntryFrame);
     m_frame.m_callerIsEntryFrame = m_frame.m_callerEntryFrame != m_frame.m_entryFrame;
     m_frame.m_isWasmFrame = false;
-
-    CalleeBits callee = callFrame->callee();
-    m_frame.m_callee = callee;
-
-    if (callFrame->isAnyWasmCallee()) {
-        m_frame.m_isWasmFrame = true;
-        m_frame.m_codeBlock = nullptr;
-        m_frame.m_bytecodeIndex = BytecodeIndex();
-#if ENABLE(WEBASSEMBLY)
-        CalleeBits bits = callFrame->callee();
-        if (bits.isWasm())
-            m_frame.m_wasmFunctionIndexOrName = bits.asWasmCallee()->indexOrName();
-#endif
-    } else {
-        m_frame.m_codeBlock = callFrame->codeBlock();
-        m_frame.m_bytecodeIndex = !m_frame.codeBlock() ? BytecodeIndex(0)
-            : codeOrigin ? codeOrigin->bytecodeIndex()
-            : callFrame->bytecodeIndex();
-
-    }
-
+    m_frame.m_callee = callFrame->callee();
 #if ENABLE(DFG_JIT)
     m_frame.m_inlineCallFrame = nullptr;
+#endif
+
+    m_frame.m_codeBlock = callFrame->isWasmFrame() ? nullptr : callFrame->codeBlock();
+    m_frame.m_bytecodeIndex = !m_frame.codeBlock() ? BytecodeIndex(0)
+        : codeOrigin ? codeOrigin->bytecodeIndex()
+        : callFrame->bytecodeIndex();
+
+#if ENABLE(WEBASSEMBLY)
+    if (callFrame->isWasmFrame()) {
+        m_frame.m_isWasmFrame = true;
+        m_frame.m_codeBlock = nullptr;
+
+        if (m_frame.m_callee.isWasm())
+            m_frame.m_wasmFunctionIndexOrName = m_frame.m_callee.asWasmCallee()->indexOrName();
+    }
 #endif
 }
 
@@ -253,34 +249,31 @@ StackVisitor::Frame::CodeType StackVisitor::Frame::codeType() const
 }
 
 #if ENABLE(ASSEMBLER)
-Optional<RegisterAtOffsetList> StackVisitor::Frame::calleeSaveRegistersForUnwinding()
+std::optional<RegisterAtOffsetList> StackVisitor::Frame::calleeSaveRegistersForUnwinding()
 {
     if (!NUMBER_OF_CALLEE_SAVES_REGISTERS)
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (isInlinedFrame())
-        return WTF::nullopt;
+        return std::nullopt;
 
 #if ENABLE(WEBASSEMBLY)
     if (isWasmFrame()) {
         if (callee().isCell()) {
-            RELEASE_ASSERT(isWebAssemblyModule(callee().asCell()));
-            return WTF::nullopt;
+            RELEASE_ASSERT(isWebAssemblyInstance(callee().asCell()));
+            return std::nullopt;
         }
         Wasm::Callee* wasmCallee = callee().asWasmCallee();
-        return *wasmCallee->calleeSaveRegisters();
-    }
-
-    if (callee().isCell()) {
-        if (auto* jsToWasmICCallee = jsDynamicCast<JSToWasmICCallee*>(callee().asCell()->vm(), callee().asCell()))
-            return jsToWasmICCallee->function()->usedCalleeSaveRegisters();
+        if (auto* calleeSaveRegisters = wasmCallee->calleeSaveRegisters())
+            return *calleeSaveRegisters;
+        return std::nullopt;
     }
 #endif // ENABLE(WEBASSEMBLY)
 
     if (CodeBlock* codeBlock = this->codeBlock())
-        return *codeBlock->calleeSaveRegisters();
+        return *codeBlock->jitCode()->calleeSaveRegisters();
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 #endif // ENABLE(ASSEMBLER)
 
@@ -340,28 +333,20 @@ String StackVisitor::Frame::sourceURL() const
 
 String StackVisitor::Frame::toString() const
 {
-    StringBuilder traceBuild;
     String functionName = this->functionName();
     String sourceURL = this->sourceURL();
-    traceBuild.append(functionName);
-    if (!sourceURL.isEmpty()) {
-        if (!functionName.isEmpty())
-            traceBuild.append('@');
-        traceBuild.append(sourceURL);
-        if (hasLineAndColumnInfo()) {
-            unsigned line = 0;
-            unsigned column = 0;
-            computeLineAndColumn(line, column);
-            traceBuild.append(':');
-            traceBuild.appendNumber(line);
-            traceBuild.append(':');
-            traceBuild.appendNumber(column);
-        }
-    }
-    return traceBuild.toString().impl();
+    const char* separator = !sourceURL.isEmpty() && !functionName.isEmpty() ? "@" : "";
+
+    if (sourceURL.isEmpty() || !hasLineAndColumnInfo())
+        return makeString(functionName, separator, sourceURL);
+
+    unsigned line = 0;
+    unsigned column = 0;
+    computeLineAndColumn(line, column);
+    return makeString(functionName, separator, sourceURL, ':', line, ':', column);
 }
 
-intptr_t StackVisitor::Frame::sourceID()
+SourceID StackVisitor::Frame::sourceID()
 {
     if (CodeBlock* codeBlock = this->codeBlock())
         return codeBlock->ownerExecutable()->sourceID();
@@ -415,7 +400,7 @@ void StackVisitor::Frame::computeLineAndColumn(unsigned& line, unsigned& column)
     line = divotLine + codeBlock->ownerExecutable()->firstLine();
     column = divotColumn + (divotLine ? 1 : codeBlock->firstLineColumnOffset());
 
-    if (Optional<int> overrideLineNumber = codeBlock->ownerExecutable()->overrideLineNumber(codeBlock->vm()))
+    if (std::optional<int> overrideLineNumber = codeBlock->ownerExecutable()->overrideLineNumber(codeBlock->vm()))
         line = overrideLineNumber.value();
 }
 
@@ -433,6 +418,37 @@ void StackVisitor::Frame::setToEnd()
     m_inlineCallFrame = nullptr;
 #endif
     m_isWasmFrame = false;
+}
+
+bool StackVisitor::Frame::isImplementationVisibilityPrivate() const
+{
+    auto* executable = [&] () -> ExecutableBase* {
+        if (auto* codeBlock = this->codeBlock())
+            return codeBlock->ownerExecutable();
+
+        if (callee().isCell()) {
+            if (auto* callee = this->callee().asCell()) {
+                if (auto* jsFunction = jsDynamicCast<JSFunction*>(callee))
+                    return jsFunction->executable();
+            }
+        }
+
+        return nullptr;
+    }();
+    if (!executable)
+        return false;
+
+    switch (executable->implementationVisibility()) {
+    case ImplementationVisibility::Public:
+        return false;
+
+    case ImplementationVisibility::Private:
+    case ImplementationVisibility::PrivateRecursive:
+        return true;
+    }
+
+    ASSERT_NOT_REACHED();
+    return false;
 }
 
 void StackVisitor::Frame::dump(PrintStream& out, Indenter indent) const
@@ -457,7 +473,7 @@ void StackVisitor::Frame::dump(PrintStream& out, Indenter indent, WTF::Function<
 
         CallFrame* callFrame = m_callFrame;
         CallFrame* callerFrame = this->callerFrame();
-        const void* returnPC = callFrame->hasReturnPC() ? callFrame->returnPC().value() : nullptr;
+        const void* returnPC = callFrame->hasReturnPC() ? callFrame->returnPCForInspection() : nullptr;
 
         out.print(indent, "name: ", functionName(), "\n");
         out.print(indent, "sourceURL: ", sourceURL(), "\n");
@@ -475,7 +491,7 @@ void StackVisitor::Frame::dump(PrintStream& out, Indenter indent, WTF::Function<
         out.print(indent, "callerFrame: ", RawPointer(callerFrame), "\n");
         uintptr_t locationRawBits = callFrame->callSiteAsRawBits();
         out.print(indent, "rawLocationBits: ", locationRawBits,
-            " ", RawPointer(reinterpret_cast<void*>(locationRawBits)), "\n");
+            " ", RawHex(locationRawBits), "\n");
         out.print(indent, "codeBlock: ", RawPointer(codeBlock));
         if (codeBlock)
             out.print(" ", *codeBlock);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,12 +33,12 @@ namespace JSC {
 
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(DebuggerScope);
 
-const ClassInfo DebuggerScope::s_info = { "DebuggerScope", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(DebuggerScope) };
+const ClassInfo DebuggerScope::s_info = { "DebuggerScope"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(DebuggerScope) };
 
 DebuggerScope* DebuggerScope::create(VM& vm, JSScope* scope)
 {
-    Structure* structure = scope->globalObject(vm)->debuggerScopeStructure();
-    DebuggerScope* debuggerScope = new (NotNull, allocateCell<DebuggerScope>(vm.heap)) DebuggerScope(vm, structure, scope);
+    Structure* structure = scope->globalObject()->debuggerScopeStructure();
+    DebuggerScope* debuggerScope = new (NotNull, allocateCell<DebuggerScope>(vm)) DebuggerScope(vm, structure, scope);
     debuggerScope->finishCreation(vm);
     return debuggerScope;
 }
@@ -55,7 +55,8 @@ void DebuggerScope::finishCreation(VM& vm)
     Base::finishCreation(vm);
 }
 
-void DebuggerScope::visitChildren(JSCell* cell, SlotVisitor& visitor)
+template<typename Visitor>
+void DebuggerScope::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
     DebuggerScope* thisObject = jsCast<DebuggerScope*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
@@ -65,27 +66,7 @@ void DebuggerScope::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(thisObject->m_next);
 }
 
-String DebuggerScope::className(const JSObject* object, VM& vm)
-{
-    const DebuggerScope* scope = jsCast<const DebuggerScope*>(object);
-    // We cannot assert that scope->isValid() because the TypeProfiler may encounter an invalidated
-    // DebuggerScope in its log entries. We just need to handle it appropriately as below.
-    if (!scope->isValid())
-        return String();
-    JSObject* thisObject = JSScope::objectAtScope(scope->jsScope());
-    return thisObject->methodTable(vm)->className(thisObject, vm);
-}
-
-String DebuggerScope::toStringName(const JSObject* object, JSGlobalObject* globalObject)
-{
-    const DebuggerScope* scope = jsCast<const DebuggerScope*>(object);
-    // We cannot assert that scope->isValid() because the TypeProfiler may encounter an invalidated
-    // DebuggerScope in its log entries. We just need to handle it appropriately as below.
-    if (!scope->isValid())
-        return String();
-    JSObject* thisObject = JSScope::objectAtScope(scope->jsScope());
-    return thisObject->methodTable(globalObject->vm())->toStringName(thisObject, globalObject);
-}
+DEFINE_VISIT_CHILDREN(DebuggerScope);
 
 bool DebuggerScope::getOwnPropertySlot(JSObject* object, JSGlobalObject* globalObject, PropertyName propertyName, PropertySlot& slot)
 {
@@ -125,7 +106,7 @@ bool DebuggerScope::put(JSCell* cell, JSGlobalObject* globalObject, PropertyName
         return false;
     JSObject* thisObject = JSScope::objectAtScope(scope->jsScope());
     slot.setThisValue(JSValue(thisObject));
-    return thisObject->methodTable(globalObject->vm())->put(thisObject, globalObject, propertyName, value, slot);
+    return thisObject->methodTable()->put(thisObject, globalObject, propertyName, value, slot);
 }
 
 bool DebuggerScope::deleteProperty(JSCell* cell, JSGlobalObject* globalObject, PropertyName propertyName, DeletePropertySlot& slot)
@@ -135,17 +116,17 @@ bool DebuggerScope::deleteProperty(JSCell* cell, JSGlobalObject* globalObject, P
     if (!scope->isValid())
         return false;
     JSObject* thisObject = JSScope::objectAtScope(scope->jsScope());
-    return thisObject->methodTable(globalObject->vm())->deleteProperty(thisObject, globalObject, propertyName, slot);
+    return thisObject->methodTable()->deleteProperty(thisObject, globalObject, propertyName, slot);
 }
 
-void DebuggerScope::getOwnPropertyNames(JSObject* object, JSGlobalObject* globalObject, PropertyNameArray& propertyNames, EnumerationMode mode)
+void DebuggerScope::getOwnPropertyNames(JSObject* object, JSGlobalObject* globalObject, PropertyNameArray& propertyNames, DontEnumPropertiesMode mode)
 {
     DebuggerScope* scope = jsCast<DebuggerScope*>(object);
     ASSERT(scope->isValid());
     if (!scope->isValid())
         return;
     JSObject* thisObject = JSScope::objectAtScope(scope->jsScope());
-    thisObject->methodTable(globalObject->vm())->getPropertyNames(thisObject, globalObject, propertyNames, mode);
+    thisObject->getPropertyNames(globalObject, propertyNames, mode);
 }
 
 bool DebuggerScope::defineOwnProperty(JSObject* object, JSGlobalObject* globalObject, PropertyName propertyName, const PropertyDescriptor& descriptor, bool shouldThrow)
@@ -155,7 +136,7 @@ bool DebuggerScope::defineOwnProperty(JSObject* object, JSGlobalObject* globalOb
     if (!scope->isValid())
         return false;
     JSObject* thisObject = JSScope::objectAtScope(scope->jsScope());
-    return thisObject->methodTable(globalObject->vm())->defineOwnProperty(thisObject, globalObject, propertyName, descriptor, shouldThrow);
+    return thisObject->methodTable()->defineOwnProperty(thisObject, globalObject, propertyName, descriptor, shouldThrow);
 }
 
 DebuggerScope* DebuggerScope::next()
@@ -223,7 +204,7 @@ bool DebuggerScope::isNestedLexicalScope() const
 
 String DebuggerScope::name() const
 {
-    SymbolTable* symbolTable = m_scope->symbolTable(vm());
+    SymbolTable* symbolTable = m_scope->symbolTable();
     if (!symbolTable)
         return String();
 
@@ -236,7 +217,7 @@ String DebuggerScope::name() const
 
 DebuggerLocation DebuggerScope::location() const
 {
-    SymbolTable* symbolTable = m_scope->symbolTable(vm());
+    SymbolTable* symbolTable = m_scope->symbolTable();
     if (!symbolTable)
         return DebuggerLocation();
 

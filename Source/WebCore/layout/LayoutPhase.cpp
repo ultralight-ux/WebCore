@@ -26,8 +26,6 @@
 #include "config.h"
 #include "LayoutPhase.h"
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
@@ -57,7 +55,7 @@ bool Phase::isInInvalidation()
 PhaseScope::PhaseScope(Phase::Type type)
 { 
     // Should never nest states like calling TreeBuilding from Layout. 
-    ASSERT(!(*phase()).hasValue());
+    ASSERT(!(*phase()).has_value());
     phase().set(type);
 }
     
@@ -68,4 +66,3 @@ PhaseScope::~PhaseScope()
 
 }
 }
-#endif

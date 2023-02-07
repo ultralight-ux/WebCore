@@ -53,7 +53,7 @@ static void collectGarbageAfterWindowProxyDestruction()
 }
 
 WindowProxy::WindowProxy(AbstractFrame& frame)
-    : m_frame(&frame)
+    : m_frame(frame)
     , m_jsWindowProxies(makeUniqueRef<ProxyMap>())
 {
 }
@@ -62,6 +62,11 @@ WindowProxy::~WindowProxy()
 {
     ASSERT(!m_frame);
     ASSERT(m_jsWindowProxies->isEmpty());
+}
+
+AbstractFrame* WindowProxy::frame() const
+{
+    return m_frame.get();
 }
 
 void WindowProxy::detachFromFrame()
@@ -140,7 +145,7 @@ void WindowProxy::clearJSWindowProxiesNotMatchingDOMWindow(AbstractDOMWindow* ne
         // Clear the debugger and console from the current window before setting the new window.
         windowProxy->attachDebugger(nullptr);
         windowProxy->window()->setConsoleClient(nullptr);
-        if (auto* jsDOMWindow = jsDynamicCast<JSDOMWindowBase*>(windowProxy->vm(), windowProxy->window()))
+        if (auto* jsDOMWindow = jsDynamicCast<JSDOMWindowBase*>(windowProxy->window()))
             jsDOMWindow->willRemoveFromWindowProxy();
     }
 
@@ -181,9 +186,10 @@ void WindowProxy::setDOMWindow(AbstractDOMWindow* newDOMWindow)
             cacheableBindingRootObject->updateGlobalObject(windowProxy->window());
 
         windowProxy->attachDebugger(page ? page->debugger() : nullptr);
-        if (page)
+        if (page) {
             windowProxy->window()->setProfileGroup(page->group().identifier());
-        windowProxy->window()->setConsoleClient(page ? &page->console() : nullptr);
+            windowProxy->window()->setConsoleClient(page->console());
+        }
     }
 }
 

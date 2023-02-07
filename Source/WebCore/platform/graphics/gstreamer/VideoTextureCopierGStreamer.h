@@ -25,12 +25,12 @@
 #include "ImageOrientation.h"
 #include "TextureMapperGLHeaders.h"
 #include "TextureMapperPlatformLayerBuffer.h"
+#include "TextureMapperShaderProgram.h"
 #include "TransformationMatrix.h"
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
 
-class TextureMapperShaderProgram;
 struct ImageOrientation;
 
 class VideoTextureCopierGStreamer {
@@ -45,7 +45,7 @@ public:
     VideoTextureCopierGStreamer(ColorConversion);
     ~VideoTextureCopierGStreamer();
 
-    bool copyVideoTextureToPlatformTexture(TextureMapperPlatformLayerBuffer& inputTexture, IntSize& frameSize, GLuint outputTexture, GLenum outputTarget, GLint level, GLenum internalFormat, GLenum format, GLenum type, bool flipY, ImageOrientation sourceOrientation);
+    bool copyVideoTextureToPlatformTexture(TextureMapperPlatformLayerBuffer& inputTexture, IntSize& frameSize, GLuint outputTexture, GLenum outputTarget, GLint level, GLenum internalFormat, GLenum format, GLenum type, bool flipY, ImageOrientation sourceOrientation, bool premultiplyAlpha);
     void updateColorConversionMatrix(ColorConversion);
     void updateTextureSpaceMatrix();
     void updateTransformationMatrix();
@@ -53,7 +53,7 @@ public:
 
 private:
     RefPtr<TextureMapperShaderProgram> m_shaderProgram;
-    unsigned m_shaderOptions { 0 };
+    TextureMapperShaderProgram::Options m_shaderOptions;
     GLuint m_framebuffer { 0 };
     GLuint m_vbo { 0 };
 #if !USE(OPENGL_ES)

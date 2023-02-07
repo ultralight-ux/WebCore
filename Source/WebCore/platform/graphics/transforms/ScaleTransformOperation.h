@@ -29,17 +29,16 @@
 
 namespace WebCore {
 
+struct BlendingContext;
+
 class ScaleTransformOperation final : public TransformOperation {
 public:
-    static Ref<ScaleTransformOperation> create(double sx, double sy, OperationType type)
+    static Ref<ScaleTransformOperation> create(double sx, double sy, TransformOperation::Type type)
     {
         return adoptRef(*new ScaleTransformOperation(sx, sy, 1, type));
     }
 
-    static Ref<ScaleTransformOperation> create(double sx, double sy, double sz, OperationType type)
-    {
-        return adoptRef(*new ScaleTransformOperation(sx, sy, sz, type));
-    }
+    WEBCORE_EXPORT static Ref<ScaleTransformOperation> create(double, double, double, TransformOperation::Type);
 
     Ref<TransformOperation> clone() const override
     {
@@ -50,12 +49,19 @@ public:
     double y() const { return m_y; }
     double z() const { return m_z; }
 
-private:
-    bool isIdentity() const override { return m_x == 1 &&  m_y == 1 &&  m_z == 1; }
-    bool isAffectedByTransformOrigin() const override { return !isIdentity(); }
+    TransformOperation::Type primitiveType() const final { return (type() == Type::ScaleZ || type() == Type::Scale3D) ? Type::Scale3D : Type::Scale; }
+
+    bool operator==(const ScaleTransformOperation& other) const { return operator==(static_cast<const TransformOperation&>(other)); }
+    bool operator==(const TransformOperation&) const final;
+
+    Ref<TransformOperation> blend(const TransformOperation* from, const BlendingContext&, bool blendToIdentity = false) final;
+
+    bool isIdentity() const final { return m_x == 1 &&  m_y == 1 &&  m_z == 1; }
+
     bool isRepresentableIn2D() const final { return m_z == 1; }
 
-    bool operator==(const TransformOperation&) const override;
+private:
+    bool isAffectedByTransformOrigin() const override { return !isIdentity(); }
 
     bool apply(TransformationMatrix& transform, const FloatSize&) const override
     {
@@ -63,19 +69,10 @@ private:
         return false;
     }
 
-    Ref<TransformOperation> blend(const TransformOperation* from, double progress, bool blendToIdentity = false) override;
-
     void dump(WTF::TextStream&) const final;
 
-    ScaleTransformOperation(double sx, double sy, double sz, OperationType type)
-        : TransformOperation(type)
-        , m_x(sx)
-        , m_y(sy)
-        , m_z(sz)
-    {
-        ASSERT(isScaleTransformOperationType());
-    }
-        
+    ScaleTransformOperation(double, double, double, TransformOperation::Type);
+
     double m_x;
     double m_y;
     double m_z;

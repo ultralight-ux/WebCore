@@ -42,7 +42,6 @@ public:
     virtual void applicationDidEnterBackground(SuspendedUnderLock) = 0;
     virtual void applicationWillBecomeInactive() = 0;
     virtual void applicationDidBecomeActive() = 0;
-    virtual void mediaServerConnectionDied() { };
 
     enum class HasAvailableTargets : bool { No, Yes };
     virtual void externalOutputDeviceAvailableDidChange(HasAvailableTargets) = 0;
@@ -65,27 +64,63 @@ public:
     static void resetSharedHelper();
 
     MediaSessionHelper() = default;
+    explicit MediaSessionHelper(bool isExternalOutputDeviceAvailable);
     virtual ~MediaSessionHelper() = default;
 
     void addClient(MediaSessionHelperClient&);
     void removeClient(MediaSessionHelperClient&);
 
-    virtual void startMonitoringWirelessRoutes() = 0;
-    virtual void stopMonitoringWirelessRoutes() = 0;
+    void startMonitoringWirelessRoutes();
+    void stopMonitoringWirelessRoutes();
     virtual void providePresentingApplicationPID(int) = 0;
+
+    void setIsExternalOutputDeviceAvailable(bool);
 
     bool isMonitoringWirelessRoutes() const { return m_monitoringWirelessRoutesCount; }
     bool isExternalOutputDeviceAvailable() const { return m_isExternalOutputDeviceAvailable; }
     bool activeVideoRouteSupportsAirPlayVideo() const { return m_activeVideoRouteSupportsAirPlayVideo; }
     bool isPlayingToAutomotiveHeadUnit() const { return m_isPlayingToAutomotiveHeadUnit; }
 
+    MediaPlaybackTarget* playbackTarget() const { return m_playbackTarget.get(); }
+
+    using HasAvailableTargets = MediaSessionHelperClient::HasAvailableTargets;
+    using PlayingToAutomotiveHeadUnit = MediaSessionHelperClient::PlayingToAutomotiveHeadUnit;
+    using ShouldPause = MediaSessionHelperClient::ShouldPause;
+    using SupportsAirPlayVideo = MediaSessionHelperClient::SupportsAirPlayVideo;
+    using SuspendedUnderLock = MediaSessionHelperClient::SuspendedUnderLock;
+
+    void activeAudioRouteDidChange(ShouldPause);
+    void applicationWillEnterForeground(SuspendedUnderLock);
+    void applicationDidEnterBackground(SuspendedUnderLock);
+    void applicationWillBecomeInactive();
+    void applicationDidBecomeActive();
+
 protected:
+    void externalOutputDeviceAvailableDidChange(HasAvailableTargets);
+    void isPlayingToAutomotiveHeadUnitDidChange(PlayingToAutomotiveHeadUnit);
+    void activeVideoRouteDidChange(SupportsAirPlayVideo, Ref<MediaPlaybackTarget>&&);
+
+private:
+    virtual void startMonitoringWirelessRoutesInternal() = 0;
+    virtual void stopMonitoringWirelessRoutesInternal() = 0;
+
     WeakHashSet<MediaSessionHelperClient> m_clients;
-    uint32_t m_monitoringWirelessRoutesCount { 0 };
     bool m_isExternalOutputDeviceAvailable { false };
+    uint32_t m_monitoringWirelessRoutesCount { 0 };
     bool m_activeVideoRouteSupportsAirPlayVideo { false };
     bool m_isPlayingToAutomotiveHeadUnit { false };
+    RefPtr<MediaPlaybackTarget> m_playbackTarget;
 };
+
+inline MediaSessionHelper::MediaSessionHelper(bool isExternalOutputDeviceAvailable)
+    : m_isExternalOutputDeviceAvailable(isExternalOutputDeviceAvailable)
+{
+}
+
+inline void MediaSessionHelper::setIsExternalOutputDeviceAvailable(bool isExternalOutputDeviceAvailable)
+{
+    m_isExternalOutputDeviceAvailable = isExternalOutputDeviceAvailable;
+}
 
 }
 

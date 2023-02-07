@@ -39,6 +39,7 @@ namespace WebCore {
 class SearchFieldResultsButtonElement;
 
 class SearchInputType final : public BaseTextInputType {
+    template<typename DowncastedType> friend bool isInvalidInputType(const InputType&, const String&);
 public:
     explicit SearchInputType(HTMLInputElement&);
 
@@ -49,7 +50,6 @@ private:
     void attributeChanged(const QualifiedName&) final;
     RenderPtr<RenderElement> createInputRenderer(RenderStyle&&) final;
     const AtomString& formControlType() const final;
-    bool isSearchField() const final;
     bool needsContainer() const final;
     void createShadowSubtree() final;
     void destroyShadowSubtree() final;
@@ -59,6 +59,7 @@ private:
     void didSetValueByUserEdit() final;
     bool sizeShouldIncludeDecoration(int defaultSize, int& preferredSize) const final;
     float decorationWidth() const final;
+    void setValue(const String&, bool valueChanged, TextFieldEventBehavior, TextControlSetValueSelection) final;
 
     void searchEventTimerFired();
     bool searchEventsShouldBeDispatched() const;
@@ -71,4 +72,4 @@ private:
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_INPUT_TYPE(SearchInputType, isSearchField())
+SPECIALIZE_TYPE_TRAITS_INPUT_TYPE(SearchInputType, Type::Search)

@@ -61,10 +61,10 @@ static ApplePayPaymentPass::ActivationState convert(PKPaymentPassActivationState
     }
 }
 
-static Optional<ApplePayPaymentPass> convert(PKPaymentPass *paymentPass)
+static std::optional<ApplePayPaymentPass> convert(PKPaymentPass *paymentPass)
 {
     if (!paymentPass)
-        return WTF::nullopt;
+        return std::nullopt;
 
     ApplePayPaymentPass result;
 
@@ -81,7 +81,7 @@ static Optional<ApplePayPaymentPass> convert(PKPaymentPass *paymentPass)
     return result;
 }
 
-static Optional<ApplePayPaymentMethod::Type> convert(PKPaymentMethodType paymentMethodType)
+static std::optional<ApplePayPaymentMethod::Type> convert(PKPaymentMethodType paymentMethodType)
 {
     switch (paymentMethodType) {
     case PKPaymentMethodTypeDebit:
@@ -93,18 +93,15 @@ static Optional<ApplePayPaymentMethod::Type> convert(PKPaymentMethodType payment
     case PKPaymentMethodTypeStore:
         return ApplePayPaymentMethod::Type::Store;
     case PKPaymentMethodTypeUnknown:
-        return WTF::nullopt;
+    default:
+        return std::nullopt;
     }
 }
 
-#if HAVE(PASSKIT_PAYMENT_METHOD_BILLING_ADDRESS)
 static void convert(CNLabeledValue<CNPostalAddress*> *postalAddress, ApplePayPaymentContact &result)
 {
-    Vector<String> addressLine;
-    if (NSString *street = postalAddress.value.street) {
-        addressLine.append(street);
-        result.addressLines = WTFMove(addressLine);
-    }
+    if (NSString *street = postalAddress.value.street)
+        result.addressLines = { String { street } };
     result.subLocality = postalAddress.value.subLocality;
     result.locality = postalAddress.value.city;
     result.subAdministrativeArea = postalAddress.value.subAdministrativeArea;
@@ -114,10 +111,10 @@ static void convert(CNLabeledValue<CNPostalAddress*> *postalAddress, ApplePayPay
     result.countryCode = postalAddress.value.ISOCountryCode;
 }
 
-static Optional<ApplePayPaymentContact> convert(CNContact *billingContact)
+static std::optional<ApplePayPaymentContact> convert(CNContact *billingContact)
 {
     if (!billingContact)
-        return WTF::nullopt;
+        return std::nullopt;
 
     ApplePayPaymentContact result;
     
@@ -138,7 +135,6 @@ static Optional<ApplePayPaymentContact> convert(CNContact *billingContact)
 
     return result;
 }
-#endif
 
 static ApplePayPaymentMethod convert(PKPaymentMethod *paymentMethod)
 {
@@ -148,9 +144,7 @@ static ApplePayPaymentMethod convert(PKPaymentMethod *paymentMethod)
         result.displayName = displayName;
     if (NSString *network = paymentMethod.network)
         result.network = network;
-#if HAVE(PASSKIT_PAYMENT_METHOD_BILLING_ADDRESS)
     result.billingContact = convert(paymentMethod.billingAddress);
-#endif
     result.type = convert(paymentMethod.type);
     result.paymentPass = convert(paymentMethod.paymentPass);
 

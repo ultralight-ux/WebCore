@@ -32,6 +32,7 @@
 #include "HTMLNames.h"
 #include "HTMLObjectElement.h"
 #include "NodeRareData.h"
+#include "PseudoClassChangeInvalidation.h"
 #include "RenderElement.h"
 #include "ScriptDisallowedScope.h"
 #include <wtf/IsoMallocInlines.h>
@@ -51,7 +52,7 @@ inline HTMLFieldSetElement::HTMLFieldSetElement(const QualifiedName& tagName, Do
 
 HTMLFieldSetElement::~HTMLFieldSetElement()
 {
-    if (m_hasDisabledAttribute)
+    if (hasDisabledAttribute())
         document().removeDisabledFieldsetElement();
 }
 
@@ -62,33 +63,35 @@ Ref<HTMLFieldSetElement> HTMLFieldSetElement::create(const QualifiedName& tagNam
 
 static void updateFromControlElementsAncestorDisabledStateUnder(HTMLElement& startNode, bool isDisabled)
 {
-    RefPtr<HTMLFormControlElement> control;
-    if (is<HTMLFormControlElement>(startNode))
-        control = &downcast<HTMLFormControlElement>(startNode);
-    else
-        control = Traversal<HTMLFormControlElement>::firstWithin(startNode);
-    while (control) {
-        control->setAncestorDisabled(isDisabled);
-        // Don't call setAncestorDisabled(false) on form controls inside disabled fieldsets.
-        if (is<HTMLFieldSetElement>(*control) && control->hasAttributeWithoutSynchronization(disabledAttr))
-            control = Traversal<HTMLFormControlElement>::nextSkippingChildren(*control, &startNode);
+    auto range = inclusiveDescendantsOfType<Element>(startNode);
+    auto it = range.begin();
+
+    // This preserves status-quo established before https://github.com/WebKit/WebKit/pull/4988:
+    // setDisabledByAncestorFieldset() may modify shadow DOM of <input> / <textarea> elements, but we don't care.
+    it.dropAssertions();
+
+    while (it != range.end()) {
+        if (auto* listedElement = it->asValidatedFormListedElement())
+            listedElement->setDisabledByAncestorFieldset(isDisabled);
+
+        // Don't call setDisabledByAncestorFieldset() on form controls inside disabled fieldsets.
+        if (is<HTMLFieldSetElement>(*it) && it->hasAttributeWithoutSynchronization(disabledAttr))
+            it.traverseNextSkippingChildren();
         else
-            control = Traversal<HTMLFormControlElement>::next(*control, &startNode);
+            it.traverseNext();
     }
 }
 
-void HTMLFieldSetElement::disabledAttributeChanged()
+void HTMLFieldSetElement::parseAttribute(const QualifiedName& name, const AtomString& value)
 {
-    bool hasDisabledAttribute = hasAttributeWithoutSynchronization(disabledAttr);
-    if (m_hasDisabledAttribute != hasDisabledAttribute) {
-        m_hasDisabledAttribute = hasDisabledAttribute;
-        if (hasDisabledAttribute)
+    HTMLFormControlElement::parseAttribute(name, value);
+
+    if (name == disabledAttr) {
+        if (hasDisabledAttribute())
             document().addDisabledFieldsetElement();
         else
             document().removeDisabledFieldsetElement();
     }
-
-    HTMLFormControlElement::disabledAttributeChanged();
 }
 
 void HTMLFieldSetElement::disabledStateChanged()
@@ -131,7 +134,7 @@ void HTMLFieldSetElement::didMoveToNewDocument(Document& oldDocument, Document& 
 {
     ASSERT_WITH_SECURITY_IMPLICATION(&document() == &newDocument);
     HTMLFormControlElement::didMoveToNewDocument(oldDocument, newDocument);
-    if (m_hasDisabledAttribute) {
+    if (hasDisabledAttribute()) {
         oldDocument.removeDisabledFieldsetElement();
         newDocument.addDisabledFieldsetElement();
     }
@@ -139,28 +142,29 @@ void HTMLFieldSetElement::didMoveToNewDocument(Document& oldDocument, Document& 
 
 bool HTMLFieldSetElement::matchesValidPseudoClass() const
 {
-    return m_invalidDescendants.isEmpty();
+    return m_invalidDescendants.isEmptyIgnoringNullReferences();
 }
 
 bool HTMLFieldSetElement::matchesInvalidPseudoClass() const
 {
-    return !m_invalidDescendants.isEmpty();
+    return !m_invalidDescendants.isEmptyIgnoringNullReferences();
 }
 
 bool HTMLFieldSetElement::supportsFocus() const
 {
-    return HTMLElement::supportsFocus();
+    return HTMLElement::supportsFocus() && !isDisabledFormControl();
 }
 
 const AtomString& HTMLFieldSetElement::formControlType() const
 {
-    static MainThreadNeverDestroyed<const AtomString> fieldset("fieldset", AtomString::ConstructFromLiteral);
+    static MainThreadNeverDestroyed<const AtomString> fieldset("fieldset"_s);
     return fieldset;
 }
 
 RenderPtr<RenderElement> HTMLFieldSetElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
-    return RenderElement::createFor(*this, WTFMove(style), RenderElement::OnlyCreateBlockAndFlexboxRenderers);
+    // Fieldsets should make a block flow if display: inline or table types are set.
+    return RenderElement::createFor(*this, WTFMove(style), { RenderElement::ConstructBlockLevelRendererFor::Inline, RenderElement::ConstructBlockLevelRendererFor::TableOrTablePart });
 }
 
 HTMLLegendElement* HTMLFieldSetElement::legend() const
@@ -173,25 +177,29 @@ Ref<HTMLCollection> HTMLFieldSetElement::elements()
     return ensureRareData().ensureNodeLists().addCachedCollection<GenericCachedHTMLCollection<CollectionTypeTraits<FieldSetElements>::traversalType>>(*this, FieldSetElements);
 }
 
-void HTMLFieldSetElement::addInvalidDescendant(const HTMLFormControlElement& invalidFormControlElement)
+void HTMLFieldSetElement::addInvalidDescendant(const HTMLElement& invalidFormControlElement)
 {
     ASSERT_WITH_MESSAGE(!is<HTMLFieldSetElement>(invalidFormControlElement), "FieldSet are never candidates for constraint validation.");
     ASSERT(static_cast<const Element&>(invalidFormControlElement).matchesInvalidPseudoClass());
-    ASSERT_WITH_MESSAGE(!m_invalidDescendants.contains(&invalidFormControlElement), "Updating the fieldset on validity change is not an efficient operation, it should only be done when necessary.");
+    ASSERT_WITH_MESSAGE(!m_invalidDescendants.contains(invalidFormControlElement), "Updating the fieldset on validity change is not an efficient operation, it should only be done when necessary.");
 
-    if (m_invalidDescendants.isEmpty())
-        invalidateStyleForSubtree();
-    m_invalidDescendants.add(&invalidFormControlElement);
+    std::optional<Style::PseudoClassChangeInvalidation> styleInvalidation;
+    if (m_invalidDescendants.isEmptyIgnoringNullReferences())
+        emplace(styleInvalidation, *this, { { CSSSelector::PseudoClassValid, false }, { CSSSelector::PseudoClassInvalid, true } });
+
+    m_invalidDescendants.add(invalidFormControlElement);
 }
 
-void HTMLFieldSetElement::removeInvalidDescendant(const HTMLFormControlElement& formControlElement)
+void HTMLFieldSetElement::removeInvalidDescendant(const HTMLElement& formControlElement)
 {
     ASSERT_WITH_MESSAGE(!is<HTMLFieldSetElement>(formControlElement), "FieldSet are never candidates for constraint validation.");
-    ASSERT_WITH_MESSAGE(m_invalidDescendants.contains(&formControlElement), "Updating the fieldset on validity change is not an efficient operation, it should only be done when necessary.");
+    ASSERT_WITH_MESSAGE(m_invalidDescendants.contains(formControlElement), "Updating the fieldset on validity change is not an efficient operation, it should only be done when necessary.");
 
-    m_invalidDescendants.remove(&formControlElement);
-    if (m_invalidDescendants.isEmpty())
-        invalidateStyleForSubtree();
+    std::optional<Style::PseudoClassChangeInvalidation> styleInvalidation;
+    if (m_invalidDescendants.computeSize() == 1)
+        emplace(styleInvalidation, *this, { { CSSSelector::PseudoClassValid, true }, { CSSSelector::PseudoClassInvalid, false } });
+
+    m_invalidDescendants.remove(formControlElement);
 }
 
 } // namespace

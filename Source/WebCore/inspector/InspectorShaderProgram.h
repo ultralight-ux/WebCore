@@ -25,12 +25,14 @@
 
 #pragma once
 
-#if ENABLE(WEBGL) || ENABLE(WEBGPU)
+#if ENABLE(WEBGL)
 
 #include <JavaScriptCore/InspectorProtocolObjects.h>
+#include <variant>
 #include <wtf/Forward.h>
+#include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
-#include <wtf/Variant.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -41,17 +43,10 @@ class WebGLProgram;
 class WebGLRenderingContextBase;
 #endif
 
-#if ENABLE(WEBGPU)
-class WebGPUPipeline;
-#endif
-
 class InspectorShaderProgram final : public RefCounted<InspectorShaderProgram> {
 public:
 #if ENABLE(WEBGL)
     static Ref<InspectorShaderProgram> create(WebGLProgram&, InspectorCanvas&);
-#endif
-#if ENABLE(WEBGPU)
-    static Ref<InspectorShaderProgram> create(WebGPUPipeline&, InspectorCanvas&);
 #endif
 
     const String& identifier() const { return m_identifier; }
@@ -59,9 +54,6 @@ public:
 
 #if ENABLE(WEBGL)
     WebGLProgram* program() const;
-#endif
-#if ENABLE(WEBGPU)
-    WebGPUPipeline* pipeline() const;
 #endif
 
     String requestShaderSource(Inspector::Protocol::Canvas::ShaderType);
@@ -79,21 +71,15 @@ private:
 #if ENABLE(WEBGL)
     InspectorShaderProgram(WebGLProgram&, InspectorCanvas&);
 #endif
-#if ENABLE(WEBGPU)
-    InspectorShaderProgram(WebGPUPipeline&, InspectorCanvas&);
-#endif
 
     String m_identifier;
     InspectorCanvas& m_canvas;
 
-    Variant<
+    std::variant<
 #if ENABLE(WEBGL)
         std::reference_wrapper<WebGLProgram>,
 #endif
-#if ENABLE(WEBGPU)
-        std::reference_wrapper<WebGPUPipeline>,
-#endif
-        WTF::Monostate
+        std::monostate
     > m_program;
 
     bool m_disabled { false };
@@ -102,4 +88,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(WEBGL) || ENABLE(WEBGPU)
+#endif // ENABLE(WEBGL)

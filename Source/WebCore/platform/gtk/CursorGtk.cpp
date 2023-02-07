@@ -39,7 +39,7 @@ namespace WebCore {
 #if USE(GTK4)
 static GRefPtr<GdkCursor> fallbackCursor()
 {
-    static WTF::NeverDestroyed<GRefPtr<GdkCursor>> cursor(adoptGRef(gdk_cursor_new_from_name("default", nullptr)));
+    static NeverDestroyed<GRefPtr<GdkCursor>> cursor(adoptGRef(gdk_cursor_new_from_name("default", nullptr)));
     return cursor;
 }
 #endif // USE(GTK4)
@@ -63,10 +63,11 @@ static GRefPtr<GdkCursor> createCustomCursor(Image* image, const IntPoint& hotSp
     IntPoint effectiveHotSpot = determineHotSpot(image, hotSpot);
     return adoptGRef(gdk_cursor_new_from_texture(texture.get(), effectiveHotSpot.x(), effectiveHotSpot.y(), fallbackCursor().get()));
 #else
-    RefPtr<cairo_surface_t> surface = image->nativeImageForCurrentFrame();
-    if (!surface)
+    auto nativeImage = image->nativeImageForCurrentFrame();
+    if (!nativeImage)
         return nullptr;
 
+    auto& surface = nativeImage->platformImage();
     IntPoint effectiveHotSpot = determineHotSpot(image, hotSpot);
     return adoptGRef(gdk_cursor_new_from_surface(gdk_display_get_default(), surface.get(), effectiveHotSpot.x(), effectiveHotSpot.y()));
 #endif // USE(GTK4)

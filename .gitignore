@@ -25,6 +25,8 @@
 !/Source/JavaScriptCore/*
 !/Source/WebCore
 !/Source/WebCore/*
+!/Source/WebInspectorUI
+!/Source/WebInspectorUI/*
 !/Source/WTF
 !/Source/WTF/*
 

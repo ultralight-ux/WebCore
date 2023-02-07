@@ -25,9 +25,10 @@
 
 #pragma once
 
-#if PLATFORM(IOS_FAMILY)
+#if PLATFORM(COCOA)
 
-#if USE(APPLE_INTERNAL_SDK)
+// FIXME: Undo when isSystemVoice is available in all SDKs.
+#if USE(APPLE_INTERNAL_SDK) && 0
 
 #include <AXSpeechManager.h>
 
@@ -35,11 +36,11 @@
 
 #include <AVFoundation/AVFoundation.h>
 
-@interface AVSpeechSynthesizer (PrivateAttributes)
+@interface AVSpeechSynthesisVoice (PrivateAttributes)
 @property (nonatomic, readonly) BOOL isSystemVoice SPI_AVAILABLE(macos(11.3), ios(13.3), tvos(13.3), watchos(6.3));
 @end
 
 #endif // USE(APPLE_INTERNAL_SDK)
 
-#endif // PLATFORM(IOS_FAMILY)
+#endif // PLATFORM(COCOA)
 

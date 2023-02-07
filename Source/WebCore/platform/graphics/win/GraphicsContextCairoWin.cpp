@@ -28,17 +28,16 @@
 
 #include "AffineTransform.h"
 #include "DIBPixelData.h"
-#include "GraphicsContextImpl.h"
+#include "GraphicsContextCairo.h"
 #include "Path.h"
+#include "RefPtrCairo.h"
 
 #include <cairo-win32.h>
-#include "GraphicsContextPlatformPrivateCairo.h"
-
 
 namespace WebCore {
 
 #if PLATFORM(WIN)
-static cairo_t* createCairoContextWithHDC(HDC hdc, bool hasAlpha)
+static RefPtr<cairo_t> createCairoContextWithHDC(HDC hdc, bool hasAlpha)
 {
     // Put the HDC In advanced mode so it will honor affine transforms.
     SetGraphicsMode(hdc, GM_ADVANCED);
@@ -60,34 +59,20 @@ static cairo_t* createCairoContextWithHDC(HDC hdc, bool hasAlpha)
                                                info.bmWidthBytes);
     }
 
-    cairo_t* context = cairo_create(surface);
+    auto context = adoptRef(cairo_create(surface));
     cairo_surface_destroy(surface);
 
     return context;
 }
 
-GraphicsContext::GraphicsContext(HDC dc, bool hasAlpha)
+GraphicsContextCairo::GraphicsContextCairo(HDC dc, bool hasAlpha)
+    : GraphicsContextCairo(createCairoContextWithHDC(dc, hasAlpha))
 {
-    platformInit(dc, hasAlpha);
 }
 
-void GraphicsContext::platformInit(HDC dc, bool hasAlpha)
+GraphicsContextCairo::GraphicsContextCairo(GraphicsContextCairo* platformContext)
+    : GraphicsContextCairo(platformContext->cr())
 {
-    if (!dc)
-        return;
-
-    cairo_t* cr = createCairoContextWithHDC(dc, hasAlpha);
-
-    m_data = new GraphicsContextPlatformPrivate(makeUnique<PlatformContextCairo>(cr));
-    m_data->platformContext.setGraphicsContextPrivate(m_data);
-    m_data->m_hdc = dc;
-    if (platformContext()->cr()) {
-        // Make sure the context starts in sync with our state.
-        setPlatformFillColor(fillColor());
-        setPlatformStrokeColor(strokeColor());
-    }
-    if (cr)
-        cairo_destroy(cr);
 }
 #endif
 
@@ -97,7 +82,7 @@ static void setRGBABitmapAlpha(unsigned char* bytes, size_t length, unsigned cha
         bytes[i + 3] = level;
 }
 
-static void drawBitmapToContext(PlatformContextCairo& platformContext, const DIBPixelData& pixelData, const IntSize& translate)
+static void drawBitmapToContext(GraphicsContextCairo& platformContext, const DIBPixelData& pixelData, const IntSize& translate)
 {
     // Need to make a cairo_surface_t out of the bitmap's pixel buffer and then draw
     // it into our context.
@@ -127,11 +112,7 @@ static void drawBitmapToContext(PlatformContextCairo& platformContext, const DIB
 
 void GraphicsContext::releaseWindowsContext(HDC hdc, const IntRect& dstRect, bool supportAlphaBlend)
 {
-    bool createdBitmap = m_impl || !m_data->m_hdc || isInTransparencyLayer();
-    if (!hdc || !createdBitmap) {
-        m_data->restore();
-        return;
-    }
+    ASSERT(hdc);
 
     if (dstRect.isEmpty())
         return;
@@ -152,30 +133,5 @@ void GraphicsContext::releaseWindowsContext(HDC hdc, const IntRect& dstRect, boo
 
     ::DeleteDC(hdc);
 }
-
-#if PLATFORM(WIN)
-void GraphicsContext::drawWindowsBitmap(WindowsBitmap* bitmap, const IntPoint& point)
-{
-    drawBitmapToContext(*platformContext(), bitmap->windowsDIB(), IntSize(point.x(), bitmap->size().height() + point.y()));
-}
-
-void GraphicsContextPlatformPrivate::syncContext(cairo_t* cr)
-{
-    if (!cr)
-       return;
-
-    cairo_surface_t* surface = cairo_get_target(cr);
-    m_hdc = cairo_win32_surface_get_dc(surface);   
-
-    SetGraphicsMode(m_hdc, GM_ADVANCED); // We need this call for themes to honor world transforms.
-}
-
-void GraphicsContextPlatformPrivate::flush()
-{
-    cairo_surface_t* surface = cairo_win32_surface_create(m_hdc);
-    cairo_surface_flush(surface);
-    cairo_surface_destroy(surface);
-}
-#endif
 
 }

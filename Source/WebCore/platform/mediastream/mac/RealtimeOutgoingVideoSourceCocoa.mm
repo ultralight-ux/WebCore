@@ -29,27 +29,15 @@
 #if USE(LIBWEBRTC)
 
 #import "AffineTransform.h"
+#import "CVUtilities.h"
 #import "ImageRotationSessionVT.h"
 #import "Logging.h"
-#import "MediaSample.h"
-#import "PixelBufferConformerCV.h"
 #import "RealtimeVideoUtilities.h"
 #import <pal/cf/CoreMediaSoftLink.h>
 #import "CoreVideoSoftLink.h"
 #import "VideoToolboxSoftLink.h"
 
 namespace WebCore {
-
-RetainPtr<CVPixelBufferRef> RealtimeOutgoingVideoSourceCocoa::convertToYUV(CVPixelBufferRef pixelBuffer)
-{
-    if (!pixelBuffer)
-        return nullptr;
-
-    if (!m_pixelBufferConformer)
-        m_pixelBufferConformer = makeUnique<PixelBufferConformerCV>((__bridge CFDictionaryRef)@{ (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(preferedPixelBufferFormat()) });
-
-    return m_pixelBufferConformer->convert(pixelBuffer);
-}
 
 static inline unsigned rotationToAngle(webrtc::VideoRotation rotation)
 {
@@ -71,11 +59,17 @@ RetainPtr<CVPixelBufferRef> RealtimeOutgoingVideoSourceCocoa::rotatePixelBuffer(
     if (!rotation)
         return pixelBuffer;
 
-    if (!m_rotationSession || rotation != m_currentRotationSessionAngle) {
-        IntSize size = { (int)CVPixelBufferGetWidth(pixelBuffer) , (int)CVPixelBufferGetHeight(pixelBuffer) };
+    auto pixelWidth = CVPixelBufferGetWidth(pixelBuffer);
+    auto pixelHeight = CVPixelBufferGetHeight(pixelBuffer);
+    if (!m_rotationSession || rotation != m_currentRotationSessionAngle || pixelWidth != m_rotatedWidth || pixelHeight != m_rotatedHeight) {
+        RELEASE_LOG_INFO(WebRTC, "RealtimeOutgoingVideoSourceCocoa::rotatePixelBuffer creating rotation session for rotation %u", rotationToAngle(rotation));
         AffineTransform transform;
         transform.rotate(rotationToAngle(rotation));
-        m_rotationSession = makeUnique<ImageRotationSessionVT>(WTFMove(transform), size, CVPixelBufferGetPixelFormatType(pixelBuffer), ImageRotationSessionVT::IsCGImageCompatible::No);
+        m_rotationSession = makeUnique<ImageRotationSessionVT>(WTFMove(transform), FloatSize { static_cast<float>(pixelWidth), static_cast<float>(pixelHeight) }, ImageRotationSessionVT::IsCGImageCompatible::No, ImageRotationSessionVT::ShouldUseIOSurface::No);
+
+        m_currentRotationSessionAngle = rotation;
+        m_rotatedWidth = pixelWidth;
+        m_rotatedHeight = pixelHeight;
     }
 
     return m_rotationSession->rotate(pixelBuffer);

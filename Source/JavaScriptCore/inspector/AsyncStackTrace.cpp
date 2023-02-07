@@ -33,7 +33,6 @@ namespace Inspector {
 
 Ref<AsyncStackTrace> AsyncStackTrace::create(Ref<ScriptCallStack>&& callStack, bool singleShot, RefPtr<AsyncStackTrace> parent)
 {
-    ASSERT(callStack->size());
     return adoptRef(*new AsyncStackTrace(WTFMove(callStack), singleShot, WTFMove(parent)));
 }
 
@@ -42,6 +41,8 @@ AsyncStackTrace::AsyncStackTrace(Ref<ScriptCallStack>&& callStack, bool singleSh
     , m_parent(parent)
     , m_singleShot(singleShot)
 {
+    ASSERT(size());
+
     if (m_parent)
         m_parent->m_childCount++;
 }
@@ -61,6 +62,21 @@ bool AsyncStackTrace::isPending() const
 bool AsyncStackTrace::isLocked() const
 {
     return m_state == State::Pending || m_state == State::Active || m_childCount > 1;
+}
+
+const ScriptCallFrame& AsyncStackTrace::at(size_t index) const
+{
+    return m_callStack->at(index);
+}
+
+size_t AsyncStackTrace::size() const
+{
+    return m_callStack->size();
+}
+
+bool AsyncStackTrace::topCallFrameIsBoundary() const
+{
+    return at(0).isNative();
 }
 
 void AsyncStackTrace::willDispatchAsyncCall(size_t maxDepth)
@@ -97,7 +113,7 @@ void AsyncStackTrace::didCancelAsyncCall()
     m_state = State::Canceled;
 }
 
-RefPtr<Protocol::Console::StackTrace> AsyncStackTrace::buildInspectorObject() const
+Ref<Protocol::Console::StackTrace> AsyncStackTrace::buildInspectorObject() const
 {
     RefPtr<Protocol::Console::StackTrace> topStackTrace;
     RefPtr<Protocol::Console::StackTrace> previousStackTrace;
@@ -105,7 +121,6 @@ RefPtr<Protocol::Console::StackTrace> AsyncStackTrace::buildInspectorObject() co
     auto* stackTrace = this;
     while (stackTrace) {
         auto& callStack = stackTrace->m_callStack;
-        ASSERT(callStack->size());
 
         auto protocolObject = Protocol::Console::StackTrace::create()
             .setCallFrames(callStack->buildInspectorArray())
@@ -113,20 +128,20 @@ RefPtr<Protocol::Console::StackTrace> AsyncStackTrace::buildInspectorObject() co
 
         if (stackTrace->m_truncated)
             protocolObject->setTruncated(true);
-        if (callStack->at(0).isNative())
+        if (stackTrace->topCallFrameIsBoundary())
             protocolObject->setTopCallFrameIsBoundary(true);
 
         if (!topStackTrace)
             topStackTrace = protocolObject.ptr();
 
         if (previousStackTrace)
-            previousStackTrace->setParentStackTrace(protocolObject.ptr());
+            previousStackTrace->setParentStackTrace(protocolObject.copyRef());
 
         previousStackTrace = WTFMove(protocolObject);
         stackTrace = stackTrace->m_parent.get();
     }
 
-    return topStackTrace;
+    return topStackTrace.releaseNonNull();
 }
 
 void AsyncStackTrace::truncate(size_t maxDepth)
@@ -136,7 +151,7 @@ void AsyncStackTrace::truncate(size_t maxDepth)
 
     auto* newStackTraceRoot = this;
     while (newStackTraceRoot) {
-        depth += newStackTraceRoot->m_callStack->size();
+        depth += newStackTraceRoot->size();
         if (depth >= maxDepth)
             break;
 

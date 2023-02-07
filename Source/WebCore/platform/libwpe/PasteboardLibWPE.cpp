@@ -31,16 +31,16 @@
 #include "NotImplemented.h"
 #include "PasteboardStrategy.h"
 #include "PlatformStrategies.h"
-#include <wtf/Optional.h>
 
 namespace WebCore {
 
-std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste()
+std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste(std::unique_ptr<PasteboardContext>&& context)
 {
-    return makeUnique<Pasteboard>();
+    return makeUnique<Pasteboard>(WTFMove(context));
 }
 
-Pasteboard::Pasteboard()
+Pasteboard::Pasteboard(std::unique_ptr<PasteboardContext>&& context)
+    : m_context(WTFMove(context))
 {
 }
 
@@ -73,7 +73,7 @@ String Pasteboard::readOrigin()
 
 String Pasteboard::readString(const String& type)
 {
-    return platformStrategies()->pasteboardStrategy()->readStringFromPasteboard(0, type, name());
+    return platformStrategies()->pasteboardStrategy()->readStringFromPasteboard(0, type, name(), context());
 }
 
 String Pasteboard::readStringInCustomData(const String&)
@@ -95,23 +95,23 @@ void Pasteboard::clear(const String&)
 {
 }
 
-void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy, Optional<size_t>)
+void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy, std::optional<size_t>)
 {
-    text.text = platformStrategies()->pasteboardStrategy()->readStringFromPasteboard(0, "text/plain;charset=utf-8", name());
+    text.text = platformStrategies()->pasteboardStrategy()->readStringFromPasteboard(0, "text/plain;charset=utf-8"_s, name(), context());
 }
 
-void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy, Optional<size_t>)
+void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy, std::optional<size_t>)
 {
     notImplemented();
 }
 
-void Pasteboard::read(PasteboardFileReader&, Optional<size_t>)
+void Pasteboard::read(PasteboardFileReader&, std::optional<size_t>)
 {
 }
 
 void Pasteboard::write(const PasteboardURL& url)
 {
-    platformStrategies()->pasteboardStrategy()->writeToPasteboard("text/plain;charset=utf-8", url.url.string());
+    platformStrategies()->pasteboardStrategy()->writeToPasteboard("text/plain;charset=utf-8"_s, url.url.string());
 }
 
 void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
@@ -120,6 +120,10 @@ void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
 }
 
 void Pasteboard::write(const PasteboardImage&)
+{
+}
+
+void Pasteboard::write(const PasteboardBuffer&)
 {
 }
 
@@ -145,7 +149,7 @@ void Pasteboard::writeMarkup(const String&)
 
 void Pasteboard::writePlainText(const String& text, SmartReplaceOption)
 {
-    writeString("text/plain;charset=utf-8", text);
+    writeString("text/plain;charset=utf-8"_s, text);
 }
 
 void Pasteboard::writeCustomData(const Vector<PasteboardCustomData>&)

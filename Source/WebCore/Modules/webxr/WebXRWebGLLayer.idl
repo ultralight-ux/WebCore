@@ -29,20 +29,23 @@ typedef (WebGLRenderingContext or WebGL2RenderingContext) WebXRWebGLRenderingCon
 typedef (WebGLRenderingContext) WebXRWebGLRenderingContext;
 #endif
 
+// https://immersive-web.github.io/webxr/#xrwebgllayer
 [
-    EnabledAtRuntime=WebXR,
     Conditional=WEBXR,
+    EnabledBySetting=WebXREnabled,
     SecureContext,
     Exposed=Window,
     JSGenerateToJSObject,
     JSGenerateToNativeObject,
     InterfaceName=XRWebGLLayer
 ] interface WebXRWebGLLayer : WebXRLayer {
-    [MayThrowException] constructor(WebXRSession session, WebXRWebGLRenderingContext context, optional XRWebGLLayerInit layerInit);
+    constructor(WebXRSession session, WebXRWebGLRenderingContext context, optional XRWebGLLayerInit layerInit);
 
     // Attributes
     readonly attribute boolean antialias;
     readonly attribute boolean ignoreDepthValues;
+    // FIXME: Support 'fixedFoveation'.
+    // attribute float? fixedFoveation;
 
     [SameObject] readonly attribute WebGLFramebuffer framebuffer;
     readonly attribute unsigned long framebufferWidth;

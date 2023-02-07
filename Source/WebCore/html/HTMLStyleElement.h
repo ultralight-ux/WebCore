@@ -31,9 +31,9 @@ class HTMLStyleElement;
 class Page;
 class StyleSheet;
 
-template<typename T> class EventSender;
+template<typename T, typename Counter> class EventSender;
 
-using StyleEventSender = EventSender<HTMLStyleElement>;
+using StyleEventSender = EventSender<HTMLStyleElement, WeakPtrImplWithEventTargetData>;
 
 class HTMLStyleElement final : public HTMLElement {
     WTF_MAKE_ISO_ALLOCATED(HTMLStyleElement);
@@ -47,7 +47,7 @@ public:
     WEBCORE_EXPORT bool disabled() const;
     WEBCORE_EXPORT void setDisabled(bool);
 
-    void dispatchPendingEvent(StyleEventSender*);
+    void dispatchPendingEvent(StyleEventSender*, const AtomString& eventType);
     static void dispatchPendingLoadEvents(Page*);
 
     void finishParsingChildren() final;
@@ -68,7 +68,6 @@ private:
     void addSubresourceAttributeURLs(ListHashSet<URL>&) const final;
 
     InlineStyleSheetOwner m_styleSheetOwner;
-    bool m_firedLoad { false };
     bool m_loadedSheet { false };
 };
 

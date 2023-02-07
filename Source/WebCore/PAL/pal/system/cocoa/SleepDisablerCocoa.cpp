@@ -27,41 +27,52 @@
 #include "SleepDisablerCocoa.h"
 
 #if PLATFORM(COCOA)
-
 #include <pal/spi/cocoa/IOPMLibSPI.h>
 #include <wtf/RetainPtr.h>
+#include <wtf/text/WTFString.h>
 
 namespace PAL {
 
-std::unique_ptr<SleepDisabler> SleepDisabler::create(const char* reason, Type type)
+std::unique_ptr<SleepDisabler> SleepDisabler::create(const String& reason, Type type)
 {
     return std::unique_ptr<SleepDisabler>(new SleepDisablerCocoa(reason, type));
 }
 
-SleepDisablerCocoa::SleepDisablerCocoa(const char* reason, Type type)
+SleepDisablerCocoa::SleepDisablerCocoa(const String& reason, Type type)
     : SleepDisabler(reason, type)
 {
-    RetainPtr<CFStringRef> reasonCF = adoptCF(CFStringCreateWithCString(kCFAllocatorDefault, reason, kCFStringEncodingUTF8));
-
-    CFStringRef assertionType;
     switch (type) {
     case Type::Display:
-        assertionType = kIOPMAssertionTypePreventUserIdleDisplaySleep;
+        takeScreenSleepDisablingAssertion(reason);
         break;
     case Type::System:
-        assertionType = kIOPMAssertionTypePreventUserIdleSystemSleep;
+        takeSystemSleepDisablingAssertion(reason);
         break;
     default:
         ASSERT_NOT_REACHED();
-        assertionType = nullptr;
         break;
     }
-    IOPMAssertionCreateWithDescription(assertionType, reasonCF.get(), nullptr, nullptr, nullptr, 0, nullptr, &m_sleepAssertion);
 }
 
 SleepDisablerCocoa::~SleepDisablerCocoa()
 {
-    IOPMAssertionRelease(m_sleepAssertion);
+#if PLATFORM(IOS_FAMILY)
+    m_screenSleepDisablerToken = nullptr;
+#endif
+    if (m_sleepAssertion)
+        IOPMAssertionRelease(m_sleepAssertion);
+}
+
+#if PLATFORM(MAC)
+void SleepDisablerCocoa::takeScreenSleepDisablingAssertion(const String& reason)
+{
+    IOPMAssertionCreateWithDescription(kIOPMAssertionTypePreventUserIdleDisplaySleep, reason.createCFString().get(), nullptr, nullptr, nullptr, 0, nullptr, &m_sleepAssertion);
+}
+#endif
+
+void SleepDisablerCocoa::takeSystemSleepDisablingAssertion(const String& reason)
+{
+    IOPMAssertionCreateWithDescription(kIOPMAssertionTypePreventUserIdleSystemSleep, reason.createCFString().get(), nullptr, nullptr, nullptr, 0, nullptr, &m_sleepAssertion);
 }
 
 } // namespace PAL

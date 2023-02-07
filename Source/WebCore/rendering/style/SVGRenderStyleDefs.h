@@ -31,6 +31,7 @@
 #include "Length.h"
 #include "SVGLengthValue.h"
 #include "ShadowData.h"
+#include "StyleColor.h"
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -155,8 +156,8 @@ public:
     }
 
     float opacity;
-    Color paintColor;
-    Color visitedLinkPaintColor;
+    StyleColor paintColor;
+    StyleColor visitedLinkPaintColor;
     String paintUri;
     String visitedLinkPaintUri;
     SVGPaintType paintType;
@@ -180,8 +181,8 @@ public:
 
     float opacity;
 
-    Color paintColor;
-    Color visitedLinkPaintColor;
+    StyleColor paintColor;
+    StyleColor visitedLinkPaintColor;
 
     String paintUri;
     String visitedLinkPaintUri;
@@ -209,7 +210,7 @@ public:
     }
 
     float opacity;
-    Color color;
+    StyleColor color;
 
 private:
     StyleStopData();
@@ -247,8 +248,8 @@ public:
     }
 
     float floodOpacity;
-    Color floodColor;
-    Color lightingColor;
+    StyleColor floodColor;
+    StyleColor lightingColor;
 
     // non-inherited text stuff lives here not in StyleTextData.
     SVGLengthValue baselineShiftValue;
@@ -274,25 +275,6 @@ public:
 private:
     StyleShadowSVGData();
     StyleShadowSVGData(const StyleShadowSVGData&);
-};
-
-// Non-inherited resources
-class StyleResourceData : public RefCounted<StyleResourceData> {
-public:
-    static Ref<StyleResourceData> create() { return adoptRef(*new StyleResourceData); }
-    Ref<StyleResourceData> copy() const;
-
-    bool operator==(const StyleResourceData&) const;
-    bool operator!=(const StyleResourceData& other) const
-    {
-        return !(*this == other);
-    }
-
-    String masker;
-
-private:
-    StyleResourceData();
-    StyleResourceData(const StyleResourceData&);
 };
 
 // Inherited resources
@@ -361,7 +343,6 @@ WTF::TextStream& operator<<(WTF::TextStream&, const StyleStopData&);
 WTF::TextStream& operator<<(WTF::TextStream&, const StyleTextData&);
 WTF::TextStream& operator<<(WTF::TextStream&, const StyleMiscData&);
 WTF::TextStream& operator<<(WTF::TextStream&, const StyleShadowSVGData&);
-WTF::TextStream& operator<<(WTF::TextStream&, const StyleResourceData&);
 WTF::TextStream& operator<<(WTF::TextStream&, const StyleInheritedResourceData&);
 WTF::TextStream& operator<<(WTF::TextStream&, const StyleLayoutData&);
 

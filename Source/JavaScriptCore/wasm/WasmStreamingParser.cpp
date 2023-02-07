@@ -28,10 +28,12 @@
 
 #if ENABLE(WEBASSEMBLY)
 
+#include "WasmModuleInformation.h"
 #include "WasmOps.h"
+#include "WasmParser.h"
 #include "WasmSectionParser.h"
-#include "WasmSignatureInlines.h"
-#include <wtf/Optional.h>
+#include "WasmTypeDefinitionInlines.h"
+#include <wtf/FileSystem.h>
 #include <wtf/UnalignedAccess.h>
 
 namespace JSC { namespace Wasm {
@@ -49,14 +51,14 @@ static constexpr bool verbose = false;
         } \
     } while (0)
 
-ALWAYS_INLINE Optional<uint8_t> parseUInt7(const uint8_t* data, size_t& offset, size_t size)
+ALWAYS_INLINE std::optional<uint8_t> parseUInt7(const uint8_t* data, size_t& offset, size_t size)
 {
     if (offset >= size)
         return false;
     uint8_t result = data[offset++];
     if (result < 0x80)
         return result;
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 template <typename ...Args>
@@ -68,18 +70,45 @@ NEVER_INLINE auto WARN_UNUSED_RETURN StreamingParser::fail(Args... args) -> Stat
     return State::FatalError;
 }
 
+#if ENABLE(WEBASSEMBLY)
+static void dumpWasmSource(const Vector<uint8_t>& source)
+{
+    static int count = 0;
+    const char* file = Options::dumpWasmSourceFileName();
+    if (!file)
+        return;
+    auto fileHandle = FileSystem::openFile(WTF::makeString(file, (count++), ".wasm"_s), 
+        FileSystem::FileOpenMode::Write,
+        FileSystem::FileAccessPermission::All,
+        /* failIfFileExists = */ true);
+    if (fileHandle == FileSystem::invalidPlatformFileHandle) {
+        dataLogLn("Error dumping wasm");
+        return;
+    }
+    dataLogLn("Dumping ", source.size(), " wasm source bytes to ", WTF::makeString(file, (count - 1), ".wasm"_s));
+    FileSystem::writeToFile(fileHandle, source.data(), source.size());
+    FileSystem::closeFile(fileHandle);
+}
+#endif
+
 StreamingParser::StreamingParser(ModuleInformation& info, StreamingParserClient& client)
     : m_info(info)
     , m_client(client)
 {
     dataLogLnIf(WasmStreamingParserInternal::verbose, "starting validation");
+
+#if ASSERT_ENABLED
+    dataLogLnIf(Options::dumpWasmSourceFileName(), "Wasm streaming parser created, capturing source.");
+#else
+    dataLogLnIf(Options::dumpWasmSourceFileName(), "Wasm streaming parser created, but we can only dump source in debug builds.");
+#endif
 }
 
 auto StreamingParser::parseModuleHeader(Vector<uint8_t>&& data) -> State
 {
     ASSERT(data.size() == moduleHeaderSize);
     dataLogLnIf(WasmStreamingParserInternal::verbose, "header validation");
-    WASM_PARSER_FAIL_IF(data[0] != '\0' || data[1] != 'a' || data[2] != 's' || data[3] != 'm', "modules doesn't start with '\\0asm'");
+    WASM_PARSER_FAIL_IF(data[0] != '\0' || data[1] != 'a' || data[2] != 's' || data[3] != 'm', "module doesn't start with '\\0asm'");
     uint32_t versionNumber = WTF::unalignedLoad<uint32_t>(data.data() + 4);
     WASM_PARSER_FAIL_IF(versionNumber != expectedVersionNumber, "unexpected version number ", versionNumber, " expected ", expectedVersionNumber);
     return State::SectionID;
@@ -160,7 +189,7 @@ auto StreamingParser::parseSectionPayload(Vector<uint8_t>&& data) -> State
 {
     SectionParser parser(data.data(), data.size(), m_offset, m_info.get());
     switch (m_section) {
-#define WASM_SECTION_PARSE(NAME, ID, DESCRIPTION) \
+#define WASM_SECTION_PARSE(NAME, ID, ORDERING, DESCRIPTION) \
     case Section::NAME: { \
         WASM_STREAMING_PARSER_FAIL_IF_HELPER_FAILS(parser.parse ## NAME()); \
         break; \
@@ -186,7 +215,7 @@ auto StreamingParser::parseSectionPayload(Vector<uint8_t>&& data) -> State
     return State::SectionID;
 }
 
-auto StreamingParser::consume(const uint8_t* bytes, size_t bytesSize, size_t& offsetInBytes, size_t requiredSize) -> Optional<Vector<uint8_t>>
+auto StreamingParser::consume(const uint8_t* bytes, size_t bytesSize, size_t& offsetInBytes, size_t requiredSize) -> std::optional<Vector<uint8_t>>
 {
     if (m_remaining.size() == requiredSize) {
         Vector<uint8_t> result = WTFMove(m_remaining);
@@ -195,8 +224,7 @@ auto StreamingParser::consume(const uint8_t* bytes, size_t bytesSize, size_t& of
     }
 
     if (m_remaining.size() > requiredSize) {
-        Vector<uint8_t> result(requiredSize);
-        memcpy(result.data(), m_remaining.data(), requiredSize);
+        Vector<uint8_t> result { m_remaining.data(), requiredSize };
         m_remaining.remove(0, requiredSize);
         m_nextOffset += requiredSize;
         return result;
@@ -208,7 +236,7 @@ auto StreamingParser::consume(const uint8_t* bytes, size_t bytesSize, size_t& of
     if (totalDataSize < requiredSize) {
         m_remaining.append(bytes + offsetInBytes, bytesRemainingSize);
         offsetInBytes = bytesSize;
-        return WTF::nullopt;
+        return std::nullopt;
     }
 
     size_t usedSize = requiredSize - m_remaining.size();
@@ -251,11 +279,24 @@ auto StreamingParser::consumeVarUInt32(const uint8_t* bytes, size_t bytesSize, s
 
 auto StreamingParser::addBytes(const uint8_t* bytes, size_t bytesSize, IsEndOfStream isEndOfStream) -> State
 {
+#if ASSERT_ENABLED
+    if (Options::dumpWasmSourceFileName()) {
+        for (unsigned i = 0; i < bytesSize; ++i)
+            m_buffer.append(bytes[i]);
+
+        if (isEndOfStream == IsEndOfStream::Yes) {
+            dataLogLn("Streaming parser reached end of stream.");
+            dumpWasmSource(m_buffer);
+        }
+    }
+#else
+    (void) dumpWasmSource;
+#endif
     if (m_state == State::FatalError)
         return m_state;
 
     m_totalSize += bytesSize;
-    if (UNLIKELY(m_totalSize.hasOverflowed() || m_totalSize.unsafeGet() > maxModuleSize)) {
+    if (UNLIKELY(m_totalSize.hasOverflowed() || m_totalSize > maxModuleSize)) {
         m_state = fail("module size is too large, maximum ", maxModuleSize);
         return m_state;
     }
@@ -393,9 +434,18 @@ auto StreamingParser::finalize() -> State
             m_state = fail("Number of functions parsed (", m_functionCount, ") does not match the number of declared functions (", m_info->functions.size(), ")");
             break;
         }
+
+        if (m_info->numberOfDataSegments) {
+            if (UNLIKELY(m_info->data.size() != m_info->numberOfDataSegments.value())) {
+                m_state = fail("Data section's count ", m_info->data.size(), " is different from Data Count section's count ", m_info->numberOfDataSegments.value());
+                break;
+            }
+        }
+
         if (m_remaining.isEmpty()) {
             if (UNLIKELY(Options::useEagerWebAssemblyModuleHashing()))
                 m_info->nameSection->setHash(m_hasher.computeHexDigest());
+
             m_state = State::Finished;
             m_client.didFinishParsing();
         } else

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2006 Samuel Weinig <sam.weinig@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
@@ -18,7 +18,11 @@
  * Boston, MA 02110-1301, USA.
  */
 
-interface HTMLFrameElement : HTMLElement {
+// https://html.spec.whatwg.org/#htmlframeelement
+
+[
+    Exposed=Window
+] interface HTMLFrameElement : HTMLElement {
     [CEReactions=NotNeeded, Reflect] attribute DOMString name;
     [CEReactions=NotNeeded, Reflect] attribute DOMString scrolling;
     [CEReactions=NotNeeded, Reflect, URL] attribute USVString src;
@@ -28,14 +32,8 @@ interface HTMLFrameElement : HTMLElement {
     [CheckSecurityForNode] readonly attribute Document contentDocument;
     readonly attribute WindowProxy contentWindow;
 
-    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString marginHeight;
-    [CEReactions=NotNeeded, Reflect] attribute [TreatNullAs=EmptyString] DOMString marginWidth;
+    [CEReactions=NotNeeded, Reflect] attribute [LegacyNullToEmptyString] DOMString marginHeight;
+    [CEReactions=NotNeeded, Reflect] attribute [LegacyNullToEmptyString] DOMString marginWidth;
 
-    [CheckSecurityForNode, MayThrowException] Document getSVGDocument();
-
-    [CEReactions=NotNeeded] readonly attribute long width;
-    [CEReactions=NotNeeded] readonly attribute long height;
-
-    // FIXME: No other browser has this attribute.
-    [SetterCallWith=GlobalObject] attribute DOMString? location;
+    [CheckSecurityForNode] Document getSVGDocument();
 };

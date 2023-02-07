@@ -34,6 +34,7 @@
 #include "IntRect.h"
 #include "LayoutPoint.h"
 #include "LengthBox.h"
+#include <wtf/ArgumentCoder.h>
 #include <wtf/Forward.h>
 
 namespace WTF {
@@ -57,28 +58,6 @@ public:
     LayoutRect(const IntRect& rect) : m_location(rect.location()), m_size(rect.size()) { }
     
     WEBCORE_EXPORT explicit LayoutRect(const FloatRect&); // don't do this implicitly since it's lossy
-
-    template<class Encoder>
-    void encode(Encoder& encoder) const
-    {
-        encoder << m_location << m_size;
-    }
-
-    template<class Decoder>
-    static Optional<LayoutRect> decode(Decoder& decoder)
-    {
-        Optional<LayoutPoint> layoutPoint;
-        decoder >> layoutPoint;
-        if (!layoutPoint)
-            return WTF::nullopt;
-
-        Optional<LayoutSize> layoutSize;
-        decoder >> layoutSize;
-        if (!layoutSize)
-            return WTF::nullopt;
-
-        return {{ *layoutPoint, *layoutSize }};
-    }
 
     LayoutPoint location() const { return m_location; }
     LayoutSize size() const { return m_size; }
@@ -114,6 +93,8 @@ public:
         m_location.move(-box.left(), -box.top());
         m_size.expand(box.left() + box.right(), box.top() + box.bottom());
     }
+    void expandToInfiniteY();
+    void expandToInfiniteX();
     template<typename T, typename U> void expand(T dw, U dh) { m_size.expand(dw, dh); }
     void contract(const LayoutSize& size) { m_size -= size; }
     void contract(const LayoutBoxExtent& box)
@@ -190,6 +171,7 @@ public:
     void intersect(const LayoutRect&);
     bool edgeInclusiveIntersect(const LayoutRect&);
     WEBCORE_EXPORT void unite(const LayoutRect&);
+    void uniteEvenIfEmpty(const LayoutRect&);
     void uniteIfNonZero(const LayoutRect&);
     bool checkedUnite(const LayoutRect&);
 
@@ -219,10 +201,13 @@ public:
         // Return a rect that is slightly smaller than the true max rect to allow pixelSnapping to round up to the nearest IntRect without overflowing.
         return LayoutRect(LayoutUnit::nearlyMin() / 2, LayoutUnit::nearlyMin() / 2, LayoutUnit::nearlyMax(), LayoutUnit::nearlyMax());
     }
-    
+
     operator FloatRect() const { return FloatRect(m_location, m_size); }
 
 private:
+    friend struct IPC::ArgumentCoder<WebCore::LayoutRect, void>;
+    void setLocationAndSizeFromEdges(LayoutUnit left, LayoutUnit top, LayoutUnit right, LayoutUnit bottom);
+
     LayoutPoint m_location;
     LayoutSize m_size;
 };
@@ -256,6 +241,13 @@ inline bool operator!=(const LayoutRect& a, const LayoutRect& b)
 inline bool LayoutRect::isInfinite() const
 {
     return *this == LayoutRect::infiniteRect();
+}
+
+inline void LayoutRect::setLocationAndSizeFromEdges(LayoutUnit left, LayoutUnit top, LayoutUnit right, LayoutUnit bottom)
+{
+    m_location = { left, top };
+    m_size.setWidth(right - left);
+    m_size.setHeight(bottom - top);
 }
 
 // Integral snapping functions.

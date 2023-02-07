@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,34 +25,49 @@
 
 #pragma once
 
+#include "Icon.h"
 #include "RenderTheme.h"
 #include <wtf/RetainPtr.h>
 
 OBJC_CLASS NSDateComponentsFormatter;
+struct AttachmentLayout;
 
 namespace WebCore {
 
 class RenderThemeCocoa : public RenderTheme {
 public:
-    static RenderThemeCocoa& singleton();
+    WEBCORE_EXPORT static RenderThemeCocoa& singleton();
 
-    virtual CFStringRef contentSizeCategory() const = 0;
+protected:
+    virtual Color pictureFrameColor(const RenderObject&);
+#if ENABLE(ATTACHMENT_ELEMENT)
+    int attachmentBaseline(const RenderAttachment&) const final;
+    void paintAttachmentText(GraphicsContext&, AttachmentLayout*) final;
+#endif
 
 private:
-    bool canPaint(const PaintInfo&) const final;
+    void purgeCaches() override;
+
     bool shouldHaveCapsLockIndicator(const HTMLInputElement&) const final;
+
+    void paintFileUploadIconDecorations(const RenderObject& inputRenderer, const RenderObject& buttonRenderer, const PaintInfo&, const IntRect&, Icon*, FileUploadDecorations) override;
 
 #if ENABLE(APPLE_PAY)
     void adjustApplePayButtonStyle(RenderStyle&, const Element*) const override;
     bool paintApplePayButton(const RenderObject&, const PaintInfo&, const IntRect&) override;
 #endif
 
-    FontCascadeDescription& cachedSystemFontDescription(CSSValueID systemFontID) const override;
-    void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const override;
-
-protected:
+#if ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
+    String mediaControlsStyleSheet() override;
+    Vector<String, 2> mediaControlsScripts() override;
+    String mediaControlsBase64StringForIconNameAndType(const String&, const String&) override;
     String mediaControlsFormattedStringForDuration(double) override;
+
+    String m_mediaControlsLocalizedStringsScript;
+    String m_mediaControlsScript;
+    String m_mediaControlsStyleSheet;
     RetainPtr<NSDateComponentsFormatter> m_durationFormatter;
+#endif // ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
 };
 
 }

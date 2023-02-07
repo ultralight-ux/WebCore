@@ -37,6 +37,7 @@
 #import "Logging.h"
 #import "RenderObject.h"
 #import "SVGDocument.h"
+#import "SVGElementTypeHelpers.h"
 #import <pal/Logging.h>
 
 #if PLATFORM(IOS_FAMILY)
@@ -56,15 +57,14 @@ void Page::platformInitialize()
     static std::once_flag onceFlag;
     std::call_once(onceFlag, [] {
 #if ENABLE(TREE_DEBUGGING)
-        PAL::registerNotifyCallback("com.apple.WebKit.showRenderTree", printRenderTreeForLiveDocuments);
-        PAL::registerNotifyCallback("com.apple.WebKit.showLayerTree", printLayerTreeForLiveDocuments);
-        PAL::registerNotifyCallback("com.apple.WebKit.showGraphicsLayerTree", printGraphicsLayerTreeForLiveDocuments);
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-        PAL::registerNotifyCallback("com.apple.WebKit.showLayoutTree", Layout::printLayoutTreeForLiveDocuments);
-#endif
+        PAL::registerNotifyCallback("com.apple.WebKit.showRenderTree"_s, printRenderTreeForLiveDocuments);
+        PAL::registerNotifyCallback("com.apple.WebKit.showLayerTree"_s, printLayerTreeForLiveDocuments);
+        PAL::registerNotifyCallback("com.apple.WebKit.showGraphicsLayerTree"_s, printGraphicsLayerTreeForLiveDocuments);
+        PAL::registerNotifyCallback("com.apple.WebKit.showPaintOrderTree"_s, printPaintOrderTreeForLiveDocuments);
+        PAL::registerNotifyCallback("com.apple.WebKit.showLayoutTree"_s, Layout::printLayoutTreeForLiveDocuments);
 #endif // ENABLE(TREE_DEBUGGING)
 
-        PAL::registerNotifyCallback("com.apple.WebKit.showAllDocuments", [] {
+        PAL::registerNotifyCallback("com.apple.WebKit.showAllDocuments"_s, [] {
             unsigned numPages = 0;
             Page::forEachPage([&numPages](Page&) {
                 ++numPages;
@@ -80,7 +80,7 @@ void Page::platformInitialize()
             WTFLogAlways("%u live documents:", Document::allDocuments().size());
             for (const auto* document : Document::allDocuments()) {
                 const char* documentType = is<SVGDocument>(document) ? "SVGDocument" : "Document";
-                WTFLogAlways("%s %p %llu (refCount %d, referencingNodeCount %d) %s", documentType, document, document->identifier().toUInt64(), document->refCount(), document->referencingNodeCount(), document->url().string().utf8().data());
+                WTFLogAlways("%s %p %" PRIu64 "-%s (refCount %d, referencingNodeCount %d) %s", documentType, document, document->identifier().processIdentifier().toUInt64(), document->identifier().toString().utf8().data(), document->refCount(), document->referencingNodeCount(), document->url().string().utf8().data());
             }
         });
     });
@@ -92,10 +92,13 @@ void Page::addSchedulePair(Ref<SchedulePair>&& pair)
         m_scheduledRunLoopPairs = makeUnique<SchedulePairHashSet>();
     m_scheduledRunLoopPairs->add(pair.ptr());
 
-    for (Frame* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {
-        if (DocumentLoader* documentLoader = frame->loader().documentLoader())
+    for (AbstractFrame* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {
+        auto* localFrame = dynamicDowncast<LocalFrame>(frame);
+        if (!localFrame)
+            continue;
+        if (auto* documentLoader = localFrame->loader().documentLoader())
             documentLoader->schedule(pair);
-        if (DocumentLoader* documentLoader = frame->loader().provisionalDocumentLoader())
+        if (auto* documentLoader = localFrame->loader().provisionalDocumentLoader())
             documentLoader->schedule(pair);
     }
 
@@ -110,10 +113,13 @@ void Page::removeSchedulePair(Ref<SchedulePair>&& pair)
 
     m_scheduledRunLoopPairs->remove(pair.ptr());
 
-    for (Frame* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {
-        if (DocumentLoader* documentLoader = frame->loader().documentLoader())
+    for (AbstractFrame* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {
+        auto* localFrame = dynamicDowncast<LocalFrame>(frame);
+        if (!localFrame)
+            continue;
+        if (auto* documentLoader = localFrame->loader().documentLoader())
             documentLoader->unschedule(pair);
-        if (DocumentLoader* documentLoader = frame->loader().provisionalDocumentLoader())
+        if (auto* documentLoader = localFrame->loader().provisionalDocumentLoader())
             documentLoader->unschedule(pair);
     }
 }

@@ -33,7 +33,7 @@
 
 namespace JSC {
 
-const ClassInfo JSCallbackConstructor::s_info = { "CallbackConstructor", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackConstructor) };
+const ClassInfo JSCallbackConstructor::s_info = { "CallbackConstructor"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCallbackConstructor) };
 
 JSCallbackConstructor::JSCallbackConstructor(JSGlobalObject* globalObject, Structure* structure, JSClassRef jsClass, JSObjectCallAsConstructorCallback callback)
     : Base(globalObject->vm(), structure)
@@ -45,7 +45,7 @@ JSCallbackConstructor::JSCallbackConstructor(JSGlobalObject* globalObject, Struc
 void JSCallbackConstructor::finishCreation(JSGlobalObject* globalObject, JSClassRef jsClass)
 {
     Base::finishCreation(globalObject->vm());
-    ASSERT(inherits(vm(), info()));
+    ASSERT(inherits(info()));
     if (m_class)
         JSClassRetain(jsClass);
 }
@@ -61,11 +61,18 @@ void JSCallbackConstructor::destroy(JSCell* cell)
     static_cast<JSCallbackConstructor*>(cell)->JSCallbackConstructor::~JSCallbackConstructor();
 }
 
+static JSC_DECLARE_HOST_FUNCTION(constructJSCallbackConstructor);
+
+JSC_DEFINE_HOST_FUNCTION(constructJSCallbackConstructor, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    return APICallbackFunction::constructImpl<JSCallbackConstructor>(globalObject, callFrame);
+}
+
 CallData JSCallbackConstructor::getConstructData(JSCell*)
 {
     CallData constructData;
     constructData.type = CallData::Type::Native;
-    constructData.native.function = APICallbackFunction::construct<JSCallbackConstructor>;
+    constructData.native.function = constructJSCallbackConstructor;
     return constructData;
 }
 

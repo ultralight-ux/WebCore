@@ -30,7 +30,10 @@
 #pragma once
 
 #include "Length.h"
+#include "RotateTransformOperation.h"
+#include "ScaleTransformOperation.h"
 #include "TransformOperations.h"
+#include "TranslateTransformOperation.h"
 
 namespace WebCore {
 
@@ -38,7 +41,11 @@ class CSSPrimitiveValue;
 class CSSToLengthConversionData;
 class CSSValue;
 
-bool transformsForValue(const CSSValue&, const CSSToLengthConversionData&, TransformOperations&);
+std::optional<TransformOperations> transformsForValue(const CSSValue&, const CSSToLengthConversionData&);
+RefPtr<TransformOperation> transformForValue(const CSSValue&, const CSSToLengthConversionData&);
 Length convertToFloatLength(const CSSPrimitiveValue*, const CSSToLengthConversionData&);
+RefPtr<TranslateTransformOperation> translateForValue(const CSSValue&, const CSSToLengthConversionData&);
+RefPtr<RotateTransformOperation> rotateForValue(const CSSValue&);
+RefPtr<ScaleTransformOperation> scaleForValue(const CSSValue&);
 
 } // namespace WebCore

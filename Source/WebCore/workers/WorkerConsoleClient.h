@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "WorkerGlobalScope.h"
+#include "WorkerOrWorkletGlobalScope.h"
 #include <JavaScriptCore/ConsoleClient.h>
 #include <wtf/Forward.h>
 
@@ -33,16 +33,18 @@ namespace JSC {
 class CallFrame;
 }
 
+using JSC::MessageType;
+
 namespace WebCore {
 
 class WorkerConsoleClient final : public JSC::ConsoleClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit WorkerConsoleClient(WorkerGlobalScope&);
+    explicit WorkerConsoleClient(WorkerOrWorkletGlobalScope&);
     virtual ~WorkerConsoleClient();
 
 private:
-    void messageWithTypeAndLevel(MessageType, MessageLevel, JSC::JSGlobalObject*, Ref<Inspector::ScriptArguments>&&) override;
+    void messageWithTypeAndLevel(JSC::MessageType, MessageLevel, JSC::JSGlobalObject*, Ref<Inspector::ScriptArguments>&&) override;
     void count(JSC::JSGlobalObject*, const String& label) override;
     void countReset(JSC::JSGlobalObject*, const String& label) override;
     void profile(JSC::JSGlobalObject*, const String& title) override;
@@ -56,7 +58,7 @@ private:
     void recordEnd(JSC::JSGlobalObject*, Ref<Inspector::ScriptArguments>&&) override;
     void screenshot(JSC::JSGlobalObject*, Ref<Inspector::ScriptArguments>&&) override;
 
-    WorkerGlobalScope& m_workerGlobalScope;
+    WorkerOrWorkletGlobalScope& m_globalScope;
 };
 
 } // namespace WebCore

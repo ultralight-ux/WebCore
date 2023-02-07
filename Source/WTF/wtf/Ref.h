@@ -26,9 +26,9 @@
 #pragma once
 
 #include <wtf/Assertions.h>
-#include <wtf/DumbPtrTraits.h>
 #include <wtf/Forward.h>
 #include <wtf/GetPtr.h>
+#include <wtf/RawPtrTraits.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/TypeCasts.h>
 
@@ -43,7 +43,7 @@ namespace WTF {
 inline void adopted(const void*) { }
 
 template<typename T, typename PtrTraits> class Ref;
-template<typename T, typename PtrTraits = DumbPtrTraits<T>> Ref<T, PtrTraits> adoptRef(T&);
+template<typename T, typename PtrTraits = RawPtrTraits<T>> Ref<T, PtrTraits> adoptRef(T&);
 
 template<typename T, typename Traits>
 class Ref {
@@ -57,8 +57,8 @@ public:
         if (__asan_address_is_poisoned(this))
             __asan_unpoison_memory_region(this, sizeof(*this));
 #endif
-        if (m_ptr)
-            PtrTraits::unwrap(m_ptr)->deref();
+        if (auto* ptr = PtrTraits::exchange(m_ptr, nullptr))
+            ptr->deref();
     }
 
     Ref(T& object)
@@ -149,7 +149,6 @@ private:
 };
 
 template<typename T, typename U> Ref<T, U> adoptRef(T&);
-template<typename T> Ref<T> makeRef(T&);
 
 template<typename T, typename U>
 inline Ref<T, U>& Ref<T, U>::operator=(T& reference)
@@ -216,7 +215,7 @@ inline void Ref<T, U>::swap(Ref<X, Y>& other)
     U::swap(m_ptr, other.m_ptr);
 }
 
-template<typename T, typename U, typename X, typename Y, typename = std::enable_if_t<!std::is_same<U, DumbPtrTraits<T>>::value || !std::is_same<Y, DumbPtrTraits<X>>::value>>
+template<typename T, typename U, typename X, typename Y, typename = std::enable_if_t<!std::is_same<U, RawPtrTraits<T>>::value || !std::is_same<Y, RawPtrTraits<X>>::value>>
 inline void swap(Ref<T, U>& a, Ref<X, Y>& b)
 {
     a.swap(b);
@@ -235,22 +234,16 @@ inline Ref<T, U> Ref<T, U>::replace(Ref<X, Y>&& reference)
     return oldReference;
 }
 
-template<typename T, typename U = DumbPtrTraits<T>, typename X, typename Y>
-inline Ref<T, U> static_reference_cast(Ref<X, Y>& reference)
-{
-    return Ref<T, U>(static_cast<T&>(reference.get()));
-}
-
-template<typename T, typename U = DumbPtrTraits<T>, typename X, typename Y>
+template<typename T, typename U = RawPtrTraits<T>, typename X, typename Y>
 inline Ref<T, U> static_reference_cast(Ref<X, Y>&& reference)
 {
     return adoptRef(static_cast<T&>(reference.leakRef()));
 }
 
-template<typename T, typename U = DumbPtrTraits<T>, typename X, typename Y>
-inline Ref<T, U> static_reference_cast(const Ref<X, Y>& reference)
+template<typename T, typename U = RawPtrTraits<T>, typename X, typename Y>
+ALWAYS_INLINE Ref<T, U> static_reference_cast(const Ref<X, Y>& reference)
 {
-    return Ref<T, U>(static_cast<T&>(reference.copyRef().get()));
+    return static_reference_cast<T, U>(reference.copyRef());
 }
 
 template <typename T, typename U>
@@ -271,12 +264,6 @@ inline Ref<T, U> adoptRef(T& reference)
     return Ref<T, U>(reference, Ref<T, U>::Adopt);
 }
 
-template<typename T>
-inline Ref<T> makeRef(T& reference)
-{
-    return Ref<T>(reference);
-}
-
 template<typename ExpectedType, typename ArgType, typename PtrTraits>
 inline bool is(Ref<ArgType, PtrTraits>& source)
 {
@@ -293,5 +280,4 @@ inline bool is(const Ref<ArgType, PtrTraits>& source)
 
 using WTF::Ref;
 using WTF::adoptRef;
-using WTF::makeRef;
 using WTF::static_reference_cast;

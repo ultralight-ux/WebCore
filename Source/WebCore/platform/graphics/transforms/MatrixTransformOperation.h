@@ -30,6 +30,8 @@
 
 namespace WebCore {
 
+struct BlendingContext;
+
 class MatrixTransformOperation final : public TransformOperation {
 public:
     static Ref<MatrixTransformOperation> create(double a, double b, double c, double d, double e, double f)
@@ -37,10 +39,7 @@ public:
         return adoptRef(*new MatrixTransformOperation(a, b, c, d, e, f));
     }
 
-    static Ref<MatrixTransformOperation> create(const TransformationMatrix& t)
-    {
-        return adoptRef(*new MatrixTransformOperation(t));
-    }
+    WEBCORE_EXPORT static Ref<MatrixTransformOperation> create(const TransformationMatrix&);
 
     Ref<TransformOperation> clone() const override
     {
@@ -53,6 +52,7 @@ private:
     bool isIdentity() const override { return m_a == 1 && m_b == 0 && m_c == 0 && m_d == 1 && m_e == 0 && m_f == 0; }
     bool isAffectedByTransformOrigin() const override { return !isIdentity(); }
 
+    bool operator==(const MatrixTransformOperation& other) const { return operator==(static_cast<const TransformOperation&>(other)); }
     bool operator==(const TransformOperation&) const override;
 
     bool apply(TransformationMatrix& transform, const FloatSize&) const override
@@ -62,12 +62,12 @@ private:
         return false;
     }
 
-    Ref<TransformOperation> blend(const TransformOperation* from, double progress, bool blendToIdentity = false) override;
+    Ref<TransformOperation> blend(const TransformOperation* from, const BlendingContext&, bool blendToIdentity = false) override;
 
     void dump(WTF::TextStream&) const final;
 
     MatrixTransformOperation(double a, double b, double c, double d, double e, double f)
-        : TransformOperation(MATRIX)
+        : TransformOperation(TransformOperation::Type::Matrix)
         , m_a(a)
         , m_b(b)
         , m_c(c)
@@ -77,17 +77,8 @@ private:
     {
     }
 
-    MatrixTransformOperation(const TransformationMatrix& t)
-        : TransformOperation(MATRIX)
-        , m_a(t.a())
-        , m_b(t.b())
-        , m_c(t.c())
-        , m_d(t.d())
-        , m_e(t.e())
-        , m_f(t.f())
-    {
-    }
-    
+    MatrixTransformOperation(const TransformationMatrix&);
+
     double m_a;
     double m_b;
     double m_c;
@@ -98,4 +89,4 @@ private:
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_TRANSFORMOPERATION(WebCore::MatrixTransformOperation, type() == WebCore::TransformOperation::MATRIX)
+SPECIALIZE_TYPE_TRAITS_TRANSFORMOPERATION(WebCore::MatrixTransformOperation, type() == WebCore::TransformOperation::Type::Matrix)

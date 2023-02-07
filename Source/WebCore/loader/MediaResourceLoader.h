@@ -30,6 +30,7 @@
 #include "CachedRawResourceClient.h"
 #include "CachedResourceHandle.h"
 #include "ContextDestructionObserver.h"
+#include "FetchOptions.h"
 #include "PlatformMediaResourceLoader.h"
 #include "ResourceResponse.h"
 #include <wtf/HashSet.h>
@@ -41,12 +42,13 @@ namespace WebCore {
 
 class CachedRawResource;
 class Document;
-class HTMLMediaElement;
+class Element;
 class MediaResource;
+class WeakPtrImplWithEventTargetData;
 
 class MediaResourceLoader final : public PlatformMediaResourceLoader, public CanMakeWeakPtr<MediaResourceLoader>, public ContextDestructionObserver {
 public:
-    WEBCORE_EXPORT MediaResourceLoader(Document&, HTMLMediaElement&, const String& crossOriginMode);
+    WEBCORE_EXPORT MediaResourceLoader(Document&, Element&, const String& crossOriginMode, FetchOptions::Destination);
     WEBCORE_EXPORT virtual ~MediaResourceLoader();
 
     RefPtr<PlatformMediaResource> requestResource(ResourceRequest&&, LoadOptions) final;
@@ -63,11 +65,12 @@ public:
 private:
     void contextDestroyed() override;
 
-    WeakPtr<Document> m_document;
-    WeakPtr<HTMLMediaElement> m_mediaElement;
+    WeakPtr<Document, WeakPtrImplWithEventTargetData> m_document;
+    WeakPtr<Element, WeakPtrImplWithEventTargetData> m_element;
     String m_crossOriginMode;
     HashSet<MediaResource*> m_resources;
     Vector<ResourceResponse> m_responsesForTesting;
+    FetchOptions::Destination m_destination;
 };
 
 class MediaResource : public PlatformMediaResource, CachedRawResourceClient {
@@ -84,7 +87,7 @@ public:
     void redirectReceived(CachedResource&, ResourceRequest&&, const ResourceResponse&, CompletionHandler<void(ResourceRequest&&)>&&) override;
     bool shouldCacheResponse(CachedResource&, const ResourceResponse&) override;
     void dataSent(CachedResource&, unsigned long long, unsigned long long) override;
-    void dataReceived(CachedResource&, const char*, int) override;
+    void dataReceived(CachedResource&, const SharedBuffer&) override;
     void notifyFinished(CachedResource&, const NetworkLoadMetrics&) override;
 
 private:

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,18 +27,32 @@
 
 #if ENABLE(APPLICATION_MANIFEST)
 
+#include "Color.h"
 #include <wtf/EnumTraits.h>
-#include <wtf/Optional.h>
 #include <wtf/URL.h>
+#include <wtf/Vector.h>
 
 namespace WebCore {
 
 struct ApplicationManifest {
-    enum class Display {
+    enum class Display : uint8_t {
         Browser,
         MinimalUI,
         Standalone,
         Fullscreen,
+    };
+
+    struct Icon {
+        enum class Purpose : uint8_t {
+            Any = 1 << 0,
+            Monochrome = 1 << 1,
+            Maskable = 1 << 2,
+        };
+
+        URL src;
+        Vector<String> sizes;
+        String type;
+        OptionSet<Purpose> purposes;
     };
 
     String name;
@@ -47,53 +61,12 @@ struct ApplicationManifest {
     URL scope;
     Display display;
     URL startURL;
-
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<ApplicationManifest> decode(Decoder&);
+    URL id;
+    Color themeColor;
+    Vector<Icon> icons;
 };
-
-template<class Encoder>
-void ApplicationManifest::encode(Encoder& encoder) const
-{
-    encoder << name << shortName << description << scope << display << startURL;
-}
-
-template<class Decoder>
-Optional<ApplicationManifest> ApplicationManifest::decode(Decoder& decoder)
-{
-    ApplicationManifest result;
-
-    if (!decoder.decode(result.name))
-        return WTF::nullopt;
-    if (!decoder.decode(result.shortName))
-        return WTF::nullopt;
-    if (!decoder.decode(result.description))
-        return WTF::nullopt;
-    if (!decoder.decode(result.scope))
-        return WTF::nullopt;
-    if (!decoder.decode(result.display))
-        return WTF::nullopt;
-    if (!decoder.decode(result.startURL))
-        return WTF::nullopt;
-
-    return result;
-}
 
 } // namespace WebCore
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::ApplicationManifest::Display> {
-    using values = EnumValues<
-        WebCore::ApplicationManifest::Display,
-        WebCore::ApplicationManifest::Display::Browser,
-        WebCore::ApplicationManifest::Display::MinimalUI,
-        WebCore::ApplicationManifest::Display::Standalone,
-        WebCore::ApplicationManifest::Display::Fullscreen
-    >;
-};
-
-} // namespace WTF;
 
 #endif // ENABLE(APPLICATION_MANIFEST)
 

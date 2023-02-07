@@ -44,41 +44,43 @@ class WheelEventTestMonitor : public ThreadSafeRefCounted<WheelEventTestMonitor>
 public:
     WheelEventTestMonitor(Page&);
 
-    WEBCORE_EXPORT void setTestCallbackAndStartMonitoring(bool expectWheelEndOrCancel, bool expectMomentumEnd, WTF::Function<void()>&&);
+    WEBCORE_EXPORT void setTestCallbackAndStartMonitoring(bool expectWheelEndOrCancel, bool expectMomentumEnd, Function<void()>&&);
     WEBCORE_EXPORT void clearAllTestDeferrals();
     
     enum DeferReason {
-        HandlingWheelEvent              = 1 << 0,
-        HandlingWheelEventOnMainThread  = 1 << 1,
-        RubberbandInProgress            = 1 << 2,
-        ScrollSnapInProgress            = 1 << 3,
-        ScrollingThreadSyncNeeded       = 1 << 4,
-        ContentScrollInProgress         = 1 << 5,
-        RequestedScrollPosition         = 1 << 6,
+        HandlingWheelEvent                  = 1 << 0,
+        HandlingWheelEventOnMainThread      = 1 << 1,
+        PostMainThreadWheelEventHandling    = 1 << 2,
+        RubberbandInProgress                = 1 << 3,
+        ScrollSnapInProgress                = 1 << 4,
+        ScrollAnimationInProgress           = 1 << 5,
+        ScrollingThreadSyncNeeded           = 1 << 6,
+        ContentScrollInProgress             = 1 << 7,
+        RequestedScrollPosition             = 1 << 8,
     };
     typedef const void* ScrollableAreaIdentifier;
 
-    WEBCORE_EXPORT void receivedWheelEvent(const PlatformWheelEvent&);
+    WEBCORE_EXPORT void receivedWheelEventWithPhases(PlatformWheelEventPhase phase, PlatformWheelEventPhase momentumPhase);
     WEBCORE_EXPORT void deferForReason(ScrollableAreaIdentifier, DeferReason);
     WEBCORE_EXPORT void removeDeferralForReason(ScrollableAreaIdentifier, DeferReason);
     
     void checkShouldFireCallbacks();
 
-    using ScrollableAreaReasonMap = WTF::HashMap<ScrollableAreaIdentifier, OptionSet<DeferReason>>;
+    using ScrollableAreaReasonMap = HashMap<ScrollableAreaIdentifier, OptionSet<DeferReason>>;
 
 private:
     void scheduleCallbackCheck();
 
-    WTF::Function<void()> m_completionCallback;
+    Function<void()> m_completionCallback;
     Page& m_page;
 
-    Lock m_mutex;
-    ScrollableAreaReasonMap m_deferCompletionReasons;
-    bool m_expectWheelEndOrCancel { false };
-    bool m_receivedWheelEndOrCancel { false };
-    bool m_expectMomentumEnd { false };
-    bool m_receivedMomentumEnd { false };
-    bool m_everHadDeferral { false };
+    Lock m_lock;
+    ScrollableAreaReasonMap m_deferCompletionReasons WTF_GUARDED_BY_LOCK(m_lock);
+    bool m_expectWheelEndOrCancel WTF_GUARDED_BY_LOCK(m_lock) { false };
+    bool m_receivedWheelEndOrCancel WTF_GUARDED_BY_LOCK(m_lock) { false };
+    bool m_expectMomentumEnd WTF_GUARDED_BY_LOCK(m_lock) { false };
+    bool m_receivedMomentumEnd WTF_GUARDED_BY_LOCK(m_lock) { false };
+    bool m_everHadDeferral WTF_GUARDED_BY_LOCK(m_lock) { false };
 };
 
 class WheelEventTestMonitorCompletionDeferrer {
@@ -92,6 +94,13 @@ public:
             m_monitor->deferForReason(m_identifier, m_reason);
     }
     
+    WheelEventTestMonitorCompletionDeferrer(WheelEventTestMonitorCompletionDeferrer&& other)
+        : m_monitor(WTFMove(other.m_monitor))
+        , m_identifier(other.m_identifier)
+        , m_reason(other.m_reason)
+    {
+    }
+
     ~WheelEventTestMonitorCompletionDeferrer()
     {
         if (m_monitor)
@@ -104,7 +113,26 @@ private:
     WheelEventTestMonitor::DeferReason m_reason;
 };
 
-WTF::TextStream& operator<<(WTF::TextStream&, WheelEventTestMonitor::DeferReason);
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, WheelEventTestMonitor::DeferReason);
 WTF::TextStream& operator<<(WTF::TextStream&, const WheelEventTestMonitor::ScrollableAreaReasonMap&);
 
 } // namespace WebCore
+
+namespace WTF {
+
+template<> struct EnumTraits<WebCore::WheelEventTestMonitor::DeferReason> {
+    using values = EnumValues<
+        WebCore::WheelEventTestMonitor::DeferReason,
+        WebCore::WheelEventTestMonitor::DeferReason::HandlingWheelEvent,
+        WebCore::WheelEventTestMonitor::DeferReason::HandlingWheelEventOnMainThread,
+        WebCore::WheelEventTestMonitor::DeferReason::PostMainThreadWheelEventHandling,
+        WebCore::WheelEventTestMonitor::DeferReason::RubberbandInProgress,
+        WebCore::WheelEventTestMonitor::DeferReason::ScrollSnapInProgress,
+        WebCore::WheelEventTestMonitor::DeferReason::ScrollAnimationInProgress,
+        WebCore::WheelEventTestMonitor::DeferReason::ScrollingThreadSyncNeeded,
+        WebCore::WheelEventTestMonitor::DeferReason::ContentScrollInProgress,
+        WebCore::WheelEventTestMonitor::DeferReason::RequestedScrollPosition
+    >;
+};
+
+} // namespace WTF

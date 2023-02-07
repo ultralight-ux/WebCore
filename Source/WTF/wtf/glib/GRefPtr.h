@@ -20,15 +20,20 @@
  *
  */
 
-#ifndef WTF_GRefPtr_h
-#define WTF_GRefPtr_h
+#pragma once
 
 #if USE(GLIB)
 
-#include <wtf/HashTraits.h>
 #include <algorithm>
 #include <glib.h>
+#include <wtf/HashTraits.h>
 
+extern "C" {
+    typedef struct _GDBusConnection GDBusConnection;
+    typedef struct _GDBusNodeInfo GDBusNodeInfo;
+    GDBusNodeInfo* g_dbus_node_info_ref(GDBusNodeInfo*);
+    void g_dbus_node_info_unref(GDBusNodeInfo*);
+};
 extern "C" void g_object_unref(gpointer);
 extern "C" gpointer g_object_ref_sink(gpointer);
 
@@ -94,7 +99,7 @@ public:
 
     T*& outPtr()
     {
-        ASSERT(!m_ptr);
+        clear();
         return m_ptr;
     }
 
@@ -243,6 +248,15 @@ template <> WTF_EXPORT_PRIVATE GMappedFile* refGPtr(GMappedFile*);
 template <> WTF_EXPORT_PRIVATE void derefGPtr(GMappedFile*);
 template <> WTF_EXPORT_PRIVATE GDateTime* refGPtr(GDateTime* ptr);
 template <> WTF_EXPORT_PRIVATE void derefGPtr(GDateTime* ptr);
+template <> WTF_EXPORT_PRIVATE GDBusNodeInfo* refGPtr(GDBusNodeInfo* ptr);
+template <> WTF_EXPORT_PRIVATE void derefGPtr(GDBusNodeInfo* ptr);
+template <> WTF_EXPORT_PRIVATE GArray* refGPtr(GArray*);
+template <> WTF_EXPORT_PRIVATE void derefGPtr(GArray*);
+
+#if HAVE(GURI)
+template <> WTF_EXPORT_PRIVATE GUri* refGPtr(GUri*);
+template <> WTF_EXPORT_PRIVATE void derefGPtr(GUri*);
+#endif
 
 template <typename T> inline T* refGPtr(T* ptr)
 {
@@ -281,5 +295,3 @@ using WTF::GRefPtr;
 using WTF::adoptGRef;
 
 #endif // USE(GLIB)
-
-#endif // WTF_GRefPtr_h

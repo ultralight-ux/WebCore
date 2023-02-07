@@ -31,16 +31,18 @@
 #include "DFGCommon.h"
 #include "FTLState.h"
 #include "Options.h"
-#include <wtf/Optional.h>
 
 namespace JSC { namespace B3 {
 
 const char* const tierName = "b3  ";
 
-bool shouldDumpIR(B3CompilationMode mode)
+bool shouldDumpIR(Procedure& procedure, B3CompilationMode mode)
 {
+    if (procedure.shouldDumpIR())
+        return true;
+
 #if ENABLE(FTL_JIT)
-    return FTL::verboseCompilationEnabled() || FTL::shouldDumpDisassembly() || shouldDumpIRAtEachPhase(mode);
+    return FTL::verboseCompilationEnabled() || shouldDumpIRAtEachPhase(mode);
 #else
     return shouldDumpIRAtEachPhase(mode);
 #endif
@@ -68,12 +70,15 @@ bool shouldSaveIRBeforePhase()
     return Options::verboseValidationFailure();
 }
 
-Optional<GPRReg> pinnedExtendedOffsetAddrRegister()
+GPRReg extendedOffsetAddrRegister()
 {
-#if CPU(ARM64)
+    RELEASE_ASSERT(isARM64() || isRISCV64() || isARM_THUMB2());
+#if CPU(ARM64) || CPU(RISCV64)
+    return MacroAssembler::linkRegister;
+#elif CPU(ARM)
     return MacroAssembler::dataTempRegister;
 #elif CPU(X86_64)
-    return WTF::nullopt;
+    return GPRReg::InvalidGPRReg;
 #else
 #error Unhandled architecture.
 #endif

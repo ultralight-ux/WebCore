@@ -83,12 +83,13 @@ struct SubimageCacheAdder {
 };
 
 SubimageCacheWithTimer::SubimageCacheWithTimer()
-    : m_timer(*this, &SubimageCacheWithTimer::pruneCacheTimerFired)
+    : m_timer(RunLoop::main(), this, &SubimageCacheWithTimer::pruneCacheTimerFired)
 {
 }
 
 void SubimageCacheWithTimer::pruneCacheTimerFired()
 {
+    Locker locker { m_lock };
     prune();
     if (m_cache.isEmpty()) {
         ASSERT(m_imageCounts.isEmpty());
@@ -115,6 +116,7 @@ void SubimageCacheWithTimer::prune()
 
 RetainPtr<CGImageRef> SubimageCacheWithTimer::subimage(CGImageRef image, const FloatRect& rect)
 {
+    Locker locker { m_lock };
     if (!m_timer.isActive())
         m_timer.startRepeating(subimageCachePruneDelay);
 
@@ -135,6 +137,7 @@ RetainPtr<CGImageRef> SubimageCacheWithTimer::subimage(CGImageRef image, const F
 
 void SubimageCacheWithTimer::clearImageAndSubimages(CGImageRef image)
 {
+    Locker locker { m_lock };
     if (m_imageCounts.contains(image)) {
         Vector<SubimageCacheEntry> toBeRemoved;
         for (const auto& entry : m_cache) {
@@ -151,14 +154,17 @@ void SubimageCacheWithTimer::clearImageAndSubimages(CGImageRef image)
 
 void SubimageCacheWithTimer::clearAll()
 {
+    Locker locker { m_lock };
     m_imageCounts.clear();
     m_cache.clear();
 }
 
 SubimageCacheWithTimer& SubimageCacheWithTimer::subimageCache()
 {
-    if (!s_cache)
+    static std::once_flag onceKey;
+    std::call_once(onceKey, [&] {
         s_cache = new SubimageCacheWithTimer;
+    });
     return *s_cache;
 }
 

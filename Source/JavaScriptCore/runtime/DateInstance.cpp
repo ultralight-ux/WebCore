@@ -27,7 +27,7 @@
 
 namespace JSC {
 
-const ClassInfo DateInstance::s_info = {"Date", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(DateInstance)};
+const ClassInfo DateInstance::s_info = { "Date"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(DateInstance) };
 
 DateInstance::DateInstance(VM& vm, Structure* structure)
     : Base(vm, structure)
@@ -37,48 +37,43 @@ DateInstance::DateInstance(VM& vm, Structure* structure)
 void DateInstance::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 }
 
 void DateInstance::finishCreation(VM& vm, double time)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
     m_internalNumber = timeClip(time);
 }
 
-String DateInstance::toStringName(const JSObject*, JSGlobalObject*)
-{
-    return "Date"_s;
-}
-
-const GregorianDateTime* DateInstance::calculateGregorianDateTime(VM::DateCache& cache) const
+const GregorianDateTime* DateInstance::calculateGregorianDateTime(DateCache& cache) const
 {
     double milli = internalNumber();
     if (std::isnan(milli))
         return nullptr;
 
     if (!m_data)
-        m_data = cache.dateInstanceCache.add(milli);
+        m_data = cache.cachedDateInstanceData(milli);
 
     if (m_data->m_gregorianDateTimeCachedForMS != milli) {
-        msToGregorianDateTime(cache, milli, WTF::LocalTime, m_data->m_cachedGregorianDateTime);
+        cache.msToGregorianDateTime(milli, WTF::LocalTime, m_data->m_cachedGregorianDateTime);
         m_data->m_gregorianDateTimeCachedForMS = milli;
     }
     return &m_data->m_cachedGregorianDateTime;
 }
 
-const GregorianDateTime* DateInstance::calculateGregorianDateTimeUTC(VM::DateCache& cache) const
+const GregorianDateTime* DateInstance::calculateGregorianDateTimeUTC(DateCache& cache) const
 {
     double milli = internalNumber();
     if (std::isnan(milli))
         return nullptr;
 
     if (!m_data)
-        m_data = cache.dateInstanceCache.add(milli);
+        m_data = cache.cachedDateInstanceData(milli);
 
     if (m_data->m_gregorianDateTimeUTCCachedForMS != milli) {
-        msToGregorianDateTime(cache, milli, WTF::UTCTime, m_data->m_cachedGregorianDateTimeUTC);
+        cache.msToGregorianDateTime(milli, WTF::UTCTime, m_data->m_cachedGregorianDateTimeUTC);
         m_data->m_gregorianDateTimeUTCCachedForMS = milli;
     }
     return &m_data->m_cachedGregorianDateTimeUTC;

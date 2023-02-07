@@ -25,6 +25,7 @@ namespace JSC {
 enum JSType : uint8_t {
     // The CellType value must come before any JSType that is a JSCell.
     CellType,
+    StructureType,
     StringType,
     HeapBigIntType,
     LastMaybeFalsyCellPrimitive = HeapBigIntType,
@@ -62,10 +63,10 @@ enum JSType : uint8_t {
     JSFunctionType,
     InternalFunctionType,
     NullSetterFunctionType,
+    BooleanObjectType,
     NumberObjectType,
     ErrorInstanceType,
     PureForwardingProxyType,
-    ImpureProxyType,
     DirectArgumentsType,
     ScopedArgumentsType,
     ClonedArgumentsType,
@@ -87,6 +88,8 @@ enum JSType : uint8_t {
     Uint32ArrayType,
     Float32ArrayType,
     Float64ArrayType,
+    BigInt64ArrayType,
+    BigUint64ArrayType,
     DataViewType,
     // End JSArrayBufferView types.
 
@@ -107,6 +110,7 @@ enum JSType : uint8_t {
     // End JSScope types.
 
     ModuleNamespaceObjectType,
+    ShadowRealmType,
     RegExpObjectType,
     JSDateType,
     ProxyObjectType,
@@ -122,6 +126,7 @@ enum JSType : uint8_t {
     JSWeakMapType,
     JSWeakSetType,
     WebAssemblyModuleType,
+    WebAssemblyInstanceType,
     // Start StringObjectType types.
     StringObjectType,
     DerivedStringObjectType,
@@ -141,6 +146,7 @@ static constexpr uint32_t LastObjectType = MaxJSType;
 
 static constexpr uint32_t NumberOfTypedArrayTypes = LastTypedArrayType - FirstTypedArrayType + 1;
 static constexpr uint32_t NumberOfTypedArrayTypesExcludingDataView = NumberOfTypedArrayTypes - 1;
+static constexpr uint32_t NumberOfTypedArrayTypesExcludingBigIntArraysAndDataView = NumberOfTypedArrayTypes - 3;
 
 static_assert(sizeof(JSType) == sizeof(uint8_t), "sizeof(JSType) is one byte.");
 static_assert(LastJSCObjectType < 0b11100000, "Embedder can use 0b11100000 or upper.");
@@ -149,6 +155,13 @@ inline constexpr bool isTypedArrayType(JSType type)
 {
     return (static_cast<uint32_t>(type) - FirstTypedArrayType) < NumberOfTypedArrayTypesExcludingDataView;
 }
+
+inline constexpr bool isTypedArrayTypeIncludingDataView(JSType type)
+{
+    return (static_cast<uint32_t>(type) - FirstTypedArrayType) < NumberOfTypedArrayTypes;
+}
+
+inline constexpr bool isObjectType(JSType type) { return type >= ObjectType; }
 
 } // namespace JSC
 

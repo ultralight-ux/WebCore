@@ -21,10 +21,12 @@
 
 #pragma once
 
+#include "CustomElementDefaultARIA.h"
 #include "CustomElementReactionQueue.h"
 #include "DOMTokenList.h"
 #include "DatasetDOMStringMap.h"
 #include "ElementAnimationRareData.h"
+#include "FormAssociatedCustomElement.h"
 #include "IntersectionObserver.h"
 #include "KeyframeEffectStack.h"
 #include "NamedNodeMap.h"
@@ -32,16 +34,13 @@
 #include "PseudoElement.h"
 #include "RenderElement.h"
 #include "ResizeObserver.h"
+#include "ResizeObserverSize.h"
 #include "ShadowRoot.h"
 #include "SpaceSplitString.h"
 #include "StylePropertyMap.h"
+#include "StylePropertyMapReadOnly.h"
 
 namespace WebCore {
-
-inline IntSize defaultMinimumSizeForResizing()
-{
-    return IntSize(LayoutUnit::max(), LayoutUnit::max());
-}
 
 class ElementRareData : public NodeRareData {
 public:
@@ -55,17 +54,9 @@ public:
     PseudoElement* afterPseudoElement() const { return m_afterPseudoElement.get(); }
 
     void resetComputedStyle();
-    void resetStyleRelations();
-    
-    Optional<int> tabIndex() const { return m_tabIndexWasSetExplicitly ? Optional<int> { m_tabIndex } : WTF::nullopt; }
-    void setTabIndexExplicitly(int index) { m_tabIndex = index; m_tabIndexWasSetExplicitly = true; }
-    bool tabIndexSetExplicitly() const { return m_tabIndexWasSetExplicitly; }
-    void clearTabIndexExplicitly() { m_tabIndex = 0; m_tabIndexWasSetExplicitly = false; }
 
-#if ENABLE(FULLSCREEN_API)
-    bool containsFullScreenElement() { return m_containsFullScreenElement; }
-    void setContainsFullScreenElement(bool value) { m_containsFullScreenElement = value; }
-#endif
+    int unusualTabIndex() const;
+    void setUnusualTabIndex(int);
 
     unsigned childIndex() const { return m_childIndex; }
     void setChildIndex(unsigned index) { m_childIndex = index; }
@@ -78,11 +69,20 @@ public:
     CustomElementReactionQueue* customElementReactionQueue() { return m_customElementReactionQueue.get(); }
     void setCustomElementReactionQueue(std::unique_ptr<CustomElementReactionQueue>&& queue) { m_customElementReactionQueue = WTFMove(queue); }
 
+    CustomElementDefaultARIA* customElementDefaultARIA() { return m_customElementDefaultARIA.get(); }
+    void setCustomElementDefaultARIA(std::unique_ptr<CustomElementDefaultARIA>&& defaultARIA) { m_customElementDefaultARIA = WTFMove(defaultARIA); }
+
+    FormAssociatedCustomElement* formAssociatedCustomElement() { return m_formAssociatedCustomElement.get(); }
+    void setFormAssociatedCustomElement(std::unique_ptr<FormAssociatedCustomElement>&& element) { m_formAssociatedCustomElement = WTFMove(element); }
+
     NamedNodeMap* attributeMap() const { return m_attributeMap.get(); }
     void setAttributeMap(std::unique_ptr<NamedNodeMap> attributeMap) { m_attributeMap = WTFMove(attributeMap); }
 
     RenderStyle* computedStyle() const { return m_computedStyle.get(); }
     void setComputedStyle(std::unique_ptr<RenderStyle> computedStyle) { m_computedStyle = WTFMove(computedStyle); }
+
+    const AtomString& effectiveLang() const { return m_effectiveLang; }
+    void setEffectiveLang(const AtomString& lang) { m_effectiveLang = lang; }
 
     DOMTokenList* classList() const { return m_classList.get(); }
     void setClassList(std::unique_ptr<DOMTokenList> classList) { m_classList = WTFMove(classList); }
@@ -90,23 +90,11 @@ public:
     DatasetDOMStringMap* dataset() const { return m_dataset.get(); }
     void setDataset(std::unique_ptr<DatasetDOMStringMap> dataset) { m_dataset = WTFMove(dataset); }
 
-    LayoutSize minimumSizeForResizing() const { return m_minimumSizeForResizing; }
-    void setMinimumSizeForResizing(LayoutSize size) { m_minimumSizeForResizing = size; }
-
     IntPoint savedLayerScrollPosition() const { return m_savedLayerScrollPosition; }
     void setSavedLayerScrollPosition(IntPoint position) { m_savedLayerScrollPosition = position; }
 
-    bool hasPendingResources() const { return m_hasPendingResources; }
-    void setHasPendingResources(bool has) { m_hasPendingResources = has; }
-
-    bool hasCSSAnimation() const { return m_hasCSSAnimation; }
-    void setHasCSSAnimation(bool value) { m_hasCSSAnimation = value; }
-
-    ElementAnimationRareData* elementAnimationRareData() { return m_animationRareData.get(); }
-    ElementAnimationRareData& ensureAnimationRareData();
-
-    bool hasElementIdentifier() const { return m_hasElementIdentifier; }
-    void setHasElementIdentifier(bool value) { m_hasElementIdentifier = value; }
+    ElementAnimationRareData* animationRareData(PseudoId) const;
+    ElementAnimationRareData& ensureAnimationRareData(PseudoId);
 
     DOMTokenList* partList() const { return m_partList.get(); }
     void setPartList(std::unique_ptr<DOMTokenList> partList) { m_partList = WTFMove(partList); }
@@ -114,112 +102,115 @@ public:
     const SpaceSplitString& partNames() const { return m_partNames; }
     void setPartNames(SpaceSplitString&& partNames) { m_partNames = WTFMove(partNames); }
 
-#if ENABLE(INTERSECTION_OBSERVER)
     IntersectionObserverData* intersectionObserverData() { return m_intersectionObserverData.get(); }
     void setIntersectionObserverData(std::unique_ptr<IntersectionObserverData>&& data) { m_intersectionObserverData = WTFMove(data); }
-#endif
 
-#if ENABLE(RESIZE_OBSERVER)
     ResizeObserverData* resizeObserverData() { return m_resizeObserverData.get(); }
     void setResizeObserverData(std::unique_ptr<ResizeObserverData>&& data) { m_resizeObserverData = WTFMove(data); }
-#endif
 
-#if ENABLE(CSS_TYPED_OM)
+    ResizeObserverSize* lastRememberedSize() const { return m_lastRememberedSize.get(); }
+    void setLastRememberedSize(RefPtr<ResizeObserverSize>&& size) { m_lastRememberedSize = WTFMove(size); }
+    void clearLastRememberedSize() { m_lastRememberedSize = nullptr; }
+
+    const AtomString& nonce() const { return m_nonce; }
+    void setNonce(const AtomString& value) { m_nonce = value; }
+
     StylePropertyMap* attributeStyleMap() { return m_attributeStyleMap.get(); }
     void setAttributeStyleMap(Ref<StylePropertyMap>&& map) { m_attributeStyleMap = WTFMove(map); }
-#endif
+
+    StylePropertyMapReadOnly* computedStyleMap() { return m_computedStyleMap.get(); }
+    void setComputedStyleMap(Ref<StylePropertyMapReadOnly>&& map) { m_computedStyleMap = WTFMove(map); }
+
+    ExplicitlySetAttrElementsMap& explicitlySetAttrElementsMap() { return m_explicitlySetAttrElementsMap; }
 
 #if DUMP_NODE_STATISTICS
     OptionSet<UseType> useTypes() const
     {
         auto result = NodeRareData::useTypes();
-        if (m_tabIndexWasSetExplicitly)
+        if (m_unusualTabIndex)
             result.add(UseType::TabIndex);
-        if (m_minimumSizeForResizing != defaultMinimumSizeForResizing())
-            result.add(UseType::MinimumSize);
         if (!m_savedLayerScrollPosition.isZero())
             result.add(UseType::ScrollingPosition);
         if (m_computedStyle)
             result.add(UseType::ComputedStyle);
-        if (m_dataset)
-            result.add(UseType::Dataset);
+        if (m_effectiveLang)
+            result.add(UseType::LangEffective);
         if (m_classList)
             result.add(UseType::ClassList);
+        if (m_dataset)
+            result.add(UseType::Dataset);
         if (m_shadowRoot)
             result.add(UseType::ShadowRoot);
         if (m_customElementReactionQueue)
-            result.add(UseType::CustomElementQueue);
+            result.add(UseType::CustomElementReactionQueue);
+        if (m_customElementDefaultARIA)
+            result.add(UseType::CustomElementDefaultARIA);
+        if (m_formAssociatedCustomElement)
+            result.add(UseType::FormAssociatedCustomElement);
         if (m_attributeMap)
             result.add(UseType::AttributeMap);
         if (m_intersectionObserverData)
             result.add(UseType::InteractionObserver);
-#if ENABLE(RESIZE_OBSERVER)
-        if (m_resizeObserverData)
+        if (m_resizeObserverData || m_lastRememberedSize)
             result.add(UseType::ResizeObserver);
-#endif
+        if (!m_animationRareData.isEmpty())
+            result.add(UseType::Animations);
         if (m_beforePseudoElement || m_afterPseudoElement)
             result.add(UseType::PseudoElements);
-        if (m_animationRareData)
-            result.add(UseType::Animations);
+        if (m_attributeStyleMap)
+            result.add(UseType::StyleMap);
+        if (m_computedStyleMap)
+            result.add(UseType::ComputedStyleMap);
+        if (m_partList)
+            result.add(UseType::PartList);
+        if (!m_partNames.isEmpty())
+            result.add(UseType::PartNames);
+        if (m_nonce)
+            result.add(UseType::Nonce);
+        if (!m_explicitlySetAttrElementsMap.isEmpty())
+            result.add(UseType::ExplicitlySetAttrElementsMap);
         return result;
     }
 #endif
 
 private:
-    int m_tabIndex;
-    unsigned short m_childIndex;
-    unsigned m_tabIndexWasSetExplicitly : 1;
-#if ENABLE(FULLSCREEN_API)
-    unsigned m_containsFullScreenElement : 1;
-#endif
-    unsigned m_hasPendingResources : 1;
-    unsigned m_hasCSSAnimation : 1;
-    unsigned m_hasElementIdentifier : 1;
-
-    LayoutSize m_minimumSizeForResizing;
     IntPoint m_savedLayerScrollPosition;
     std::unique_ptr<RenderStyle> m_computedStyle;
 
+    AtomString m_effectiveLang;
     std::unique_ptr<DatasetDOMStringMap> m_dataset;
     std::unique_ptr<DOMTokenList> m_classList;
     RefPtr<ShadowRoot> m_shadowRoot;
     std::unique_ptr<CustomElementReactionQueue> m_customElementReactionQueue;
+    std::unique_ptr<CustomElementDefaultARIA> m_customElementDefaultARIA;
+    std::unique_ptr<FormAssociatedCustomElement> m_formAssociatedCustomElement;
     std::unique_ptr<NamedNodeMap> m_attributeMap;
-#if ENABLE(INTERSECTION_OBSERVER)
+
     std::unique_ptr<IntersectionObserverData> m_intersectionObserverData;
-#endif
 
-#if ENABLE(RESIZE_OBSERVER)
     std::unique_ptr<ResizeObserverData> m_resizeObserverData;
-#endif
+    RefPtr<ResizeObserverSize> m_lastRememberedSize;
 
-    std::unique_ptr<ElementAnimationRareData> m_animationRareData;
+    Vector<std::unique_ptr<ElementAnimationRareData>> m_animationRareData;
 
     RefPtr<PseudoElement> m_beforePseudoElement;
     RefPtr<PseudoElement> m_afterPseudoElement;
 
-#if ENABLE(CSS_TYPED_OM)
     RefPtr<StylePropertyMap> m_attributeStyleMap;
-#endif
+    RefPtr<StylePropertyMapReadOnly> m_computedStyleMap;
 
     std::unique_ptr<DOMTokenList> m_partList;
     SpaceSplitString m_partNames;
+
+    AtomString m_nonce;
+
+    ExplicitlySetAttrElementsMap m_explicitlySetAttrElementsMap;
 
     void releasePseudoElement(PseudoElement*);
 };
 
 inline ElementRareData::ElementRareData()
     : NodeRareData(Type::Element)
-    , m_tabIndex(0)
-    , m_childIndex(0)
-    , m_tabIndexWasSetExplicitly(false)
-#if ENABLE(FULLSCREEN_API)
-    , m_containsFullScreenElement(false)
-#endif
-    , m_hasPendingResources(false)
-    , m_hasCSSAnimation(false)
-    , m_hasElementIdentifier(false)
-    , m_minimumSizeForResizing(defaultMinimumSizeForResizing())
 {
 }
 
@@ -247,16 +238,52 @@ inline void ElementRareData::resetComputedStyle()
     m_computedStyle = nullptr;
 }
 
-inline void ElementRareData::resetStyleRelations()
+inline int ElementRareData::unusualTabIndex() const
 {
-    setChildIndex(0);
+    ASSERT(m_unusualTabIndex); // setUnusualTabIndex must have been called before this.
+    return m_unusualTabIndex;
 }
 
-inline ElementAnimationRareData& ElementRareData::ensureAnimationRareData()
+inline void ElementRareData::setUnusualTabIndex(int tabIndex)
 {
-    if (!m_animationRareData)
-        m_animationRareData = makeUnique<ElementAnimationRareData>();
-    return *m_animationRareData.get();
+    ASSERT(tabIndex && tabIndex != -1); // Common values of 0 and -1 are stored as TabIndexState in Node.
+    m_unusualTabIndex = tabIndex;
+}
+
+inline ElementAnimationRareData* ElementRareData::animationRareData(PseudoId pseudoId) const
+{
+    for (auto& animationRareData : m_animationRareData) {
+        if (animationRareData->pseudoId() == pseudoId)
+            return animationRareData.get();
+    }
+    return nullptr;
+}
+
+inline ElementAnimationRareData& ElementRareData::ensureAnimationRareData(PseudoId pseudoId)
+{
+    if (auto* animationRareData = this->animationRareData(pseudoId))
+        return *animationRareData;
+
+    m_animationRareData.append(makeUnique<ElementAnimationRareData>(pseudoId));
+    return *m_animationRareData.last().get();
+}
+
+inline ElementRareData* Element::elementRareData() const
+{
+    ASSERT_WITH_SECURITY_IMPLICATION(hasRareData());
+    return static_cast<ElementRareData*>(rareData());
+}
+
+inline ShadowRoot* Node::shadowRoot() const
+{
+    if (!is<Element>(*this))
+        return nullptr;
+    return downcast<Element>(*this).shadowRoot();
+}
+
+inline ShadowRoot* Element::shadowRoot() const
+{
+    return hasRareData() ? elementRareData()->shadowRoot() : nullptr;
 }
 
 } // namespace WebCore
